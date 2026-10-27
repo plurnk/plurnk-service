@@ -68,7 +68,7 @@ export type DispatchContext = {
     turnId: number;
     sequence: number;
     origin: WriterTier;
-    // {§actor-boundary-client-operations} — a person's client operation: the session whose log its `log:///`
+    // {§connection-lifecycle} — a person's client operation: the session whose log its `log:///`
     // addresses read (null: none).
     client?: { readonly contextSessionId: number | null };
     // The append-only log boundary visible when this admitted program entered
@@ -506,7 +506,7 @@ export default class Dispatcher {
         }
     }
 
-    // {§notifications-operation-event} One dispatch can produce several log rows.
+    // {§notifications} One dispatch can produce several log rows.
     async #operationEvent(context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin" | "statement">, phase: "started" | "settled", result?: DispatchResult): Promise<void> {
         if (this.#notify.operationEventNotify === undefined) return;
         const { workspaceId, sessionId, loopId, turnId, sequence, origin, statement } = context;
@@ -842,7 +842,7 @@ export default class Dispatcher {
         return { autoAccept, result };
     }
 
-    // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}; {§proposal}). A
+    // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods}; {§proposal}). A
     // side-effecting op that returned 202 was written state='proposed'; an automatic acceptance applies at once,
     // otherwise dispatch PAUSES on a per-entry waiter until resolution arrives via Engine.resolveProposal (a client
     // resume, core-owned disposition, or timeout). The post-resolution status replaces 202 in the result the caller
@@ -1351,7 +1351,7 @@ export default class Dispatcher {
             {
                 ...descriptor,
                 policyScope: scope,
-                // {§owner-interaction-ring} Every other ring is operator configuration and speaks for itself.
+                // {§question-tool} Every other ring is operator configuration and speaks for itself.
                 ...(scope === "owner" ? { recovery: CapabilityResolver.UNATTENDED_RECOVERY } : {}),
                 retryable: false,
             },

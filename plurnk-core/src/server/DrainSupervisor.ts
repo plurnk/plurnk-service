@@ -157,7 +157,7 @@ export default class DrainSupervisor {
     readonly #drainLocks = new Map<number, Promise<unknown>>();
     readonly #admissionLocks = new Map<number, Promise<unknown>>();
     readonly #completionWakeGates = new Map<number, CompletionWakeGate>();
-    // {§notifications-stream-concluded} A closed subscription's `stream/concluded`, until it is published.
+    // {§notifications} A closed subscription's `stream/concluded`, until it is published.
     readonly #streamAnnouncements = new Map<number, { sessionId: number; delivered: Promise<void> }>();
     #acceptingWork = false;
 
@@ -248,7 +248,7 @@ export default class DrainSupervisor {
         const delivery = await this.#withAdmissionLock(workspaceId, () => this.#withDrainLock(sessionId, async () => {
             if (!this.#acceptingWork) throw new Error("The daemon is not accepting work.");
             if (args.messageAddress !== undefined) {
-                // {§message-idempotency} Admission refuses every repeat: other words reuse the key, and the same words
+                // {§methods} Admission refuses every repeat: other words reuse the key, and the same words
                 // duplicate a message already accepted.
                 const accepted = await this.#db.message_source_by_address.get<{ loop_id: number; body: string }>({
                     workspace_id: workspaceId, path: args.messageAddress,
@@ -514,7 +514,7 @@ export default class DrainSupervisor {
     ): Promise<{ loopResult: DrainLoopResult; announced: boolean }> {
         const { workspaceId, sessionId } = scope;
         const cancelled = await this.#lifecycle.cancelled(loopId);
-        // {§notifications-loop-terminated} {§exec-lifetime} The streams the loop's terminal reaps conclude before it is announced.
+        // {§notifications} {§exec-lifetime} The streams the loop's terminal reaps conclude before it is announced.
         if (!cancelled) await this.#reapLoop(loopId);
         const [usage, attributions, turnIds] = await Promise.all([
             this.#loopUsage(loopId),
@@ -533,7 +533,7 @@ export default class DrainSupervisor {
         return { loopResult, announced: !cancelled };
     }
 
-    // {§methods-loop-cancel} loop.cancel / shutdown aborted the live drain. A cancellation is the loop's
+    // {§methods} loop.cancel / shutdown aborted the live drain. A cancellation is the loop's
     // TERMINAL state (499), delivered via loop/terminated (runLoop no longer blocks to return it), and the
     // exact 499 is persisted before it is broadcast ({§session-loop-lifecycle}).
     async #settleCancelledDrain(scope: DrainScope, currentLoopId: number | null): Promise<void> {
@@ -741,7 +741,7 @@ export default class DrainSupervisor {
             });
             if (row === undefined) continue;
             const announce = (): Promise<void> => this.#announce(row.workspace_id, targetSessionId, loopId, result);
-            // {§notifications-loop-terminated} What a retired loop held settles as its session's drain unwinds the turn
+            // {§notifications} What a retired loop held settles as its session's drain unwinds the turn
             // and its streams close; the terminal follows both. The caller is not held: it may be that turn.
             const drain = drains.get(targetSessionId);
             const held = [
@@ -803,14 +803,14 @@ export default class DrainSupervisor {
         void this.#trackSettlement(handled, "wake-on-completion");
     }
 
-    // {§notifications-loop-terminated} A subscription's conclusion as its observers receive it: its close delivered,
+    // {§notifications} A subscription's conclusion as its observers receive it: its close delivered,
     // then its `stream/concluded` published.
     async #streamConcluded(subscriptionId: number): Promise<void> {
         await this.#subscriptionConcluded(subscriptionId);
         await this.#streamAnnouncements.get(subscriptionId)?.delivered;
     }
 
-    // {§notifications-loop-terminated} {§exec-lifetime} What the loop's terminal reaps, concluded and announced.
+    // {§notifications} {§exec-lifetime} What the loop's terminal reaps, concluded and announced.
     async #reapLoop(loopId: number): Promise<void> {
         const reaped = await this.#reapLoopStreams(loopId);
         await Promise.all(reaped.map((subscriptionId) => this.#streamConcluded(subscriptionId)));
@@ -857,7 +857,7 @@ export default class DrainSupervisor {
 
         const systemPrompt = await this.#readSystemPrompt(); // {§card-read-per-wake}
 
-        // {§notifications-stream-concluded}: publish the terminal stream fact
+        // {§notifications}: publish the terminal stream fact
         // before settlement. Rechecked wait identities, not this event, decide
         // whether any loop actually resumes.
         const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ session_id: payload.sessionId });
@@ -1076,7 +1076,7 @@ export default class DrainSupervisor {
         }
     }
 
-    // {§notifications-loop-terminated} — the terminal carries the stamp a snapshot reads.
+    // {§notifications} — the terminal carries the stamp a snapshot reads.
     async #publishTermination(workspaceId: number, event: DrainLoopResult & { sessionId: number }): Promise<void> {
         const { loopSeq, terminatedAt } = await this.#lifecycle.observation(event.loopId);
         // A durable close releases the live handle before its announcement is delivered.

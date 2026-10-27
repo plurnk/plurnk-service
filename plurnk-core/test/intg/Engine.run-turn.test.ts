@@ -227,7 +227,7 @@ test("{§edit} Engine.runTurn: exact request accounting preserves reasoning-incl
     } finally { await db.close(); }
 });
 
-test("{§notifications-reasoning-event}: retries produce distinct physical-request reasoning segments", async () => {
+test("{§notifications}: retries produce distinct physical-request reasoning segments", async () => {
     const events: ReasoningEventPayload[] = [];
     const { db, engine, workspaceId, sessionId, loopId } = await setup((_workspaceId, event) => events.push(event));
     try {

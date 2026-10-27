@@ -538,9 +538,9 @@ test("{§env-delta-log-pull} a child-activity delta preserves typed attributes a
     }
 });
 
-test("{§methods-loop-run-fold-consistency} exactly two cross-session channels — state via the env-delta, a message via inject", async () => {
+test("{§methods-workspace-create} exactly two cross-session channels — state via the env-delta, a message via inject", async () => {
     // Both doors in one place: inject and IRC resume parked sessions in place
-    // under {§methods-loop-run-fold-consistency}. No third channel — by design.
+    // under {§methods-workspace-create}. No third channel — by design.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `two-doors-${crypto.randomUUID()}`);

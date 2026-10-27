@@ -17,7 +17,7 @@ import type { ComputedClientChannel } from "../core/Dispatcher.ts";
 const entryReadResult = (result: unknown): EntryReadResult =>
     Validator.assertEntryReadResult(result);
 
-// {§methods-session-streams} One channel of one open subscription, as `session_open_streams` selects it: a row whose entry
+// {§methods} One channel of one open subscription, as `session_open_streams` selects it: a row whose entry
 // has no channel carries none, and a channel's state is one its column's constraint admits.
 interface OpenStreamRow {
     readonly id: number;
@@ -249,7 +249,7 @@ export default class ClientReads {
         }
     }
 
-    // {§methods-entry-channel-read} The channel `target` selects, its fragment's or else its scheme's default, read as
+    // {§methods} The channel `target` selects, its fragment's or else its scheme's default, read as
     // `readEntry` reads it, complete: the HTTP form of an address answers with it.
     async readEntryChannel(args: { workspaceId: number; sessionId: number; target: string }): Promise<EntryReadResult> {
         let parsed;
@@ -308,10 +308,10 @@ export default class ClientReads {
     }
 
 
-    // {§methods-log-read} — a workspace's journal, the module's primary render input. The session is
+    // {§methods} — a workspace's journal, the module's primary render input. The session is
     // ownership-verified against the workspace (a workspace reads only its own sessions — the model session included,
-    // {§methods-log-coordinate}); entries filter by loop/turn/since-id or the full L/T/S display coordinate, newest first,
-    // and `beforeId` pages back through older rows ({§methods-log-read}). Core owns the
+    // {§methods-invocation}); entries filter by loop/turn/since-id or the full L/T/S display coordinate, newest first,
+    // and `beforeId` pages back through older rows ({§methods}). Core owns the
     // journal + the invariant; the module shapes the entries into ACP messages at its edge.
     async readLog(args: {
         workspaceId: number; sessionId: number;
@@ -366,7 +366,7 @@ export default class ClientReads {
         return rows.map((row) => LogEntry.wire(row));
     }
 
-    // {§methods-session-streams} The streams the session holds open, in opening order, each with every channel of its entry.
+    // {§methods} The streams the session holds open, in opening order, each with every channel of its entry.
     async readStreams(args: { workspaceId: number; sessionId: number }): Promise<ApplicationStream[]> {
         const sessionId = await this.#ownedSession("streams.read", args);
         const rows = await this.#db.session_open_streams.all<OpenStreamRow>({ session_id: sessionId });
@@ -398,7 +398,7 @@ export default class ClientReads {
     }
 
     // A read names a session of the workspace it reads (a workspace reads only its own sessions — the model session
-    // included, {§methods-log-coordinate}): the session's id, or the Problem that refuses it.
+    // included, {§methods-invocation}): the session's id, or the Problem that refuses it.
     async #ownedSession(context: string, args: { workspaceId: number; sessionId: number }): Promise<number> {
         const workspaceId = ClientInput.assertId(context, "workspaceId", args.workspaceId);
         const sessionId = ClientInput.assertId(context, "sessionId", args.sessionId);

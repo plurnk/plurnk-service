@@ -1,4 +1,4 @@
--- ApplicationPort readSessionOverview queries. SPEC {§methods-session-overview}.
+-- ApplicationPort readSessionOverview queries. SPEC {§methods-workspace-create}.
 
 -- PREP: overview_places
 -- {§application-session-overview}: the places in scope, each with its loops' observations for its lifecycle

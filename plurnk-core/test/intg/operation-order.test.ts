@@ -239,7 +239,7 @@ test("{§op-methods-op-dispatch} {§problems-client}: competing interaction answ
     assert.deepEqual(await awaiting, resolution);
 });
 
-test("{§methods-client-interaction-resolve} {§proposal-projection}: a pending request is durable, projected, resolved once, then removed", async (t) => {
+test("{§methods} {§proposal-projection}: a pending request is durable, projected, resolved once, then removed", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const ids = await seedEnvelope(db, `interaction-${crypto.randomUUID()}`);
@@ -334,7 +334,7 @@ test("{§proposal-projection}: invalid response content leaves the same interact
     }
 });
 
-test("{§methods-client-interaction-resolve} {§proposal-projection}: a retired interrupt identity never addresses a subsequent input request", async () => {
+test("{§methods} {§proposal-projection}: a retired interrupt identity never addresses a subsequent input request", async () => {
     const db = await openMigrated();
     const ids = await seedEnvelope(db, "interaction-identities");
     await ownSession(db, ids.workspaceId, ids.sessionId, ["choose_repository"]);
@@ -508,7 +508,7 @@ for (const readers of [undefined, 1]) test(`{§scheme-address} a client read acq
         const unfetched = await read("remote://example.test/page");
         assert.deepEqual([unfetched.status, typeOf(unfetched), remote.prepared], [404, "entry-not-found", 0]);
 
-        // {§methods-entry-channel-read} The channel an address selects, complete: its fragment's, else its scheme's default.
+        // {§methods} The channel an address selects, complete: its fragment's, else its scheme's default.
         const selected = async (target: string): Promise<EntryReadResult> =>
             Validator.assertEntryReadResult(await daemon.readEntryChannel({ workspaceId, sessionId, target }));
         for (const [target, channel, content] of [

@@ -16,7 +16,7 @@ export default class SessionOwners {
         });
     }
 
-    // {§actor-boundary-client-operations} A person becomes an owner by starting a session, with no tools until a
+    // {§connection-lifecycle} A person becomes an owner by starting a session, with no tools until a
     // client registers them.
     static async admit(db: Db, workspaceId: number, address: string): Promise<void> {
         const exact = Validator.assertSessionOwner({ address, tools: [], interactive: false });

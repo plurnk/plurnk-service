@@ -78,7 +78,7 @@ FROM subscriptions
 WHERE session_id = $session_id AND closed_at IS NULL;
 
 -- PREP: session_open_streams
--- {§methods-session-streams} The session's open subscriptions in opening order, one row per channel of each one's entry,
+-- {§methods} The session's open subscriptions in opening order, one row per channel of each one's entry,
 -- written or not (none for an entry without channels): its address, the lifetime its spawn declared, and its source.
 -- An outer join cannot flatten the entry_channels view, so this one reads its table ({§content-store}).
 SELECT s.id, s.entry_id, s.session_id, e.scheme, e.authority, e.pathname, s.turn_scoped, s.detached, s.source,

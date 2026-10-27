@@ -199,7 +199,7 @@ workspace layer and their normalized intersection: `service`, `workspace`, and
 `effective`. Only `workspace` is client-mutable. Sessions and loops store no
 capability policy and inherit no bound; every actor uses the same live workspace
 policy. Core derives one further ring per asking session from its owner, and it only
-removes interaction runtimes ({§owner-interaction-ring}). A client never derives
+removes interaction runtimes ({§question-tool}). A client never derives
 effective authority from the mutable layer alone.
 
 §proposal-policy `ProposalPolicy` names one server disposition; `PROPOSAL_POLICIES`
@@ -1338,7 +1338,7 @@ operation resolves no message and creates no new observation obligation ({§outs
 The model may supply WAIT or complete message obligations with SEND metadata. The host, not the grammar, owns
 turn boundaries and adjudicates the loop's actual obligations. Asking
 the human uses the native `question` executor tool, offered only when a person attends the
-session's owner ({§owner-interaction-ring}), not a disposition. The shape rules ARE structural:
+session's owner ({§question-tool}), not a disposition. The shape rules ARE structural:
 
 - §send-mid-reservation WAIT is reserved ({§turn-disposition}).
   A turn admits any number of lifecycle declarations, anywhere among its
@@ -1786,7 +1786,7 @@ projection while reusing the same workspace, session, loop, operation, proposal,
 interaction, and event owners through this port.
 
 `ApplicationOperationEvent` is the schema-owned dispatch observation consumed
-through that subscription; its production boundary is {§notifications-operation-event}.
+through that subscription; its production boundary is {§notifications}.
 
 `configurationNotices` exposes current launcher-owned configuration diagnostics
 without acquiring a workspace or provider. Adapters use the existing Notice

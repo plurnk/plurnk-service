@@ -16,8 +16,8 @@ import { renderAddress } from "./plurnk-uri.ts";
 export type { ChannelState } from "@plurnk/plurnk-schemes";
 
 // Causal log coordinates are explicit fields, independent of resource identity.
-// Executors provide them when the stream originated in an admitted turn. {§notifications-stream-event-on-channel-change},
-// {§notifications-stream-concluded}
+// Executors provide them when the stream originated in an admitted turn. {§notifications},
+// {§notifications}
 export interface StreamCoordinate {
     loop_seq: number;
     turn_seq: number;
@@ -27,7 +27,7 @@ export interface StreamCoordinate {
 export interface StreamEventPayload {
     entryId: number;
     sessionId: number;                // initiating actor; not resource ownership
-    target: string;                // canonical entry URI — {§notifications-stream-event-on-channel-change}
+    target: string;                // canonical entry URI — {§notifications}
     channel: string;
     state: ChannelState;
     contentLength: number;
@@ -46,11 +46,11 @@ export interface WakeSessionPayload {
     workspaceId: number;
     sessionId: number;                // lifecycle session to wake
     entryId: number;
-    target: string;                // canonical entry URI — {§notifications-stream-concluded}
+    target: string;                // canonical entry URI — {§notifications}
     subscriptionId: number;
     result: SchemeResult;           // exact universal terminal result
     scheme: string;                // the scheme that owned the subscription
-    summary: string;               // the owning scheme's display line ({§notifications-stream-concluded})
+    summary: string;               // the owning scheme's display line ({§notifications})
     loop_seq?: number;             // causal log coordinate, when supplied
     turn_seq?: number;
     sequence?: number;

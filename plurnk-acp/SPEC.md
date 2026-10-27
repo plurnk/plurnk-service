@@ -92,14 +92,14 @@ and claims the bound session session and its model descendants; passive observat
 | Passive `session/resume` (`_meta.plurnk.control === false`), `session/list`, or client operations ({§acp-client-operation}) | No claim and no capability replacement. |
 
 §acp-owner-activation **An owner's arrival activates its workspace.** A control attachment starts
-the workspace's Functionality activation ({§methods-workspace-activate}) asynchronously without
+the workspace's Functionality activation ({§methods-workspace-create}) asynchronously without
 blocking the session response; a subsequent prompt waits only for what remains of that activation.
 Passive observation activates nothing.
 
 §acp-run-disconnect **A disconnect ends delivery, never work.** Once Core has admitted a prompt,
 permission resolution, or client operation, closing the WebSocket or HTTP stream that submitted it
 cancels nothing and changes nothing about its owner, permissions, execution state, or accounting.
-Only an explicit `session/cancel` ({§methods-loop-cancel}) or the work's own conclusion ends it.
+Only an explicit `session/cancel` ({§methods}) or the work's own conclusion ends it.
 `session/close` detaches the calling connection's observation of `sessionId` without cancelling or
 deleting the durable session.
 
@@ -134,7 +134,7 @@ whose `uri` points to the entry route ({§acp-entry-route}). For file edits carr
 §acp-entry-route **An address at this daemon has one HTTP form:**
 `<origin>/acp/<workspaceId>/<sessionId>/entry?target=<address>[&channel=<ch>&offset=<n>]`. `GET` at
 this route is admitted under the same bearer perimeter as `/acp` ({§acp-http-authorization}) and
-answers the selected channel ({§methods-entry-channel-read}) as
+answers the selected channel ({§methods}) as
 `content-type: <mimetype>; charset=utf-8` with `cache-control: no-store`. A request without
 `target` fails with `400 entry-target-required`.
 
@@ -145,7 +145,7 @@ answers the selected channel ({§methods-entry-channel-read}) as
 | --- | --- |
 | {§acp-call-result} | `log/entry` that discharges an obligation ({§methods-invocation}) — `tool_call_update` updating the opening… |
 | {§acp-parse-refusal} | `log/entry` model `error` row, a parse refusal — `tool_call_update` (`status: "failed"`, `kind: "other"`,… |
-| {§acp-progress-reply} | `log/entry` reply reporting progress on a message this session sent ({§methods-answering}) —… |
+| {§acp-progress-reply} | `log/entry` reply reporting progress on a message this session sent ({§methods-invocation}) —… |
 | {§acp-outside-text} | `outside/event` — `agent_message_chunk` carrying `text` and `_meta.plurnk.outside: { coordinate, tokens }`… |
 | {§acp-run-outcome} | `loop/terminated` — `usage_update` followed by `state_update` (`state: "idle"`, `stopReason: "end_turn" \ |
 | {§acp-lifecycle-projection} | Lifecycle, memory, and speech remain distinct. |
@@ -181,9 +181,9 @@ variants on `session/update`:
 | `log/entry` model operation (`READ`, `WRITE`, `EDIT`, `COPY`, `MOVE`, `KILL`, `FIND`, `NOTE`, `WORK`, `FORK`, `EXEC`, scheme calls) | Optional turn `agent_thought_chunk` ({§acp-readable-reasoning}), then `tool_call_update` (`toolCallId: coordinate`, `kind`, `title`, `locations`, `rawInput`, `rawOutput`, `content`, `status: "completed" \| "failed" \| "in_progress"`). `NOTE` maps to `kind: "think"`. |
 | §acp-call-result `log/entry` that discharges an obligation ({§methods-invocation}) | `tool_call_update` updating the opening call's `toolCallId` to `status: "completed" \| "failed"` with the discharging receipt and `_meta.plurnk.coordinate` naming the discharging row. |
 | §acp-parse-refusal `log/entry` model `error` row, a parse refusal | `tool_call_update` (`status: "failed"`, `kind: "other"`, `rawInput: { text }`) when `attrs.attempt.verb` is present; otherwise a `notice` (`severity: "warning"`, {§acp-ambient}). |
-| §acp-progress-reply `log/entry` reply reporting progress on a message this session sent ({§methods-answering}) | `user_message_chunk` named by its source; a reply that completes the message updates the opening call via `tool_call_update` ({§acp-call-result}). |
+| §acp-progress-reply `log/entry` reply reporting progress on a message this session sent ({§methods-invocation}) | `user_message_chunk` named by its source; a reply that completes the message updates the opening call via `tool_call_update` ({§acp-call-result}). |
 | `reasoning/event` | Live `agent_thought_chunk` deltas ({§acp-readable-reasoning}), or `resource_link` when reasoning-by-link was negotiated ({§acp-reasoning-link}). |
-| §acp-outside-text `outside/event` | `agent_message_chunk` carrying `text` and `_meta.plurnk.outside: { coordinate, tokens }` ({§notifications-outside-event}), once per admitted emission for the bound session session; foreign-session text never enters the session. |
+| §acp-outside-text `outside/event` | `agent_message_chunk` carrying `text` and `_meta.plurnk.outside: { coordinate, tokens }` ({§notifications}), once per admitted emission for the bound session session; foreign-session text never enters the session. |
 | `stream/event` + `stream/concluded` (`sh://` execution streams) | The opening `tool_call_update` includes `{ type: "terminal", terminalId }`; live stream events emit `terminal_update` (`terminalId`, `command`, `cwd`, `exitStatus`) and `terminal_output_chunk` (`terminalId`, base64 `data`, `_meta.plurnk.stream`) ({§acp-status-streams}, {§acp-stream-producer}). |
 | `loop/packet` | `usage_update` (`used`, `size`, `cost`, `_meta.plurnk`) and `state_update` (`state: "running"`). |
 | §acp-run-outcome `loop/terminated` | `usage_update` followed by `state_update` (`state: "idle"`, `stopReason: "end_turn" \| "max_turn_requests" \| "cancelled" \| "refusal" \| "error"`), carrying the daemon's complete terminal record in `_meta.plurnk.terminal` ({§acp-plurnk-metadata}) and physical-request accounting ({§acp-cost-evidence}). |
@@ -195,10 +195,10 @@ never assistant speech or reasoning; `WAIT` without a body is a `tool_call_updat
 session is `agent_message_chunk`; loop completion is `state_update` (`state: "idle"`).
 
 §acp-readable-reasoning **Readable provider reasoning uses ACP's standard `agent_thought_chunk`
-channel.** A `{§notifications-reasoning-event}` for the bound session projects each delta immediately
+channel.** A `{§notifications}` for the bound session projects each delta immediately
 as `agent_thought_chunk` with `messageId: "model-call-<call>/request-<n>/reasoning"`. A retried
 request receives a distinct `messageId`. When a turn's first model operation row carries durable
-`reasoning` ({§methods-readable-reasoning}) that was not already streamed live to the peer, it is
+`reasoning` ({§methods-invocation}) that was not already streamed live to the peer, it is
 emitted once as `agent_thought_chunk` before that row's `tool_call_update`.
 
 §acp-reasoning-link **A session may negotiate its reasoning by link.** When `_meta.plurnk.reasoning`
@@ -213,7 +213,7 @@ other than `"inline"` or `"link"` fails with `400 reasoning-invalid`.
   inventing custom `sessionUpdate` types:
   - On row-derived updates (`tool_call_update`, `agent_message_chunk`, `user_message_chunk`, `notice`):
     `withoutBodies(attrs)` (`original`, `patched`, `patchedBytes`, `patch`, `editReceipt`, `body`,
-    `inputBody` stripped) and `addressOf(op, attrs)` ({§methods-log-entry-wire}).
+    `inputBody` stripped) and `addressOf(op, attrs)` ({§methods-invocation}).
   - On `usage_update` and session responses: `{ status, budget, workspace, providers }`.
   - On `state_update` (`state: "idle"`): `{ terminal }` with the complete `loop/terminated` payload.
   - On `RequestError.data`: `{ problem }` with exact RFC 9457 Problem Details ({§acp-http-failure}).
@@ -226,12 +226,12 @@ the bound session session are projected from `ApplicationPort.listSessions`, `pe
 and summarized in `_meta.plurnk.status.descendants` on session responses and `usage_update`.
 
 §acp-status-spend **Spend is the daemon's cumulative accounting, passed through on `usage_update`.**
-`ApplicationPort.sessionAccounting({ workspaceId, sessionId })` ({§methods-session-accounting})
+`ApplicationPort.sessionAccounting({ workspaceId, sessionId })` ({§methods-workspace-create})
 populates `usage_update.cost` (`{ amount: costUsd, currency: "USD" }` when known) and
 `_meta.plurnk.status.spend` (`{ requests, usage, knownUsage, costUsd, knownCostUsd }`).
 
 §acp-status-streams **Open execution streams project as ACP v2 terminals.** Each active `sh://`
-stream from `ApplicationPort.readStreams` ({§methods-session-streams}) projects as a `terminal_update`
+stream from `ApplicationPort.readStreams` ({§methods}) projects as a `terminal_update`
 (`terminalId`, `command`, `cwd`, `exitStatus`) and `terminal_output_chunk` (`terminalId`, base64
 `data`), linked from its opening `tool_call_update` via `ToolCallContent`
 `{ type: "terminal", terminalId }`, and is listed in `_meta.plurnk.status.streams`.
@@ -466,7 +466,7 @@ plane.**
 | --- | --- | --- |
 | `ping` | Daemon | Liveness check; returns `{}`. |
 | `discover` | Daemon | Returns the complete `AcpDiscovery` manifest ({§discovery}). |
-| `models.list` | Daemon | `ApplicationPort.listModels` ({§model-catalog}). |
+| `models.list` | Daemon | `ApplicationPort.listModels` ({§session-model-selection}). |
 | `service.update` (`/update`) | Daemon | `ApplicationPort.updateService` ({§startup-admission}). |
 | `workspace.list` / `workspace.create` / `workspace.attach` / `workspace.rename` / `workspace.hide` | Daemon / Workspace | Workspace lifecycle on `ApplicationPort` ({§acp-place-hiding}). |
 | §acp-session-loops `session.loops` | Workspace | `ApplicationPort.listSessionLoops`, each loop in sequence order as `{ id, sequence, lifecycle, source, opening, continued }` with `opening` bounded to `PLURNK_ACP_EXCERPT_CHARS`. |
@@ -501,7 +501,7 @@ route via `ApplicationPort.readSessionModel`, `setSessionModel`, and `setSession
 §acp-session-effort-actions **Session reasoning effort is server-backed.**
 `session/set_config_option` with `configId: "thought_level"` reads and persists the session session's
 durable effort policy via `ApplicationPort.readSessionEffort` and `setSessionEffort`
-({§session-effort}), emitting `config_option_update` to attached peers.
+({§session-model-selection}), emitting `config_option_update` to attached peers.
 
 §acp-module-action-scope **Extension module actions share the same schema-validated dispatch plane.**
 `ApplicationPort.listModuleActions()` supplies `{ name, scope, inputSchema, outputSchema }`
@@ -526,7 +526,7 @@ manifest ({§acp-discovery-contract}), where `display` is `ApplicationPort.listC
 
 §acp-stream-producer **Stream updates route to the initiating session.** `stream/event` and
 `stream/concluded` notifications route to sessions observing `sessionId` as `terminal_update` and
-`terminal_output_chunk` notifications ({§notifications-stream-event-on-channel-change}).
+`terminal_output_chunk` notifications ({§notifications}).
 
 ## 10. Topology Scope and Subagents
 
@@ -604,7 +604,7 @@ with `Upgrade: websocket` via `AcpServer.prepareWebSocketUpgrade`), entry reads
 §acp-run-input **`session/prompt` submits a user message and optional resource attachments to the
 bound session's loop.** It requires non-empty text or attachment content (`400
 user-message-text-required` when empty) and passes `messageId` as Core's idempotency key
-({§message-idempotency}); reusing a `messageId` with different text fails with `422
+({§methods}); reusing a `messageId` with different text fails with `422
 message-address-reused`.
 
 §acp-message-acceptance **Accepted messages are tracked through `ApplicationPort.readInbox` and

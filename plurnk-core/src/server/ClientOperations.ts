@@ -88,7 +88,7 @@ export default class ClientOperations {
 
     // {§connection-lifecycle} A person's client operation: one administrative loop in the workspace's runtime
     // session, attributed to its actor, reading `log:///` in the session that person acts for
-    // ({§actor-boundary-client-operations}).
+    // ({§connection-lifecycle}).
     async dispatchClientAction(args: {
         workspaceId: number;
         actor: string;
@@ -209,7 +209,7 @@ export default class ClientOperations {
         }, this.#loops.get(loopId)?.scope.signal);
     }
 
-    // {§log-wire-format} {§methods-workspace-rollback} — the compensations are one client operation of the acting person
+    // {§log-wire-format} {§methods-workspace-create} — the compensations are one client operation of the acting person
     // ({§connection-lifecycle}): attributed to that person and, being that person's decision, never routed for review.
     async rollback(args: { workspaceId: number; sessionId: number; actor: string; to: string }): Promise<RollbackReport> {
         const workspaceId = ClientInput.assertId("workspace.rollback", "workspaceId", args.workspaceId);

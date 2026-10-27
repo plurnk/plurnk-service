@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { Db } from "./Db.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 
-test("{§workspace-capability-policy}: absent workspace capabilities are unrestricted; invalid persisted policies fail at their owner", async () => {
+test("{§capability-admission}: absent workspace capabilities are unrestricted; invalid persisted policies fail at their owner", async () => {
     const read = (settings: string) => WorkspaceSettings.read({
         workspace_get_settings: { get: async () => ({ settings }) },
     } as unknown as Db, 17);

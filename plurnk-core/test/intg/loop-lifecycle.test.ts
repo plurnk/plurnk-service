@@ -483,7 +483,7 @@ for (const recipientState of ["idle", "parked"]) {
 });
 
 describe("Daemon.exec-wake", () => {
-// {§session-causal-admission}, {§notifications-stream-concluded}.
+// {§session-causal-admission}, {§notifications}.
 
 
 
@@ -554,7 +554,7 @@ test("{§session-causal-admission}: a person's operation can cancel a workspace 
             assert.equal(killed.status, 200, JSON.stringify(killed));
             await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 200);
             assert.equal(mock.received.length, 2, "a 499 stream result is a completion, not a cancelled session scope");
-            // {§notifications-log-entry-notify} The loop's rows reach the log channel before its terminal is announced.
+            // {§notifications} The loop's rows reach the log channel before its terminal is announced.
             await waitFor(() => terminated() as Array<{ loopId: number }>, (events) => events.some(({ loopId }) => loopId === accepted.loopId));
             const reads = (entries() as Array<{ entry: { loop_id: number; op: string; scheme: string; origin: string; status_rx: number } }>)
                 .map(({ entry }) => entry)
@@ -568,7 +568,7 @@ test("{§session-causal-admission}: a person's operation can cancel a workspace 
     });
 });
 
-test("{§notifications-stream-concluded}: a pending completion wake is not reported as an executed resume", async (t) => {
+test("{§notifications}: a pending completion wake is not reported as an executed resume", async (t) => {
     serverProposals(t, "accept");
     const parked = Promise.withResolvers<void>();
     const ensureDrain = DrainSupervisor.prototype.ensureDrain;
@@ -627,7 +627,7 @@ test("{§notifications-stream-concluded}: a pending completion wake is not repor
     });
 });
 
-test("{§methods-loop-run-model}: an async wake resumes with the loop's durable provider", async (approvalContext) => {
+test("{§session-model-selection}: an async wake resumes with the loop's durable provider", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const releaseDir = await mkdtemp(join(tmpdir(), "plurnk-wake-provider-"));
     const releasePath = join(releaseDir, "release");
@@ -698,7 +698,7 @@ test("{§methods-loop-run-model}: an async wake resumes with the loop's durable 
     }
 });
 
-test("{§methods-loop-run-model}: a selector-less continuation resumes the loop's durable provider, never the boot default", async (approvalContext) => {
+test("{§session-model-selection}: a selector-less continuation resumes the loop's durable provider, never the boot default", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const releaseDir = await mkdtemp(join(tmpdir(), "plurnk-wake-default-"));
     const releasePath = join(releaseDir, "release");
@@ -754,7 +754,7 @@ test("{§methods-loop-run-model}: a selector-less continuation resumes the loop'
     }
 });
 
-test("{§methods-loop-run-model}: a parked loop retains its provider across daemon restart", async (t) => {
+test("{§session-model-selection}: a parked loop retains its provider across daemon restart", async (t) => {
     serverProposals(t, "accept");
     const boot = new Mock({
         contextWindow: 16384,
@@ -2025,7 +2025,7 @@ test("{§session-causal-admission}: a concurrent cancellation leaves no runnable
 });
 
 describe("cancel-provenance", () => {
-// {§loop-completion}, {§methods-loop-cancel}: external cancellation is durable and explicit.
+// {§loop-completion}, {§methods}: external cancellation is durable and explicit.
 
 
 
@@ -2141,7 +2141,7 @@ test("{§loop-completion}: cancelling a live loop records who and why", async (a
     });
 });
 
-test("{§methods-loop-cancel}: cancelling a parked loop terminalizes it", async (t) => {
+test("{§methods}: cancelling a parked loop terminalizes it", async (t) => {
     serverProposals(t, "accept");
     // A session parked on a live obligation has no active drain, so cancellation
     // terminalizes the durable 202 row directly.
@@ -2175,7 +2175,7 @@ test("{§methods-loop-cancel}: cancelling a parked loop terminalizes it", async 
             assert.equal(row!.terminated_by, "cancel");
             assert.equal(terminalResult(row!).problem?.reason, "shutting down the request");
             const sh = await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" });
-            assert.ok(sh !== undefined, "workspace still readable"); // the reap itself is pinned elsewhere ({§notifications-stream-concluded})
+            assert.ok(sh !== undefined, "workspace still readable"); // the reap itself is pinned elsewhere ({§notifications})
         } finally { ws.close(); }
     });
 });

@@ -3139,7 +3139,7 @@ test("{§exec-lifetime}: a turn-scoped run is reaped at the next pre-turn; a loo
     });
 });
 
-// {§exec-lifetime} {§notifications-loop-terminated} A loop-bound run ends with its loop, whichever segment of the loop
+// {§exec-lifetime} {§notifications} A loop-bound run ends with its loop, whichever segment of the loop
 // spawned it: reaped at the loop's terminal, its stream concluded before that terminal is announced.
 for (const spawnedBy of ["the ending segment", "a segment before a park"] as const) {
     test(`{§exec-lifetime}: a loop-bound run spawned by ${spawnedBy} is reaped at its loop's terminal`, { timeout: 120_000 }, async (t) => {

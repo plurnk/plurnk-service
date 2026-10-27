@@ -1,20 +1,32 @@
 import SessionOwners from "../../src/core/SessionOwners.ts";
-import { ownSession, TEST_OWNER, serverProposals } from "./_approval.ts";
-// Daemon-level drain + inject + cancel contract ({§actor-boundary}).
-// Engine-level inject mechanics are covered in Engine.inject.test.ts;
-// this file exercises the application seam and durable lifecycle.
-
-import test from "node:test";
+import test, { describe, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import Daemon from "../../src/server/Daemon.ts";
+import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
+import StreamMock from "./_stream-mock.ts";
+import Dsl from "./dsl.ts";
+import { ownSession, TEST_OWNER, serverProposals } from "./_approval.ts";
+import { Mock, chatMessageText, AiSdkProvider } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
-import { isArrivalRow } from "./_packet.ts";
-import { admitTogether, namedModelSession } from "./_sessions.ts";
+import { isArrivalRow, packetSection } from "./_packet.ts";
+import { admitTogether, namedModelSession, modelOperation } from "./_sessions.ts";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir, homedir } from "node:os";
+import { join, dirname } from "node:path";
+import { parsePath } from "@plurnk/plurnk-parser";
+import { parseLogRecords } from "../LogRecords.ts";
+import { type ApplicationLoopProjection, type LogEntryWire } from "@plurnk/plurnk-contracts";
+import { type Db } from "../../src/core/Db.ts";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
+import { liveLoop, liveWorkspace } from "../_live-harness.ts";
+import { Digest } from "@plurnk/plurnk-digest";
 
-// {§message-arrival} — an arrival row's body is its sent side.
+describe("Daemon.drain-inject", () => {
 const arrivalBody = (row: { tx: string }): string => (JSON.parse(row.tx) as { body: { raw: string } }).body.raw;
 
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
@@ -163,7 +175,7 @@ test("{§executor-cancellation} loop.cancel terminates a backgrounded exec; the 
             assert.ok(conc.some((c) => c.scheme === "sh" && c.result.status === 499),
                 "loop.cancel terminated the backgrounded exec (stream concluded 499)");
 
-            // {§methods-loop-run} {§notifications-loop-terminated}: cancellation cannot
+            // {§methods} {§notifications}: cancellation cannot
             // retroactively reject the immediate 100 acknowledgement; terminal truth is an event.
             const loopResp = await loopPromise;
             assert.equal(loopResp.error, undefined, "loop.run acknowledgement remains accepted after cancellation");
@@ -238,7 +250,7 @@ test("{§actor-boundary} loop.run: post-cancel, a fresh loop.run starts a new dr
     });
 });
 
-test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths into the publishing turn", async () => {
+test("{§methods-workspace-create}: an active-loop prompt carries its paths into the publishing turn", async () => {
     // Deterministic hold (no 50ms race): a non-auto execution proposal pauses
     // dispatch at status=202 BEFORE any subprocess spawns, so loop 1 is
     // provably live at status=102 when the second loop.run lands. We REJECT it
@@ -308,7 +320,7 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
     });
 });
 
-test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths into the resumed turn", async (t) => {
+test("{§methods-workspace-create}: a parked-loop prompt carries its paths into the resumed turn", async (t) => {
     serverProposals(t, "accept");
     const previousSettlement = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
@@ -726,3 +738,587 @@ for (const silent of [false, true]) {
         });
     });
 }
+});
+
+describe("KILL.receipt", () => {
+const source = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n");
+
+for (const scheme of ["file", "session"]) for (const anchored of [false, true]) {
+    test(`{§kill-scope-entry}: ${scheme} ${anchored ? "anchored" : "numeric"} deletion exposes its existing receipt through packet and log READ`, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+        const root = await mkdtemp(join(tmpdir(), "plurnk-kill-receipt-"));
+        const target = scheme === "file" ? "notes.md" : "workspace:///notes.md";
+        try {
+            const mock = new Mock({ contextWindow: 32768, responses: [
+                makeMockResponse(`\`\`\`\`EDIT (${target})
+${source}
+\`\`\`\`
+\`\`\`\`NOTE
+Continue the task.
+\`\`\`\``, 10),
+                makeMockResponse(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\`
+\`\`\`\`NOTE
+Continue the task.
+\`\`\`\``, 10),
+                makeMockResponse("````NOTE\ncontinue\n````", 10),
+                makeMockResponse("````SEND [200]\ndone\n````", 10),
+            ] });
+            await withDaemon(mock, async (db, daemon, addr) => {
+                const generate = mock.generate.bind(mock);
+                let calls = 0;
+                mock.generate = async (args) => {
+                    if (++calls === 3) {
+                        const packet = args.messages.map(chatMessageText).join("\n");
+                        const start = packet.match(/^ *10<(@[A-Za-z0-9]{5})>line 10$/m)?.[1];
+                        const end = packet.match(/^ *11<(@[A-Za-z0-9]{5})>line 11$/m)?.[1];
+                        assert.ok(start && end, "the preceding READ published the coordinates used by KILL");
+                        const scope = anchored ? `${start},${end}` : "10,11";
+                        return new Mock({ contextWindow: 32768, responses: [makeMockResponse(`\`\`\`\`KILL (${target}) <${scope}>\`\`\`\`
+\`\`\`\`NOTE
+Continue the task.
+\`\`\`\``, 10)] }).generate(args);
+                    }
+                    return generate(args);
+                };
+                const ws = await connect(addr);
+                try {
+                    const created = await rpcCall(ws, 1, "workspace.create", { name: "kill-receipt", projectRoot: root });
+                    const workspaceId = (created.result as { id: number }).id;
+                    const run = await runLoopToTerminal(ws, 2, { prompt: "delete two lines" });
+                    assert.equal(run.finalStatus, 200);
+                    const rows = await db.engine_render_log.all<{ id: number; op: string; origin: string; source: number | null; rx: string; weight: number }>({ session_id: run.modelSessionId! });
+                    const kill = rows.find((row) => row.op === "KILL" && row.origin === "model" && row.source === null);
+                    assert.ok(kill, "an entry mutation receipt stays visible on later turns");
+                    const rx = JSON.parse(kill.rx);
+                    assert.equal(rx.status, 200, JSON.stringify(rx));
+                    assert.equal(rx.receipt.effect.removedText, "line 10\nline 11");
+                    const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: run.turnIds!.at(-1)! }))!.packet);
+                    const log = packetSection(packet, "log");
+                    const receipt = parseLogRecords(log).find((row) => row.logPath.endsWith("/KILL"));
+                    assert.ok(receipt, "the packet retains the KILL identity");
+                    assert.equal(receipt.path, scheme === "file" ? "notes.md" : target);
+                    assert.equal(receipt.extent, "lines 20->18");
+                    assert.equal(receipt.change, "lines -2 +0");
+                    assert.equal(receipt.removed, "line 10\nline 11");
+                    assert.equal(receipt.effect, `${rx.receipt.effect.source} -> ${rx.receipt.effect.result}`);
+                    assert.equal(receipt.body, `${rx.receipt.effect.context}\n`);
+                    assert.equal(receipt.preview, undefined, "bounded mutation context is not previewed again");
+                    assert.ok(kill.weight > 0, "canonical receipt content participates in body accounting");
+                    assert.ok(receipt.tokens > 0, "packet accounting includes the complete visible receipt");
+                    // A person's READ of the model's log, acting for the model session ({§connection-lifecycle}).
+                    const [recalled] = await daemon.dispatchClientAction({
+                        workspaceId, actor: TEST_OWNER, contextSessionId: run.modelSessionId!,
+                        statements: [{ op: "READ", aside: null, metadata: null, target: parsePath(receipt.logPath), lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 0 } }],
+                    });
+                    assert.equal(recalled.status, 200, JSON.stringify({ logPath: receipt.logPath, recalled }));
+                    assert.equal(recalled.content, rx.receipt.effect.context, "log READ and packet share one canonical receipt body");
+                } finally { ws.close(); }
+            });
+        } finally { await rm(root, { recursive: true, force: true }); }
+    });
+}
+
+test("{§kill-scope-entry} whole-entry KILL has a bodyless result, not an invented text mutation receipt", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const mock = new Mock({ contextWindow: 32768, responses: [
+        makeMockResponse("````EDIT (workspace:///doomed)\ncontent\n````\n````NOTE\nContinue the task.\n````", 10),
+        makeMockResponse("````KILL (workspace:///doomed)````\n````NOTE\nContinue the task.\n````", 10),
+        makeMockResponse("````SEND [200]\ndone\n````", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "whole-kill" });
+            const run = await runLoopToTerminal(ws, 2, { prompt: "remove the entry" });
+            assert.equal(run.finalStatus, 200);
+            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: run.turnIds!.at(-1)! }))!.packet);
+            const log = packetSection(packet, "log");
+            const receipt = parseLogRecords(log).find((row) => row.logPath.endsWith("/KILL"));
+            assert.ok(receipt);
+            assert.equal(Object.hasOwn(receipt, "status"), false, "routine success is implicit for whole-entry deletion too");
+            assert.equal(receipt.path, "workspace:///doomed");
+            for (const field of ["body", "extent", "change", "removed", "range"]) {
+                assert.equal(receipt[field], undefined, `whole-entry deletion has no ${field}`);
+            }
+        } finally { ws.close(); }
+    });
+});
+});
+
+describe("invocation", () => {
+const streamed = (content: string): Response => new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+        const frame = { id: "invocation", model: "invocation-witness", choices: [{ index: 0, delta: { content }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } };
+        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(frame)}\n\ndata: [DONE]\n\n`));
+        controller.close();
+    },
+}), { headers: { "content-type": "text/event-stream" } });
+
+// One loop of `main` against a scripted model whose calls the WAITs serialize; each named session's log after it, in order,
+// and its loops.
+const run = async (
+    t: TestContext,
+    script: readonly string[],
+    peers: readonly string[],
+    check: (
+        logs: (name: string) => Promise<LogEntryWire[]>,
+        announced: readonly LogEntryWire[],
+        session: (name: string) => Promise<{ id: number; loops: readonly ApplicationLoopProjection[] }>,
+    ) => Promise<void>,
+): Promise<void> => {
+    serverProposals(t, "accept");
+    let calls = 0;
+    const provider = new AiSdkProvider({
+        model: "invocation-witness", url: "https://example.test/v1/chat/completions",
+        contextWindow: 100_000, streaming: true, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
+        temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,
+        fetch: async () => streamed(script[Math.min(calls++, script.length - 1)]),
+    });
+    await withDaemon(provider, async (db: Db, daemon: Daemon) => {
+        const announced: LogEntryWire[] = [];
+        daemon.subscribeToEvents((_workspaceId, method, params) => {
+            if (method === "log/entry") announced.push((params as { entry: LogEntryWire }).entry);
+        });
+        const { workspaceId } = await daemon.createWorkspace({ name: `invocation-${crypto.randomUUID()}` });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        for (const peer of peers) await namedModelSession(daemon, workspaceId, peer);
+        const { loopId } = await daemon.runLoop({ workspaceId, sessionId, prompt: "Begin." });
+        const status = await waitForDb(() => new LoopLifecycle(db).status(loopId), (value) => value === 200 || value >= 400);
+        assert.equal(status, 200, "main concludes");
+        const named = async (name: string): Promise<number> => {
+            const session = (await daemon.listSessions(workspaceId)).find((candidate) => candidate.name === name);
+            assert.ok(session, `${name} exists`);
+            return session.id;
+        };
+        await check(
+            async (name) => (await daemon.readLog({ workspaceId, sessionId: await named(name), limit: 1000 })).toSorted((left, right) => left.id - right.id),
+            announced,
+            async (name) => {
+                const id = await named(name);
+                return { id, loops: await daemon.listSessionLoops({ workspaceId, sessionId: id }) };
+            },
+        );
+    });
+};
+
+const address = (row: LogEntryWire): string => `log:///${row.loop_seq}/${row.turn_seq}/${row.sequence}/${row.op}`;
+const attrs = (row: LogEntryWire): Record<string, unknown> => row.attrs as Record<string, unknown>;
+
+test("{§methods-invocation} a stream's observation names its execution, and a FORK's copy names the same one", async (t) => {
+    await run(t, [
+        "````sh\nprintf 'hello\\n'\n````\n````WAIT\n````",
+        "````FORK (session://branch)\nConfirm the greeting.\n````\n````WAIT\n````",
+        "````SEND [200]\nConfirmed.\n````",
+        "````SEND [200]\nDone.\n````",
+    ], [], async (logs, announced) => {
+        const main = await logs("main");
+        const execution = main.find(({ op }) => op === "sh")!;
+        const observation = main.find(({ invocation }) => invocation === address(execution));
+        assert.equal((observation?.rx as { content?: unknown } | undefined)?.content, "hello\n", "the observation names the execution that opened its stream");
+        assert.equal(observation?.source, null, "the observation's attribution is unchanged");
+        assert.equal(announced.find(({ id }) => id === observation.id)?.invocation, observation.invocation, "log/entry carries it as readLog does");
+        const copy = (await logs("branch")).find((row) =>
+            row.origin === "_plurnk" && row.loop_seq === observation.loop_seq && row.turn_seq === observation.turn_seq && row.sequence === observation.sequence);
+        assert.equal(copy?.invocation, observation.invocation, "the branch's copy names the execution at the same coordinate");
+    });
+});
+
+test("{§methods-invocation} {§loop-completion} a delegation is answered by its child's conclusion, and a message by its completion reply", async (t) => {
+    await run(t, [
+        "````WORK (session://helper)\nSay hello.\n````\n````WAIT\n````",
+        "````SEND [200]\nhello from the helper\n````",
+        "````SEND (session://peer)\nWhat is the answer?\n````\n````WAIT\n````",
+        "````SEND [200]\nforty-two\n````",
+        "````SEND [200]\nThe helper said hello; the answer is forty-two.\n````",
+    ], ["peer"], async (logs, _announced, session) => {
+        const main = await logs("main");
+        const work = main.find(({ op }) => op === "WORK")!;
+        const send = main.find(({ op, attrs: opened }) => op === "SEND" && typeof (opened as { message?: unknown }).message === "string")!;
+        assert.match(String(attrs(work).message), /^message:\/\/helper\//u, "the WORK names the message it sent");
+        assert.match(String(attrs(send).message), /^message:\/\/peer\//u, "the SEND names the message it sent");
+        const answers = main.filter(({ invocation }) => invocation !== undefined).map(({ invocation, op, source, attrs: kind }) =>
+            ({ invocation, op, source, kind: (kind as { kind?: unknown }).kind }));
+        assert.deepEqual(answers, [
+            { invocation: address(work), op: "READ", source: "session://helper", kind: "loop_termination" },
+            { invocation: address(send), op: "SEND", source: "session://peer", kind: "reply" },
+        ], "the child's conclusion answers the WORK and the peer's completion answers the SEND, each once");
+        const wait = main.find(({ op, sequence, turn_seq }) => op === "WAIT" && turn_seq === send.turn_seq && sequence > send.sequence);
+        assert.equal(wait?.status_rx, 202, "the open message held its sender, so the WAIT parked until the reply");
+        const peer = await logs("peer");
+        assert.equal(peer.find(({ op, origin }) => op === "SEND" && origin === "_plurnk")?.source, "session://main", "the message names its sender");
+        // {§methods-workspace-create} A loop names the operation that opened it; a person's prompt is no session's operation.
+        const sender = await session("main");
+        assert.deepEqual((await session("helper")).loops.map(({ invocation }) => invocation), [{ sessionId: sender.id, address: address(work) }],
+            "the child's loop was opened by the WORK");
+        assert.deepEqual((await session("peer")).loops.map(({ invocation }) => invocation), [{ sessionId: sender.id, address: address(send) }],
+            "the peer's loop was opened by the SEND");
+        assert.deepEqual(sender.loops.map(({ invocation }) => invocation), [null], "main's loop was opened by a person's prompt");
+    });
+});
+
+test("{§methods-invocation} a peer's progress and its completion each name the SEND they answer; only the completion discharges it", async (t) => {
+    await run(t, [
+        "````SEND (session://peer)\nWhat is the answer?\n````\n````WAIT\n````",
+        "````SEND\nStill looking.\n````\n````SEND [200]\nforty-two\n````",
+        "````SEND [200]\nThe answer is forty-two.\n````",
+    ], ["peer"], async (logs, announced) => {
+        const main = await logs("main");
+        const send = main.find(({ op, attrs: opened }) => op === "SEND" && typeof (opened as { message?: unknown }).message === "string")!;
+        const replies = main.filter(({ answering }) => answering !== undefined).map(({ answering, invocation, source, tx }) =>
+            ({ answering, invocation, source, body: (tx as { body?: { raw?: unknown } } | null)?.body?.raw }));
+        assert.deepEqual(replies, [
+            { answering: address(send), invocation: undefined, source: "session://peer", body: "Still looking." },
+            { answering: address(send), invocation: address(send), source: "session://peer", body: "forty-two" },
+        ], "progress names the SEND it answers; the completion names it twice, as what it answers and what it discharges");
+        const progress = main.find(({ answering, invocation }) => answering !== undefined && invocation === undefined)!;
+        assert.equal(announced.find(({ id }) => id === progress.id)?.answering, address(send), "log/entry carries it as readLog does");
+        assert.equal((await logs("peer")).some(({ answering }) => answering !== undefined), false, "the peer's own log answers nothing of its own");
+    });
+});
+});
+
+describe("live-harness-cancellation", () => {
+test("{§live-harness-deadline}: an expired specimen finishes cleanup before the next specimen", async () => {
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    for (const fail of ["0", "1"]) {
+        await assert.rejects(promisify(execFile)(process.execPath, [
+            "--conditions=plurnk-dev", "--test", "--test-reporter=spec",
+            fileURLToPath(new URL("./fixtures/live-deadline.fixture.ts", import.meta.url)),
+        ], { timeout: 5000, env: { ...env, PLURNK_SERVICE_LIVE_TIMEOUT: "30", PLURNK_TEST_CLEANUP_FAIL: fail } }), (error: unknown) => {
+            const result = error as { code?: number; stdout?: string; stderr?: string; killed?: boolean };
+            assert.equal(result.code, 1, "only the deliberately expired specimen fails");
+            assert.notEqual(result.killed, true, "the test process exits by itself");
+            assert.match(result.stdout ?? "", /deadline cleanup completed[\s\S]*next specimen started after cleanup/);
+            assert.match(result.stdout ?? "", /✔ next specimen sees completed cleanup/);
+            if (fail === "1") assert.match((result.stdout ?? "") + (result.stderr ?? ""), /cleanup failed visibly/);
+            return true;
+        });
+    }
+});
+
+test("{§live-harness-deadline}: failed workspace startup still stops, closes and digests its resources", async (t) => {
+    const provider = new Mock({ contextWindow: 100_000, responses: [] });
+    t.mock.method(ProviderInstantiate, "loadActiveProvider", async () => provider);
+    const stopped = t.mock.method(Daemon.prototype, "stop");
+    const digested = t.mock.method(Digest, "run");
+    const failure = new Error("workspace startup failed");
+    t.mock.method(Daemon.prototype, "start", async () => { throw failure; });
+    await assert.rejects(liveWorkspace({ name: "harness-startup-failure" }), (error) => error === failure);
+    assert.equal(stopped.mock.callCount(), 1);
+    assert.equal(digested.mock.callCount(), 1, "the closed database remains a diagnostic artifact");
+    const { dbPath } = digested.mock.calls[0].arguments[0];
+    t.after(() => rm(dirname(dbPath), { recursive: true, force: true }));
+    assert.equal(dirname(dirname(dbPath)), process.env.PLURNK_BENCHMARKS ?? join(homedir(), "benchmarks"),
+        "live evidence stays in the configured or home benchmark directory, independent of checkout depth");
+});
+
+test("{§methods}: the live harness preserves caller cancellation and stops inference", async (t) => {
+    const provider = new Mock({ contextWindow: 100_000, responses: [] });
+    const entered = Promise.withResolvers<void>();
+    const cancelled = Promise.withResolvers<unknown>();
+    t.mock.method(provider, "generate", async ({ signal }: { signal: AbortSignal }) => {
+        entered.resolve();
+        return await new Promise((_, reject) => {
+            signal.addEventListener("abort", () => {
+                cancelled.resolve(signal.reason);
+                reject(signal.reason);
+            }, { once: true });
+        });
+    });
+    await withDaemon(provider, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "live-harness-cancel" });
+            const controller = new AbortController();
+            const reason = new Error("outer specimen cancelled");
+            // The subject is the abort, not the deadline: the deadline only has to outlast the loop reaching
+            // inference on a loaded host, so the abort is always what ends the specimen.
+            const running = liveLoop({ db, ws }, 2, { prompt: "wait" }, { timeoutMs: 20_000, signal: controller.signal });
+            const rejected = assert.rejects(running, (error) => error === reason);
+            await entered.promise;
+            controller.abort(reason);
+            await rejected;
+            assert.ok(await cancelled.promise, "the provider receives cancellation before teardown");
+            const rows = await waitForDb(
+                () => db.test_list_loops_all.all<{ status: number; terminal_result: string }>({}),
+                (loops) => loops.some((loop) => loop.status === 499),
+            );
+            const result = JSON.parse(rows.find((loop) => loop.status === 499)!.terminal_result);
+            assert.match(result.problem.reason, /outer specimen cancelled/);
+            assert.doesNotMatch(result.problem.reason, /harness_timeout/);
+        } finally { ws.close(); }
+    });
+});
+
+test("{§methods}: an admission failure is not misreported as a harness timeout", async (t) => {
+    const provider = new Mock({ contextWindow: 100_000, responses: [] });
+    await withDaemon(provider, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "live-harness-admission" });
+            t.mock.method(daemon, "runLoop", async () => { throw new Error("admission failed"); });
+            const cancellation = t.mock.method(daemon, "cancelDrain", () => false);
+            await assert.rejects(liveLoop({ db, ws }, 2, { prompt: "go" }), /admission failed/);
+            assert.equal(cancellation.mock.callCount(), 1);
+            assert.match(String(cancellation.mock.calls[0].arguments[1]), /admission failed/);
+            assert.doesNotMatch(String(cancellation.mock.calls[0].arguments[1]), /harness_timeout/);
+        } finally { ws.close(); }
+    });
+});
+});
+
+describe("loop-terminal-order", () => {
+type Ending = "cancellation" | "timeout" | "shutdown" | "turn ceiling";
+type Holder = "turn" | "parked" | "stream";
+type Ends = { daemon: Daemon; workspaceId: number; sessionId: number; expire: () => void };
+
+const QUESTION = "````plurnk (question)\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n````";
+const WAIT = "````WAIT\nAwaiting an answer.\n````";
+
+// A parked loop neither executes nor ends at shutdown: cancellation is the way it ends. A loop that left its interaction
+// open works on, so its next call is held while it ends; the turn ceiling ends it before that call.
+const CASES: ReadonlyArray<{ gate: "proposal" | "interaction"; op: string; holder: Holder; emission: string; endings: readonly Ending[] }> = [
+    { gate: "proposal", op: "sh", holder: "turn", emission: "````sh\necho held\n````", endings: ["cancellation", "timeout", "shutdown"] },
+    { gate: "interaction", op: "plurnk", holder: "turn", emission: `${QUESTION}\n${WAIT}`, endings: ["cancellation", "timeout", "shutdown"] },
+    { gate: "interaction", op: "plurnk", holder: "parked", emission: `${QUESTION}\n${WAIT}`, endings: ["cancellation"] },
+    { gate: "interaction", op: "plurnk", holder: "stream", emission: QUESTION, endings: ["cancellation", "timeout", "shutdown", "turn ceiling"] },
+];
+
+const HOLDERS: Record<Holder, string> = { turn: "a running turn", parked: "a parked loop", stream: "a loop working on" };
+
+const END: Record<Ending, (ends: Ends) => Promise<void>> = {
+    cancellation: ({ daemon, workspaceId, sessionId }) => daemon.cancelSession({ workspaceId, sessionId, reason: "user_escape" }),
+    timeout: async ({ expire }) => expire(),
+    shutdown: ({ daemon }) => daemon.stop(),
+    "turn ceiling": async () => {},
+};
+
+for (const { gate, op, holder, emission, endings } of CASES) {
+    for (const ending of endings) {
+        test(`{§notifications}: ${gate === "proposal" ? "a proposal" : "a client interaction"} held by ${HOLDERS[holder]}, ended by ${ending}, settles before its loop's one terminal`, async (t) => {
+            // The turn holds an interaction through its settlement window; a zero window parks the loop at once, or, with
+            // no WAIT, leaves the interaction open while the loop works on.
+            const window = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+            process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = holder === "turn" ? "60000" : "0";
+            t.after(() => {
+                if (window === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+                else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = window;
+            });
+            // The allowance runs out on cue: the loop's own timer callback, fired once its gate is held.
+            const startExecution = LoopLifecycle.prototype.startExecution;
+            const timers = new Map<number, () => void>();
+            t.mock.method(LoopLifecycle.prototype, "startExecution", function (this: LoopLifecycle, loopId: number, budgetMs: number, onTimeout: () => void) {
+                timers.set(loopId, onTimeout);
+                return startExecution.call(this, loopId, budgetMs, onTimeout);
+            });
+            const provider = new StreamMock({ contextWindow: 100_000, responses: [
+                makeMockResponse(emission), makeMockResponse("````NOTE\nWorking on.\n````"),
+            ] });
+            // The working loop's next call is held until its ending is under way.
+            const generate = provider.generate.bind(provider);
+            const held = Promise.withResolvers<void>();
+            const release = Promise.withResolvers<void>();
+            let calls = 0;
+            t.mock.method(provider, "generate", async (...args: Parameters<StreamMock["generate"]>) => {
+                if (holder === "stream" && ++calls === 2) {
+                    held.resolve();
+                    await release.promise;
+                }
+                return generate(...args);
+            });
+            t.after(() => release.resolve());
+            await withDaemon(provider, async (db, daemon) => {
+                const { workspaceId } = await daemon.createWorkspace({ name: `terminal-order-${gate}-${holder}-${ending}` });
+                const sessionId = await namedModelSession(daemon, workspaceId, "main");
+                await ownSession(db, workspaceId, sessionId);
+                const order: string[] = [];
+                const delayedAnnouncement = gate === "interaction" && ending === "timeout";
+                const announcing = Promise.withResolvers<void>();
+                const deliver = Promise.withResolvers<void>();
+                const terminalReady = Promise.withResolvers<void>();
+                if (delayedAnnouncement) {
+                    const findSlept = db.drain_find_slept_loop.get.bind(db.drain_find_slept_loop);
+                    t.mock.method(db.drain_find_slept_loop, "get", async (...args: Parameters<typeof findSlept>) => {
+                        announcing.resolve();
+                        await deliver.promise;
+                        return findSlept(...args);
+                    });
+                    const observation = LoopLifecycle.prototype.observation;
+                    t.mock.method(LoopLifecycle.prototype, "observation", async function (this: LoopLifecycle, id: number) {
+                        const result = await observation.call(this, id);
+                        if (result.terminatedAt !== null) {
+                            await announcing.promise;
+                            terminalReady.resolve();
+                        }
+                        return result;
+                    });
+                }
+                const off = daemon.subscribeToEvents((_workspaceId: number | null, method: string, params: unknown) => {
+                    if (method === (gate === "proposal" ? "loop/proposal" : "loop/interaction")) order.push("held");
+                    const entry = (params as { entry?: { op?: string; status_rx?: number } }).entry;
+                    if (method === "log/entry" && entry?.op === op && (entry.status_rx ?? 0) >= 400) order.push("settled");
+                    if (method === "stream/concluded" && gate === "interaction") order.push("settled");
+                    if (method === "loop/terminated") order.push(`terminated ${(params as { loopId: number }).loopId}`);
+                });
+                try {
+                    const { loopId, drainPromise } = await daemon.inject({
+                        workspaceId, sessionId, prompt: "Go.",
+                        providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
+                        effort: "adaptive", systemPrompt: "test system",
+                        ...(ending === "turn ceiling" ? { turnCeiling: { effective: 1, source: "explicit" as const } } : {}),
+                    });
+                    await waitForDb(async () => order, (events) => events.includes("held"));
+                    if (holder === "parked") {
+                        assert.ok(drainPromise !== undefined, "the injection started the session's drain");
+                        await drainPromise;
+                        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 202, "the loop is parked");
+                    }
+                    if (holder === "stream" && ending !== "turn ceiling") await held.promise;
+                    const expire = (): void => (timers.get(loopId) ?? assert.fail("the loop never started executing"))();
+                    const ended = END[ending]({ daemon, workspaceId, sessionId, expire });
+                    release.resolve();
+                    await ended;
+                    const terminated = `terminated ${loopId}`;
+                    if (delayedAnnouncement) {
+                        await terminalReady.promise;
+                        await new Promise<void>((resolve) => setImmediate(resolve));
+                        assert.equal(order.includes(terminated), false, "a committed stream close still owes its announcement before the terminal");
+                        deliver.resolve();
+                    }
+                    await waitForDb(async () => order, (events) => events.includes(terminated));
+                    // Stopped, the daemon has settled every producer: a second terminal would be here by now.
+                    await daemon.stop();
+                    const settled = order.indexOf("settled");
+                    assert.ok(order.indexOf("held") < settled && settled < order.indexOf(terminated), `the gate settles before its loop's terminal: ${order.join(" > ")}`);
+                    assert.equal(order.filter((event) => event === terminated).length, 1, `the loop announces one terminal: ${order.join(" > ")}`);
+                } finally {
+                    deliver.resolve();
+                    off();
+                }
+            });
+        });
+    }
+}
+});
+
+describe("readlog-paging", () => {
+const work = "````NOTE\nPlan the notes.\n````\n````EDIT (workspace:///a.md)\nfirst\n````\n````READ (workspace:///a.md)\n````";
+const done = "````SEND [200]\nDone.\n````";
+
+const streamed = (frames: readonly object[]): Response => new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+        for (const frame of frames) controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(frame)}\n\n`));
+        controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+        controller.close();
+    },
+}), { headers: { "content-type": "text/event-stream" } });
+
+test("{§methods} {§methods-invocation} beforeId pages newest first through the whole log, and the reasoning row names its streaming request", async (t) => {
+    serverProposals(t, "accept");
+    let calls = 0;
+    const provider = new AiSdkProvider({
+        model: "paging-witness", url: "https://example.test/v1/chat/completions",
+        contextWindow: 100_000, streaming: true, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
+        temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,
+        fetch: async () => {
+            const frames: object[] = [];
+            if (calls++ === 0) {
+                frames.push({ id: "paging", model: "paging-witness", choices: [{ index: 0, delta: { reasoning_content: "Weighing the plan." }, finish_reason: null }] });
+            }
+            frames.push({ id: "paging", model: "paging-witness", choices: [{ index: 0, delta: { content: calls === 1 ? work : done }, finish_reason: "stop" }],
+                usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } });
+            return streamed(frames);
+        },
+    });
+    await withDaemon(provider, async (db, daemon) => {
+        const streams: Array<{ modelCallId: number; requestSequence: number }> = [];
+        daemon.subscribeToEvents((_workspaceId, method, params) => {
+            const event = params as { phase?: string; modelCallId: number; requestSequence: number };
+            if (method === "reasoning/event" && event.phase === "start") streams.push(event);
+        });
+        const { workspaceId } = await daemon.createWorkspace({ name: `paging-${crypto.randomUUID()}` });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        const { loopId } = await daemon.runLoop({ workspaceId, sessionId, prompt: "Note a." });
+        const status = await waitForDb(() => new LoopLifecycle(db).status(loopId), (value) => value === 200 || value >= 400);
+        if (status !== 200) {
+            const rows = await daemon.readLog({ workspaceId, sessionId, limit: 50 });
+            assert.fail(`loop ${status}: ${JSON.stringify(rows.map(({ loop_seq, turn_seq, sequence, origin, op, status_rx, rx }) => [loop_seq, turn_seq, sequence, origin, op, status_rx, JSON.stringify(rx).slice(0, 160)]))}`);
+        }
+
+        const whole = await daemon.readLog({ workspaceId, sessionId, limit: 1000 });
+        assert.ok(whole.length >= 4, `the loop wrote its rows: ${whole.length}`);
+        assert.deepEqual(whole.map(({ id }) => id), whole.map(({ id }) => id).toSorted((left, right) => right - left), "newest first");
+        const paged: LogEntryWire[] = [];
+        for (let beforeId: number | undefined; ;) {
+            const page = await daemon.readLog({ workspaceId, sessionId, limit: 2, ...(beforeId === undefined ? {} : { beforeId }) });
+            if (page.length === 0) break;
+            paged.push(...page);
+            beforeId = page.at(-1)!.id;
+        }
+        assert.deepEqual(paged.map(({ id }) => id), whole.map(({ id }) => id), "the pages are the whole log, nothing skipped or repeated");
+
+        const carriers = whole.filter(({ reasoning }) => typeof reasoning === "string");
+        assert.equal(carriers.length, 1, "one row carries the turn's reasoning");
+        assert.equal(carriers[0].reasoning, "Weighing the plan.");
+        assert.equal(streams.length, 1, "the turn's one request streamed its reasoning");
+        assert.deepEqual(
+            { call: carriers[0].reasoning_model_call_id, request: carriers[0].reasoning_request_sequence },
+            { call: streams[0].modelCallId, request: streams[0].requestSequence },
+            "the row names the request that streamed it",
+        );
+        assert.ok(whole.filter(({ reasoning }) => reasoning === undefined).every((row) => row.reasoning_model_call_id === undefined),
+            "a row without reasoning names no request");
+    });
+});
+});
+
+describe("readlog-session-filter", () => {
+test("{§methods}: readLog honors per-session journal isolation", async () => {
+    await withDaemon(null, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "r376" });
+            const workspaceId = (created.result as { id: number }).id;
+            const modelSession = await namedModelSession(daemon, workspaceId, "main");
+            // Seed one row in each session: a person's operation journals in the runtime session
+            // ({§connection-lifecycle}); the model's own operation in its session.
+            await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [Dsl.buildEdit({ target: "workspace:///client-note", content: "client row" })] });
+            await modelOperation(daemon, db, { workspaceId, sessionId: modelSession, statement: Dsl.buildEdit({ target: "workspace:///model-note", content: "model row" }) });
+            const runtimeSession = await daemon.ensureRuntimeSession(workspaceId);
+            const runtimeRows = await daemon.readLog({ workspaceId, sessionId: runtimeSession });
+            const modelRows = await daemon.readLog({ workspaceId, sessionId: modelSession });
+            assert.ok(runtimeRows.length > 0 && modelRows.length > 0, "both sessions have rows");
+            const runtimeSet = new Set(runtimeRows.map((r) => JSON.stringify(r)));
+            assert.ok(!modelRows.every((r) => runtimeSet.has(JSON.stringify(r))), "the two sessions return DIFFERENT rows");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§methods}: the panel is the page of a read that names no limit, and the ceiling of one that does", async () => {
+    const prior = { page: process.env.PLURNK_SERVICE_LOG_READ_PAGE, max: process.env.PLURNK_SERVICE_LOG_READ_MAX };
+    await withDaemon(null, async (_db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "readlog-page" });
+            const workspaceId = (created.result as { id: number }).id;
+            for (let n = 1; n <= 5; n += 1) {
+                await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [Dsl.buildEdit({ target: `workspace:///note-${n}`, content: `row ${n}` })] });
+            }
+            // A person's operations journal in the runtime session ({§connection-lifecycle}).
+            const sessionId = await daemon.ensureRuntimeSession(workspaceId);
+            process.env.PLURNK_SERVICE_LOG_READ_PAGE = "2";
+            process.env.PLURNK_SERVICE_LOG_READ_MAX = "4";
+            assert.equal((await daemon.readLog({ workspaceId, sessionId })).length, 2, "no limit named: the page");
+            assert.equal((await daemon.readLog({ workspaceId, sessionId, limit: 3 })).length, 3, "a named limit beneath the ceiling stands");
+            assert.equal((await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER })).length, 4, "as many as it likes: the ceiling");
+        } finally {
+            ws.close();
+            for (const [name, value] of [["PLURNK_SERVICE_LOG_READ_PAGE", prior.page], ["PLURNK_SERVICE_LOG_READ_MAX", prior.max]] as const) {
+                if (value === undefined) delete process.env[name]; else process.env[name] = value;
+            }
+        }
+    });
+});
+});

@@ -56,7 +56,7 @@ WHERE completed_at IS NULL;
 
 -- {§session-causal-admission} Every proposed row depended on a
 -- process-local resolution waiter. At boot that owner is necessarily gone, so
--- terminalize the occurrence before {§proposal-list} can open to clients.
+-- terminalize the occurrence before {§methods} can open to clients.
 UPDATE log_entries
 SET state = 'failed',
     outcome = 'owner_vanished',

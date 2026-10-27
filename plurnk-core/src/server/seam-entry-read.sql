@@ -1,4 +1,4 @@
--- ApplicationPort readEntry queries. SPEC {§methods-entry-read}.
+-- ApplicationPort readEntry queries. SPEC {§methods}.
 
 -- PREP: entry_read_lookup
 SELECT e.id, e.workspace_id, e.scheme, e.authority, e.pathname

@@ -19,7 +19,7 @@ import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
 import type { Provider, ProviderAccounting } from "@plurnk/plurnk-providers";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
 import FunctionalityManager, { plurnkRuntimeDecl } from "./FunctionalityManager.ts";
-// {§notifications-envelope-carries-workspaceid}: "all" = a global event
+// {§notifications}: "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } from "./DrainSupervisor.ts";
@@ -121,7 +121,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§http-host} — the one listener, bound by the service before durable admission; null in
     // tests that never open a transport.
     readonly #http: HttpListener | null;
-    // {§credential-authority} {§methods-credentials} — the one authority over credentials presented to
+    // {§credential-authority} {§methods} — the one authority over credentials presented to
     // the listener, holding the operator's secret under the posture `PLURNK_AUTH` names.
     readonly credentials: Credentials;
     // The file beside the database where a minted operator secret is written for same-user clients;
@@ -135,7 +135,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #modules: DaemonModules;
     // {§connection-lifecycle} — the client operations in flight: their loops, scopes and settlement.
     readonly #clientOperations: ClientOperations;
-    // {§methods-loop-run} {§machine-processes} — a message's delivery to a session: the loop it starts or continues.
+    // {§methods} {§machine-processes} — a message's delivery to a session: the loop it starts or continues.
     readonly #delivery: MessageDelivery;
     #residency: WorkspaceResidency;
     readonly #functionality: Functionality;
@@ -143,7 +143,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     #retention: Retention | null = null;
     readonly #plugins: WorkspacePlugins;
     readonly #members: MembersFunctionality;
-    // {§methods-event-subscribe} — the broadcast's in-process event source. A transport
+    // {§methods} — the broadcast's in-process event source. A transport
     // module (plurnk-acp) subscribes and fans out to its OWN clients; core emits, never owns
     // client transport or connection state.
     #eventSubscribers = new Set<(workspaceId: number | null, method: string, params: unknown) => void>();
@@ -234,7 +234,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // {§env-functionality} — Core's own family: the environment a Session's commands run in.
         // {§env-functionality} — the family's face: reads project the dispatching Session's effective
         // environment, writes go through the family's own admission at the Session's layer. The runtime
-        // session keeps none: its environment is the workspace's ({§actor-boundary-client-operations}).
+        // session keeps none: its environment is the workspace's ({§connection-lifecycle}).
         this.#functionality.register(new EnvFunctionality(
             EnvFunctionality.defaultsReader(Paths.packageRoot, this.#nodeModulesPath, this.#hostPaths),
             new EnvScheme(
@@ -313,7 +313,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             const { workspaceId, ...proposal } = event;
             this.#broadcast({ workspaceId }, "loop/proposal", proposal);
         });
-        // {§notifications-loop-interaction} — the projection is the payload; its scope is the envelope's.
+        // {§notifications} — the projection is the payload; its scope is the envelope's.
         this.#engine.onClientInteractionPending((event) => {
             const { workspaceId, ...interaction } = event;
             this.#broadcast({ workspaceId }, "loop/interaction", interaction);
@@ -372,7 +372,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
 
-    // {§methods-event-subscribe}. A transport module subscribes to the daemon's in-process
+    // {§methods}. A transport module subscribes to the daemon's in-process
     // event source: it receives every workspace-scoped engine event as `(workspaceId, method, params)`
     // and fans out to its OWN clients — core emits, it never fans out for the module. Returns an
     // unsubscribe. `workspaceId` is the event's workspace, or null for a global event (e.g. workspace/created).
@@ -396,7 +396,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return SessionOwners.claim(this.#db, workspaceId, sessionId, args.owner);
     }
 
-    // {§methods-proposal-resolve} — proposal HITL. A transport module reads the stopped-world
+    // {§methods} — proposal HITL. A transport module reads the stopped-world
     // proposals for a workspace (presenting each via session/request_permission) and feeds back the human's decision. The
     // gate, validation, and applyResolution stay core (Engine.resolveProposal); the seam is the read +
     // the resolve, never the mechanism. `resolveProposal` throws for an unknown/already-resolved id.
@@ -454,19 +454,19 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return MessageResources.read(this.#db, args);
     }
 
-    // {§methods-session-inbox}
+    // {§methods}
     async readInbox(args: { workspaceId: number; sessionId: number }): Promise<ApplicationInboxMessage[]> {
         await this.#sessionModels.assertModelSession(args.workspaceId, args.sessionId);
         return MessageResources.inbox(this.#db, args);
     }
 
-    // {§message-idempotency}
+    // {§methods}
     async messageAdmission(args: { workspaceId: number; address: string; body: string }): Promise<"new" | "accepted"> {
         const workspaceId = ClientInput.assertId("messageAdmission", "workspaceId", args.workspaceId);
         return await MessageResources.admission(this.#db, workspaceId, args.address, args.body);
     }
 
-    // {§methods-loop-run} — a message delivered to a session drives or steers its loop: the delivery's owner resolves
+    // {§methods} — a message delivered to a session drives or steers its loop: the delivery's owner resolves
     // the session's model and the card and injects into the drain; the port's entry point delegates.
     runLoop(args: { workspaceId: number; sessionId: number; loopId?: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         return this.#delivery.runLoop(args);
@@ -485,7 +485,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#engine.capabilityProjection(workspaceId);
     }
 
-    // {§workspace-capability-policy} Policy changes share the workspace's
+    // {§capability-admission} Policy changes share the workspace's
     // quiescent publication boundary; no in-flight proposal can change authority.
     async setWorkspaceCapabilities(args: { workspaceId: number; policy: CapabilityPolicy }): Promise<CapabilityProjection> {
         const workspaceId = ClientInput.assertId("workspace.capabilities.set", "workspaceId", args.workspaceId);
@@ -505,7 +505,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         });
     }
 
-    // {§session-model-selection} {§session-effort} — the session's durable model, effort and spawn override are
+    // {§session-model-selection} {§session-model-selection} — the session's durable model, effort and spawn override are
     // SessionModels' to read and set; the port's entry points delegate.
     readSessionModel(args: { workspaceId: number; sessionId: number }): Promise<{ model: ModelRoute | null; spawnModel: ModelRoute | null }> {
         return this.#sessionModels.readSessionModel(args);
@@ -561,7 +561,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     // {§connection-lifecycle} A person's client operation: one administrative loop in the workspace's runtime
     // session, attributed to its actor, reading `log:///` in the session that person acts for
-    // ({§actor-boundary-client-operations}). The operations' owner runs it; the port's entry points delegate.
+    // ({§connection-lifecycle}). The operations' owner runs it; the port's entry points delegate.
     dispatchClientAction(args: {
         workspaceId: number;
         actor: string;
@@ -641,7 +641,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 ? null
                 : ClientInput.assertId("workspace.sessions", "parentSessionId", query.parentSessionId);
         const hidden = query.hidden === undefined ? undefined : ClientInput.assertFlag("workspace.sessions", "hidden", query.hidden);
-        // {§methods-session-list} — an omitted parent filter must stay absent:
+        // {§methods-workspace-create} — an omitted parent filter must stay absent:
         // the envelope keys the filter on the property's presence, not its value.
         return await Envelope.listSessionsForWorkspace(
             this.#db,
@@ -683,7 +683,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return projection;
     }
 
-    // {§methods-session-accounting}
+    // {§methods-workspace-create}
     async sessionAccounting(args: { workspaceId: number; sessionId: number }): Promise<ProviderAccounting> {
         const workspaceId = ClientInput.assertId("session.accounting", "workspaceId", args.workspaceId);
         const sessionId = ClientInput.assertId("session.accounting", "sessionId", args.sessionId);
@@ -691,7 +691,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#engine.sessionAccounting(sessionId);
     }
 
-    // {§methods-session-gauge}
+    // {§methods-workspace-create}
     async sessionGauge(args: { workspaceId: number; sessionId: number }): Promise<ApplicationGauge> {
         const workspaceId = ClientInput.assertId("session.gauge", "workspaceId", args.workspaceId);
         const sessionId = ClientInput.assertId("session.gauge", "sessionId", args.sessionId);
@@ -739,7 +739,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             terminalResult: row.terminalResult === null ? null : Results.fromRow(row.terminalResult) }));
     }
 
-    // {§methods-session-overview} The places of the daemon, or of one workspace, with what waits there.
+    // {§methods-workspace-create} The places of the daemon, or of one workspace, with what waits there.
     async readSessionOverview(args: { readonly workspaceId?: number; readonly limit: number; readonly excerptChars: number }): Promise<ApplicationSessionOverview> {
         const workspaceId = args.workspaceId === undefined ? null : ClientInput.assertId("session.overview", "workspaceId", args.workspaceId);
         const { limit, excerptChars } = args;
@@ -756,7 +756,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         });
     }
 
-    // {§methods-workspace-prompts}: root-session loop seeds, newest-first.
+    // {§methods-workspace-create}: root-session loop seeds, newest-first.
     // {§share} — one workspace's share. The daemon names its own database; the caller names an absolute folder.
     async shareWorkspace({ workspaceId, folder }: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string }> {
         const checkedWorkspaceId = ClientInput.assertId("workspace.share", "workspaceId", workspaceId);
@@ -776,7 +776,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const checkedSessionId = sessionId === undefined ? null : ClientInput.assertId("workspace.prompts", "sessionId", sessionId);
         return Envelope.listPromptsForWorkspace(this.#db, checkedWorkspaceId, checkedLimit ?? Knob.integer("PLURNK_SERVICE_PROMPTS_PAGE", 1), checkedSessionId);
     }
-    // {§methods-workspace-activate} — the demand a turn makes, without the turn: a cold workspace activates,
+    // {§methods-workspace-create} — the demand a turn makes, without the turn: a cold workspace activates,
     // a concurrent demand shares that activation, and the release leaves it warm under the residency policy.
     async activateWorkspace(args: { readonly workspaceId: number }): Promise<void> {
         const workspaceId = ClientInput.assertId("workspace.activate", "workspaceId", args.workspaceId);
@@ -844,7 +844,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         );
     }
 
-    // {§methods-workspace-attach} Selection is passive and never searches by the stored project folder.
+    // {§methods-workspace-create} Selection is passive and never searches by the stored project folder.
     async attachWorkspace(args: Parameters<ApplicationPort["attachWorkspace"]>[0]): Promise<ClientEnvelope> {
         const selectors = (["workspaceId", "name", "projectRoot"] as const).filter((key) => Object.hasOwn(args, key));
         if (selectors.length !== 1 || args[selectors[0]] == null) {
@@ -894,28 +894,28 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const checkedName = ClientInput.assertOptionalWorkspaceName("workspace.rename", "name", name);
         if (checkedName === undefined) throw new Error("ClientInput.assertOptionalWorkspaceName accepted a required name as undefined");
         const renamed = { id: checkedWorkspaceId, name: await Envelope.updateWorkspaceName(this.#db, checkedWorkspaceId, checkedName) };
-        // {§notifications-workspace-renamed}
+        // {§notifications}
         this.#broadcast({ workspaceId: checkedWorkspaceId }, "workspace/renamed", renamed);
         return renamed;
     }
 
-    // {§methods-workspace-hide} {§machine-processes}
+    // {§methods-workspace-create} {§machine-processes}
     async setWorkspaceHidden(args: { readonly workspaceId: number; readonly hidden: boolean }): Promise<ApplicationWorkspaceHiding> {
         const workspaceId = ClientInput.assertId("workspace.hidden", "workspaceId", args.workspaceId);
         const hidden = ClientInput.assertFlag("workspace.hidden", "hidden", args.hidden);
         const { hiding, changed } = await Places.setWorkspaceHidden(this.#db, (id) => this.#placeGates(id), workspaceId, hidden);
-        // {§notifications-workspace-hidden}
+        // {§notifications}
         if (changed) this.#broadcast({ workspaceId }, "workspace/hidden", hiding);
         return hiding;
     }
 
-    // {§methods-session-hide} {§machine-processes}
+    // {§methods-workspace-create} {§machine-processes}
     async setSessionHidden(args: { readonly workspaceId: number; readonly sessionId: number; readonly hidden: boolean }): Promise<ApplicationSessionHiding> {
         const workspaceId = ClientInput.assertId("session.hidden", "workspaceId", args.workspaceId);
         const sessionId = ClientInput.assertId("session.hidden", "sessionId", args.sessionId);
         const hidden = ClientInput.assertFlag("session.hidden", "hidden", args.hidden);
         const hiding = await Places.setSessionHidden(this.#db, (id) => this.#placeGates(id), workspaceId, sessionId, hidden);
-        // {§notifications-session-hidden}
+        // {§notifications}
         if (hiding.sessionIds.length > 0) this.#broadcast({ workspaceId }, "session/hidden", hiding);
         return hiding;
     }
@@ -928,7 +928,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         };
     }
 
-    // {§methods-session-create}: a fresh session is model-origin, with an empty private log.
+    // {§methods-workspace-create}: a fresh session is model-origin, with an empty private log.
     // {§machine-processes} Sessions have independent histories within a shared workspace.
     async createSession(args: ApplicationSessionCreation): Promise<{ sessionId: number; sessionName: string }> {
         const workspaceId = ClientInput.assertId("session.create", "workspaceId", args.workspaceId);
@@ -962,7 +962,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return { sessionId: session.id, sessionName: session.name };
     }
 
-    // {§methods-session-create} The claim decides a name, so a request that loses it to another, at any moment, is refused alike.
+    // {§methods-workspace-create} The claim decides a name, so a request that loses it to another, at any moment, is refused alike.
     async #sessionNameConflict(workspaceId: number, name: string): Promise<Error> {
         const taken = await this.#db.envelope_get_session_by_name.get<{ id: number; origin: string }>({ workspace_id: workspaceId, name });
         return daemonFailure(
@@ -1396,7 +1396,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#broadcast({ workspaceId }, "reasoning/event", event);
     }
 
-    /** Emit one admitted emission's text outside every operation ({§notifications-outside-event}). */
+    /** Emit one admitted emission's text outside every operation ({§notifications}). */
     notifyOutsideEvent(workspaceId: number, event: OutsideEventPayload): void {
         this.#broadcast({ workspaceId }, "outside/event", event);
     }
@@ -1434,7 +1434,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return exec instanceof Exec && exec.hasActiveSpawns(sessionId);
     }
 
-    // {§methods-event-subscribe} — subscriber failures are transport-local:
+    // {§methods} — subscriber failures are transport-local:
     // log them at this boundary and never re-enter engine control flow.
     #emitTo(workspaceId: number | null, method: string, params?: unknown): void {
         for (const sub of this.#eventSubscribers) {
@@ -1443,7 +1443,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         }
     }
 
-    // {§notifications-session-policy} A session's generation policy, as readSessionModel reads it, to its workspace.
+    // {§notifications} A session's generation policy, as readSessionModel reads it, to its workspace.
     async #announceSessionPolicy(sessionId: number): Promise<void> {
         const workspaceId = (await this.#db.drain_get_session_workspace.get<{ workspace_id: number }>({ session_id: sessionId }))?.workspace_id;
         if (workspaceId === undefined) return;
@@ -1457,13 +1457,13 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             { method, ...(target === "all" ? {} : { "workspace.id": target.workspaceId }) },
             () => {
                 if (target === "all") {
-                    // {§notifications-envelope-carries-workspaceid}: global events carry workspaceId null.
+                    // {§notifications}: global events carry workspaceId null.
                     this.#emitTo(null, method, params);
                     return;
                 }
-                // {§methods-event-subscribe}: publish to the in-process source; transport modules subscribe
+                // {§methods}: publish to the in-process source; transport modules subscribe
                 // here (plurnk-acp renders to ACP v2). Each subscriber owns its own fan-out; core just emits.
-                // Scope-stamping onto the notification envelope ({§notifications-envelope-carries-workspaceid})
+                // Scope-stamping onto the notification envelope ({§notifications})
                 // is each subscriber's edge concern; the seam hands (workspaceId, method, params) raw.
                 this.#emitTo(target.workspaceId, method, params);
             },

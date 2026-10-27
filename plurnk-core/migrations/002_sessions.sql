@@ -48,9 +48,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- persistent spawn override; NULL means "use my model."
     model_route_id       INTEGER          REFERENCES model_routes(id),
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
-    -- {§session-effort}: durable generation effort policy.
+    -- {§session-model-selection}: durable generation effort policy.
     effort          TEXT CHECK (effort IS NULL OR length(effort) > 0),
-    -- {§session-effort-source}: whether effort was explicitly selected or defaulted.
+    -- {§session-model-selection}: whether effort was explicitly selected or defaulted.
     effort_source   TEXT NOT NULL DEFAULT 'default' CHECK (effort_source IN ('default', 'explicit')),
     -- sessions fork via parent_session_id; workspaces carry no parent — {§machine-processes}
     parent_session_id INTEGER          CHECK (parent_session_id IS NULL OR parent_session_id != id),

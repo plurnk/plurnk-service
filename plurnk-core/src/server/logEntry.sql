@@ -1,9 +1,9 @@
--- Log-entry hydration for wire surfacing. {§methods-readable-reasoning}: a turn's admitted readable
+-- Log-entry hydration for wire surfacing. {§methods-invocation}: a turn's admitted readable
 -- reasoning rides its first model operation row, derived from the packet, never stored on a row.
 
 -- PREP: log_entry_by_id
 -- loop_seq / turn_seq are the loop+turn ordinals (the logical coordinate clients
--- render, e.g. 01/02/03) — distinct from the loop_id/turn_id DB keys ({§methods-log-coordinate}).
+-- render, e.g. 01/02/03) — distinct from the loop_id/turn_id DB keys ({§methods-invocation}).
 SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_seq,
        CASE
            WHEN le.origin = 'model'
@@ -14,7 +14,7 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
             AND length(json_extract(t.packet, '$.assistant.reasoning')) > 0
            THEN json_extract(t.packet, '$.assistant.reasoning')
        END AS reasoning,
-       -- {§methods-readable-reasoning} The request that streamed it: the turn's accepted model call and that
+       -- {§methods-invocation} The request that streamed it: the turn's accepted model call and that
        -- call's response request. History a FORK inherited names none.
        CASE WHEN le.origin = 'model' AND le.op IS NOT NULL THEN
            (SELECT s.model_call_id FROM turn_sources s WHERE s.turn_id = le.turn_id AND s.kind = 'ops' AND s.sequence = 0)
@@ -41,7 +41,7 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
             WHERE ae.id = le.ambient_event_id AND (sender.session_id = le.session_id OR le.inherited_history = 1)
             LIMIT 1)
        ) AS invocation,
-       -- {§methods-answering} The operation of this log that sent the message a reply answers, whether the reply
+       -- {§methods-invocation} The operation of this log that sent the message a reply answers, whether the reply
        -- completes the message or reports progress.
        (SELECT printf('log:///%d/%d/%d/%s', sender.sequence, opened.sequence, o.sequence, o.op)
         FROM ambient_events ae
@@ -62,7 +62,7 @@ JOIN turns t ON t.id = le.turn_id
 WHERE le.id = $id;
 
 -- PREP: log_entries_recent
--- {§methods-log-read}: the newest rows a client asks for, hydrated exactly as log_entry_by_id
+-- {§methods}: the newest rows a client asks for, hydrated exactly as log_entry_by_id
 -- hydrates one — a page is one statement, never one statement per row.
 SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_seq,
        CASE
@@ -74,7 +74,7 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
             AND length(json_extract(t.packet, '$.assistant.reasoning')) > 0
            THEN json_extract(t.packet, '$.assistant.reasoning')
        END AS reasoning,
-       -- {§methods-readable-reasoning} The request that streamed it: the turn's accepted model call and that
+       -- {§methods-invocation} The request that streamed it: the turn's accepted model call and that
        -- call's response request. History a FORK inherited names none.
        CASE WHEN le.origin = 'model' AND le.op IS NOT NULL THEN
            (SELECT s.model_call_id FROM turn_sources s WHERE s.turn_id = le.turn_id AND s.kind = 'ops' AND s.sequence = 0)
@@ -101,7 +101,7 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
             WHERE ae.id = le.ambient_event_id AND (sender.session_id = le.session_id OR le.inherited_history = 1)
             LIMIT 1)
        ) AS invocation,
-       -- {§methods-answering} The operation of this log that sent the message a reply answers, whether the reply
+       -- {§methods-invocation} The operation of this log that sent the message a reply answers, whether the reply
        -- completes the message or reports progress.
        (SELECT printf('log:///%d/%d/%d/%s', sender.sequence, opened.sequence, o.sequence, o.op)
         FROM ambient_events ae

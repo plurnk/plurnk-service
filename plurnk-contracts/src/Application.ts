@@ -183,13 +183,13 @@ export interface ApplicationGauge {
 }
 
 // Every log entry carries its logical coordinate — loop_seq/turn_seq/sequence — so the
-// client renders ordering without re-deriving it from DB keys. {§methods-log-coordinate}
+// client renders ordering without re-deriving it from DB keys. {§methods-invocation}
 // A type alias, not an interface: a serialized wire bag must satisfy index-signature
 // consumers (Record<string, unknown>), which TypeScript grants aliases but not interfaces.
 export type LogEntryWire = {
     id: number;
     session_id: number;
-    // {§methods-log-entry-wire} The session whose log holds the row, by its immutable name.
+    // {§methods-invocation} The session whose log holds the row, by its immutable name.
     session_name: string;
     loop_id: number;
     loop_seq: number;
@@ -220,15 +220,15 @@ export type LogEntryWire = {
     // {§proposal} The row's lifecycle: `proposed` while its operation awaits its decision.
     state: "proposed" | "resolved" | "failed" | "cancelled";
     reasoning?: string;
-    // {§methods-readable-reasoning} The request that streamed `reasoning`; absent for history a FORK inherited.
+    // {§methods-invocation} The request that streamed `reasoning`; absent for history a FORK inherited.
     reasoning_model_call_id?: number;
     reasoning_request_sequence?: number;
     // {§methods-invocation} On a row that discharges an obligation, the log address of the operation that opened it.
     invocation?: string;
-    // {§methods-answering} On a reply to a message this session's operation sent, the log address of that operation.
+    // {§methods-invocation} On a reply to a message this session's operation sent, the log address of that operation.
     answering?: string;
 };
-/** {§methods-loop-run} A prompt's admission: its acknowledgement, the loop it landed on and how it landed. */
+/** {§methods} A prompt's admission: its acknowledgement, the loop it landed on and how it landed. */
 export type ApplicationLoopAdmission = OperationResult & {
     readonly action: "injected_next_turn" | "enqueued_new_loop";
     readonly loopId: number;

@@ -1,4 +1,4 @@
-// {§methods-workspace-prompts}: clients read prompt history without log archaeology; history is
+// {§methods-workspace-create}: clients read prompt history without log archaeology; history is
 // what a client addressed to a session, scoped like log.read (#894).
 
 import test from "node:test";
@@ -14,7 +14,7 @@ const addressed = (thread: string, id: string) => {
     return { source: address, messageAddress: address };
 };
 
-test("{§methods-workspace-prompts}: workspace prompts are newest-first and limit-capped", async () => {
+test("{§methods-workspace-create}: workspace prompts are newest-first and limit-capped", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [send(), send()] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -50,7 +50,7 @@ test("{§methods-workspace-prompts}: workspace prompts are newest-first and limi
     });
 });
 
-test("{§methods-workspace-prompts}: a client prompt at a forked model session is that session's history, not the crack", async () => {
+test("{§methods-workspace-create}: a client prompt at a forked model session is that session's history, not the crack", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [send(), send(), send()] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
@@ -87,7 +87,7 @@ test("{§methods-workspace-prompts}: a client prompt at a forked model session i
     });
 });
 
-test("{§methods-workspace-prompts}: a seed nobody addressed — a session-issued task — is never history", async () => {
+test("{§methods-workspace-create}: a seed nobody addressed — a session-issued task — is never history", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [send(), send()] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);

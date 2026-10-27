@@ -42,10 +42,10 @@ export const specForRoute = async (db: Db, routeId: number | null): Promise<Prov
 };
 
 // The provider endpoint is durable construction state, not client model identity.
-// {§session-effort} — effort is identity-grade: the session's durable policy
+// {§session-model-selection} — effort is identity-grade: the session's durable policy
 // rides the route; a model without a reasoning dimension (catalog reasoning: false)
 // carries none.
-// {§session-effort-source} — the source rides beside the policy so a client never renders a
+// {§session-model-selection} — the source rides beside the policy so a client never renders a
 // seeded default as a chosen level.
 export const projectModelRoute = (
     spec: ProviderSpec,

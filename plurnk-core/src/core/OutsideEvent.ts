@@ -1,4 +1,4 @@
-// {§notifications-outside-event} One admitted emission's text outside every operation
+// {§notifications} One admitted emission's text outside every operation
 // ({§outside-text}), delivered to workspace-scoped presentation consumers. The turn's
 // `outside` source remains the durable authority; the event carries its exact text once.
 

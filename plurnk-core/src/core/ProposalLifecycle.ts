@@ -153,7 +153,7 @@ const readProposalTimeoutMs = (): number | null => {
     return n;
 };
 
-// The proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}): a
+// The proposal lifecycle (SPEC.md {§engine-rails} + {§methods}): a
 // side-effecting op that returns 202 pauses in dispatch until a resolution
 // arrives — from a client-interface resume, core-owned disposition, or the
 // timeout — then the scheme's applyResolution hook applies the accept.
@@ -189,7 +189,7 @@ export default class ProposalLifecycle {
     // Proposal lifecycle: pending dispatch pauses waiting for resolution.
     // Dispatch awaits the promise when a scheme returns status 202;
     // Engine.resolveProposal feeds the resolution back in. Map is per-log-
-    // entry-id; entries clear on resolution. SPEC.md {§engine-rails} + {§methods-proposal-resolve}.
+    // entry-id; entries clear on resolution. SPEC.md {§engine-rails} + {§methods}.
     #pending = new Map<number, ProposalWaiter>();
     // External observers of proposal lifecycle events. Correctness policy is
     // deliberately absent: loop-owned settlement happens in this owner before
@@ -342,7 +342,7 @@ export default class ProposalLifecycle {
 
     async list(workspaceId: number): Promise<ProposalProjection[]> {
         const rows = await this.#db.proposal_list_pending.all<ProposalRow>({ workspace_id: workspaceId });
-        // {§proposal-list} — the durable row carries review material, while
+        // {§methods} — the durable row carries review material, while
         // #pending carries this process's callable resolution owner. Discovery
         // exposes only their intersection; persistence alone cannot fabricate
         // a resolvable stopped world.

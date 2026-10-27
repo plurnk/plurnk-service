@@ -33,7 +33,7 @@ export interface ApplicationMessage {
     readonly attachments: readonly MessageResource[];
 }
 
-/** {§methods-session-inbox} An accepted message its recipient has not yet observed at a turn boundary ({§message-arrival}). */
+/** {§methods} An accepted message its recipient has not yet observed at a turn boundary ({§message-arrival}). */
 export interface ApplicationInboxMessage {
     /** The immutable source address Open Messages lists the message by. */
     readonly path: string;

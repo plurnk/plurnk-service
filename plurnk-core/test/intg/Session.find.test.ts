@@ -1249,7 +1249,7 @@ const findAll = (marks: [number, ...number[]] | null = null): FindStatement => (
     lineMarker: marks === null ? null : { marks }, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
-test("{§session-tool-admission} shallow FIND folder summaries include only admitted candidates", async () => {
+test("{§question-tool} shallow FIND folder summaries include only admitted candidates", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `find-visibility-${crypto.randomUUID()}`);

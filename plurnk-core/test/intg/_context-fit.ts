@@ -1,4 +1,4 @@
-// {§methods-loop-run-open-paths} {§context-fit}: client attachments are ordinary markerless READs
+// {§methods-workspace-create} {§context-fit}: client attachments are ordinary markerless READs
 // dispatched before inference. Each lands whole when it fits the remaining budget, or as a 413
 // with the prefix that fits. Source content remains readable; no recovery turn is manufactured.
 import assert from "node:assert/strict";
@@ -108,7 +108,7 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, sessio
     const incident = attachments.find(({ pathname }) => pathname === "incident.txt")!;
     assert.ok(incident);
     assert.equal(incident.status_rx, 413, "the incident attachment needed recovery, not just the unrelated telemetry");
-    // A person's READ, acting for the session ({§actor-boundary-client-operations}).
+    // A person's READ, acting for the session ({§connection-lifecycle}).
     const [recovered] = await daemon.dispatchClientAction({
         workspaceId, actor: TEST_OWNER, contextSessionId: sessionId, statements: [readStmt(localPath("incident.txt"), { marks: [2] })],
     });

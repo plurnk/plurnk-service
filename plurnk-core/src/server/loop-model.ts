@@ -2,7 +2,7 @@ import { resolveModelSelector } from "@plurnk/plurnk-providers";
 import type { ProviderAlias, ProviderSpec } from "@plurnk/plurnk-providers";
 import Results, { OperationFailureError } from "../core/results.ts";
 
-// {§methods-loop-run-model}: resolve a runLoop call's optional selector to the
+// {§session-model-selection}: resolve a runLoop call's optional selector to the
 // ProviderSpec to instantiate, or null for "use the boot default". PURE (no env read, no
 // construction) so the precedence + parse contract is hermetically testable.
 //

@@ -1033,7 +1033,7 @@ test("{§op-methods-op-dispatch} Engine.runLoop: cross-turn state — turn 2 see
     } finally { await db.close(); }
 });
 
-test("{§methods-loop-cancel} Engine.runLoop: signal abort between turns throws AbortError", async () => {
+test("{§methods} Engine.runLoop: signal abort between turns throws AbortError", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const controller = new AbortController();

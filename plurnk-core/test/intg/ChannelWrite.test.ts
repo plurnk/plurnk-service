@@ -71,7 +71,7 @@ test("{§tokenomics-weight-stored-at-write} appendToChannel: every append stores
     } finally { await db.close(); }
 });
 
-test("{§notifications-stream-event-on-channel-change} appendToChannel: invokes notify with producer, current state, and content length", async () => {
+test("{§notifications} appendToChannel: invokes notify with producer, current state, and content length", async () => {
     const { db, workspaceId, entryId, sessionId } = await seedChannel("body", "text/plain", "hi", "active");
     try {
         const events: Array<{ workspaceId: number; event: StreamEventPayload }> = [];
@@ -86,7 +86,7 @@ test("{§notifications-stream-event-on-channel-change} appendToChannel: invokes 
     } finally { await db.close(); }
 });
 
-test("{§notifications-stream-event-on-channel-change} setChannelState: transitions state and notifies", async () => {
+test("{§notifications} setChannelState: transitions state and notifies", async () => {
     const { db, entryId, sessionId } = await seedChannel("body", "text/plain", "data", "active");
     try {
         const events: StreamEventPayload[] = [];

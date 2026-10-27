@@ -45,7 +45,7 @@
 - b28031f: `@opencode-ai/models` moves to `^0.0.113` ({§model-catalog-build}).
   `effort-unsupported` and `effort-invalid` name the route's supported or valid
   efforts in `recovery`, and `provider-unavailable` includes the provider's
-  instantiation failure ({§session-effort}, {§problems-functionality}).
+  instantiation failure ({§session-model-selection}, {§problems-functionality}).
 - 2b882f9: Translate the calibrated curation budget additively by measured overhead
   without extrapolating unmeasured content, remove daemon-side row shedding at
   the context wall, resolve `PLURNK_PROVIDERS_OUTPUT_FLOOR` percentages against
@@ -76,9 +76,9 @@
   `GET /agui/<workspace>/<worker>/entry?target=<address>` answers the channel
   the address selects, read from that worker's perspective through
   `ApplicationPort.readEntryChannel` ({§acp-entry-route},
-  {§methods-entry-channel-read}). A result's body, a turn's reasoning and a
+  {§methods}). A result's body, a turn's reasoning and a
   message's words travel by reference at it. A log row names its worker,
-  `worker_name` beside `worker_id` ({§methods-log-entry-wire}).
+  `worker_name` beside `worker_id` ({§methods-invocation}).
 - d679cc5: A client entry read acquires an address as exact READ does, from its worker's
   perspective: `log:///`, `reasoning://`, `ops://` and `note://` read as the
   representations core computes, with `entryId` null, and a message core
@@ -87,8 +87,8 @@
   fetches ({§scheme-address}). A channel name may be empty, a log row's
   unnamed default ({§entry-read-result}).
 - 0cee49c: Workspaces and workers hide and show by a durable mark ({§machine-processes}):
-  `setWorkspaceHidden`, `setWorkerHidden` ({§methods-workspace-hide},
-  {§methods-session-hide}). A worker's hide covers its subtree as one group;
+  `setWorkspaceHidden`, `setWorkerHidden` ({§methods-workspace-create},
+  {§methods-workspace-create}). A worker's hide covers its subtree as one group;
   `409 live-work` while anything covered is live; a live loop shows its group
   and workspace. `listWorkspaces` and `listWorkers` take `hidden` and carry
   `hidden_at`; the overview omits hidden places; `workspace/hidden`,
@@ -105,7 +105,7 @@
   ({§session-initialization-entry}).
 - dd52a9b: `loop/packet`, `loop/terminated` and the `loop_status` notice carry `loopSeq`,
   the loop's number among its worker's loops, beside `loopId`
-  ({§notifications-loop-packet}, {§notifications-loop-terminated},
+  ({§notifications}, {§notifications},
   {§loop-status-notice}). The AG-UI status gauge carries it as `status.loopSeq`,
   replaced in every delta that replaces `loopId` ({§acp-status-loop-number}); the
   conformance kit's gauge carries it.
@@ -123,7 +123,7 @@
   packages; an unsupported exporter name is now reported as that module's
   contained configuration (`module:@plurnk/plurnk-otel`).
 - 06d4a8d: `reasoning/event` carries its turn's `loopSeq` and `turnSeq`
-  ({§notifications-reasoning-event}), and every reasoning message names that
+  ({§notifications}), and every reasoning message names that
   turn as `metadata.plurnk.coordinate` (`L/T`) from its first event, live, as
   its row folds onto it and in a snapshot, a subagent's included
   ({§acp-plurnk-metadata}). The AG-UI conformance kit's specimens follow.
@@ -147,21 +147,21 @@
   or not, so a client attaching mid-execution finds a silent one; it is
   republished as `STATE_DELTA /plurnk/status/streams` when it changes
   ({§acp-status-streams}). `ApplicationPort.readStreams` reads it
-  ({§methods-session-streams}). `stream/event`'s `contentLength` counts Unicode
+  ({§methods}). `stream/event`'s `contentLength` counts Unicode
   code points.
 - 4a048a8: `readWorkerOverview` reads the places of the daemon or of one workspace with their
   lifecycle, the gates they wait on and their latest finished reply, most recently
-  finished first and bounded ({§methods-session-overview}, {§message-completion},
+  finished first and bounded ({§methods-workspace-create}, {§message-completion},
   {§application-session-overview}); `excerptOf` is the one list excerpt rule
   ({§list-excerpt}). `workspace/renamed` announces a rename
-  ({§notifications-workspace-renamed}). AG-UI: a Run carrying
+  ({§notifications}). AG-UI: a Run carrying
   `forwardedProps.plurnk.overview` observes the overview as state, binding
   nothing: a snapshot on `/agui`, patches until the client leaves on
   `/agui/connect` ({§acp-overview-run}, {§acp-overview-state},
   {§acp-overview-updates}). `PLURNK_AGUI_OVERVIEW_WORKERS` bounds it and
   `PLURNK_AGUI_EXCERPT_CHARS` caps every list excerpt.
 - 2693a59: A change to a worker's model, effort or spawn model is announced as
-  `worker/policy` ({§notifications-session-policy}), and every client attached to
+  `worker/policy` ({§notifications}), and every client attached to
   the worker is sent the new route as `STATE_DELTA /plurnk/status/model`,
   whichever view made the change ({§acp-status-model}). A delta an event causes
   reaches the Run before any later event, its terminal included
@@ -202,7 +202,7 @@
   {§session-initialization-entry}).
 - 70b19d7: A loop's terminal reaps every loop-bound stream, one spawned before a park
   included, and is announced once those streams have concluded
-  ({§exec-lifetime}, {§notifications-loop-terminated}).
+  ({§exec-lifetime}, {§notifications}).
 - 6f3d277: A file beyond the model's members scope is admitted only by a client or operator
   definition, the user's to give: the `model-scope` refusal and the members
   teaching say so and no longer suggest staging a file ({§members-model-scope}).
@@ -226,13 +226,13 @@
 - 808f1b6: A loop's `loop/terminated` is announced once. A gate its running turn holds
   settles first, and a cancellation announces the loops it retired after the
   worker's drain settles and the streams it reaped close
-  ({§notifications-loop-terminated}).
+  ({§notifications}).
 - 4d1873a: A loop's `loop/terminated` follows its worker's pending `stream/concluded`,
   including a stream whose durable close already released its live handle
-  ({§notifications-loop-terminated}).
+  ({§notifications}).
 - f3cd7de: `loop/packet` carries the loop's client gauge after each model turn, and
   `ApplicationPort.workerGauge` returns the gauge the Worker's latest packet
-  reported ({§notifications-loop-packet}, {§methods-session-gauge}). AG-UI moves
+  reported ({§notifications}, {§methods-workspace-create}). AG-UI moves
   the budget with every packet and its snapshots carry the latest, so a live and
   a reattached observer agree ({§acp-state-patches}).
 - e52015a: A worker name lost to a concurrent claim is refused as `name-conflict` (409),

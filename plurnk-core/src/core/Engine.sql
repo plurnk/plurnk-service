@@ -8,7 +8,7 @@ SELECT COUNT(*) AS n FROM loops WHERE session_id = $session_id AND status = 102;
 
 -- PREP: engine_loop_usage
 -- Latest packet-bearing model-turn gauge ({§tokenomics-client-gauge}), surfaced beside the derived
--- accounting projection on {§notifications-loop-terminated}. Physical usage
+-- accounting projection on {§notifications}. Physical usage
 -- and capacity bind to the same latest completed emission call. A preflight
 -- rejection has capacity evidence but no physical input usage; neither fact
 -- falls back to an earlier call. Packetless chronology cannot erase the latest
@@ -84,7 +84,7 @@ ORDER BY attribution;
 SELECT provider_identity AS session_id FROM sessions WHERE id = $session_id;
 
 -- PREP: engine_session_provider_requests
--- {§methods-session-accounting}: the settled requests of every loop $session_id and each of its
+-- {§methods-workspace-create}: the settled requests of every loop $session_id and each of its
 -- descendants ran, since the session began. Aggregation belongs to the shared provider accounting
 -- contract, as for one loop.
 WITH RECURSIVE tree(id) AS (

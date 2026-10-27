@@ -1,4 +1,4 @@
-// {§methods-loop-run-model}: per-loop model resolution precedence and parse contract.
+// {§session-model-selection}: per-loop model resolution precedence and parse contract.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resolveLoopRoute } from "./loop-model.ts";
@@ -20,22 +20,22 @@ const failureFrom = (run: () => unknown): OperationFailureError => {
     assert.fail("Expected operation failure.");
 };
 
-test("{§methods-loop-run-model} neither alias nor model -> null (the daemon's boot default)", () => {
+test("{§session-model-selection} neither alias nor model -> null (the daemon's boot default)", () => {
     assert.equal(resolveLoopRoute(undefined, DECLARED), null);
 });
 
-test("{§methods-loop-run-model} an exact model selector remains an alias-free route", () => {
+test("{§session-model-selection} an exact model selector remains an alias-free route", () => {
     assert.deepEqual(resolveLoopRoute("openrouter/qwen/qwen3-coder", DECLARED),
         { provider: "openrouter", model: "qwen/qwen3-coder" },
         "the model id keeps its inner slashes; only the first splits provider");
 });
 
-test("{§methods-loop-run-model} a named alias resolves from the declared cascade, case-folded", () => {
+test("{§session-model-selection} a named alias resolves from the declared cascade, case-folded", () => {
     assert.deepEqual(resolveLoopRoute("FIRESLOW", DECLARED), DECLARED[0], "alias lookup is case-insensitive");
     assert.deepEqual(resolveLoopRoute("local", DECLARED), DECLARED[1], "the baseUrl override rides through");
 });
 
-test("{§methods-loop-run-model} a malformed exact model selector throws legibly", () => {
+test("{§session-model-selection} a malformed exact model selector throws legibly", () => {
     for (const model of ["/leading", "trailing/"]) {
         const { result } = failureFrom(() => resolveLoopRoute(model, DECLARED));
         assert.equal(result.problem.type, "https://problems.plurnk.xyz/daemon/provider/model-spec-invalid");
@@ -46,7 +46,7 @@ test("{§methods-loop-run-model} a malformed exact model selector throws legibly
     }
 });
 
-test("{§methods-loop-run-model} an undeclared alias throws - never a silent wrong-model session", () => {
+test("{§session-model-selection} an undeclared alias throws - never a silent wrong-model session", () => {
     const { result } = failureFrom(() => resolveLoopRoute("ghost", DECLARED));
     assert.equal(result.problem.type, "https://problems.plurnk.xyz/daemon/provider/alias-not-found");
     assert.equal(result.problem.status, 404);

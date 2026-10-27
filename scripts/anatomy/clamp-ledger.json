@@ -27266,1690 +27266,576 @@
       },
       "tags": {
         "methods": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5494,
-          "baselineShape": "heading",
-          "liveShape": "heading",
-          "codeCitations": 1,
-          "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-heading",
+          "reason": "Core ApplicationPort methods for events, credentials, proposals, interactions, loops, and reads"
         },
         "methods-event-subscribe": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5581,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods",
+          "reason": "Folded §methods-event-subscribe into §methods (Folded into Application interface table)"
         },
         "methods-credentials": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5582,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods",
+          "reason": "Folded §methods-credentials into §methods (Folded into Application interface table)"
         },
         "proposal-list": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5583,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 3,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods",
+          "reason": "Folded §proposal-list into §methods (Folded into Application interface table)"
         },
         "methods-proposal-resolve": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5584,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 3,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods",
+          "reason": "Folded §methods-proposal-resolve into §methods (Folded into Application interface table)"
         },
         "client-interaction-list": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5585,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods",
+          "reason": "Folded §client-interaction-list into §methods (Folded into Application interface table)"
         },
         "methods-client-interaction-resolve": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5586,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods",
+          "reason": "Folded §methods-client-interaction-resolve into §methods (Folded into Application interface table)"
         },
         "methods-loop-run": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5587,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 4,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods",
+          "reason": "Folded §methods-loop-run into §methods (Folded into Application interface table)"
         },
         "message-idempotency": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5588,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 4,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods",
+          "reason": "Folded §message-idempotency into §methods (Folded into Application interface table)"
         },
         "methods-session-inbox": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5589,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 5,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods",
+          "reason": "Folded §methods-session-inbox into §methods (Folded into Application interface table)"
         },
         "methods-session-streams": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5590,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 4,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods",
+          "reason": "Folded §methods-session-streams into §methods (Folded into Application interface table)"
         },
         "methods-loop-cancel": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5591,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods",
+          "reason": "Folded §methods-loop-cancel into §methods (Folded into Application interface table)"
         },
         "methods-op-mirror": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5592,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods",
+          "reason": "Folded §methods-op-mirror into §methods (Folded into Application interface table)"
         },
         "methods-log-read": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5593,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 2,
-          "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods",
+          "reason": "Folded §methods-log-read into §methods (Folded into Application interface table)"
         },
         "methods-entry-read": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5594,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods",
+          "reason": "Folded §methods-entry-read into §methods (Folded into Application interface table)"
         },
         "methods-entry-channel-read": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5595,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 3,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods",
+          "reason": "Folded §methods-entry-channel-read into §methods (Folded into Application interface table)"
         },
         "methods-workspace-create": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5599,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-heading",
+          "reason": "Workspace and session lifecycle methods, fold consistency, openPaths, and session-name admission"
         },
         "methods-workspace-attach": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5600,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 2,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-workspace-attach into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-workspace-activate": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5601,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 2,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-workspace-activate into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-session-create": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5602,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 2,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-session-create into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-workspace-rename": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5607,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-workspace-rename into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-workspace-hide": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5608,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 2,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-workspace-hide into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-session-hide": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5609,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 2,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-session-hide into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-workspace-rollback": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5610,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-workspace-rollback into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-workspace-prompts": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5611,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 4,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-workspace-prompts into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-session-read": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5613,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-session-read into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-session-list": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5614,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-session-list into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-session-overview": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5615,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 4,
-          "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-session-overview into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-session-loops": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5616,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-session-loops into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-session-accounting": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5617,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 4,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-session-accounting into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-session-gauge": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5618,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 3,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-session-gauge into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-loop-run-fold-consistency": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5621,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 0,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-loop-run-fold-consistency into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-loop-run-open-paths": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5635,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-loop-run-open-paths into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-rebind": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5653,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 0,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-rebind into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "methods-session-name-admission": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5661,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-workspace-create",
+          "reason": "Folded §methods-session-name-admission into §methods-workspace-create (Folded into Workspace and session lifecycle)"
         },
         "capability-admission": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5666,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 8,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-heading",
+          "reason": "Subtractive capability policy admission, live workspace policy boundary, and inspection"
         },
         "workspace-capability-policy": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5677,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 3,
-          "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "capability-admission",
+          "reason": "Folded §workspace-capability-policy into §capability-admission (Folded into Capability admission and workspace policy)"
         },
         "workspace-capability-inspection": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5687,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "capability-admission",
+          "reason": "Folded §workspace-capability-inspection into §capability-admission (Folded into Capability admission and workspace policy)"
         },
         "question-tool": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5695,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-heading",
+          "reason": "plurnk (question) form elicitation, shared tool admission, and owner interaction ring"
         },
         "session-tool-admission": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5705,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "question-tool",
+          "reason": "Folded §session-tool-admission into §question-tool (Folded into Structured owner questions and interaction ring)"
         },
         "owner-interaction-ring": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5713,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 4,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "question-tool",
+          "reason": "Folded §owner-interaction-ring into §question-tool (Folded into Structured owner questions and interaction ring)"
         },
         "model-catalog": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5727,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-model-selection",
+          "reason": "Folded §model-catalog into §session-model-selection (Folded into Model catalog, session model selection, and effort)"
         },
         "session-model-selection": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5739,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 12,
-          "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-heading",
+          "reason": "Model catalog, session model selection, reasoning effort, effortSource, and per-loop selectors"
         },
         "session-effort": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5753,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 5,
-          "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-model-selection",
+          "reason": "Folded §session-effort into §session-model-selection (Folded into Model catalog, session model selection, and effort)"
         },
         "session-effort-source": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5762,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 5,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-model-selection",
+          "reason": "Folded §session-effort-source into §session-model-selection (Folded into Model catalog, session model selection, and effort)"
         },
         "methods-loop-run-model": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5779,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-model-selection",
+          "reason": "Folded §methods-loop-run-model into §session-model-selection (Folded into Model catalog, session model selection, and effort)"
         },
         "methods-loop-run-child-provider": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5792,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-model-selection",
+          "reason": "Folded §methods-loop-run-child-provider into §session-model-selection (Folded into Model catalog, session model selection, and effort)"
         },
         "methods-log-coordinate": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5806,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 3,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-invocation",
+          "reason": "Folded §methods-log-coordinate into §methods-invocation (Folded into Log entry wire, reasoning evidence, and invocation attribution)"
         },
         "methods-log-entry-wire": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5811,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-invocation",
+          "reason": "Folded §methods-log-entry-wire into §methods-invocation (Folded into Log entry wire, reasoning evidence, and invocation attribution)"
         },
         "methods-readable-reasoning": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5817,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 3,
-          "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-invocation",
+          "reason": "Folded §methods-readable-reasoning into §methods-invocation (Folded into Log entry wire, reasoning evidence, and invocation attribution)"
         },
         "methods-invocation": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5827,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 4,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-heading",
+          "reason": "LogEntry wire fidelity, readable reasoning projection, and invocation/answering attribution"
         },
         "methods-answering": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5842,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 3,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "methods-invocation",
+          "reason": "Folded §methods-answering into §methods-invocation (Folded into Log entry wire, reasoning evidence, and invocation attribution)"
         },
         "notifications": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5848,
-          "baselineShape": "heading",
-          "liveShape": "heading",
-          "codeCitations": 3,
-          "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-heading",
+          "reason": "Application event notifications, envelope workspaceId, and subscriber isolation"
         },
         "notifications-operation-event": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5852,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-operation-event into §notifications (Folded into Notifications: core events)"
         },
         "notifications-log-entry-notify": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5853,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-log-entry-notify into §notifications (Folded into Notifications: core events)"
         },
         "notifications-loop-terminated": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5854,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 7,
-          "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-loop-terminated into §notifications (Folded into Notifications: core events)"
         },
         "notifications-loop-packet": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5855,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-loop-packet into §notifications (Folded into Notifications: core events)"
         },
         "notifications-loop-proposal": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5856,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-loop-proposal into §notifications (Folded into Notifications: core events)"
         },
         "notifications-loop-interaction": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5857,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-loop-interaction into §notifications (Folded into Notifications: core events)"
         },
         "notifications-workspace-created": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5858,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-workspace-created into §notifications (Folded into Notifications: core events)"
         },
         "notifications-workspace-renamed": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5859,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-workspace-renamed into §notifications (Folded into Notifications: core events)"
         },
         "notifications-workspace-hidden": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5860,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-workspace-hidden into §notifications (Folded into Notifications: core events)"
         },
         "notifications-session-hidden": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5861,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-session-hidden into §notifications (Folded into Notifications: core events)"
         },
         "notifications-session-policy": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5863,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 2,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-session-policy into §notifications (Folded into Notifications: core events)"
         },
         "notifications-stream-event-on-channel-change": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5864,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 2,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-stream-event-on-channel-change into §notifications (Folded into Notifications: core events)"
         },
         "notifications-stream-concluded": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5865,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 2,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-stream-concluded into §notifications (Folded into Notifications: core events)"
         },
         "notifications-notice-event": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5866,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-notice-event into §notifications (Folded into Notifications: core events)"
         },
         "notifications-outside-event": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5867,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 2,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-outside-event into §notifications (Folded into Notifications: core events)"
         },
         "notifications-reasoning-event": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5868,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 2,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-reasoning-event into §notifications (Folded into Notifications: core events)"
         },
         "notifications-stream-event-failure-isolation": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5870,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-stream-event-failure-isolation into §notifications (Folded into Notifications: core events)"
         },
         "notifications-envelope-carries-workspaceid": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5881,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "notifications",
+          "reason": "Folded §notifications-envelope-carries-workspaceid into §notifications (Folded into Notifications: core events)"
         },
         "session-external-reference": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5887,
-          "baselineShape": "heading",
-          "liveShape": "heading",
-          "codeCitations": 5,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-heading",
+          "reason": "Opaque external session references per adapter namespace"
         },
         "connection-lifecycle": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5902,
-          "baselineShape": "heading",
-          "liveShape": "heading",
-          "codeCitations": 9,
-          "testCitations": 17,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-heading",
+          "reason": "Stateless connection lifetime and client operation dispatch in _plurnk"
         },
         "actor-boundary-client-operations": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§methods Application interface",
-          "baselineLine": 5932,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 16,
-          "testCitations": 9,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "connection-lifecycle",
+          "reason": "Folded §actor-boundary-client-operations into §connection-lifecycle (Folded into Client operations and their connection lifetime)"
         }
       },
       "tests": {
         "plurnk-core/src/core/workspace-settings.test.ts": {
-          "tier": "unit",
-          "baselineLines": 31,
-          "liveLines": 31,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "workspace-capability-policy"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-suite",
+          "reason": "Unit coverage for workspace settings validation"
         },
         "plurnk-core/src/schemes/QuestionTool.test.ts": {
-          "tier": "unit",
-          "baselineLines": 103,
-          "liveLines": 103,
-          "testCount": 6,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "question-tool"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-suite",
+          "reason": "Unit coverage for plurnk (question) tool"
         },
         "plurnk-core/src/server/SessionOverview.test.ts": {
-          "tier": "unit",
-          "baselineLines": 17,
-          "liveLines": 17,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "application-session-overview"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-suite",
+          "reason": "Unit coverage for session overview sorting and projection"
         },
         "plurnk-core/src/server/client-input.test.ts": {
-          "tier": "unit",
-          "baselineLines": 218,
-          "liveLines": 218,
-          "testCount": 6,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "capability-policy-cascade",
-            "methods-loop-run-child-provider",
-            "methods-loop-run-open-paths",
-            "operator-config-workspace-settings",
-            "send-resource-attachments"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-suite",
+          "reason": "Unit coverage for client input validation"
         },
         "plurnk-core/src/server/loop-model.test.ts": {
-          "tier": "unit",
-          "baselineLines": 56,
-          "liveLines": 56,
-          "testCount": 5,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "methods-loop-run-model"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-suite",
+          "reason": "Unit coverage for loop model snapshot and selection"
         },
         "plurnk-core/src/server/model-catalog.test.ts": {
-          "tier": "unit",
-          "baselineLines": 119,
-          "liveLines": 119,
-          "testCount": 6,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "model-catalog"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-suite",
+          "reason": "Unit coverage for model catalog filtering and pagination"
         },
         "plurnk-core/src/server/model-route.test.ts": {
-          "tier": "unit",
-          "baselineLines": 29,
-          "liveLines": 29,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "session-effort",
-            "session-effort-source"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-suite",
+          "reason": "Unit coverage for model route projection"
         },
         "plurnk-core/test/intg/ApplicationPort.topology.test.ts": {
-          "tier": "intg",
-          "baselineLines": 156,
-          "liveLines": 156,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "application-loop-observation",
-            "application-session-observation",
-            "methods-session-list",
-            "methods-session-loops",
-            "methods-session-read",
-            "notifications-loop-packet",
-            "place-hiding",
-            "session-name-minting",
-            "session-obligations"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.test.ts",
+          "reason": "Merged ApplicationPort.topology.test.ts coverage into Daemon.test.ts suite"
         },
         "plurnk-core/test/intg/Daemon.addressed-messages.test.ts": {
-          "tier": "intg",
-          "baselineLines": 110,
-          "liveLines": 110,
-          "testCount": 3,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "actor-boundary-client-operations",
-            "message-idempotency",
-            "message-reply-delivery",
-            "problems-entries",
-            "session-scheme-irc"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.test.ts",
+          "reason": "Merged Daemon.addressed-messages.test.ts coverage into Daemon.test.ts suite"
         },
         "plurnk-core/test/intg/Daemon.drain-inject.test.ts": {
-          "tier": "intg",
-          "baselineLines": 729,
-          "liveLines": 729,
-          "testCount": 13,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "actor-boundary-passive-wake",
-            "completion-defers-to-messages",
-            "executor-cancellation",
-            "message-arrival",
-            "message-loop-containment",
-            "methods-loop-run",
-            "methods-loop-run-open-paths",
-            "notifications-loop-terminated",
-            "send-premature-terminate",
-            "session-lifecycle-single-drain",
-            "session-message-admission",
-            "session-ownership"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-suite",
+          "reason": "Canonical integration suite for loop drain, folding, cancellation, log paging, and invocation attribution"
         },
         "plurnk-core/test/intg/Daemon.inbox.test.ts": {
-          "tier": "intg",
-          "baselineLines": 89,
-          "liveLines": 89,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "message-arrival",
-            "message-idempotency",
-            "message-loop-containment",
-            "methods-session-inbox"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.test.ts",
+          "reason": "Merged Daemon.inbox.test.ts coverage into Daemon.test.ts suite"
         },
         "plurnk-core/test/intg/Daemon.loop-status-notice.test.ts": {
-          "tier": "intg",
-          "baselineLines": 79,
-          "liveLines": 79,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "acp-status-timing",
-            "loop-status-notice",
-            "notifications-loop-terminated"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.test.ts",
+          "reason": "Merged Daemon.loop-status-notice.test.ts coverage into Daemon.test.ts suite"
         },
         "plurnk-core/test/intg/Daemon.notice-event.test.ts": {
-          "tier": "intg",
-          "baselineLines": 66,
-          "liveLines": 66,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "notifications-notice-event",
-            "operation-results"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.test.ts",
+          "reason": "Merged Daemon.notice-event.test.ts coverage into Daemon.test.ts suite"
         },
         "plurnk-core/test/intg/Daemon.ops.test.ts": {
-          "tier": "intg",
-          "baselineLines": 173,
-          "liveLines": 173,
-          "testCount": 9,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "connection-lifecycle",
-            "find-result-projection",
-            "methods-op-mirror",
-            "notifications-envelope-carries-workspaceid",
-            "notifications-log-entry-notify"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.test.ts",
+          "reason": "Merged Daemon.ops.test.ts coverage into Daemon.test.ts suite"
         },
         "plurnk-core/test/intg/Daemon.outside-event.test.ts": {
-          "tier": "intg",
-          "baselineLines": 25,
-          "liveLines": 25,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "notifications-envelope-carries-workspaceid",
-            "notifications-outside-event"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.test.ts",
+          "reason": "Merged Daemon.outside-event.test.ts coverage into Daemon.test.ts suite"
         },
         "plurnk-core/test/intg/Daemon.session-gauge.test.ts": {
-          "tier": "intg",
-          "baselineLines": 113,
-          "liveLines": 113,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "methods-session-gauge",
-            "notifications-loop-packet"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.test.ts",
+          "reason": "Merged Daemon.session-gauge.test.ts coverage into Daemon.test.ts suite"
         },
         "plurnk-core/test/intg/Daemon.session-model.test.ts": {
-          "tier": "intg",
-          "baselineLines": 1103,
-          "liveLines": 1103,
-          "testCount": 22,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "acp-provider-routes",
-            "configuration-repair-path",
-            "methods-loop-cancel",
-            "notifications-session-policy",
-            "session-effort",
-            "session-effort-source",
-            "session-lifecycle-live",
-            "session-model-selection"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-suite",
+          "reason": "Canonical integration suite for model catalog, session model selection, effort, and reasoning"
         },
         "plurnk-core/test/intg/Daemon.test.ts": {
-          "tier": "intg",
-          "baselineLines": 2297,
-          "liveLines": 2297,
-          "testCount": 57,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "actor-boundary-attached-functionality",
-            "actor-boundary-client-operations",
-            "application-session-observation",
-            "connection-lifecycle",
-            "crash-only-stop",
-            "credential-authority",
-            "exec-conclusion-summary",
-            "extension-namespace-arbitration",
-            "functionality-scope",
-            "live-updates-stream-event-fires-on-chunk",
-            "machine-processes",
-            "manifest-client-display",
-            "methods",
-            "methods-entry-read",
-            "methods-event-subscribe",
-            "methods-log-read",
-            "methods-op-mirror",
-            "methods-rebind",
-            "methods-workspace-attach",
-            "methods-workspace-create",
-            "mimetype-client-display",
-            "mimetype-methods",
-            "mimetype-owned-lifecycle",
-            "module-action-registration",
-            "module-failure",
-            "module-lifecycle",
-            "module-shutdown-order",
-            "module-workspace-provider",
-            "module-workspace-residency-facet",
-            "notifications-workspace-created",
-            "notifications-workspace-renamed",
-            "problems-functionality",
-            "proposal-list",
-            "session-model-selection",
-            "tokenomics-window-partition",
-            "workspace-auto-name",
-            "workspace-label",
-            "workspace-name"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-suite",
+          "reason": "Canonical integration suite for ApplicationPort workspace, session, inbox, streams, and event methods"
         },
         "plurnk-core/test/intg/Daemon.workspace-policy.test.ts": {
-          "tier": "intg",
-          "baselineLines": 128,
-          "liveLines": 128,
-          "testCount": 4,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "capability-admission",
-            "capability-policy-projection",
-            "operator-config-workspace-capabilities",
-            "workspace-capability-inspection"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/client-operations.test.ts",
+          "reason": "Merged Daemon.workspace-policy.test.ts coverage into client-operations.test.ts suite"
         },
         "plurnk-core/test/intg/Daemon.workspace.test.ts": {
-          "tier": "intg",
-          "baselineLines": 96,
-          "liveLines": 96,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "methods-rebind",
-            "methods-workspace-rename",
-            "rpc"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.test.ts",
+          "reason": "Merged Daemon.workspace.test.ts coverage into Daemon.test.ts suite"
         },
         "plurnk-core/test/intg/Engine.session-accounting.test.ts": {
-          "tier": "intg",
-          "baselineLines": 65,
-          "liveLines": 65,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "methods-session-accounting"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.test.ts",
+          "reason": "Merged Engine.session-accounting.test.ts coverage into Daemon.test.ts suite"
         },
         "plurnk-core/test/intg/KILL.receipt.test.ts": {
-          "tier": "intg",
-          "baselineLines": 116,
-          "liveLines": 116,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "actor-boundary-client-operations",
-            "kill-scope-entry"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.drain-inject.test.ts",
+          "reason": "Merged KILL.receipt.test.ts coverage into Daemon.drain-inject.test.ts suite"
         },
         "plurnk-core/test/intg/ModelRoute.test.ts": {
-          "tier": "intg",
-          "baselineLines": 38,
-          "liveLines": 38,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "session-model-selection"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.session-model.test.ts",
+          "reason": "Merged ModelRoute.test.ts coverage into Daemon.session-model.test.ts suite"
         },
         "plurnk-core/test/intg/caps-notify.test.ts": {
-          "tier": "intg",
-          "baselineLines": 106,
-          "liveLines": 106,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "capability-ctx",
-            "notifications-stream-event-failure-isolation",
-            "notifications-stream-event-on-channel-change"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/client-operations.test.ts",
+          "reason": "Merged caps-notify.test.ts coverage into client-operations.test.ts suite"
         },
         "plurnk-core/test/intg/client-operations.test.ts": {
-          "tier": "intg",
-          "baselineLines": 407,
-          "liveLines": 407,
-          "testCount": 11,
-          "untaggedCount": 4,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "actor-boundary-client-operations",
-            "connection-lifecycle",
-            "env-scheme",
-            "exec-lifetime",
-            "machine-processes-session-origin",
-            "methods-loop-cancel",
-            "proposal-disposition",
-            "session-lifecycle-total-reap"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "keep-suite",
+          "reason": "Canonical integration suite for client operations, capability policies, question tool admission, and rollback"
         },
         "plurnk-core/test/intg/demo-reporting.test.ts": {
-          "tier": "intg",
-          "baselineLines": 40,
-          "liveLines": 40,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "methods-session-list",
-            "packet-assembly"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.session-model.test.ts",
+          "reason": "Merged demo-reporting.test.ts coverage into Daemon.session-model.test.ts suite"
         },
         "plurnk-core/test/intg/invocation.test.ts": {
-          "tier": "intg",
-          "baselineLines": 144,
-          "liveLines": 144,
-          "testCount": 3,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "methods-answering",
-            "methods-invocation",
-            "methods-session-loops",
-            "session-obligations"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.drain-inject.test.ts",
+          "reason": "Merged invocation.test.ts coverage into Daemon.drain-inject.test.ts suite"
         },
         "plurnk-core/test/intg/live-harness-cancellation.test.ts": {
-          "tier": "intg",
-          "baselineLines": 104,
-          "liveLines": 104,
-          "testCount": 4,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "live-harness-deadline",
-            "methods-loop-cancel"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.drain-inject.test.ts",
+          "reason": "Merged live-harness-cancellation.test.ts coverage into Daemon.drain-inject.test.ts suite"
         },
         "plurnk-core/test/intg/loop-terminal-order.test.ts": {
-          "tier": "intg",
-          "baselineLines": 145,
-          "liveLines": 145,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "notifications-loop-terminated"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.drain-inject.test.ts",
+          "reason": "Merged loop-terminal-order.test.ts coverage into Daemon.drain-inject.test.ts suite"
         },
         "plurnk-core/test/intg/mcp-acp-composition.test.ts": {
-          "tier": "intg",
-          "baselineLines": 383,
-          "liveLines": 383,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "acp-proposal-resolve",
-            "acp-workspace-state",
-            "actor-boundary-client-operations",
-            "capability-admission",
-            "functionality-preparation-visibility",
-            "mcp-authority",
-            "mcp-configuration",
-            "mcp-model-projection"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/client-operations.test.ts",
+          "reason": "Merged mcp-acp-composition.test.ts coverage into client-operations.test.ts suite"
         },
         "plurnk-core/test/intg/mcp-cache-composition.test.ts": {
-          "tier": "intg",
-          "baselineLines": 89,
-          "liveLines": 89,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "connection-lifecycle",
-            "mcp-activation-isolation",
-            "mcp-host-composition"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/client-operations.test.ts",
+          "reason": "Merged mcp-cache-composition.test.ts coverage into client-operations.test.ts suite"
         },
         "plurnk-core/test/intg/model-catalog-acp.test.ts": {
-          "tier": "intg",
-          "baselineLines": 74,
-          "liveLines": 74,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "model-catalog"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.session-model.test.ts",
+          "reason": "Merged model-catalog-acp.test.ts coverage into Daemon.session-model.test.ts suite"
         },
         "plurnk-core/test/intg/place-hiding.test.ts": {
-          "tier": "intg",
-          "baselineLines": 302,
-          "liveLines": 302,
-          "testCount": 6,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "methods-session-hide",
-            "methods-session-list",
-            "methods-workspace-hide",
-            "notifications-session-hidden",
-            "notifications-workspace-hidden",
-            "place-hiding",
-            "session-lifecycle-live",
-            "workspace-name"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.test.ts",
+          "reason": "Merged place-hiding.test.ts coverage into Daemon.test.ts suite"
         },
         "plurnk-core/test/intg/question-tool-admission.test.ts": {
-          "tier": "intg",
-          "baselineLines": 206,
-          "liveLines": 206,
-          "testCount": 8,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "owner-interaction-ring",
-            "pinned-wording-core",
-            "question-tool",
-            "session-tool-admission"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/client-operations.test.ts",
+          "reason": "Merged question-tool-admission.test.ts coverage into client-operations.test.ts suite"
         },
         "plurnk-core/test/intg/readlog-paging.test.ts": {
-          "tier": "intg",
-          "baselineLines": 80,
-          "liveLines": 80,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "methods-log-read",
-            "methods-readable-reasoning"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.drain-inject.test.ts",
+          "reason": "Merged readlog-paging.test.ts coverage into Daemon.drain-inject.test.ts suite"
         },
         "plurnk-core/test/intg/readlog-session-filter.test.ts": {
-          "tier": "intg",
-          "baselineLines": 56,
-          "liveLines": 56,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "connection-lifecycle",
-            "machine-processes-model-session-readable",
-            "methods-log-read"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.drain-inject.test.ts",
+          "reason": "Merged readlog-session-filter.test.ts coverage into Daemon.drain-inject.test.ts suite"
         },
         "plurnk-core/test/intg/reasoning-carrier.test.ts": {
-          "tier": "intg",
-          "baselineLines": 46,
-          "liveLines": 46,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "methods-readable-reasoning"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.session-model.test.ts",
+          "reason": "Merged reasoning-carrier.test.ts coverage into Daemon.session-model.test.ts suite"
         },
         "plurnk-core/test/intg/reasoning-streaming.test.ts": {
-          "tier": "intg",
-          "baselineLines": 158,
-          "liveLines": 158,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "notifications-reasoning-event"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.session-model.test.ts",
+          "reason": "Merged reasoning-streaming.test.ts coverage into Daemon.session-model.test.ts suite"
         },
         "plurnk-core/test/intg/rollback.test.ts": {
-          "tier": "intg",
-          "baselineLines": 142,
-          "liveLines": 142,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "connection-lifecycle",
-            "methods-workspace-rollback",
-            "rollback"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/client-operations.test.ts",
+          "reason": "Merged rollback.test.ts coverage into client-operations.test.ts suite"
         },
         "plurnk-core/test/intg/seam-create-session.test.ts": {
-          "tier": "intg",
-          "baselineLines": 119,
-          "liveLines": 119,
-          "testCount": 3,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "methods-session-create",
-            "methods-session-name-admission",
-            "pinned-wording-core",
-            "problems-functionality",
-            "session-auto-name"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.test.ts",
+          "reason": "Merged seam-create-session.test.ts coverage into Daemon.test.ts suite"
         },
         "plurnk-core/test/intg/session-references.test.ts": {
-          "tier": "intg",
-          "baselineLines": 108,
-          "liveLines": 108,
-          "testCount": 4,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "session-external-reference"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.test.ts",
+          "reason": "Merged session-references.test.ts coverage into Daemon.test.ts suite"
         },
         "plurnk-core/test/intg/session-streams.test.ts": {
-          "tier": "intg",
-          "baselineLines": 66,
-          "liveLines": 66,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "methods-session-streams"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.test.ts",
+          "reason": "Merged session-streams.test.ts coverage into Daemon.test.ts suite"
         },
         "plurnk-core/test/intg/usage-reasoning.test.ts": {
-          "tier": "intg",
-          "baselineLines": 79,
-          "liveLines": 79,
-          "testCount": 1,
-          "untaggedCount": 1,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "methods-readable-reasoning",
-            "provider-open-reasoning",
-            "provider-request-accounting"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.session-model.test.ts",
+          "reason": "Merged usage-reasoning.test.ts coverage into Daemon.session-model.test.ts suite"
         },
         "plurnk-core/test/intg/workspace-project-root.test.ts": {
-          "tier": "intg",
-          "baselineLines": 71,
-          "liveLines": 71,
-          "testCount": 4,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "methods-workspace-create",
-            "notifications-workspace-created",
-            "pinned-wording-core"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Daemon.test.ts",
+          "reason": "Merged workspace-project-root.test.ts coverage into Daemon.test.ts suite"
         }
       }
     },

@@ -1,4 +1,4 @@
-// Integration harness: the model session a test names. The first call creates it ({§methods-session-create});
+// Integration harness: the model session a test names. The first call creates it ({§methods-workspace-create});
 // every later call with that name reads the same session, as a client's thread does ({§acp-thread-binding}).
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
@@ -20,7 +20,7 @@ export const namedModelSession = async (
 };
 
 // One operation of a model session, without a provider: the demand and the reference reconciliation a loop makes
-// before inference ({§methods-workspace-activate}), then one model turn in a loop of the session's own, dispatched
+// before inference ({§methods-workspace-create}), then one model turn in a loop of the session's own, dispatched
 // with the model's writer tier, so the operation sees that session's environment, policy, and log
 // ({§machine-processes}). A person's operation is `dispatchClientAction` instead ({§connection-lifecycle}).
 // The loop concludes when the operation settles.

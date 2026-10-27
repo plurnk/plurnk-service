@@ -72,7 +72,7 @@ flowchart LR
 | **writer / origin / writable_by** | Authority | Identity authoring a write (`model \| client \| _plurnk`, logged as `log_entries.origin`); engine enforces scheme `manifest.writableBy` with `403` ({§subscriptions}). |
 | **verdict / strike / emission attempt / cycle** | Engine | End-of-turn ruling ({§loop-terminals}); turn matching a rail ({§engine-rails}); provider exchange under {§emission-admission}; repeated operational inputs/results ({§engine-rails}). |
 | **BARE inference** | Engine | Isolated child-provider model call whose response becomes an ordinary BARE log result without session, packet, tools, or output grammar ({§op-methods-op-dispatch}). |
-| **capability policy / approval owner / proposal / resolution** | Governance | Subtractive `only`/`deny` selector layers; workspace-scoped approval recipient ({§session-ownership}); deferred side-effecting action ({§proposal-disposition}); client decision settling a proposal ({§methods-proposal-resolve}) or interaction ({§methods-client-interaction-resolve}, {§acp-proposal-resolve}). |
+| **capability policy / approval owner / proposal / resolution** | Governance | Subtractive `only`/`deny` selector layers; workspace-scoped approval recipient ({§session-ownership}); deferred side-effecting action ({§proposal-disposition}); client decision settling a proposal ({§methods}) or interaction ({§methods}, {§acp-proposal-resolve}). |
 | **packet / log / render** | Packet | Turn's optional model-exchange record (`sections`, plus `assistant`/`assistantRaw` on admitted emission); chronological `log` section of in-scope `log_entries`; packet computation under {§packet-assembly} and {§packet-markdown}. |
 
 ---
@@ -183,15 +183,15 @@ flowchart TB
 | Project filesystem, membership overlay, `workspace:///`, `sh://`, `http://` | Workspace-owned and shared live; never copied on fork. Workspaces themselves cannot be forked. |
 | Named scratch (`session://<name>/...`) | Workspace-owned under literal namespace `<name>`. When the `sessions` row with `parent_session_id` and `forked_from_turn_id` is inserted, `sessions_fork_copies_history` ({§db-migrations}) snapshots quiescent `session://<parent>/...` entries into `session://<child>/...` without rewriting body text. |
 | Log, loops, turns, curation, and accounting | Session-owned. Fork copies the parent's loops, turns, and `log_entries` up to `forked_from_turn_id` as settled terminal history (`100`/`102`/`202` clamped to `200`, open turns to `499`, pending proposals to `cancelled`, stream subscriptions omitted), preserving `weight`, `forget_The_Past`, and observation cursor while copying zero provider cost ({§tokenomics-turn-summary}). |
-| Session identity & origin | Each session carries `origin` (`model` or `_plurnk`; `WORK`/`FORK` create `model` sessions regardless of operation producer, {§actor-boundary-client-operations}) and an immutable unique 128-bit hex `provider_identity` (`sessions.provider_identity`, {§provider-cache-identity}). |
-| Place hiding (`hidden_at`) | Hiding a workspace marks the workspace alone; hiding a session marks it and its subtree (`hidden_by` naming the root of the hide group; `409 live-work` if any covered session holds a live loop, {§session-loop-lifecycle}, open stream, pending proposal, or pending question). Starting a live loop or selecting a workspace by its default folder name ({§execution-output-identity}) shows it; `listWorkspaces`, `listSessions`, and `overview` ({§methods-session-overview}) filter by `hidden_at` and emit `workspace/hidden` / `session/hidden`. |
+| Session identity & origin | Each session carries `origin` (`model` or `_plurnk`; `WORK`/`FORK` create `model` sessions regardless of operation producer, {§connection-lifecycle}) and an immutable unique 128-bit hex `provider_identity` (`sessions.provider_identity`, {§provider-cache-identity}). |
+| Place hiding (`hidden_at`) | Hiding a workspace marks the workspace alone; hiding a session marks it and its subtree (`hidden_by` naming the root of the hide group; `409 live-work` if any covered session holds a live loop, {§session-loop-lifecycle}, open stream, pending proposal, or pending question). Starting a live loop or selecting a workspace by its default folder name ({§execution-output-identity}) shows it; `listWorkspaces`, `listSessions`, and `overview` ({§methods-workspace-create}) filter by `hidden_at` and emit `workspace/hidden` / `session/hidden`. |
 
 ### §session-scheme Session scheme addressing, delegation, and collection
 
 - **Authority & scratch scope**: `session://<name>/<path>` keys workspace entries by literal `authority = <name>` (`workspace:///<path>` has `authority = ""`; `session:///<path>` is refused with `400 named-session-required` pointing to `workspace:///`). Any session in the workspace can `READ`, `FIND`, `EDIT`, `COPY`, `MOVE`, or `KILL` any `session://<name>/<path>` entry without ancestry checks ({§execution-output-identity}, {§scheme-address}), and entries outlive their namesake session. `workspace:///_plurnk/` is ordinary shared workspace scratch reconciled by `_plurnk` ({§tools-resource-materialization}, {§skills-resources}).
-- **Minting & control addressing**: Minted session names must match `SESSION_NAME` ({§session-name}, `^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$`, case-sensitive; `_plurnk` is unmintable, though readable by `readLog` / {§methods-session-read}). Session control addresses (`WORK`, `FORK`, `SEND`, `READ`, `KILL`) must be authority-only `session://<name>` with no userinfo, port, pathname, query, or fragment (`400 control-address-invalid`), `~` is never an alias, and `EDIT (session://<name>)` fails with `400 session-entity-not-editable`.
+- **Minting & control addressing**: Minted session names must match `SESSION_NAME` ({§session-name}, `^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$`, case-sensitive; `_plurnk` is unmintable, though readable by `readLog` / {§methods-workspace-create}). Session control addresses (`WORK`, `FORK`, `SEND`, `READ`, `KILL`) must be authority-only `session://<name>` with no userinfo, port, pathname, query, or fragment (`400 control-address-invalid`), `~` is never an alias, and `EDIT (session://<name>)` fails with `400 session-entity-not-editable`.
 - **Delegation (`WORK`, `FORK`) and messaging (`SEND`, `KILL`)**:
-  - `WORK (session://<name>)` spawns a fresh child if `<name>` is unused ({§actor-boundary-client-operations}), or delivers its non-empty body as a message to the existing session `<name>` (`attrs.delivered = "message"`). Omitting `(session://<name>)` auto-allocates an 8-hex-character name ({§execution-output-identity}). Passing a non-`session://` resource path on `WORK (<path>)` reads that resource whole (`<1,-1>`) as the prompt (composed with any inline body, {§bare-prompt-composition}) and auto-names the child.
+  - `WORK (session://<name>)` spawns a fresh child if `<name>` is unused ({§connection-lifecycle}), or delivers its non-empty body as a message to the existing session `<name>` (`attrs.delivered = "message"`). Omitting `(session://<name>)` auto-allocates an 8-hex-character name ({§execution-output-identity}). Passing a non-`session://` resource path on `WORK (<path>)` reads that resource whole (`<1,-1>`) as the prompt (composed with any inline body, {§bare-prompt-composition}) and auto-names the child.
   - `FORK (session://<name>)` (or addressless `FORK`) branches the calling session into a fresh name; if `<name>` already exists, `FORK` fails with `409 session-name-conflict` naming `WORK or SEND (session://<name>)`. Inherited loops are terminal so {§loop-completion} sees only the branch's new loop. Both `WORK` and `FORK` enforce `PLURNK_SERVICE_WORKSPACE_SESSIONS_MAX_ACTIVE` (`508`) and require a non-empty prompt (`422 spawn-prompt-empty`).
   - `SEND (session://<name>)` delivers a non-empty message or attachment ({§op-methods-op-dispatch}; `422 message-empty` when blank, `404` when absent) to `<name>`, folded into a running loop or queued as a new loop (`202` parked loops re-queue to `100` without firing terminal hooks). `KILL (session://<name>)` cancels the session's active tree (`404` when absent).
 - **Collection (`READ (session://<name>)` and `ops://<name>/<L>`)**: Each concluded child loop reaches its direct parent as an `_plurnk` `READ` of `ops://<name>/<L>` ({§message-completion}, {§message-reply-delivery}, {§env-delta-child-termination}), and `READ (session://<name>)` (or `ops://<name>/<L>`) collects that same terminal result on demand without `lineAnchors` ({§session-loop-lifecycle}): `404` if absent, `425 loop-running` (`resource: "ops://<name>/<L>"`) while unresolved, `200` with answer content on completion, or the child's exact failure status and Problem on error.
@@ -297,7 +297,7 @@ When a loop parks on live work, `PLURNK_SERVICE_WAIT_SEC` (or `WAIT [seconds]`, 
 | Recursive cancellation and epoch bound | `lifecycle_cancel_sessions` and the `sessions_cancel_live_loops` trigger atomically record `cancelled_through_sequence` and terminalize unresolved loops (`499`, `terminated_by = 'cancel'`) across the session subtree, while process-local teardown invokes every durable open subscription's live cancellation handle (`PLURNK_SERVICE_EXEC_KILL_GRACE_MS`) and aborts pending proposal waiters (`daemon_stopping`, {§proposal}). Streams bind to the cancellation scope captured at spawn; cancelled work never resurrects its scope. |
 | Child wake and optimistic settlement | Every child task completion notifies its direct parent without injecting a prompt. Before model dispatch, `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS` (default 5s; `0` disables) bounds both initiating-turn stream settlement and wake holds that coalesce sibling stream/child arrivals while another obligation remains live. |
 | Durable disposition and idle rule | A loop concludes only under {§loop-completion}; a concluded session retains history and starts a new loop on a later addressed arrival. At turn boundaries, a committed `202` park survives a racing daemon-shutdown abort. |
-| Daemon lock and restart recovery | Before opening transports, the daemon acquires an exclusive database-adjacent lock (`DaemonLock`), replacing dead-PID claims atomically. Boot recovery commits atomically: `100` loops restore drains; `102` loops, pending provider calls, proposed operations (`owner_vanished`, {§proposal-list}), and open subscriptions settle `500`; pending client interactions are removed ({§proposal-projection}); and `202` loops requeue if obligations settled or restore guarded wait timers. |
+| Daemon lock and restart recovery | Before opening transports, the daemon acquires an exclusive database-adjacent lock (`DaemonLock`), replacing dead-PID claims atomically. Boot recovery commits atomically: `100` loops restore drains; `102` loops, pending provider calls, proposed operations (`owner_vanished`, {§methods}), and open subscriptions settle `500`; pending client interactions are removed ({§proposal-projection}); and `202` loops requeue if obligations settled or restore guarded wait timers. |
 
 ### §turn-record Producer-neutral turn record
 
@@ -635,14 +635,14 @@ A model loop concludes only when all messages have explicit completion replies, 
 | All messages resolved and results observed, live work remains | Join live work via the bounded park; replies remain delivered. |
 | All messages resolved, results observed, no live work | Conclude with the aggregate message outcome ({§message-completion}). |
 
-External cancellation records `terminated_by = 'cancel'` ({§methods-loop-cancel}) and prepends a cancellation marker in COLLECT and termination deltas; engine failure terminals (**500**, **508**, {§engine-rails}) and model terminals keep `terminated_by = NULL`.
+External cancellation records `terminated_by = 'cancel'` ({§methods}) and prepends a cancellation marker in COLLECT and termination deltas; engine failure terminals (**500**, **508**, {§engine-rails}) and model terminals keep `terminated_by = NULL`.
 
 ### §outside-text Outside text, empty turns, and terminal evidence
 
 | Construct | Rule |
 | --- | --- |
 | Outside text beside fenced OPs | Each span from {§response-text} becomes one `NOTE` at its position, frozen in the emission ({§turn-source-resources}) and replayed in history ({§emission-history}) with no notice. |
-| Outside text with no fenced OP | Stored verbatim as one `outside` turn source ({§turn-source-resources}) and surfaced once via `outside/event` ({§notifications-outside-event}, {§acp-outside-text}); never enters a packet or delivers a reply. |
+| Outside text with no fenced OP | Stored verbatim as one `outside` turn source ({§turn-source-resources}) and surfaced once via `outside/event` ({§notifications}, {§acp-outside-text}); never enters a packet or delivers a reply. |
 | Empty turn (no content or reasoning OP) | When no boundary was lost ({§unparsed-tail-boundary}) and messages remain unresolved or emission is incomplete, counts one progress strike ({§engine-rails}) and records `422 The turn performed no operation.` ({§operation-result-uniform-error-channel}). |
 | Terminal evidence (`unconcluded`) | If a failed terminal's last inference turn performed no authored operation and kept text, Problem Details carries `unconcluded: "ops://<session>/<loop>/<turn>"` citing that emission without re-sending or softening the terminal. |
 | Ignored scheme metadata | READ, FIND, EDIT, KILL, WORK, or FORK carrying `[metadata]` for a scheme taking none runs without it and emits one `metadata_ignored` warning notice; SEND and executions validate their own metadata ({§op-methods-op-dispatch}). |
@@ -668,7 +668,7 @@ The engine routes unconditionally to `exec`, resolves `runtime` from the workspa
 
 | Mechanism | Rule |
 | --- | --- |
-| `lifetime` metadata ({§service-metadata-keys}) | Duration (`30s`, `30m`, `2h`): aborts at deadline (polite signal then SIGKILL after `PLURNK_SERVICE_EXEC_KILL_GRACE_MS`) with `504 execution-timeout`. `loop` (default): reaped on loop terminal except `202` ({§notifications-loop-terminated}), or on client operation cancel/shutdown ({§connection-lifecycle}). `turn`: reaped at next pre-turn. `detached`: outlives loop `200`, imposes no obligation, reaped on KILL, session reap, or daemon stop. |
+| `lifetime` metadata ({§service-metadata-keys}) | Duration (`30s`, `30m`, `2h`): aborts at deadline (polite signal then SIGKILL after `PLURNK_SERVICE_EXEC_KILL_GRACE_MS`) with `504 execution-timeout`. `loop` (default): reaped on loop terminal except `202` ({§notifications}), or on client operation cancel/shutdown ({§connection-lifecycle}). `turn`: reaped at next pre-turn. `detached`: outlives loop `200`, imposes no obligation, reaped on KILL, session reap, or daemon stop. |
 | Effect admission (`EffectPolicy`) | `PLURNK_SERVICE_EFFECT_HOST`, `_READ`, and `_PURE` map each declared effect to `propose` ({§proposal}, {§http-outbound-proposes}) or `auto`; invalid values fail boot. Initiating turns apply {§session-causal-admission} to their started streams. |
 | Workspace concurrency | Bounded by `PLURNK_SERVICE_EXEC_CONCURRENCY` (`-1` unbounded; FIFO per workspace). Admitted runs create entry, channels, and subscription immediately, returning `200 { outcome: "started" }` or `202 { outcome: "queued", executionsAhead, concurrency }`. Queue wait excludes timeout; queued KILL cancels via {§stream-control}. |
 | Turn-hold (`PLURNK_SERVICE_EXEC_HOLD`) | Holds cycle until stream conclusion up to `PLURNK_SERVICE_EXEC_HOLD_MS` (fail-open) for listed `<runtime>` or `<runtime>:<effect>` selectors. |
@@ -680,7 +680,7 @@ The engine routes unconditionally to `exec`, resolves `runtime` from the workspa
 | `active` stream | No Log row; `## Open Work` reports timing and channel growth ({§child-orientation}). Explicit READs carry `terminal: false`. |
 | `terminal` stream | One `origin=_plurnk` markerless READ per non-empty channel (or one bodyless row on the default channel if all channels are empty), carrying `terminal: true`, any `exitCode`, and empty sibling counts (`channels: {"#stderr": 0}`). |
 | Page bound & failures | Unrequested delivery is bounded by the first retrieval page ({§body-projection}, {§executor-page-receipt}) with an atomic per-subscription cursor. A failed execution attaches its Problem to the default (or first landed) channel row so Errors gets one pointer ({§operation-results}). Deleted channels owe no observation; KILL on a terminal stream returns `200` with `terminalStatus` ({§stream-control}). |
-| Conclusion summary | `stream/concluded` ({§notifications-stream-concluded}) formats `<addr> completed (exit N); <ch>=<B> bytes` or the lowercase Problem title for clients. |
+| Conclusion summary | `stream/concluded` ({§notifications}) formats `<addr> completed (exit N); <ch>=<B> bytes` or the lowercase Problem title for clients. |
 
 ### §execution-output-identity Workspace entries, auto-names, and command environment
 
@@ -688,12 +688,12 @@ The engine routes unconditionally to `exec`, resolves `runtime` from the workspa
 | --- | --- |
 | Workspace entries & output | Every entry belongs to one workspace `(workspace_id, scheme, authority, pathname)` ({§entry-address-resolution}). Each execution claims an 8-hex path (`sh:///ab3d5678`) in the workspace commons; deleting a producer session keeps its output. Stored output stays readable when an attachment is disabled or removed, while live control/input binds the workspace resource and wakes the initiating session. |
 | `entry()` sink ({§executor-entry-sink}) | Publishes textual, binary ({§binary-parity}), or HTTP-materialized ({§web-materialization-contract}, {§html-materialization}, {§http-materializer-extensions}) resources under `<invocation>/resources/` ({§resource-publication-names}) with one runtime `EDIT` row ({§env-delta-entry-materialization}). |
-| Session & workspace names | Unnamed sessions allocate 8 random lowercase hex chars (`session://ab3d5678`). Workspace names are unique non-empty strings refusing digit-only (`[0-9]+`), ill-formed Unicode, or `.`/`..` segments (`400 name-invalid`). Default workspace name abbreviates daemon home to `~` (matching `projectLabel` / `project_label`), reusing an existing workspace of that name ({§methods-workspace-rename}, {§methods-workspace-attach}); headless unnamed workspaces draw 5 alphanumeric chars with at least one letter from {§line-anchors}. |
+| Session & workspace names | Unnamed sessions allocate 8 random lowercase hex chars (`session://ab3d5678`). Workspace names are unique non-empty strings refusing digit-only (`[0-9]+`), ill-formed Unicode, or `.`/`..` segments (`400 name-invalid`). Default workspace name abbreviates daemon home to `~` (matching `projectLabel` / `project_label`), reusing an existing workspace of that name ({§methods-workspace-create}, {§methods-workspace-create}); headless unnamed workspaces draw 5 alphanumeric chars with at least one letter from {§line-anchors}. |
 | Command environment | Layers: filtered ambient host (`PLURNK_SERVICE_EXEC_ENV_INHERIT` / `_EXCLUDE` over HostPaths-projected `HOME`/XDG {§host-path-layout}, {§host-path-layout}, always excluding `PLURNK_*` and provider API key vars) → workspace `env` → session `env` ({§env-functionality}, {§configuration-repair-path}) → invocation `env`. Each spawn records provenance for the digest; MCP launches use {§module-seam-slices} and {§mcp-launch-environment}. |
 
 ## §proposal Proposals and client interactions
 
-When a side-effecting op returns `202` (e.g., `host` execution {§exec} or member file EDIT {§membership}), the engine writes `log_entries.state = 'proposed'` (withheld from packets and `log/entry` until resolved), registers a waiter keyed by `logEntryId`, and pauses `dispatch` until resolved ({§methods-proposal-resolve}, {§acp-proposal-resolve}, {§proposal-disposition}). {§engine-rails} observes the resolved status, never the provisional `202`.
+When a side-effecting op returns `202` (e.g., `host` execution {§exec} or member file EDIT {§membership}), the engine writes `log_entries.state = 'proposed'` (withheld from packets and `log/entry` until resolved), registers a waiter keyed by `logEntryId`, and pauses `dispatch` until resolved ({§methods}, {§acp-proposal-resolve}, {§proposal-disposition}). {§engine-rails} observes the resolved status, never the provisional `202`.
 
 - **Timeout & loop abort:** Empty `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` waits indefinitely for its reviewer; a positive millisecond value synthesizes `cancel` (`outcome: "timeout"`); any other explicit value fails at the lifecycle owner. Loop abort (timeout, `cancelLoop`, session `KILL`) settles held proposals as `cancel` with the abort reason.
 - **Decision evidence:** Each proposal commits at most one immutable decision record (`accept`/`reject`/`cancel`, resolver identity, timestamp, body override, outcome) before application; a second resolution returns `409 proposal-not-pending`. Restart marks interrupted application uncertain without replaying ({§session-causal-admission}).
@@ -708,7 +708,7 @@ When a side-effecting op returns `202` (e.g., `host` execution {§exec} or membe
 
 | Surface | Contract |
 | --- | --- |
-| `ProposalProjection` | Derived once from the durable proposed row and loop for both `loop/proposal` and `pendingProposals()` ({§proposal-list}): identity (`id`, `session_id`, `loop_id`, `turn_id`, `op`), `session` ({§session-name}), `coordinate` `L/T/S` ({§methods-log-coordinate}), optional `expiresAt`, `target` (`attrs.proposalTarget` or row target), `body`, `attrs`, `owner` ({§session-ownership}), `disposition`, `selector` ({§capability-policy-matching}), and ACP v2 `subject`. Malformed durable fields terminalize the row `500 policy_failed`. |
+| `ProposalProjection` | Derived once from the durable proposed row and loop for both `loop/proposal` and `pendingProposals()` ({§methods}): identity (`id`, `session_id`, `loop_id`, `turn_id`, `op`), `session` ({§session-name}), `coordinate` `L/T/S` ({§methods-invocation}), optional `expiresAt`, `target` (`attrs.proposalTarget` or row target), `body`, `attrs`, `owner` ({§session-ownership}), `disposition`, `selector` ({§capability-policy-matching}), and ACP v2 `subject`. Malformed durable fields terminalize the row `500 policy_failed`. |
 | `ClientInteractionRequest` ({§client-interaction-wire}) | Inserts a pending-only `client_interactions` row paired with a live process-local waiter, published via `loop/interaction` and reconnect discovery. Resolution (`accept` with schema-validated `content`, `decline`, or `cancel`) validates against `requestedSchema` (`400 interaction-response-invalid` keeps the request pending) before deleting the row and releasing the waiter once. Owner/execution abort or restart removes unowned rows without replay. |
 
 ### §proposal-disposition Proposal disposition, authority, and precedence
@@ -734,7 +734,7 @@ Streams are static content at turn boundaries: chunks accumulate as they arrive 
 ### §subscriptions Subscriptions and finalization
 
 - **Registration & causal resource:** Streaming `READ` returns `102 Processing` and opens a `StreamSubscription` via `subscriptions.open()`, binding one active subscription per entry in the entry's workspace. SQLite stores durable subscription identity and causal `source`; `LiveSubscriptions` holds the process-local `SubscriptionHandle` for coalesced cancellation, turn-scoped reap, and shutdown. Scoped log curation ({§log-kill-scope}) never cancels a subscription.
-- **Finalization:** `close(result, summary?, channelResults?)` atomically closes the subscription row, installs each channel's terminal `producerResult` and derived state, releases the live handle, emits pending stream announcements before `loop/terminated` ({§notifications-loop-terminated}), and wakes the session. Concurrent closes coalesce; committed closes are idempotent. Process restart settles orphaned open rows as `500` interruption ({§session-causal-admission}).
+- **Finalization:** `close(result, summary?, channelResults?)` atomically closes the subscription row, installs each channel's terminal `producerResult` and derived state, releases the live handle, emits pending stream announcements before `loop/terminated` ({§notifications}), and wakes the session. Concurrent closes coalesce; committed closes are idempotent. Process restart settles orphaned open rows as `500` interruption ({§session-causal-admission}).
 
 ### §stream-control Stream control and writes
 
@@ -944,456 +944,87 @@ Model invocations of `plurnk (<family>)` settle in authored order before dispatc
 
 ## §methods Application interface
 
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§methods-event-subscribe} | Events — `subscribeToEvents(handler) -> unsubscribe` |
-| {§methods-credentials} | Credentials — `credentials` |
-| {§proposal-list} | Proposals — `pendingProposals(workspaceId)` |
-| {§methods-proposal-resolve} | Proposals — `resolveProposal(logEntryId, resolution, owner)` |
-| {§client-interaction-list} | Client interactions — `pendingClientInteractions(workspaceId)` |
-| {§methods-client-interaction-resolve} | Client interactions — `resolveClientInteraction(interactionId, resolution, respondent, message?)` |
-| {§methods-loop-run} | Loops — `runLoop({ workspaceId, sessionId, loopId?, prompt, source?, maxTurns?, openPaths?, selector?,… |
-| {§message-idempotency} | Message admission — `messageAdmission({ workspaceId, address, body })` |
-| {§methods-session-inbox} | Reads — `readInbox({ workspaceId, sessionId })` |
-| {§methods-session-streams} | Reads — `readStreams({ workspaceId, sessionId })` |
-| {§methods-loop-cancel} | Loops — `cancelDrain(sessionId, reason?)`; `cancelSession({ workspaceId, sessionId, reason? |
-| {§methods-op-mirror} | Op mirror: client dispatch — `dispatchClientAction({ workspaceId, actor, contextSessionId?, statements,… |
-| {§methods-log-read} | Reads — `readLog({ workspaceId, sessionId, ...coordinate })` |
-| {§methods-entry-read} | Reads — `readEntry({ workspaceId, sessionId, target, channel?, offset? |
-| {§methods-entry-channel-read} | Reads — `readEntryChannel({ workspaceId, sessionId, target })` |
-| {§methods-workspace-create} | Workspace lifecycle — `createWorkspace({ name?, projectRoot?, settings? |
-| {§methods-workspace-attach} | Workspace lifecycle — `attachWorkspace({ workspaceId } \ |
-| {§methods-workspace-activate} | Workspace lifecycle — `activateWorkspace({ workspaceId })` |
-| {§methods-session-create} | Workspace lifecycle — `createSession({ workspaceId, name?, parentSessionId?, owner? |
-| {§methods-workspace-rename} | Workspace metadata — `renameWorkspace(workspaceId, name)` |
-| {§methods-workspace-hide} | Workspace metadata — `setWorkspaceHidden({ workspaceId, hidden })` |
-| {§methods-session-hide} | Session topology — `setSessionHidden({ workspaceId, sessionId, hidden })` |
-| {§methods-workspace-rollback} | Workspace files — `rollback({ workspaceId, sessionId, actor, to })` |
-| {§methods-workspace-prompts} | Workspace metadata — `listPrompts(workspaceId, limit?, sessionId?)` |
-| {§methods-session-read} | Session topology — `readSession({ workspaceId, identity })` |
-| {§methods-session-list} | Session topology — `listSessions(workspaceId, query?)` |
-| {§methods-session-overview} | Session overview — `readSessionOverview({ workspaceId?, limit, excerptChars })` |
-| {§methods-session-loops} | Loop lifecycle — `listSessionLoops({ workspaceId, sessionId })` |
-| {§methods-session-accounting} | Session spend — `sessionAccounting({ workspaceId, sessionId })` |
-| {§methods-session-gauge} | Session gauge — `sessionGauge({ workspaceId, sessionId })` |
-| {§methods-loop-run-fold-consistency} | A folded prompt cannot silently reconfigure its loop. |
-| {§methods-loop-run-open-paths} | Workspace paths are core-owned context reads. |
-| {§methods-rebind} | Rebinding: binding belongs to the client-interface module. |
-| {§methods-session-name-admission} | Session-name admission. |
-| {§capability-admission} | One admission path owns external authority. |
-| {§workspace-capability-policy} | The workspace is the access boundary. |
-| {§workspace-capability-inspection} | Client inspection uses the admission resolver. |
-| {§question-tool} | The `question` tool asks the session's owner and waits for the answer the client-interaction lifecycle… |
-| {§session-tool-admission} | Tool visibility and execution share admission. |
-| {§owner-interaction-ring} | An interaction tool is offered only where an answer can come from. |
-| {§model-catalog} | Model discovery is a bounded local projection, not provider activity. |
-| {§session-model-selection} | Session-owned model selection. |
-| {§session-effort} | Reasoning effort is a durable session policy. |
-| {§session-effort-source} | The effort source: a default never masquerades as a choice. |
-| {§methods-loop-run-model} | Per-loop model selection. |
-| {§methods-loop-run-child-provider} | Child-provider selection is one durable subcall policy. |
-| {§methods-log-coordinate} | Log coordinate. |
-| {§methods-log-entry-wire} | Log entry wire fidelity. |
-| {§methods-readable-reasoning} | Readable provider reasoning remains derived provider evidence. |
-| {§methods-invocation} | `invocation`: a row that discharges an obligation names the operation that opened it. |
-| {§methods-answering} | `answering`: a reply names the operation that sent the message it answers. |
-| {§notifications} | Notifications: core events |
-| {§notifications-operation-event} | `operation/event` — `ApplicationOperationEvent`: `{ sessionId, loopId, turnId, sequence, origin, projectRoot,… |
-| {§notifications-log-entry-notify} | `log/entry` — `{ entry: LogEntry }` |
-| {§notifications-loop-terminated} | `loop/terminated` — `{ sessionId, loopId, loopSeq, result, hitMaxTurns, turnIds, usage: { accounting,… |
-| {§notifications-loop-packet} | `loop/packet` — `{ sessionId, loopId, loopSeq, packetCount, gauge: { curationWeight, curationBudget,… |
-| {§notifications-loop-proposal} | `loop/proposal` — contracts-owned `ProposalProjection` |
-| {§notifications-loop-interaction} | `loop/interaction` — contracts-owned `ClientInteractionProjection` |
-| {§notifications-workspace-created} | `workspace/created` — `{ id, name, projectRoot }` |
-| {§notifications-workspace-renamed} | `workspace/renamed` — `{ id, name }` |
-| {§notifications-workspace-hidden} | `workspace/hidden` — `{ id, hidden_at }`, as `setWorkspaceHidden` returns it |
-| {§notifications-session-hidden} | `session/hidden` — `{ id, hidden_at, sessionIds }`, as `setSessionHidden` returns it |
-| {§notifications-session-policy} | `session/policy` — `{ sessionId, model, spawnModel }`, the session's generation policy as… |
-| {§notifications-stream-event-on-channel-change} | `stream/event` — `{ entryId, sessionId, target, channel, state, contentLength, mimetype?, loop_seq?,… |
-| {§notifications-stream-concluded} | `stream/concluded` — `{ entryId, sessionId, target, subscriptionId, scheme, result, summary, wakeAction,… |
-| {§notifications-notice-event} | `notice/event` — `{ sessionId, loopId, notice: Notice }` |
-| {§notifications-outside-event} | `outside/event` — `{ sessionId, loopId, turnId, coordinate, text, tokens }` |
-| {§notifications-reasoning-event} | `reasoning/event` — `{ sessionId, loopId, turnId, loopSeq, turnSeq, modelCallId, requestSequence, phase,… |
-| {§notifications-stream-event-failure-isolation} | The extension-facing `NotifyCaps.streamEvent()` remains a synchronous advisory call while core resolves its… |
-| {§notifications-envelope-carries-workspaceid} | The notification envelope carries its workspaceId: event scope is explicit. |
-| {§session-external-reference} | External session references |
-| {§connection-lifecycle} | Client operations and their connection lifetime |
-| {§actor-boundary-client-operations} | A client operation acts on workspace resources, attributes messages to its person, and reads a log in the… |
-<!-- /map -->
+`ApplicationPort` ({§application-port}) is the in-process interface implemented by `Daemon` and consumed by exterior adapters:
 
-`ApplicationPort` is the contracts-owned interface implemented by `Daemon` and
-consumed by every exterior adapter ({§application-port}). Its function names are
-transport-neutral library calls, not public wire names; this table specifies
-Core's behavior behind them.
+| Area | Methods | Contract |
+|---|---|---|
+| Events & credentials | `subscribeToEvents(handler) -> unsubscribe`, `credentials` | Subscribe to {§notifications} (subscriber failures are logged and isolated); `credentials` exposes the daemon's {§credential-authority} (`issue`, `verify`, `consume`, `revokeFamily`, `onRevoked`, `sessions`, `registerClient`, `client`, `authenticateClient`). |
+| Proposals & interactions | `pendingProposals(workspaceId)`, `resolveProposal(logEntryId, resolution, owner)`, `pendingClientInteractions(workspaceId)`, `resolveClientInteraction(interactionId, resolution, respondent, message?)` | Intersect durable pending rows with live waiters and return validated {§proposal-projection} / `ClientInteractionProjection`; validate workspace-scoped `owner` / `respondent` before delivering one `accept`, `reject`, `cancel`, or interaction payload. |
+| Loop admission & cancellation | `runLoop({ workspaceId, sessionId, loopId?, prompt, source?, maxTurns?, openPaths?, selector?, childSelector? })`, `messageAdmission({ workspaceId, address, body })`, `cancelDrain(sessionId, reason?)`, `cancelSession({ workspaceId, sessionId, reason? })`, `cancelLoop({ workspaceId, loopId, reason? })` | `runLoop` validates a model session (`origin="model"`), persists the prompt with the effective turn ceiling, and returns status `100` (`{ loopId, action }`; terminal result arrives via `loop/terminated`). `messageAdmission` checks the message address idempotency key ({§message-source-scheme}: `new`, `accepted` on identical body, or `422 message-address-reused` on different body; `runLoop` refuses repeats with `409 message-already-accepted` or `422`). `cancelDrain` begins durable structured cancellation; `cancelSession` awaits tree cancellation and stream reap ({§cancellation}); `cancelLoop` cancels one client operation loop and its attached executions ({§connection-lifecycle}). |
+| Reads, client actions & extension actions | `readInbox`, `readStreams`, `dispatchClientAction`, `readLog`, `readEntry`, `readEntryChannel`, `listProviders`, `listModels`, `listClientDisplayCapabilities`, `listModuleActions`, `invokeModuleAction` | `readInbox` returns unconsumed accepted messages ({§message-arrival}, {§loop-lifecycle-vocabulary}, {§message-loop-containment}). `readStreams` returns open subscriptions (`entryId`, `sessionId`, `target`, `lifetime`, causal coordinates, and channels `{ channel, state, mimetype }`; {§subscriptions}, {§exec-lifetime}, {§channels}). `dispatchClientAction` runs parsed client statements as one client operation of `actor` ({§connection-lifecycle}). `readLog` reads newest-first by ids, recency (`sinceId`/`beforeId`, `PLURNK_SERVICE_LOG_READ_PAGE`/`MAX`), or exact `loopSeq`/`turnSeq`/`sequence`. `readEntry` and `readEntryChannel` return {§entry-read-result} ({§scheme-address}). `listClientDisplayCapabilities` composes sorted scheme ({§manifest-client-display}) and MIME ({§mimetype-client-display}) declarations ({§client-display-capabilities}). `listModuleActions` and `invokeModuleAction` expose setup-registered module actions checked against their registered scope. |
 
-| Area                                              | Function | Core contract |
-|---------------------------------------------------|----------|---------------|
-| §methods-event-subscribe Events                   | `subscribeToEvents(handler) -> unsubscribe` | Subscribes to the raw event source in {§notifications}. A subscriber failure is logged and cannot re-enter engine control flow. |
-| §methods-credentials Credentials                  | `credentials` | The {§credential-authority}: `issue`, `verify`, `consume`, `revokeFamily`, `onRevoked` and the sign-ins of a subject by `sessions` ({§credential-authority}), and a module's own client by `registerClient`, `client` and `authenticateClient` ({§credential-authority}); one in-memory authority per daemon, offered to every module on the seam. |
-| §proposal-list Proposals                          | `pendingProposals(workspaceId)` | Intersects durable proposed rows with the lifecycle owner's live resolution waiters, then returns their validated {§proposal-projection}; persistence alone cannot advertise an unresolvable client interrupt. |
-| §methods-proposal-resolve Proposals               | `resolveProposal(logEntryId, resolution, owner)` | Validates the workspace-scoped owner before delivering one accept, reject, or cancel decision. Unknown, mismatched, and already-resolved identities fail without consuming the gate; the adapter authenticates its owner identity. |
-| §client-interaction-list Client interactions      | `pendingClientInteractions(workspaceId)` | Intersects durable interaction rows with their live operation waiters and returns the contracts-owned projection; a row alone is not a resumable interaction. |
-| §methods-client-interaction-resolve Client interactions | `resolveClientInteraction(interactionId, resolution, respondent, message?)` | Validates the recorded recipient before delivering one resolved payload or cancellation. Unknown, mismatched, and already-resolved identities fail before affecting an operation. |
-| §methods-loop-run Loops                           | `runLoop({ workspaceId, sessionId, loopId?, prompt, source?, maxTurns?, openPaths?, selector?, childSelector? })` | Validates a model session and persists the request with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. An explicit Loop recipient follows {§session-wait-timing}. A trusted adapter may identify the prompt's causal actor with one canonical `source`; ordinary clients cannot author it through their protocol surface. Messages carry no approval authority. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
-| §message-idempotency Message admission           | `messageAdmission({ workspaceId, address, body })` | A client message's address is its idempotency key ({§message-source-scheme}): `new` when nothing is accepted there, `accepted` when the same body is, so a repeat attaches to what the message started instead of admitting it twice; another body under an accepted address is refused, 422 `message-address-reused`, creating nothing. `runLoop` refuses every repeat it is handed: other words 422 `message-address-reused`, the same words 409 `message-already-accepted`, a duplicate racing the original. |
-| §methods-session-inbox Reads                       | `readInbox({ workspaceId, sessionId })` | The accepted messages the session has not yet observed at a turn boundary ({§message-arrival}), in acceptance order, each by its immutable source address (`path`), causal `source`, `body`, `loopId` and the `lifecycle` of that loop ({§loop-lifecycle-vocabulary}); a message leaves it when its arrival row lands, and one whose loop concluded first stays, with that terminal lifecycle, since nothing will observe it ({§message-loop-containment}). |
-| §methods-session-streams Reads | `readStreams({ workspaceId, sessionId })` | The streams the session holds open ({§subscriptions}), in opening order, each its subscription's facts as `stream/event` names them: `entryId`, the initiating `sessionId`, the canonical `target`, `lifetime` (`loop`, `turn` or `detached`, as {§exec-lifetime} names what ends it besides its own exit; a duration is loop-bound and reads `loop`, its deadline unreported), the causal `loop_seq`, `turn_seq` and `sequence` read from the `source` it recorded when it began in a turn ({§subscriptions}), and every channel of its entry, written or not, as `{ channel, state, mimetype }` ({§channels}). Content stays the resource's ({§methods-entry-read}); a closed stream is gone, its conclusion already published ({§notifications-stream-concluded}). The session must belong to the workspace. |
-| §methods-loop-cancel Loops                        | `cancelDrain(sessionId, reason?)`; `cancelSession({ workspaceId, sessionId, reason? })`; `cancelLoop({ workspaceId, loopId, reason? })` | `cancelDrain` begins durable structured cancellation and reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. The ownership-bounded `cancelSession` awaits that same tree cancellation and stream reap, so an exterior protocol can project the settled durable result without polling or fabricating state. `cancelLoop` cancels exactly one client operation ({§connection-lifecycle}): its dispatch while that runs, and every attached execution its rows started that still runs, then reports whether any of it was running; nothing else in the runtime session shares its scope. |
-| §methods-op-mirror Op mirror: client dispatch               | `dispatchClientAction({ workspaceId, actor, contextSessionId?, statements, onLoop? })` | Dispatches already-parsed grammar statements as one client operation of `actor` ({§connection-lifecycle}), in the workspace's Functionality ({§actor-boundary}), reading `log:///` in `contextSessionId`'s log ({§actor-boundary-client-operations}). `onLoop` hears the operation's loop before any statement runs. Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the promise resolves. Core exposes no per-op method family. |
-| §methods-log-read Reads                           | `readLog({ workspaceId, sessionId, ...coordinate })` | Ownership-checks the session, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate, newest first. `sinceId` keeps rows after an id and `beforeId` rows before one, so a reader pages back through the whole log one page at a time. An omitted `limit` is `PLURNK_SERVICE_LOG_READ_PAGE`, and any `limit` is capped at `PLURNK_SERVICE_LOG_READ_MAX`. |
-| §methods-entry-read Reads                         | `readEntry({ workspaceId, sessionId, target, channel?, offset? })` | Acquires the selector from that session's perspective ({§scheme-address}) and returns {§entry-read-result}, either complete or as one channel suffix, without creating action evidence. |
-| §methods-entry-channel-read Reads                 | `readEntryChannel({ workspaceId, sessionId, target })` | The channel `target` selects, its fragment's or else its scheme's default there, read as `readEntry` reads it and returned complete as {§entry-read-result}: what the HTTP form of an address answers with. |
-| Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
-| Model catalog                                     | `listModels(query)` | Returns one validated bounded {§model-catalog-wire} page under {§model-catalog}; performs no provider request or selection. |
-| Client capabilities                               | `listClientDisplayCapabilities()` | Composes sorted scheme declarations ({§manifest-client-display}) followed by sorted MIME declarations ({§mimetype-client-display}) into the validated shared wire ({§client-display-capabilities}). The internal `exec` operation handler is excluded; its addressable runtime-tag scheme faces remain included. |
-| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the workspace and returns its client envelope, minting no session, and emits global `workspace/created`; with a project root and no name it names and selects the workspace under {§execution-output-identity}, showing a hidden one ({§machine-processes}), emitting `workspace/created` only for a workspace it created. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
-| §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId } \| { name } \| { projectRoot })` | Exactly one selector returns an existing workspace's client envelope, minting and activating nothing. Names are literal lookups, including previously admitted names. An absolute project root selects its folder-derived default name ({§execution-output-identity}), not a workspace by its stored folder. An absent target is `404 workspace-not-found`; ambiguous or absent selectors are `400 identity-invalid`. It retains no caller or transport binding state. |
-| §methods-workspace-activate Workspace lifecycle   | `activateWorkspace({ workspaceId })` | Makes the demand a turn makes, without a turn: a cold workspace activates and publishes its complete capabilities; a concurrent demand shares that one activation; it resolves once the workspace is active and leaves it warm under `PLURNK_SERVICE_WORKSPACE_WARM_MS`. Creation and attachment stay passive; an owner's arrival calls it ({§acp-owner-activation}). |
-| §methods-session-create Workspace lifecycle  | `createSession({ workspaceId, name?, parentSessionId?, owner? })` | Creates a distinct model-origin session with empty history. A root may name a registered owner; a child names its parent and inherits ownership. Supplying both parent and owner is invalid ({§session-ownership}). |
-| Session ownership | `registerSessionOwner(workspaceId, { address, tools, interactive })` | Declares or replaces an owner's supported client-tool names and whether a person attends it, in that workspace; `_plurnk` is reserved. |
-| Session ownership | `claimSessionOwner({ workspaceId, sessionId, owner })` | Claims a model session and its model descendants under {§session-ownership}, returning its effective owner. The owner must already be registered. |
-| Runtime actor | `ensureRuntimeSession(workspaceId)` | Returns the workspace's `_plurnk` actor, creating it if absent; it always retains runtime ownership. |
-| Workspace lifecycle                               | `forkSession({ workspaceId, sessionId, name? })` | Creates a child session that branches the source session's history while sharing workspace state. The source is a model session, else `409 model-session-required` ({§machine-processes}). |
-| §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the workspace's unique mutable name, under the admission of {§execution-output-identity}; sessions, log, and membership remain intact, and a refused name changes nothing. |
-| §methods-workspace-hide Workspace metadata | `setWorkspaceHidden({ workspaceId, hidden })` | Hides or shows the workspace under {§machine-processes} and returns `{ id, hidden_at }`, the mark it now holds. An absent workspace is `404 workspace-not-found`, a hide over live work `409 live-work`, and a `hidden` that is not boolean `400 flag-invalid`. |
-| §methods-session-hide Session topology | `setSessionHidden({ workspaceId, sessionId, hidden })` | Hides or shows the session's group under {§machine-processes} and returns `{ id, hidden_at, sessionIds }`: the session's mark now and the sessions whose mark the call changed, none when nothing changed. A session outside the workspace is `404 session-not-found` and a hide over live work `409 live-work`. |
-| §methods-workspace-rollback Workspace files      | `rollback({ workspaceId, sessionId, actor, to })` | Reverses `sessionId`'s settled file mutations after its coordinate `to` as one client operation of `actor` ({§log-wire-format}, {§connection-lifecycle}); answers a `RollbackReport`. |
-| §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?, sessionId?)` | Returns nonempty loop-seed prompts a client addressed to the workspace's model sessions, newest-first; `sessionId` narrows to one session. Authorship is the seed message's address ({§message-arrival}): a session-issued seed (WORK, FORK, SEND to a session) has none and is never history, whichever session it seeded; a client prompt at a forked model session is. An omitted limit is `PLURNK_SERVICE_PROMPTS_PAGE`. |
-| Workspace metadata                                | `listWorkspaces({ hidden? })`, `workspaceDerivationStatus(...)` | Reads current workspace identity, with each folder, its label ({§execution-output-identity}) and its `hidden_at` mark, filtered by the mark when `hidden` is present ({§machine-processes}), and derivation progress. |
-| §methods-session-read Session topology              | `readSession({ workspaceId, identity })` | Ownership-bounds an exact id-or-name lookup and returns one durable Session projection or `null` under {§application-session-observation}. Supplying both identities or neither is invalid. Any non-empty name is looked up, the runtime session's `_plurnk` included: the lookup is no minting door ({§session-scheme}). |
-| §methods-session-list Session topology              | `listSessions(workspaceId, query?)` | Returns the workspace's durable Session projections under {§application-session-observation}. The origin filter is exact; an explicitly present `parentSessionId` filters roots (`null`) or one immediate parent (id), while omission returns every lineage position, and a present `hidden` filters by the mark each projection carries as `hidden_at` ({§machine-processes}). Each projection carries `kind` (`root` for a session with no parent, `fork` for a child with a fork boundary, `work` for any other child) and `lifecycle`, the representative work loop's status through {§loop-lifecycle-vocabulary} (`idle` with no work loop), so a directory row shows the same lifecycle glyph the bound session's own status gauge shows; clients infer neither (#523). |
-| §methods-session-overview Session overview | `readSessionOverview({ workspaceId?, limit, excerptChars })` | Returns `{ sessions, workspaces, omitted }`, the places of the daemon or of one workspace with what waits there, under {§application-session-overview}: each place's lifecycle, the gates it waits on and its latest finished reply ({§message-completion}) with its excerpt ({§list-excerpt}) of at most `excerptChars` characters, most recently finished first; every place waiting on a gate and the first `limit` in that order, `omitted` counting the rest. Hidden places are out of scope ({§machine-processes}). An unknown `workspaceId` is 404 `workspace-not-found`. |
-| §methods-session-loops Loop lifecycle              | `listSessionLoops({ workspaceId, sessionId })` | Ownership-checks the Session and returns its Loops in sequence order under {§application-loop-observation}, including the validated exact terminal result when one exists, and each Loop's `invocation`: `{ sessionId, address }`, the Session and the log address ({§methods-invocation}) of the operation that sent the Loop's first message ({§loop-completion}), or null when a person, a client, a peer or the daemon sent it. It performs no scheduling or event replay. |
-| §methods-session-accounting Session spend       | `sessionAccounting({ workspaceId, sessionId })` | Ownership-checks the Session and returns the {§provider-accounting} projection of every settled request on any loop the Session or a descendant of it (`parent_session_id`, to any depth) ran, since the Session began: its own spend and its delegations', the same tree the turn cap counts ({§operator-config-workspace-settings}). Nothing spent is explicit zero. One loop's own accounting stays {§notifications-loop-terminated}'s. Derived from the request ledger on every read ({§tokenomics-provider-usage}); no rollup, no second store. |
-| §methods-session-gauge Session gauge | `sessionGauge({ workspaceId, sessionId })` | Ownership-checks the Session and returns the four {§tokenomics-client-gauge} facts its latest packet reported in `loop/packet.gauge`, read from durable evidence: each `null` when unknown, all `null` before the Session's first packet. A client attaching later starts from the gauge a live one holds. |
-| Extension actions | `listModuleActions()`, `invokeModuleAction(name, params, context)` | Lists setup-registered `{ name, scope, inputSchema, outputSchema }` descriptors in sorted order. Invocation requires a context matching the registered scope; missing names, forged scope, and missing workspace identity fail before the owner runs. Handler values remain opaque to core. |
+### §methods-workspace-create Workspace and session lifecycle
 
-§methods-loop-run-fold-consistency **A folded prompt cannot silently reconfigure
-its loop.** When `runLoop` targets an active or 202-parked loop, core appends the
-prompt to that same loop and returns `action: "injected_next_turn"`. Configuration
-already durable on the loop remains authoritative:
-
-| Requested input       | Omitted                                              | Equal to the durable selection | Different from the durable selection |
-|-----------------------|------------------------------------------------------|--------------------------------|--------------------------------------|
-| Provider/model        | The resolved request selection must still agree.     | Fold.                          | 409 provider conflict.               |
-| `maxTurns`            | Keep the durable ceiling.                            | Fold.                          | 409 turn-ceiling conflict.           |
-
-The conflict names both selections and directs the caller to cancel or conclude
-the loop before changing configuration. A newly enqueued loop instead persists
-the requested configuration normally.
-
-§methods-loop-run-open-paths **Workspace paths are core-owned context reads.**
-`openPaths` belongs to the message submitted by the client. The client
-sends local paths or scheme URIs, never duplicated resource bytes; core dispatches one ordinary
-`plurnk`-origin READ per path from inside the owning workspace, and successes
-and failures surface through the normal operation-result contract.
-Path spelling follows {§path-syntax}, including channel fragments and literal
-delimiters. Malformed URI syntax is rejected before message admission; a valid
-address whose resource is absent produces the ordinary READ failure.
-
-| `runLoop` disposition | Message and path behavior                                                                            |
-|-----------------------|------------------------------------------------------------------------------------------------------|
-| New loop              | Persist with the initial message; publish it and READ its paths on turn 1.                          |
-| Active loop           | Persist with the injected message; publish it and READ its paths together on the next turn.        |
-| Parked loop           | Persist with the waking message; publish it and READ its paths together on the resumed turn.       |
-
-If an unpublished message is promoted into subsequent work under
-{§message-loop-containment}, its selected paths travel with it.
-
-§methods-rebind **Rebinding: binding belongs to the client-interface module.** Core's
-workspace lifecycle calls return exactly the workspace (`workspaceId`,
-`workspaceName`, `projectRoot`, `projectLabel`); they carry no session, bound-session
-or operation-loop binding. Core retains no connection, thread, or current-workspace
-mapping. A module may replace its own binding with a later create or attach result
-without requiring a new transport; it resolves the bound session separately, while
-each client operation allocates its own administrative loop under {§connection-lifecycle}.
-
-§methods-session-name-admission **Session-name admission.** Session
-creation and fork apply {§session-scheme} before lookup or creation. A client therefore cannot forge or resume the runtime actor (its
-name lies outside `SESSION_NAME`) or create a session under a spelling model session control
-could not mint.
-
-§capability-admission **One admission path owns external authority.** Core derives one or more `CapabilityDescriptor` demands from each routed statement, then evaluates the service and workspace policy layers. Every demand of a composed operation must survive before execution or proposal creation. A denial is an exact terse 403 identifying the denied descriptor and owning policy scope; it never guesses the model's intent or recommends an alternate operation.
-
-| Statement | Demands |
-| --- | --- |
-| COPY | observation of its source and mutation of its destination |
-| MOVE | additionally mutation of its source |
-| A resource-backed execution | its runtime plus source observation |
-| Unknown schemes, runtimes and tools | continue to their ordinary resolver, so capability policy cannot turn absence into a misleading restriction; the same resolver shapes generated scheme references, session tool documents, and Turn0 surveys |
-| NOTE, lifecycle declarations, log KILL, and label or targetless SEND | log/program control rather than routed external demands, so outside capability selectors; runtime mutations of owned generated entries ({§session-scheme}) likewise maintain intrinsic state |
-| Producer identity | grants no exemption: source observations and other effects in the same operation retain their independent demands, and harness-authored initialization obeys workspace policy |
-
-§workspace-capability-policy **The workspace is the access boundary.**
-`workspaces.settings.capabilities` is the one mutable access policy under the
-service ceiling. Every actor, including an existing child, uses the current
-workspace policy; neither creation nor delegation snapshots authority. Sessions
-own their log and scratchpad, not tools or resource grants; their owner decides only
-which interaction runtimes they are offered ({§owner-interaction-ring}). Intrinsic source
-mutability, workspace separation, and proposal approval remain distinct
-contracts. Input is validated before persistence; malformed stored policy fails
-at its reader with the workspace coordinate and cause.
-
-§workspace-capability-inspection **Client inspection uses the admission
-resolver.** Workspace capability actions return the contracts-owned
-`CapabilityProjection` {§capability-policy-projection}: service, workspace, and
-their normalized effective intersection. The same resolver governs dispatch
-and packet shaping. Replacement preserves unrelated workspace settings. Before their next operation
-or observation, existing sessions reconcile generated references against it. It requires no selected
-bound session and returns the complete fresh projection.
-
-§question-tool **The `question` tool asks the session's owner and waits for the answer the client-interaction lifecycle delivers.** Core publishes `question` as a tool of the in-process `plurnk` runtime (`plurnk (question)`, schema at `workspace:///_plurnk/tools/plurnk/question.json`) and offers it only to a session whose owner would receive it ({§owner-interaction-ring}).
-
-| Facet | Rule |
-| --- | --- |
-| Body | the MCP2 2026-07-28 form-elicitation shape verbatim, `{ message, requestedSchema }`; target `(question)` selects the tool on `plurnk` |
-| Result | the `results` channel carries the standard `ElicitResult` (`{ action: "accept", content? }`, `{ action: "decline" }`, or `{ action: "cancel" }`): the executor submits the contracts-owned form `ClientInteractionRequest` (`{ toolName: "question", mode: "form", message, requestedSchema }`), the client returns the exact `ClientInteractionResolution`, and the executor writes it verbatim to `results`; answer fields are data, including fields named `action` or `content` |
-| Lifecycle | the executor awaits the shared client-interaction lifecycle — durable pause, reconnect discovery, cancellation and the answer-as-resolution all come from {§proposal-projection}; there is no loopback MCP and no proposal masquerade; answer and cancellation resume the same waiting loop whether resolved before or after it parks, and the next packet contains the result without replaying the execution |
-| Effect | `read`: the tool observes the human's answer and is never proposal-gated |
-| Admission | the tool declares the `interaction` trait, which the shared resolver projects as access class `interact`, so any capability-policy layer may admit or deny `plurnk (question)` independently of family tools; the ordinary executor policy also applies, `PLURNK_EXECS_PLURNK=0` disabling registration and teaching ({§executor-policy}) |
-
-§session-tool-admission **Tool visibility and execution share admission.** The
-reserved tool tree's FIND/READ faces drop a runtime or tool document whenever
-the workspace capability policy denies its descriptor. The ordinary document
-reconciler runs before operation turns and observation requests, so FIND counts,
-weights, and catalog text agree. Turn0 surveys that same catalog. Dispatch evaluates that
-same descriptor and policy cascade at the operation boundary, never at
-registration; there is no separate per-tool availability system.
-
-§owner-interaction-ring **An interaction tool is offered only where an answer can come
-from.** An asking session adds one ring inside that cascade, derived live from its owner
-and never stored. It denies each interaction tool or runtime whose tool the owner would not
-receive under {§session-ownership}; an interaction tool asks under its own
-tool name (such as `question` on `plurnk`), or its runtime tag for a standalone interaction runtime.
-
-| Surface | With the ring |
-| --- | --- |
-| Turn 0 survey and the session's FIND of the shared reserved tree | The runtime's documents are absent, from counts and folder summaries too. |
-| Dispatch | 403 `capability-denied` naming scope `owner`, with the recovery pinned in {§pinned-wording-core}. |
-| Workspace capability projection and reserved-tree materialization | Unaffected: they take no session. |
-
-A FIND or READ by exact path is not filtered.
-
-§model-catalog **Model discovery is a bounded local projection, not provider
-activity.** Core composes the release-pinned Models.dev snapshot with
-provider-owned `{§model-catalog-readiness}` and {§provider-effort}.
-Each entry includes the exact route's admitted `efforts`; session-level
-model/spawn intersections and alias tuning are not catalog facts. The default query includes only
-providers configured enough to attempt; `availability: "all"` includes every
-catalog model with structured missing-configuration causes. Provider and text
-filters apply before deterministic selector ordering and offset/limit paging;
-the default page is 50 and the schema caps it at 100. Discovery never probes,
-authenticates, invokes, or selects a model, and catalog data never enters model
-packets or state snapshots.
-
-§session-model-selection **Session-owned model selection.** Every model session owns one durable model, persisted as a nullable `model_routes` foreign key:
-
-- Concurrent first selections of the same resolved tuple share one identity; an insertion conflict returns the existing route without changing its fields.
-- A root model session is seeded once — from an explicit selection, else the daemon default — and never re-seeded from a later default change. A deliberately modelless daemon leaves the session unset and rejects model work until an explicit selection. First-time initialization of an unset session model remains legal and never rewrites an existing loop's generation snapshot.
-- Starting a loop snapshots the session's resolved model onto the loop; inject, park, wake, retry, reconnect, and restart continue from the loop snapshot and never re-resolve through the alias cascade.
-- A WORK/FORK child copies the spawning loop's effective spawn model (spawn override ?? model) onto the new session by value at creation; it retains no live link and begins with no override, so a later parent change affects only that session's future loops and descendants.
-- The runtime session and other Plurnk-owned bookkeeping sessions run no model loops and own no model selection; the model, spawn-override, and effort controls refuse them with `409 model-session-required` before any policy row is initialized or written.
-- An explicit model, spawn-override, or effort change while the session holds any queued, running, or parked loop is a precise `409 session-loop-active` ({§session-loop-lifecycle}), independent of a process-local drain; the policy write checks liveness atomically, including selections carried by new prompts. Reasserting unchanged settings is not a change. Select after concluding or cancelling the unfinished tasks.
-- An explicit change to a model whose calibrated curation budget ({§tokenomics-calibrated-readout}) cannot hold the session's current context is refused with a precise `413 context-exceeds-model-budget` naming the current context tokens, the target model, and its budget; curate below that budget or select a larger model.
-
-A client-created branch copies the source session's durable model, spawn
-override, and effort by value alongside its history. It retains no
-live policy link to the source session.
-
-§session-effort **Reasoning effort is a durable session policy.** Each selected session model has exactly one member of the shared `{§effort-wire}`; a modelless session has none. Model identity and reasoning policy are persisted atomically, while visibility of returned reasoning and token ceilings remain separate concerns.
-
-| Fact | Rule |
-| --- | --- |
-| Seeding | a declared alias's scoped environment value — or the global provider value for an exact route — seeds the policy only when the session first receives its model; inspection or mutation materializes the daemon-default model and policy onto an uninitialized model session before answering, and a deliberately modelless daemon remains unset |
-| An explicit change | validates the exact policy against both the session model and its optional spawn model and is refused while the session owns a live or parked loop |
-| Identity-grade | every client-visible model route carries the session's durable policy as `effort`, omitted only when the cataloged model has no reasoning dimension |
-| Inspection | returns the supported-policy intersection of those two routes |
-
-§session-effort-source **The effort source: a default never masquerades as a choice.** The session row records
-`effort_source` beside `effort`: `default` when the value was seeded from the alias
-or provider configuration, `explicit` only after `setSessionEffort`. `readSessionEffort`
-returns `source`, and a projected `ModelRoute` carries `effortSource` exactly when it carries
-`effort`, so a client can render `deepdumb[low]` differently from a seeded `low` without
-inferring anything. Selecting a new model keeps an explicit policy (validated against the new
-model) and re-derives a default one from the new alias, so a seeded value never outlives the alias
-that supplied it; the source itself is not part of the mid-loop generation-change check, because
-choosing the value already in force changes no inference. A spawned child inherits its
-parent's effective policy by value as `default`: nothing was chosen on that session (#528).
-
-Starting a loop snapshots the session's policy beside its model. Restart, retry,
-park, wake, and injection retain that immutable snapshot. WORK, FORK, and BARE
-inherit the spawning loop's policy by value; no descendant consults a later
-environment or parent-session change. Unsupported policies fail with a precise
-provider-boundary problem rather than being silently weakened or translated.
-
-§methods-loop-run-model **Per-loop model selection.** `runLoop` accepts one
-optional `selector`: either a declared alias or an exact `<provider>/<model>`
-route. An exact route stores no fabricated alias and receives no alias-scoped
-configuration. An explicit selection persists onto the
-addressed session before the loop snapshots it; an omitted selector is not a
-selection and continues the session's durable model
-({§session-model-selection}). The fully resolved provider identity and reasoning
-policy are persisted on the loop and remain immutable through turns, parks,
-wakes, and restart ({§session-effort}).
-Injecting into an existing loop with a conflicting explicit selection fails
-before work is accepted. Provider instances are cached; no resume path
-substitutes a boot default for missing or malformed durable selection.
-
-§methods-loop-run-child-provider **Child-provider selection is one durable
-subcall policy.** Optional `childSelector` uses the same alias-or-exact-route
-vocabulary for every WORK/FORK descendant and BARE inference; omitted uses
-`PLURNK_MODEL_CHILD`, while explicit `childSelector: null` means inherit. An
-explicit override persists onto the addressed session before the loop
-snapshots it; an omitted selector continues the session's durable override
-({§session-model-selection}). Core persists the resolved policy on each loop. A
-child runs on the spawning loop's effective spawn model and carries the same
-policy deeper; inherit uses the spawning loop's provider and remains inherit.
-BARE consumes the selection without spawning a child. Packet admission is
-unchanged: a smaller WORK is valid when its packet fits, and an oversized
-inherited FORK terminates through the ordinary child-loop result without
-preflight assembly or provider fallback.
-
-§methods-log-coordinate **Log coordinate.** Every `LogEntry` returned by
-`readLog` or emitted through `log/entry` carries `loop_seq` and `turn_seq`
-beside database ids, so a client can render and resolve the logical `L/T/S`
-coordinate without fetching all rows and matching locally.
-
-§methods-log-entry-wire **Log entry wire fidelity.** `readLog` and `log/entry`
-name the row's session by its id and its immutable name (`session_id`, `session_name`,
-{§machine-processes}), preserve causal `source` and the row's lifecycle `state` (`proposed` while a
-proposal awaits its decision, then `resolved`, `failed` or `cancelled`), and parse the row's JSON `attrs` into
-structured data. Client interfaces do not reconstruct these fields from operation or origin.
-
-§methods-readable-reasoning **Readable provider reasoning remains derived
-provider evidence.** On a turn's first model operation row, `readLog` and `log/entry`
-project the turn's nonempty admitted `packet.assistant.reasoning` as the optional
-`reasoning` field, from the row's first announcement; no other row repeats it. Beside it,
-`reasoning_model_call_id` and `reasoning_request_sequence` name the request that streamed it (the
-turn's accepted model call and that call's response request), so a client can match the reasoning it
-watched stream; history a FORK inherited was streamed by no request of this session and names none. The durable packet remains the sole stored representation;
-core does not copy readable reasoning into log attributes or bodies. A turn
-without readable reasoning omits the field.
-
-§methods-invocation **`invocation`: a row that discharges an obligation names the operation that opened it.** `readLog`
-and `log/entry` project `invocation`, the log address of that operation ({§loop-completion}), on every
-row that discharges one, so a client pairs the answer with its call without matching addresses:
-
-| Discharging row | Its invocation |
+| Method | Contract |
 |---|---|
-| A stream observation ({§exec-stream}) | The execution, as its subscription recorded it ({§subscriptions}) |
-| A child's conclusion ({§env-delta-child-termination}) | The operation that sent the first message of the concluded loop |
-| A completion reply delivered to the sender ({§message-reply-delivery}), including {§loop-completion} | The operation that sent the message it completed |
+| `createWorkspace({ name?, projectRoot?, settings? })` | Validate `settings` ({§operator-config-workspace-settings}), create or unhide (`projectRoot` with no `name` under {§execution-output-identity}, {§machine-processes}) the workspace without minting a session or activating Functionality, and emit `workspace/created` when newly created. |
+| `attachWorkspace({ workspaceId } \| { name } \| { projectRoot })` | Resolve an existing workspace by exactly one selector (`404 workspace-not-found`, `400 identity-invalid`), minting, activating, and retaining no transport binding state. |
+| `activateWorkspace({ workspaceId })` | Ensure a cold workspace activates and publishes its complete capabilities once across concurrent demands ({§acp-owner-activation}), leaving it warm under `PLURNK_SERVICE_WORKSPACE_WARM_MS`. |
+| `createSession`, `forkSession`, `registerSessionOwner`, `claimSessionOwner`, `ensureRuntimeSession` | `createSession` creates a model session (`parentSessionId` or `owner`, never both; {§session-ownership}, {§session-scheme}). `forkSession` branches a model session (`409 model-session-required`; {§machine-processes}). `registerSessionOwner` declares an owner's `tools` and `interactive` flag (`_plurnk` reserved); `claimSessionOwner` claims a model session tree; `ensureRuntimeSession` returns `_plurnk`. |
+| `renameWorkspace`, `setWorkspaceHidden`, `setSessionHidden`, `rollback`, `listPrompts`, `listWorkspaces`, `workspaceDerivationStatus` | `renameWorkspace` updates the workspace name ({§execution-output-identity}). `setWorkspaceHidden` / `setSessionHidden` hide or show (`409 live-work` over active work, `400 flag-invalid`; {§machine-processes}). `rollback` reverses a session's file mutations after `to` as a client operation ({§log-wire-format}). `listPrompts` returns client loop-seed prompts (`PLURNK_SERVICE_PROMPTS_PAGE`; {§message-arrival}). `listWorkspaces` and `workspaceDerivationStatus` inspect workspace metadata and derivation progress. |
+| `readSession`, `listSessions`, `readSessionOverview`, `listSessionLoops`, `sessionAccounting`, `sessionGauge` | Inspect Session projections ({§application-session-observation} with `kind: "root" \| "fork" \| "work"` and `lifecycle`), workspace/daemon overview (`readSessionOverview` with `sessions`, `workspaces`, `omitted` under {§application-session-overview}, {§message-completion}, {§list-excerpt}), loop history (`listSessionLoops` under {§application-loop-observation} with `invocation` under {§methods-invocation} and {§loop-completion}), tree request spend (`sessionAccounting` under {§provider-accounting}, {§tokenomics-provider-usage}), and latest packet gauge (`sessionGauge` under {§tokenomics-client-gauge}). |
 
-Each is derived from what the row records: the publication it advanced, or the occurrence it materialized.
-A message names an invocation only to the session whose operation sent it; history a FORK inherited names the
-same invocation as its original, at the same coordinate. The row's own `source` keeps its attribution meaning
-({§env-delta-attribution}). An obligation whose opener was not recorded, and every other row, omits the field.
+- **Fold consistency**: when `runLoop` folds a prompt into an active or `202`-parked loop (`action: "injected_next_turn"`), existing durable provider/model and `maxTurns` remain authoritative; a differing explicit selection fails `409`.
+- **Open paths (`openPaths`)**: local paths or scheme URIs ({§path-syntax}) submitted with `runLoop` are persisted with the message (and travel with it on promotion under {§message-loop-containment}) and dispatched as `plurnk`-origin `READ`s on the turn that publishes the message (malformed URIs fail before admission).
+- **Stateless binding & session-name admission**: workspace calls return only workspace identity (`workspaceId`, `workspaceName`, `projectRoot`, `projectLabel`); client modules own their own transport binding. Session creation and fork enforce {§session-scheme} so `_plurnk` cannot be forged or resumed as a model session.
 
-§methods-answering **`answering`: a reply names the operation that sent the message it answers.** `readLog` and `log/entry`
-project `answering` on a reply delivered to the session whose operation sent the message ({§message-reply-delivery}):
-that operation's log address, whether the reply completes the message or reports progress. A completion reply
-names the same address as its `invocation`. A reply to a message this session did not send, such as another actor
-answering a message in this session's inbox, omits the field, as does every other row.
+### §capability-admission Capability admission and workspace policy
+
+Core derives `CapabilityDescriptor` demands from each statement and evaluates service and workspace policy (`workspaces.settings.capabilities`) before execution or proposal creation:
+
+- **Demands**: `COPY` demands source observation + destination mutation; `MOVE` adds source mutation; resource-backed executions demand runtime + source observation; unknown schemes/runtimes/tools continue to their ordinary resolver; `NOTE`, lifecycle declarations, log `KILL`, targetless/label `SEND`, and runtime mutations of generated entries ({§session-scheme}) are outside external capability selectors. Denials return `403` naming the denied descriptor and policy scope.
+- **Live workspace boundary**: every actor (including existing children) evaluates current `workspaces.settings.capabilities` under the service ceiling without snapshotting authority at creation/delegation. Inspection actions return `CapabilityProjection` ({§capability-policy-projection}: service, workspace, and effective intersection), and sessions reconcile generated references against policy changes before their next operation or observation.
+
+### §question-tool Structured owner questions and interaction ring
+
+Core publishes `plurnk (question)` (`workspace:///_plurnk/tools/plurnk/question.json`, `read` effect, `interaction` trait -> access class `interact`, governed by `PLURNK_EXECS_PLURNK` under {§executor-policy}):
+
+- **Form elicitation & lifecycle**: takes MCP2 `2026-07-28` `{ message, requestedSchema }`, submits `ClientInteractionRequest` (`{ toolName: "question", mode: "form", message, requestedSchema }`), pauses on {§proposal-projection}, and writes the settled `ElicitResult` (`{ action: "accept", content? }`, `{ action: "decline" }`, or `{ action: "cancel" }`) verbatim to `results`.
+- **Shared tool admission & owner interaction ring**: `FIND`/`READ` of the reserved tool tree, Turn 0 surveys, and operation dispatch share the capability resolver. An asking session adds a live owner ring ({§session-ownership}) that withholds from Turn 0/directory `FIND` and denies at dispatch (`403 capability-denied` with scope `owner`, {§pinned-wording-core}) any interaction tool whose owner does not support it (exact-path `FIND`/`READ` and sessionless workspace projections are unaffected).
+
+### §session-model-selection Model catalog, session model selection, and effort
+
+- **Model catalog (`listModels`)**: bounded local projection of the release-pinned Models.dev snapshot with {§model-catalog-readiness} and {§provider-effort} (`efforts` per route; default configured-only, `availability: "all"` includes unconfigured causes; default page `50`, max `100`; zero provider activity).
+- **Session model (`sessions.model_route_id`)**: seeded once for root model sessions from explicit selection or daemon default (modelless daemons stay unset); snapshotted onto each loop at start (immutable across inject, park, wake, retry, reconnect, restart); copied by value on `WORK`/`FORK` and `forkSession`. Bookkeeping sessions (`_plurnk`) have no model and fail `409 model-session-required`. Changing model, spawn override, or effort while a session has any queued, running, or parked loop fails `409 session-loop-active` ({§session-loop-lifecycle}); changing to a model whose calibrated curation budget ({§tokenomics-calibrated-readout}) cannot fit current context fails `413 context-exceeds-model-budget`.
+- **Reasoning effort & effort source**: durable `{§effort-wire}` member persisted atomically with model identity (`effort_source: "default"` when seeded from alias/provider config or inherited by a spawned child, `"explicit"` after `setSessionEffort`; projected as `effort` and `effortSource` on `ModelRoute`). Switching models keeps `"explicit"` effort (validated against both session and spawn models) and re-derives `"default"` effort from the new alias.
+- **Per-loop `selector` and `childSelector`**: `runLoop({ selector, childSelector })` accepts a declared alias or exact `<provider>/<model>` route (`childSelector: null` means inherit; omitted defaults to `PLURNK_MODEL_CHILD`), persisting explicit selections onto the session before snapshotting onto the loop (`WORK`/`FORK`/`BARE` consume the spawning loop's effective spawn model).
+
+### §methods-invocation Log entry wire, reasoning evidence, and invocation attribution
+
+`readLog` and `log/entry` deliver `LogEntry` rows carrying `loop_seq`, `turn_seq`, `session_id`, `session_name` ({§machine-processes}), causal `source`, lifecycle `state` (`proposed | resolved | failed | cancelled`), and parsed JSON `attrs`:
+
+- **Readable reasoning**: on a turn's first model operation row, nonempty admitted `packet.assistant.reasoning` projects as `reasoning` alongside `reasoning_model_call_id` and `reasoning_request_sequence` (omitted on forked history or turns without readable reasoning).
+- **`invocation` and `answering`**: every row that discharges an obligation projects `invocation` (the opener's log address: the execution for a stream observation under {§exec-stream}/{§subscriptions}, the first-message sender for a child conclusion under {§env-delta-child-termination}, or the message-sending operation for a completion reply under {§message-reply-delivery}/{§loop-completion}; {§env-delta-attribution}). Every reply delivered to the session whose operation sent the message projects `answering` naming that operation's log address.
 
 ### §notifications Notifications: core events
 
-| Event                                                        | Payload | When fired |
-|--------------------------------------------------------------|---------|------------|
-| §notifications-operation-event `operation/event` | `ApplicationOperationEvent`: `{ sessionId, loopId, turnId, sequence, origin, projectRoot, statement, phase, result? }` | One admitted dispatch starts before capability/proposal admission and settles after its durable receipt(s). Only the settled phase has `result`, the exact returned operation result. Resource fan-out is one dispatch ({§op-methods-op-dispatch}); BARE starts before prompt preparation and settles after ordered receipt persistence. Automatic stream observations and log writes are not dispatches. An asynchronous executor's successful dispatch does not assert process exit. An internal exception that prevents settlement has no invented result event. |
-| §notifications-log-entry-notify `log/entry`                  | `{ entry: LogEntry }` | A non-proposed `log_entries` row is committed, or a proposed row reaches terminal settlement under {§proposal}. Delivery completes before a later event may terminate the owning Loop. |
-| §notifications-loop-terminated `loop/terminated`             | `{ sessionId, loopId, loopSeq, result, hitMaxTurns, turnIds, usage: { accounting, curationWeight, curationBudget, contextTokens, contextCapacity, meta }, attributions, terminatedAt }` | One loop reaches a terminal state, announced once, after what the loop held has settled however it ended: a gate its running turn holds (a proposal, or an interaction the turn awaits) settles as the turn unwinds, and every stream the loop's end reaps ({§exec-lifetime}), an open interaction among them, concludes, so their `log/entry` and `stream/concluded` arrive first. A cancellation announces each loop it retired once the session's drain has settled and every stream it reaped has concluded. `terminatedAt` is the loop's own stamp in Unix milliseconds, the one a projection reads ({§application-loop-observation}). `result` is the exact universal operation result, including its RFC 9457 Problem Details on failure. `accounting` is the loop's contracts-owned {§provider-accounting}; the two curation facts and two physical-context facts follow {§tokenomics-client-gauge}; `meta` is that turn's opaque provider bag. `attributions` is the sorted union of exact provider-request evidence ({§emission-admission}), separate from accounting. Session and loop are an inseparable owning coordinate; `loopSeq` is the loop's number among its session's loops, the L of its log coordinates ({§methods-log-coordinate}). |
-| §notifications-loop-packet `loop/packet`                     | `{ sessionId, loopId, loopSeq, packetCount, gauge: { curationWeight, curationBudget, contextTokens, contextCapacity } }` | One provider packet becomes durable with its turn's inference. `loopSeq` is the loop's number, as `loop/terminated` carries it. `packetCount` is the exact count of packet-bearing turns in that Loop; packetless producer turns and physical provider retries never contribute. `gauge` is the Loop's client gauge at that moment ({§tokenomics-client-gauge}), so the gauge moves with every model turn. |
-| §notifications-loop-proposal `loop/proposal`                 | contracts-owned `ProposalProjection` | Dispatch pauses on a durable 202 proposal. `disposition` is the sole authority for whether a client presents review UI; live and reconnect share {§proposal-projection}. |
-| §notifications-loop-interaction `loop/interaction`           | contracts-owned `ClientInteractionProjection` | An operation is paused on client input. Live delivery and reconnect discovery share {§proposal-projection}; workspace scope remains the event envelope. |
-| §notifications-workspace-created `workspace/created`         | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
-| §notifications-workspace-renamed `workspace/renamed`         | `{ id, name }` | A workspace's name changes ({§methods-workspace-rename}), delivered in that workspace's scope; the id is unchanged. |
-| §notifications-workspace-hidden `workspace/hidden` | `{ id, hidden_at }`, as `setWorkspaceHidden` returns it | A workspace is hidden or shown ({§methods-workspace-hide}), delivered in that workspace's scope. A call that changes nothing fires nothing. |
-| §notifications-session-hidden `session/hidden` | `{ id, hidden_at, sessionIds }`, as `setSessionHidden` returns it | A session's group is hidden or shown ({§methods-session-hide}), delivered in its workspace's scope. A call that changes nothing fires nothing. |
-| `workspace/preparation` | `{ workspaceId, preparation: FunctionalityPreparationActivity[] }` | Workspace capability preparation changes; snapshot and clearing semantics follow {§functionality-inspection}. |
-| §notifications-session-policy `session/policy` | `{ sessionId, model, spawnModel }`, the session's generation policy as `ApplicationPort.readSessionModel` reads it | A session's stored model, effort, effort source or spawn model changes, by whichever path: a client's set, a message's selector, or the seeding of a session's first model. A write that changes nothing, and a change refused while the session has unfinished tasks, fire nothing. |
-| §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, sessionId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `sessionId` is the initiating actor used for routing to the bound session, never entry ownership or access control. `target` is the canonical resource URI. Optional numeric coordinates identify the causal log item, independently of that URI. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channels}); the generic extension notification capability does not require it. It carries metadata, not content: `contentLength` counts the channel's whole stored content in Unicode code points, the unit of {§entry-read-result}'s `contentOffset` and `contentLength`, and consumers read the content by canonical workspace address. |
-| §notifications-stream-concluded `stream/concluded`           | `{ entryId, sessionId, target, subscriptionId, scheme, result, summary, wakeAction, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `sessionId` identifies the initiating actor; `target` is the canonical resource URI. Optional numeric fields identify the causal log item, never parsed from `target`. Exact result truth is preserved. `summary` is a display line the owning scheme writes; an execution's is {§exec-stream}. `wakeAction` reports `wake-pending` before settlement, `no-op-active-loop` when work is already executing, `no-loop`, or `skipped-aborted`/`skipped-cancelled` for an aborted session scope. A pending wake predicts neither execution nor recipient count; subsequent ordinary loop events report actual progress and completion. |
-| §notifications-notice-event `notice/event`                   | `{ sessionId, loopId, notice: Notice }` | A transient observation or progress notice occurs. `sessionId` owns loop activity; only workspace derivation progress uses `null` with `loopId=0`. It cannot alter durable history, scheduling, recovery, or model-visible failure truth. |
-| §notifications-outside-event `outside/event`                 | `{ sessionId, loopId, turnId, coordinate, text, tokens }` | An admitted emission carried text outside every operation ({§outside-text}): once per admitted emission, the exact stored text, its packet weight, and the turn's `<session>-<loop>-<turn>` coordinate. It is transient presentation evidence; the turn's `outside` source remains the durable authority. |
-| §notifications-reasoning-event `reasoning/event`             | `{ sessionId, loopId, turnId, loopSeq, turnSeq, modelCallId, requestSequence, phase, delta? }` | A main emission call exposes readable reasoning. `loopSeq` and `turnSeq` are its turn's ordinals in the session's log, the `L/T` of `reasoning://<session>/L/T` ({§turn-source-resources}). Each physical request that emits reasoning owns a distinct positive `requestSequence` and balanced start/content/end stream; opening a retry closes the preceding stream before any retry delta. Only content carries a nonempty exact delta. It is transient presentation evidence, never a log row, Notice, packet field, or BARE/child channel. The settled provider response remains the durable authority. |
+`subscribeToEvents` delivers `(workspaceId, event, payload)` (`workspaceId` is `null` only for global `workspace/created`):
 
-§notifications-stream-event-failure-isolation The extension-facing
-`NotifyCaps.streamEvent()` remains a synchronous advisory call while core
-resolves its entry identity asynchronously.
-
-| Condition                         | Outcome                                                                                         |
-| --------------------------------- | ----------------------------------------------------------------------------------------------- |
-| No notifier is configured         | Synchronous no-op; no lookup is scheduled.                                                      |
-| The entry vanishes before lookup  | No event.                                                                                       |
-| Entry and notifier remain present | One `stream/event` is emitted.                                                                  |
-| Lookup or notifier throws          | Daemon diagnostics receive the complete cause; no rejection or engine-state transition escapes. |
-
-§notifications-envelope-carries-workspaceid **The notification envelope carries its workspaceId: event scope is explicit.**
-`subscribeToEvents` supplies `(workspaceId, event, payload)`: `workspaceId` is
-the authoritative scope and is `null` only for a global event. Core does not
-mutate each payload to repeat it. A transport module stamps that scope onto any
-outward envelope that requires it and owns workspace fan-out.
+| Event | Payload & trigger |
+|---|---|
+| `operation/event` | `ApplicationOperationEvent` (`{ sessionId, loopId, turnId, sequence, origin, projectRoot, statement, phase, result? }`) bracketing each admitted dispatch (`started` before capability/proposal admission, `settled` with `result` after durable receipts; {§op-methods-op-dispatch}). |
+| `log/entry` | `{ entry: LogEntry }` when a non-proposed row commits or a proposed row reaches terminal settlement ({§proposal}), before `loop/terminated`. |
+| `loop/terminated` | `{ sessionId, loopId, loopSeq, result, hitMaxTurns, turnIds, usage: { accounting, curationWeight, curationBudget, contextTokens, contextCapacity, meta }, attributions, terminatedAt }` once all turn gates and reaped streams ({§exec-lifetime}) have settled ({§application-loop-observation}, {§provider-accounting}, {§tokenomics-client-gauge}, {§emission-admission}). |
+| `loop/packet` | `{ sessionId, loopId, loopSeq, packetCount, gauge }` when a provider packet becomes durable with its turn's inference. |
+| `loop/proposal`, `loop/interaction` | `ProposalProjection` / `ClientInteractionProjection` when dispatch pauses on a durable `202` proposal or client interaction ({§proposal-projection}). |
+| `workspace/created`, `workspace/renamed`, `workspace/hidden`, `session/hidden`, `workspace/preparation`, `session/policy` | Workspace/session lifecycle, `{ workspaceId, preparation }` ({§functionality-inspection}), and `{ sessionId, model, spawnModel }` generation policy changes. |
+| `stream/event`, `stream/concluded` | Channel write/state change (`{ entryId, sessionId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }`; {§channels}, {§entry-read-result}; `NotifyCaps.streamEvent()` isolates missing entries and listener errors) and subscription close (`{ entryId, sessionId, target, subscriptionId, scheme, result, summary, wakeAction, ... }`; {§exec-stream}). |
+| `notice/event`, `outside/event`, `reasoning/event` | Transient `Notice` (`{ sessionId, loopId, notice }`), outside text (`{ sessionId, loopId, turnId, coordinate, text, tokens }`; {§outside-text}), and balanced `start/content/end` reasoning deltas (`{ sessionId, loopId, turnId, loopSeq, turnSeq, modelCallId, requestSequence, phase, delta? }`; {§turn-source-resources}). |
 
 ### §session-external-reference External session references
 
-An adapter's `(namespace, reference)` identifies one durable model session. Both strings are opaque
-to core; protocol syntax belongs to the adapter. `readSessionReference` returns its workspace and
-session IDs or null, without creating anything. `ensureSessionReference` returns the same identity,
-atomically creating an ordinary folderless workspace and root model session if absent. Names follow
-{§execution-output-identity} and {§execution-output-identity}; no owner is claimed and no work starts.
-
-The association is immutable while its session exists. Concurrent allocation creates exactly one
-workspace, session and association; failure leaves none. Renaming a workspace, changing approval
-ownership, reconnecting or restarting does not change the association. Session deletion removes it
-through its foreign key. Namespaces isolate adapter identities, not authorization: the daemon
-remains one trust domain. `listSessionReferences` inspects one namespace's references to a session,
-bounded by its workspace. New workspace creation emits the ordinary `workspace/created` event.
+An adapter's `(namespace, reference)` identifies one durable model session (`readSessionReference` inspects without creating; `ensureSessionReference` atomically allocates a folderless workspace and root model session under {§execution-output-identity} if absent; `listSessionReferences` lists references in a workspace). The association is immutable while the session exists and removed on session deletion.
 
 ### §connection-lifecycle Client operations and their connection lifetime
 
-A session is a model's identity. A person's client operations (an execution, typed
-statements, a rollback's compensations) are the workspace's, so each journals in the
-workspace's runtime session `_plurnk`, created when absent, and executes in the workspace's
-Functionality ({§actor-boundary}). Binding a workspace mints nothing.
+Client operations (`dispatchClientAction`, executions, typed statements, `rollback`) journal in the workspace's `_plurnk` session (`origin: "client"`, `source: null`) in the workspace's Functionality ({§actor-boundary}), each in its own administrative loop (`promptSource` set to the acting person's canonical address under {§message-causal-source}) and isolated cancellation scope (`cancelLoop` cancels only that operation and its attached executions; {§session-causal-admission}):
 
-| | A model session | A client operation in `_plurnk` |
+| Frame | Model session | Client operation in `_plurnk` |
 |---|---|---|
-| Who acted | the session | the person its loop names ({§actor-boundary-client-operations}) |
-| Who answers its proposals | the session's owner reviews them | nobody: it is that person's decision already ({§proposal-disposition}) |
-| Who answers its clarifications | its owner, while it can ({§session-ownership}) | nobody: the runtime's owner receives no client tool, so an interaction the operation needs fails at once as unsupported |
-| What is cancelled and observed together | the session's loops | the operation's own administrative loop |
-| What its `env:///` means | its own layer, above the workspace's | the workspace's layer; `_plurnk` keeps none ({§env-functionality}) |
-| Whose voice its messages carry | its own | the person's, as a thread message's is |
-| Whose log its log addresses and FORK mean | its own | the session the person acts for: read and branched, never curated |
-| What its WORK starts | its own child | a root session the person owns |
-
-One client operation owns one administrative loop, and its statements become ordered
-`client` operation turns inside it. The loop carries its own cancellation scope, and
-nothing else in `_plurnk` (another person's operation, the daemon's narration) shares it. `cancelLoop` cancels that operation alone: a dispatch still running
-ends `operation-cancelled`, as does its loop, and every attached execution its rows started
-that still runs is reaped ({§session-causal-admission}), its stream concluding aborted even
-after the loop settled. A detached execution is nobody's obligation, and `cancelLoop` leaves it
-running. Shutdown cancels every operation the same way.
-
-`runLoop` targets a model session with `origin="model"`. A packet renders only that
-session's private log, so a client operation's rows are structurally absent from every
-model's packet ({§actor-boundary}); a person reaches a model through a message.
-
-§actor-boundary-client-operations **A client operation acts on workspace resources, attributes messages
-to its person, and reads a log in the context of one session.** Its loop's `promptSource`
-({§methods-session-loops}) is the acting person's canonical address, the form arrivals use
-({§message-causal-source}); the daemon's own loops in `_plurnk` have none. Its rows are acts, not arrivals:
-they keep writer `origin: "client"`, so a person never writes as the runtime
-({§scheme-surface}), and `source` null, so a person's SEND replies and completes as any
-author's does. Acting for no session, an operation names no log: `log:///` is 404 `log-unaddressed` and
-FORK is 404 `fork-unaddressed`.
-
-| Frame | Covers | So |
-|---|---|---|
-| Workspace resources | files, executions, Functionality, `env:///` | `_plurnk` keeps no layer of its own, so a person's `env:///` reads and writes the workspace's ({§env-functionality}) |
-| The person's voice | messages and delegated prompts | a message the operation delivers (SEND, or WORK to a session that exists) arrives from the person, as a thread message does; WORK to a new session starts a root model session the person owns, its first prompt from them |
-| The session it acts for | `log:///`, and the log FORK branches | READ and FIND answer from that session's log as it reads it; FORK branches it as `forkSession` does, its task from the person; curating the log is a client write it refuses ({§scheme-surface}) |
+| Proposals & clarifications | Reviewed/answered by the session's owner ({§session-ownership}) | Proposals need no self-review ({§proposal-disposition}); client interactions fail at once as unsupported |
+| Workspace resources & `env:///` | Session's `env:///` layer above workspace | Workspace's `env:///` layer directly (`_plurnk` keeps none; {§env-functionality}) |
+| Voice (`SEND`, `WORK`) | Session's own voice; `WORK` spawns a child session | Acting person's voice; `WORK` to a new session starts a root model session owned by that person |
+| Context session (`log:///`, `FORK`) | Session's own log | Reads (`READ`/`FIND`) and branches (`FORK`) `contextSessionId`'s log; client writes (`KILL`/`MOVE`) fail `403` ({§scheme-surface}); without `contextSessionId`, `log:///` is `404 log-unaddressed` and `FORK` is `404 fork-unaddressed` |
 
 ---
 
@@ -1694,7 +1325,7 @@ cursor and captures its own fork high-water atomically with session creation
 ({§machine-processes}). Observer rows retain the source
 identity and never publish another occurrence. Newly materialized ambient and
 terminal-stream rows emit the ordinary client notification
-({§notifications-log-entry-notify}) before the next inference; an idempotent
+({§notifications}) before the next inference; an idempotent
 pull does not emit an existing row again.
 
 §env-delta-session-entry-visibility **Session-entry visibility: the commons is global; every other
@@ -1943,7 +1574,7 @@ additional alias. Answering either reaches the same message.
 | Arrival | `source` |
 | --- | --- |
 | Native WORK, FORK, and directed session SEND | `session://<sender>`, derived from the authenticated sender session ID |
-| A trusted exterior adapter | its own canonical actor address through {§methods-loop-run}: the ACP module names the client's message under `acp://` ({§acp-run-source}) |
+| A trusted exterior adapter | its own canonical actor address through {§methods}: the ACP module names the client's message under `acp://` ({§acp-run-source}) |
 | Absent | the operator |
 
 The wire renders the row's `source` in place of its `origin`, which is constant for every arrival, except where the source is the transport that minted this very message, which says nothing the address does not ({§message-short-identity}). The operator's message is then the one arrival with no sender to show, so it renders `"origin": "user"`; a bare arrival would read as the model's own SEND and hide the request it answers.
@@ -2682,7 +2313,7 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | `resource-scheme-required` | 400 | Resource selection requires an address. |
 | `channel-required` | 400 | The '*scheme*' scheme has no default channel. Recovery: Address a named channel with a URI fragment. |
 | `binary-source-unsupported` | 415 | Channel #*name* is binary and its scheme keeps no bytes to transfer. |
-| `fork-unaddressed` | 404 | This client operation acts for no session, so FORK has no log to branch ({§actor-boundary-client-operations}). |
+| `fork-unaddressed` | 404 | This client operation acts for no session, so FORK has no log to branch ({§connection-lifecycle}). |
 | `session-name-conflict` | 409 | Session '*name*' already exists in this workspace. Recovery: WORK or SEND (session://*name*) delivers a message to the live session; FORK with a name no session holds. ({§session-scheme}) |
 | `no-operation` | 422 | The turn performed no operation ({§outside-text}). |
 | `send-target-not-a-recipient` | 400 | The addressed scheme is not a SEND recipient. Recovery: Name a message address or a recipient that implements SEND. |
@@ -2779,7 +2410,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 |---|---:|---|
 | `read-target-required` | 400 | READ requires a log coordinate. Recovery: Provide one exact log coordinate. |
 | `coordinate-malformed` | 400 | The log coordinate '*path*' is malformed. Recovery: Use one exact loop/turn/sequence coordinate. |
-| `log-unaddressed` | 404 | This client operation acts for no session, so `log:///` names no log ({§actor-boundary-client-operations}). |
+| `log-unaddressed` | 404 | This client operation acts for no session, so `log:///` names no log ({§connection-lifecycle}). |
 | `kill-failed` | 400 | The log target '*path*' is malformed. (A glob the matcher cannot read: The log glob '*glob*' is malformed.) Recovery: the {§log-kill-scope} sentence. |
 | `curation-failed` | 400 | A scoped KILL's selection could not be read: the same sentences and recovery as `kill-failed`. |
 | `session-target-required` | 400 | EDIT requires a session:// target. Recovery: Provide the session target. |
@@ -2837,8 +2468,8 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `workspace-busy` | 409 | Workspace *id* is running an operation or another capability change. Recovery: Settle the current operation and retry the capability change. |
 | `not-configured` | 501 | No provider is configured for this session. Recovery: Select a model for this session, or set `PLURNK_MODEL=<provider/model>` as the service default; that provider's API key must be in the service's environment. |
 | `provider-unavailable` | 503 | *route* is unavailable, followed by the provider's instantiation failure when present. |
-| `effort-unsupported` | 409 | *route* does not support effort '*effort*'. Recovery: Select one of the provider's supported efforts: *supported*. ({§session-effort}) |
-| `effort-invalid` | 400 | The effort is invalid. Recovery: Select a valid effort: off, adaptive, low, medium, high, xhigh, max. ({§session-effort}) |
+| `effort-unsupported` | 409 | *route* does not support effort '*effort*'. Recovery: Select one of the provider's supported efforts: *supported*. ({§session-model-selection}) |
+| `effort-invalid` | 400 | The effort is invalid. Recovery: Select a valid effort: off, adaptive, low, medium, high, xhigh, max. ({§session-model-selection}) |
 | `context-exceeds-model-budget` | 413 | Current context (*tokens* tokens) does not fit in *route* (budget: *budget* tokens). Recovery: Curate context below *budget* tokens or select a larger model. ({§session-model-selection}) |
 | `model-session-required` | 404 | No model session exists for prompt injection (or to fork). |
 | `name-conflict` | 409 | The session name is taken. Recovery: Choose another session name. |
@@ -2868,7 +2499,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | Each directive in the notice table | a notice of the model's own output ({§notice-directive}) |
 | Context window overflow: the packet exceeds the model's window. | the wall ({§context-wall}) |
 | No recipient implements the requested interaction. | The session's owner is not interactive or does not declare the required client tool ({§session-ownership}). |
-| Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve. | dispatch of an interaction tool the session's owner would not receive ({§owner-interaction-ring}) |
+| Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve. | dispatch of an interaction tool the session's owner would not receive ({§question-tool}) |
 | Session name '*name*' must match `[A-Za-z0-9][A-Za-z0-9_-]{0,62}`. Recovery: Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit. | an invalid session name |
 | Provide the client identifier. / Provide an absolute project path. / Use a positive integer limit. / prompt is not a non-empty string. | client input validation on the daemon's methods |
 | name '*name*' has the path segment '*segment*'. Recovery: Provide a name with no '.' or '..' between its slashes; a dot within a segment is ordinary. / name is not well-formed Unicode: it holds an unpaired surrogate. | a workspace name refused at creation or rename ({§execution-output-identity}) |

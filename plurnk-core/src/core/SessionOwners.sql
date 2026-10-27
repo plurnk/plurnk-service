@@ -24,7 +24,7 @@ VALUES ($workspace_id, $address, $tools, $interactive)
 ON CONFLICT (workspace_id, address) DO UPDATE SET tools = excluded.tools, interactive = excluded.interactive;
 
 -- PREP: session_owner_admit
--- {§actor-boundary-client-operations} A person who starts a session by operation owns it; an owner already
+-- {§connection-lifecycle} A person who starts a session by operation owns it; an owner already
 -- registered keeps its tools and attendance.
 INSERT INTO session_owners (workspace_id, address, tools, interactive)
 VALUES ($workspace_id, $address, '[]', 0)

@@ -28,17 +28,17 @@
   `GET /agui/<workspace>/<worker>/entry?target=<address>` answers the channel
   the address selects, read from that worker's perspective through
   `ApplicationPort.readEntryChannel` ({§acp-entry-route},
-  {§methods-entry-channel-read}). A result's body, a turn's reasoning and a
+  {§methods}). A result's body, a turn's reasoning and a
   message's words travel by reference at it. A log row names its worker,
-  `worker_name` beside `worker_id` ({§methods-log-entry-wire}).
+  `worker_name` beside `worker_id` ({§methods-invocation}).
 - 558c0db: `FunctionalityAdapter` gains `Definition` and `Snapshot` type parameters, and
   `FunctionalityPreparation`, `FunctionalityPrepared`, `FunctionalityAdmission`,
   `FunctionalityServiceDefinition`, `FunctionalityPreparedDefinition` and
   `FunctionalityDefinitionSource` carry them; each defaults to the previous type.
   `registerFunctionalityAdapter` infers both from the adapter it registers.
 - 0cee49c: Workspaces and workers hide and show by a durable mark ({§machine-processes}):
-  `setWorkspaceHidden`, `setWorkerHidden` ({§methods-workspace-hide},
-  {§methods-session-hide}). A worker's hide covers its subtree as one group;
+  `setWorkspaceHidden`, `setWorkerHidden` ({§methods-workspace-create},
+  {§methods-workspace-create}). A worker's hide covers its subtree as one group;
   `409 live-work` while anything covered is live; a live loop shows its group
   and workspace. `listWorkspaces` and `listWorkers` take `hidden` and carry
   `hidden_at`; the overview omits hidden places; `workspace/hidden`,
@@ -52,7 +52,7 @@
   `isPlurnkOp` tests membership in the operation alphabet beside `PLURNK_OPS`.
 - dd52a9b: `loop/packet`, `loop/terminated` and the `loop_status` notice carry `loopSeq`,
   the loop's number among its worker's loops, beside `loopId`
-  ({§notifications-loop-packet}, {§notifications-loop-terminated},
+  ({§notifications}, {§notifications},
   {§loop-status-notice}). The AG-UI status gauge carries it as `status.loopSeq`,
   replaced in every delta that replaces `loopId` ({§acp-status-loop-number}); the
   conformance kit's gauge carries it.
@@ -79,19 +79,19 @@
   or not, so a client attaching mid-execution finds a silent one; it is
   republished as `STATE_DELTA /plurnk/status/streams` when it changes
   ({§acp-status-streams}). `ApplicationPort.readStreams` reads it
-  ({§methods-session-streams}). `stream/event`'s `contentLength` counts Unicode
+  ({§methods}). `stream/event`'s `contentLength` counts Unicode
   code points.
 - f3cd7de: `loop/packet` carries the loop's client gauge after each model turn, and
   `ApplicationPort.workerGauge` returns the gauge the Worker's latest packet
-  reported ({§notifications-loop-packet}, {§methods-session-gauge}). AG-UI moves
+  reported ({§notifications}, {§methods-workspace-create}). AG-UI moves
   the budget with every packet and its snapshots carry the latest, so a live and
   a reattached observer agree ({§acp-state-patches}).
 - 4a048a8: `readWorkerOverview` reads the places of the daemon or of one workspace with their
   lifecycle, the gates they wait on and their latest finished reply, most recently
-  finished first and bounded ({§methods-session-overview}, {§message-completion},
+  finished first and bounded ({§methods-workspace-create}, {§message-completion},
   {§application-session-overview}); `excerptOf` is the one list excerpt rule
   ({§list-excerpt}). `workspace/renamed` announces a rename
-  ({§notifications-workspace-renamed}). AG-UI: a Run carrying
+  ({§notifications}). AG-UI: a Run carrying
   `forwardedProps.plurnk.overview` observes the overview as state, binding
   nothing: a snapshot on `/agui`, patches until the client leaves on
   `/agui/connect` ({§acp-overview-run}, {§acp-overview-state},
@@ -123,7 +123,7 @@
   page says a receipt names the working directory, relative to the project root,
   only when the command ran elsewhere.
 - 06d4a8d: `reasoning/event` carries its turn's `loopSeq` and `turnSeq`
-  ({§notifications-reasoning-event}), and every reasoning message names that
+  ({§notifications}), and every reasoning message names that
   turn as `metadata.plurnk.coordinate` (`L/T`) from its first event, live, as
   its row folds onto it and in a snapshot, a subagent's included
   ({§acp-plurnk-metadata}). The AG-UI conformance kit's specimens follow.

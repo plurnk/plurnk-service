@@ -87,11 +87,11 @@ export interface ApplicationPort extends HttpHost {
         message?: { readonly body: string; readonly source: string; readonly envelope: Readonly<Record<string, unknown>> },
     ): Promise<void>;
     readMessages(args: { readonly workspaceId: number; readonly sessionId: number; readonly loopId?: number }): Promise<ApplicationMessage[]>;
-    /** {§methods-session-inbox} The accepted messages the session has not yet observed at a turn boundary, in acceptance order, each with the lifecycle of the loop holding it. */
+    /** {§methods} The accepted messages the session has not yet observed at a turn boundary, in acceptance order, each with the lifecycle of the loop holding it. */
     readInbox(args: { readonly workspaceId: number; readonly sessionId: number }): Promise<ApplicationInboxMessage[]>;
-    /** {§methods-session-streams} The streams the session holds open, in opening order, each with its channels' states. */
+    /** {§methods} The streams the session holds open, in opening order, each with its channels' states. */
     readStreams(args: { readonly workspaceId: number; readonly sessionId: number }): Promise<ApplicationStream[]>;
-    /** {§message-idempotency} A client message's address is its idempotency key: `new` when nothing is accepted there,
+    /** {§methods} A client message's address is its idempotency key: `new` when nothing is accepted there,
      *  `accepted` when the same body is; another body under an accepted address is refused, 422 `message-address-reused`. */
     messageAdmission(args: { readonly workspaceId: number; readonly address: string; readonly body: string }): Promise<"new" | "accepted">;
     ensureRuntimeSession(workspaceId: number): Promise<number>;
@@ -117,7 +117,7 @@ export interface ApplicationPort extends HttpHost {
     }): Promise<void>;
     // {§connection-lifecycle} — a person's client operation: one loop in the workspace's runtime session,
     // attributed to `actor`, its `log:///` addresses read in `contextSessionId`'s log
-    // ({§actor-boundary-client-operations}); `onLoop` hears that loop before any statement runs.
+    // ({§connection-lifecycle}); `onLoop` hears that loop before any statement runs.
     dispatchClientAction(args: {
         readonly workspaceId: number;
         readonly actor: string;
@@ -152,7 +152,7 @@ export interface ApplicationPort extends HttpHost {
         readonly projectRoot?: string | null;
         readonly settings?: string | object;
     }): Promise<ClientEnvelope>;
-    /** {§methods-workspace-attach} Read-only selection; folder defaults are derived by the daemon. */
+    /** {§methods-workspace-create} Read-only selection; folder defaults are derived by the daemon. */
     attachWorkspace(args:
         | { readonly workspaceId: number; readonly name?: never; readonly projectRoot?: never }
         | { readonly name: string; readonly workspaceId?: never; readonly projectRoot?: never }
@@ -187,30 +187,30 @@ export interface ApplicationPort extends HttpHost {
         readonly workspaceId: number;
         readonly sessionId: number;
     }): Promise<ApplicationLoopProjection[]>;
-    // {§methods-session-overview} — the places of the daemon, or of one workspace, with what waits there.
+    // {§methods-workspace-create} — the places of the daemon, or of one workspace, with what waits there.
     readSessionOverview(args: {
         readonly workspaceId?: number;
         readonly limit: number;
         readonly excerptChars: number;
     }): Promise<ApplicationSessionOverview>;
-    // {§methods-session-accounting} — the spend of the session and its descendants since it began.
+    // {§methods-workspace-create} — the spend of the session and its descendants since it began.
     sessionAccounting(args: {
         readonly workspaceId: number;
         readonly sessionId: number;
     }): Promise<ProviderAccounting>;
-    // {§methods-session-gauge} — the client gauge the session's latest packet reported.
+    // {§methods-workspace-create} — the client gauge the session's latest packet reported.
     sessionGauge(args: {
         readonly workspaceId: number;
         readonly sessionId: number;
     }): Promise<ApplicationGauge>;
-    // {§methods-workspace-prompts} — an omitted sessionId lists every model session's client-addressed seeds.
+    // {§methods-workspace-create} — an omitted sessionId lists every model session's client-addressed seeds.
     listPrompts(workspaceId: number, limit?: number, sessionId?: number): Promise<string[]>;
     // {§share} — the workspace's share, from a consistent copy of the daemon's database, into an absolute folder.
     shareWorkspace(args: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string }>;
     renameWorkspace(workspaceId: number, name: string): Promise<{ readonly id: number; readonly name: string }>;
-    /** {§methods-workspace-hide} Hide or show a workspace; a hide is refused while it holds live work. */
+    /** {§methods-workspace-create} Hide or show a workspace; a hide is refused while it holds live work. */
     setWorkspaceHidden(args: { readonly workspaceId: number; readonly hidden: boolean }): Promise<ApplicationWorkspaceHiding>;
-    /** {§methods-session-hide} Hide or show a session with every session beneath it; a hide is refused while they hold live work. */
+    /** {§methods-workspace-create} Hide or show a session with every session beneath it; a hide is refused while they hold live work. */
     setSessionHidden(args: { readonly workspaceId: number; readonly sessionId: number; readonly hidden: boolean }): Promise<ApplicationSessionHiding>;
     // {§log-wire-format} — reverse `sessionId`'s settled file mutations after its log coordinate `to`, latest
     // first, as one client operation of `actor` ({§connection-lifecycle}); stops at the first file that no
@@ -221,7 +221,7 @@ export interface ApplicationPort extends HttpHost {
         readonly actor: string;
         readonly to: string;
     }): Promise<RollbackReport>;
-    /** {§methods-workspace-activate} Activate a cold workspace's Functionality without a turn; resolves when it is active. */
+    /** {§methods-workspace-create} Activate a cold workspace's Functionality without a turn; resolves when it is active. */
     activateWorkspace(args: { readonly workspaceId: number }): Promise<void>;
     workspacePreparationStatus(workspaceId: number): readonly FunctionalityPreparationActivity[];
     workspaceDerivationStatus(workspaceId: number): {
@@ -240,7 +240,7 @@ export interface ApplicationPort extends HttpHost {
         readonly channel?: string;
         readonly offset?: number;
     }): Promise<EntryReadResult>;
-    // {§methods-entry-channel-read} — the channel `target` selects, its fragment's or else its scheme's default, complete.
+    // {§methods} — the channel `target` selects, its fragment's or else its scheme's default, complete.
     readEntryChannel(args: {
         readonly workspaceId: number;
         readonly sessionId: number;
@@ -277,7 +277,7 @@ export interface ApplicationPort extends HttpHost {
         readonly sessionId: number;
     }): Promise<{
         readonly effort: Effort | null;
-        // {§session-effort-source} — `explicit` only after setSessionEffort.
+        // {§session-model-selection} — `explicit` only after setSessionEffort.
         readonly source: "default" | "explicit";
         readonly supportedEfforts: readonly Effort[];
     }>;

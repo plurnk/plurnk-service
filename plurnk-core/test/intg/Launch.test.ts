@@ -297,7 +297,7 @@ test("{§observability-boundary} live workspaces expose a model session's refere
     const workspace = await liveWorkspace({ name: "harness-reference-composition" });
     try {
         const sessionId = await namedModelSession(workspace.daemon, workspace.workspaceId, "main");
-        // A person's READ, acting for the model session ({§actor-boundary-client-operations}).
+        // A person's READ, acting for the model session ({§connection-lifecycle}).
         const read = async (target: string) => (await workspace.daemon.dispatchClientAction({
             workspaceId: workspace.workspaceId,
             actor: TEST_OWNER,

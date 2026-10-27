@@ -317,7 +317,7 @@ for (const op of ["WORK", "FORK"] as const) {
     });
 }
 
-for (const op of ["WORK", "FORK"] as const) test(`{§workspace-capability-policy}: ${op} shares live workspace policy and inherits its parent owner`, async () => {
+for (const op of ["WORK", "FORK"] as const) test(`{§capability-admission}: ${op} shares live workspace policy and inherits its parent owner`, async () => {
     const db = await openMigrated();
     try {
         const { calls, injectSession } = recordingInjectSession();

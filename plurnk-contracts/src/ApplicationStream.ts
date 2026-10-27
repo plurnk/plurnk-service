@@ -1,6 +1,6 @@
 import type { ClientEntryChannel } from "./types.generated.ts";
 
-/** {§methods-session-streams} A stream the session holds open: what it is, how long it lives, the operation that opened it, and
+/** {§methods} A stream the session holds open: what it is, how long it lives, the operation that opened it, and
  *  the state of each of its channels. Identity and coordinates are named as `stream/event` names them. */
 export interface ApplicationStream {
     readonly entryId: number;

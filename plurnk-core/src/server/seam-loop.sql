@@ -1,7 +1,7 @@
--- ApplicationPort runLoop queries. SPEC {§methods-loop-run}.
+-- ApplicationPort runLoop queries. SPEC {§methods}.
 
 -- PREP: application_latest_packet_loop
--- {§methods-session-gauge}: the loop holding the session's latest packet, the one whose gauge the session reported last.
+-- {§methods-workspace-create}: the loop holding the session's latest packet, the one whose gauge the session reported last.
 SELECT turns.loop_id AS id FROM turns
 JOIN loops ON loops.id = turns.loop_id
 WHERE loops.session_id = $session_id AND turns.packet IS NOT NULL
@@ -9,7 +9,7 @@ ORDER BY turns.id DESC
 LIMIT 1;
 
 -- PREP: application_list_session_loops
--- {§methods-session-loops}: durable lifecycle projection for exterior adapters. {§loop-completion}: a loop is
+-- {§methods-workspace-create}: durable lifecycle projection for exterior adapters. {§loop-completion}: a loop is
 -- opened by its first message's operation, named in the sender's own log.
 SELECT loops.id, loops.session_id AS sessionId, loops.sequence, loops.status, loops.prompt,
        loops.prompt_source AS promptSource, loops.claimed_at AS claimedAt, loops.terminated_at AS terminatedAt,

@@ -31,7 +31,7 @@ export default class MessageResources {
         return { body: [body, ...links].filter((part) => part.length > 0).join("\n\n"), attachments };
     }
 
-    // {§message-idempotency} A client message's address is its idempotency key ({§message-source-scheme}): new when
+    // {§methods} A client message's address is its idempotency key ({§message-source-scheme}): new when
     // nothing is accepted there, accepted when the same body is, and refused when another body is.
     static async admission(db: Db, workspaceId: number, address: string, body: string): Promise<"new" | "accepted"> {
         const accepted = await db.message_source_by_address.get<{ body: string; loop_id: number }>({ workspace_id: workspaceId, path: address });
@@ -40,7 +40,7 @@ export default class MessageResources {
         throw MessageResources.reused(address, accepted.loop_id);
     }
 
-    // {§message-idempotency} The key reused for another payload.
+    // {§methods} The key reused for another payload.
     static reused(address: string, loopId: number): OperationFailureError {
         return new OperationFailureError(Results.failure(
             "daemon:admission", "message-address-reused", 422,
@@ -49,7 +49,7 @@ export default class MessageResources {
         ));
     }
 
-    // {§methods-session-inbox} The accepted messages the session has not yet observed ({§message-arrival}): durable the
+    // {§methods} The accepted messages the session has not yet observed ({§message-arrival}): durable the
     // moment they are accepted, published at the next turn boundary of the loop holding them, which a terminal loop
     // never reaches.
     static async inbox(db: Db, args: { workspaceId: number; sessionId: number }): Promise<ApplicationInboxMessage[]> {

@@ -44,7 +44,7 @@ export default class MessageDelivery {
         this.#inject = inject;
     }
 
-    // {§methods-loop-run} — drive/steer a loop. The module supplies only workspace/session/prompt;
+    // {§methods} — drive/steer a loop. The module supplies only workspace/session/prompt;
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
@@ -69,7 +69,7 @@ export default class MessageDelivery {
         const generationPolicy = await this.#sessionModels.resolveSessionModel(sessionId, selector);
         if (generationPolicy === null) throw providerNotConfigured();
         const { providerSpec: selection, effort } = generationPolicy;
-        // {§methods-loop-run-child-provider} — the session's persistent spawn override.
+        // {§session-model-selection} — the session's persistent spawn override.
         const childSelection = await this.#sessionModels.resolveSessionSpawnModel(sessionId, childSelector);
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§card-read-per-wake}
         // {§operator-config-workspace-settings} — the operator ceiling clamps a per-call maxTurns; a
@@ -136,7 +136,7 @@ export default class MessageDelivery {
             // the child begins with the spawning loop's effective spawn
             // model and no separate override of its own.
             childProviderSpec = null;
-            // {§session-effort-source} — inherited by value, chosen by nobody on this session.
+            // {§session-model-selection} — inherited by value, chosen by nobody on this session.
             await this.#sessionModels.persistGenerationPolicy(sessionId, {
                 model_route_id: await routeForSpec(this.#db, providerSpec),
                 spawn_model_route_id: null,
@@ -175,7 +175,7 @@ export default class MessageDelivery {
         } };
     }
 
-    // {§actor-boundary-client-operations} A message speaks for its loop's actor: a person's operation for that
+    // {§connection-lifecycle} A message speaks for its loop's actor: a person's operation for that
     // person, as a thread message does; any other loop for its session.
     async #messageSource(
         workspaceId: number,

@@ -2,7 +2,7 @@ import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { listModelCatalog } from "./model-catalog.ts";
 
-test("{§model-catalog}: configured discovery exposes every ready model under one exact provider/model selector", () => {
+test("{§session-model-selection}: configured discovery exposes every ready model under one exact provider/model selector", () => {
     const page = listModelCatalog({ provider: "deepseek" }, { DEEPSEEK_API_KEY: "configured" });
     assert.ok(page.total > 0);
     assert.equal(page.items.length, page.total);
@@ -19,7 +19,7 @@ test("{§model-catalog}: configured discovery exposes every ready model under on
     );
 });
 
-test("{§model-catalog}: the broad catalog reports missing local configuration without probing or hiding models", () => {
+test("{§session-model-selection}: the broad catalog reports missing local configuration without probing or hiding models", () => {
     const page = listModelCatalog({
         provider: "cloudflare-workers-ai",
         availability: "all",
@@ -39,7 +39,7 @@ test("{§model-catalog}: the broad catalog reports missing local configuration w
     assert.ok(entry.limits.contextTokens > 0);
 });
 
-test("{§model-catalog}: search and pagination apply to the complete filtered result before slicing", () => {
+test("{§session-model-selection}: search and pagination apply to the complete filtered result before slicing", () => {
     const complete = listModelCatalog({
         provider: "deepseek",
         search: "DeepSeek",
@@ -58,7 +58,7 @@ test("{§model-catalog}: search and pagination apply to the complete filtered re
     assert.equal(page.nextOffset, complete.total > 3 ? 3 : undefined);
 });
 
-test("{§model-catalog}: the panel is the page of a query that names no limit", () => {
+test("{§session-model-selection}: the panel is the page of a query that names no limit", () => {
     const prior = process.env.PLURNK_SERVICE_MODEL_CATALOG_PAGE;
     try {
         process.env.PLURNK_SERVICE_MODEL_CATALOG_PAGE = "3";
@@ -71,11 +71,11 @@ test("{§model-catalog}: the panel is the page of a query that names no limit", 
     }
 });
 
-test("{§model-catalog}: no configured provider means the default page is honestly empty", () => {
+test("{§session-model-selection}: no configured provider means the default page is honestly empty", () => {
     assert.deepEqual(listModelCatalog({}, {}), { items: [], offset: 0, total: 0 });
 });
 
-test("{§model-catalog}: discovery exposes the provider's exact efforts without credentials or I/O", () => {
+test("{§session-model-selection}: discovery exposes the provider's exact efforts without credentials or I/O", () => {
     const fetch = mock.method(globalThis, "fetch", () => {
         throw new Error("model discovery must not contact a provider");
     });

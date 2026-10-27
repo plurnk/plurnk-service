@@ -22,7 +22,7 @@ export type SessionGenerationPolicyRow = {
     model_route_id: number | null;
     spawn_model_route_id: number | null;
     effort: Effort | null;
-    // {§session-effort-source} — `explicit` only through session.effort.set.
+    // {§session-model-selection} — `explicit` only through session.effort.set.
     effort_source: EffortSource;
 };
 type LoopGenerationPolicy = {
@@ -51,7 +51,7 @@ export default class SessionModels {
     readonly #db: Db;
     // The boot provider, whose input capacity the active alias reports ({§acp-provider-routes}).
     readonly #provider: Provider | null;
-    // {§notifications-session-policy} Told of each write that changed a session's stored policy.
+    // {§notifications} Told of each write that changed a session's stored policy.
     readonly #policyChanged: (sessionId: number) => Promise<void>;
     // {§session-model-selection} Measures whether the session's current curated context fits a target model's budget.
     readonly #sessionCurationOverflow: (sessionId: number, provider: Provider) => Promise<CurationOverflow | null>;
@@ -74,7 +74,7 @@ export default class SessionModels {
         options?: { readonly spawn?: boolean },
     ): Promise<readonly Effort[]> {
         const params = { id: sessionId, ...policy };
-        // {§session-effort-source} — the source is provenance, not generation policy: it takes no
+        // {§session-model-selection} — the source is provenance, not generation policy: it takes no
         // part in the mid-loop change check, so the selectable probe sees only the policy columns.
         const { effort_source: _source, ...generation } = params;
         if (await this.#db.session_generation_policy_selectable.get(generation) === undefined) {
@@ -88,7 +88,7 @@ export default class SessionModels {
         if (await this.#db.session_generation_policy_update.get(params) === undefined) {
             return this.#refuseGenerationChange(sessionId, policy);
         }
-        // {§notifications-session-policy} A write that changed the stored policy is announced; one that changed nothing is not.
+        // {§notifications} A write that changed the stored policy is announced; one that changed nothing is not.
         if (stored === undefined || stored.model_route_id !== policy.model_route_id || stored.spawn_model_route_id !== policy.spawn_model_route_id
             || stored.effort !== policy.effort || stored.effort_source !== policy.effort_source) await this.#policyChanged(sessionId);
         return supportedEfforts;
@@ -169,7 +169,7 @@ export default class SessionModels {
         if (selector !== undefined) {
             const spec = this.#resolveLoopProvider(selector);
             if (spec === null) return null;
-            // {§session-effort-source} — a chosen effort follows the session across models; a seeded one
+            // {§session-model-selection} — a chosen effort follows the session across models; a seeded one
             // re-derives from the new alias, so a default never outlives its alias. An effort chosen with the
             // model replaces the carried one, and the pair is validated as one.
             const explicit = chosen !== undefined || session.effort_source === "explicit" && session.effort !== null;
@@ -298,7 +298,7 @@ export default class SessionModels {
     }
 
 
-    // {§methods-loop-run-model}: resolve identity without provider setup.
+    // {§session-model-selection}: resolve identity without provider setup.
     #resolveLoopProvider(selector: string): ProviderSpec | null {
         return this.#configured(() => resolveLoopRoute(selector, selector.includes("/") ? [] : parseAliasesFromEnv()));
     }
@@ -538,7 +538,7 @@ export default class SessionModels {
         return projectModelRoute(policy.providerSpec, policy.effort, policy.effortSource);
     }
 
-    // {§session-effort} — the session's effort is durable and
+    // {§session-model-selection} — the session's effort is durable and
     // provider-relative. A model-less session remains explicitly uninitialized.
     async readSessionEffort(args: {
         workspaceId: number;
@@ -565,7 +565,7 @@ export default class SessionModels {
             supportedEfforts: await this.supportedEfforts(row) };
     }
 
-    // {§session-effort} — mutate between loops, validate against both
+    // {§session-model-selection} — mutate between loops, validate against both
     // the session model and its optional spawn model, then persist atomically.
     async setSessionEffort(args: {
         workspaceId: number;
@@ -592,7 +592,7 @@ export default class SessionModels {
         }
         await this.assertModelSession(workspaceId, sessionId);
         // A model-less session takes the default first; an existing pair is replaced, not re-validated, so an
-        // effort its model no longer supports can be corrected ({§session-effort}).
+        // effort its model no longer supports can be corrected ({§session-model-selection}).
         const current = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
         if (current?.model_route_id === null) await this.resolveSessionModel(sessionId, undefined);
         const row = await this.#db.session_generation_policy_read.get<SessionGenerationPolicyRow>({ id: sessionId });
@@ -651,7 +651,7 @@ export default class SessionModels {
             }) };
     }
 
-    // {§model-catalog} The catalog is a bounded, daemon-local projection.
+    // {§session-model-selection} The catalog is a bounded, daemon-local projection.
     // It performs no provider I/O and never changes the session's selection.
     listModels(query: ModelCatalogQuery): ModelCatalogPage {
         return listModelCatalog(query);

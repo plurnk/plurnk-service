@@ -27,7 +27,7 @@ export default class CapabilityPolicies {
         }
     }
 
-    // {§workspace-capability-policy} Admission is shared; ownership does not add an access ring.
+    // {§capability-admission} Admission is shared; ownership does not add an access ring.
     static async layers(
         db: Db,
         workspaceId: number,

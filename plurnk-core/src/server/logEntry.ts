@@ -6,8 +6,8 @@ import type { LogEntryWire } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 
 // One `log_entries` row as `log_entry_by_id` and `log_entries_recent` select it: the columns the wire carries, the
-// JSON ones still encoded, and the hydration columns the statement derives ({§methods-readable-reasoning},
-// {§methods-invocation}, {§methods-answering}).
+// JSON ones still encoded, and the hydration columns the statement derives ({§methods-invocation},
+// {§methods-invocation}, {§methods-invocation}).
 export interface LogEntryRow {
     readonly id: number;
     readonly session_id: number;

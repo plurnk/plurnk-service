@@ -141,7 +141,7 @@ test("{§module-shutdown-order}: supervisor idle preserves a wake failure", asyn
 });
 
 for (const sameSession of [true, false]) {
-    test(`{§notifications-loop-terminated}: a terminal ${sameSession ? "waits for its session's" : "does not wait for another session's"} pending stream announcement`, async () => {
+    test(`{§notifications}: a terminal ${sameSession ? "waits for its session's" : "does not wait for another session's"} pending stream announcement`, async () => {
         const prompt = Promise.withResolvers<string>();
         const events: string[] = [];
         const drains = supervisor(() => prompt.promise, (_workspaceId, method) => events.push(method), {

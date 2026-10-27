@@ -276,7 +276,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         textEditScopes: true,
     };
 
-    // {§actor-boundary-client-operations} A client operation reads the log of the session its person acts for,
+    // {§connection-lifecycle} A client operation reads the log of the session its person acts for,
     // as that session reads it; acting for none, it addresses no log.
     static #reading(core: PlurnkSchemeContext): PlurnkSchemeContext | null {
         if (core.client === undefined) return core;

@@ -23,7 +23,7 @@ const entryMatches = (entry: ModelCatalogEntry, search: string): boolean => [
     entry.modelName,
 ].some((value) => value.toLowerCase().includes(search));
 
-// {§model-catalog} Core composes the release-pinned Models.dev facts with the
+// {§session-model-selection} Core composes the release-pinned Models.dev facts with the
 // provider owner's local readiness predicate. Enumeration is pure local work:
 // it never probes, authenticates, selects, or invokes a model.
 export const listModelCatalog = (

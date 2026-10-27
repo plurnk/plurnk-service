@@ -2484,7 +2484,7 @@ const minimalLog = async (db: Db, ctx: { sessionId: number; loopId: number; turn
     return row.id;
 };
 
-test("{§methods-log-coordinate} fetchLogEntry surfaces loop_seq/turn_seq (ordinals), not just DB ids", async () => {
+test("{§methods-invocation} fetchLogEntry surfaces loop_seq/turn_seq (ordinals), not just DB ids", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -2500,7 +2500,7 @@ test("{§methods-log-coordinate} fetchLogEntry surfaces loop_seq/turn_seq (ordin
     } finally { await db.close(); }
 });
 
-test("{§methods-log-entry-wire} fetchLogEntry preserves causal source and structured attributes", async () => {
+test("{§methods-invocation} fetchLogEntry preserves causal source and structured attributes", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, `wire-provenance-${crypto.randomUUID()}`);

@@ -142,7 +142,7 @@ test("{§edit-result-receipt-projection} assembled packet: landed EDIT receipts 
     } finally { await db.close(); }
 });
 
-test("{§workspace-capability-policy}: packet assembly surfaces invalid workspace policy", async () => {
+test("{§capability-admission}: packet assembly surfaces invalid workspace policy", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-policy-${crypto.randomUUID()}`);

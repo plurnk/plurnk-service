@@ -148,7 +148,7 @@ export default class CapabilityResolver {
         }
     }
 
-    // {§owner-interaction-ring} The interaction capabilities this session's owner would not receive.
+    // {§question-tool} The interaction capabilities this session's owner would not receive.
     async #unreceived(workspaceId: number, sessionId: number): Promise<ReadonlyArray<{ readonly runtime: string; readonly tool?: string }>> {
         const executors = this.#executors();
         const candidates: Array<{ readonly runtime: string; readonly tool?: string; readonly name: string }> = [];
@@ -170,7 +170,7 @@ export default class CapabilityResolver {
             .map(({ runtime, tool }) => ({ runtime, ...(tool === undefined ? {} : { tool }) }));
     }
 
-    // {§owner-interaction-ring} An asking session adds its owner's ring inside the shared cascade.
+    // {§question-tool} An asking session adds its owner's ring inside the shared cascade.
     async layers(workspaceId: number, sessionId?: number): Promise<readonly CapabilityLayer[]> {
         const layers = await CapabilityPolicies.layers(this.#db, workspaceId);
         const unreceived = sessionId === undefined ? [] : await this.#unreceived(workspaceId, sessionId);
@@ -180,7 +180,7 @@ export default class CapabilityResolver {
         }];
     }
 
-    // {§owner-interaction-ring} The session's face of the shared reserved tree: the documents of a
+    // {§question-tool} The session's face of the shared reserved tree: the documents of a
     // runtime or tool its owner ring denies are absent.
     async referenceVisibility(workspaceId: number, sessionId: number): Promise<(pathname: string) => boolean> {
         const executors = this.#executors();

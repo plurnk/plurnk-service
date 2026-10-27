@@ -1,5 +1,5 @@
 -- PREP: proposal_list_pending
--- {§proposal-list} — durable candidates in a workspace. ProposalLifecycle intersects
+-- {§methods} — durable candidates in a workspace. ProposalLifecycle intersects
 -- them with its live resolution owners before projecting a stopped world; neither
 -- Daemon nor an interface module reconstructs authority from this persistence shape.
 SELECT le.id AS logEntryId, r.workspace_id AS workspaceId,

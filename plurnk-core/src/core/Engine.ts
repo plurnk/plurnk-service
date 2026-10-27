@@ -479,7 +479,7 @@ export default class Engine {
 
     // The request ledger is cardinal evidence; its aggregate and the latest-turn
     // occupancy gauge are derived projections. {§tokenomics-client-gauge},
-    // {§notifications-loop-terminated}, {§provider-accounting}
+    // {§notifications}, {§provider-accounting}
     async loopUsage(loopId: number): Promise<LoopUsage> {
         const [gauge, requests] = await Promise.all([
             this.loopGauge(loopId),
@@ -517,7 +517,7 @@ export default class Engine {
             meta: JSON.parse(row.meta ?? "{}") as Record<string, unknown> };
     }
 
-    // {§methods-session-accounting} — the spend of a session and its descendants since the session
+    // {§methods-workspace-create} — the spend of a session and its descendants since the session
     // began; nothing spent projects explicit zero ({§provider-accounting}).
     async sessionAccounting(sessionId: number): Promise<ProviderAccounting> {
         const requests = await this.#db.engine_session_provider_requests.all<ProviderRequestStorageRow>({ session_id: sessionId });
@@ -580,7 +580,7 @@ export default class Engine {
         return this.#dispatcher.capabilityProjection(workspaceId);
     }
 
-    // {§methods-entry-channel-read} The channel an address without a fragment selects: its scheme's default there.
+    // {§methods} The channel an address without a fragment selects: its scheme's default there.
     defaultChannelAt(target: ParsedPath & { readonly kind: "url" }, workspaceId: number): string | undefined {
         return this.#schemes.manifestAt(target.scheme, target, workspaceId)?.defaultChannel;
     }

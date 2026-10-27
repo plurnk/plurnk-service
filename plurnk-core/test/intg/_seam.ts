@@ -40,7 +40,7 @@ export default class SeamSocket {
             if (this.#closed) return;
             if (workspaceId !== null && this.#workspace !== null && workspaceId !== this.#workspace.workspaceId) return;
             if (workspaceId !== null && this.#workspace === null) return;
-            // {§notifications-envelope-carries-workspaceid} — the envelope stamps the scope.
+            // {§notifications} — the envelope stamps the scope.
             const scoped = workspaceId !== null && params !== null && typeof params === "object" ? { ...params, workspaceId } : params;
             this.#emit("message", JSON.stringify({ jsonrpc: "2.0", method, params: scoped }));
         });
@@ -238,7 +238,7 @@ export default class SeamSocket {
     }
 
     // One statement as one client operation of `owner`, acting for the bound model session
-    // ({§methods-op-mirror}, {§actor-boundary-client-operations}).
+    // ({§methods}, {§connection-lifecycle}).
     async #operate(statement: PlurnkStatement): Promise<unknown> {
         const { workspaceId } = this.#attached();
         const [result] = await this.#daemon.dispatchClientAction({

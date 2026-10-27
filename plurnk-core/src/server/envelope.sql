@@ -66,13 +66,13 @@ WHERE workspace_id = $workspace_id
 ORDER BY created_at DESC;
 
 -- PREP: workspace_capability_policy_update
--- {§workspace-capability-policy}: one atomic field replacement preserves other settings.
+-- {§capability-admission}: one atomic field replacement preserves other settings.
 UPDATE workspaces SET settings = json_set(settings, '$.capabilities', json($policy))
 WHERE id = $workspace_id
 RETURNING id;
 
 -- PREP: session_generation_policy_read
--- {§session-model-selection}/{§session-effort} — one durable generation policy.
+-- {§session-model-selection}/{§session-model-selection} — one durable generation policy.
 SELECT model_route_id, spawn_model_route_id, effort, effort_source FROM sessions WHERE id = $id;
 
 -- PREP: session_generation_policy_update
@@ -112,7 +112,7 @@ WHERE id = $id
   );
 
 -- PREP: envelope_list_workspace_prompts
--- {§methods-workspace-prompts}: nonempty loop seeds a client addressed to a model session,
+-- {§methods-workspace-create}: nonempty loop seeds a client addressed to a model session,
 -- newest-first, optionally one session's. Authorship is the seed message's address: a session-issued
 -- seed (WORK, FORK, SEND to a session) carries none, so the model's own task prompts are not history
 -- whichever session they seeded, and a human prompt at a forked session is.
@@ -136,7 +136,7 @@ VALUES ($session_id, COALESCE((SELECT MAX(sequence) FROM loops WHERE session_id 
 RETURNING id, sequence;
 
 -- PREP: envelope_client_operation_person
--- {§actor-boundary-client-operations} The person a client operation speaks for: the prompt source of a
+-- {§connection-lifecycle} The person a client operation speaks for: the prompt source of a
 -- runtime-session loop. The daemon's own loops there name none.
 SELECT l.prompt_source AS person
 FROM loops l JOIN sessions w ON w.id = l.session_id

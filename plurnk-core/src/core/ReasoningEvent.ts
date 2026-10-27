@@ -1,4 +1,4 @@
-// {§notifications-reasoning-event} Transient readable-reasoning delivery to
+// {§notifications} Transient readable-reasoning delivery to
 // workspace-scoped presentation consumers. The provider response remains the
 // durable authority; these events expose its live arrival without creating
 // another stored representation.

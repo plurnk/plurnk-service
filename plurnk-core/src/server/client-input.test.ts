@@ -13,7 +13,7 @@ const failureFrom = (run: () => unknown): OperationFailureError => {
     assert.fail("Expected operation failure.");
 };
 
-test("{§methods-loop-run-open-paths} malformed resource URIs are refused before a loop is admitted", () => {
+test("{§methods-workspace-create} malformed resource URIs are refused before a loop is admitted", () => {
     assert.deepEqual(ClientInput.assertOpenPaths("runLoop", ["literal (file).txt", "workspace:///reference.txt#body"]), ["literal (file).txt", "workspace:///reference.txt#body"]);
     const failure = failureFrom(() => ClientInput.assertOpenPaths("runLoop", ["http://["]));
     assert.equal(failure.result.status, 400);
@@ -210,7 +210,7 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
     }
 });
 
-test("{§methods-loop-run-child-provider} child provider input distinguishes omitted, explicit inherit, and an alias", () => {
+test("{§session-model-selection} child provider input distinguishes omitted, explicit inherit, and an alias", () => {
     assert.equal(ClientInput.assertOptionalChildSelector("loop.run", undefined), undefined);
     assert.equal(ClientInput.assertOptionalChildSelector("loop.run", null), null);
     assert.equal(ClientInput.assertOptionalChildSelector("loop.run", "fast"), "fast");

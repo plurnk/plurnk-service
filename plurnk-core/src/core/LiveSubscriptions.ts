@@ -48,7 +48,7 @@ export default class LiveSubscriptions {
         return conclusion.promise;
     }
 
-    // {§exec-lifetime} {§notifications-loop-terminated} Cancels every live subscription the loop's terminal reaps, whatever
+    // {§exec-lifetime} {§notifications} Cancels every live subscription the loop's terminal reaps, whatever
     // segment of the loop opened it, and settles with those it reaped once each has concluded. A cancellation that fails
     // leaves its subscription retryable and is reported; the reap does not wait on it.
     async reapLoop(loopId: number): Promise<number[]> {

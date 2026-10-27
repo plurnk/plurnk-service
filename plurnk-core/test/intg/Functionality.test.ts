@@ -647,7 +647,7 @@ test("{§functionality-inspection} cold and preparing workspaces remain inspecta
     assert.deepEqual(updates.at(-1), { workspaceId, preparation: [] });
 });
 
-test("{§methods-workspace-activate} activation without a turn publishes a workspace's capabilities once, however many demand it", async (t) => {
+test("{§methods-workspace-create} activation without a turn publishes a workspace's capabilities once, however many demand it", async (t) => {
     const db = await openMigrated();
     const log: string[] = [];
     const daemon = new Daemon({ db, provider: null });
@@ -1890,7 +1890,7 @@ const LIVE = new Set([102, 200]);
 // Absent: unknown or disabled (404/501) or unavailable with its exact Problem (5xx).
 const isAbsent = (status: number): boolean => status >= 400;
 
-// A person's operation, acting for the context's model session ({§actor-boundary-client-operations}).
+// A person's operation, acting for the context's model session ({§connection-lifecycle}).
 const dispatch = async (context: Context, statement: PlurnkStatement) => (await context.daemon.dispatchClientAction({
     workspaceId: context.workspaceId, actor: context.actor, contextSessionId: context.modelSessionId, statements: [statement],
 }))[0];

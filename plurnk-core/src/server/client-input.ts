@@ -253,7 +253,7 @@ export default class ClientInput {
         return resources;
     }
 
-    // {§actor-boundary-client-operations} The canonical address of the person a client operation acts for.
+    // {§connection-lifecycle} The canonical address of the person a client operation acts for.
     static assertActor(context: string, actor: unknown): string {
         if (typeof actor !== "string" || actor.length === 0) {
             ClientInput.#invalid(

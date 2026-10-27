@@ -119,7 +119,7 @@ export default class Envelope {
     }
 
     // Client operation loop allocator. One operation allocates one administrative loop, opened by its
-    // actor ({§actor-boundary-client-operations}); its statements become ordered turns and settlement closes it.
+    // actor ({§connection-lifecycle}); its statements become ordered turns and settlement closes it.
     static async ensureClientLoop(db: Db, sessionId: number, actor: string): Promise<number> {
         return (await AdministrativeLoop.open(db, sessionId, actor)).id;
     }
@@ -127,7 +127,7 @@ export default class Envelope {
     // Model-session allocator ({§machine-processes}). A person's client operations journal in the runtime
     // session, never here, so the packet, rendered from the model session, never carries them
     // ({§connection-lifecycle}). The module resolves and retains the binding.
-    // {§methods-session-create}: a fresh session is a named, empty-log, model-origin session,
+    // {§methods-workspace-create}: a fresh session is a named, empty-log, model-origin session,
     // distinct from a history-copying fork.
     static async createModelSession(db: Db, workspaceId: number, name?: string, parentSessionId?: number, owner?: string): Promise<{ id: number; name: string }> {
         const options = { workspaceId, parentSessionId, owner, origin: "model" as const };
@@ -152,7 +152,7 @@ export default class Envelope {
         return rows.map(projectSessionRow);
     }
 
-    // {§methods-workspace-prompts}: expose root-session loop seeds directly,
+    // {§methods-workspace-create}: expose root-session loop seeds directly,
     // without forcing clients to reconstruct prompt history from log rows.
     static async listPromptsForWorkspace(db: Db, workspaceId: number, limit: number, sessionId: number | null): Promise<string[]> {
         const rows = await db.envelope_list_workspace_prompts.all<{ prompt: string }>({ workspace_id: workspaceId, limit, session_id: sessionId });

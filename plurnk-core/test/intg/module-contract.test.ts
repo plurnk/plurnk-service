@@ -767,7 +767,7 @@ test("{§rpc} log.read entries have hydrated JSON columns", async () => {
     });
 });
 
-test("{§methods-log-read}: a full L/T/S coordinate resolves the single entry's full shape", async () => {
+test("{§methods}: a full L/T/S coordinate resolves the single entry's full shape", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -780,7 +780,7 @@ test("{§methods-log-read}: a full L/T/S coordinate resolves the single entry's 
             const send = all.entries.find((e) => e.op === "SEND" && /Paris/.test(JSON.stringify(e.tx)));
             assert.ok(send, "the SEND entry is in the log");
 
-            // {§methods-log-read} — one call by L/T/S returns exactly that entry, full shape.
+            // {§methods} — one call by L/T/S returns exactly that entry, full shape.
             const r = (await rpcCall(ws, 5, "log.read", { loopSeq: send.loop_seq, turnSeq: send.turn_seq, sequence: send.sequence })).result as { status: number; entries: Array<{ id: number; op: string; tx: unknown; rx: unknown }> };
             assert.equal(r.status, 200);
             assert.equal(r.entries.length, 1, "a full coordinate resolves exactly one entry, not a list");
@@ -1295,7 +1295,7 @@ for (const outcome of ["success", "failure", "delegation"] as const) {
     });
 }
 
-for (const operation of ["READ", "EDIT", "KILL"]) test(`{§notifications-operation-event} tool hooks bracket ${operation} dispatch, not fan-out rows or automatic observations`, { timeout: 20_000 }, async (t) => {
+for (const operation of ["READ", "EDIT", "KILL"]) test(`{§notifications} tool hooks bracket ${operation} dispatch, not fan-out rows or automatic observations`, { timeout: 20_000 }, async (t) => {
     serverProposals(t, "accept");
     const db = await openMigrated();
     const root = await mkdtemp(join(tmpdir(), "plurnk-hook-project-"));
@@ -1344,7 +1344,7 @@ for (const operation of ["READ", "EDIT", "KILL"]) test(`{§notifications-operati
     assert.equal(events.at(-1)!.hook_event_name, "Stop", "the terminal event follows all settled dispatches");
 });
 
-test("{§notifications-operation-event} concurrent BARE starts precede inference and correlate with ordered settlement", { timeout: 20_000 }, async (t) => {
+test("{§notifications} concurrent BARE starts precede inference and correlate with ordered settlement", { timeout: 20_000 }, async (t) => {
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: viableWindow() * 4, responses: [
         makeMockResponse("````BARE\nFirst isolated question.\n````\n\n````BARE\nSecond isolated question.\n````"),

@@ -1,7 +1,7 @@
 import { fixtureExecutors } from "./_mock.ts";
 // Test fixture builders route clean parameters through the contracts-owned
 // statement parser so Core receives production AST shapes. {§tier-entrypoints}
-// {§methods-op-mirror}
+// {§methods}
 
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { LineMarker, PlurnkStatement } from "@plurnk/plurnk-contracts";

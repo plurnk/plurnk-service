@@ -2925,7 +2925,7 @@ const withConfiguredChild = async <T>(spec: ProviderAlias, run: () => Promise<T>
     }
 };
 
-test("{§methods-loop-run-child-provider}: a smaller WORK provider carries through every descendant", async () => {
+test("{§session-model-selection}: a smaller WORK provider carries through every descendant", async () => {
     const parentSpec = declaredProvider("parent", "large-parent");
     const childSpec = declaredProvider("child", "smaller-child");
     const parent = new Mock({
@@ -2984,7 +2984,7 @@ test("{§methods-loop-run-child-provider}: a smaller WORK provider carries throu
     });
 });
 
-test("{§methods-loop-run-child-provider}: the configured child alias supplies an omitted run policy", async () => {
+test("{§session-model-selection}: the configured child alias supplies an omitted run policy", async () => {
     const parentSpec = declaredProvider("configured-parent", "configured-parent-model");
     const childSpec = declaredProvider("configured-child", "configured-child-model");
     const parent = new Mock({
@@ -3063,7 +3063,7 @@ test("{§op-methods-op-dispatch}: BARE consumes the loop's durable child provide
     });
 });
 
-test("{§methods-loop-run-child-provider}: explicit inherit overrides configuration and follows the spawning loop", async () => {
+test("{§session-model-selection}: explicit inherit overrides configuration and follows the spawning loop", async () => {
     const spec = declaredProvider("inherit", "same-through-tree");
     const configuredSpec = declaredProvider("ignored", "configured-child-must-not-run");
     const mock = new Mock({
@@ -3100,7 +3100,7 @@ test("{§methods-loop-run-child-provider}: explicit inherit overrides configurat
     });
 });
 
-test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinary child loop", async () => {
+test("{§session-model-selection}: an oversized FORK fails as an ordinary child loop", async () => {
     const parentSpec = declaredProvider("fork-parent", "large-parent");
     const childSpec = declaredProvider("fork-child", "tiny-child");
     const parent = new Mock({

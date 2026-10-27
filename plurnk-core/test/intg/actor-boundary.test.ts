@@ -1451,7 +1451,7 @@ test("{§connection-lifecycle} workspace.sessions tags each session with its act
 });
 
 describe("inject-fold-posture", () => {
-// {§methods-loop-run-fold-consistency} — folded prompts preserve durable loop configuration.
+// {§methods-workspace-create} — folded prompts preserve durable loop configuration.
 
 
 
@@ -1483,7 +1483,7 @@ test("{§session-ownership}: injecting a message preserves the owner's pending r
     });
 });
 
-test("{§methods-loop-run-fold-consistency}: a folded prompt cannot replace the durable turn ceiling", async () => {
+test("{§methods-workspace-create}: a folded prompt cannot replace the durable turn ceiling", async () => {
     await withDaemon(heldLoopMock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1516,7 +1516,7 @@ test("{§methods-loop-run-fold-consistency}: a folded prompt cannot replace the 
     });
 });
 
-test("{§methods-loop-run-fold-consistency}: an omitted ceiling resumes a parked loop unchanged", async (approvalContext) => {
+test("{§methods-workspace-create}: an omitted ceiling resumes a parked loop unchanged", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({
         contextWindow: 16384,
@@ -2028,7 +2028,7 @@ test("{§proposal-disposition} server rejection settles the same admitted propos
     });
 });
 
-test("{§notifications-loop-proposal} proposal notification projects the durable owner and selected disposition", async () => {
+test("{§notifications} proposal notification projects the durable owner and selected disposition", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````", 50),
     ] });
@@ -2304,7 +2304,7 @@ test("{§session-ownership}: parking requires either an obligation or an interac
     assert.equal(await lifecycle.park(owned, { wakenBy: null }), true);
 });
 
-test("{§owner-interaction-ring}: the workspace layers carry no owner ring; ownership shapes only what an asking session is offered", async () => {
+test("{§question-tool}: the workspace layers carry no owner ring; ownership shapes only what an asking session is offered", async () => {
     await using db = await openMigrated();
     const workspaceId = await insertWorkspace(db, "capability-rings");
     const sessionId = await insertSession(db, workspaceId);

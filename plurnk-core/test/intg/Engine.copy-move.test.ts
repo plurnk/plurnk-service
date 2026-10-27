@@ -1891,7 +1891,7 @@ for (const transfer of [copyStmt, moveStmt]) {
     }
 }
 
-test("{§notifications-loop-proposal} live and reconnect use one COPY destination proposal projection", async () => {
+test("{§notifications} live and reconnect use one COPY destination proposal projection", async () => {
     await withWorkspace(async (_root, ctx) => {
         await seedSession(ctx, "note", "copied content\n");
         const observed = deferred<ProposalPendingEvent>();

@@ -109,7 +109,7 @@ export default class SessionControlHandler {
     }
 
     // {§loop-completion} A session's own operation opens the obligation its message carries; a person's act opens none
-    // of a session's, since the voice is the person's ({§actor-boundary-client-operations}).
+    // of a session's, since the voice is the person's ({§connection-lifecycle}).
     static opener(ctx: PlurnkSchemeContext): MessageOpener | undefined {
         return ctx.client === undefined && ctx.sequence !== undefined ? { turnId: ctx.turnId, sequence: ctx.sequence } : undefined;
     }
@@ -134,7 +134,7 @@ export default class SessionControlHandler {
     }
 
     // {§machine-processes} Every session WORK or FORK creates is a model's. A model's is its child; a
-    // person's operation acts for them ({§actor-boundary-client-operations}): their WORK starts a root session they
+    // person's operation acts for them ({§connection-lifecycle}): their WORK starts a root session they
     // own, and their FORK branches the session they act for.
     async #createSession(
         statement: WorkStatement | ForkStatement,

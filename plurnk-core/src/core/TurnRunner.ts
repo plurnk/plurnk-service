@@ -389,7 +389,7 @@ type ProviderEmission = {
     readonly signal: AbortSignal | undefined;
 };
 
-// {§notifications-reasoning-event} — the per-call observer a provider streams reasoning through.
+// {§notifications} — the per-call observer a provider streams reasoning through.
 type ReasoningObserver = {
     readonly observeRequest: (...args: Parameters<ModelCall["observeRequest"]>) => ReturnType<ModelCall["observeRequest"]>;
     readonly observeReasoning: ((delta: string) => void) | undefined;
@@ -1032,7 +1032,7 @@ export default class TurnRunner {
         const streamEntries = await this.#materialization.materializeStreamDeltas({ workspaceId, sessionId, loopId, turnId, fromSequence: nextActionIndex, fit });
         nextActionIndex += streamEntries.length;
         await Turn.observeCompletions(this.#db, turnId);
-        // {§notifications-log-entry-notify}: materialized observations are
+        // {§notifications}: materialized observations are
         // ordinary committed log rows, not packet-only content.
         for (const id of [...ambientEntries, ...streamEntries]) {
             args.onDispatch?.(id);
@@ -1084,7 +1084,7 @@ export default class TurnRunner {
         return { nextActionIndex, openPaths };
     }
 
-    // {§methods-loop-run-open-paths}: selected resources belong to the message.
+    // {§methods-workspace-create}: selected resources belong to the message.
     // Publish it, then dispatch ordinary core READs in that same turn;
     // missing/non-member paths retain their normal 4xx. Returns the next action index.
     async #readOpenPaths({ workspaceId, sessionId, loopId, onDispatch, onSettled }: TurnArgs, turnId: number, openPaths: string[], fromSequence: number, fit: ContextFit): Promise<number> {
@@ -1343,7 +1343,7 @@ export default class TurnRunner {
         return split.emissionValid ? "admitted" : "rejected";
     }
 
-    // {§notifications-reasoning-event} — only the parent emission is observed;
+    // {§notifications} — only the parent emission is observed;
     // BARE has no observer on its isolated calls. Reasoning deltas cite the physical
     // request they stream in; a new request or the call's end closes the open span.
     #reasoningObserver({ workspaceId, sessionId, loopId }: TurnArgs, { turnId, loopSeq, seq: turnSeq }: TurnRequest, modelCall: ModelCall): ReasoningObserver {

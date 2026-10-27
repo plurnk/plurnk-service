@@ -3,7 +3,7 @@ import type { ApplicationLoopPacket, LogEntryWire } from "./Application.ts";
 import type { ClientInteractionProjection, JsonSchema, OperationResult, ProposalProjection } from "./types.ts";
 import type { ProviderAccounting } from "./types.generated.ts";
 
-// {§methods-log-entry-wire} The row exactly as core sends it.
+// {§methods-invocation} The row exactly as core sends it.
 export interface LogEntryNotification {
     readonly entry: LogEntryWire;
 }
@@ -40,13 +40,13 @@ export interface OutsideEventNotification {
 export interface TerminatedNotification {
     readonly sessionId: number;
     readonly loopId: number;
-    // {§notifications-loop-terminated} — the loop's number among its session's loops.
+    // {§notifications} — the loop's number among its session's loops.
     readonly loopSeq: number;
     readonly result: OperationResult;
     readonly hitMaxTurns: boolean;
     readonly turnIds: number[];
     readonly attributions: string[];
-    // {§notifications-loop-terminated} — when the loop concluded, Unix milliseconds.
+    // {§notifications} — when the loop concluded, Unix milliseconds.
     readonly terminatedAt: number;
     readonly usage: {
         readonly accounting: ProviderAccounting;
@@ -150,7 +150,7 @@ export const APPLICATION_NOTIFICATIONS = Object.freeze({
             contextCapacity: nullable(POSITIVE),
             meta: { type: "object", additionalProperties: true },
         }, ["accounting", "curationWeight", "curationBudget", "contextTokens", "contextCapacity", "meta"]),
-        // {§notifications-loop-terminated} — Unix milliseconds, the loop's own stamp.
+        // {§notifications} — Unix milliseconds, the loop's own stamp.
         terminatedAt: POSITIVE,
     }, ["sessionId", "loopId", "loopSeq", "result", "hitMaxTurns", "turnIds", "attributions", "usage", "terminatedAt"])),
     "loop/packet": notification<ApplicationLoopPacket>(object({

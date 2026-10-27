@@ -180,7 +180,7 @@ test("{§provider-instantiation} the process cache separates durable efforts for
     assert.notEqual(adaptive, high);
 });
 
-test("{§session-effort} an exact route uses global provider tuning and never fabricates an alias scope", () => {
+test("{§session-model-selection} an exact route uses global provider tuning and never fabricates an alias scope", () => {
     const route = { provider: "mocktest", model: "same-model" };
     const env = {
         PLURNK_PROVIDERS_EFFORT: "adaptive",

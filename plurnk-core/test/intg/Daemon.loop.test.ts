@@ -365,7 +365,7 @@ test("{§loop-terminals} loop.run respects maxTurns cap when model emits non-ter
         } finally { ws.close(); }
     });
 });
-test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ per path", async () => {
+test("{§methods-workspace-create}: a fresh loop foists one turn-zero READ per path", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -393,7 +393,7 @@ test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ pe
     });
 });
 
-test("{§methods-loop-run-open-paths}: initial reads preserve file paths, scheme addresses and channels", async () => {
+test("{§methods-workspace-create}: initial reads preserve file paths, scheme addresses and channels", async () => {
     const mock = new Mock({ contextWindow: 32_768, responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -418,8 +418,8 @@ test("{§methods-loop-run-open-paths}: initial reads preserve file paths, scheme
     });
 });
 
-// {§methods-event-subscribe}: a subscriber failure never propagates into engine control flow.
-test("{§methods-event-subscribe} a throwing seam subscriber never kills the loop — the transport's failure is its own", async (approvalContext) => {
+// {§methods}: a subscriber failure never propagates into engine control flow.
+test("{§methods} a throwing seam subscriber never kills the loop — the transport's failure is its own", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
     const logged: string[] = [];
