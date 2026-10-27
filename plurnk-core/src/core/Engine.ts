@@ -464,7 +464,7 @@ export default class Engine {
         return { sessionId: identity.session_id };
     }
 
-    // {§attribution} — reporting derives from exact provider-request evidence;
+    // {§emission-admission} — reporting derives from exact provider-request evidence;
     // malformed durable tags fail here instead of being silently filtered.
     async loopAttributions(loopId: number): Promise<string[]> {
         const rows = await this.#db.engine_loop_attributions.all<{ attribution: unknown }>({ loop_id: loopId });
@@ -512,7 +512,7 @@ export default class Engine {
             contextTokens: row.context_tokens,
             // Request-shaped physical capacity from that same latest emission call.
             contextCapacity: row.context_capacity,
-            // Latest turn's opaque provider metadata. {§meta-passthrough}
+            // Latest turn's opaque provider metadata. {§provider-surface}
             // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: the metadata is read back as the row stored it
             meta: JSON.parse(row.meta ?? "{}") as Record<string, unknown> };
     }
@@ -585,7 +585,7 @@ export default class Engine {
         return this.#schemes.manifestAt(target.scheme, target, workspaceId)?.defaultChannel;
     }
 
-    // {§client-entry-address}
+    // {§scheme-address}
     readClientEntry(context: {
         target: ParsedPath;
         workspaceId: number;

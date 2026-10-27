@@ -16,7 +16,7 @@ export default class ResourceState {
         const keys = await db.ws_file_keys.all<{ workspace_id: number; pathname: string; project_root: string | null }>({});
         for (const k of keys) {
             if (!Namespace.isCanonical(k.pathname, k.project_root)) {
-                violations.push({ invariant: "{§fs-canonical-name}", detail: `ws ${k.workspace_id}: stored key '${k.pathname}' is not its own canon` });
+                violations.push({ invariant: "{§fs-namespace}", detail: `ws ${k.workspace_id}: stored key '${k.pathname}' is not its own canon` });
             }
         }
 

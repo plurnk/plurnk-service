@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS workspace_constraints (
     -- ({§members-projection}). An inclusion is a pattern scan; a creation record is one exact path.
     effect     TEXT    NOT NULL CHECK (effect IN ('include', 'exclude')),
     glob       TEXT    NOT NULL,
-    -- create: the exact record of a file Plurnk wrote ({§fs-create-record}); members: a
+    -- create: the exact record of a file Plurnk wrote ({§fs-write-surface}); members: a
     -- human-authored definition projected by the members family; model: a definition the model
     -- proposed under the members scope — never admitted past the repository's ignore rules.
     source     TEXT    NOT NULL CHECK (source IN ('create', 'members', 'model')),

@@ -702,7 +702,7 @@ test("{§exec-entry-sink}: content:null materializes a live page and prunes an u
         });
         assert.ok(live !== undefined, "content:null triggered the fetch and materialized the exact resource authority");
         assert.equal(live.scheme, "https");
-        // {§readable-channel} — the fetched page's source is its body; its Markdown is #readable.
+        // {§channel-selection} — the fetched page's source is its body; its Markdown is #readable.
         const body = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: live.id, name: "body" });
         assert.equal(body?.mimetype, "application/xhtml+xml", "the body is the server source under its served type");
         const readable = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: live.id, name: "readable" });
@@ -1319,7 +1319,7 @@ test("{§derivation-dedup-parallel} a representation that moves on between judge
 });
 
 describe("search-maintenance", () => {
-// {§derivation-exhaustive} {§derivation-dedup-parallel}
+// {§persistent-search-index} {§derivation-dedup-parallel}
 
 
 
@@ -1373,7 +1373,7 @@ test("{§derivation-dedup-parallel} changed resources report one aggregate deriv
     } finally { db.close(); }
 });
 
-test("{§derivation-exhaustive} [#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", async () => {
+test("{§persistent-search-index} [#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", async () => {
     const prev = process.env.PLURNK_SERVICE_SEARCH_EXCLUDE;
     process.env.PLURNK_SERVICE_SEARCH_EXCLUDE = "*/dist/*";
     const mimetypes = new Mimetypes();

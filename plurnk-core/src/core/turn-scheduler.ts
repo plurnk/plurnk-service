@@ -1,7 +1,7 @@
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 
-// {§op-execution-order} — only disposition is deferred past tolerated trailing OPs.
+// {§op-methods-op-dispatch} — only disposition is deferred past tolerated trailing OPs.
 export const scheduleTurnOps = (statements: readonly PlurnkStatement[]): PlurnkStatement[] => {
     const disposition = TurnDisposition.is;
     return [...statements.filter((statement) => !disposition(statement)), ...statements.filter(disposition)];

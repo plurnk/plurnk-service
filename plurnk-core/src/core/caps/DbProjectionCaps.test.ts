@@ -70,7 +70,7 @@ test("{§scheme-projection} projection identity delegates to the configured mime
     );
 });
 
-test("{§mimetype-classification-consumption} binary classification delegates to installed handler declarations", async () => {
+test("{§mimetype} binary classification delegates to installed handler declarations", async () => {
     const projection = new DbProjectionCaps(context(""));
     assert.equal(await projection.isBinary("text/x-binary"), true);
     assert.equal(await projection.isBinary("application/json"), false);

@@ -161,7 +161,7 @@ export default class ResourceTransfers {
 
         const handler = this.#schemes.get(resolvedSource.scheme, ctx.workspaceId);
         if (handler === undefined) throw new InvalidOperationResultError(`Resolved MOVE source scheme '${resolvedSource.scheme}' is no longer registered.`);
-        // {§readable-channel} — a derived projection cannot be moved out of its entry.
+        // {§channel-selection} — a derived projection cannot be moved out of its entry.
         if (EntryReadable.isDerived(resolvedSource.channel)) {
             return MutationEffects.failure(
                 "channel-derived", 400,

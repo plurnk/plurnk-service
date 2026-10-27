@@ -74,7 +74,7 @@ test("{§notifications-stream-event-on-channel-change} setChannelState: transiti
     } finally { await db.close(); }
 });
 
-test("{§channel-state-state-is-metadata} setChannelState: accepts all four valid states", async () => {
+test("{§channels} setChannelState: accepts all four valid states", async () => {
     const { db, entryId, sessionId } = await seedEntryWithChannel("body", "text/plain", "x", "active");
     try {
         for (const s of ["static", "active", "closed", "errored"] as const) {

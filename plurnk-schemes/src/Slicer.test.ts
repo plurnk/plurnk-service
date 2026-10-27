@@ -414,7 +414,7 @@ test("{§problems-schemes} lineMarkerEditBatch rejects every kind of overlap ato
     assert.deepEqual(rangeOverlap.problem?.conflictingRegions, [[2, 3], [3, 4]]);
     assert.equal(rangeOverlap.problem?.conflictingRanges, undefined, "one coordinate representation owns the conflict");
 
-    // {§edit-batch-merges} — two insertions at one point are a resolution, not a conflict:
+    // {§op-methods-op-dispatch} — two insertions at one point are a resolution, not a conflict:
     // they land in authored order and the second row says so.
     const insertions = Slicer.lineMarkerEditBatch("abc", [
         { marker: { marks: [1, 2, 1, 2] }, body: "X" },
@@ -467,10 +467,10 @@ test("{§problems-schemes} an overlap receipt carries the whole conflict graph, 
 });
 
 
-// {§edit-batch-merges} — evidence-gated resolutions, each reported; everything else refused.
+// {§op-methods-op-dispatch} — evidence-gated resolutions, each reported; everything else refused.
 const six = "a\nb\nc\nd\ne\nf\n";
 
-test("{§edit-batch-merges} an identical twin is applied once and the twin's row says so", () => {
+test("{§op-methods-op-dispatch} an identical twin is applied once and the twin's row says so", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2] }, body: "B" },
         { marker: { marks: [2] }, body: "B" },
@@ -482,7 +482,7 @@ test("{§edit-batch-merges} an identical twin is applied once and the twin's row
     assert.deepEqual(result.applied?.map(({ marker }) => marker.marks), [[2], [5]], "receipts are built from what was applied");
 });
 
-test("{§edit-batch-merges} a twin that differs only by trailing whitespace or newlines is still the same edit, and says so", () => {
+test("{§op-methods-op-dispatch} a twin that differs only by trailing whitespace or newlines is still the same edit, and says so", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2] }, body: "B" },
         { marker: { marks: [2] }, body: "B  \n\n" },
@@ -492,7 +492,7 @@ test("{§edit-batch-merges} a twin that differs only by trailing whitespace or n
     assert.deepEqual(result.merges, [{ index: 1, rule: "duplicate-of", of: 0, whitespaceOnly: true }]);
 });
 
-test("{§edit-batch-merges} a one-line shared endpoint goes to the body that reproduces the line; the other region shrinks", () => {
+test("{§op-methods-op-dispatch} a one-line shared endpoint goes to the body that reproduces the line; the other region shrinks", () => {
     const source = "var x int\n\nfunc requireFn(a int) int {\n\treturn a\n}\n\nfunc other() {}\n";
     // <2,3> carries a new function (meant to end at the blank line 2); <3,5> rewrites requireFn and
     // reproduces its signature line 3 - gemma's shape.
@@ -535,7 +535,7 @@ test("{§diagnostic-observation} containment stays refused and the receipt names
 });
 
 
-test("{§edit-batch-merges} containment relocates the inner change into the outer body when its original lines occur there once", () => {
+test("{§op-methods-op-dispatch} containment relocates the inner change into the outer body when its original lines occur there once", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2, 5] }, body: "B\nc\nd\nE" },
         { marker: { marks: [3] }, body: "C!" },
@@ -546,7 +546,7 @@ test("{§edit-batch-merges} containment relocates the inner change into the oute
     assert.deepEqual(result.applied?.map(({ marker }) => marker.marks), [[2, 5]], "one applied edit: the composed outer");
 });
 
-test("{§edit-batch-merges} containment drops an inner edit the outer body already carries, and says so", () => {
+test("{§op-methods-op-dispatch} containment drops an inner edit the outer body already carries, and says so", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2, 5] }, body: "B\nC!\nd\nE" },
         { marker: { marks: [3] }, body: "C!" },
@@ -556,7 +556,7 @@ test("{§edit-batch-merges} containment drops an inner edit the outer body alrea
     assert.deepEqual(result.merges, [{ index: 1, rule: "contained-already-applied", outer: 0 }]);
 });
 
-test("{§edit-batch-merges} containment whose inner lines occur twice in the outer body stays refused", () => {
+test("{§op-methods-op-dispatch} containment whose inner lines occur twice in the outer body stays refused", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2, 5] }, body: "c\nc\nd" },
         { marker: { marks: [3] }, body: "C!" },

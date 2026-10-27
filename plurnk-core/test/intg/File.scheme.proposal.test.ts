@@ -197,7 +197,7 @@ for (const transfer of [copyStmt, moveStmt]) {
     });
 }
 
-for (const decision of ["accept", "reject", "replace", "drift"] as const) test(`{§edit-anchor-continuity}: file proposals with ${decision} preserve the individual mutation boundary`, async () => {
+for (const decision of ["accept", "reject", "replace", "drift"] as const) test(`{§op-methods-op-dispatch}: file proposals with ${decision} preserve the individual mutation boundary`, async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const original = "one\ntwo\nthree\nfour\nfive\n";
         const target = "sequence.md";
@@ -250,7 +250,7 @@ Continue the task.
     });
 });
 
-test("{§fs-write-member} file.edit: writes file on accept via applyResolution", async () => {
+test("{§fs-write-surface} file.edit: writes file on accept via applyResolution", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         // Pre-seed an existing file so the EDIT computes a real diff.
         const target = "src/hello.txt";
@@ -276,7 +276,7 @@ test("{§fs-write-member} file.edit: writes file on accept via applyResolution",
         assert.equal(row?.state, "proposed");
         assert.equal(row?.status_rx, 202);
         const attrs = JSON.parse(row?.attrs ?? "{}") as { path: string; canonical: string; patch: string; patched: string };
-        assert.equal(attrs.path, target); // bare canon ({§fs-canonical-name})
+        assert.equal(attrs.path, target); // bare canon ({§fs-namespace})
         assert.equal(attrs.patched, "hello world\n");
         assert.match(attrs.patch, /^Index: src\/hello\.txt/);
         assert.match(attrs.patch, /-hello/);
@@ -567,7 +567,7 @@ test("{§membership} bare target: EDIT(relative/path) routes to file scheme (no 
         assert.equal(row?.status_rx, 202, "bare path EDIT must route to file scheme + propose");
         assert.equal(row?.state, "proposed");
         const attrs = JSON.parse(row?.attrs ?? "{}") as { path: string };
-        assert.equal(attrs.path, target); // bare canon ({§fs-canonical-name})
+        assert.equal(attrs.path, target); // bare canon ({§fs-namespace})
 
         ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
         const result = await dispatchPromise;

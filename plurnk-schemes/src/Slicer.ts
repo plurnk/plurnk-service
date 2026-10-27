@@ -48,7 +48,7 @@ export interface SliceResult extends SchemeResult {
     range?: RangeExtent;
 }
 export interface PageResult<T> extends SchemeResult { items?: T[]; range?: RangeExtent }
-// {§edit-batch-merges} — an evidence-gated resolution of two authored regions, reported on the
+// {§op-methods-op-dispatch} — an evidence-gated resolution of two authored regions, reported on the
 // row it changed so the model can verify or undo it; `index` is the position in the batch.
 type EditMerge =
     | { readonly index: number; readonly rule: "duplicate-of"; readonly of: number; readonly whitespaceOnly?: true }
@@ -684,7 +684,7 @@ export default class Slicer {
                 },
             );
         }
-        // {§edit-batch-merges} — evidence-gated resolutions before the conflict check, each
+        // {§op-methods-op-dispatch} — evidence-gated resolutions before the conflict check, each
         // reported on its row: an identical twin is applied once; two insertions at one point
         // land in authored order; a one-line shared endpoint goes to the body that reproduces
         // that line (the other region shrinks by one). Everything else stays a refusal.
@@ -754,7 +754,7 @@ export default class Slicer {
             }
         }
         const live = indexed.filter(({ index }) => !dropped.has(index));
-        // {§edit-batch-receipt} — the whole conflict graph in one receipt: every conflicting
+        // {§op-methods-op-dispatch} — the whole conflict graph in one receipt: every conflicting
         // pair with its relation, and the regions that were clean, so the model knows exactly
         // what to change and that nothing was applied (#428).
         const conflicts: Array<{ regions: [readonly (number | string)[], readonly (number | string)[]]; relation: string; line?: number; text?: string }> = [];

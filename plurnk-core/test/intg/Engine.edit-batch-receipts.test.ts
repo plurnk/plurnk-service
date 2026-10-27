@@ -1,5 +1,5 @@
 import { serverProposals } from "./_approval.ts";
-// {§edit-batch-receipt} {§edit-collision}
+// {§op-methods-op-dispatch} {§edit-collision}
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -64,7 +64,7 @@ const cases: readonly {
     },
 ];
 
-for (const fixture of cases) test(`{§edit-batch-receipt} ${fixture.name}`, async (t) => {
+for (const fixture of cases) test(`{§op-methods-op-dispatch} ${fixture.name}`, async (t) => {
     serverProposals(t, "accept");
     if (fixture.hashCollision) {
         // {§line-anchor-disambiguation}: ordinary repetitions resolve;

@@ -406,7 +406,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     // {§log-mutation-patch} — a settled file mutation's diff, addressable as `#patch`.
                     ...(row.patch === null ? {} : { patch: { content: row.patch, mimetype: "text/x-diff", state: "static" as const } }),
                 },
-                // {§log-channel-miss-names-stream} (#502) — an execution item's stream link rides as
+                // {§channel-selection} (#502) — an execution item's stream link rides as
                 // representation data so the projector's channel miss can name the address the
                 // model meant (`<runtime>:///<coord>/<runtime>#<channel>`); selection stays the projector's.
                 attributes,

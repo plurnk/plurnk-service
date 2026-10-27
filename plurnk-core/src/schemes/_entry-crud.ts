@@ -1,5 +1,5 @@
 // Shared CRUD primitives for entry-bearing schemes.
-// Per SPEC {§crud} — uniform read/write/delete that the engine drives for
+// Per SPEC {§scheme-manifest} — uniform read/write/delete that the engine drives for
 // cross-scheme orchestration of COPY/MOVE/KILL.
 
 import { isRecord } from "@plurnk/plurnk-contracts";
@@ -151,7 +151,7 @@ export default class EntryCrud {
             throw new Error("writeEntry: publication returned no row");
         }
         const created = published.created === 1;
-        // {§readable-channel} — a text source channel lands with its projection beside it, unless
+        // {§channel-selection} — a text source channel lands with its projection beside it, unless
         // the writer supplied `readable` itself (a fetched page's curated Markdown carries its own
         // producer outcome and is the scheme's to own).
         const source = channels.find(({ name }) => name === defaultChannel);
@@ -213,7 +213,7 @@ export default class EntryCrud {
             entry_id: existing.id,
             name: channel,
         });
-        // {§readable-channel} — a projection cannot outlive its source.
+        // {§channel-selection} — a projection cannot outlive its source.
         if (deleted !== undefined && !EntryReadable.isDerived(channel)) {
             const defaultChannel = ctx.defaultChannelFor?.(scheme) ?? "body";
             if (channel === defaultChannel) await db.crud_delete_readable_channel.run({ entry_id: existing.id });

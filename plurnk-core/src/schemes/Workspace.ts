@@ -24,7 +24,7 @@ export default class Workspace extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "workspace",
         authority: "namespace",
-        // {§readable-channel} — `readable` is the source's derived projection, never written.
+        // {§channel-selection} — `readable` is the source's derived projection, never written.
         channels: { readable: "text/markdown" },
         defaultChannel: "body",
         category: "data",

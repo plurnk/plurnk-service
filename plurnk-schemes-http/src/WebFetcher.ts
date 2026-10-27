@@ -140,7 +140,7 @@ export default class WebFetcher implements WebMaterializer {
         };
     }
 
-    // {§readable-channel}/{§http-binary-source} — source and projection have the same channel
+    // {§channel-selection}/{§http-binary-source} — source and projection have the same channel
     // identities here as in the durable entry, regardless of the source format.
     static materializedChannels(
         materialized: WebMaterializedResult,
@@ -245,7 +245,7 @@ export default class WebFetcher implements WebMaterializer {
             };
         }
         if (fetched.mimetype === "text/markdown") {
-            // {§readable-channel} — an origin that negotiates Markdown has sent the readable source
+            // {§channel-selection} — an origin that negotiates Markdown has sent the readable source
             // itself: it is the body, and no projection or HTML variant rides beside it.
             const materializedHeader = WebFetcher.#appendEvidence(fetched.header, [
                 WebFetcher.materializerEvidence(ORIGIN_MARKDOWN_MATERIALIZER_ID),
@@ -364,7 +364,7 @@ export default class WebFetcher implements WebMaterializer {
         }
 
         if (html === undefined) {
-            // {§readable-channel} — no source, nothing to project: both channels carry the origin's
+            // {§channel-selection} — no source, nothing to project: both channels carry the origin's
             // own failure, the source first.
             const unavailable = WebFetcher.#sourceUnavailable(fetched);
             return {

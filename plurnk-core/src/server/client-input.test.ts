@@ -21,7 +21,7 @@ test("{§methods-loop-run-open-paths} malformed resource URIs are refused before
     assert.equal(failure.result.problem.field, "openPaths[0]");
 });
 
-test("{§send-resource-attachments} message resources are validated before publication", () => {
+test("{§op-methods-op-dispatch} message resources are validated before publication", () => {
     const resource = { name: "", mediaType: "application/octet-stream", bytes: new Uint8Array() };
     assert.deepEqual(ClientInput.assertMessageResources("runLoop", [resource]), [resource]);
     assert.deepEqual(ClientInput.assertMessageResources("runLoop", undefined), []);

@@ -187,7 +187,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");
         this.#discoveryCwd = dirname(this.#nodeModulesPath);
         // {§copy-destination-mimetype}: detection misses remain absent; resource
-        // owners supply their creation type. {§mimetype-owned-lifecycle}
+        // owners supply their creation type. {§mimetype}
         this.#ownsMimetypes = mimetypes === undefined;
         this.#mimetypes = mimetypes ?? new Mimetypes({
             discoverOptions: { cwd: this.#discoveryCwd } });

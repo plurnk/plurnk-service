@@ -1004,7 +1004,7 @@ test("{§session-causal-admission} Engine.runLoop: KILL of the current session c
     } finally { await db.close(); }
 });
 
-test("{§op-execution-order} Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async () => {
+test("{§op-methods-op-dispatch} Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const readStmt = (pathname: string) => ({

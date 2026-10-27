@@ -256,7 +256,7 @@ export default class LoopDriver {
                     invalidEmissionRecoveryEntryId = null;
                 }
 
-                // {§provider-surface-capacity}: the provider rejected the changed request for capacity.
+                // {§provider-surface}: the provider rejected the changed request for capacity.
                 if (turn.capacityHardStop) {
                     if (turn.capacityFailure === undefined) {
                         throw new Error("a provider-capacity stop requires its exact failure");

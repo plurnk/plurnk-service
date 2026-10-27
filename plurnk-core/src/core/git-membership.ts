@@ -74,7 +74,7 @@ interface MembershipResolution {
 
 // One overlay row ({§members-projection}): members / model — a projected definition (human-authored
 // / model-proposed, the latter never admitted past the repository's ignore rules); create — the
-// exact record of a file Plurnk wrote ({§fs-create-record}).
+// exact record of a file Plurnk wrote ({§fs-write-surface}).
 export type OverlayRow = {
     effect: "include" | "exclude";
     glob: string;
@@ -240,7 +240,7 @@ export default class GitMembership {
         return (await GitMembership.#isIgnoredByRepository(root, repository, key, signal)) === true;
     }
 
-    // {§file-create-single-owner}: File consumes this decision; it does not repeat
+    // {§fs-write-surface}: File consumes this decision; it does not repeat
     // scope, overlay, or Git policy at the write call site.
     static async planCreation(
         db: Db,
@@ -318,7 +318,7 @@ export default class GitMembership {
         return { ok: true, incorporation: "creation" };
     }
 
-    // {§file-create-transaction}: this is the only incorporation owner. The caller has already
+    // {§fs-write-surface}: this is the only incorporation owner. The caller has already
     // created and materialized the entry; the record row is the transaction's final fallible state
     // change. {§membership}: Plurnk never runs `git add` — a created file is a member
     // because a record says so, exactly like every other added file in the model's universe.
@@ -460,7 +460,7 @@ export default class GitMembership {
         const passesExclusions = (p: string): boolean => excludeGlobs.length === 0 || !excludeGlobs.some((g) => PathGlob.matches(p, g));
         const desiredGit = members.filter((p) => !includedSet.has(p) && passesExclusions(p));
         const desiredIncluded = included.filter(passesExclusions);
-        const desired = [...desiredGit, ...desiredIncluded]; // bare canon keys ({§fs-canonical-name}) — ls-files output IS the canon
+        const desired = [...desiredGit, ...desiredIncluded]; // bare canon keys ({§fs-namespace}) — ls-files output IS the canon
         const candidateSet = new Set([...members, ...included, ...masked]);
 
         // Reconcile so entries == members (the constitutive invariant): register the

@@ -100,7 +100,7 @@ export default class ResourceMutations {
             ctx,
             ids,
         });
-        // {§edit-batch-merges} — the applied result is what the row records; the statement's
+        // {§op-methods-op-dispatch} — the applied result is what the row records; the statement's
         // merge facts ride it here, whichever route settled the proposal.
         const editStatement = statement.op === "EDIT" ? statement : null;
         const facts = editStatement === null ? [] : (this.#edits.mergeFacts(editStatement));

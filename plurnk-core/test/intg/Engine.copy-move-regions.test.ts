@@ -471,7 +471,7 @@ test("{§copy-destination-mimetype} MOVE propagates tolerated source and destina
     }
 });
 
-test("{§edit-batch} same-channel MOVE applies destination insertion and source deletion to one snapshot", async () => {
+test("{§op-methods-op-dispatch} same-channel MOVE applies destination insertion and source deletion to one snapshot", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/document", {
@@ -529,7 +529,7 @@ test("{§copy-destination-mimetype} same-channel MOVE composes source and destin
     }
 });
 
-test("{§edit-batch} same-channel MOVE rejects overlapping source and destination regions without mutation", async () => {
+test("{§op-methods-op-dispatch} same-channel MOVE rejects overlapping source and destination regions without mutation", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/document", {

@@ -15,7 +15,7 @@
   representations core computes, with `entryId` null, and a message core
   retains reads at the address that minted it. Only core's own acquisition runs:
   another scheme's entry reads as stored, never prepared, so a client read never
-  fetches ({§client-entry-address}). A channel name may be empty, a log row's
+  fetches ({§scheme-address}). A channel name may be empty, a log row's
   unnamed default ({§entry-read-result}).
 - c3922c2: A loop stopped without failing (499) has the lifecycle `cancelled`, in the
   status gauge, the worker directory, `status.descendants` and the inbox; any

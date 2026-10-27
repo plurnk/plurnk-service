@@ -22,7 +22,7 @@ the DB-free `SchemeCtx` author contract.
 | -------- | --------------------------- | ------------------------------------------------------------------------------ |
 | `body`     | `application/octet-stream`  | Source text or original binary bytes; SSE data for a live response |
 | `header`   | `text/plain`                | Origin, acquisition, materializer, projection, provider, and usage evidence   |
-| `readable` | `text/markdown`             | Optional derived text/facts: an HTML materializer or installed mimetype projection ({§readable-channel}) |
+| `readable` | `text/markdown`             | Optional derived text/facts: an HTML materializer or installed mimetype projection ({§channel-selection}) |
 
 `package.json#plurnk.schemes` registers `http` through the default export and
 `wss` through `Ws`.
@@ -240,7 +240,7 @@ by an errored `readable`. Unselected failures remain `errored` channels carrying
 their exact `producerResult`. A recoverable local projection remains a static
 `readable` channel with producer status `203`, so cold and warm READ both return
 its content with that same status. Every READ names the page's other channels
-with their tokens ({§channel-selection-visibility}), so a READ of the source
+with their tokens ({§channel-selection}), so a READ of the source
 shows that `#readable` exists before the model has ever listed the page.
 
 Exact READ, exact FIND, and executor materialization preserve the same channel
@@ -290,7 +290,7 @@ an origin is first being read — and it is the operator's to allow:
 | SSE parser/transfer failure after acquisition                 | `102` initial; terminal `502`                            |
 | Multi-statement HTTP edit batch                               | `409` (`non-atomic-edit-batch`)                          |
 | Invalid target, line edit, or URL userinfo                    | `400` with the corresponding stable Problem kind         |
-| Missing response channel                                    | `404 channel-not-found` under {§channel-selection-missing}; no remote mutation |
+| Missing response channel                                    | `404 channel-not-found` under {§channel-selection}; no remote mutation |
 | Non-corresponding 304                                         | `502` (`fetch-failed`)                                   |
 | Acquisition failure without successful materializer output   | `502` (`fetch-failed`)                                   |
 | Projection exception                                          | `500` (`projection-failed`)                              |
@@ -603,7 +603,7 @@ stateDiagram-v2
 
 Markerless single-statement EDIT and SEND with signal `200` converge on one
 outbound text-frame path and have the same connection and transport outcomes.
-Authored dispatch order ({§op-execution-order}) lets either write follow the
+Authored dispatch order ({§op-methods-op-dispatch}) lets either write follow the
 opening READ in the same turn, after acquisition establishes the live owner.
 
 The in-instance registry is keyed by workspace and complete canonical network

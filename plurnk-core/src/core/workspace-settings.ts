@@ -13,7 +13,7 @@ export type WorkspaceOpenContext = {
     git: boolean | null;       // {§operator-config-workspace-git} — env AND workspace; null = unset
     fileCreateScope: FileCreateScope | null; // {§operator-config-workspace-file-create-scope}
     membersModelScope: FileCreateScope | null; // {§members-model-scope}
-    client: string | null;     // {§client-metadata} — workspace-stable frontend id; null = unset
+    client: string | null;     // {§emission-admission} — workspace-stable frontend id; null = unset
     capabilities: CapabilityPolicy;
 };
 

@@ -181,7 +181,7 @@ const wire = async (beforeRun?: () => Promise<void>): Promise<{
 
 // {§exec-target-routing} {§exec-source-temporary} A scheme-backed execution source
 // is one exact ordinary READ; non-native sources use a spawn-scoped temporary.
-test("{§op-execution-order}: create, launch, and delete are ordered without waiting for an asynchronous executor", async () => {
+test("{§op-methods-op-dispatch}: create, launch, and delete are ordered without waiting for an asynchronous executor", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
     const gate = Promise.withResolvers<void>();

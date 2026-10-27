@@ -138,7 +138,7 @@ test("{§tokenomics-window-partition} the cold-start ceiling subtracts no additi
     } finally { await db.close(); }
 });
 
-test("{§tokenomics-context-envelope-admission} {§provider-surface-prompt-measurement} an exact prompt over the reservation but under the wall is admitted with its grant flexed", async () => {
+test("{§tokenomics-context-envelope-admission} {§provider-surface} an exact prompt over the reservation but under the wall is admitted with its grant flexed", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, sessionId, loopId } = await envelope(db);

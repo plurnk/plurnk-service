@@ -1,4 +1,4 @@
--- Entry CRUD primitives (SPEC {§crud}). Used by entry-bearing schemes and
+-- Entry CRUD primitives (SPEC {§scheme-manifest}). Used by entry-bearing schemes and
 -- the engine for cross-scheme COPY/MOVE/KILL.
 
 -- INIT: support_floor_guard
@@ -22,7 +22,7 @@ WHERE e.workspace_id = $workspace_id
   AND e.scheme = $scheme AND e.authority = $authority AND e.pathname = $pathname;
 
 -- PREP: crud_read_entry
--- {§crud} One read snapshot covers metadata and every channel.
+-- {§scheme-manifest} One read snapshot covers metadata and every channel.
 -- An outer join cannot flatten the entry_channels view, so this one reads its tables ({§content-store}).
 SELECT e.id, e.attributes, e.synced_sig, c.name, COALESCE(c.buffer, b.content) AS content, c.mimetype, c.state, c.producer_result
 FROM entries e
@@ -147,12 +147,12 @@ WHERE entry_id = $entry_id
 DELETE FROM entries WHERE id = $entry_id;
 
 -- PREP: crud_delete_empty_entry
--- {§crud}: channel pruning cannot delete a sibling published before this write.
+-- {§scheme-manifest}: channel pruning cannot delete a sibling published before this write.
 DELETE FROM entries WHERE id = $entry_id
   AND NOT EXISTS (SELECT 1 FROM entry_channel_rows WHERE entry_id = $entry_id);
 
 -- PREP: crud_insert_generated_workspace_constraint
--- {§fs-create-record}: an accepted creation is incorporated by an exact record row; a projected
+-- {§fs-write-surface}: an accepted creation is incorporated by an exact record row; a projected
 -- definition already holding the same path leaves it alone.
 INSERT INTO workspace_constraints (workspace_id, effect, glob, source)
 VALUES ($workspace_id, 'include', $glob, 'create')
@@ -214,7 +214,7 @@ DO NOTHING;
 
 -- PREP: crud_insert_family_workspace_constraints
 -- The family's projected rows land as one set ($rows is a JSON array of {effect, glob, source}). A
--- projected row never overwrites a creation record ({§fs-create-masked}); the family deleted its
+-- projected row never overwrites a creation record ({§fs-write-surface}); the family deleted its
 -- own rows first, so that record is the only conflict left.
 INSERT INTO workspace_constraints (workspace_id, effect, glob, source)
 SELECT $workspace_id, json_extract(row.value, '$.effect'), json_extract(row.value, '$.glob'), json_extract(row.value, '$.source')
@@ -233,7 +233,7 @@ UPDATE entries SET membership_origin = $membership_origin WHERE id = $entry_id A
 UPDATE entries SET membership_origin = $membership_origin WHERE id = $entry_id;
 
 -- PREP: crud_insert_readable_channel
--- {§readable-channel} — the derived `readable` sibling of a source channel lands or refreshes
+-- {§channel-selection} — the derived `readable` sibling of a source channel lands or refreshes
 -- with the source; it is never written by an operation.
 INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, state, producer_result)
 SELECT $entry_id, 'readable', $content, $mimetype, $weight, $content_hash, 'static', NULL

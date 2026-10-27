@@ -82,7 +82,7 @@ export default class File extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "file",
         storedScheme: "file",  // {§entry-identity-no-null} — durable identity, independent of displayed spelling
-        // The body is typed per resource; readable is its derived projection ({§readable-channel}).
+        // The body is typed per resource; readable is its derived projection ({§channel-selection}).
         channels: { readable: "text/markdown" },
         defaultChannel: "body",
         category: "data",
@@ -99,7 +99,7 @@ export default class File extends CoreSchemeAdapterBase {
         ].join("\n\n"),
     };
 
-    // {§file-find-directory}: a directory's canonical collection address does not depend on
+    // {§fs-namespace}: a directory's canonical collection address does not depend on
     // whether its authored spelling included the slash. Membership still owns its contents.
     static async #canonSpelling(raw: string, root: string | null, pattern = false): Promise<string | null> {
         const key = Namespace.canonicalizeSpelling(raw, root);
@@ -139,7 +139,7 @@ export default class File extends CoreSchemeAdapterBase {
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
-        // {§fs-namei} Exact paths, folders and globs share the filesystem base.
+        // {§fs-namespace} Exact paths, folders and globs share the filesystem base.
         const root = await FileAddress.projectRoot(core);
         const spelling = statement.target === null ? "" : FileAddress.selector(statement.target, root);
         if (typeof spelling !== "string") return { ...emptyFindFields(), ...spelling };
@@ -172,7 +172,7 @@ export default class File extends CoreSchemeAdapterBase {
     // {§membership} COPY/MOVE sources are membership-backed entry reads.
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {
         const core = this.coreContext(ctx);
-        // {§scheme-address} {§fs-namei} All read paths resolve the same member key.
+        // {§scheme-address} {§fs-namespace} All read paths resolve the same member key.
         const root = await FileAddress.projectRoot(core);
         const key = root === null ? pathname : Namespace.canonicalize(pathname, root);
         const canonical = key ?? pathname;
@@ -201,8 +201,8 @@ export default class File extends CoreSchemeAdapterBase {
         return new FileByteSource(locate);
     }
 
-    // {§membership-read-refusal} — a file is read only as a member, so a miss speaks of the address's
-    // membership and never of the disk. Inside the root occupancy is not secret ({§fs-write-nonmember}),
+    // {§fs-namespace} — a file is read only as a member, so a miss speaks of the address's
+    // membership and never of the disk. Inside the root occupancy is not secret ({§fs-write-surface}),
     // and an occupied path says so. Beyond it the disk stays dark: nothing is looked at, and the
     // sentence is true whether or not a file is there — it neither claims absence nor hints at presence.
     static #beyondRoot(key: string): boolean { return key === ".." || key.startsWith("../"); }
@@ -218,12 +218,12 @@ export default class File extends CoreSchemeAdapterBase {
             return Results.failure("scheme:file", code, 404, detail, fields, extensions);
         }
         const occupied = occupant !== null;
-        // {§membership-read-refusal} — admission is the recovery for an untracked file; a file an exclusion covers or
+        // {§fs-namespace} — admission is the recovery for an untracked file; a file an exclusion covers or
         // the repository ignores no model definition admits, so its refusal says who can (#1005).
         const exclusion = occupied ? await GitMembership.exclusionOf(core.db, core.workspaceId, key) : null;
         const ignoredBy = occupied && exclusion === null ? await GitMembership.ignoreSource(core.db, core.workspaceId, key, undefined) : null;
         const address = entryAddress("file", "", key, root);
-        // {§file-path-normalization} The miss names the key inside the root and the absolute address beyond it.
+        // {§fs-namespace} The miss names the key inside the root and the absolute address beyond it.
         const named = File.#beyondRoot(key) ? address : key;
         return Results.failure(
             "scheme:file",
@@ -257,7 +257,7 @@ export default class File extends CoreSchemeAdapterBase {
         }
     }
 
-    // {§file-directory-target} — a directory inside the root is named as one, never as a missing or non-member
+    // {§fs-namespace} — a directory inside the root is named as one, never as a missing or non-member
     // file; a READ or KILL of it carries the listing that shows its files ({§diagnostic-observation}).
     static #directoryFacts(key: string, op: "READ" | "EDIT" | "KILL", root: string): { code: "path-is-directory"; detail: string; extensions: { target: string; recovery?: string; retryable: false } } {
         const target = entryAddress("file", "", key, root);
@@ -288,7 +288,7 @@ export default class File extends CoreSchemeAdapterBase {
                 extensions: { retryable: false },
             };
         }
-        // {§fs-namei} — the write side resolves through the SAME canonicalizer as reads;
+        // {§fs-namespace} — the write side resolves through the SAME canonicalizer as reads;
         // a spelling that names nothing a file can be is refused before any disk touch.
         // A leading `../` run is a legitimate outside-root mount key, not an escape
         // ({§fs-namespace}); canonicalize returns null only for a spelling that names
@@ -356,7 +356,7 @@ export default class File extends CoreSchemeAdapterBase {
                 };
             }
         }
-        const rel = key;  // the bare canonical member key ({§fs-canonical-name}) — storage ≡ wire
+        const rel = key;  // the bare canonical member key ({§fs-namespace}) — storage ≡ wire
 
         let original = "";
         let baseSig: string | null = null;  // the snapshot signature the proposal is computed against; null = create (assumed-absent)
@@ -364,7 +364,7 @@ export default class File extends CoreSchemeAdapterBase {
         let creationAdmission: AdmittedCreation | null = null;
         if (fileExists) {
             const member = await ctx.db.crud_read_file_snapshot.get<{ id: number; synced_sig: string | null; membership_origin: string | null; attributes: string; content: string | null; source_mimetype: string | null }>({ workspace_id: ctx.workspaceId, pathname: rel });
-            // {§fs-errno} — the occupancy fact (POSIX O_EXCL precedent): something invisible
+            // {§fs-namespace} — the occupancy fact (POSIX O_EXCL precedent): something invisible
             // occupies the path; existence leaks, content stays dark. The model picks another name.
             if (member === undefined && !isMount && (await lstat(requested)).isDirectory()) {
                 return { ok: false, status: 403, ...File.#directoryFacts(rel, "EDIT", root) };

@@ -29,7 +29,7 @@ const handler = (name: string, behavior: object = {}): object => ({ manifest: ma
 // siblings. @plurnk/plurnk-schemes-http is installed, so it's found, registered
 // by its declared name ("https"). Agnostic by kind — the package name is never
 // hardcoded ({§extension-discovery}).
-test("{§web-materialization-contract}: the entry sink's web materializer is the https handler's, reached through the registry", async () => {
+test("{§scheme} {§web-materialization-contract}: the entry sink's web materializer is the https handler's, reached through the registry", async () => {
     const registry = new SchemeRegistry();
     assert.throws(() => registry.webMaterializer(), /requires an installed https scheme handler that publishes it/, "before discovery nothing publishes it; absence is a defect, never a fallback");
 
@@ -306,7 +306,7 @@ test("{§extension-discovery} close: attempts and awaits every handler, then agg
     assert.equal(slowSettled, true, "shutdown waits for a slower closer before rejecting");
 });
 
-test("{§scheme-manifest-manifest} register requires one identity-matched static or instance manifest", () => {
+test("{§scheme-manifest} register requires one identity-matched static or instance manifest", () => {
     const registry = new SchemeRegistry();
     assert.throws(() => registry.register("missing", {}), /must declare a static or instance manifest/);
     assert.throws(() => registry.register("expected", handler("other")), /identity mismatch/);

@@ -162,7 +162,7 @@ test("{§membership} git-tracked file (never client-added) is a workspace member
     });
 });
 
-test("{§file-create-no-clobber} EDIT of an existing non-member is refused — no read (leak), no overwrite (wipe)", async () => {
+test("{§fs-write-surface} EDIT of an existing non-member is refused — no read (leak), no overwrite (wipe)", async () => {
     await withGitWorkspace(async (root, ctx, _db, trackedPath) => {
         // A gitignored/untracked secret on disk: it EXISTS but is never a member
         // (not in `git ls-files`, never client-added), so the model can't see it.
@@ -187,7 +187,7 @@ test("{§file-create-no-clobber} EDIT of an existing non-member is refused — n
     });
 });
 
-test("{§fs-namei} absolute paths printed by a shell READ and EDIT the existing member", async () => {
+test("{§fs-namespace} absolute paths printed by a shell READ and EDIT the existing member", async () => {
     await withGitWorkspace(async (root, ctx, db, trackedPath) => {
         await GitMembership.indexGitMembership(ctx);
         const { stdout } = await execFileP("sh", ["-c", 'printf "%s/%s\\n" "$PWD" "$1"', "path-fixture", trackedPath], { cwd: root });
@@ -794,7 +794,7 @@ test("{§file-snapshot-revision}: final validation follows staging and fallible 
     assert.equal(await fs.readFile(fx.path, "utf8"), external);
 });
 
-test("{§file-create-no-clobber}: an occupant appearing at publication is preserved", async (t) => {
+test("{§fs-write-surface}: an occupant appearing at publication is preserved", async (t) => {
     const fx = await fixture(t);
     const target = join(fx.root, "new.md");
     const proposal = await fx.file.edit(editStmt(localPath("new.md"), original), fx.ctx);

@@ -380,7 +380,7 @@ test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ pe
             const reads = (logEntries() as Array<{ entry: { op: string; origin: string; scheme: string | null; pathname: string } }>)
                 .map((c) => c.entry)
                 .filter((e) => e.op === "READ" && e.origin === "_plurnk" && e.scheme === null);
-            assert.deepEqual(reads.map((r) => r.pathname).toSorted(), ["README.md", "src/foo.ts"], "a plurnk-origin file READ foisted per openPath at turn 0 — columns in wire canon ({§fs-answer-in-canon})");
+            assert.deepEqual(reads.map((r) => r.pathname).toSorted(), ["README.md", "src/foo.ts"], "a plurnk-origin file READ foisted per openPath at turn 0 — columns in wire canon ({§fs-namespace})");
             const rows = await db.test_log_entries_by_loop.all<{
                 op: string; origin: string; scheme: string | null; pathname: string; turn_id: number;
             }>({ loop_id: result.loopId });

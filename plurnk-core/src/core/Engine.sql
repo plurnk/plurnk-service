@@ -39,7 +39,7 @@ SELECT (
        (SELECT json_extract(packet, '$.weight') FROM latest_turn) AS curation_weight,
        (SELECT usage_curation_budget FROM latest_turn) AS curation_budget,
        (SELECT json_extract(capacity, '$.inputCapacity') FROM latest_emission) AS context_capacity,
-       -- Latest turn's opaque provider metadata. {§meta-passthrough}
+       -- Latest turn's opaque provider metadata. {§provider-surface}
        (SELECT meta FROM latest_turn) AS meta
 FROM loops
 WHERE id = $loop_id;
@@ -60,7 +60,7 @@ WHERE t.loop_id = $loop_id AND pr.state = 'settled'
 ORDER BY t.sequence, ic.sequence, pr.sequence;
 
 -- PREP: engine_loop_attributions
--- {§attribution} — derive the loop projection from exact response-attempt
+-- {§emission-admission} — derive the loop projection from exact response-attempt
 -- evidence plus each turn's latest request (which also covers a call that
 -- failed without response evidence).
 SELECT attribution

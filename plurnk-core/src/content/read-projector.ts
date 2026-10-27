@@ -29,7 +29,7 @@ const imageOf = (attributes: StoredEntryData["attributes"]): { mimetype: string;
 
 // {§packet-attachment-parts} — a projected PDF member names its document: source mimetype, the
 // handler's page count when the page tree is readable ({§mimetype-pdf-facts}), and its size.
-// {§log-channel-miss-names-stream} — the stream address a log execution item recorded, when the scheme supplied it.
+// {§channel-selection} — the stream address a log execution item recorded, when the scheme supplied it.
 const streamOf = (attributes: StoredEntryData["attributes"]): string | null => {
     const stream = attributes?.stream;
     return typeof stream === "string" ? stream : null;
@@ -76,12 +76,12 @@ interface ReadProjectionOptions {
     readonly bytes?: ByteSource;
     readonly visibleLines?: Readonly<Record<string, readonly number[]>>;
     readonly retainNative?: (bytes: Uint8Array) => Promise<string>;
-    // {§channel-selection-visibility} — the curation ruler the catalog weighed channels with, so a
+    // {§channel-selection} — the curation ruler the catalog weighed channels with, so a
     // READ receipt names the resource's other channels with the same `tokens` FIND shows.
     readonly weigh?: (text: string) => number;
 }
 
-// {§universal-read-composition} Core's one exact-resource projection over a complete canonical
+// {§scheme-surface} Core's one exact-resource projection over a complete canonical
 // representation. Storage adapters supply channels; this layer owns channel
 // selection, binary admission, text coordinates, line-anchor projection, and
 // composition of the selected producer's durable result.
@@ -245,7 +245,7 @@ export default class ReadProjector {
         const image = imageOf(attributes);
         const document = documentOf(attributes);
         const audio = audioOf(attributes);
-        // {§channel-selection-visibility} — source and derived READs name the same discoverable channels.
+        // {§channel-selection} — source and derived READs name the same discoverable channels.
         const siblings = opts.weigh === undefined ? [] : Object.entries(representation.channels)
             .filter(([name]) => name !== selected)
             .map(([name, data]) => [`#${name}`, opts.weigh!(data.content)] as const);
@@ -289,7 +289,7 @@ export default class ReadProjector {
         }
         const selectedRepresentation = Object.hasOwn(representation.channels, selected) ? representation.channels[selected] : undefined;
         if ((selected !== manifest.defaultChannel && !Object.hasOwn(manifest.channels, selected)) || selectedRepresentation === undefined) {
-            // {§log-channel-miss-names-stream} (#502) — a representation that names the stream its
+            // {§channel-selection} (#502) — a representation that names the stream its
             // item produced (a log execution item) points the miss at `<stream>#<channel>`, the way a
             // range miss names the available range; the model conflates the two addresses because
             // they share their coordinate.

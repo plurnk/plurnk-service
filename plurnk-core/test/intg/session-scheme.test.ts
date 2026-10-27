@@ -584,7 +584,7 @@ test("{§pinned-wording-core} WORK and FORK reject non-mintable session authorit
     } finally { await db.close(); }
 });
 
-test("{§op-execution-order}: one model program creates sessions before cancelling selected children", async () => {
+test("{§op-methods-op-dispatch}: one model program creates sessions before cancelling selected children", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ordered-session-control");
@@ -1086,7 +1086,7 @@ test("{§session-loop-lifecycle} a continuing NOTE without live work continues n
     } finally { await db.close(); }
 });
 
-test("{§op-synchronous} KILL(session) settles before same-turn completion", async () => {
+test("{§op-methods-op-dispatch} KILL(session) settles before same-turn completion", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `kill-sync-${crypto.randomUUID()}`);

@@ -17,7 +17,7 @@ const statements = (source: string): PlurnkStatement[] => {
         .map((item) => item.statement);
 };
 
-test("{§op-execution-order} operations retain authored order across mutations, observations and asynchronous dispatch", () => {
+test("{§op-methods-op-dispatch} operations retain authored order across mutations, observations and asynchronous dispatch", () => {
     const authored = statements("\n````READ (notes.md)````\n````sh\nnode verify.mjs\n````\n\n````EDIT (notes.md) <2>\nnew\n````\n\n````FIND (src/**)````\n````BARE\nclassify this independently\n````\n\n````WORK (session://reviewer)\nreview\n````\n\n````KILL (js:///3/1/2/js)````\n````SEND\ndone\n````\n````WAIT\n````");
 
     assert.deepEqual(
@@ -26,7 +26,7 @@ test("{§op-execution-order} operations retain authored order across mutations, 
     );
 });
 
-test("{§op-execution-order} scheduling preserves operation identity and does not mutate its input", () => {
+test("{§op-methods-op-dispatch} scheduling preserves operation identity and does not mutate its input", () => {
     const authored = statements([
         "````EDIT (a.md) <1>",
         "a",
@@ -47,7 +47,7 @@ test("{§op-execution-order} scheduling preserves operation identity and does no
     assert.deepEqual(scheduleTurnOps(authored), authored);
 });
 
-test("{§op-execution-order} every disposition follows trailing operations without reordering those operations", () => {
+test("{§op-methods-op-dispatch} every disposition follows trailing operations without reordering those operations", () => {
     for (const op of ["WAIT"]) {
         const authored = statements(`\`\`\`\`${op}
 Observe the results.

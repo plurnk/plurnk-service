@@ -46,7 +46,7 @@ monorepo forge.
   A recovery warning belongs at the state that makes it relevant, not in every packet.
 - Use concrete, executable examples. Distribute them across useful operations
   rather than accidentally teaching one pattern as the only workflow.
-- Show temporal behavior with legal turns under {§op-execution-order} and
+- Show temporal behavior with legal turns under {§op-methods-op-dispatch} and
   {§send}; describe the contract, not a model's historical workaround.
 - Evaluate packet bytes, reasoning, operation results, and self-audit evidence
   together. Distinguish a teaching gap from a runtime defect before prescribing

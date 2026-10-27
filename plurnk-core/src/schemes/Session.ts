@@ -30,7 +30,7 @@ export default class Session extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "session",
         authority: "resource",
-        // {§readable-channel} — `readable` is the source's derived projection, never written.
+        // {§channel-selection} — `readable` is the source's derived projection, never written.
         channels: { readable: "text/markdown" },
         defaultChannel: "body",
         category: "data",
@@ -307,7 +307,7 @@ export default class Session extends CoreSchemeAdapterBase {
                 },
             );
         }
-        // An entry is not a message recipient ({§send-dispatch-entry-schemes-501}).
+        // An entry is not a message recipient ({§op-methods-op-dispatch}).
         if (Session.#entryPath(statement.target) !== "") {
             return EntrySend.sendToWorkspaceEntry(statement, core, Session.manifest);
         }

@@ -159,7 +159,7 @@ does not make the measured counters inconsistent.
 | `insert` | the zero-width `<L,1,L,1>` form ({§zero-width-column-one-insert}) |
 | `column` | any other four-mark region |
 | `prepend` / `append` | `<0>` / `<-1>` |
-| `offset` | a tolerated anchor offset ({§anchor-offset}) |
+| `offset` | a tolerated anchor offset ({§op-methods-op-dispatch}) |
 | `pattern` | a selection matcher |
 | `whole` | no marker: a creation when it lands 201 |
 

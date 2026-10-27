@@ -20,7 +20,7 @@ export interface RenderTargetParts {
 // file:/// remains an optional explicit form for absolute paths.
 export function schemeNameOf(path: ParsedPath | null): string | null {
     if (path === null) return null;
-    // {§scheme-address-network}: handler aliases route https through http and ws through wss
+    // {§scheme-address}: handler aliases route https through http and ws through wss
     // without collapsing the addressed scheme's resource identity.
     if (path.kind === "url") {
         return routedSchemeName(path.scheme);
@@ -68,25 +68,25 @@ export function renderAddress(address: EntryCoordinate & { readonly scheme: stri
     return PathSyntax.escapeTarget(`${scheme}://${authority}${encoded}`);
 }
 
-// {§membership-read-refusal} — what an address lacks is an entry, and in `file` an entry is a
+// {§fs-namespace} — what an address lacks is an entry, and in `file` an entry is a
 // member. "No entry exists" reads there as a claim about the disk, which the engine never makes:
 // this sentence is about the address's membership and is true whether or not a file is there.
 export function missDetail(scheme: string | null, target: string): string {
     return scheme === "file" ? `No member of this workspace is at '${target}'.` : `No entry exists at ${target}.`;
 }
 
-// {§membership-read-refusal} {§diagnostic-observation} — every file miss carries this recovery: listing,
+// {§fs-namespace} {§diagnostic-observation} — every file miss carries this recovery: listing,
 // creation and admission stand as alternatives, each valid whatever the address was for.
 export const FILE_MISS_RECOVERY = "FIND lists paths. EDIT creates files; `plurnk (members)` admits existing files with a `{\"verb\": \"add\", \"files\": [\"<path>\"]}` body.";
 
-// {§fs-canonical-name} — a file member renders its literal key as a reusable path;
+// {§fs-namespace} — a file member renders its literal key as a reusable path;
 // every other scheme renders its URI.
 export function entryAddress(scheme: string, authority: string, pathname: string, projectRoot: string | null = null): string {
     if (scheme === "file") return FileAddress.render(pathname, projectRoot);
     return renderAddress({ scheme, authority, pathname });
 }
 
-// {§membership-read-refusal} — an address beyond the root (spelled absolute, {§file-path-normalization}; a bare
+// {§fs-namespace} — an address beyond the root (spelled absolute, {§fs-namespace}; a bare
 // `../` key where no root renders it) is past every door the miss recovery names under the default scopes; the
 // sentence holds under every members scope.
 export function fileMissRecovery(address: string): string {

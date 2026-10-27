@@ -18668,9 +18668,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as the primary heading tag for the core Provider Contract consumption surface and inference ledger."
         },
         "provider-surface-generate": {
           "spec": "plurnk-core/SPEC.md",
@@ -18680,9 +18680,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-surface",
+          "reason": "Folded provider.generate invocation and callKind contract into the provider-surface table."
         },
         "provider-surface-capacity": {
           "spec": "plurnk-core/SPEC.md",
@@ -18692,9 +18692,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-surface",
+          "reason": "Folded provider.assessRequestCapacity consumption into the provider-surface table."
         },
         "provider-surface-prompt-measurement": {
           "spec": "plurnk-core/SPEC.md",
@@ -18704,9 +18704,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-surface",
+          "reason": "Folded provider.countPromptTokens measurement boundary into the provider-surface table."
         },
         "provider-surface-identity": {
           "spec": "plurnk-core/SPEC.md",
@@ -18716,9 +18716,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-surface",
+          "reason": "Folded provider instance immutability guarantee into the provider-surface table."
         },
         "inference-ledger": {
           "spec": "plurnk-core/SPEC.md",
@@ -18728,9 +18728,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-surface",
+          "reason": "Folded logical model_calls and physical provider_requests ledger contract into the provider-surface table."
         },
         "meta-passthrough": {
           "spec": "plurnk-core/SPEC.md",
@@ -18740,9 +18740,9 @@
           "liveShape": "paragraph",
           "codeCitations": 6,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-surface",
+          "reason": "Folded opaque provider response meta passthrough into the provider-surface table."
         },
         "provider-guarantees-signal-wired": {
           "spec": "plurnk-core/SPEC.md",
@@ -18752,9 +18752,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-surface",
+          "reason": "Folded session AbortController signal wiring guarantee into the provider-surface table."
         },
         "provider-guarantees-serial-attempts": {
           "spec": "plurnk-core/SPEC.md",
@@ -18764,9 +18764,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-surface",
+          "reason": "Folded serial per-turn emission attempt guarantee into the provider-surface and emission-admission tables."
         },
         "provider-guarantees-request-observer": {
           "spec": "plurnk-core/SPEC.md",
@@ -18776,9 +18776,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-surface",
+          "reason": "Folded observeRequest pre-I/O callback guarantee into the provider-surface table."
         },
         "provider-guarantees-assistantraw-opaque": {
           "spec": "plurnk-core/SPEC.md",
@@ -18788,9 +18788,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-surface",
+          "reason": "Folded opaque forensic assistantRaw retention into the provider-surface table."
         },
         "emission-admission": {
           "spec": "plurnk-core/SPEC.md",
@@ -18800,9 +18800,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as the section heading tag for emission admission, private retry, and extension attribution."
         },
         "fabricated-log-entry": {
           "spec": "plurnk-core/SPEC.md",
@@ -18812,9 +18812,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "emission-admission",
+          "reason": "Folded fabricated ### log:/// heading rejection into the emission-admission table."
         },
         "invalid-emission-attempts": {
           "spec": "plurnk-core/SPEC.md",
@@ -18824,9 +18824,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "emission-admission",
+          "reason": "Folded private emission retry budget and exhaustion strike/recovery into the emission-admission table."
         },
         "turn-never-blank": {
           "spec": "plurnk-core/SPEC.md",
@@ -18836,9 +18836,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "emission-admission",
+          "reason": "Folded non-blank turn and durable failure preservation into the emission-admission table."
         },
         "attribution": {
           "spec": "plurnk-core/SPEC.md",
@@ -18848,9 +18848,9 @@
           "liveShape": "heading",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "emission-admission",
+          "reason": "Folded extension attribution folksonomy composition into the emission-admission table."
         },
         "client-metadata": {
           "spec": "plurnk-core/SPEC.md",
@@ -18860,9 +18860,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "emission-admission",
+          "reason": "Folded workspace settings.client validation and non-transmission boundary into the emission-admission table."
         },
         "provider-instantiation": {
           "spec": "plurnk-core/SPEC.md",
@@ -18872,9 +18872,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as the section heading tag for provider instantiation, alias resolution, and operator GBNF grammar."
         },
         "provider-instantiation-alias-resolution": {
           "spec": "plurnk-core/SPEC.md",
@@ -18884,9 +18884,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-instantiation",
+          "reason": "Folded alias resolution and ProviderRegistry caching into the provider-instantiation section."
         },
         "grammar-configuration-admission": {
           "spec": "plurnk-core/SPEC.md",
@@ -18896,9 +18896,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-instantiation",
+          "reason": "Folded GBNF grammar configuration admission without token generation into the provider-instantiation table."
         },
         "operator-grammar": {
           "spec": "plurnk-core/SPEC.md",
@@ -18908,9 +18908,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-instantiation",
+          "reason": "Folded per-turn operator GBNF file loading and railsAttached evidence into the provider-instantiation table."
         },
         "mock-provider-mock-fixture": {
           "spec": "plurnk-core/SPEC.md",
@@ -18920,9 +18920,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-instantiation",
+          "reason": "Folded Mock provider fixture reference into the provider-instantiation section."
         },
         "scheme": {
           "spec": "plurnk-core/SPEC.md",
@@ -18932,9 +18932,9 @@
           "liveShape": "heading",
           "codeCitations": 3,
           "testCitations": 0,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as the top-level heading tag for the core Scheme Contract."
         },
         "scheme-address": {
           "spec": "plurnk-core/SPEC.md",
@@ -18944,9 +18944,9 @@
           "liveShape": "heading",
           "codeCitations": 3,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as the section heading tag for RFC 3986 / WHATWG URL address resolution and the scheme entry matrix."
         },
         "scheme-address-namespace-fold": {
           "spec": "plurnk-core/SPEC.md",
@@ -18956,9 +18956,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-address",
+          "reason": "Folded namespace scheme authority folding rule into the scheme-address section."
         },
         "scheme-address-network": {
           "spec": "plurnk-core/SPEC.md",
@@ -18968,9 +18968,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-address",
+          "reason": "Folded network scheme authority and query decomposition rule into the scheme-address section."
         },
         "client-entry-address": {
           "spec": "plurnk-core/SPEC.md",
@@ -18980,9 +18980,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-address",
+          "reason": "Folded client entry.read address acquisition rule into the scheme-address section."
         },
         "scheme-entry-matrix": {
           "spec": "plurnk-core/SPEC.md",
@@ -18992,9 +18992,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-address",
+          "reason": "Folded the scheme entry ownership and mutability matrix into the scheme-address table."
         },
         "fs-namespace": {
           "spec": "plurnk-core/SPEC.md",
@@ -19004,9 +19004,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as the section heading tag for filesystem namespace resolution, canonical naming, and miss refusals."
         },
         "fs-namei": {
           "spec": "plurnk-core/SPEC.md",
@@ -19016,9 +19016,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-namespace",
+          "reason": "Folded filesystem pathname resolution and relativization into the fs-namespace table."
         },
         "fs-home": {
           "spec": "plurnk-core/SPEC.md",
@@ -19028,9 +19028,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-namespace",
+          "reason": "Folded leading tilde home expansion and literal ./~ addressing into the fs-namespace table."
         },
         "file-url": {
           "spec": "plurnk-core/SPEC.md",
@@ -19040,9 +19040,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-namespace",
+          "reason": "Folded file:// URL single-pass decoding and validation into the fs-namespace table."
         },
         "file-path-normalization": {
           "spec": "plurnk-core/SPEC.md",
@@ -19052,9 +19052,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-namespace",
+          "reason": "Folded relative in-root vs absolute outside-root normalization and path_normalized notice into the fs-namespace table."
         },
         "fs-canonical-name": {
           "spec": "plurnk-core/SPEC.md",
@@ -19064,9 +19064,9 @@
           "liveShape": "paragraph",
           "codeCitations": 6,
           "testCitations": 9,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-namespace",
+          "reason": "Folded canonical Git-relative member key invariant into the fs-namespace table."
         },
         "fs-visibility-grantors": {
           "spec": "plurnk-core/SPEC.md",
@@ -19076,9 +19076,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-namespace",
+          "reason": "Folded the two-grantor (git and constraint) visibility invariant into the fs-namespace table."
         },
         "fs-write-surface": {
           "spec": "plurnk-core/SPEC.md",
@@ -19088,9 +19088,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 7,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as the section heading tag for filesystem write admission and file creation incorporation."
         },
         "fs-create-disabled": {
           "spec": "plurnk-core/SPEC.md",
@@ -19100,9 +19100,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded PLURNK_SERVICE_FILE_CREATE_SCOPE=none creation refusal into the fs-write-surface table."
         },
         "fs-create-root": {
           "spec": "plurnk-core/SPEC.md",
@@ -19112,9 +19112,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded root-scoped absent file creation admission into the fs-write-surface table."
         },
         "fs-create-namespace": {
           "spec": "plurnk-core/SPEC.md",
@@ -19124,9 +19124,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded namespace-scoped ../ file creation admission into the fs-write-surface table."
         },
         "fs-create-ignored": {
           "spec": "plurnk-core/SPEC.md",
@@ -19136,9 +19136,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded Git-ignored file creation refusal and explicit member override into the fs-write-surface table."
         },
         "fs-create-git": {
           "spec": "plurnk-core/SPEC.md",
@@ -19148,9 +19148,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded active Git repository file creation incorporation without git add into the fs-write-surface table."
         },
         "fs-create-definition": {
           "spec": "plurnk-core/SPEC.md",
@@ -19160,9 +19160,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded non-Git workspace file creation generated pick into the fs-write-surface table."
         },
         "fs-write-member": {
           "spec": "plurnk-core/SPEC.md",
@@ -19172,9 +19172,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded existing in-root member write admission into the fs-write-surface section."
         },
         "fs-write-outside": {
           "spec": "plurnk-core/SPEC.md",
@@ -19184,9 +19184,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded outside member write grantor distinction (constraint rw vs git ro) into the fs-write-surface section."
         },
         "fs-write-nonmember": {
           "spec": "plurnk-core/SPEC.md",
@@ -19196,9 +19196,9 @@
           "liveShape": "table",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded existing non-member file overwrite refusal into the fs-write-surface table."
         },
         "fs-create-incorporation": {
           "spec": "plurnk-core/SPEC.md",
@@ -19208,9 +19208,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded atomic creation incorporation lifecycle into the fs-write-surface table."
         },
         "fs-create-record": {
           "spec": "plurnk-core/SPEC.md",
@@ -19220,9 +19220,9 @@
           "liveShape": "table",
           "codeCitations": 3,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded source='create' workspace_constraints record into the fs-write-surface table."
         },
         "fs-create-copy": {
           "spec": "plurnk-core/SPEC.md",
@@ -19232,9 +19232,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded COPY destination creation incorporation into the fs-write-surface table."
         },
         "fs-create-move": {
           "spec": "plurnk-core/SPEC.md",
@@ -19244,9 +19244,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded MOVE destination creation and source retirement into the fs-write-surface table."
         },
         "fs-create-kill": {
           "spec": "plurnk-core/SPEC.md",
@@ -19256,9 +19256,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded KILL retirement of generated source='create' picks into the fs-write-surface table."
         },
         "fs-create-definition-overlap": {
           "spec": "plurnk-core/SPEC.md",
@@ -19268,9 +19268,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded overlap between source='create' and explicit members definitions into the fs-write-surface table."
         },
         "fs-create-masked": {
           "spec": "plurnk-core/SPEC.md",
@@ -19280,9 +19280,9 @@
           "liveShape": "table",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded reversible masking of source='create' picks by exclusions or .gitignore into the fs-write-surface table."
         },
         "fs-create-ambient-delete": {
           "spec": "plurnk-core/SPEC.md",
@@ -19292,9 +19292,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded ambient disk deletion cleanup of source='create' picks into the fs-write-surface table."
         },
         "file-create-no-orphans": {
           "spec": "plurnk-core/SPEC.md",
@@ -19304,9 +19304,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded no-orphan created member invariant into the fs-write-surface table."
         },
         "file-create-no-clobber": {
           "spec": "plurnk-core/SPEC.md",
@@ -19316,9 +19316,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded exclusive wx file creation no-clobber invariant into the fs-write-surface table."
         },
         "file-create-exclusions-win": {
           "spec": "plurnk-core/SPEC.md",
@@ -19328,9 +19328,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded exclusion precedence over file creation into the fs-write-surface table."
         },
         "file-create-scope": {
           "spec": "plurnk-core/SPEC.md",
@@ -19340,9 +19340,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded monotonic service and workspace fileCreateScope intersection into the fs-write-surface table."
         },
         "file-create-producer-neutral": {
           "spec": "plurnk-core/SPEC.md",
@@ -19352,9 +19352,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded producer-neutral file creation across model, client, and _plurnk into the fs-write-surface section."
         },
         "file-create-single-owner": {
           "spec": "plurnk-core/SPEC.md",
@@ -19364,9 +19364,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded single-owner membership grantor invariant for created files into the fs-write-surface table."
         },
         "file-create-transaction": {
           "spec": "plurnk-core/SPEC.md",
@@ -19376,9 +19376,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-write-surface",
+          "reason": "Folded atomic disk-and-DB rollback on failed creation incorporation into the fs-write-surface table."
         },
         "fs-answer-in-canon": {
           "spec": "plurnk-core/SPEC.md",
@@ -19388,9 +19388,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-namespace",
+          "reason": "Folded canonical wire response addressing into the fs-namespace table."
         },
         "fs-errno": {
           "spec": "plurnk-core/SPEC.md",
@@ -19400,9 +19400,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-namespace",
+          "reason": "Folded filesystem miss, occupancy, and empty-survey diagnostic distinctions into the fs-namespace table."
         },
         "membership-read-refusal": {
           "spec": "plurnk-core/SPEC.md",
@@ -19412,9 +19412,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-namespace",
+          "reason": "Folded in-root and outside-root file miss/non-member refusal recovery rules into the fs-namespace table."
         },
         "file-directory-target": {
           "spec": "plurnk-core/SPEC.md",
@@ -19424,9 +19424,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-namespace",
+          "reason": "Folded directory target refusal on READ, EDIT, and KILL into the fs-namespace table."
         },
         "file-find-directory": {
           "spec": "plurnk-core/SPEC.md",
@@ -19436,9 +19436,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fs-namespace",
+          "reason": "Folded directory target descendant survey on FIND into the fs-namespace table."
         },
         "scheme-manifest": {
           "spec": "plurnk-core/SPEC.md",
@@ -19448,9 +19448,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as the section heading tag for SchemeManifest registration and EntryCrud persistence."
         },
         "scheme-manifest-manifest": {
           "spec": "plurnk-core/SPEC.md",
@@ -19460,9 +19460,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-manifest",
+          "reason": "Folded static SchemeManifest field validation into the scheme-manifest section."
         },
         "crud": {
           "spec": "plurnk-core/SPEC.md",
@@ -19472,9 +19472,9 @@
           "liveShape": "heading",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-manifest",
+          "reason": "Folded EntryCrud transactional writeEntry and deleteChannel invariants into the scheme-manifest table."
         },
         "op-methods-op-dispatch": {
           "spec": "plurnk-core/SPEC.md",
@@ -19484,9 +19484,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as the section heading tag for sequential operation dispatch, edit batches, bulk targeting, and BARE/SEND dispatch."
         },
         "op-execution-order": {
           "spec": "plurnk-core/SPEC.md",
@@ -19496,9 +19496,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 13,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-methods-op-dispatch",
+          "reason": "Folded sequential in-turn execution order and cancellation into the op-methods-op-dispatch table."
         },
         "bare-inference": {
           "spec": "plurnk-core/SPEC.md",
@@ -19508,9 +19508,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-methods-op-dispatch",
+          "reason": "Folded stateless BARE inference and child provider routing into the op-methods-op-dispatch table."
         },
         "op-synchronous": {
           "spec": "plurnk-core/SPEC.md",
@@ -19520,9 +19520,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-methods-op-dispatch",
+          "reason": "Folded synchronous settlement between consecutive operations into the op-methods-op-dispatch table."
         },
         "edit-execution": {
           "spec": "plurnk-core/SPEC.md",
@@ -19532,9 +19532,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-methods-op-dispatch",
+          "reason": "Folded sequential per-EDIT state resolution into the op-methods-op-dispatch table."
         },
         "edit-anchor-continuity": {
           "spec": "plurnk-core/SPEC.md",
@@ -19544,9 +19544,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-methods-op-dispatch",
+          "reason": "Folded in-turn untouched @hash line anchor continuity across numeric splices into the op-methods-op-dispatch table."
         },
         "anchor-offset": {
           "spec": "plurnk-core/SPEC.md",
@@ -19556,9 +19556,9 @@
           "liveShape": "list",
           "codeCitations": 3,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-methods-op-dispatch",
+          "reason": "Folded tolerated @hash+N/@hash-N anchor offset resolution into the op-methods-op-dispatch table."
         },
         "edit-batch": {
           "spec": "plurnk-core/SPEC.md",
@@ -19568,9 +19568,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-methods-op-dispatch",
+          "reason": "Folded compound editBatch splice execution into the op-methods-op-dispatch table."
         },
         "edit-batch-receipt": {
           "spec": "plurnk-core/SPEC.md",
@@ -19580,9 +19580,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-methods-op-dispatch",
+          "reason": "Folded editBatch refusal receipt reporting into the op-methods-op-dispatch table."
         },
         "edit-batch-merges": {
           "spec": "plurnk-core/SPEC.md",
@@ -19592,9 +19592,9 @@
           "liveShape": "list",
           "codeCitations": 7,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-methods-op-dispatch",
+          "reason": "Folded editBatch rendered prefix echo merging into the op-methods-op-dispatch table."
         },
         "bulk-resource-targeting": {
           "spec": "plurnk-core/SPEC.md",
@@ -19604,9 +19604,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-methods-op-dispatch",
+          "reason": "Folded glob fan-out for READ/EDIT/KILL and cardinality enforcement for COPY/MOVE into the op-methods-op-dispatch table."
         },
         "send-dispatch-entry-schemes-501": {
           "spec": "plurnk-core/SPEC.md",
@@ -19616,9 +19616,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-methods-op-dispatch",
+          "reason": "Folded 501 refusal for SEND on entry schemes without a send handler into the op-methods-op-dispatch table."
         },
         "send-resource-attachments": {
           "spec": "plurnk-core/SPEC.md",
@@ -19628,9 +19628,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-methods-op-dispatch",
+          "reason": "Folded SEND [path] resource attachment resolution into the op-methods-op-dispatch table."
         },
         "message-envelope-evidence": {
           "spec": "plurnk-core/SPEC.md",
@@ -19640,9 +19640,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-methods-op-dispatch",
+          "reason": "Folded durable message_envelopes snapshot persistence into the op-methods-op-dispatch table."
         },
         "scheme-surface": {
           "spec": "plurnk-core/SPEC.md",
@@ -19652,9 +19652,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as the section heading tag for universal READ/FIND composition and scheme guards."
         },
         "universal-read-composition": {
           "spec": "plurnk-core/SPEC.md",
@@ -19664,9 +19664,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-surface",
+          "reason": "Folded universal READ preparation, slicing, and matcher composition into the scheme-surface table."
         },
         "scheme-surface-writableby-403": {
           "spec": "plurnk-core/SPEC.md",
@@ -19676,9 +19676,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-surface",
+          "reason": "Folded manifest.writableBy pre-invocation 403 guard into the scheme-surface section."
         },
         "scheme-surface-exception-500": {
           "spec": "plurnk-core/SPEC.md",
@@ -19688,9 +19688,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-surface",
+          "reason": "Folded unhandled scheme exception 500 boundary into the scheme-surface section."
         },
         "mimetype": {
           "spec": "plurnk-core/SPEC.md",
@@ -19700,9 +19700,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as the top-level heading tag for the core Mimetype Contract."
         },
         "mimetype-schemes-do-not-invoke-handlers": {
           "spec": "plurnk-core/SPEC.md",
@@ -19712,9 +19712,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "mimetype",
+          "reason": "Folded write-time detection vs query separation into the mimetype table."
         },
         "mimetype-methods": {
           "spec": "plurnk-core/SPEC.md",
@@ -19724,9 +19724,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "mimetype",
+          "reason": "Folded Mimetypes service consumption methods into the mimetype table."
         },
         "mimetype-owned-lifecycle": {
           "spec": "plurnk-core/SPEC.md",
@@ -19736,9 +19736,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "mimetype",
+          "reason": "Folded Daemon ownership and disposal of Mimetypes into the mimetype section."
         },
         "mimetype-classification-consumption": {
           "spec": "plurnk-core/SPEC.md",
@@ -19748,9 +19748,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "mimetype",
+          "reason": "Folded MimetypeBinary classification consumption across decoding, EDIT, and search into the mimetype table."
         },
         "persistent-search-index": {
           "spec": "plurnk-core/SPEC.md",
@@ -19760,9 +19760,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 6,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as the top-level heading tag for Search Indexing and Derivation."
         },
         "search-exclusion": {
           "spec": "plurnk-core/SPEC.md",
@@ -19772,9 +19772,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "persistent-search-index",
+          "reason": "Folded _search-exclusion binary/lockfile/minified filtering into the persistent-search-index table."
         },
         "search-size-bound": {
           "spec": "plurnk-core/SPEC.md",
@@ -19784,9 +19784,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "persistent-search-index",
+          "reason": "Folded PLURNK_SERVICE_SEARCH_MAX_BYTES size bound into the persistent-search-index table."
         },
         "derivation-exhaustive": {
           "spec": "plurnk-core/SPEC.md",
@@ -19796,9 +19796,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "persistent-search-index",
+          "reason": "Folded exhaustive derivation warming and search_progress notice lifecycle into the persistent-search-index table."
         },
         "channels": {
           "spec": "plurnk-core/SPEC.md",
@@ -19808,9 +19808,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as the top-level heading tag for Channel Topology."
         },
         "channels-entry-name-key": {
           "spec": "plurnk-core/SPEC.md",
@@ -19820,9 +19820,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channels",
+          "reason": "Folded (entry_id, name) channel key invariant into the channels section."
         },
         "per-entry-channels": {
           "spec": "plurnk-core/SPEC.md",
@@ -19832,9 +19832,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channels",
+          "reason": "Folded per-entry multi-channel storage into the channels section."
         },
         "per-entry-channels-edit-writes-only-body": {
           "spec": "plurnk-core/SPEC.md",
@@ -19844,9 +19844,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channels",
+          "reason": "Folded single-channel EDIT target resolution into the channels and channel-selection sections."
         },
         "no-visibility": {
           "spec": "plurnk-core/SPEC.md",
@@ -19856,9 +19856,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channels",
+          "reason": "Folded absence of entry visibility columns into the channels table."
         },
         "channel-mimetype": {
           "spec": "plurnk-core/SPEC.md",
@@ -19868,9 +19868,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channels",
+          "reason": "Folded per-(scheme, channel) mimetype invariant into the channels table."
         },
         "channel-mimetype-cross-mimetype-415": {
           "spec": "plurnk-core/SPEC.md",
@@ -19880,9 +19880,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channels",
+          "reason": "Folded cross-mimetype COPY/MOVE transfer reference into the channels table."
         },
         "channel-selection": {
           "spec": "plurnk-core/SPEC.md",
@@ -19892,9 +19892,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as the section heading tag for URL #fragment channel selection and #readable projections."
         },
         "channel-selection-fragmentless-targets-default-channel": {
           "spec": "plurnk-core/SPEC.md",
@@ -19904,9 +19904,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channel-selection",
+          "reason": "Folded fragment-less defaultChannel targeting into the channel-selection table."
         },
         "channel-selection-fragment-selects-named-channel": {
           "spec": "plurnk-core/SPEC.md",
@@ -19916,9 +19916,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channel-selection",
+          "reason": "Folded #fragment named channel selection into the channel-selection table."
         },
         "channel-selection-missing": {
           "spec": "plurnk-core/SPEC.md",
@@ -19928,9 +19928,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channel-selection",
+          "reason": "Folded 404 channel-not-found with availableChannels into the channel-selection table."
         },
         "log-channel-miss-names-stream": {
           "spec": "plurnk-core/SPEC.md",
@@ -19940,9 +19940,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channel-selection",
+          "reason": "Folded log execution item #channel miss naming the stream URI into the channel-selection table."
         },
         "channel-selection-fragment-on-nonexistent-404": {
           "spec": "plurnk-core/SPEC.md",
@@ -19952,9 +19952,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channel-selection",
+          "reason": "Folded 404 on fragment EDIT against a non-existent entry into the channel-selection table."
         },
         "readable-channel": {
           "spec": "plurnk-core/SPEC.md",
@@ -19964,9 +19964,9 @@
           "liveShape": "list",
           "codeCitations": 11,
           "testCitations": 12,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channel-selection",
+          "reason": "Folded #readable Markdown sibling derivation and read-only protection into the channel-selection table."
         },
         "channel-selection-visibility": {
           "spec": "plurnk-core/SPEC.md",
@@ -19976,9 +19976,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channel-selection",
+          "reason": "Folded decision-time channel group and token weight visibility on FIND and READ into the channel-selection table."
         },
         "channel-state": {
           "spec": "plurnk-core/SPEC.md",
@@ -19988,9 +19988,9 @@
           "liveShape": "heading",
           "codeCitations": 3,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channels",
+          "reason": "Folded channel state lifecycle metadata into the channels table."
         },
         "channel-state-state-is-metadata": {
           "spec": "plurnk-core/SPEC.md",
@@ -20000,9 +20000,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channels",
+          "reason": "Folded non-gating channel state read invariant into the channels table."
         },
         "channel-state-schemes-own-state-transitions": {
           "spec": "plurnk-core/SPEC.md",
@@ -20012,9 +20012,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "channels",
+          "reason": "Folded scheme-owned channel state transition rule into the channels table."
         }
       },
       "tests": {
@@ -20030,9 +20030,9 @@
             "markdown-primitive",
             "mimetype-classification-consumption"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for MimetypeBinary classification and binary gate helpers."
         },
         "plurnk-core/src/content/read-projector.channels.test.ts": {
           "tier": "unit",
@@ -20046,9 +20046,9 @@
             "channel-selection-missing",
             "stream-observation-result"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for read-projector sibling channel weight projection."
         },
         "plurnk-core/src/core/EditSequence.test.ts": {
           "tier": "unit",
@@ -20061,9 +20061,9 @@
           "citedTags": [
             "edit-anchor-continuity"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for sequential EDIT splice and anchor continuity mechanics."
         },
         "plurnk-core/src/core/FabricatedLog.test.ts": {
           "tier": "unit",
@@ -20078,9 +20078,9 @@
             "emission-row",
             "fabricated-log-entry"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for fabricated ### log:/// heading detection outside fenced blocks."
         },
         "plurnk-core/src/core/FileAddress.test.ts": {
           "tier": "unit",
@@ -20095,9 +20095,9 @@
             "file-url",
             "fs-canonical-name"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/core/plurnk-uri.test.ts",
+          "reason": "Merge file:// URL decoding and FileAddress unit checks into plurnk-uri.test.ts."
         },
         "plurnk-core/src/core/OperationHistory.test.ts": {
           "tier": "unit",
@@ -20113,9 +20113,9 @@
             "executor-heading",
             "log-kill-distillation"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for OperationHistory anchor and revision tracking."
         },
         "plurnk-core/src/core/ProviderInstantiate.test.ts": {
           "tier": "unit",
@@ -20134,9 +20134,9 @@
             "provider-surface-identity",
             "session-effort"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for ProviderInstantiate alias resolution, caching, and operator grammar helpers."
         },
         "plurnk-core/src/core/SchemeRegistry.test.ts": {
           "tier": "unit",
@@ -20154,9 +20154,9 @@
             "schemes-directory",
             "web-materialization-contract"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for SchemeRegistry manifest validation and registration."
         },
         "plurnk-core/src/core/caps/SchemeCtxImpl.test.ts": {
           "tier": "unit",
@@ -20170,9 +20170,9 @@
             "capability-ctx",
             "scheme-surface"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for SchemeCtxImpl capability adapter wiring."
         },
         "plurnk-core/src/core/file-creation-policy.test.ts": {
           "tier": "unit",
@@ -20186,9 +20186,9 @@
             "file-create-scope",
             "operator-config-file-create-scope"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for fileCreateScope policy lattice and path admission helpers."
         },
         "plurnk-core/src/core/namespace.test.ts": {
           "tier": "unit",
@@ -20204,9 +20204,9 @@
             "fs-namei",
             "fs-namespace"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for Namespace path resolution, home expansion, and canonical key predicates."
         },
         "plurnk-core/src/core/operator-grammar.test.ts": {
           "tier": "unit",
@@ -20219,9 +20219,9 @@
           "citedTags": [
             "operator-grammar"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/core/ProviderInstantiate.test.ts",
+          "reason": "Merge operator GBNF grammar env resolution unit checks into ProviderInstantiate.test.ts."
         },
         "plurnk-core/src/core/plurnk-uri.test.ts": {
           "tier": "unit",
@@ -20239,9 +20239,9 @@
             "scheme-address-namespace-fold",
             "scheme-address-network"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for plurnk-uri decomposition, canonical target rendering, and FileAddress."
         },
         "plurnk-core/src/core/turn-scheduler.test.ts": {
           "tier": "unit",
@@ -20254,9 +20254,9 @@
           "citedTags": [
             "op-execution-order"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for TurnScheduler sequential dispatch and command accounting."
         },
         "plurnk-core/src/schemes/_search-exclusion.test.ts": {
           "tier": "unit",
@@ -20270,9 +20270,9 @@
             "search-exclusion",
             "search-size-bound"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for _search-exclusion binary, lockfile, minified, and byte-limit predicates."
         },
         "plurnk-core/test/intg/ClientInteractions.test.ts": {
           "tier": "intg",
@@ -20288,9 +20288,9 @@
             "methods-client-interaction-resolve",
             "problems-client"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge client-originated operation dispatch and entry interaction tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/Daemon.entry-read-acquisition.test.ts": {
           "tier": "intg",
@@ -20306,9 +20306,9 @@
             "message-short-identity",
             "methods-entry-channel-read"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge client daemon.readEntry acquisition tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/Engine.bare.test.ts": {
           "tier": "intg",
@@ -20328,9 +20328,9 @@
             "provider-recovery",
             "send-premature-terminate"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.emission-attempts.test.ts",
+          "reason": "Merge stateless BARE inference integration coverage into Engine.emission-attempts.test.ts."
         },
         "plurnk-core/test/intg/Engine.capability-policy.test.ts": {
           "tier": "intg",
@@ -20345,9 +20345,9 @@
             "manifest-capability-traits",
             "send-resource-attachments"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge workspace capability policy and writableBy dispatch guard tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/Engine.channel-recovery.test.ts": {
           "tier": "intg",
@@ -20361,9 +20361,9 @@
             "channel-selection-missing",
             "readable-channel"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/contract-channels.test.ts",
+          "reason": "Merge channel-not-found recovery and log stream channel miss tests into contract-channels.test.ts."
         },
         "plurnk-core/test/intg/Engine.contextual-anchors.test.ts": {
           "tier": "intg",
@@ -20377,9 +20377,9 @@
             "edit-anchor-continuity",
             "line-anchor-disambiguation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge @hash+N/@hash-N anchor offset and in-turn anchor continuity tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/Engine.edit-batch-merges.test.ts": {
           "tier": "intg",
@@ -20393,9 +20393,9 @@
             "edit-batch-merges",
             "edit-execution"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge editBatch rendered prefix echo merge and refusal receipt tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/Engine.emission-attempts.test.ts": {
           "tier": "intg",
@@ -20440,9 +20440,9 @@
             "turn-source-resources",
             "unparsed-tail-boundary"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical integration suite for provider consumption, emission admission/retry, attribution, operator grammar, and BARE/child providers."
         },
         "plurnk-core/test/intg/Engine.manifest.test.ts": {
           "tier": "intg",
@@ -20460,9 +20460,9 @@
             "scheme-catalog-parse-issues",
             "stream-catalog-lifecycle"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge SchemeManifest validation and unhandled scheme exception 500 tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/Engine.multi-edit.test.ts": {
           "tier": "intg",
@@ -20480,9 +20480,9 @@
             "edit-receipt-anchored-context",
             "line-anchors"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge multi-region and multi-statement EDIT batch execution tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/Engine.packet-no-host-paths.test.ts": {
           "tier": "intg",
@@ -20495,9 +20495,9 @@
           "citedTags": [
             "fs-answer-in-canon"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/file-creation-contract.test.ts",
+          "reason": "Merge host path non-leakage and relative wire canon tests into file-creation-contract.test.ts."
         },
         "plurnk-core/test/intg/File.read.test.ts": {
           "tier": "intg",
@@ -20519,9 +20519,9 @@
             "problems-schemes",
             "text-scope-semantics"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/file-creation-contract.test.ts",
+          "reason": "Merge File scheme read, edit, and membership boundary tests into file-creation-contract.test.ts."
         },
         "plurnk-core/test/intg/Message.attachments.test.ts": {
           "tier": "intg",
@@ -20535,9 +20535,9 @@
             "connection-lifecycle",
             "send-resource-attachments"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge SEND [path] resource attachment and message_envelopes evidence tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/Mock.provider.test.ts": {
           "tier": "intg",
@@ -20554,9 +20554,9 @@
             "provider-interface",
             "provider-prompt-measurement"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.emission-attempts.test.ts",
+          "reason": "Merge Mock provider integration checks into Engine.emission-attempts.test.ts."
         },
         "plurnk-core/test/intg/ProviderRegistry.test.ts": {
           "tier": "intg",
@@ -20572,9 +20572,9 @@
             "provider-instantiation",
             "provider-resolution"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.emission-attempts.test.ts",
+          "reason": "Merge ProviderRegistry discovery and registration integration checks into Engine.emission-attempts.test.ts."
         },
         "plurnk-core/test/intg/Session.channels.test.ts": {
           "tier": "intg",
@@ -20591,9 +20591,9 @@
             "manifest",
             "scheme-manifest"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/contract-channels.test.ts",
+          "reason": "Merge Workspace/Session channel CRUD and fragment selection tests into contract-channels.test.ts."
         },
         "plurnk-core/test/intg/attribution.test.ts": {
           "tier": "intg",
@@ -20606,9 +20606,9 @@
           "citedTags": [
             "attribution"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.emission-attempts.test.ts",
+          "reason": "Merge per-attempt extension attribution folksonomy integration tests into Engine.emission-attempts.test.ts."
         },
         "plurnk-core/test/intg/child-provider-policy.test.ts": {
           "tier": "intg",
@@ -20623,9 +20623,9 @@
             "context-wall",
             "methods-loop-run-child-provider"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.emission-attempts.test.ts",
+          "reason": "Merge WORK/FORK/BARE child provider policy routing tests into Engine.emission-attempts.test.ts."
         },
         "plurnk-core/test/intg/client-telemetry.test.ts": {
           "tier": "intg",
@@ -20639,9 +20639,9 @@
             "client-metadata",
             "pinned-wording-core"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.emission-attempts.test.ts",
+          "reason": "Merge workspace settings.client non-transmission integration tests into Engine.emission-attempts.test.ts."
         },
         "plurnk-core/test/intg/contract-channels.test.ts": {
           "tier": "intg",
@@ -20663,9 +20663,9 @@
             "problems-content",
             "relation-indexed-dialects"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical integration suite for channel topology, #fragment selection, #readable projections, and channel state lifecycle."
         },
         "plurnk-core/test/intg/contract-mimetypes.test.ts": {
           "tier": "intg",
@@ -20689,9 +20689,9 @@
             "readable-channel",
             "slice-semantics-compose-pattern"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/fulltext-index.test.ts",
+          "reason": "Merge Mimetypes.process, binary source projection, and classification consumption tests into fulltext-index.test.ts."
         },
         "plurnk-core/test/intg/coordinate-metadata.test.ts": {
           "tier": "intg",
@@ -20704,9 +20704,9 @@
           "citedTags": [
             "provider-surface-generate"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.emission-attempts.test.ts",
+          "reason": "Merge provider.generate workspaceId/sessionId/callKind coordinate tests into Engine.emission-attempts.test.ts."
         },
         "plurnk-core/test/intg/disposition-order.test.ts": {
           "tier": "intg",
@@ -20722,9 +20722,9 @@
             "matcher-refusal",
             "unparsed-tail-boundary"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge non-terminal disposition ordering and TurnOps roundtrip tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/end_to_end_mock.test.ts": {
           "tier": "intg",
@@ -20739,9 +20739,9 @@
             "op-execution-order",
             "send-premature-terminate"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge single-turn and multi-turn dispatch sequence e2e mock tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/entry-html-projection.test.ts": {
           "tier": "intg",
@@ -20757,9 +20757,9 @@
             "readable-channel",
             "universal-read-composition"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/contract-channels.test.ts",
+          "reason": "Merge authored vs fetched HTML #readable sibling projection tests into contract-channels.test.ts."
         },
         "plurnk-core/test/intg/entry-publication.test.ts": {
           "tier": "intg",
@@ -20772,9 +20772,9 @@
           "citedTags": [
             "crud"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge EntryCrud transactional publication, deep_hash preservation, and rollback tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/file-creation-contract.test.ts": {
           "tier": "intg",
@@ -20805,9 +20805,9 @@
             "membership-baseline",
             "membership-model-universe"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical integration suite for filesystem namespace, canonical naming, file creation incorporation, directory targets, and refusal recovery."
         },
         "plurnk-core/test/intg/file-directory-target.test.ts": {
           "tier": "intg",
@@ -20823,9 +20823,9 @@
             "file-find-directory",
             "pinned-wording-core"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/file-creation-contract.test.ts",
+          "reason": "Merge directory target refusal and FIND directory survey tests into file-creation-contract.test.ts."
         },
         "plurnk-core/test/intg/file-path-resolution.test.ts": {
           "tier": "intg",
@@ -20841,9 +20841,9 @@
             "fs-home",
             "fs-namei"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/file-creation-contract.test.ts",
+          "reason": "Merge file:// URL, home tilde, and path_normalized notice integration tests into file-creation-contract.test.ts."
         },
         "plurnk-core/test/intg/fulltext-index.test.ts": {
           "tier": "intg",
@@ -20856,9 +20856,9 @@
           "citedTags": [
             "persistent-search-index"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical integration suite for persistent search indexing, derivation warming, mimetype projections, and universal READ/FIND composition."
         },
         "plurnk-core/test/intg/grammar-configuration-admission.test.ts": {
           "tier": "intg",
@@ -20871,9 +20871,9 @@
           "citedTags": [
             "grammar-configuration-admission"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.emission-attempts.test.ts",
+          "reason": "Merge GBNF grammar startup admission tests into Engine.emission-attempts.test.ts."
         },
         "plurnk-core/test/intg/http-read-scope.test.ts": {
           "tier": "intg",
@@ -20889,9 +20889,9 @@
             "readable-channel",
             "universal-read-composition"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/fulltext-index.test.ts",
+          "reason": "Merge universal READ slicing and JSONPath location follow-up over HTTP entries into fulltext-index.test.ts."
         },
         "plurnk-core/test/intg/http-response-materialization.test.ts": {
           "tier": "intg",
@@ -20910,9 +20910,9 @@
             "readable-channel",
             "revalidation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/fulltext-index.test.ts",
+          "reason": "Merge HTTP response materialization, binary/PDF projection, and 304 revalidation tests into fulltext-index.test.ts."
         },
         "plurnk-core/test/intg/independent-roots-acquisition.test.ts": {
           "tier": "intg",
@@ -20925,9 +20925,9 @@
           "citedTags": [
             "scheme-entry-matrix"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/fulltext-index.test.ts",
+          "reason": "Merge workspace-shared HTTP representation acquisition across independent root sessions into fulltext-index.test.ts."
         },
         "plurnk-core/test/intg/lifecycle-notes.test.ts": {
           "tier": "intg",
@@ -20944,9 +20944,9 @@
             "unparsed-tail-boundary",
             "wait-obligation-matrix"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge reasoning/content NOTE source retention and log curation tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/mcp-ordered-admission.test.ts": {
           "tier": "intg",
@@ -20960,9 +20960,9 @@
             "executor-heading",
             "op-execution-order"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge in-turn plurnk (mcp) runtime registration and sequential invocation tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/meta-passthrough.test.ts": {
           "tier": "intg",
@@ -20975,9 +20975,9 @@
           "citedTags": [
             "meta-passthrough"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.emission-attempts.test.ts",
+          "reason": "Merge provider response meta passthrough integration tests into Engine.emission-attempts.test.ts."
         },
         "plurnk-core/test/intg/namespace-canon.test.ts": {
           "tier": "intg",
@@ -21003,9 +21003,9 @@
             "pinned-wording-core",
             "problems-file"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/file-creation-contract.test.ts",
+          "reason": "Merge canonical member key and outside-root write/miss matrix tests into file-creation-contract.test.ts."
         },
         "plurnk-core/test/intg/operation-cancellation.test.ts": {
           "tier": "intg",
@@ -21018,9 +21018,9 @@
           "citedTags": [
             "op-execution-order"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge mid-turn operation cancellation and committed effect retention tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/operation-order.test.ts": {
           "tier": "intg",
@@ -21033,9 +21033,9 @@
           "citedTags": [
             "op-execution-order"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical integration suite for sequential operation dispatch, edit batches, bulk targeting, entry CRUD, and turn source retention."
         },
         "plurnk-core/test/intg/operator-grammar.test.ts": {
           "tier": "intg",
@@ -21049,9 +21049,9 @@
             "grammar-configuration-admission",
             "operator-grammar"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.emission-attempts.test.ts",
+          "reason": "Merge per-turn operator GBNF grammar transport and evidence tests into Engine.emission-attempts.test.ts."
         },
         "plurnk-core/test/intg/packet-envelope.test.ts": {
           "tier": "intg",
@@ -21066,9 +21066,9 @@
             "emission-row",
             "fabricated-log-entry"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge emission-row chronology, curation, and ops:// source readback tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/parser_roundtrip.test.ts": {
           "tier": "intg",
@@ -21089,9 +21089,9 @@
             "unclosed-mutation-yields",
             "universal-read-composition"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge parser-to-engine dispatch roundtrip tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/path-glob-mutations.test.ts": {
           "tier": "intg",
@@ -21104,9 +21104,9 @@
           "citedTags": [
             "bulk-resource-targeting"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge bulk glob READ/EDIT/KILL fan-out and COPY/MOVE cardinality tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/provider-accounting.test.ts": {
           "tier": "intg",
@@ -21121,9 +21121,9 @@
             "provider-accounting",
             "provider-request-accounting"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.emission-attempts.test.ts",
+          "reason": "Merge physical provider request accounting and model_calls ledger integrity tests into Engine.emission-attempts.test.ts."
         },
         "plurnk-core/test/intg/readable-channel.test.ts": {
           "tier": "intg",
@@ -21137,9 +21137,9 @@
             "channel-selection-visibility",
             "readable-channel"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/contract-channels.test.ts",
+          "reason": "Merge #readable channel derivation, read-only guard, and sibling token weight tests into contract-channels.test.ts."
         },
         "plurnk-core/test/intg/refusal-recovery.test.ts": {
           "tier": "intg",
@@ -21163,9 +21163,9 @@
             "problem-details",
             "unregistered-scheme-recovery"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/file-creation-contract.test.ts",
+          "reason": "Merge file, log, scheme, FTS, and exec refusal recovery tests into file-creation-contract.test.ts."
         },
         "plurnk-core/test/intg/resource-state.test.ts": {
           "tier": "intg",
@@ -21179,9 +21179,9 @@
             "fs-canonical-name",
             "fs-resource-state"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/file-creation-contract.test.ts",
+          "reason": "Merge ResourceState canonical key and grantor integrity witness tests into file-creation-contract.test.ts."
         },
         "plurnk-core/test/intg/same-turn-visibility.test.ts": {
           "tier": "intg",
@@ -21198,9 +21198,9 @@
             "op-execution-order",
             "turn-ops-selection-snapshot"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/operation-order.test.ts",
+          "reason": "Merge same-turn write visibility, pre-program log KILL snapshot, and EDIT revision receipt tests into operation-order.test.ts."
         },
         "plurnk-core/test/intg/search-artifact-identity.test.ts": {
           "tier": "intg",
@@ -21213,9 +21213,9 @@
           "citedTags": [
             "persistent-search-index"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/fulltext-index.test.ts",
+          "reason": "Merge content-addressed derivation artifact deduplication and projectionIdentity invalidation tests into fulltext-index.test.ts."
         },
         "plurnk-core/test/intg/universal-find.test.ts": {
           "tier": "intg",
@@ -21232,9 +21232,9 @@
             "revalidation",
             "scheme-surface"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/fulltext-index.test.ts",
+          "reason": "Merge universal FIND preparation, HTTP URL acquisition, and method provenance tests into fulltext-index.test.ts."
         },
         "plurnk-core/test/intg/warm-workspace-derivations.test.ts": {
           "tier": "intg",
@@ -21248,9 +21248,9 @@
             "derivation-exhaustive",
             "mimetype-parser-coordinates"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/fulltext-index.test.ts",
+          "reason": "Merge warmWorkspaceDerivations startup indexing, search_progress notices, and turn join tests into fulltext-index.test.ts."
         }
       }
     },

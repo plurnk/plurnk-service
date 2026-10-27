@@ -454,7 +454,7 @@ export default class DigestRender {
         const cost = ` cost=${DigestRender.costSummary(accounting)}`;
         const finishReason = turn.finish_reason ?? "—";
         // Render only observed transport metadata; absence makes no claim
-        // about endpoint-owned settings. {§operator-grammar}
+        // about endpoint-owned settings. {§provider-instantiation}
         const tm = DigestRender.parseJson(turn.meta ?? "null", null);
         const railsFlag = isRecord(tm) ? tm.railsAttached : undefined;
         const attached = typeof railsFlag === "boolean" || typeof railsFlag === "string" ? railsFlag : undefined;
@@ -1122,7 +1122,7 @@ export default class DigestRender {
                     attachments: packet === null ? null : packet.attachments ?? [],
                     packet_failure: packetFailure,
                     // Preserve the opaque provider and engine metadata for aggregate
-                    // tooling. {§meta-passthrough}, {§operator-grammar}
+                    // tooling. {§provider-surface}, {§provider-instantiation}
                     meta: DigestRender.parseJson(t.meta ?? "null", null),
                 };
             }),

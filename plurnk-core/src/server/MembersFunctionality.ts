@@ -148,7 +148,7 @@ const outsideRoot = (pattern: string): boolean =>
     pattern.startsWith("/") || pattern === ".." || pattern.startsWith("../") || pattern.includes("/../") || pattern.endsWith("/..");
 
 // {§members-functionality} A glob is matched against member keys, so its spelling is canonicalized as a path's is
-// ({§fs-canonical-name}): an absolute spelling and its root-relative one name the same files. Headless, it stays as written.
+// ({§fs-namespace}): an absolute spelling and its root-relative one name the same files. Headless, it stays as written.
 const keyPattern = (pattern: string, root: string | null): string => (root === null ? null : Namespace.canonicalize(pattern, root)) ?? pattern;
 
 const sourceOf = (definition: MembersDefinition): MembersSource =>

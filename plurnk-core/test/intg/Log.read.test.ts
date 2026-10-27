@@ -409,7 +409,7 @@ test("{§edit-receipt-anchored-context} Log.read: dispatches correctly via Engin
     } finally { db.close(); }
 });
 
-// {§log-channel-miss-names-stream} (#502) — a channel READ on a log execution item is a miss the
+// {§channel-selection} (#502) — a channel READ on a log execution item is a miss the
 // receipt can resolve: the stream shares the coordinate and lives at <runtime>:///…/sh#channel.
 test("{§log-range-miss-names-stream} Log.read: #channel on an execution log item names the command's stream address in its 404", async () => {
     const { db, workspaceId, sessionId, loopId, turnId } = await setup();

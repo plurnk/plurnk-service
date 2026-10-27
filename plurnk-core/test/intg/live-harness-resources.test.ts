@@ -36,7 +36,7 @@ test("{§tokenomics-agnostic-ruler} live fixtures obey resource publication and 
         const entryId = await seedEntry(workspace.db, workspace.workspaceId, {
             pathname: "page.html", content: html, mimetype: "text/html",
         });
-        await t.test("{§readable-channel} an HTML fixture retains its source and publishes its readable sibling", async () => {
+        await t.test("{§channel-selection} an HTML fixture retains its source and publishes its readable sibling", async () => {
             const channels = await workspace.db.entry_read_channels.all<{
                 name: string; content: string; mimetype: string; weight: number;
             }>({ entry_id: entryId });
@@ -61,7 +61,7 @@ test("{§tokenomics-agnostic-ruler} live fixtures obey resource publication and 
             assert.equal(result.matched, 1);
             assert.match(String(result.content), /Welcome/u);
         });
-        await t.test("{§readable-channel} ordinary READ keeps the fixture's source text", async () => {
+        await t.test("{§channel-selection} ordinary READ keeps the fixture's source text", async () => {
             const [result] = await workspace.daemon.dispatchClientAction({
                 workspaceId: workspace.workspaceId, actor: TEST_OWNER, contextSessionId: sessionId,
                 statements: [readStmt(parsePath("workspace:///page.html"), { marks: [1, -1] })],

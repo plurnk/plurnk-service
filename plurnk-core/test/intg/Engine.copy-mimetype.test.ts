@@ -158,7 +158,7 @@ for (const transfer of [copyStmt, moveStmt]) {
         ["application/octet-stream", "text/markdown", "AP+A"],
         ["text/plain", "image/png", content],
     ] as const) {
-        test(`{§channel-mimetype-cross-mimetype-415}: ${op} ${sourceMimetype} → ${destinationMimetype} rejects before changing either resource`, async () => {
+        test(`{§channels}: ${op} ${sourceMimetype} → ${destinationMimetype} rejects before changing either resource`, async () => {
             const { db, seed, read, dispatch } = await setup();
             try {
                 await seed("/src", sourceMimetype, body);

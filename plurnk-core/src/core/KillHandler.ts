@@ -168,7 +168,7 @@ export default class KillHandler {
                 }
             const sessionId = row.id;
             if (this.#cancelSession === undefined) throw new Error("session kill: cancelSession capability absent");
-            // {§op-synchronous} — KILL is decisive. Await the one lifecycle owner so the
+            // {§op-methods-op-dispatch} — KILL is decisive. Await the one lifecycle owner so the
             // same-turn pending-work gate observes the complete subtree as terminal.
             await this.#cancelSession(sessionId, "killed via session:// KILL");
             return { status: 200 };

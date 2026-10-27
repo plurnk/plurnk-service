@@ -203,7 +203,7 @@ export default class Http implements SchemeHandler {
         // body is retyped per-call to the real response Content-Type;
         // octet-stream is the honest "unknown until fetched". header is always the status
         // line + headers (text/plain).
-        // {§readable-channel} — body is the response as served (a page's server source); readable
+        // {§channel-selection} — body is the response as served (a page's server source); readable
         // is curated Markdown or binary facts; header is transport evidence.
         channels: { [BODY]: "application/octet-stream", [HEADER]: "text/plain", readable: "text/markdown" },
         defaultChannel: BODY,

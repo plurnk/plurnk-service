@@ -214,7 +214,7 @@ test("{§validation-topology} log_entries: port range", async () => {
     } finally { await db.close(); }
 });
 
-test("{§scheme-address-network} log_entries: serialized query preserves absence, empty, order, and duplicates", async () => {
+test("{§scheme-address} log_entries: serialized query preserves absence, empty, order, and duplicates", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-json");

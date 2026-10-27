@@ -89,7 +89,7 @@ test("{§send-response-receipt} failed exact delivery does not acknowledge the l
 });
 
 for (const delegated of [false, true]) for (const addressed of [false, true]) {
-    test(`{§send-dispatch-entry-schemes-501} ${delegated ? "child" : "root"} recovers with ${addressed ? "an exact" : "a targetless"} reply`, async (t) => {
+    test(`{§op-methods-op-dispatch} ${delegated ? "child" : "root"} recovers with ${addressed ? "an exact" : "a targetless"} reply`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "entry-send-recovery");

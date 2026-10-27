@@ -1,4 +1,4 @@
--- Channel-write SQL for streaming schemes. SPEC {§channel-state} + {§subscriptions} + {§notifications}.
+-- Channel-write SQL for streaming schemes. SPEC {§channels} + {§subscriptions} + {§notifications}.
 
 -- Writes go through the entry_channels view ({§content-store}); SQLite counts no changes for a
 -- view, so a write that must know whether its channel exists returns the channel's name.
@@ -26,7 +26,7 @@ RETURNING name;
 
 -- PREP: set_channel_mimetype
 -- A dynamic scheme may supply the body's per-call type. Conditional so
--- labelling every chunk is a steady-state no-op. {§channel-mimetype}
+-- labelling every chunk is a steady-state no-op. {§channels}
 UPDATE entry_channels
 SET mimetype = $mimetype
 WHERE entry_id = $entry_id AND name = $channel AND mimetype != $mimetype;

@@ -9,7 +9,7 @@ FROM entries e GROUP BY e.workspace_id, e.scheme, e.authority, e.pathname
 HAVING n > 1;
 
 -- PREP: ws_file_keys
--- {§fs-canonical-name} fixpoint inputs: every file-class key with its workspace root.
+-- {§fs-namespace} fixpoint inputs: every file-class key with its workspace root.
 SELECT e.workspace_id, e.pathname, w.project_root
 FROM entries e
 JOIN workspaces w ON w.id = e.workspace_id

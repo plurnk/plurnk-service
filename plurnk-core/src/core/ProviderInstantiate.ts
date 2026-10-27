@@ -16,7 +16,7 @@ export default class ProviderInstantiate {
     // because operator tuning can change while a process remains alive.
     static #instances = new Map<string, Promise<Provider>>();
     static #registeredInstances = new Map<string, Provider>();
-    // {§provider-instantiation-alias-resolution} — provider handle → the alias name that produced it,
+    // {§provider-instantiation} — provider handle → the alias name that produced it,
     // so the service scopes its own
     // per-alias packet-policy knobs by the provider it's building a packet
     // for. Service-owned metadata about handles WE created; never a provider-contract field.
@@ -64,7 +64,7 @@ export default class ProviderInstantiate {
         }
     }
 
-    // {§grammar-configuration-admission} — identify a hand-built provider's
+    // {§provider-instantiation} — identify a hand-built provider's
     // configuration scope so direct Engine specimens exercise the same grammar
     // resolution as daemon-constructed handles. null is an exact route using
     // global tuning; a string is an alias-scoped route.
@@ -192,7 +192,7 @@ export default class ProviderInstantiate {
     // Convenience: resolve + instantiate in one call. Returns null when no
     // PLURNK_MODEL is set (caller decides what 'no provider' means).
     static async loadActiveProvider(env: NodeJS.ProcessEnv = process.env): Promise<Provider | null> {
-        const route = resolveActiveRoute(env); // PLURNK_MODEL resolves one alias or direct route — {§provider-instantiation-alias-resolution}
+        const route = resolveActiveRoute(env); // PLURNK_MODEL resolves one alias or direct route — {§provider-instantiation}
         if (route === null) return null;
         const provider = await ProviderInstantiate.instantiateProvider(route, env);
         ProviderInstantiate.validateGrammarConfiguration(provider, env);
@@ -201,12 +201,12 @@ export default class ProviderInstantiate {
 
     // A configured GBNF is an operator's explicit local constrained-sampling contract. Admit
     // only a provider configuration capable of carrying it; the grammar's content is the
-    // operator's business and is never validated here ({§operator-grammar}, #588).
+    // operator's business and is never validated here ({§provider-instantiation}, #588).
     static validateGrammarConfiguration(
         provider: Provider,
         env: NodeJS.ProcessEnv = process.env,
     ): void {
-        // {§grammar-configuration-admission}: resolve through the provider's registered alias,
+        // {§provider-instantiation}: resolve through the provider's registered alias,
         // with the active real alias; exact routes remain globally scoped
         // retained only for the boot-global fallback.
         ProviderInstantiate.assertGrammarConfigurationScope(provider, env);

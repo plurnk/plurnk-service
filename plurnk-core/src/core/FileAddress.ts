@@ -6,7 +6,7 @@ import PathGlob from "./PathGlob.ts";
 import Results, { type SchemeResultBase } from "./results.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 
-// {§file-url} Authored spellings are interpreted here; bound keys are always literal.
+// {§fs-namespace} Authored spellings are interpreted here; bound keys are always literal.
 export default class FileAddress {
     static isPattern(target: ParsedPath | null | undefined): boolean {
         return target !== null && target !== undefined && PathSyntax.hasGlob(target.kind === "url" ? target.pathname : PathSyntax.decodeParens(target.raw));
@@ -46,8 +46,8 @@ export default class FileAddress {
         return row?.project_root ?? null;
     }
 
-    // {§fs-canonical-name} A resource name must never render as a channel, alias or selector.
-    // {§file-path-normalization} Inside the root a key renders literally; beyond it, as the absolute path it names.
+    // {§fs-namespace} A resource name must never render as a channel, alias or selector.
+    // {§fs-namespace} Inside the root a key renders literally; beyond it, as the absolute path it names.
     // Either spelling resolves back to the same key.
     static render(key: string, projectRoot: string | null): string {
         const beyond = projectRoot !== null && (key === ".." || key.startsWith("../"));

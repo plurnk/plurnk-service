@@ -184,7 +184,7 @@ export default class PacketBuilder {
         // durable log below.
         notices?: readonly Notice[];
         // One packet may expose a durably suppressed row without mutating its
-        // curation state ({§invalid-emission-attempts}).
+        // curation state ({§emission-admission}).
         transientOpenLogEntryId?: number | null;
         turnId?: number | null;
     }): Promise<RequestPacket> {

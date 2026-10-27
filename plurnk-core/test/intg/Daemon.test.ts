@@ -189,7 +189,7 @@ test("{§manifest-client-display} {§mimetype-client-display} Daemon composes de
     }
 });
 
-test("{§mimetype-methods} Daemon boot reports mimetype packages withheld by the shared trust gate", async () => {
+test("{§mimetype} Daemon boot reports mimetype packages withheld by the shared trust gate", async () => {
     const db = await openMigrated();
     const discovery = {
         registry: { byExtension: new Map<string, string>(), byFilename: new Map<string, string>() },
@@ -1930,7 +1930,7 @@ test("{§module-shutdown-order} service teardown joins the expired daemon drain 
     assert.deepEqual(events, ["producer stop", "observer close", "database close"]);
 });
 
-test("{§mimetype-owned-lifecycle} Daemon.stop disposes its owned mimetypes after derivations exactly once", async () => {
+test("{§mimetype} Daemon.stop disposes its owned mimetypes after derivations exactly once", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     const events: string[] = [];
@@ -1961,7 +1961,7 @@ test("{§mimetype-owned-lifecycle} Daemon.stop disposes its owned mimetypes afte
     }
 });
 
-test("{§mimetype-owned-lifecycle} Daemon.stop leaves constructor-injected mimetypes caller-owned", async () => {
+test("{§mimetype} Daemon.stop leaves constructor-injected mimetypes caller-owned", async () => {
     const db = await openMigrated();
     const injected = new Mimetypes({
         discovery: {

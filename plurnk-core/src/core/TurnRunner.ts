@@ -38,7 +38,7 @@ import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 import { homedir } from "node:os";
-// {§operator-grammar}
+// {§provider-instantiation}
 export const resolveOperatorGrammarPath = (value: string): string => {
     if (value === "~" || value.startsWith("~/")) return resolvePath(homedir(), value.slice(2));
     return resolvePath(value);
@@ -437,7 +437,7 @@ export default class TurnRunner {
     readonly #dispatch: TurnDispatch;
     readonly #resolveSessionProviderIdentity: (sessionId: number) => Promise<{ sessionId: string }>;
     readonly #loopGauge: (loopId: number) => Promise<ApplicationGauge>;
-    // {§operator-grammar} — one read per path per daemon; the file is the operator's and static.
+    // {§provider-instantiation} — one read per path per daemon; the file is the operator's and static.
     #grammarCache = new Map<string, string>();
     readonly #materialization: TurnMaterialization;
     readonly #bareBatch: BareBatchRunner;
@@ -527,10 +527,10 @@ export default class TurnRunner {
         });
     }
 
-    // {§operator-grammar} — the operator's grammar text for this provider, or undefined when
+    // {§provider-instantiation} — the operator's grammar text for this provider, or undefined when
     // none is configured. A real alias scopes its knob; an alias-free direct route uses the
     // global provider configuration. Unrelated alias settings never apply
-    // ({§grammar-configuration-admission}). An unreadable file throws: a configured grammar
+    // ({§provider-instantiation}). An unreadable file throws: a configured grammar
     // never silently degrades.
     async #operatorGrammar(provider: Provider): Promise<string | undefined> {
         ProviderInstantiate.assertGrammarConfigurationScope(provider);
@@ -1215,7 +1215,7 @@ export default class TurnRunner {
 
     // Phase 4 — the provider attempt loop. Each iteration is one logical call: a
     // recoverable failure re-issues the same emission attempt, an invalid emission
-    // spends one, and a valid emission ends the loop ({§invalid-emission-attempts}).
+    // spends one, and a valid emission ends the loop ({§emission-admission}).
     async #attemptProvider(args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts): Promise<ProviderEmission> {
         const { provider, workspaceId, sessionId, loopId, signal } = args;
         // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
@@ -1425,7 +1425,7 @@ export default class TurnRunner {
                         observeRequest: reasoning.observeRequest,
                         observeReasoning: reasoning.observeReasoning,
                         callKind: "emission",
-                    }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution}
+                    }); // {§provider-surface} {§provider-surface} {§provider-surface} {§emission-admission}
                     modelCall.assertAccounting(generated.accounting);
                     attempts.callInFlight = false;
                     recordCounter(PROVIDER_CALLS, {
@@ -1542,9 +1542,9 @@ export default class TurnRunner {
             if (!capacityFailure) attempts.emissionAttempts = attempts.currentEmissionAttempt;
         }
         const evidence = this.#requestEvidence(provider, request.packet, attempts.split, attempts.response);
-        // {§turn-never-blank} — a ProviderError means no completed exchange exists.
+        // {§emission-admission} — a ProviderError means no completed exchange exists.
         // Persist its exact RFC 9457 result before propagating it. Grammar transport
-        // evidence exists only on completed responses ({§operator-grammar}).
+        // evidence exists only on completed responses ({§provider-instantiation}).
         // Cancellation is lifecycle truth, not a provider failure. Close the
         // attempted turn without inventing an assistant response, then let
         // runLoop/Daemon settle the exact 504/499 loop result.
@@ -1612,7 +1612,7 @@ export default class TurnRunner {
         };
     }
 
-    // Phase 5, refused — {§invalid-emission-attempts}: every exhaustion publishes the
+    // Phase 5, refused — {§emission-admission}: every exhaustion publishes the
     // raw final response and its recovery fact; {§engine-rails} Contract Strikes rule
     // how many consecutive frame-contract violations the loop survives.
     async #rejectExhaustedEmission({ provider, workspaceId, sessionId, loopId }: TurnArgs, request: TurnRequest, emission: ProviderEmission): Promise<EngineTurnResult> {
@@ -1626,7 +1626,7 @@ export default class TurnRunner {
             sequence: request.nextActionIndex,
             modelCallId: emission.modelCallId,
         });
-        // {§invalid-emission-attempts} — the informed turn carries the parser's own
+        // {§emission-admission} — the informed turn carries the parser's own
         // diagnostic and position: the model sees WHY, not only that it was refused.
         const diagnostic = split.parseErrors[0];
         const cut = outputCut(emission, provider);
@@ -1669,7 +1669,7 @@ export default class TurnRunner {
     // Turn row.
     async #recordAdmittedEmission({ provider, workspaceId, sessionId, loopId }: TurnArgs, request: TurnRequest, emission: ProviderEmission): Promise<void> {
         const { split, response } = emission;
-        const { packetAssistant, callMetadata, parseNotices } = split; // raw assistant content is opaque — split, never interpreted — {§provider-guarantees-assistantraw-opaque}
+        const { packetAssistant, callMetadata, parseNotices } = split; // raw assistant content is opaque — split, never interpreted — {§provider-surface}
         for (const notice of parseNotices) {
             this.#notices.push(workspaceId, sessionId, loopId, notice);
         }
@@ -1723,7 +1723,7 @@ export default class TurnRunner {
                 text: split.outside, tokens: contentWeight(split.outside),
             });
         }
-        // {§operator-grammar} — transport evidence only: the turn records whether the operator's
+        // {§provider-instantiation} — transport evidence only: the turn records whether the operator's
         // grammar reached the wire. Nothing grades the response against it; the parser's
         // admission is the one verdict (#588).
         const railKeys = emission.railGrammar === undefined
@@ -1742,7 +1742,7 @@ export default class TurnRunner {
                 finishReason: callMetadata.finishReason,
                 model: callMetadata.model,
                 // Opaque provider metadata plus the grammar transport key.
-                // {§meta-passthrough}, {§operator-grammar}
+                // {§provider-surface}, {§provider-instantiation}
                 meta: JSON.stringify({ ...response.meta, ...railKeys }),
             },
         });
@@ -1905,7 +1905,7 @@ export default class TurnRunner {
         };
     }
 
-    // {§outside-text} {§fabricated-log-entry} {§unparsed-tail-boundary} An emission's content parsed into its
+    // {§outside-text} {§emission-admission} {§unparsed-tail-boundary} An emission's content parsed into its
     // statements and what sat beside them: outside text as NOTEs or the empty turn's source, a fabricated log
     // heading as the rejection it is, each parse error by its severity, and the lexer's one boundary fact.
     static #parseContent(content: string, executors: readonly string[], wellFormed: BodyCheck | undefined): ParsedContent {
@@ -1929,7 +1929,7 @@ export default class TurnRunner {
         // {§outside-text}: beside a fenced operation, the text between two operations is one NOTE at its
         // position, annotation the model wrote without its fence; a turn that fenced no operation keeps
         // its text as its outside source and stays an empty turn ({§empty-turn}). Echoed emission
-        // headings are announcements, not annotation, and are dropped ({§fabricated-log-entry}).
+        // headings are announcements, not annotation, and are dropped ({§emission-admission}).
         const fenced = parsed.items.filter((item) => item.kind === "statement").length;
         let span: { body: string[]; position: PlurnkStatement["position"] } | null = null;
         const flushSpan = (): void => {
@@ -1950,7 +1950,7 @@ export default class TurnRunner {
                 contentStatementCount += 1;
             }
             else if (item.kind === "text") {
-                // {§fabricated-log-entry}: a log-entry heading in outside text rejects the attempt.
+                // {§emission-admission}: a log-entry heading in outside text rejects the attempt.
                 const fabricated = FabricatedLog.find(item.content);
                 if (fabricated !== null) {
                     fabrications.push({ message: FabricatedLog.message(fabricated.heading), line: item.position.line + fabricated.line, column: 1, source: "harness" });

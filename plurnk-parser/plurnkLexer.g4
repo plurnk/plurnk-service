@@ -557,7 +557,7 @@ fragment L_PATTERN : '<' NUM (('-' | ',' ' '?) NUM)* '>' ;
 fragment LINE_ANCHOR : '@' [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] ;
 // {§anchor-digits} — `@` with one to four digits cannot be a hash: it is read as that line.
 fragment DIGIT_ANCHOR : '@' [0-9] [0-9]? [0-9]? [0-9]? ;
-// {§anchor-offset} — `@abcde+1` and a bare `+1` after an anchor are tolerated, never taught (#749).
+// {§op-methods-op-dispatch} — `@abcde+1` and a bare `+1` after an anchor are tolerated, never taught (#749).
 fragment ANCHOR_OFFSET : LINE_ANCHOR [+-] [0-9]+ ;
 fragment RELATIVE_COORD : '+' [0-9]+ ;
 fragment RELATIVE_L_PATTERN : '<' NUM ',' ' '? RELATIVE_COORD '>' ;

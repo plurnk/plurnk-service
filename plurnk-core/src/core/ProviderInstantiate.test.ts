@@ -1,10 +1,14 @@
-import { test } from "node:test";
 import assert from "node:assert/strict";
+import ProviderInstantiate from "./ProviderInstantiate.ts";
+import test, { describe } from "node:test";
 import { createServer, type AddressInfo } from "node:net";
 import { Mock } from "@plurnk/plurnk-providers";
-import ProviderInstantiate from "./ProviderInstantiate.ts";
 import { requestUrl } from "../../../scripts/lib/test-fetch.ts";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
+import { resolveOperatorGrammarPath } from "./TurnRunner.ts";
 
+describe("ProviderInstantiate", () => {
 // A loopback port the kernel just handed out and this process released: closed, by evidence.
 const releasedPort = (): Promise<number> => new Promise((resolve, reject) => {
     const server = createServer();
@@ -68,7 +72,7 @@ test("{§operator-config-precedence} an alias-scoped provider knob binds at cons
     assert.equal(ProviderInstantiate.aliasOf(provider), "pinbox");
 });
 
-test("{§provider-surface-identity} a pollable provider exposes the lower operator-capped window and derives its generation envelope from it", async () => {
+test("{§provider-surface} a pollable provider exposes the lower operator-capped window and derives its generation envelope from it", async () => {
     const realFetch = globalThis.fetch;
     globalThis.fetch = (async (input: string | URL | Request) => {
         if (requestUrl(input).endsWith("/models")) {
@@ -106,7 +110,7 @@ test("{§provider-surface-identity} a pollable provider exposes the lower operat
     }
 });
 
-test("{§provider-instantiation-alias-resolution} the process cache separates aliases and provider tuning for the same wire model", async () => {
+test("{§provider-instantiation} the process cache separates aliases and provider tuning for the same wire model", async () => {
     const realFetch = globalThis.fetch;
     const key = "PLURNK_PROVIDERS_CONTEXT_WINDOW_cachecap";
     const previous = process.env[key];
@@ -132,7 +136,7 @@ test("{§provider-instantiation-alias-resolution} the process cache separates al
     }
 });
 
-test("{§provider-instantiation-alias-resolution} a registered handle cannot shadow changed provider tuning", async () => {
+test("{§provider-instantiation} a registered handle cannot shadow changed provider tuning", async () => {
     const realFetch = globalThis.fetch;
     const key = "PLURNK_PROVIDERS_CONTEXT_WINDOW_registeredcap";
     const previous = process.env[key];
@@ -160,7 +164,7 @@ test("{§provider-instantiation-alias-resolution} a registered handle cannot sha
     }
 });
 
-test("{§provider-instantiation-alias-resolution} the process cache separates durable efforts for one route", async () => {
+test("{§provider-instantiation} the process cache separates durable efforts for one route", async () => {
     const spec = {
         alias: `reasoning-cache-${crypto.randomUUID()}`,
         provider: "mocktest",
@@ -189,7 +193,7 @@ test("{§session-effort} an exact route uses global provider tuning and never fa
     );
 });
 
-test("{§grammar-configuration-admission} an exact-route handle never inherits the daemon default alias's configuration scope", () => {
+test("{§provider-instantiation} an exact-route handle never inherits the daemon default alias's configuration scope", () => {
     const provider = new Mock({ contextWindow: 32_000, responses: [] });
     ProviderInstantiate.registerInstance(provider, {
         provider: "mocktest",
@@ -209,7 +213,7 @@ test("{§grammar-configuration-admission} an exact-route handle never inherits t
     );
 });
 
-test("{§grammar-configuration-admission} route-scoped GBNF cannot bind to a provider with no route identity", () => {
+test("{§provider-instantiation} route-scoped GBNF cannot bind to a provider with no route identity", () => {
     const provider = new Mock({ contextWindow: 32_000, responses: [] });
     assert.throws(
         () => ProviderInstantiate.validateGrammarConfiguration(provider, {
@@ -217,4 +221,21 @@ test("{§grammar-configuration-admission} route-scoped GBNF cannot bind to a pro
         }),
         /provider has no registered route and no active model route resolves/,
     );
+});
+});
+
+describe("operator-grammar", () => {
+// {§provider-instantiation}
+
+
+
+
+
+test("{§provider-instantiation}: absolute, home-relative, and working-directory-relative paths resolve to files", () => {
+    assert.equal(resolveOperatorGrammarPath("/operator/rails/custom.gbnf"), "/operator/rails/custom.gbnf");
+    assert.equal(resolveOperatorGrammarPath("~/.config/plurnk/local.gbnf"), resolve(homedir(), ".config/plurnk/local.gbnf"));
+    assert.equal(resolveOperatorGrammarPath("./rails/custom.gbnf"), resolve("rails/custom.gbnf"));
+    assert.equal(resolveOperatorGrammarPath("rails/custom.gbnf"), resolve("rails/custom.gbnf"));
+    assert.equal(resolveOperatorGrammarPath("custom.gbnf"), resolve("custom.gbnf"));
+});
 });

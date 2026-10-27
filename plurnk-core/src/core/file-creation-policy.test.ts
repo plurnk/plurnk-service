@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import FileCreationPolicy from "./file-creation-policy.ts";
 
-test("{§file-create-scope}: the ordered scope composes by the most restrictive value", () => {
+test("{§fs-write-surface}: the ordered scope composes by the most restrictive value", () => {
     assert.equal(FileCreationPolicy.effective("namespace", "root"), "root");
     assert.equal(FileCreationPolicy.effective("root", "namespace"), "root");
     assert.equal(FileCreationPolicy.effective("namespace", "none"), "none");

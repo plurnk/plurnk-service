@@ -1,7 +1,7 @@
 // Operation semantics coverage matrix: how each entry op resolves a model-typed path and how
 // matchers render.
 //
-// {§fs-namei} Every operation resolves filesystem spellings to project-relative keys.
+// {§fs-namespace} Every operation resolves filesystem spellings to project-relative keys.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -64,7 +64,7 @@ const withWorkspaceRoot = async (fn: (root: string, ctx: PlurnkSchemeContext, db
 
 // CELL [FIND × bare local path]. The member is stored `/notes.md`; the model FINDs
 // `notes.md`. FIND must canonicalize and select the member — exactly as READ does.
-test("{§fs-namei} contract: FIND(bare path) resolves the canonical-stored member", async () => {
+test("{§fs-namespace} contract: FIND(bare path) resolves the canonical-stored member", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
@@ -76,7 +76,7 @@ test("{§fs-namei} contract: FIND(bare path) resolves the canonical-stored membe
 });
 
 // CONTROL [READ × bare local path]. Same condition — proves the harness reproduces the real path.
-test("{§fs-namei} contract: READ(bare path) resolves the canonical-stored member (control)", async () => {
+test("{§fs-namespace} contract: READ(bare path) resolves the canonical-stored member (control)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
@@ -100,7 +100,7 @@ test("{§edit-marker-required-on-existing} contract: EDIT(bare path) resolves th
     });
 });
 
-test("{§fs-namei} FIND of an absolute path resolves the member", async () => {
+test("{§fs-namespace} FIND of an absolute path resolves the member", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
@@ -112,7 +112,7 @@ test("{§fs-namei} FIND of an absolute path resolves the member", async () => {
 
 // {§find-result-projection}: exact matcher FIND exposes navigation locations.
 
-test("{§fs-namei} an exact regex FIND returns its flat match location", async () => {
+test("{§fs-namespace} an exact regex FIND returns its flat match location", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "heading\nthe codename is phoenix\ncontext\n");
         await addMember(ctx, "notes.md");
@@ -123,7 +123,7 @@ test("{§fs-namei} an exact regex FIND returns its flat match location", async (
     });
 });
 
-test("{§fs-namei} contract: an exact FIND returns every match as a flat location", async () => {
+test("{§fs-namespace} contract: an exact FIND returns every match as a flat location", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "log.md"), "alpha\ntarget one\nbeta\ngamma\ntarget two\n");
         await addMember(ctx, "log.md");
@@ -147,7 +147,7 @@ test("{§path-syntax} contract: an exact jsonpath FIND returns flat structural l
 
 // CELL [FIND × file scheme glob] — the recursive tracked-file list. Confirm the explicit
 // file URI and bare project-relative form expose the same view ({§path-syntax}).
-test("{§fs-namei} explicit file URI and bare FIND globs list the same members", async () => {
+test("{§fs-namespace} explicit file URI and bare FIND globs list the same members", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "a.md"), "alpha");
         await mkdir(join(root, "docs"), { recursive: true });
@@ -165,7 +165,7 @@ test("{§fs-namei} explicit file URI and bare FIND globs list the same members",
     });
 });
 
-test("{§fs-namei} contract: bare FIND(*) is a shallow project map; FIND(**) is recursive", async () => {
+test("{§fs-namespace} contract: bare FIND(*) is a shallow project map; FIND(**) is recursive", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, ".env.defaults"), "defaults");
         await mkdir(join(root, ".github"), { recursive: true });
@@ -187,7 +187,7 @@ test("{§fs-namei} contract: bare FIND(*) is a shallow project map; FIND(**) is 
     });
 });
 
-test("{§fs-namei} directory and glob searches from filesystem ancestors retain only workspace members", async () => {
+test("{§fs-namespace} directory and glob searches from filesystem ancestors retain only workspace members", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await mkdir(join(root, "src"), { recursive: true });
         await writeFile(join(root, "src/a.ts"), "a");

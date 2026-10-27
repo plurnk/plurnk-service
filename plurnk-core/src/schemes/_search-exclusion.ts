@@ -26,7 +26,7 @@ export default function matchSearchExclusion({ scheme, pathname }: SearchIdentit
     return compile(raw).find(({ source, regex }) => regex.test(source.includes("/") ? pathname : basename))?.source;
 }
 
-// {§search-size-bound} — a body larger than PLURNK_SERVICE_SEARCH_MAX_BYTES is never parsed or
+// {§persistent-search-index} — a body larger than PLURNK_SERVICE_SEARCH_MAX_BYTES is never parsed or
 // full-text indexed. Empty (the default) = unbounded. The reason names the bound.
 export function sizeExclusion(contentLength: number): string | undefined {
     const raw = process.env.PLURNK_SERVICE_SEARCH_MAX_BYTES;

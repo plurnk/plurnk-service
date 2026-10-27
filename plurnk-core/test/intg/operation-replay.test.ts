@@ -69,7 +69,7 @@ test("{§retrieval-annotation}: failed retrievals retain their annotations indep
     assert.ok(notes.some(({ tx }) => JSON.parse(tx).body === "/not-a-pattern/"));
 });
 
-test("{§emission-history} {§bulk-resource-targeting}: one glob replay owns concrete receipts, including failures", async (t) => {
+test("{§emission-history} {§op-methods-op-dispatch}: one glob replay owns concrete receipts, including failures", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "paired-fanout");

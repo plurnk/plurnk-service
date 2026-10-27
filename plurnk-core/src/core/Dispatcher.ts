@@ -79,7 +79,7 @@ export type DispatchContext = {
     // terminal row becomes externally visible only after that proposal settles.
     onDispatch?: (logEntryId: number) => void;
     onSettled?: (logEntryId: number) => void | Promise<void>;
-    // {§bulk-resource-targeting} — set on an operation dispatched on behalf of a glob: the row it writes
+    // {§op-methods-op-dispatch} — set on an operation dispatched on behalf of a glob: the row it writes
     // carries this under `attrs.fanout`, so a client presents the authored statement once.
     fanout?: { readonly target: string; readonly matched: number; readonly index: number; readonly count: number };
     remainingCommands?: number;
@@ -108,7 +108,7 @@ export interface ResolvedClientEntryAddress {
     readonly target: string;
 }
 
-// {§client-entry-address} One channel of a representation core computes, as a client reads it.
+// {§scheme-address} One channel of a representation core computes, as a client reads it.
 export interface ComputedClientChannel {
     readonly content: string;
     readonly mimetype: string;
@@ -116,7 +116,7 @@ export interface ComputedClientChannel {
     readonly weight: number;
 }
 
-// {§client-entry-address} What a client read acquires: a stored entry's address, the channels of a representation core
+// {§scheme-address} What a client read acquires: a stored entry's address, the channels of a representation core
 // computes, or the scheme's refusal.
 export type ClientEntryAcquisition =
     | { readonly kind: "stored"; readonly address: ResolvedClientEntryAddress }
@@ -416,7 +416,7 @@ export default class Dispatcher {
         return root;
     }
 
-    // {§fs-answer-in-canon} — a file-class target's engine-authored address COLUMNS carry
+    // {§fs-namespace} — a file-class target's engine-authored address COLUMNS carry
     // the canonical key; tx keeps the operation spelling after the one durable request-evidence
     // projection. An un-canonicalizable spelling keeps its raw form.
     async #canonColumns(target: { scheme: string | null; pathname: string | null }, workspaceId: number): Promise<void> {
@@ -477,7 +477,7 @@ export default class Dispatcher {
         return execution;
     }
 
-    // {§file-path-normalization} Authored operands, once, before internal fan-out: an absolute or home spelling
+    // {§fs-namespace} Authored operands, once, before internal fan-out: an absolute or home spelling
     // whose canonical address reads differently — the key inside the root, the absolute path beyond it.
     async #noticeFilePaths({ statement, origin, workspaceId, sessionId, loopId }: Pick<DispatchContext, "statement" | "origin" | "workspaceId" | "sessionId" | "loopId">): Promise<void> {
         if (origin !== "model" || isExecution(statement) || TurnDisposition.is(statement) || statement.op === "NOTE") return;
@@ -518,7 +518,7 @@ export default class Dispatcher {
     }
 
     async #dispatch(context: DispatchContext, targetsResolved = false): Promise<DispatchExecution> {
-        // {§op-execution-order}: resolved glob targets cross the same cancellation boundary.
+        // {§op-methods-op-dispatch}: resolved glob targets cross the same cancellation boundary.
         this.#loopSignal(context.loopId)?.throwIfAborted();
         const execution = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context),
             (ctx) => this.#dispatchOne(context, ctx, targetsResolved));
@@ -527,7 +527,7 @@ export default class Dispatcher {
             ? context.statement
             : context.statement.op === "KILL" ? this.#scopedEntryEdits.get(context.statement) : undefined;
         if (edit !== undefined) {
-            // {§edit-batch-merges} — a proposal's apply result replaces the projected one; the
+            // {§op-methods-op-dispatch} — a proposal's apply result replaces the projected one; the
             // statement's merge facts ride every EDIT result, whichever route produced it.
             result = this.#resourceMutations.withMergeFacts(edit, result);
             this.#resourceMutations.settleEdit(edit, result);
@@ -566,7 +566,7 @@ export default class Dispatcher {
         return statement.body.trim() === "" ? null : { body: statement.body, target: statement.target.raw };
     }
 
-    // {§bulk-resource-targeting} — the paths a FIND matched: each catalog item's, never a scope group's.
+    // {§op-methods-op-dispatch} — the paths a FIND matched: each catalog item's, never a scope group's.
     static #matchedPaths(results: unknown): string[] {
         const items: unknown[] = Array.isArray(results) ? results : [];
         return items.flatMap((item): string[] => {
@@ -583,7 +583,7 @@ export default class Dispatcher {
         return PathSyntax.hasGlob(target.pathname) || PathSyntax.hasGlob(target.hostname ?? "");
     }
 
-    // {§bulk-resource-targeting} Selection and exact execution share the ordinary owners.
+    // {§op-methods-op-dispatch} Selection and exact execution share the ordinary owners.
     async #findTargets(survey: FindStatement, ctx: PlurnkSchemeContext): Promise<{ result: DispatchResult } | { targets: ParsedPath[]; matched: number }> {
         const found = await this.#dataRun.run(schemeNameOf(survey.target), survey, ctx);
         if (found.status >= 400) return { result: found };
@@ -662,7 +662,7 @@ export default class Dispatcher {
             commandsExecuted: results.length, commandsOmitted: selection.statements.length - admitted.length };
     }
 
-    // {§bulk-resource-targeting} Dispatch accounting is core-owned, never a scheme's extension data.
+    // {§op-methods-op-dispatch} Dispatch accounting is core-owned, never a scheme's extension data.
     static #singleExecution(result: SchemeResult): DispatchExecution {
         return { result, commandsExecuted: 1, commandsOmitted: 0 };
     }
@@ -690,7 +690,7 @@ export default class Dispatcher {
         const admission = this.#proposalAdmission(statement, result, workspaceId, origin);
         const { autoAccept } = admission;
         result = admission.result;
-        // {§bulk-resource-targeting} — a row on behalf of a glob names the statement it came from.
+        // {§op-methods-op-dispatch} — a row on behalf of a glob names the statement it came from.
         if (context.fanout !== undefined) {
             const attrs = isRecord(result.attrs) ? result.attrs : {};
             result = { ...result, attrs: { ...attrs, fanout: context.fanout } };
@@ -721,7 +721,7 @@ export default class Dispatcher {
 
     // {§op-methods-op-dispatch} The operation's owner, by statement: a refusal first — an unwritable target, a denied
     // capability, an unreadable matcher — then the one handler whose result is the row's, or the target selection a
-    // glob resolves to. A scheme handler's exception is the row's 500 ({§scheme-surface-exception-500}), never a throw.
+    // glob resolves to. A scheme handler's exception is the row's 500 ({§scheme-surface}), never a throw.
     async #route(context: DispatchContext, schemeCtx: PlurnkSchemeContext, targetsResolved: boolean): Promise<{
         result: DispatchResult | undefined;
         resolved: Exclude<TargetSelection, { result: DispatchResult }> | null;
@@ -737,7 +737,7 @@ export default class Dispatcher {
         if (denial !== null) {
             result = denial;
         } else {
-            // {§scheme-surface-exception-500} Scheme-handler
+            // {§scheme-surface} Scheme-handler
             // exceptions become the action-entry's outcome (status 500), not a
             // thrown bubble. The log_entry is the durable record; engine never
             // skips it. Logging failures (#writeLog throws) are NOT caught —
@@ -792,7 +792,7 @@ export default class Dispatcher {
                 } else {
                     result = await this.#dataRun.run(schemeNameOf(statement.target), statement, schemeCtx); // {§op-methods-op-dispatch}
                 }
-            } catch (err) { // a scheme exception becomes the op's 500 outcome — {§scheme-surface-exception-500}
+            } catch (err) { // a scheme exception becomes the op's 500 outcome — {§scheme-surface}
                 if (err instanceof InvalidOperationResultError) throw err;
                 if (err instanceof OperationFailureError) {
                     result = err.result;
@@ -967,7 +967,7 @@ export default class Dispatcher {
         return this.#capabilities.projection(workspaceId);
     }
 
-    // {§client-entry-address} A client read acquires `target` as exact READ does, from the session's perspective: the
+    // {§scheme-address} A client read acquires `target` as exact READ does, from the session's perspective: the
     // representation a core scheme computes, or a data entry. Only core's own acquisition runs for it: a core scheme's
     // preparation, and the materialization of a message core retains, whichever module minted its address
     // ({§message-source-scheme}); never an extension's. Null for a target no data or computing scheme claims.
@@ -1021,7 +1021,7 @@ export default class Dispatcher {
         });
     }
 
-    // {§client-entry-address} {§log-readable-projection} A computed representation's channels as a client reads them:
+    // {§scheme-address} {§log-readable-projection} A computed representation's channels as a client reads them:
     // deliberate trimming applied, each weighed as a stored channel is.
     #computedChannels(resolved: { readonly representation: StoredEntryData; readonly visibleLines?: Readonly<Record<string, readonly number[]>> }): Record<string, ComputedClientChannel> {
         return Object.fromEntries(Object.entries(resolved.representation.channels).map(([name, { content, mimetype, state }]) => {
@@ -1318,7 +1318,7 @@ export default class Dispatcher {
                 allowedWriters: [...manifest.writableBy],
                 retryable: false,
             },
-        ); // {§scheme-surface-writableby-403}
+        ); // {§scheme-surface}
     }
 
     // {§capability-admission} — one resolver gates every operation route before
@@ -1532,7 +1532,7 @@ export default class Dispatcher {
         return { statement: { ...statement, target: null, body: prompt } };
     }
 
-    // {§bare-inference} Reuse exact READ projection without its log/presentation layer.
+    // {§op-methods-op-dispatch} Reuse exact READ projection without its log/presentation layer.
     async prepareBarePrompt(
         context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin"> & { statement: BareStatement },
     ): Promise<{ prompt: string } | { result: DispatchResult }> {
@@ -1568,7 +1568,7 @@ export default class Dispatcher {
             }
         }
         const prompt = [resource, statement.body].filter((part) => part !== "").join("\n\n");
-        // {§bare-inference} — empty combined text is a refusal that creates no model call.
+        // {§op-methods-op-dispatch} — empty combined text is a refusal that creates no model call.
         if (prompt.trim() === "") {
             return { result: Dispatcher.#failure(
                 "bare-prompt-empty", 422,
@@ -1579,7 +1579,7 @@ export default class Dispatcher {
         return { prompt };
     }
 
-    // {§bare-inference} Provider work runs concurrently; receipts commit in authored order.
+    // {§op-methods-op-dispatch} Provider work runs concurrently; receipts commit in authored order.
     async recordBareResult(
         context: Omit<DispatchContext, "statement"> & { statement: BareStatement },
         result: DispatchResult,

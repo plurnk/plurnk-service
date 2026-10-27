@@ -264,7 +264,7 @@ export default class ClientReads {
         return this.readEntry({ ...args, ...(channel === undefined ? {} : { channel }) });
     }
 
-    // {§client-entry-address} {§entry-read-result} A representation core computes, read as a stored entry is: every
+    // {§scheme-address} {§entry-read-result} A representation core computes, read as a stored entry is: every
     // channel, or the selected one from its offset in Unicode code points. It is no stored entry, so it names none.
     static #computedRead(
         target: string,

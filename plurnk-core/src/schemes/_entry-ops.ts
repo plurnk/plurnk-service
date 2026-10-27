@@ -58,15 +58,15 @@ export default class EntryOps {
     }
 
     static #resolveChannel(fragment: string | null, channels: Record<string, string>, defaultChannel: string): string | null {
-        const target = fragment ?? defaultChannel; // fragment selects the named channel; absent → default — {§channel-selection-fragment-selects-named-channel} {§channel-selection-fragmentless-targets-default-channel}
+        const target = fragment ?? defaultChannel; // fragment selects the named channel; absent → default — {§channel-selection} {§channel-selection}
         // The default may be dynamically typed even alongside declared siblings.
         // A non-default fragment must be a declared channel. {§manifest}
         if (target === defaultChannel) return target;
-        if (!Object.hasOwn(channels, target)) return null; // {§channel-selection-missing}
+        if (!Object.hasOwn(channels, target)) return null; // {§channel-selection}
         return target;
     }
 
-    // {§channel-selection-missing} — report the addressed channel and available names.
+    // {§channel-selection} — report the addressed channel and available names.
     static #channelMiss(
         fragment: string | null,
         scheme: string,
@@ -140,7 +140,7 @@ export default class EntryOps {
             const miss = EntryOps.#channelMiss(fragment, scheme, authority, pathname, channels, defaultChannel);
             return failure("channel-not-found", 404, miss.detail, { entryId: null, channel: null }, miss.extensions);
         }
-        // {§readable-channel} — the projection follows its source; it is never written.
+        // {§channel-selection} — the projection follows its source; it is never written.
         if (EntryReadable.isDerived(targetChannel)) {
             return failure(
                 "channel-derived",
@@ -170,7 +170,7 @@ export default class EntryOps {
 
         const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, scheme, authority, pathname });
 
-        // Non-default channel write requires the entry to exist ({§channel-selection-fragment-on-nonexistent-404}).
+        // Non-default channel write requires the entry to exist ({§channel-selection}).
         if (existing === undefined && fragment !== null) {
             return failure("entry-not-found", 404, missDetail(scheme, EntryManifest.toPath(scheme, authority, pathname)), { entryId: null, channel: targetChannel }, missExtensions(scheme, EntryManifest.toPath(scheme, authority, pathname)));
         }
@@ -325,8 +325,8 @@ export default class EntryOps {
                 { entryId, channel: targetChannel },
             );
         }
-        // EDIT writes exactly the one resolved channel — {§per-entry-channels-edit-writes-only-body} —
-        // and its derived `readable` sibling follows a source write ({§readable-channel}).
+        // EDIT writes exactly the one resolved channel — {§channels} —
+        // and its derived `readable` sibling follows a source write ({§channel-selection}).
         // Search derivation is not a write concern; SearchIndex attaches before the next model execution.
         await EntryReadable.sync(ctx, entryId, targetChannel, defaultChannel, newContent, effectiveMimetype);
 
@@ -442,7 +442,7 @@ export default class EntryOps {
         const path = EntryManifest.toPath(scheme, authority, pathname, projectRoot);
         const identity = EntryManifest.channelPath({ scheme, authority, pathname }, selectedChannel, manifest.defaultChannel, projectRoot);
         const stored = await EntryCrud.readEntry({ authority, pathname }, ctx, scheme);
-        // {§read-read-404} + {§fs-errno} — ENOENT carries its fact, the RESOLVED name in wire
+        // {§read-read-404} + {§fs-namespace} — ENOENT carries its fact, the RESOLVED name in wire
         // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
         if (stored.entry === null) {
             return failure(

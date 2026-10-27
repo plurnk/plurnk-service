@@ -1,4 +1,4 @@
-// {§fabricated-log-entry}: only the harness writes the log. A log-entry heading ({§log-wire-format}) in the
+// {§emission-admission}: only the harness writes the log. A log-entry heading ({§log-wire-format}) in the
 // model's own outside text is the packet's transcript continued, not an answer to it. An echoed emission
 // heading ({§emission-row}) is the one exception: the model announcing its own emission is harmless, stays
 // outside text, and never reaches the emission's canonical rendering.

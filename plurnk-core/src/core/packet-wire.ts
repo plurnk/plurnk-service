@@ -604,7 +604,7 @@ export default class PacketWire {
     }
 
     // One stored log row as the renderer sees it: the durable columns decoded once, a transient
-    // open row rendered open ({§invalid-emission-attempts}).
+    // open row rendered open ({§emission-admission}).
     static entryView(r: StoredLogRow, transientOpenLogEntryId: number | null = null): LogEntryView {
         const parsedTx: unknown = r.mimetype_tx === "application/json" ? JSON.parse(r.tx) : r.tx;
         const tx = isRecord(parsedTx) ? parsedTx : typeof parsedTx === "string" ? parsedTx : null;
@@ -840,7 +840,7 @@ export default class PacketWire {
         let range: RangeExtent | null = null;
         const patterned = tx !== null && tx !== undefined && typeof tx === "object" && isRecord(tx.matcher) && typeof tx.matcher.raw === "string";
         if (patterned && op !== "FIND" && rx !== null && typeof rx === "object" && typeof rx.matched === "number") meta.matched = rx.matched;
-        // {§channel-selection-visibility} — a READ names the resource's other channels with their
+        // {§channel-selection} — a READ names the resource's other channels with their
         // tokens, so the row itself shows the choice a FIND listing would.
         if (op === "READ" && rx !== null && typeof rx === "object" && rx.channels !== null && typeof rx.channels === "object") {
             meta.channels = rx.channels;

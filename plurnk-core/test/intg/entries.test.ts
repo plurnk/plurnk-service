@@ -175,7 +175,7 @@ test("{§entry-identity-no-null} entries: pathname empty string allowed", async 
     } finally { await db.close(); }
 });
 
-test("{§channels-entry-name-key} entry_channels: (entry_id, name) UNIQUE", async () => {
+test("{§channels} entry_channels: (entry_id, name) UNIQUE", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertEntry(db, "exec", "ls");
@@ -207,7 +207,7 @@ test("{§stream-constraints} entry_channels: content length CHECK enforces 100 M
     } finally { await db.close(); }
 });
 
-test("{§channel-state-state-is-metadata} entry_channels: state enum CHECK", async () => {
+test("{§channels} entry_channels: state enum CHECK", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertEntry(db, "sse", "feed");

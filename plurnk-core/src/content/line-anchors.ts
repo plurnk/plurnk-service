@@ -40,7 +40,7 @@ export default class LineAnchors {
     // The rendered row: the right-aligned line number, the scope literal as the delimiter, the text.
     static readonly #PREFIXED_LINE = /^ *[1-9]\d*<@[0-9A-Za-z]{5}>/;
 
-    // {§anchor-offset} — a scope mark may carry an offset from its anchor's line (`@abcde+1`): a
+    // {§op-methods-op-dispatch} — a scope mark may carry an offset from its anchor's line (`@abcde+1`): a
     // tolerated extrapolation, resolved like the numeric line it names and never taught (#749).
     static readonly #OFFSET_MARK = /^(@[0-9A-Za-z]{5})([+-][0-9]+)?$/;
 
@@ -278,7 +278,7 @@ export default class LineAnchors {
         const resolved = [...marks];
         for (const [index, mark] of anchored) {
             const { anchor, offset } = LineAnchors.#markParts(mark)!;
-            // {§edit-anchor-continuity} — a binding this program retains is the resolution: the line the
+            // {§op-methods-op-dispatch} — a binding this program retains is the resolution: the line the
             // published anchor named, wherever its own splices moved it. Current-state matching serves only
             // an anchor the program never bound, so a twin neighbourhood the program itself created cannot
             // make a carried anchor ambiguous.
@@ -309,7 +309,7 @@ export default class LineAnchors {
             if (parts === null || typeof line !== "number") {
                 throw new TypeError("A line anchor did not lower to a numeric line.");
             }
-            // {§anchor-offset} — continuity is checked on the anchor's own line, not the offset one.
+            // {§op-methods-op-dispatch} — continuity is checked on the anchor's own line, not the offset one.
             return [{ anchor: parts.anchor, line: line - parts.offset }];
         });
     }

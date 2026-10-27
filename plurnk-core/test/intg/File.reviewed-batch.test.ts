@@ -12,7 +12,7 @@ import { makeMockResponse } from "./_mock.ts";
 
 const execFileP = promisify(execFile);
 
-test("{§scheme-edit-proposal-receipt} {§edit-result-render} {§edit-execution}: reviewer replacement supersedes only its EDIT; the next scope addresses the landed content", async () => {
+test("{§scheme-edit-proposal-receipt} {§edit-result-render} {§op-methods-op-dispatch}: reviewer replacement supersedes only its EDIT; the next scope addresses the landed content", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-reviewed-batch-"));
     try {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });

@@ -31,7 +31,7 @@ const settlesTurnSpawns = (handler: object | undefined): handler is {
     settleTurnSpawns(sessionId: number, turnId: number, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;
 } => handler !== undefined && "settleTurnSpawns" in handler && typeof handler.settleTurnSpawns === "function";
 
-// {§edit-batch-merges} — the rules an EDIT batch's resolutions applied, as its result's merged fact names them.
+// {§op-methods-op-dispatch} — the rules an EDIT batch's resolutions applied, as its result's merged fact names them.
 const mergedRules = (result: DispatchResult): string[] => Array.isArray(result.merged)
     ? result.merged.flatMap((merge: unknown) => isRecord(merge) && typeof merge.rule === "string" ? [merge.rule] : [])
     : [];
@@ -233,7 +233,7 @@ export default class AdmittedTurnExecutor {
             }
             // {§metadata-ignored} — an unsupported resource option is dropped,
             // and the model gets one notice, never a refusal. SEND recipients and invocation owners
-            // receive their own input whole ({§send-resource-attachments}).
+            // receive their own input whole ({§op-methods-op-dispatch}).
             let statement = scheduledStatement;
             if ("metadata" in statement && statement.metadata !== null && !(isExecution(statement) || OWNS_METADATA.has(statement.op))) {
                 const target = (statement as { target?: { kind: string; scheme?: string } | null }).target;
@@ -348,7 +348,7 @@ export default class AdmittedTurnExecutor {
                     message: `Scope <${normalization.requested.join(",")}> was normalized to <${normalization.canonical.join(",")}>.`,
                 });
             }
-            // {§edit-batch-merges} — every applied resolution is also a notice, so the row's
+            // {§op-methods-op-dispatch} — every applied resolution is also a notice, so the row's
             // `merged` fact is never the only place it is said.
             for (const rule of mergedRules(result)) {
                 this.#notices.push(workspaceId, sessionId, loopId, {

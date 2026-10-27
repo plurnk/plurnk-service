@@ -83,7 +83,7 @@ test("{§machine-processes} a workspace-commons entry is shared — a second ses
     } finally { db.close(); }
 });
 
-test("{§no-visibility} curating the log leaves the entry catalogued and READ-able, for its author and for a sibling", async () => {
+test("{§channels} curating the log leaves the entry catalogued and READ-able, for its author and for a sibling", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);

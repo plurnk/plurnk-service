@@ -379,7 +379,7 @@ test("{§http-lifecycle} exact FIND preparation materializes an exact URL throug
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
 });
 
-test("{§readable-channel} exact FIND preparation preserves a provider-only page's unavailable source channel", async () => {
+test("{§channel-selection} exact FIND preparation preserves a provider-only page's unavailable source channel", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
     __stub.set({
@@ -400,7 +400,7 @@ test("{§readable-channel} exact FIND preparation preserves a provider-only page
         assert.equal(prepared.status, 200);
     });
 
-    // {§readable-channel} — the materializer's text is `readable`; the page's source is `body`,
+    // {§channel-selection} — the materializer's text is `readable`; the page's source is `body`,
     // errored here because the origin never answered.
     assert.equal(inspect().wrote?.entry.channels.readable?.content, "provider body");
     const source = inspect().wrote?.entry.channels.body;
@@ -696,7 +696,7 @@ test("{§http-lifecycle} exact FIND preparation preserves an unmarked authored e
 });
 
 // ── acquisition lifecycle {§http-lifecycle} ───────────────────────────────
-test("{§readable-channel} finite GET materializes complete channels without opening a subscription", async () => {
+test("{§channel-selection} finite GET materializes complete channels without opening a subscription", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["x"], { "content-type": "text/plain" }), async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/robots.txt", "/robots.txt")), ctx);
@@ -704,7 +704,7 @@ test("{§readable-channel} finite GET materializes complete channels without ope
     const { wrote, seq } = inspect();
     assert.deepEqual(seq, ["write"]);
     assert.equal(wrote?.pathname, "/robots.txt");
-    // {§readable-channel} — a plain-text response has no projection: body and header, nothing else.
+    // {§channel-selection} — a plain-text response has no projection: body and header, nothing else.
     assert.deepEqual(Object.keys(wrote.entry.channels).toSorted(), ["body", "header"]);
     assert.deepEqual(wrote.entry.channels.body, { content: "x", mimetype: "text/plain" });
     assert.match(wrote.entry.channels.header?.content ?? "", /^HTTP 200 OK/m);
@@ -1334,7 +1334,7 @@ test("READ: public HTML uses the materializer Markdown and retains origin, reque
     assert.match(header, /^x-plurnk-stub-credits: 0\.2$/m);
 });
 
-test("{§readable-channel} READ: negotiated origin Markdown is the source itself, one request, no projection, no materializer", async () => {
+test("{§channel-selection} READ: negotiated origin Markdown is the source itself, one request, no projection, no materializer", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { ctx, inspect } = makeCtx();
     const accepts: string[] = [];
@@ -1351,7 +1351,7 @@ test("{§readable-channel} READ: negotiated origin Markdown is the source itself
         );
         assert.equal(result.status, 200);
     });
-    // {§readable-channel} — the origin sent readable text; nothing to project, no HTML variant to chase.
+    // {§channel-selection} — the origin sent readable text; nothing to project, no HTML variant to chase.
     assert.deepEqual(accepts.map((accept) => accept.split(",")[0]), ["text/markdown"], "exactly one request");
     assert.deepEqual(Object.keys(inspect().wrote?.entry.channels ?? {}).toSorted(), ["body", "header"]);
     assert.equal(inspect().wrote?.entry.channels.body?.content, "# Origin Markdown");
@@ -1392,7 +1392,7 @@ for (const selected of ["body", "readable", "header"] as const) {
             );
             assert.equal(result.status, 200);
         });
-        // {§readable-channel} — the hard materializer failure is the readable channel's; the source lands whole.
+        // {§channel-selection} — the hard materializer failure is the readable channel's; the source lands whole.
         assert.equal(inspect().wrote?.entry.channels.readable?.state, "errored");
         assert.equal(inspect().wrote?.entry.channels.readable?.producerResult?.status, 502);
         assert.equal(inspect().wrote?.entry.channels.body?.content, "<html><body>Durable source</body></html>");
@@ -1805,7 +1805,7 @@ test("{§pinned-wording-http} EDIT: a <L> line marker is rejected — http PUT r
     assert.equal(r.problem?.recovery, "Remove the line range and submit the complete replacement body."); // {§pinned-wording-http}
 });
 
-test("{§channel-selection-missing} an absent HTTP response channel is a 404 without a remote mutation", async () => {
+test("{§channel-selection} an absent HTTP response channel is a 404 without a remote mutation", async () => {
     const { ctx, inspect } = makeCtx();
     let requests = 0;
     await withFetch(async () => {
@@ -1989,7 +1989,7 @@ test("{§revalidation} POST/PUT/DELETE preserve the addressed GitHub blob target
 });
 
 // ── conditional revalidation {§revalidation} ──────────────────────────────
-// {§readable-channel} — body is the response as served; a page's curated Markdown is `readable`.
+// {§channel-selection} — body is the response as served; a page's curated Markdown is `readable`.
 const priorEntry = (
     body: string,
     mimetype: string,

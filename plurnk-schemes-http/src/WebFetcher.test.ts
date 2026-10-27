@@ -343,7 +343,7 @@ test("{§prefetch} a materializer extraction throw surfaces as the scheme failur
     });
 });
 
-test("{§readable-channel} the materializer may produce the readable text after admitted origin transport failure while the source carries the origin's failure", async () => {
+test("{§channel-selection} the materializer may produce the readable text after admitted origin transport failure while the source carries the origin's failure", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
     __stub.set({
@@ -365,13 +365,13 @@ test("{§readable-channel} the materializer may produce the readable text after 
         assert.equal(materialized?.readable?.content, "# Provider-only body");
         assert.equal(materialized?.readableOutcome?.status, 200);
         assert.deepEqual(materialized?.body, { content: "", mimetype: "text/html" });
-        // {§readable-channel} — the source channel's failure is the origin's own, not a generic one.
+        // {§channel-selection} — the source channel's failure is the origin's own, not a generic one.
         assert.equal(materialized?.bodyOutcome?.failure?.code, "fetch-failed");
         assert.match(materialized?.header ?? "", /x-plurnk-origin-error: origin reset/);
     });
 });
 
-test("{§readable-channel} origin Markdown is the source itself: one request, no variant, never the materializer", async () => {
+test("{§channel-selection} origin Markdown is the source itself: one request, no variant, never the materializer", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void; calls: unknown[] } };
     __stub.set({
@@ -389,7 +389,7 @@ test("{§readable-channel} origin Markdown is the source itself: one request, no
         assert.equal(fetched.body, "# Origin Markdown");
         const materialized = await WebFetcher.materialize(fetched, PROJECTION);
         assert.equal(materialized?.body?.content, "# Origin Markdown");
-        assert.equal(materialized?.readable, undefined, "{§readable-channel}: readable text needs no projection and no HTML variant");
+        assert.equal(materialized?.readable, undefined, "{§channel-selection}: readable text needs no projection and no HTML variant");
         assert.equal(materialized?.readableOutcome, undefined);
         assert.match(materialized?.header ?? "", /x-plurnk-materializer-id: origin-markdown:v1/);
         assert.equal(materialized?.bodyOutcome.status, 200);

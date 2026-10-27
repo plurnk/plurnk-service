@@ -1,7 +1,7 @@
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { contentHash } from "../core/content-hash.ts";
 
-// {§readable-channel} — a readable projection is a channel, never a hidden matching surface.
+// {§channel-selection} — a readable projection is a channel, never a hidden matching surface.
 // When an entry's source channel lands, the handler's readable projection (when it has one)
 // lands beside it as `readable`, text/markdown, in its own coordinates; when the source has
 // no projection, no sibling remains. Nothing else writes this channel.

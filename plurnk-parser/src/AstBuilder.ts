@@ -812,7 +812,7 @@ export default class AstBuilder {
             }
             return component.startsWith("@") ? component : Number.parseFloat(component);
         });
-        // {§anchor-offset} — anchor-bearing scopes retain their offsets, never count recovery.
+        // {§op-methods-op-dispatch} — anchor-bearing scopes retain their offsets, never count recovery.
         const components = text.slice(1, -1).split(/, ?/);
         for (const [index, component] of components.entries()) {
             if (!component.startsWith("+")) continue;

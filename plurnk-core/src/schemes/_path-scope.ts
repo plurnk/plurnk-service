@@ -33,7 +33,7 @@ export const pathScope = (pathname: string, folderScopes: boolean): PathScope =>
 // rule holds, so the glued form is matched as `**/*<rest>`.
 const crossingDoubleStar = (pattern: string): string => pattern.replace(/(^|\/)\*\*(?=[^/*])/g, "$1**/*");
 
-// {§fs-namei} Match from the selector's ancestor, not against literal `../` keys.
+// {§fs-namespace} Match from the selector's ancestor, not against literal `../` keys.
 // The base is outside the glob, so metacharacters in real directory names stay literal.
 const rebaseScope = (scope: PathScope, base: string): { scope: PathScope; base: string } => {
     const pathname = scope.kind === "folder" ? scope.prefix : scope.kind === "glob" ? scope.pattern : scope.pathname;

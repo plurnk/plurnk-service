@@ -1,5 +1,5 @@
 -- PREP: message_history
--- {§message-envelope-evidence}: evidence is independent of log curation/publication.
+-- {§op-methods-op-dispatch}: evidence is independent of log curation/publication.
 SELECT m.id AS id, m.loop_id AS loop_id, 'inbound' AS direction, m.source, m.body, m.evidence, '[]' AS answers
 FROM loop_messages m
 JOIN loops l ON l.id = m.loop_id

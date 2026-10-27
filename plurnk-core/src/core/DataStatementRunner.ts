@@ -75,7 +75,7 @@ export default class DataStatementRunner {
         return {};
     }
 
-    // {§membership-read-refusal} — a data scheme that can tell a plain miss from a refused one
+    // {§fs-namespace} — a data scheme that can tell a plain miss from a refused one
     // (file: exists on disk, not a member) speaks first.
     static #describesMiss(handler: object): handler is {
         missRefusal(pathname: string, ctx: PlurnkSchemeContext, fields: Record<string, null>): Promise<DispatchResult | null>;

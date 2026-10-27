@@ -1,4 +1,4 @@
-// {§fs-namei} {§fs-canonical-name} Lexical resolution only; membership and physical
+// {§fs-namespace} {§fs-namespace} Lexical resolution only; membership and physical
 // symlink checks belong to the file owner.
 import { posix } from "node:path";
 import { homedir } from "node:os";
@@ -8,7 +8,7 @@ export default class Namespace {
         return spelling === "~" || spelling.startsWith("~/");
     }
 
-    // {§fs-home} Call only for authored input, never for a bound entry key.
+    // {§fs-namespace} Call only for authored input, never for a bound entry key.
     static expandHome(spelling: string, home: string = homedir()): string {
         return Namespace.isHomeRelative(spelling) ? `${home}${spelling.slice(1)}` : spelling;
     }
@@ -41,7 +41,7 @@ export default class Namespace {
         return key === null || key.length === 0 || posix.basename(key) === ".." ? null : key;
     }
 
-    // {§fs-namei} Only the project directory becomes the empty collection.
+    // {§fs-namespace} Only the project directory becomes the empty collection.
     static canonicalizeSpelling(raw: string, root: string | null, home: string = homedir()): string | null {
         const key = Namespace.#relative(Namespace.expandHome(raw, home), root);
         if (key === null || key.length === 0) return key;

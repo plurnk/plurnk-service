@@ -632,7 +632,7 @@ A provider extension:
 §provider-grammar-transport An extension whose backend accepts a llama.cpp-style
 GBNF grammar may declare `plurnk.grammarStyle: "llamacpp"` beside its kind and
 name; the discovery records it and the adapted Provider carries the capability,
-so an operator's grammar file ({§operator-grammar}) rides the wire exactly as
+so an operator's grammar file ({§provider-instantiation}) rides the wire exactly as
 on a probed llama-server. Absence or `"none"` keeps the grammar off the wire;
 any other value fails discovery loudly. The declaration is the extension author's
 fact about their backend; the transport evidence on each response

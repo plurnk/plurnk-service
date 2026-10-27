@@ -4,7 +4,7 @@ import Namespace from "./namespace.ts";
 
 const ROOT = "/home/bob/project";
 
-test("{§fs-home} authored home paths resolve once before project-relative translation", () => {
+test("{§fs-namespace} authored home paths resolve once before project-relative translation", () => {
     const home = "/home/bob";
     const cases: [string, string | null, string | null][] = [
         ["~/x.md", ROOT, "../x.md"],
@@ -32,7 +32,7 @@ test("{§fs-home} authored home paths resolve once before project-relative trans
     }
 });
 
-test("{§fs-home} literal keys stay unchanged and displayed addresses round-trip", () => {
+test("{§fs-namespace} literal keys stay unchanged and displayed addresses round-trip", () => {
     for (const root of [ROOT, "/", null]) {
         for (const key of ["~", "~/x.md", "~/nested/~", "~someone/x.md", "src/~/x.md", "plain.md"]) {
             assert.equal(Namespace.canonicalize(key, root), key);
@@ -45,7 +45,7 @@ test("{§fs-home} literal keys stay unchanged and displayed addresses round-trip
     assert.equal(Namespace.fromRepositoryPath("project/~/x.md", "/repo/project", "/repo"), "~/x.md");
 });
 
-test("{§fs-namei} filesystem spellings resolve to one project-relative file key", () => {
+test("{§fs-namespace} filesystem spellings resolve to one project-relative file key", () => {
     const cases: Array<[string, string | null]> = [
         ["example.md", "example.md"],
         [`${ROOT}/example.md`, "example.md"],
@@ -90,7 +90,7 @@ test("{§fs-namei} filesystem spellings resolve to one project-relative file key
     }
 });
 
-test("{§fs-canonical-name} canonical keys are project-relative fixpoints", () => {
+test("{§fs-namespace} canonical keys are project-relative fixpoints", () => {
     for (const key of ["example.md", "src/main.js", "../lib/x.md", "../../shared/y.md", "a-b_c.d/e f.md", "文/稿.md"]) {
         assert.equal(Namespace.canonicalize(key, ROOT), key, `${key} is its own canon`);
         assert.ok(Namespace.isCanonical(key, ROOT), `isCanonical(${key})`);
@@ -100,7 +100,7 @@ test("{§fs-canonical-name} canonical keys are project-relative fixpoints", () =
     }
 });
 
-test("{§fs-namei} Git paths resolve from the containing repository, including a root-mounted repository", () => {
+test("{§fs-namespace} Git paths resolve from the containing repository, including a root-mounted repository", () => {
     assert.equal(Namespace.fromRepositoryPath("project/src/x.ts", "/repo/project", "/repo"), "src/x.ts");
     assert.equal(Namespace.fromRepositoryPath("project/src/x.ts", "/project", "/"), "src/x.ts");
     assert.equal(Namespace.fromRepositoryPath("shared/x.ts", "/project", "/"), "../shared/x.ts");
@@ -116,7 +116,7 @@ test("{§fs-namespace} root-mounted workspaces use the same resolver", () => {
     assert.equal(Namespace.canonicalizeSpelling("/", "/"), "");
 });
 
-test("{§fs-namei} collection and glob addresses retain filesystem coordinates", () => {
+test("{§fs-namespace} collection and glob addresses retain filesystem coordinates", () => {
     const cases: [string, string][] = [
         ["", ""], [".", ""], ["./", ""], [ROOT, ""], [`${ROOT}/`, ""],
         ["/", "../../../"], ["..", "../"], ["../..", "../../"],

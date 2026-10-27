@@ -222,7 +222,7 @@ BEGIN
     DELETE FROM entry_channel_rows WHERE entry_id = OLD.entry_id AND name = OLD.name;
 END;
 
--- {§crud} {§file-snapshot-revision} A publication is one SQL statement: failure rolls back metadata and
+-- {§scheme-manifest} {§file-snapshot-revision} A publication is one SQL statement: failure rolls back metadata and
 -- every channel. The view is an input boundary, not a second persisted copy.
 CREATE VIEW IF NOT EXISTS entry_publication AS
 SELECT NULL AS workspace_id, NULL AS scheme, NULL AS authority, NULL AS pathname,

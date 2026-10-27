@@ -619,7 +619,7 @@ test("{§stream-observation-result}: a harness-authored READ is not implicitly a
     assert.equal(row?.exitCode, 0);
 });
 
-test("{§scheme-address-network}: a body-suppressed web identity renders https://host, never https:///host", () => {
+test("{§scheme-address}: a body-suppressed web identity renders https://host, never https:///host", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/9", origin: "model", op: "EDIT", status: 200,
         target: { scheme: "https", hostname: "en.wikipedia.org", pathname: "/wiki/Paris" },
@@ -1028,7 +1028,7 @@ test("{§problem-projection} a failed content-bearing READ renders a compact Pro
     assert.match(out, /1:main\.go:17: undefined: os/, "failure status never erases diagnostic content");
 });
 
-// {§channel-selection-visibility} — a READ row names the resource's other channels with tokens.
+// {§channel-selection} — a READ row names the resource's other channels with tokens.
 test("{§retrieval-packet-metadata} log render: a READ row carries its sibling channels", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",

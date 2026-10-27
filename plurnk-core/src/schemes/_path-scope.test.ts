@@ -84,7 +84,7 @@ test("{§find-result-projection} one-level maps group every deeper entry under e
     ]);
 });
 
-test("{§fs-namei} filesystem selectors above the project match physical coordinates but return relative selectors", () => {
+test("{§fs-namespace} filesystem selectors above the project match physical coordinates but return relative selectors", () => {
     const base = "/repo/project[1]";
     const scope = pathScope("../*", true);
     assert.equal(pathScopeMatches(scope, "../README.md", base), true);

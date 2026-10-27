@@ -399,7 +399,7 @@ does not reverse a landed mutation.
 - Results: `SchemeResult` is the universal operation-result contract. Statuses below 400 carry no `problem`; statuses 400–599 require RFC 9457 `ProblemDetails`. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
 - Standard `EntryFindResult` exposes only its paged `results`, complete `matchingPathCount` / `matchLocationCount`, `itemsWeightTotal` / `returnedItemsWeightTotal`, and typed range. `EntryCatalogChannel.weight` and `EntryCatalogScope.weight` are model-independent curation weights; model-facing JSON may project them under its own vocabulary. Each resource-mode `EntryCatalogItem` is a nonempty, default-first array of flat `EntryCatalogChannel` objects; a scope is the one-element `EntryCatalogScopeGroup`. Exact matcher mode returns flat `MatchEvidence` locations. Pagination is the materialization bound; no path-owning channel wrapper, hidden `matches`, `pathnames`, or overflow-only result collection exists.
 - §scheme-catalog-parse-issues An `EntryCatalogChannel` may carry a positive `parseIssues` count when its exact content projection reported parser recovery sites. Zero and unavailable evidence are omitted. This is advisory metadata and never a validity gate or operation failure.
-- Capability ctx (see §3.bis): `SchemeCtx`, `StreamSubscription`, and the domain capabilities. Entry authors additionally receive `EntryOperationCaps`, `EntryAddress`, and typed standard-operation results. `editBatch` receives the numeric splices of one operation for one canonical resource and channel; it validates against one snapshot and commits one revision or none ({§edit-batch}). Core calls it separately for each authored EDIT, in execution order.
+- Capability ctx (see §3.bis): `SchemeCtx`, `StreamSubscription`, and the domain capabilities. Entry authors additionally receive `EntryOperationCaps`, `EntryAddress`, and typed standard-operation results. `editBatch` receives the numeric splices of one operation for one canonical resource and channel; it validates against one snapshot and commits one revision or none ({§op-methods-op-dispatch}). Core calls it separately for each authored EDIT, in execution order.
 
 Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules and the barrel are the only non-class files.
 
@@ -446,7 +446,7 @@ exact resource/channel snapshots through Core's shared source-selection path.
 It returns bytes plus immutable receipt descriptors, or the acquisition failure
 without delivering anything. It neither performs SEND nor transfers resource
 ownership. `MessageAttachments` opts a message recipient into the common
-metadata shape under {§send-resource-attachments}; other recipients retain
+metadata shape under {§op-methods-op-dispatch}; other recipients retain
 their own metadata vocabulary.
 
 Acquisition schemes delegate model-facing projection to the consumer's one
@@ -616,7 +616,7 @@ its implementation.
   (`address`/`read`/`write`/`delete`) plus `operations`, the standard PLURNK
   `EDIT`/`FIND`/`SEND` implementations for entry-bearing schemes. READ selection
   and model-facing projection belong to the consumer's universal dispatch
-  ({§universal-read-composition}); `entries.read` returns stored channels, not
+  ({§scheme-surface}); `entries.read` returns stored channels, not
   a projected READ receipt.
   `address(pathname)` returns the bound resource's URI without fetching or
   creating it. Links preserve the bound resource authority, never a

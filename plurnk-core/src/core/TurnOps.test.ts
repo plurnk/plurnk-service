@@ -78,7 +78,7 @@ test("{§outside-text} comments outside operation fences are not part of a reply
         ["<!-- imitated aside -->", "<!-- a trailing comment of its own -->"]);
 });
 
-test("{§op-execution-order} internal programs may omit a disposition without inventing one", () => {
+test("{§op-methods-op-dispatch} internal programs may omit a disposition without inventing one", () => {
     const source = "```READ (workspace:///notes.md)```";
     const parsed = TurnOps.parseInternal(source);
     assert.deepEqual(parsed.map(({ op }) => op), ["READ"]);

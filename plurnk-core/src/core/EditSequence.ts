@@ -10,7 +10,7 @@ export interface EditSnapshot {
     readonly anchors: ReadonlyMap<string, readonly number[]>;
 }
 
-// {§edit-anchor-continuity} — scoped to one admitted program, never persisted or shared.
+// {§op-methods-op-dispatch} — scoped to one admitted program, never persisted or shared.
 export default class EditSequence {
     readonly #snapshots = new Map<string, EditSnapshot>();
 

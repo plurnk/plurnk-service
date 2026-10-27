@@ -15,7 +15,7 @@ export { InferenceCallPersistenceError as ModelCallPersistenceError, ProviderAcc
 
 // One concurrency-safe logical model-call ledger. A provider may open several
 // ordered physical requests beneath it; no mutable observer state is shared
-// across sibling BARE calls. {§provider-request-accounting} {§bare-inference}
+// across sibling BARE calls. {§provider-request-accounting} {§op-methods-op-dispatch}
 export default class ModelCall extends InferenceCall {
     readonly #db: Db;
 

@@ -896,7 +896,7 @@ reasoning operations contribute neither execution nor normalization notices.
 Reserved native OP names take precedence. An executor heading's AST ({§executor-heading})
 carries the `runtime` tag and no operation keyword, then `target`, metadata, timing and body fields.
 Registration is checked at the invocation's execution point, after earlier operations settle
-({§op-execution-order}), not by the syntax parser. An attached
+({§op-methods-op-dispatch}), not by the syntax parser. An attached
 MCP service uses that executor path and its owner validates the named tool and
 input-body JSON against its schema. Unknown names do not fall back to a shell.
 There is no runtime-less form: every execution names its runtime, and canonical
@@ -1274,7 +1274,7 @@ the parser normalizes these two-component numeric scopes, emitting one warning
 Recovery requires safe integer operands and a safe integer endpoint; arithmetic
 overflow is refused. Forward/equal ranges, zero and negative sentinels, noninteger
 coordinates, three/four-component regions, and scopes containing anchors are not
-reinterpreted as counts. Anchor-relative endpoints retain {§anchor-offset};
+reinterpreted as counts. Anchor-relative endpoints retain {§op-methods-op-dispatch};
 standalone `+N` has no base and is invalid. WAIT durations and owner-defined SEND
 or execution scopes are outside this normalization. The AST carries canonical
 coordinates; the retained emission preserves the authored spelling. These
@@ -1347,7 +1347,7 @@ session's owner ({§owner-interaction-ring}), not a disposition. The shape rules
   without imposing a program boundary. `PlurnkParser.parse` admits every
   operation before and after it in authored order; the runtime defers only the
   dispositions until the other admitted operations settle
-  ({§op-execution-order}). Nothing is dropped and no diagnostic is raised for
+  ({§op-methods-op-dispatch}). Nothing is dropped and no diagnostic is raised for
   position. Omission does not synthesize a disposition ({§turn-shape}).
 - SEND is communication: an optional recipient path and an optional body.
 - §park-202-only WAIT joins live work: an open stream or a live
@@ -1799,7 +1799,7 @@ it; Core validates and records it through the same prompt admission path.
 
 `runLoop.attachments` carries typed bytes selected by the adapter;
 `runLoop.envelope` retains opaque protocol evidence under
-{§message-envelope-evidence}. `readMessages` projects durable inbox messages
+{§op-methods-op-dispatch}. `readMessages` projects durable inbox messages
 and successful replies independently of log visibility, retaining
 each reply's `answers` addresses (empty for incoming messages).
 `resolveClientInteraction` may carry the accepted answer's message evidence;

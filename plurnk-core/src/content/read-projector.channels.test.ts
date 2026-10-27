@@ -38,7 +38,7 @@ for (const mimetype of ["text/stream", "text/plain", "application/json"]) {
 }
 
 for (const channel of ["unknown", "stderr", "constructor", "__proto__"]) {
-    test(`{§channel-selection-missing} READ reports absent #${channel}, not a missing entry or syntax error`, async () => {
+    test(`{§channel-selection} READ reports absent #${channel}, not a missing entry or syntax error`, async () => {
         const statement: ReadStatement = {
             op: "READ", target: parsePath(`fixture:///entry#${channel}`), matcher: null, body: null, metadata: null, lineMarker: null,
             aside: null, position: { line: 1, column: 1 },
@@ -53,7 +53,7 @@ for (const channel of ["unknown", "stderr", "constructor", "__proto__"]) {
     });
 }
 
-test("{§channel-selection-missing} READ exposes a dynamic default without advertising undeclared stored channels", async () => {
+test("{§channel-selection} READ exposes a dynamic default without advertising undeclared stored channels", async () => {
     const result = await ReadProjector.project({
         statement: {
             op: "READ", target: parsePath("fixture:///entry#unknown"), matcher: null, body: null, metadata: null, lineMarker: null,

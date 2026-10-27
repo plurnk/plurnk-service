@@ -100,4 +100,4 @@ export const execStmt = (runtime: string | null, body: string | null = null, tar
 });
 
 export const glob = (raw: string): MatcherBody => ({ dialect: "glob", raw });
-export const regex = (raw: string): MatcherBody => ({ dialect: "regex", raw: `/${raw}/`, pattern: raw, flags: "" });
+export const regex = (raw: string, flags = ""): MatcherBody => ({ dialect: "regex", raw: `/${raw}/${flags}`, pattern: raw, flags });

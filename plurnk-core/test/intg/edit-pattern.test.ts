@@ -171,7 +171,7 @@ test("{§edit-pattern} a pattern on an existing empty entry is a no-match, not a
     } finally { await db.close(); }
 });
 
-// {§edit-pattern} {§readable-channel} — a regex splices the source channel's own coordinates: on
+// {§edit-pattern} {§channel-selection} — a regex splices the source channel's own coordinates: on
 // HTML the markup, never the readable projection beside it.
 test("{§edit-pattern} a regex pattern edits HTML source coordinates; the readable projection follows", async () => {
     const { db, dispatch, body } = await setup("<html>\n  <body>\n    <h1>Team Roster</h1>\n  </body>\n</html>", "/users.html");

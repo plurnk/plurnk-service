@@ -14,7 +14,7 @@ import { serverProposals } from "./_approval.ts";
 const frame = (heading: string, body: string | null = null) => PlurnkParser.frame(heading, body);
 const response = (content: string): MockResponse => ({ assistant: { content, reasoning: null } });
 
-// Text responses keep the seeded `readable`; a binary response without a projection drops it ({§readable-channel}).
+// Text responses keep the seeded `readable`; a binary response without a projection drops it ({§channel-selection}).
 const RESPONSES: ReadonlyArray<{ readonly label: string; readonly status: number; readonly body: string | Uint8Array<ArrayBuffer> | null; readonly type: string | null }> = [
     { label: "an empty JSON 401", status: 401, body: "", type: "application/json" },
     { label: "a 204 without a body", status: 204, body: null, type: "application/json" },

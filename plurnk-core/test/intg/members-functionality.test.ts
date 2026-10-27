@@ -76,7 +76,7 @@ const memberOf = async (db: Db, workspaceId: number, pathname: string): Promise<
         workspace_id: workspaceId, scheme: "file", authority: "", pathname,
     })) !== undefined;
 
-for (const decision of ["auto", "accept", "reject"] as const) test(`{§op-execution-order} members ${decision} settles before a READ in the same model turn`, { timeout: 30_000 }, async (t) => {
+for (const decision of ["auto", "accept", "reject"] as const) test(`{§op-methods-op-dispatch} members ${decision} settles before a READ in the same model turn`, { timeout: 30_000 }, async (t) => {
     serverProposals(t, decision === "auto" ? "accept" : "review");
     const root = await gitProject();
     await withEnv({ PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "root", PLURNK_SERVICE_GIT_AUTO: "1" }, async () => {
@@ -477,10 +477,10 @@ test("{§members-model-scope} the ceiling: none refuses every model definition, 
     }
 });
 
-// {§members-functionality} {§fs-canonical-name} A definition's glob is matched against member keys: written absolute or from
+// {§members-functionality} {§fs-namespace} A definition's glob is matched against member keys: written absolute or from
 // the root, beside it or farther out, it admits the same members, which READ reaches by either spelling; an exclusion
 // spelled absolute removes what it names, and no member is stored under an absolute key.
-test("{§members-functionality} {§fs-canonical-name} a glob spelled absolute or from the root admits the same members beyond the root, near or far, and READ reaches them", { timeout: 60_000 }, async (t) => {
+test("{§members-functionality} {§fs-namespace} a glob spelled absolute or from the root admits the same members beyond the root, near or far, and READ reaches them", { timeout: 60_000 }, async (t) => {
     serverProposals(t, "accept");
     const base = await mkdtemp(join(tmpdir(), "plurnk-members-beyond-"));
     t.after(() => rm(base, { recursive: true, force: true }));

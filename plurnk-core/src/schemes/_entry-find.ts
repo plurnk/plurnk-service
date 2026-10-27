@@ -412,7 +412,7 @@ export default class EntryFind {
     }
 
     // The scheme, authority and path scope the target names; an exact path that names nothing is the
-    // scheme's miss ({§fs-errno}) unless the universe beyond membership holds it ({§membership-auto-add}).
+    // scheme's miss ({§fs-namespace}) unless the universe beyond membership holds it ({§membership-auto-add}).
     static async #resolveScope(
         statement: FindStatement,
         ctx: PlurnkSchemeContext,
@@ -434,7 +434,7 @@ export default class EntryFind {
             : scopePathname === null
             ? null
             : pathScope(scopePathname, manifest.folderScopes === true));
-        // {§fs-errno} — an exact-path miss is ENOENT; an empty glob or folder
+        // {§fs-namespace} — an exact-path miss is ENOENT; an empty glob or folder
         // survey is a successful empty result.
         if (!multipleAuthorities && scope?.kind === "exact" && scope.pathname.length > 0) {
             const exact = await ctx.db.crud_find_workspace_entry.get<{ id: number }>({

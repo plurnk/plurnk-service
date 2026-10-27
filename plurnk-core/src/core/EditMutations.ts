@@ -17,7 +17,7 @@ import PatternSelection from "./PatternSelection.ts";
 import LineMarkerOps from "../content/line-marker.ts";
 import type ResourceSelector from "./ResourceSelector.ts";
 
-// {§edit-execution}: one resolved EDIT target owns one effect and one proposal.
+// {§op-methods-op-dispatch}: one resolved EDIT target owns one effect and one proposal.
 export default class EditMutations {
     readonly #schemes: SchemeRegistry;
     readonly #liveSubscriptions: LiveSubscriptions;
@@ -91,7 +91,7 @@ export default class EditMutations {
         readonly result: DispatchResult;
     }> {
         const anchored = LineAnchors.hasAnchor(authored.lineMarker);
-        // {§edit-batch-merges} — a body that looks like a pasted READ rendering needs the current
+        // {§op-methods-op-dispatch} — a body that looks like a pasted READ rendering needs the current
         // anchors to be verified, so it takes the anchored path even without an anchor of its own.
         const looksRendered = ({ body }: EditStatement): boolean => {
             const rows = (body ?? "").split("\n").filter((row) => row.length > 0);
@@ -182,9 +182,9 @@ export default class EditMutations {
         const resolve = (marker: NonNullable<EditStatement["lineMarker"]>) =>
             LineAnchors.resolve(lineAnchors, marker, snapshot?.anchors);
         const checks: LineAnchorCheck[] = [];
-        // {§edit-batch-receipt} — diagnose all unresolved anchors, including both range endpoints.
+        // {§op-methods-op-dispatch} — diagnose all unresolved anchors, including both range endpoints.
         const unresolved = new Map<string, { anchor: string; kind: "missing" | "ambiguous"; lines?: readonly number[] }>();
-        // {§edit-batch-merges} — a body whose every line carries this resource's own rendered
+        // {§op-methods-op-dispatch} — a body whose every line carries this resource's own rendered
         // `@xxxxx L:` prefix, hash-verified at its ordinal against the current anchors, is the
         // READ rendering pasted back: the prefixes are stripped and the row says so. A look-alike
         // that does not verify is content and is written as authored, with the fact reported.

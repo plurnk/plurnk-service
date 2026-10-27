@@ -1,4 +1,4 @@
-// Channel-write helpers for streaming schemes. SPEC {§channel-state} (channel state),
+// Channel-write helpers for streaming schemes. SPEC {§channels} (channel state),
 // {§subscriptions} (subscription registry), {§notifications} (stream/event notification).
 //
 // Schemes import these and call them as their connection lifecycle progresses; the
@@ -12,7 +12,7 @@ import { Results, type ChannelProducerResult, type ChannelState, type SchemeResu
 import type { Notice, MessageResource } from "@plurnk/plurnk-contracts";
 import { renderAddress } from "./plurnk-uri.ts";
 
-// Render metadata, never a read gate — {§channel-state-state-is-metadata}.
+// Render metadata, never a read gate — {§channels}.
 export type { ChannelState } from "@plurnk/plurnk-schemes";
 
 // Causal log coordinates are explicit fields, independent of resource identity.
@@ -34,7 +34,7 @@ export interface StreamEventPayload {
     loop_seq?: number;             // causal log coordinate, when supplied
     turn_seq?: number;
     sequence?: number;
-    mimetype?: string;             // current stored type — {§channel-mimetype}
+    mimetype?: string;             // current stored type — {§channels}
 }
 
 export type StreamEventNotify = (workspaceId: number, event: StreamEventPayload) => void;
@@ -143,7 +143,7 @@ export default class ChannelWrite {
         const result = await ChannelWrite.#appendStmt(db).all({ chunk, entry_id: entryId, channel });
         if (result.length === 0) return;
         // A dynamic scheme may supply the body's per-call type; persist it only
-        // when it changes. {§channel-mimetype}
+        // when it changes. {§channels}
         if (mimetype !== undefined) await ChannelWrite.#mimetypeStmt(db).run({ mimetype, entry_id: entryId, channel });
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
@@ -152,7 +152,7 @@ export default class ChannelWrite {
     }
 
     // Schemes drive channel state transitions as their connection lifecycle progresses.
-    // {§channel-state-schemes-own-state-transitions}
+    // {§channels}
     static async setChannelState(
         db: Db,
         { entryId, producerSessionId, channel, state, notify, coordinate }: { entryId: number; producerSessionId: number; channel: string; state: ChannelState; notify?: StreamEventNotify; coordinate?: StreamCoordinate },

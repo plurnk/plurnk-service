@@ -24,7 +24,7 @@ test("{§emission-history}: equal bodies do not confuse reasoning, repeated cont
     assert.deepEqual([...history(`${first}\n\n${second}`, [reasoning, secondRow]).operations], [["1/2/4", second]], "retiring the first occurrence keeps the second identity, not the first matching text");
 });
 
-test("{§emission-history} {§bulk-resource-targeting}: a fan-out replays once with its first surviving receipt", () => {
+test("{§emission-history} {§op-methods-op-dispatch}: a fan-out replays once with its first surviving receipt", () => {
     const operation = frame("READ (workspace:///case-*.txt)", null);
     const first = row(2, "READ", 0);
     const second = row(3, "READ", 0);

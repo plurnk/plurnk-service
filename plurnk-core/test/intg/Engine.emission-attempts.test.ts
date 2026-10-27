@@ -1,23 +1,38 @@
-import test from "node:test";
+import test, { describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { AiSdkProvider, Mock, ProviderError } from "@plurnk/plurnk-providers";
-import type { MockResponse, ProviderAttempt, ProviderRequestAccounting, ProviderUsage } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
+import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
+import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
+import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
+import Turn from "../../src/core/Turn.ts";
+import ModelCall, { ProviderAccountingIntegrityError } from "../../src/core/ModelCall.ts";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { AiSdkProvider, Mock, ProviderError, type MockResponse, type ProviderAttempt, type ProviderRequestAccounting, type ProviderUsage, chatMessageText, validateProviderRequestAccounting, type ChatMessage, type InputModality, type Provider, type ProviderResponse, parseAliasesFromEnv, resolveActiveRoute, type ProviderAlias, type ProviderSpec } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Digest } from "@plurnk/plurnk-digest";
-import EvidenceReader from "@plurnk/plurnk-service/evidence";
-import { ProviderAccountingIntegrityError } from "../../src/core/ModelCall.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { logEntries, packetSection, digestStems } from "./_packet.ts";
-import { testProviderCapacity } from "./_provider.ts";
-import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
+import { testProviderCapacity, viableWindow, testDeferredProviderCapacity } from "./_provider.ts";
 import { clientRead } from "./_client-read.ts";
+import { setTimeout as delay } from "node:timers/promises";
+import { type SchemeHandler } from "@plurnk/plurnk-schemes";
+import { completeStmt, noteStmt } from "./_dsl.ts";
+import { type EditStatement, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
+import { type ExtensionAttributionContext } from "@plurnk/plurnk-meta";
+import { type Db } from "../../src/core/Db.ts";
+import { connect, rpcCall, runLoopToTerminal, subscribeNotifications, withDaemon, waitFor, rpcProblem } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { mkdtempSync } from "node:fs";
+import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 
+describe("Engine.emission-attempts", () => {
 const requestUsage = (
     inputTokens: number,
     textTokens: number,
@@ -383,7 +398,7 @@ test("{§emission-admission} invalid emissions retry beneath one turn against th
     }
 });
 
-test("{§fabricated-log-entry}: an emission that writes the harness log is resampled, and nothing in it runs", async () => {
+test("{§emission-admission}: an emission that writes the harness log is resampled, and nothing in it runs", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const fabricated = "### log:///1/1/2/READ (notes.md) · 12\n{\"range\":\"<1,1> of 1 lines\"}\n1:corrupted\n\n````READ (notes.md)\n````\n";
@@ -1098,7 +1113,7 @@ test("{§error-shape} {§unparsed-tail-boundary}: a boundary lost after a statem
     } finally { await db.close(); }
 });
 
-test("{§invalid-emission-attempts} exhausted private attempts expose the latest response and the parser's diagnostic on one recovery turn", async () => {
+test("{§emission-admission} exhausted private attempts expose the latest response and the parser's diagnostic on one recovery turn", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     const latestRejected = "\n````READ (file:///main.go";
     try {
@@ -1143,7 +1158,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
         assert.match(provider.packets[3], /Response rejected before dispatch; no operations were performed\./);
         assert.match(provider.packets[3], /2:````READ \(file:\/\/\/main\.go/);
         assert.doesNotMatch(provider.packets[3], /first private invalid|second private invalid/);
-        // {§invalid-emission-attempts} — the informed turn carries the parser's diagnostic and position.
+        // {§emission-admission} — the informed turn carries the parser's diagnostic and position.
         assert.match(provider.packets[3], /Parser: .+ @ \d+:\d+/, "the parser's diagnosis reaches the informed turn");
         assert.doesNotMatch(provider.packets[4], /2:````READ \(file:\/\/\/main\.go/, "the rejected emission is projected only into its recovery packet");
 
@@ -1319,7 +1334,7 @@ ${body}
         assert.equal(provider.packets.length, 16, "the third consecutive exhaustion crossed; the queued conclusion was never requested");
     } finally { await db.close(); }
 });
-test("{§invalid-emission-attempts} a frame exhaustion shares prior contract strikes and retains evidence without another request", async () => {
+test("{§emission-admission} a frame exhaustion shares prior contract strikes and retains evidence without another request", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         // {§unparsed-tail-boundary} — only an unfinished heading slot at the end of the input rejects.
@@ -1507,7 +1522,7 @@ test("{§engine-rails} a provider outage after a rejected emission is absorbed i
     }
 });
 
-test("{§turn-never-blank} a classified provider error retains billed usage and authoritative charge without a fabricated response", async () => {
+test("{§emission-admission} a classified provider error retains billed usage and authoritative charge without a fabricated response", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({ contextWindow: 100_000, responses: [] });
@@ -1590,7 +1605,7 @@ test("{§turn-never-blank} a classified provider error retains billed usage and 
     }
 });
 
-test("{§provider-guarantees-request-observer} Core rejects a ProviderError whose accounting differs from its observed physical requests", async () => {
+test("{§provider-surface} Core rejects a ProviderError whose accounting differs from its observed physical requests", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({ contextWindow: 100_000, responses: [] });
@@ -1802,7 +1817,7 @@ test("{§turn-record} an internal attempt-processing failure is not mislabeled a
     }
 });
 
-test("{§turn-never-blank} a valid turn with a failed operation remains recoverable and model-visible", async () => {
+test("{§emission-admission} a valid turn with a failed operation remains recoverable and model-visible", async () => {
     const { db, workspaceId, sessionId, loopId } = await setup();
     try {
         class Sealed {
@@ -1904,4 +1919,1926 @@ test("{§empty-turn} (#478) a cut too deep to parse names the truncation, never 
         );
         assert.doesNotMatch(provider.packets[1], /Parser: /, "the parser's symptom never blames the model for the ceiling's cut");
     } finally { await db.close(); }
+});
+});
+
+describe("Engine.bare", () => {
+const mainResponse = (operations: string): ConstructorParameters<typeof Mock>[0]["responses"][number] => ({
+    assistant: {
+        content: `${operations}
+`,
+        reasoning: null,
+    },
+});
+
+type GenerateArgs = Parameters<Provider["generate"]>[0];
+
+class BareWitness implements Provider {
+    readonly contextWindow = 16_384;
+    readonly maxInputTokens = null;
+    readonly maxOutputTokens = null;
+    readonly outputBudget = 1;
+    readonly reasoningBudget = null;
+    readonly supportedEfforts = ["off", "adaptive", "low", "medium", "high"] as const;
+    readonly inputCapacity = this.contextWindow - this.outputBudget;
+    readonly outputFloor = null;
+    readonly inputWall = null;
+    readonly model = "bare-witness";
+    readonly inputModalities: ReadonlySet<InputModality> = new Set();
+    readonly calls: GenerateArgs[] = [];
+    readonly completions: string[] = [];
+    maxActive = 0;
+    #active = 0;
+    #started = 0;
+    #release!: () => void;
+    readonly #allStarted: Promise<void>;
+    readonly #expectedCalls: number;
+    readonly #failedPrompt: string | null;
+    #failures: number;
+
+    constructor(expectedCalls: number, failedPrompt: string | null = null, failures = Number.POSITIVE_INFINITY) {
+        this.#expectedCalls = expectedCalls;
+        this.#failedPrompt = failedPrompt;
+        this.#failures = failures;
+        this.#allStarted = new Promise((resolve) => { this.#release = resolve; });
+    }
+
+    async countPromptTokens(messages: readonly ChatMessage[]) {
+        return {
+            kind: "exact" as const,
+            tokens: messages.reduce((total, message) => total + chatMessageText(message).length, 0),
+            source: "bare-witness",
+        };
+    }
+
+    async assessRequestCapacity(messages: Parameters<Provider["assessRequestCapacity"]>[0]) {
+        return testProviderCapacity(messages, this.contextWindow, this.outputBudget);
+    }
+
+    attributions() {
+        return ["provider:bare-witness"];
+    }
+
+    async generate(args: GenerateArgs): Promise<ProviderResponse> {
+        this.calls.push(args);
+        const prompt = chatMessageText(args.messages[0] ?? { content: "" });
+        const capacity = await this.assessRequestCapacity(args.messages);
+        const settle = await args.observeRequest?.({ provider: "provider:bare-witness", model: this.model });
+        this.#active++;
+        this.maxActive = Math.max(this.maxActive, this.#active);
+        this.#started++;
+        if (this.#started === this.#expectedCalls) this.#release();
+        await this.#allStarted;
+        if (prompt === "slow") await delay(20, undefined, { signal: args.signal });
+
+        const failed = prompt === this.#failedPrompt && this.#failures > 0;
+        if (failed) this.#failures -= 1;
+        const accounting: ProviderRequestAccounting = validateProviderRequestAccounting({
+            provider: "provider:bare-witness",
+            model: this.model,
+            outcome: failed ? "error" : "response",
+            usage: failed ? undefined : { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+            cost: failed
+                ? { kind: "unknown", reason: "deliberate BARE provider failure" }
+                : { kind: "estimated", amount: { amount: "0", currency: "USD" }, source: "BARE fixture" },
+        });
+        await settle?.(accounting);
+        this.#active--;
+        this.completions.push(prompt);
+        if (failed) {
+            throw new ProviderError("bare-witness", "network_failure", `could not answer ${prompt}`, {
+                status: 503,
+                accounting: [accounting],
+                capacity,
+            });
+        }
+        return {
+            assistant: {
+                content: `answer:${prompt}`,
+                reasoning: "private child reasoning",
+                finishReason: "stop",
+                model: this.model,
+            },
+            assistantRaw: null,
+            accounting: [accounting],
+            capacity,
+        };
+    }
+}
+
+class CancellingBareWitness implements Provider {
+    readonly contextWindow = 16_384;
+    readonly maxInputTokens = null;
+    readonly maxOutputTokens = null;
+    readonly outputBudget = 1;
+    readonly reasoningBudget = null;
+    readonly supportedEfforts = ["off", "adaptive", "low", "medium", "high"] as const;
+    readonly inputCapacity = this.contextWindow - this.outputBudget;
+    readonly outputFloor = null;
+    readonly inputWall = null;
+    readonly model = "cancelling-bare-witness";
+    readonly inputModalities: ReadonlySet<InputModality> = new Set();
+    readonly aborted: string[] = [];
+    readonly started: Promise<void>;
+    readonly expectedCalls: number;
+    #startedCount = 0;
+    #allStarted!: () => void;
+
+    constructor(expectedCalls: number) {
+        this.expectedCalls = expectedCalls;
+        this.started = new Promise((resolve) => { this.#allStarted = resolve; });
+    }
+
+    async countPromptTokens() {
+        return { kind: "exact" as const, tokens: 1, source: "cancelling-bare-witness" };
+    }
+
+    async assessRequestCapacity(messages: Parameters<Provider["assessRequestCapacity"]>[0]) {
+        return testProviderCapacity(messages, this.contextWindow, this.outputBudget);
+    }
+
+    async generate(args: GenerateArgs): Promise<ProviderResponse> {
+        const prompt = chatMessageText(args.messages[0] ?? { content: "" });
+        const capacity = await this.assessRequestCapacity(args.messages);
+        const settle = await args.observeRequest?.({ provider: "provider:cancelling-bare-witness", model: this.model });
+        this.#startedCount++;
+        if (this.#startedCount === this.expectedCalls) this.#allStarted();
+        try {
+            await new Promise<void>((_resolve, reject) => {
+                if (args.signal?.aborted === true) reject(args.signal.reason);
+                else args.signal?.addEventListener("abort", () => reject(args.signal?.reason), { once: true });
+            });
+        } catch (cause) {
+            this.aborted.push(prompt);
+            const accounting = validateProviderRequestAccounting({
+                provider: "provider:cancelling-bare-witness",
+                model: this.model,
+                outcome: "error",
+                status: 499,
+                cost: { kind: "unknown", reason: "cancelled fixture request" },
+            });
+            await settle?.(accounting);
+            throw new ProviderError("cancelling-bare-witness", "resource_interrupted", "cancelled", {
+                status: 499,
+                accounting: [accounting],
+                capacity,
+                cause,
+            });
+        }
+        throw new Error("unreachable");
+    }
+}
+
+const withEnv = async <T>(overrides: Record<string, string>, run: () => Promise<T>): Promise<T> => {
+    const prior = new Map(Object.keys(overrides).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, overrides);
+    try { return await run(); } finally {
+        for (const [key, value] of prior) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+    }
+};
+
+const setup = async (schemes = new SchemeRegistry()) => {
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `bare-${crypto.randomUUID()}`);
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "ask isolated questions");
+    const engine = new Engine({ db, schemes });
+    return { db, workspaceId, sessionId, loopId, engine };
+};
+
+test("{§op-methods-op-dispatch}: resource prompts bypass line and size preview caps after preceding edits, with an optional inline tail", async () => {
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
+    try {
+        const prompt = [...Array.from({ length: 24 }, (_, i) => `Finding ${i + 1}`), `Long finding: ${"α".repeat(8_000)} end`].join("\n");
+        const child = new BareWitness(2);
+        const result = await engine.runTurn({
+            workspaceId, sessionId, loopId, messages: [], childProvider: child,
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
+                "````EDIT (workspace:///prompt.md)",
+                prompt,
+                "````",
+                "````BARE (workspace:///prompt.md)````",
+                "````BARE (workspace:///prompt.md)",
+                "Compare these findings.",
+                "````",
+                "````NOTE\nContinue the task.\n````",
+            ].join("\n"))] }),
+        });
+        assert.equal(result.status, 102);
+        assert.deepEqual(child.calls.map(({ messages }) => messages), [
+            [{ role: "user", content: prompt }],
+            [{ role: "user", content: `${prompt}\n\nCompare these findings.` }],
+        ]);
+        assert.equal(child.maxActive, 2);
+        assert.deepEqual(result.outcomes.map(({ op }) => op), ["EDIT", "BARE", "BARE", "NOTE"], "source reads do not mint extra log receipts");
+    } finally { await db.close(); }
+});
+
+test("{§op-methods-op-dispatch}: missing resources preserve the source error without calling the provider or discarding a successful sibling", async () => {
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
+    try {
+        const child = new BareWitness(1);
+        const result = await engine.runTurn({
+            workspaceId, sessionId, loopId, messages: [], childProvider: child,
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
+                "````BARE (workspace:///missing.md)",
+                "Do not infer from this tail alone.",
+                "````",
+                "````BARE",
+                "survivor",
+                "````",
+                "````NOTE\nContinue the task.\n````",
+            ].join("\n"))] }),
+        });
+        assert.deepEqual(child.completions, ["survivor"]);
+        const rows = (await db.test_log_entries_by_turn.all<{ op: string; rx: string; model_call_id: number | null }>({ turn_id: result.turnId })).filter(({ op }) => op === "BARE");
+        assert.equal(rows.length, 2);
+        const failure = JSON.parse(rows[0].rx);
+        assert.equal(failure.status, 404);
+        assert.match(failure.problem.type, /\/entry-not-found$/);
+        assert.equal(rows[0].model_call_id, null);
+        assert.notEqual(rows[1].model_call_id, null);
+        const calls = await db.test_model_calls.all<{ kind: string }>({ turn_id: result.turnId });
+        assert.equal(calls.filter(({ kind }) => kind === "bare").length, 1);
+    } finally { await db.close(); }
+});
+
+test("{§op-methods-op-dispatch}: cancellation during source preparation leaves no unstarted inference calls open", async () => {
+    const controller = new AbortController();
+    const cancellation = new Error("cancel prompt acquisition");
+    const schemes = new SchemeRegistry();
+    schemes.register("interrupted-prompt", {
+        manifest: {
+            name: "interrupted-prompt", channels: { body: "text/plain" }, defaultChannel: "body",
+            category: "data", writableBy: ["model"],
+            volatile: false, modelVisible: true,
+        },
+        async prepareRepresentation() {
+            controller.abort(cancellation);
+            throw cancellation;
+        },
+    } satisfies SchemeHandler);
+    const { db, workspaceId, sessionId, loopId, engine } = await setup(schemes);
+    try {
+        const child = new BareWitness(2);
+        await assert.rejects(engine.runTurn({
+            workspaceId, sessionId, loopId, messages: [], childProvider: child, signal: controller.signal,
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
+                "````BARE",
+                "first prompt",
+                "````",
+                "````BARE (interrupted-prompt:///question.md)````",
+                "````BARE",
+                "last prompt",
+                "````",
+                "````NOTE\nContinue the task.\n````",
+            ].join("\n"))] }),
+        }), (error: unknown) => error === cancellation);
+        assert.equal(child.calls.length, 0);
+        const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
+        assert.ok(turn);
+        const calls = await db.test_model_calls.all<{ kind: string; state: string }>({ turn_id: turn.id });
+        assert.deepEqual(calls.filter(({ kind }) => kind === "bare"), [], "unstarted inference must not remain active after cancellation");
+    } finally {
+        await schemes.close();
+        await db.close();
+    }
+});
+
+for (const [denied, target] of [
+    [{ operation: "BARE" }, ""],
+    [{ operation: "BARE" }, " (workspace:///prompt.md)"],
+    [{ scheme: "workspace", access: "observe" }, " (workspace:///prompt.md)"],
+] as const) {
+    test(`{§capability-admission}: BARE${target} respects ${JSON.stringify(denied)} before inference`, async () => {
+        const { db, workspaceId, sessionId, loopId, engine } = await setup();
+        try {
+            await db.workspace_capability_policy_update.run({ workspace_id: workspaceId, policy: JSON.stringify({ deny: [denied] }) });
+            const child = new BareWitness(1);
+            const result = await engine.runTurn({
+                workspaceId, sessionId, loopId, messages: [], childProvider: child,
+                provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
+                    "````EDIT (workspace:///prompt.md)",
+                    "secret prompt",
+                    "````",
+                    "````BARE" + target,
+                    "inline prompt",
+                    "````",
+                    "````NOTE\nContinue the task.\n````",
+                ].join("\n"))] }),
+            });
+            assert.equal(child.calls.length, 0);
+            assert.deepEqual(result.outcomes.filter(({ op }) => op === "BARE"), [{ op: "BARE", status: 403, problemType: "https://problems.plurnk.xyz/engine/dispatcher/capability-denied" }]);
+            const calls = await db.test_model_calls.all<{ kind: string }>({ turn_id: result.turnId });
+            assert.equal(calls.filter(({ kind }) => kind === "bare").length, 0);
+        } finally { await db.close(); }
+    });
+}
+
+test("{§op-methods-op-dispatch}: a log prompt uses only retained source lines", async () => {
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
+    try {
+        const first = await engine.runTurn({
+            workspaceId, sessionId, loopId, messages: [],
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
+                "````EDIT (workspace:///source.md)",
+                "first",
+                "superseded",
+                "last",
+                "````",
+                "````READ (workspace:///source.md) <1,-1>````",
+                "````NOTE\nContinue the task.\n````",
+            ].join("\n"))] }),
+        });
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; sequence: number; attrs: string }>({ turn_id: first.turnId });
+        const source = rows.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
+        assert.ok(source);
+        const turn = await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId });
+        assert.ok(turn);
+        const address = `log:///1/${turn.sequence}/${source.sequence}/READ`;
+        const child = new BareWitness(1);
+        const second = await engine.runTurn({
+            workspaceId, sessionId, loopId, messages: [], childProvider: child,
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
+                "````KILL (" + (address) + ") <2>````",
+                "````BARE (" + (address) + ")````",
+                "````NOTE\nContinue the task.\n````",
+            ].join("\n"))] }),
+        });
+        assert.deepEqual(second.outcomes.filter(({ op }) => op === "BARE"), [{ op: "BARE", status: 200, problemType: null }]);
+        assert.deepEqual(child.calls.map(({ messages }) => messages), [[{ role: "user", content: "first\nlast" }]]);
+    } finally { await db.close(); }
+});
+
+for (const [target, status, problem] of [
+    ["workspace:///prompt.md#missing", 404, "channel-not-found"],
+    ["unregistered://prompt", 501, "scheme-not-found"],
+    [null, 422, "bare-prompt-empty"],
+] as const) {
+    test(`{§op-methods-op-dispatch}: ${target ?? "empty input"} produces ${problem} without inference`, async () => {
+        const { db, workspaceId, sessionId, loopId, engine } = await setup();
+        try {
+            const child = new BareWitness(1);
+            const result = await engine.runTurn({
+                workspaceId, sessionId, loopId, messages: [], childProvider: child,
+                provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
+                    "````EDIT (workspace:///prompt.md)",
+                    "source prompt",
+                    "````",
+                    "````BARE" + (target === null ? "" : ` (${target})`),
+                    "````",
+                    "````NOTE\nContinue the task.\n````",
+                ].join("\n"))] }),
+            });
+            const bare = result.outcomes.find(({ op }) => op === "BARE");
+            assert.equal(bare?.status, status);
+            assert.ok(bare?.problemType?.endsWith(`/${problem}`));
+            assert.equal(child.calls.length, 0);
+            if (target === null) {
+                // {§diagnostic-observation} — the refusal states where a prompt is read from, and nothing else.
+                const row = (await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: result.turnId })).find(({ op }) => op === "BARE");
+                assert.equal(JSON.parse(row!.rx).problem.detail, "BARE has no prompt text: the prompt is the fence body, a resource path, or both.");
+            }
+        } finally { await db.close(); }
+    });
+}
+
+test("{§op-methods-op-dispatch}: an intervening operation separates concurrent BARE groups", async () => {
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
+    try {
+        const child = new BareWitness(1);
+        const generate = child.generate.bind(child);
+        const observed: Array<string | undefined> = [];
+        child.generate = async (args) => {
+            const row = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/between", name: "body" });
+            observed.push(row?.content);
+            return generate(args);
+        };
+        const result = await engine.runTurn({
+            workspaceId, sessionId, loopId, messages: [], childProvider: child,
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse("````BARE\nbefore\n````\n````EDIT (workspace:///between)\nwritten\n````\n````BARE\nafter\n````\n````NOTE\nContinue the task.\n````")] }),
+        });
+        assert.equal(result.status, 102);
+        assert.deepEqual(observed, [undefined, "written"]);
+        assert.deepEqual(child.completions, ["before", "after"]);
+        assert.deepEqual(result.outcomes.map(({ op }) => op), ["BARE", "EDIT", "BARE", "NOTE"]);
+    } finally { await db.close(); }
+});
+
+// {§op-methods-op-dispatch}
+test("{§provider-cache-identity} BARE calls receive only their body prompts, run in parallel, and commit in authored order", async () => {
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
+    try {
+        const parent = new Mock({
+            contextWindow: 32_768,
+            responses: [mainResponse("````BARE\nslow\n````\n\n````BARE\nfast\n````\n\n````NOTE\nObserve both responses next turn.\n````")],
+        });
+        const child = new BareWitness(2);
+
+        const result = await engine.runTurn({
+            provider: parent,
+            childProvider: child,
+            workspaceId,
+            sessionId,
+            loopId,
+            messages: [{ role: "user", content: "ask isolated questions" }],
+        });
+
+        assert.equal(result.status, 102);
+        assert.equal(child.maxActive, 2, "the child calls overlap");
+        assert.deepEqual(child.completions, ["fast", "slow"], "the fixture proves completion order differs");
+        assert.deepEqual(child.calls.map(({ messages }) => messages), [
+            [{ role: "user", content: "slow" }],
+            [{ role: "user", content: "fast" }],
+        ]);
+        assert.ok(child.calls.every(({ grammar }) => grammar === undefined), "BARE has no output rail");
+        assert.ok(child.calls.every(({ observeReasoning }) => observeReasoning === undefined), "BARE reasoning remains private to its operation result");
+        assert.ok(child.calls.every(({ callKind }) => callKind === "bare"), "BARE declares its provider output contract");
+        const parentIdentity = await db.test_sessions_get_provider_identity.get<{ provider_identity: string }>({ id: sessionId });
+        const bareIdentities = child.calls.map(({ sessionId: callSession }) => callSession);
+        assert.ok(bareIdentities.every((identity) => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(identity)), "each BARE call receives an opaque UUID identity");
+        assert.equal(new Set(bareIdentities).size, 2, "parallel BARE calls cannot acquire affinity with one another");
+        assert.ok(bareIdentities.every((identity) => identity !== parentIdentity?.provider_identity), "BARE does not reuse the parent session's affinity identity");
+        const bareCalls = await db.test_model_calls.all<{ kind: string; attributions: string }>({ turn_id: result.turnId });
+        assert.ok(bareCalls.filter(({ kind }) => kind === "bare").every(({ attributions }) =>
+            JSON.stringify(JSON.parse(attributions)) === JSON.stringify(["provider:bare-witness"])),
+        "each BARE model call records the composed attribution set");
+
+        const rows = await db.test_log_entries_by_turn.all<{
+            sequence: number;
+            op: string | null;
+            signal: string | null;
+            rx: string;
+            model_call_id: number | null;
+        }>({ turn_id: result.turnId });
+        const bareRows = rows.filter(({ op }) => op === "BARE");
+        assert.deepEqual(bareRows.map(({ sequence, rx }) => ({
+            sequence,
+            content: (JSON.parse(rx) as { content: string }).content,
+        })), [
+            { sequence: bareRows[0]?.sequence, content: "answer:slow" },
+            { sequence: bareRows[1]?.sequence, content: "answer:fast" },
+        ]);
+        assert.ok(bareRows.every(({ model_call_id }) => model_call_id !== null));
+
+        const calls = await db.test_model_calls.all<{
+            sequence: number;
+            kind: string;
+            state: string;
+            attributions: string;
+            log_entry_id: number | null;
+        }>({ turn_id: result.turnId });
+        assert.deepEqual(calls.map(({ sequence, kind, state }) => ({ sequence, kind, state })), [
+            { sequence: 1, kind: "emission", state: "response" },
+            { sequence: 2, kind: "bare", state: "response" },
+            { sequence: 3, kind: "bare", state: "response" },
+        ]);
+        assert.ok(calls.slice(1).every(({ log_entry_id }) => log_entry_id !== null));
+        assert.ok(calls.slice(1).every(({ attributions }) =>
+            JSON.stringify(JSON.parse(attributions)) === JSON.stringify(["provider:bare-witness"])));
+
+        const usage = await engine.loopUsage(loopId);
+        assert.equal(usage.accounting.requests.length, 3, "parent and both BARE calls remain cardinal accounting");
+        assert.equal(usage.contextTokens, 0, "the context gauge remains the parent emission packet, not a tiny BARE prompt");
+    } finally {
+        await db.close();
+    }
+});
+
+// {§op-methods-op-dispatch} {§provider-surface}
+test("{§op-methods-op-dispatch} loop cancellation reaches every concurrent BARE call before the batch escapes", async () => {
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
+    try {
+        const parent = new Mock({
+            contextWindow: 32_768,
+            responses: [mainResponse("````BARE\nfirst\n````\n\n````BARE\nsecond\n````\n\n````NOTE\ncontinue\n````")],
+        });
+        const child = new CancellingBareWitness(2);
+        const controller = new AbortController();
+        const running = engine.runTurn({
+            provider: parent,
+            childProvider: child,
+            workspaceId,
+            sessionId,
+            loopId,
+            messages: [{ role: "user", content: "ask isolated questions" }],
+            signal: controller.signal,
+        });
+        await child.started;
+        const cancellation = new Error("cancel BARE batch");
+        controller.abort(cancellation);
+        await assert.rejects(running, (error: unknown) => error === cancellation);
+        assert.deepEqual(child.aborted.toSorted(), ["first", "second"]);
+        const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
+        const calls = await db.test_model_calls.all<{ kind: string; state: string }>({ turn_id: turn!.id });
+        assert.deepEqual(calls.filter(({ kind }) => kind === "bare").map(({ state }) => state), ["error", "error"]);
+    } finally {
+        await db.close();
+    }
+});
+
+// {§op-methods-op-dispatch}
+test("{§op-methods-op-dispatch} one BARE provider failure is an ordered operation result and does not cancel its siblings", async () => await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "0" }, async () => {
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
+    try {
+        const parent = new Mock({
+            contextWindow: 32_768,
+            responses: [mainResponse("````BARE\nfail\n````\n\n````BARE\nok\n````\n\n````NOTE\nInspect the isolated failure and success.\n````")],
+        });
+        const child = new BareWitness(2, "fail");
+
+        const result = await engine.runTurn({
+            provider: parent,
+            childProvider: child,
+            workspaceId,
+            sessionId,
+            loopId,
+            messages: [{ role: "user", content: "ask isolated questions" }],
+        });
+
+        assert.equal(result.status, 102);
+        assert.deepEqual(result.outcomes.filter(({ op }) => op === "BARE"), [
+            { op: "BARE", status: 503, problemType: "https://problems.plurnk.xyz/provider/bare-witness/network-failure" },
+            { op: "BARE", status: 200, problemType: null },
+        ]);
+        const calls = await db.test_model_calls.all<{ kind: string; state: string }>({ turn_id: result.turnId });
+        assert.deepEqual(calls.filter(({ kind }) => kind === "bare").map(({ state }) => state), ["error", "response"]);
+    } finally {
+        await db.close();
+    }
+}));
+
+test("{§engine-rails}: an isolated call that drops once is re-issued; the receipt is the answer and the dropped call is on the ledger", async () => await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
+    try {
+        const parent = new Mock({
+            contextWindow: 32_768,
+            responses: [mainResponse("````BARE\nflaky\n````\n\n````BARE\nok\n````\n\n````NOTE\nInspect both answers.\n````")],
+        });
+        const child = new BareWitness(2, "flaky", 1);
+        const result = await engine.runTurn({
+            provider: parent,
+            childProvider: child,
+            workspaceId,
+            sessionId,
+            loopId,
+            messages: [{ role: "user", content: "ask isolated questions" }],
+        });
+        assert.equal(result.status, 102);
+        assert.deepEqual(result.outcomes.filter(({ op }) => op === "BARE"), [
+            { op: "BARE", status: 200, problemType: null },
+            { op: "BARE", status: 200, problemType: null },
+        ], "the dropped call was re-issued inside the operation; nothing about the failure reaches the result");
+        assert.deepEqual(child.completions.toSorted(), ["flaky", "flaky", "ok"], "the flaky prompt was asked twice, its sibling once");
+        const calls = await db.test_model_calls.all<{ kind: string; state: string }>({ turn_id: result.turnId });
+        assert.deepEqual(calls.filter(({ kind }) => kind === "bare").map(({ state }) => state).toSorted(), ["error", "response", "response"], "the dropped call is its own model call on the ledger");
+        const answers = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: result.turnId });
+        assert.deepEqual(answers.filter(({ op }) => op === "BARE").map(({ status_rx }) => status_rx), [200, 200]);
+    } finally {
+        await db.close();
+    }
+}));
+
+// {§op-methods-op-dispatch} {§send-premature-terminate}
+test("{§op-methods-op-dispatch} a same-turn BARE response is unseen retrieval work and defers completion", async () => {
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
+    try {
+        const parent = new Mock({
+            contextWindow: 32_768,
+            responses: [mainResponse("````BARE\nquestion\n````\n\n````SEND\ndone\n````")],
+        });
+        const child = new BareWitness(1);
+        const result = await engine.runTurn({
+            provider: parent,
+            childProvider: child,
+            workspaceId,
+            sessionId,
+            loopId,
+            messages: [{ role: "user", content: "ask isolated questions" }],
+        });
+        assert.equal(result.status, 102);
+        assert.deepEqual(result.outcomes, [
+            { op: "BARE", status: 200, problemType: null },
+            { op: "SEND", status: 200, problemType: null },
+        ], "delivery succeeds while the unseen BARE result keeps the loop continuing");
+    } finally {
+        await db.close();
+    }
+});
+
+for (const state of ["WAIT", "SEND"] as const) {
+    test(`{§op-methods-op-dispatch} {§disposition-anywhere}: BARE after ${state} preserves the operation's scheduling contract`, async () => {
+        const { db, workspaceId, sessionId, loopId, engine } = await setup();
+        try {
+            const child = new BareWitness(1);
+            const result = await engine.runTurn({
+                provider: new Mock({
+                    contextWindow: 32_768,
+                    responses: [mainResponse(`\`\`\`\`${state}
+\`\`\`\`
+\`\`\`\`BARE
+question
+\`\`\`\``)],
+                }),
+                childProvider: child,
+                workspaceId,
+                sessionId,
+                loopId,
+                messages: [],
+            });
+            assert.equal(result.status, 102);
+            assert.deepEqual(child.completions, ["question"], "the isolated call was made");
+            assert.deepEqual(result.outcomes.map(({ op }) => op), state === "WAIT" ? ["BARE", "WAIT"] : ["SEND", "BARE"],
+                "only WAIT is deferred; SEND retains its authored order");
+            assert.deepEqual(result.outcomes.filter(({ op }) => op === state), [{ op: state, status: state === "WAIT" ? 102 : 200, problemType: null }]);
+        } finally {
+            await db.close();
+        }
+    });
+}
+});
+
+describe("Mock.provider", () => {
+const editStmt = (target: string, body: string): EditStatement => ({
+    metadata: null,
+    op: "EDIT", aside: null,
+    target: { kind: "url", raw: `workspace:///${target}`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: `/${target}`, query: null, fragment: null },
+    lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
+});
+
+const response = (content: string, ops: MockResponse["assistant"]["ops"]): MockResponse => ({
+    assistant: { content, ops, reasoning: null },
+});
+
+test("{§provider-interface} Mock.provider: contextWindow exposed", () => {
+    const mock = new Mock({ contextWindow: 200000, responses: [] });
+    assert.equal(mock.contextWindow, 200000);
+});
+
+test("{§provider-prompt-measurement} Mock.provider: prompt measurement carries exact provenance", async () => {
+    const mock = new Mock({ contextWindow: 200000, responses: [] });
+    assert.deepEqual(
+        await mock.countPromptTokens([{ role: "user", content: "alpha beta gamma" }]),
+        { kind: "exact", tokens: 8, source: "mock:chars2" },
+    );
+});
+
+test("{§provider-instantiation} Mock.provider: returns queued responses in order", async () => {
+    const r1 = response("first", [editStmt("a", "1")]);
+    const r2 = response("second", [editStmt("b", "2")]);
+    const mock = new Mock({ contextWindow: 10_000, responses: [r1, r2] });
+    const a = await mock.generate({ messages: [{ role: "user", content: "anything" }] });
+    const b = await mock.generate({ messages: [{ role: "user", content: "anything" }] });
+    assert.equal(a.assistant.content, "first");
+    assert.equal(b.assistant.content, "second");
+});
+
+test("{§provider-instantiation} Mock.provider: exhausted queue throws", async () => {
+    const mock = new Mock({ contextWindow: 10_000, responses: [response("only", [])] });
+    await mock.generate({ messages: [{ role: "user", content: "x" }] });
+    await assert.rejects(() => mock.generate({ messages: [{ role: "user", content: "y" }] }), /Mock provider exhausted/);
+});
+
+test("{§provider-generation-completion} Mock.provider: assistant and request accounting remain separate", async () => {
+    const r: MockResponse = {
+        assistant: {
+            content: "````SEND [200]\ndone\n````",
+            ops: [completeStmt("done")],
+            reasoning: "thought about it",
+            finishReason: "stop",
+            model: "mock-bench-v1",
+        },
+        usage: { inputTokens: 100, outputTokens: 42, totalTokens: 142 },
+    };
+    const mock = new Mock({ contextWindow: 10_000, responses: [r] });
+    const result = await mock.generate({ messages: [{ role: "user", content: "x" }] });
+    assert.equal(result.assistant.content, "````SEND [200]\ndone\n````");
+    assert.equal(result.accounting[0]?.usage?.outputTokens, 42);
+    assert.equal(result.accounting[0]?.usage?.inputTokens, 100);
+    assert.equal(result.accounting[0]?.usage?.totalTokens, 142);
+    assert.equal(result.assistant.finishReason, "stop");
+    assert.equal(result.assistant.model, "mock-bench-v1");
+    assert.equal(result.assistant.reasoning, "thought about it");
+    assert.equal(result.assistant.ops?.length, 1);
+    assert.equal((result.assistant.ops as PlurnkStatement[] | undefined)?.[0]?.op, "SEND");
+});
+
+test("{§provider-instantiation} Mock.provider: request accounting defaults fill when the fixture omits usage", async () => {
+    const r: MockResponse = { assistant: { content: "", ops: [], reasoning: null } };
+    const mock = new Mock({ contextWindow: 10_000, responses: [r] });
+    const result = await mock.generate({ messages: [] });
+    assert.deepEqual(result.accounting[0]?.usage, { inputTokens: 0, outputTokens: 0, totalTokens: 0 });
+    assert.equal(result.assistant.finishReason, "stop");
+    assert.equal(result.assistant.model, "mock");
+});
+
+test("{§provider-instantiation} Mock.provider: prompt is ignored — same input doesn't influence output", async () => {
+    const mock = new Mock({
+        contextWindow: 10_000,
+        responses: [response("alpha", []), response("alpha", [])],
+    });
+    const a = await mock.generate({ messages: [{ role: "user", content: "completely different" }] });
+    const b = await mock.generate({ messages: [{ role: "user", content: "completely different" }] });
+    assert.equal(a.assistant.content, "alpha");
+    assert.equal(b.assistant.content, "alpha");
+});
+
+test("{§provider-evidence} Mock.provider: assistantRaw defaults to null; explicit value is passed through", async () => {
+    const r1: MockResponse = { assistant: { content: "x", ops: [], reasoning: null } };
+    const r2: MockResponse = { assistant: { content: "y", ops: [], reasoning: null }, assistantRaw: { vendor: "anthropic", id: "msg_123" } };
+    const mock = new Mock({ contextWindow: 10_000, responses: [r1, r2] });
+    const a = await mock.generate({ messages: [] });
+    const b = await mock.generate({ messages: [] });
+    assert.equal(a.assistantRaw, null);
+    assert.deepEqual(b.assistantRaw, { vendor: "anthropic", id: "msg_123" });
+});
+
+test("{§provider-instantiation} Mock.provider: preserves an explicitly empty test-fixture ops array", async () => {
+    const mock = new Mock({ contextWindow: 10_000, responses: [response("", [])] });
+    const result = await mock.generate({ messages: [] });
+    assert.deepEqual(result.assistant.ops, []);
+});
+
+test("{§provider-instantiation} Mock.provider: multi-op response (the typical loop turn)", async () => {
+    const ops = [
+        editStmt("a", "1"),
+        editStmt("b", "2"),
+        noteStmt("continuing"),
+    ];
+    const content = "````EDIT (workspace:///a)\n1\n````\n\n````EDIT (workspace:///b)\n2\n````\n\n````NOTE\ncontinuing\n````";
+    const mock = new Mock({ contextWindow: 10_000, responses: [response(content, ops)] });
+    const result = await mock.generate({ messages: [] });
+    assert.equal(result.assistant.ops?.length, 3);
+    assert.deepEqual((result.assistant.ops as PlurnkStatement[] | undefined)?.map((o) => o.op), ["EDIT", "EDIT", "NOTE"]);
+});
+});
+
+describe("ProviderRegistry", () => {
+test("{§provider-instantiation} parseAliasesFromEnv: extracts PLURNK_MODEL_<alias>=<provider>/<model> entries", () => {
+    const aliases = parseAliasesFromEnv({
+        PLURNK_MODEL_gemma: "openai/macher.gguf",
+        PLURNK_MODEL_opus: "openrouter/anthropic/claude-opus-latest",
+        PLURNK_MODEL: "gemma",
+        PLURNK_SERVICE_DB_PATH: "./x.db",
+    });
+    assert.deepEqual(aliases.toSorted((a, b) => a.alias.localeCompare(b.alias)), [
+        { alias: "gemma", provider: "openai", model: "macher.gguf" },
+        { alias: "opus", provider: "openrouter", model: "anthropic/claude-opus-latest" },
+    ]);
+});
+
+test("{§alias-parse} parseAliasesFromEnv: downcases the alias suffix; preserves provider+model case", () => {
+    const aliases = parseAliasesFromEnv({
+        PLURNK_MODEL_GEMMA: "openai/Macher.GGUF",
+    });
+    assert.equal(aliases.length, 1);
+    assert.equal(aliases[0].alias, "gemma");
+    assert.equal(aliases[0].model, "Macher.GGUF");
+});
+
+test("{§alias-parse} parseAliasesFromEnv: empty value, no slash, or no suffix are skipped", () => {
+    const aliases = parseAliasesFromEnv({
+        PLURNK_MODEL_empty: "",
+        PLURNK_MODEL_noslash: "openai-no-slash",
+        PLURNK_MODEL_leadingslash: "/leading",
+        PLURNK_MODEL: "valid-alias-not-listed",
+        PLURNK_MODEL_valid: "openai/model",
+    });
+    assert.deepEqual(aliases.map((a) => a.alias), ["valid"]);
+});
+
+test("{§alias-resolve-active} resolveActiveRoute: returns null when PLURNK_MODEL unset", () => {
+    const alias = resolveActiveRoute({
+        PLURNK_MODEL_gemma: "openai/macher.gguf",
+    });
+    assert.equal(alias, null);
+});
+
+test("{§provider-resolution} resolveActiveRoute: returns the matching alias when PLURNK_MODEL set", () => {
+    const alias = resolveActiveRoute({
+        PLURNK_MODEL_gemma: "openai/macher.gguf",
+        PLURNK_MODEL_opus: "openrouter/anthropic/claude-opus-latest",
+        PLURNK_MODEL: "opus",
+    });
+    assert.deepEqual(alias, { alias: "opus", provider: "openrouter", model: "anthropic/claude-opus-latest" });
+});
+
+test("{§alias-resolve-active} resolveActiveRoute: case-insensitive PLURNK_MODEL lookup", () => {
+    const alias = resolveActiveRoute({
+        PLURNK_MODEL_gemma: "openai/macher.gguf",
+        PLURNK_MODEL: "GEMMA",
+    });
+    assert.equal(alias?.alias, "gemma");
+});
+
+test("{§alias-resolve-active} resolveActiveRoute: rejects an explicit unknown alias", () => {
+    assert.throws(() => resolveActiveRoute({
+        PLURNK_MODEL_gemma: "openai/macher.gguf",
+        PLURNK_MODEL: "ghost",
+    }), /neither a declared alias nor a provider\/model route/);
+});
+
+test("{§provider-resolution} resolveActiveRoute: exact routes require no alias declaration", () => {
+    assert.deepEqual(resolveActiveRoute({ PLURNK_MODEL: "google/gemini-3-flash" }), {
+        provider: "google",
+        model: "gemini-3-flash",
+    });
+});
+});
+
+describe("attribution", () => {
+// {§emission-admission}
+
+
+
+
+
+
+
+
+
+
+
+const response = (content: string): MockResponse => ({
+    assistant: {
+        content,
+        reasoning: null,
+    },
+    assistantRaw: null,
+});
+
+const invalid = response("````READ (workspace:///unframed-prose");
+const valid = response("\n````SEND\ndone\n````");
+const canonical = (...tags: string[]): string[] => [...new Set(tags)].toSorted();
+
+test("{§emission-admission} each emission attempt composes opaque family hooks and records exactly what it composed", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `attr-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const sessionIdentity = await db.test_sessions_get_provider_identity.get<{ provider_identity: string }>({ id: sessionId });
+        const loopId = await insertLoop(db, sessionId, 1, "go");
+        const contexts: ExtensionAttributionContext[] = [];
+
+        const schemes = new SchemeRegistry();
+        schemes.attributions = ({ attempt }) => ["shared", `scheme:${attempt}`];
+        const executors = new ExecutorRegistry(new Map());
+        executors.attributions = ({ attempt }) => ["shared", `executor:${attempt}`];
+        const mimetypes = new Mimetypes({
+            discovery: { registry: emptyRegistry(), handlers: new Map(), packageAttributions: new Map(), skipped: [] },
+        });
+        mimetypes.attributions = async ({ attempt }) => ["shared", `mimetype:${attempt}`];
+
+        const provider = new Mock({ contextWindow: 100_000, responses: [invalid, valid] });
+        const providerWithAttribution = provider as Mock & {
+            attributions?: (context: ExtensionAttributionContext) => readonly string[];
+        };
+        providerWithAttribution.attributions = (context) => {
+            contexts.push(context);
+            return ["shared", `provider:${context.attempt}`];
+        };
+        const engine = new Engine({ db, schemes, mimetypes });
+        engine.setExecutors(executors);
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+
+        const first = canonical("shared", "scheme:1", "executor:1", "mimetype:1", "provider:1");
+        const second = canonical("shared", "scheme:2", "executor:2", "mimetype:2", "provider:2");
+        assert.deepEqual(contexts, [
+            {
+                workspaceId: String(workspaceId),
+                sessionId: sessionIdentity?.provider_identity,
+                loop: 1,
+                turn: 2,
+                attempt: 1,
+            },
+            {
+                workspaceId: String(workspaceId),
+                sessionId: sessionIdentity?.provider_identity,
+                loop: 1,
+                turn: 2,
+                attempt: 2,
+            },
+        ], "extensions receive only the exact provider-attempt coordinates");
+
+        const attempts = await db.test_turn_attempts.all<{ sequence: number; attributions: string }>({
+            turn_id: result.turnId,
+        });
+        assert.deepEqual(
+            attempts.map(({ sequence, attributions }) => ({ sequence, attributions: JSON.parse(attributions) })),
+            [
+                { sequence: 1, attributions: first },
+                { sequence: 2, attributions: second },
+            ],
+            "attempt evidence retains each exact composed set",
+        );
+
+        const row = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
+        const packet = JSON.parse(row!.packet) as { attributions: string[] };
+        assert.deepEqual(packet.attributions, second, "the turn request retains the latest attempted set");
+        assert.deepEqual(
+            await engine.loopAttributions(loopId),
+            canonical(...first, ...second),
+            "loop reporting derives its union from exact request evidence",
+        );
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§emission-admission} an empty folksonomy omits the provider field but persists the exact empty request set", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `attr-empty-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const provider = new Mock({ contextWindow: 100_000, responses: [valid] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+
+        const row = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
+        assert.deepEqual((JSON.parse(row!.packet) as { attributions: string[] }).attributions, []);
+        assert.deepEqual(await engine.loopAttributions(loopId), []);
+    } finally {
+        await db.close();
+    }
+});
+});
+
+describe("child-provider-policy", () => {
+const declaredProviderEnv = new Map<string, string | undefined>();
+test.afterEach(() => {
+    for (const [key, value] of declaredProviderEnv) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+    }
+    declaredProviderEnv.clear();
+});
+
+const declaredProvider = (name: string, model: string): ProviderAlias => {
+    const spec = {
+        alias: `${name}-${crypto.randomUUID()}`,
+        provider: "openai",
+        model,
+    };
+    const key = `PLURNK_MODEL_${spec.alias}`;
+    declaredProviderEnv.set(key, process.env[key]);
+    process.env[key] = `${spec.provider}/${spec.model}`;
+    return spec;
+};
+
+type LoopRow = {
+    id: number;
+    session_id: number;
+    model_route_id: number | null;
+    spawn_model_route_id: number | null;
+    status: number;
+};
+
+const routeSpec = async (db: Db, routeId: number | null): Promise<ProviderSpec | null> => {
+    if (routeId === null) return null;
+    const row = await db.model_route_by_id.get<{ alias: string | null; provider: string; model: string; base_url: string | null }>({ id: routeId });
+    if (row === undefined) throw new Error(`model_route ${routeId} is missing`);
+    return {
+        provider: row.provider,
+        model: row.model,
+        ...(row.alias === null ? {} : { alias: row.alias }),
+        ...(row.base_url === null ? {} : { baseUrl: row.base_url }),
+    };
+};
+
+const withConfiguredChild = async <T>(spec: ProviderAlias, run: () => Promise<T>): Promise<T> => {
+    const declaration = `PLURNK_MODEL_${spec.alias}`;
+    const priorDeclaration = process.env[declaration];
+    const priorSelection = process.env.PLURNK_MODEL_CHILD;
+    process.env[declaration] = `${spec.provider}/${spec.model}`;
+    process.env.PLURNK_MODEL_CHILD = spec.alias;
+    try {
+        return await run();
+    } finally {
+        if (priorDeclaration === undefined) delete process.env[declaration];
+        else process.env[declaration] = priorDeclaration;
+        if (priorSelection === undefined) delete process.env.PLURNK_MODEL_CHILD;
+        else process.env.PLURNK_MODEL_CHILD = priorSelection;
+    }
+};
+
+test("{§methods-loop-run-child-provider}: a smaller WORK provider carries through every descendant", async () => {
+    const parentSpec = declaredProvider("parent", "large-parent");
+    const childSpec = declaredProvider("child", "smaller-child");
+    const parent = new Mock({
+        contextWindow: 32768,
+        responses: [
+            makeMockResponse("````WORK (session://child)\ndelegate once\n````\n\n````WAIT\nwaiting\n````"),
+            makeMockResponse("````SEND [200]\ntree complete\n````"),
+        ],
+    });
+    const child = new Mock({
+        contextWindow: 16384,
+        responses: [
+            makeMockResponse("````WORK (session://grandchild)\ndelegate again\n````\n\n````WAIT\nwaiting\n````"),
+            makeMockResponse("````SEND [200]\nleaf complete\n````"),
+            makeMockResponse("````SEND [200]\nchild complete\n````"),
+        ],
+    });
+    ProviderInstantiate.registerInstance(parent, parentSpec);
+    ProviderInstantiate.registerInstance(child, childSpec);
+
+    await withDaemon(null, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: `child-policy-${crypto.randomUUID()}` });
+            const result = await runLoopToTerminal(ws, 2, {
+                prompt: "build a two-level session tree",
+                selector: parentSpec.alias,
+                childSelector: childSpec.alias,
+            });
+            assert.equal(result.finalStatus, 200);
+            const sessionId = result.modelSessionId;
+            assert.ok(sessionId !== undefined);
+            const sessions = await db.test_sessions_with_parent.all<{ id: number; parent_session_id: number | null; origin: string }>({});
+            const root = sessions.find(({ id }) => id === sessionId);
+            const first = sessions.find(({ parent_session_id: parentId }) => parentId === root?.id);
+            const second = sessions.find(({ parent_session_id: parentId }) => parentId === first?.id);
+            assert.ok(root && first && second, "WORK created the complete root → child → grandchild topology");
+
+            const loops = (await db.test_all_loops.all<LoopRow>({})).filter(({ model_route_id }) => model_route_id !== null);
+            const rootLoop = loops.find(({ session_id: owner }) => owner === root.id);
+            const childLoops = loops.filter(({ session_id: owner }) => owner === first.id || owner === second.id);
+            assert.deepEqual(await routeSpec(db, rootLoop?.model_route_id ?? null), parentSpec, "only the client-started root uses the parent provider");
+            assert.deepEqual(await routeSpec(db, rootLoop?.spawn_model_route_id ?? null), childSpec, "the root persists its resolved spawn policy");
+            assert.equal(childLoops.length, 2);
+            for (const loop of childLoops) {
+                assert.deepEqual(await routeSpec(db, loop.model_route_id), childSpec, "every descendant runs on the selected child provider");
+                assert.equal(
+                    loop.spawn_model_route_id,
+                    null,
+                    "a descendant carries the effective model by value and inherits it deeper without a redundant override",
+                );
+            }
+        } finally {
+            ws.close();
+        }
+    });
+});
+
+test("{§methods-loop-run-child-provider}: the configured child alias supplies an omitted run policy", async () => {
+    const parentSpec = declaredProvider("configured-parent", "configured-parent-model");
+    const childSpec = declaredProvider("configured-child", "configured-child-model");
+    const parent = new Mock({
+        contextWindow: 16384,
+        responses: [
+            makeMockResponse("````WORK (session://child)\nuse configured child\n````\n\n````WAIT\nwaiting\n````"),
+            makeMockResponse("````SEND [200]\nparent complete\n````"),
+        ],
+    });
+    const child = new Mock({
+        contextWindow: 8192,
+        responses: [makeMockResponse("````SEND [200]\nchild complete\n````")],
+    });
+    ProviderInstantiate.registerInstance(parent, parentSpec);
+    ProviderInstantiate.registerInstance(child, childSpec);
+
+    await withConfiguredChild(childSpec, async () => {
+        await withDaemon(null, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: `configured-child-${crypto.randomUUID()}` });
+                const result = await runLoopToTerminal(ws, 2, {
+                    prompt: "use the configured child provider",
+                    selector: parentSpec.alias,
+                });
+                assert.equal(result.finalStatus, 200);
+                const loops = (await db.test_all_loops.all<LoopRow>({})).filter(({ model_route_id }) => model_route_id !== null);
+                const root = loops.find(({ id }) => id === result.loopId);
+                const descendant = loops.find(({ id }) => id !== result.loopId);
+                assert.deepEqual(await routeSpec(db, root?.spawn_model_route_id ?? null), childSpec);
+                assert.deepEqual(await routeSpec(db, descendant?.model_route_id ?? null), childSpec);
+            } finally {
+                ws.close();
+            }
+        });
+    });
+});
+
+test("{§op-methods-op-dispatch}: BARE consumes the loop's durable child provider without spawning a session", async () => {
+    const parentSpec = declaredProvider("bare-parent", "bare-parent-model");
+    const childSpec = declaredProvider("bare-child", "bare-child-model");
+    const parent = new Mock({
+        contextWindow: 16_384,
+        responses: [
+            makeMockResponse("\n````BARE\nWhat is the capital of Germany?\n````\n\n````NOTE\nReview the answer.\n````"),
+            makeMockResponse("````SEND [200]\nThe isolated answer was reviewed.\n````"),
+        ],
+    });
+    const child = new Mock({
+        contextWindow: 8_192,
+        responses: [{ assistant: { content: "Berlin", reasoning: null } }],
+    });
+    ProviderInstantiate.registerInstance(parent, parentSpec);
+    ProviderInstantiate.registerInstance(child, childSpec);
+
+    await withDaemon(null, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: `bare-child-policy-${crypto.randomUUID()}` });
+            const result = await runLoopToTerminal(ws, 2, {
+                prompt: "answer one isolated factual question",
+                selector: parentSpec.alias,
+                childSelector: childSpec.alias,
+            });
+            assert.equal(result.finalStatus, 200);
+            assert.equal(parent.remaining, 0);
+            assert.equal(child.remaining, 0, "the selected child provider handled BARE");
+            const rows = await db.test_log_entries_by_loop.all<{ op: string | null; rx: string }>({ loop_id: result.loopId });
+            const bare = rows.find(({ op }) => op === "BARE");
+            assert.equal((JSON.parse(bare?.rx ?? "null") as { content?: string } | null)?.content, "Berlin");
+            const sessions = await db.test_sessions_with_parent.all<{ parent_session_id: number | null }>({});
+            assert.equal(sessions.filter(({ parent_session_id }) => parent_session_id !== null).length, 0, "BARE creates no child session");
+        } finally {
+            ws.close();
+        }
+    });
+});
+
+test("{§methods-loop-run-child-provider}: explicit inherit overrides configuration and follows the spawning loop", async () => {
+    const spec = declaredProvider("inherit", "same-through-tree");
+    const configuredSpec = declaredProvider("ignored", "configured-child-must-not-run");
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [
+            makeMockResponse("````WORK (session://child)\ndo it\n````\n\n````WAIT\nwaiting\n````"),
+            makeMockResponse("````SEND [200]\nchild complete\n````"),
+            makeMockResponse("````SEND [200]\nparent complete\n````"),
+        ],
+    });
+    ProviderInstantiate.registerInstance(mock, spec);
+
+    await withConfiguredChild(configuredSpec, async () => {
+        await withDaemon(null, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: `inherit-policy-${crypto.randomUUID()}` });
+                const result = await runLoopToTerminal(ws, 2, {
+                    prompt: "spawn one inherited child",
+                    selector: spec.alias,
+                    childSelector: null,
+                });
+                assert.equal(result.finalStatus, 200);
+                const loops = (await db.test_all_loops.all<LoopRow>({})).filter(({ model_route_id }) => model_route_id !== null);
+                assert.equal(loops.length, 2);
+                for (const loop of loops) {
+                    assert.deepEqual(await routeSpec(db, loop.model_route_id), spec);
+                    assert.equal(await routeSpec(db, loop.spawn_model_route_id), null, "inherit remains absence rather than becoming a sticky explicit alias");
+                }
+            } finally {
+                ws.close();
+            }
+        });
+    });
+});
+
+test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinary child loop", async () => {
+    const parentSpec = declaredProvider("fork-parent", "large-parent");
+    const childSpec = declaredProvider("fork-child", "tiny-child");
+    const parent = new Mock({
+        contextWindow: 32768,
+        responses: [
+            makeMockResponse("````FORK (session://branch)\ncontinue with inherited history\n````\n\n````WAIT\nwaiting\n````"),
+            makeMockResponse("````SEND [200]\nobserved child failure\n````"),
+        ],
+    });
+    // {§context-wall} — a window whose wall cannot hold the inherited packet.
+    const child = new Mock({ contextWindow: 1537, responses: [] });
+    ProviderInstantiate.registerInstance(parent, parentSpec);
+    ProviderInstantiate.registerInstance(child, childSpec);
+
+    await withDaemon(null, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: `fork-capacity-${crypto.randomUUID()}` });
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+            const result = await runLoopToTerminal(ws, 2, {
+                prompt: "fork work to a much smaller child",
+                selector: parentSpec.alias,
+                childSelector: childSpec.alias,
+            });
+            assert.equal(result.finalStatus, 200, "the parent observes the failed child and can conclude normally");
+            const loops = await db.test_all_loops.all<LoopRow>({});
+            let selectedChildLoop: LoopRow | undefined;
+            for (const loop of loops) {
+                const loopSpec = await routeSpec(db, loop.model_route_id);
+                if (loopSpec?.alias === childSpec.alias) {
+                    selectedChildLoop = loop;
+                    break;
+                }
+            }
+            assert.ok(selectedChildLoop, "FORK created a real child loop on the selected provider before admission");
+            assert.equal(selectedChildLoop.status, 413, "the wall, not preflight spawn logic, rejects the inherited packet ({§context-wall})");
+            const [event] = await waitFor(
+                () => (terminated() as Array<{ loopId: number; result: { status: number } }>).filter(({ loopId }) => loopId === selectedChildLoop.id),
+                (events) => events.length > 0,
+            );
+            assert.equal(event.result.status, 413, "the ordinary child terminal result carries the admission failure");
+        } finally {
+            ws.close();
+        }
+    });
+});
+
+// The specimen exercises results after server admission, not interactive approval.
+process.env.PLURNK_SERVICE_PROPOSALS = "accept";
+});
+
+describe("client-telemetry", () => {
+// {§emission-admission} — the workspace's self-identified client id (the originating frontend, e.g.
+// "@plurnk/plurnk-tui/1.4.0") is stored with the workspace and validated on write. It reaches no
+// provider (#697). The attribution sibling lives in attribution.test.ts.
+
+
+
+
+
+
+// Run a loop against a provider whose generate() is shadowed, with the workspace created carrying
+// settings.client, and report whether any `client` field reached the provider call.
+const captureClient = async (clientId: string | null): Promise<string | undefined> => {
+    const mock = new Mock({ contextWindow: 100000, responses: [makeMockResponse("````SEND [200]\ndone\n````", 5)] });
+    let captured: string | undefined;
+    let seen = false;
+    const real = mock.generate.bind(mock);
+    mock.generate = (req) => { captured = (req as { client?: string }).client; seen = true; return real(req); };
+
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const settings = clientId !== null ? { client: clientId } : {};
+            await rpcCall(ws, 1, "workspace.create", { name: `client-${clientId ?? "none"}`, settings });
+            await runLoopToTerminal(ws, 2, { prompt: "go" });
+        } finally { ws.close(); }
+    });
+    assert.ok(seen, "generate() was called");
+    return captured;
+};
+
+test("{§emission-admission} a stored client id never reaches the provider call", async () => {
+    assert.equal(await captureClient("@plurnk/plurnk-tui/1.4.0"), undefined, "the client id stays inside the daemon");
+});
+
+test("{§pinned-wording-core} workspace.create refuses an empty client id", async () => {
+    const mock = new Mock({ contextWindow: 8192, responses: [] });
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const r = await rpcCall(ws, 1, "workspace.create", { name: "bad-client", settings: { client: "" } });
+            const problem = rpcProblem(r);
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
+            assert.equal(problem.field, "settings.client");
+            assert.equal(problem.recovery, "Provide the client identifier."); // {§pinned-wording-core}
+        } finally { ws.close(); }
+    });
+});
+});
+
+describe("coordinate-metadata", () => {
+// {§provider-surface}: core supplies the workspace this call serves as ordinary call
+// context. Nothing about it reaches a backend (#697).
+
+
+
+
+
+
+
+
+class CoordMock extends Mock {
+    seen: { workspaceId?: string; sessionId?: string; callKind?: string } = {};
+    override async generate(args: Parameters<Mock["generate"]>[0] & { workspaceId?: string; sessionId?: string; callKind?: string }): ReturnType<Mock["generate"]> {
+        this.seen = { workspaceId: args.workspaceId, sessionId: args.sessionId, callKind: args.callKind };
+        return super.generate(args);
+    }
+}
+
+test("{§provider-surface} generate carries the workspace this call serves, and its durable session identity", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `coord-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        // Loop SEQUENCE 5 while its db id is the first loop row (1): the two diverge so `loop` proves
+        // it carried the coordinate, not the id.
+        const loopId = await insertLoop(db, sessionId, 5, "go");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const mock = new CoordMock({ contextWindow: viableWindow(), responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
+        await engine.runTurn({ provider: mock, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "x" }, { role: "user", content: "go" }] });
+        assert.equal(mock.seen.workspaceId, String(workspaceId), "the workspace id, stringified");
+        assert.equal(mock.seen.callKind, "emission", "ordinary turns declare the emission output contract");
+    } finally { await db.close(); }
+});
+});
+
+describe("grammar-configuration-admission", () => {
+// {§provider-instantiation} — a configured operator grammar admits only a provider that can carry it (#588).
+
+
+
+
+
+const fakeProvider = (
+    calls: string[],
+    constrainsOutput: boolean = true,
+): Provider => ({
+    model: "fake",
+    contextWindow: 1000,
+    inputWall: null,
+    outputFloor: null,
+    inputModalities: new Set<InputModality>(),
+    constrainsOutput,
+    generate: async () => {
+        calls.push("generate");
+        throw new Error("startup generated tokens");
+    },
+    countPromptTokens: async () => ({ kind: "exact", tokens: 1, source: "test:exact" }),
+}) as unknown as Provider;
+
+test("{§provider-instantiation} configured GBNF startup performs no model generation", async () => {
+    const calls: string[] = [];
+    const provider = fakeProvider(calls);
+    const alias = {
+        alias: "startupguard",
+        provider: "fake",
+        model: "fake",
+    };
+    const env = {
+        PLURNK_MODEL: alias.alias,
+        PLURNK_MODEL_startupguard: `${alias.provider}/${alias.model}`,
+        PLURNK_PROVIDERS_GBNF_startupguard: "/operator/rails/startup.gbnf",
+    };
+    const prior = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, env);
+    ProviderInstantiate.registerInstance(provider, alias);
+    try {
+        assert.equal(await ProviderInstantiate.loadActiveProvider(), provider);
+        assert.deepEqual(calls, [], "daemon startup has no authority to generate tokens");
+    } finally {
+        for (const [key, value] of Object.entries(prior)) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+    }
+});
+
+test("{§provider-instantiation} no grammar requested makes admission a no-op", () => {
+    const calls: string[] = [];
+    ProviderInstantiate.validateGrammarConfiguration(fakeProvider(calls, false), {});
+    ProviderInstantiate.validateGrammarConfiguration(fakeProvider(calls, false), {
+        PLURNK_PROVIDERS_GBNF: "0",
+    });
+    assert.deepEqual(calls, []);
+});
+
+test("{§provider-instantiation} configured GBNF requires a provider that advertises local transport", () => {
+    const calls: string[] = [];
+    assert.throws(
+        () => ProviderInstantiate.validateGrammarConfiguration(fakeProvider(calls, false), {
+            PLURNK_PROVIDERS_GBNF: "/operator/rails/custom.gbnf",
+        }),
+        /does not advertise GBNF transport/,
+    );
+    assert.deepEqual(calls, []);
+});
+
+test("{§provider-instantiation} per-alias GBNF admission resolves when the bare setting is empty", () => {
+    const calls: string[] = [];
+    ProviderInstantiate.validateGrammarConfiguration(fakeProvider(calls), {
+        PLURNK_PROVIDERS_GBNF: "",
+        PLURNK_MODEL: "rig",
+        PLURNK_MODEL_rig: "openai/local",
+        PLURNK_PROVIDERS_GBNF_rig: "/operator/rails/rig.gbnf",
+    });
+    assert.deepEqual(calls, []);
+});
+});
+
+describe("meta-passthrough", () => {
+// {§provider-surface}: provider metadata reaches the client through loop usage
+// as an opaque, unenforced blob.
+
+
+
+
+
+
+
+
+
+
+// Mock can't return `meta`; wrap it so the turn still concludes but the
+// response carries an opaque blob — exactly what a real hosted provider does.
+class MetaProvider implements Provider {
+    #base: Mock;
+    #meta: Record<string, unknown>;
+    constructor(meta: Record<string, unknown>) {
+        this.#base = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
+        this.#meta = meta;
+    }
+    get contextWindow(): number | null { return this.#base.contextWindow; }
+    get maxInputTokens(): number | null { return this.#base.maxInputTokens; }
+    get maxOutputTokens(): number | null { return this.#base.maxOutputTokens; }
+    get outputBudget(): number | null { return this.#base.outputBudget; }
+    get reasoningBudget(): number | null { return this.#base.reasoningBudget; }
+    get supportedEfforts() { return this.#base.supportedEfforts; }
+    get inputCapacity(): number | null { return this.#base.inputCapacity; }
+    get outputFloor(): number | null { return this.#base.outputFloor; }
+    get inputWall(): number | null { return this.#base.inputWall; }
+    get model(): string { return this.#base.model; }
+    get inputModalities(): ReadonlySet<InputModality> { return this.#base.inputModalities; }
+    countPromptTokens(...args: Parameters<Mock["countPromptTokens"]>): ReturnType<Mock["countPromptTokens"]> {
+        return this.#base.countPromptTokens(...args);
+    }
+    assessRequestCapacity(...args: Parameters<Mock["assessRequestCapacity"]>): ReturnType<Mock["assessRequestCapacity"]> {
+        return this.#base.assessRequestCapacity(...args);
+    }
+    async generate(args: Parameters<Mock["generate"]>[0]): Promise<ProviderResponse> {
+        return { ...(await this.#base.generate(args)), meta: this.#meta };
+    }
+}
+
+test("{§provider-surface} a provider's opaque meta blob rides through to the loop usage payload, unenforced", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `meta-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+
+        const meta = { balance: { amount: "0.000123456789", currency: "XMR" }, vendorWhatever: { nested: true }, future: "field we never coded for" };
+        await engine.runTurn({ provider: new MetaProvider(meta), workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+
+        const usage = await engine.loopUsage(loopId);
+        // Forwarded verbatim — including fields the service has never heard of (the honest passthrough).
+        assert.deepEqual(usage.meta, meta, "the provider's whole meta blob reaches the loop payload, byte-for-byte");
+        assert.deepEqual((usage.meta as { balance: object }).balance, meta.balance, "provider metadata is reachable by the client");
+    } finally { await db.close(); }
+});
+
+test("{§provider-surface} no provider meta → empty {} (never null, never fabricated)", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `meta-empty-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        // A plain Mock returns no `meta`.
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+
+        const usage = await engine.loopUsage(loopId);
+        assert.deepEqual(usage.meta, {}, "absent provider meta surfaces as {}, so the client renders nothing");
+    } finally { await db.close(); }
+});
+});
+
+describe("operator-grammar", () => {
+// {§provider-instantiation} and {§provider-instantiation} across a real core turn: an
+// operator's GBNF file reaches the provider verbatim, unrelated alias settings never leak, an
+// unreadable grammar fails instead of running unconstrained, and the turn records
+// transport as evidence (#588).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const MESSAGES = [{ role: "system" as const, content: "SD" }, { role: "user" as const, content: "go" }];
+const usage = {
+    inputTokens: 1,
+    outputTokens: 2,
+    totalTokens: 3,
+    outputTokenDetails: { textTokens: 1, reasoningTokens: 1 },
+};
+
+const staticProvider = (response: Omit<ProviderResponse, "accounting" | "capacity">): Provider => ({
+    model: "fake",
+    inputModalities: new Set<InputModality>(),
+    contextWindow: 100000,
+    maxInputTokens: null,
+    maxOutputTokens: null,
+    outputBudget: 1,
+    reasoningBudget: null,
+    supportedEfforts: ["off", "adaptive", "low", "medium", "high"],
+    inputCapacity: 99999,
+    inputWall: null,
+    outputFloor: null,
+    constrainsOutput: true,
+    generate: async ({ messages, observeRequest }) => {
+        const accounting = {
+            provider: "provider:fake",
+            model: "fake",
+            outcome: "response",
+            usage,
+            cost: { kind: "estimated", amount: { amount: "0", currency: "USD" }, source: "rail fixture" },
+        } as const;
+        const settle = await observeRequest?.({ provider: accounting.provider, model: accounting.model });
+        await settle?.(accounting);
+        return { ...response, accounting: [accounting], capacity: testProviderCapacity(messages, 100000) };
+    },
+    countPromptTokens: async () => ({ kind: "exact", tokens: 1, source: "test:exact" }),
+    assessRequestCapacity: async (messages) => testProviderCapacity(messages, 100000),
+});
+
+// A Mock that RECORDS what generate receives — the end of the chain, observed directly.
+const recordingProvider = (): { provider: Provider; calls: Array<{ grammar?: string }> } => {
+    const calls: Array<{ grammar?: string }> = [];
+    const base = new Mock({ contextWindow: 100000, responses: [
+        { assistant: { content: "````SEND\nok\n````", reasoning: null } },
+    ] });
+    // plain delegation — a Proxy breaks Mock's private-field getters (#contextWindow via Reflect)
+    const provider = {
+        get contextWindow() { return base.contextWindow; },
+        get maxInputTokens() { return base.maxInputTokens; },
+        get maxOutputTokens() { return base.maxOutputTokens; },
+        get outputBudget() { return base.outputBudget; },
+        get reasoningBudget() { return base.reasoningBudget; },
+        get supportedEfforts() { return base.supportedEfforts; },
+        get inputModalities() { return base.inputModalities; },
+        get inputCapacity() { return base.inputCapacity; },
+        get inputWall() { return base.inputWall; },
+        get outputFloor() { return base.outputFloor; },
+        get model() { return base.model; },
+        countPromptTokens: (...args: Parameters<Mock["countPromptTokens"]>) => base.countPromptTokens(...args),
+        assessRequestCapacity: (...args: Parameters<Mock["assessRequestCapacity"]>) => base.assessRequestCapacity(...args),
+        generate: (args: { grammar?: string }) => { calls.push({ grammar: args.grammar }); return base.generate(args as never); },
+    } as unknown as Provider;
+    return { provider, calls };
+};
+
+const envelope = async (db: Awaited<ReturnType<typeof openMigrated>>) => {
+    const workspaceId = await insertWorkspace(db, `rail-${crypto.randomUUID()}`);
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "go");
+    return { workspaceId, sessionId, loopId };
+};
+
+test("{§provider-instantiation} the operator's grammar file text reaches generate through a real turn", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rail-"));
+    const gbnfPath = join(dir, "probe.gbnf");
+    await writeFile(gbnfPath, 'root ::= "PROBE-RAIL"\n');
+    const db = await openMigrated();
+    const key = "PLURNK_PROVIDERS_GBNF_railprobe";
+    const prior = process.env[key];
+    try {
+        process.env[key] = gbnfPath;
+        const { provider, calls } = recordingProvider();
+        ProviderInstantiate.registerConfigurationScope(provider, "railprobe");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const { workspaceId, sessionId, loopId } = await envelope(db);
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 1 });
+        assert.equal(calls.length, 1, "one generate call");
+        assert.equal(calls[0].grammar, 'root ::= "PROBE-RAIL"\n', "the grammar FILE TEXT arrived at the provider, verbatim");
+    } finally {
+        if (prior === undefined) delete process.env[key]; else process.env[key] = prior;
+        await db.close(); await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("{§provider-instantiation} an alias-free provider ignores unrelated suffixed grammars and uses the global configuration", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rail-"));
+    const gbnfPath = join(dir, "probe.gbnf");
+    await writeFile(gbnfPath, 'root ::= "PROBE-RAIL"\n');
+    const db = await openMigrated();
+    const key = "PLURNK_PROVIDERS_GBNF_someotheralias";
+    const prior = process.env[key];
+    try {
+        process.env[key] = gbnfPath;
+        // Remove the active selector so this provider is explicitly alias-free.
+        const modelKeys = Object.keys(process.env).filter((k) => k.startsWith("PLURNK_MODEL"));
+        const savedModels = modelKeys.map((k) => [k, process.env[k]] as const);
+        for (const k of modelKeys) delete process.env[k];
+        try {
+            const { provider, calls } = recordingProvider();
+            ProviderInstantiate.registerConfigurationScope(provider, null);
+            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const { workspaceId, sessionId, loopId } = await envelope(db);
+            await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 1 });
+            assert.equal(calls.length, 1);
+            assert.equal(calls[0].grammar, undefined, "another alias's grammar is not a global fallback");
+        } finally { for (const [k, v] of savedModels) process.env[k] = v; }
+    } finally {
+        if (prior === undefined) delete process.env[key]; else process.env[key] = prior;
+        await db.close(); await rm(dir, { recursive: true, force: true });
+    }
+});
+
+for (const path of ["/nonexistent/rail/never-here.gbnf", `missing-${crypto.randomUUID()}.gbnf`]) test(`{§provider-instantiation} unreadable ${path} fails before inference`, async () => {
+    const db = await openMigrated();
+    const key = "PLURNK_PROVIDERS_GBNF_railbroken";
+    const prior = process.env[key];
+    try {
+        process.env[key] = path;
+        const { provider, calls } = recordingProvider();
+        ProviderInstantiate.registerConfigurationScope(provider, "railbroken");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const { workspaceId, sessionId, loopId } = await envelope(db);
+        await assert.rejects(
+            () => engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 1 }),
+            { code: "ENOENT" },
+        );
+        assert.equal(calls.length, 0, "unreadable grammar never falls back to unconstrained inference");
+    } finally {
+        if (prior === undefined) delete process.env[key]; else process.env[key] = prior;
+        await db.close();
+    }
+});
+
+test("{§provider-instantiation} a filename in the daemon working directory reaches the provider verbatim", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rail-"));
+    const previousCwd = process.cwd();
+    const db = await openMigrated();
+    const key = "PLURNK_PROVIDERS_GBNF_railnamed";
+    const prior = process.env[key];
+    try {
+        const grammar = 'root ::= "LOCAL-GRAMMAR"\n';
+        await writeFile(join(dir, "local.gbnf"), grammar);
+        process.chdir(dir);
+        process.env[key] = "local.gbnf";
+        const { provider, calls } = recordingProvider();
+        ProviderInstantiate.registerConfigurationScope(provider, "railnamed");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const { workspaceId, sessionId, loopId } = await envelope(db);
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 1 });
+        assert.deepEqual(calls, [{ grammar }]);
+    } finally {
+        process.chdir(previousCwd);
+        if (prior === undefined) delete process.env[key]; else process.env[key] = prior;
+        await db.close();
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("{§provider-instantiation} the turn records whether the grammar reached the wire, and grades nothing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rail-"));
+    const gbnfPath = join(dir, "evidence.gbnf");
+    await writeFile(gbnfPath, 'root ::= "anything the operator wrote"\n');
+    const db = await openMigrated();
+    const key = "PLURNK_PROVIDERS_GBNF_evidencebox";
+    const prior = process.env[key];
+    try {
+        process.env[key] = gbnfPath;
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const { workspaceId, sessionId, loopId } = await envelope(db);
+        // The emission does not match the grammar at all; nothing in the service cares.
+        const content = "````SEND\ndone\n````";
+        const transported = staticProvider({
+            assistant: { content, reasoning: null, finishReason: "stop", model: "fake" },
+            assistantRaw: {},
+            grammarEvidence: { input: content, contentStart: 0, transported: true },
+        });
+        ProviderInstantiate.registerConfigurationScope(transported, "evidencebox");
+        const t1 = await engine.runTurn({ provider: transported, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const meta1 = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: t1.turnId }))!.meta) as Record<string, unknown>;
+        assert.equal(meta1.railsAttached, "client", "transport evidence is recorded");
+        assert.deepEqual(Object.keys(meta1), ["railsAttached"], "the turn records transport evidence and nothing else");
+
+        const withheld = staticProvider({
+            assistant: { content, reasoning: null, finishReason: "stop", model: "fake" },
+            assistantRaw: {},
+            grammarEvidence: { input: content, contentStart: 0, transported: false },
+        });
+        ProviderInstantiate.registerConfigurationScope(withheld, "evidencebox");
+        const t2 = await engine.runTurn({ provider: withheld, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const meta2 = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: t2.turnId }))!.meta) as Record<string, unknown>;
+        assert.equal(meta2.railsAttached, "withheld", "a provider that did not send it says so, and the turn still completes");
+    } finally {
+        if (prior === undefined) delete process.env[key]; else process.env[key] = prior;
+        await db.close(); await rm(dir, { recursive: true, force: true });
+    }
+});
+});
+
+describe("provider-accounting", () => {
+// {§provider-request-accounting}: normalized physical requests are the only
+// accounting authority; every broader total is an exact derived projection.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+test("{§provider-surface} model evidence cannot be orphaned or replaced by a fabricated terminal state", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `model-specialization-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "specialization");
+        const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
+        const call = await ModelCall.open(db, {
+            turnId: turn.id, kind: "emission", attributions: [], model: "fixture/generation-model",
+        });
+        await assert.rejects(
+            db.test_delete_model_call_specialization.run({ id: call.id }),
+            /cannot be deleted independently/u,
+        );
+        await assert.rejects(
+            db.test_terminalize_inference_call_without_evidence.run({ id: call.id, state: "response" }),
+            /terminal state requires specialization evidence/u,
+        );
+        assert.equal((await db.test_workspaces_delete.run({ id: workspaceId })).changes, 1);
+        assert.deepEqual(await db.test_inference_calls_by_workspace.all({ workspace_id: workspaceId }), []);
+    } finally { await db.close(); }
+});
+
+const openRequest = async (
+    db: Db,
+    loopId: number,
+    turnSequence: number,
+    accounting: ProviderRequestAccounting,
+): Promise<void> => {
+    const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
+    assert.equal(turn.sequence, turnSequence);
+    const modelCall = await db.engine_open_model_call.get<{ id: number }>({
+        turn_id: turn.id,
+        kind: "emission",
+        attributions: "[]",
+        model: accounting.model,
+    });
+    const attempt = await db.engine_open_turn_attempt.get<{ id: number }>({
+        model_call_id: modelCall!.id,
+    });
+    const request = await db.engine_open_provider_request.get<{ id: number }>({
+        inference_call_id: modelCall!.id,
+        sequence: 1,
+        provider: accounting.provider,
+        model: accounting.model,
+    });
+    const settled = await db.engine_settle_provider_request.run(
+        providerRequestSettlementParams(request!.id, accounting),
+    );
+    assert.equal(settled.changes, 1);
+    if (accounting.outcome === "response") {
+        await db.engine_observe_model_call_response.run({
+            id: modelCall!.id,
+            native_inputs: "[]",
+            response: JSON.stringify({ assistant: { content: "fixture" } }),
+            failure: null,
+            capacity: JSON.stringify(testDeferredProviderCapacity("accounting:fixture")),
+            finish_reason: "stop",
+            model: accounting.model,
+        });
+        await db.engine_classify_turn_attempt_response.run({
+            id: attempt!.id,
+            accepted: 1,
+            parse_errors: "[]",
+        });
+    } else {
+        await db.engine_fail_model_call.run({
+            id: modelCall!.id,
+            failure: JSON.stringify({ status: 502, problem: { status: 502 } }),
+            capacity: null,
+        });
+    }
+    await Turn.recordInference(db, turn.id, {
+        packet: JSON.stringify({ weight: 0, attributions: [] }),
+        sections: "[]",
+        usageCurationBudget: null,
+        finishReason: accounting.outcome === "response" ? "stop" : null,
+        model: accounting.model,
+        meta: "{}",
+    });
+    await Turn.complete(db, turn.id, accounting.outcome === "response" ? 200 : 502);
+};
+
+const fixture = async (): Promise<{
+    db: Db;
+    loopId: number;
+}> => {
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `money-${crypto.randomUUID()}`);
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "account");
+    return { db, loopId };
+};
+
+test("{§provider-request-accounting} loop accounting adds decimal strings exactly without denormalized rollups", async () => {
+    const { db, loopId } = await fixture();
+    try {
+        await openRequest(db, loopId, 1, {
+            provider: "provider:a",
+            model: "a",
+            outcome: "response",
+            usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
+            cost: {
+                kind: "estimated",
+                amount: { amount: "0.1", currency: "USD" },
+                source: "fixture rate",
+            },
+        });
+        await openRequest(db, loopId, 2, {
+            provider: "provider:b",
+            model: "b",
+            outcome: "response",
+            usage: { inputTokens: 20, outputTokens: 3, totalTokens: 23 },
+            cost: {
+                kind: "charged",
+                amount: { amount: "0.2", currency: "USD" },
+                source: "fixture charge",
+            },
+        });
+
+        const accounting = (await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId)).accounting;
+        assert.equal(accounting.costUsd, "0.3");
+        assert.deepEqual(accounting.usage, {
+            inputTokens: 30,
+            outputTokens: 5,
+            totalTokens: 35,
+        });
+        assert.equal(accounting.requests.length, 2);
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§provider-accounting} one unknown request makes the total unknown without erasing its known subtotal", async () => {
+    const { db, loopId } = await fixture();
+    try {
+        await openRequest(db, loopId, 1, {
+            provider: "provider:a",
+            model: "a",
+            outcome: "response",
+            cost: {
+                kind: "charged",
+                amount: { amount: "4.25", currency: "USD" },
+                source: "direct charge",
+            },
+        });
+        await openRequest(db, loopId, 2, {
+            provider: "provider:b",
+            model: "b",
+            outcome: "error",
+            cost: { kind: "unknown", reason: "provider supplied no monetary evidence" },
+        });
+
+        const accounting = (await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId)).accounting;
+        assert.equal(accounting.costUsd, null, "the unknown request is not free");
+        assert.equal(accounting.knownCostUsd, "4.25", "received price evidence survives separately");
+        assert.equal(accounting.requests[0]?.cost.kind, "charged");
+        assert.equal(accounting.requests[1]?.cost.kind, "unknown");
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§provider-request-accounting} the baseline has no floating-point or denormalized accounting columns", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-money-schema-"));
+    const path = join(dir, "plurnk.db");
+    const db = await openMigrated(path);
+    try {
+        const tableInfo = (table: string): Promise<Array<{ name: string; type: string }>> =>
+            db.test_provider_accounting_table_info.all({ table });
+        for (const table of [
+            "workspaces",
+            "sessions",
+            "turns",
+            "inference_calls",
+            "model_calls",
+            "turn_attempts",
+        ]) {
+            assert.equal(
+                (await tableInfo(table)).some(({ name }) => name.startsWith("usage_") || name === "cost_usd"),
+                table === "turns",
+                `${table} has no accounting rollup (turns retains only usage_curation_budget)`,
+            );
+        }
+        assert.deepEqual(
+            (await tableInfo("turns")).filter(({ name }) => name.startsWith("usage_")).map(({ name }) => name),
+            ["usage_curation_budget"],
+        );
+        assert.equal(
+            (await tableInfo("provider_requests")).some(({ type }) => type === "REAL"),
+            false,
+            "money is stored as canonical TEXT, never REAL",
+        );
+    } finally {
+        await db.close();
+        await rm(dir, { recursive: true, force: true });
+    }
+});
 });

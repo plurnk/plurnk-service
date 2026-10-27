@@ -84,7 +84,7 @@
   representations core computes, with `entryId` null, and a message core
   retains reads at the address that minted it. Only core's own acquisition runs:
   another scheme's entry reads as stored, never prepared, so a client read never
-  fetches ({§client-entry-address}). A channel name may be empty, a log row's
+  fetches ({§scheme-address}). A channel name may be empty, a log row's
   unnamed default ({§entry-read-result}).
 - 0cee49c: Workspaces and workers hide and show by a durable mark ({§machine-processes}):
   `setWorkspaceHidden`, `setWorkerHidden` ({§methods-workspace-hide},
@@ -179,7 +179,7 @@
   diagnostic instead of aborting daemon boot.
 - 8760da7: A READ of a file on disk that a members exclusion covers names the exclusion and
   that only the user can lift it, instead of offering a `members (add)` that cannot
-  admit it ({§membership-read-refusal}).
+  admit it ({§fs-namespace}).
 - 519e7a1: An execution's `stream/concluded` summary sizes only the channels its executor
   declares and reads how it ended from the settled result: `completed`, with any
   exit code, for a success, and the Problem's title in lowercase for a failure
@@ -340,7 +340,7 @@
   in addresses, misses and the `path_normalized` notice — never as a `../` climb;
   a path inside the root stays project-relative. An absolute spelling of a path
   beyond the root is already canonical and earns no notice
-  ({§file-path-normalization}; #1146).
+  ({§fs-namespace}; #1146).
 - d4f8760: `PLURNK_MEMBERS_AUTO_ADD=1` (default): a model's READ of an untracked, unignored,
   unexcluded project file admits it as the Worker's own member definition and reads
   it; a FIND lists such files as `untracked` and admits the ones its text pattern

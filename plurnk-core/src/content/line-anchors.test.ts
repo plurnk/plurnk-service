@@ -263,7 +263,7 @@ test("{§resolved-edit-statement} LineAnchors: unresolved model syntax fails har
     );
 });
 
-test("{§anchor-offset} LineAnchors: an offset mark resolves from its anchor's line; continuity checks the anchor itself (#749)", () => {
+test("{§op-methods-op-dispatch} LineAnchors: an offset mark resolves from its anchor's line; continuity checks the anchor itself (#749)", () => {
     const content = "alpha\nbeta\ngamma\ndelta\n";
     const anchors = LineAnchors.tokens(identity, content);
     const [first, second] = [anchors[0], anchors[1]];

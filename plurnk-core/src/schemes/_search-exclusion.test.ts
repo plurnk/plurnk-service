@@ -23,7 +23,7 @@ function withExclusions<T>(value: string | undefined, fn: () => T): T {
     }
 }
 
-test("{§search-exclusion} #91: repository exclusions apply only to file identities", () => {
+test("{§persistent-search-index} #91: repository exclusions apply only to file identities", () => {
     withExclusions("*/dist/*", () => {
         const pathname = "/repo/dist/index.json";
         assert.equal(matchSearchExclusion({ scheme: "file", pathname }), "*/dist/*");
@@ -32,7 +32,7 @@ test("{§search-exclusion} #91: repository exclusions apply only to file identit
     });
 });
 
-test("{§search-exclusion} #91: exclusions use the body-glob dialect and return the first matching pattern", () => {
+test("{§persistent-search-index} #91: exclusions use the body-glob dialect and return the first matching pattern", () => {
     withExclusions("*.min.*, *.map, chunk-?.js, *.mp[34], */dist/*, @(fixture|snapshot).json", () => {
         assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/dist/app.min.js" }), "*.min.*");
         assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/dist/bundle.js.map" }), "*.map");
@@ -44,7 +44,7 @@ test("{§search-exclusion} #91: exclusions use the body-glob dialect and return 
     });
 });
 
-test("{§search-exclusion} #91: basename and path patterns remain anchored", () => {
+test("{§persistent-search-index} #91: basename and path patterns remain anchored", () => {
     withExclusions("go.sum, dist/*", () => {
         assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/x/go.sum" }), "go.sum");
         assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/x/logo.sum" }), undefined);
@@ -53,7 +53,7 @@ test("{§search-exclusion} #91: basename and path patterns remain anchored", () 
     });
 });
 
-test("{§search-exclusion} #91: the shipped table excludes generated drawers without eating source", () => {
+test("{§persistent-search-index} #91: the shipped table excludes generated drawers without eating source", () => {
     withExclusions(DEFAULT_LIST, () => {
         for (const pathname of [
             "/repo/package-lock.json",
@@ -77,7 +77,7 @@ test("{§search-exclusion} #91: the shipped table excludes generated drawers wit
     });
 });
 
-test("{§search-exclusion} #91: absent or empty configuration has no hidden fallback", () => {
+test("{§persistent-search-index} #91: absent or empty configuration has no hidden fallback", () => {
     for (const value of [undefined, "  "]) {
         withExclusions(value, () => {
             assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/repo/package-lock.json" }), undefined);
@@ -85,7 +85,7 @@ test("{§search-exclusion} #91: absent or empty configuration has no hidden fall
     }
 });
 
-test("{§search-size-bound} #729: a body longer than the bound is excluded with the bound as its reason; empty is unbounded", () => {
+test("{§persistent-search-index} #729: a body longer than the bound is excluded with the bound as its reason; empty is unbounded", () => {
     const prior = process.env.PLURNK_SERVICE_SEARCH_MAX_BYTES;
     try {
         process.env.PLURNK_SERVICE_SEARCH_MAX_BYTES = "1048576";

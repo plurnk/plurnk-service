@@ -1,5 +1,5 @@
 // Shared SEND face for entry-bearing schemes: an entry is not a recipient, so every
-// message aimed at one is 501 ({§send-dispatch-entry-schemes-501}).
+// message aimed at one is 501 ({§op-methods-op-dispatch}).
 
 import type { SendStatement } from "@plurnk/plurnk-contracts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
@@ -40,6 +40,6 @@ export default class EntrySend {
                 recovery: "To reply, SEND to an Open Message address or omit the target. SEND (session://<name>) sends a new message.",
                 retryable: false,
             },
-        ); // {§send-dispatch-entry-schemes-501}
+        ); // {§op-methods-op-dispatch}
     }
 }

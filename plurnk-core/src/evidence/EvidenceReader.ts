@@ -68,7 +68,7 @@ export default class EvidenceReader implements DigestEvidence {
 
     textWeight(text: string): number { return contentWeight(text); }
 
-    // The echoed emission headings in a program's text outside its operations ({§fabricated-log-entry}); a
+    // The echoed emission headings in a program's text outside its operations ({§emission-admission}); a
     // heading quoted inside an operation body is the body's, not an echo.
     static #echoes(program: string | null): number {
         if (program === null || program.length === 0) return 0;
@@ -113,7 +113,7 @@ export default class EvidenceReader implements DigestEvidence {
         return {
             ...rows,
             storage: rows.storage, searchState: rows.searchState, derivationState: rows.derivationState,
-            // {§fabricated-log-entry}: an echoed emission heading is counted where the model wrote it, in the text
+            // {§emission-admission}: an echoed emission heading is counted where the model wrote it, in the text
             // outside its operations, whether that text became NOTEs beside them or the turn's outside source.
             turns: rows.turns.map((turn) => ({ ...turn, packetEchoes: EvidenceReader.#echoes(turn.program) + FabricatedLog.echoes(turn.outside ?? "") })),
             logEntries: rows.logEntries.map(({ target_tx, ...row }) => ({

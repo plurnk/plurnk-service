@@ -88,7 +88,7 @@ const proposeAndResolve = async (
     return dispatchPromise;
 };
 
-test("{§fs-create-copy} {§copy-cross-scheme-copy}: COPY workspace:/// → file proposes then lands on accept", async () => {
+test("{§fs-write-surface} {§copy-cross-scheme-copy}: COPY workspace:/// → file proposes then lands on accept", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedSession(ctx, "note", "copied content\n");
         const result = await proposeAndResolve(ctx, copyStmt(urlPath("workspace", "/note"), localPath("copied.txt")), "accept");
@@ -417,7 +417,7 @@ test("{§proposal-reject-fails}: a rejected MOVE into a file preserves the sourc
     });
 });
 
-test("{§fs-create-move} {§move-relocation-deletes-source}: file MOVE into a new subdir lands and unlinks", async () => {
+test("{§fs-write-surface} {§move-relocation-deletes-source}: file MOVE into a new subdir lands and unlinks", async () => {
     // The file→file MOVE that was a silent noop: File lacked deleteEntry, so #handleMove returned a
     // bare 501 before any write — the model's correct MOVE did nothing while the session concluded 200.
     await withWorkspace(async (root, ctx) => {

@@ -277,7 +277,7 @@ const body = (result: EntryReadWire): ClientEntry => {
     return exact.entry;
 };
 
-test("{§client-entry-address} entry.read resolves one owner-aware client entry and returns the exact shared wire", async () => {
+test("{§scheme-address} entry.read resolves one owner-aware client entry and returns the exact shared wire", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("notes", new Notes());
@@ -364,7 +364,7 @@ test("{§client-entry-address} entry.read resolves one owner-aware client entry 
     }
 });
 
-test("{§client-entry-address} entry.read applies session authority across the workspace: a child reads its parent's named space (#394)", async () => {
+test("{§scheme-address} entry.read applies session authority across the workspace: a child reads its parent's named space (#394)", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     await daemon.start();
@@ -1934,7 +1934,7 @@ class ProposingTest {
     }
 }
 
-test("{§edit-execution}: each EDIT waits for its own proposal before preparing the next", async () => {
+test("{§op-methods-op-dispatch}: each EDIT waits for its own proposal before preparing the next", async () => {
     const dsl = "````EDIT (proposing-test://x) <1>\none\n````\n\n````EDIT (proposing-test://x) <3>\nthree\n````\n\n````SEND\ndone\n````";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
     await withDaemon(mock, async (db, daemon, addr) => {

@@ -3,7 +3,7 @@ import test from "node:test";
 import MessageAttachments from "./MessageAttachments.ts";
 import type { ResourceCaps } from "./ctx.ts";
 
-test("{§send-resource-attachments}: message metadata validates before acquisition and preserves selection order", async () => {
+test("{§op-methods-op-dispatch}: message metadata validates before acquisition and preserves selection order", async () => {
     const calls: (readonly string[])[] = [];
     const resources: ResourceCaps = { async capture(targets) { calls.push(targets); return { attachments: [] }; } };
     for (const value of [null, false, 7, "file.txt", [null], [""], [{}]]) {
@@ -21,7 +21,7 @@ test("{§send-resource-attachments}: message metadata validates before acquisiti
     assert.deepEqual(calls, [["b", "a#readable"]]);
 });
 
-test("{§send-resource-attachments}: receipts contain descriptors, not payloads", () => {
+test("{§op-methods-op-dispatch}: receipts contain descriptors, not payloads", () => {
     assert.deepEqual(MessageAttachments.receipts([{ name: "report.pdf", mediaType: "application/pdf", contentHash: "hash", target: "report.pdf", bytes: new Uint8Array([42]) }]), [
         { name: "report.pdf", mediaType: "application/pdf", contentHash: "hash", target: "report.pdf" },
     ]);

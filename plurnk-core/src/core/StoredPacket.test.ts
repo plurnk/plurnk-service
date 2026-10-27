@@ -48,7 +48,7 @@ test("{§packet-stored-shape} StoredPacket: admission extends the request withou
     assert.equal(StoredPacket.isAdmitted(packet), true);
 });
 
-test("{§attribution} StoredPacket: attribution evidence is a canonical opaque tag set", () => {
+test("{§emission-admission} StoredPacket: attribution evidence is a canonical opaque tag set", () => {
     assert.throws(
         () => StoredPacket.assert({ ...request(), attributions: ["topic:search", "creator:ada"] }),
         /packet\.attributions must be deduplicated and sorted/,

@@ -7,7 +7,7 @@ import type { EntryAddressResolution } from "./EntryAddressBinding.ts";
 
 export type DispatchResult = SchemeResult;
 
-// {§edit-batch-merges} — an evidence-gated normalization reported on its operation.
+// {§op-methods-op-dispatch} — an evidence-gated normalization reported on its operation.
 export type EditMergeFact = { readonly rule: string } & Record<string, unknown>;
 
 export type PreparedRepresentation = EntryAddressResolution;

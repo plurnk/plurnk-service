@@ -1,5 +1,5 @@
 import { serverProposals } from "./_approval.ts";
-// {§line-anchors} {§line-anchor-disambiguation} {§edit-anchor-continuity}
+// {§line-anchors} {§line-anchor-disambiguation} {§op-methods-op-dispatch}
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

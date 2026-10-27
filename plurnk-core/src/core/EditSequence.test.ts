@@ -32,7 +32,7 @@ for (const separator of ["\n", "\r\n", "\r"]) {
         { marks: [2], body: "TWO\nextra", oldLine: 3, newLine: 4 },
         { marks: [2, 2, 2, 3], body: "😀", oldLine: 3, newLine: 3 },
         { marks: [3, 1, 3, 1], body: "before\n", oldLine: 3, newLine: 4 },
-    ]) test(`{§edit-anchor-continuity}: ${JSON.stringify(separator)} <${fixture.marks.join(",")}> preserves an untouched line`, () => {
+    ]) test(`{§op-methods-op-dispatch}: ${JSON.stringify(separator)} <${fixture.marks.join(",")}> preserves an untouched line`, () => {
         const source = original.replaceAll("\n", separator);
         const sequence = new EditSequence();
         const hash = LineAnchors.tokens(identity, source)[fixture.oldLine - 1];
@@ -44,7 +44,7 @@ for (const separator of ["\n", "\r\n", "\r"]) {
     });
 }
 
-test("{§edit-anchor-continuity}: replaced lines stay invalid while adjacent targets survive successive edits", () => {
+test("{§op-methods-op-dispatch}: replaced lines stay invalid while adjacent targets survive successive edits", () => {
     const sequence = new EditSequence();
     const hashes = LineAnchors.tokens(identity, original);
     const updated = apply(sequence, apply(sequence, original, { marks: [2] }, "TWO"), { marks: [0] }, "prefix");
@@ -54,7 +54,7 @@ test("{§edit-anchor-continuity}: replaced lines stay invalid while adjacent tar
     assert.deepEqual(resolve(hashes[2]), { ok: true, marker: { marks: [4] } });
 });
 
-test("{§edit-anchor-continuity}: a twin neighbourhood the program itself creates does not detach a carried binding", () => {
+test("{§op-methods-op-dispatch}: a twin neighbourhood the program itself creates does not detach a carried binding", () => {
     const sequence = new EditSequence();
     const hashes = LineAnchors.tokens(identity, original);
     // Replacing the last line with itself plus a copy of lines 1–5 gives line 3 an identical neighbourhood at line 9.
@@ -66,7 +66,7 @@ test("{§edit-anchor-continuity}: a twin neighbourhood the program itself create
     assert.deepEqual(LineAnchors.resolve(current, { marks: [hashes[2]] }), { ok: false, failure: { kind: "missing", anchor: hashes[2] } }, "a different program cannot use the former ambiguous short window");
 });
 
-test("{§edit-anchor-continuity}: external drift and another program cannot reuse retained bindings", () => {
+test("{§op-methods-op-dispatch}: external drift and another program cannot reuse retained bindings", () => {
     const sequence = new EditSequence();
     const hash = LineAnchors.tokens(identity, original)[2];
     const updated = apply(sequence, original, { marks: [2] }, "TWO");
@@ -78,7 +78,7 @@ test("{§edit-anchor-continuity}: external drift and another program cannot reus
     }
 });
 
-test("{§edit-anchor-continuity}: an unproved or reviewer-replaced result cannot carry bindings", () => {
+test("{§op-methods-op-dispatch}: an unproved or reviewer-replaced result cannot carry bindings", () => {
     for (const result of [
         { status: 200 },
         { status: 200, receipt: projectEditReceipt(reviewerReplacementReceipt(original, "reviewer replacement", editReceipt(original, "proposed", [{ marker: { marks: [1, -1] }, body: "proposed" }])), 0) },
@@ -95,7 +95,7 @@ test("{§edit-anchor-continuity}: an unproved or reviewer-replaced result cannot
     }
 });
 
-test("{§edit-anchor-continuity}: retained bindings never cross resource identities", () => {
+test("{§op-methods-op-dispatch}: retained bindings never cross resource identities", () => {
     const sequence = new EditSequence();
     const hash = LineAnchors.tokens(identity, original)[2];
     const updated = apply(sequence, original, { marks: [2] }, "TWO");

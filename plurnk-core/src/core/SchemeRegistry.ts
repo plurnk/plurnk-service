@@ -407,7 +407,7 @@ export default class SchemeRegistry {
         return this.manifestFor(scheme, workspaceId)?.defaultChannel ?? "body";
     }
 
-    // {§client-entry-address} Whether core itself registered `name`: a core scheme, whose acquisition is core's own.
+    // {§scheme-address} Whether core itself registered `name`: a core scheme, whose acquisition is core's own.
     coreOwns(name: string): boolean {
         return this.#claims.get(name)?.key === SchemeRegistry.#CORE_CLAIM.key;
     }

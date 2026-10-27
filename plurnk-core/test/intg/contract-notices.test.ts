@@ -40,7 +40,7 @@ const contentResponse = (content: string): MockResponse => ({
 const drainTurn = contentResponse("````SEND [200]\ndrained\n````");
 
 // A provider transport anomaly notice: the provider notice path carries observations
-// such as a decode escaping into a discarded channel ({§operator-grammar} grades nothing).
+// such as a decode escaping into a discarded channel ({§provider-instantiation} grades nothing).
 // `extraDrains` clean turns follow so the buffer can be observed draining.
 const NOTICE_CONTENT = "\n````SEND\nnoted\n````";
 const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("````SEND") + 3)).length;

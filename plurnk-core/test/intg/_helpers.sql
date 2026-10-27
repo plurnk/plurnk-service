@@ -741,7 +741,7 @@ FROM entries e WHERE e.workspace_id = $workspace_id AND e.pathname = $pathname;
 
 -- PREP: test_entries_by_coordinate_workspaces
 -- Every owner holding one textual coordinate, with its body — the
--- {§scheme-entry-matrix} isolation probe for independent Sessions.
+-- {§scheme-address} isolation probe for independent Sessions.
 SELECT e.id, e.workspace_id, ec.content
 FROM entries e
 LEFT JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'

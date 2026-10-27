@@ -1150,7 +1150,7 @@ only when that representation differs from the raw body:
 The channel is in the default set because it performs no model inference. A
 handler is a pure projection of supplied bytes/content and does not infer the
 source scheme. The consumer stores a derived projection as a channel of its own
-(`readable` in the service, {§readable-channel} in the core specification) and
+(`readable` in the service, {§channel-selection} in the core specification) and
 treats its coordinate space separately from the source's unless the handler
 supplies an honest mapping.
 

@@ -18,14 +18,14 @@ const classifications: ReadonlyArray<readonly [string, boolean, readonly string[
 ];
 
 for (const [name, expected, labels] of classifications) {
-    test(`{§mimetype-classification-consumption} configured registry classifies ${name}`, async () => {
+    test(`{§mimetype} configured registry classifies ${name}`, async () => {
         for (const label of labels) {
             assert.equal(await MimetypeBinary.isBinaryMimetype(label, mimetypes), expected, label);
         }
     });
 }
 
-test("{§mimetype-classification-consumption} binary classification requires the configured registry", async () => {
+test("{§mimetype} binary classification requires the configured registry", async () => {
     await assert.rejects(
         MimetypeBinary.isBinaryMimetype("text/plain", undefined),
         /configured mimetype registry is required/,

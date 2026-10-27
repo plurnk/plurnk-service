@@ -75,7 +75,7 @@ test("{§op-invariants} Engine.dispatch: KILL against workspace:/// permanently 
     } finally { await db.close(); }
 });
 
-test("{§scheme-address-namespace-fold} namespace fixture://x and fixture:///x address the same entry", async () => {
+test("{§scheme-address} namespace fixture://x and fixture:///x address the same entry", async () => {
     const { db, engine, env } = await setup();
     try {
         // create via the path form: fixture:///config.json => /config.json
@@ -352,7 +352,7 @@ test("{§problems-dispatch} Engine.dispatch: a current READ line anchor lowers t
     } finally { await db.close(); }
 });
 
-test("{§anchor-offset} Engine.dispatch: an EDIT anchor offset applies the splice of the numeric line it names (#749)", async () => {
+test("{§op-methods-op-dispatch} Engine.dispatch: an EDIT anchor offset applies the splice of the numeric line it names (#749)", async () => {
     const { db, engine, env } = await setup();
     const original = "alpha\nbeta\ngamma\ndelta";
     try {
@@ -759,7 +759,7 @@ test("{§edit-result-render} Engine.dispatch: writes log_entry with statement + 
     } finally { await db.close(); }
 });
 
-test("{§universal-read-composition} Engine.dispatch: READ against workspace:/// routes to Session.read", async () => {
+test("{§scheme-surface} Engine.dispatch: READ against workspace:/// routes to Session.read", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
@@ -813,7 +813,7 @@ test("{§problems-dispatch} Engine.dispatch: null path on path-required op retur
     } finally { await db.close(); }
 });
 
-test("{§op-execution-order} Engine.dispatch: multiple actions in one turn — log_entries sequence UNIQUE enforced", async () => {
+test("{§op-methods-op-dispatch} Engine.dispatch: multiple actions in one turn — log_entries sequence UNIQUE enforced", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
@@ -861,7 +861,7 @@ test("{§scheme-surface} Engine.dispatch: origin field captured in log", async (
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy or dispatch
 // returns 403 without invoking the handler.
 
-test("{§scheme-surface-writableby-403} Engine.dispatch: a writer outside writableBy is rejected 403 without invoking the handler", async () => {
+test("{§scheme-surface} Engine.dispatch: a writer outside writableBy is rejected 403 without invoking the handler", async () => {
     const { db, engine, env } = await setup();
     try {
         const turnId = await insertOperationTurn(db, env.loopId, 2, "client");
@@ -921,7 +921,7 @@ test("{§session-scheme} Engine.dispatch: an unrelated model writes named runtim
     } finally { await db.close(); }
 });
 
-test("{§scheme-surface-writableby-403} Engine.dispatch: model READ log:/// is NOT gated by writableBy (read-side op)", async () => {
+test("{§scheme-surface} Engine.dispatch: model READ log:/// is NOT gated by writableBy (read-side op)", async () => {
     const { db, engine, env } = await setup();
     try {
         // Log scheme has no read() handler yet, so this returns 501 — proves
@@ -935,7 +935,7 @@ test("{§scheme-surface-writableby-403} Engine.dispatch: model READ log:/// is N
     } finally { await db.close(); }
 });
 
-test("{§scheme-surface-writableby-403} Engine.dispatch: _plurnk EDIT log:/// is allowed by writableBy", async () => {
+test("{§scheme-surface} Engine.dispatch: _plurnk EDIT log:/// is allowed by writableBy", async () => {
     const { db, engine, env } = await setup();
     try {
         // Log has no edit() handler — so this returns 501 (not 403) when allowed.
@@ -948,7 +948,7 @@ test("{§scheme-surface-writableby-403} Engine.dispatch: _plurnk EDIT log:/// is
     } finally { await db.close(); }
 });
 
-test("{§scheme-surface-writableby-403} Engine.dispatch: an instance manifest enforces writableBy like a static manifest", async () => {
+test("{§scheme-surface} Engine.dispatch: an instance manifest enforces writableBy like a static manifest", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
     const schemes = new SchemeRegistry();
@@ -983,7 +983,7 @@ test("{§scheme-surface-writableby-403} Engine.dispatch: an instance manifest en
     } finally { await db.close(); }
 });
 
-test("{§scheme-surface-exception-500} Engine.dispatch: a model reply needs no external capability", async () => {
+test("{§scheme-surface} Engine.dispatch: a model reply needs no external capability", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.injectIntoLoop(env.loopId, "Reply.", [], undefined, {}, "message://request/reply");
@@ -996,7 +996,7 @@ test("{§scheme-surface-exception-500} Engine.dispatch: a model reply needs no e
     } finally { await db.close(); }
 });
 
-// {§scheme-surface-exception-500} Scheme-handler
+// {§scheme-surface} Scheme-handler
 // exceptions finalize the action-entry at 500, not bubble up.
 
 test("{§problems-dispatch} Engine.dispatch: scheme handler that throws → action-entry at status 500 (action-entry-as-outcome)", async () => {
