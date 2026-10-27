@@ -1544,24 +1544,7 @@ test("{§acp-overview} {§acp-overview} {§acp-overview} {§acp-overview} {§acp
             });
             assert.equal(discovered.schemaVersion, 1);
             assert.ok(discovered.actions["workspace.mcp.list"]);
-            assert.doesNotThrow(() =>
-                Validator.assertAcpClientConformance(discovered, {
-                    schemaVersion: 1,
-                    client: "test-client",
-                    actions: Object.fromEntries(
-                        Object.keys(discovered.actions).map((k) => [
-                            k,
-                            { posture: "generic", dimensions: ["projection", "success", "failure"], evidence: ["test"] },
-                        ]),
-                    ),
-                    notifications: Object.fromEntries(
-                        Object.keys(discovered.notifications).map((k) => [
-                            k,
-                            { posture: "generic", dimensions: ["framing", "projection"], evidence: ["test"] },
-                        ]),
-                    ),
-                }),
-            );
+            Validator.assertAcpDiscovery(discovered);
 
             // 3. session.loops returns loop projections ({§acp-action-binding})
             const loops = await ctx.request<{ items?: unknown[] } | unknown[]>("_plurnk/action", {

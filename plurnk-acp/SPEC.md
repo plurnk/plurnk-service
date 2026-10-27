@@ -25,7 +25,7 @@ The module is the daemon's Standard ACP v2 (`@agentclientprotocol/sdk/experiment
 
 ## §acp-plurnk-metadata 4. Standard ACP v2 Event Projection
 
-Every daemon log entry and runtime notification projects to standard ACP v2 `SessionUpdate` variants on `session/update`, carrying Plurnk provenance in `_meta.plurnk` (`withoutBodies(attrs)` and `addressOf(op, attrs)` on row updates; `{ status, budget, workspace, providers }` on `usage_update` and session responses; `{ terminal }` with physical-request accounting on idle `state_update`; `{ problem }` on `RequestError.data`):
+Every daemon log entry and runtime notification projects to standard ACP v2 `SessionUpdate` variants on `session/update`, carrying Plurnk provenance in `_meta.plurnk` (`addressOf(op, attrs)` and body-stripped `attrs` on row updates; `{ status, budget, workspace, providers }` on `usage_update` and session responses; `{ terminal }` with physical-request accounting on idle `state_update`; `{ problem }` on `RequestError.data`):
 
 | Daemon source | Standard ACP v2 `SessionUpdate` |
 |---|---|

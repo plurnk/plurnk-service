@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as Contracts from "./index.ts";
-import { UNKNOWN_POSITION, Validator } from "./index.ts";
+import { UNKNOWN_POSITION } from "./index.ts";
 import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
 
 test("{§capability-policy-cascade} ProposalProjection's op keywords are the closed operation alphabet; a runtime tag is the other branch", () => {
@@ -11,43 +11,11 @@ test("{§capability-policy-cascade} ProposalProjection's op keywords are the clo
 
 test("{§whitespace-contract} the package root exposes exactly the supported runtime values", () => {
     assert.deepEqual(Object.keys(Contracts).toSorted(), [
-        "APPLICATION_NOTIFICATIONS",
         "CapabilityAdmission",
         "EFFORTS",
         "INTERNAL_ROW_OPS",
-        "InvalidAcpClientConformanceError",
-        "InvalidAcpConformanceKitError",
-        "InvalidAcpDiscoveryError",
-        "InvalidCapabilityDescriptorError",
-        "InvalidCapabilityPolicyError",
-        "InvalidClientDisplayCapabilitiesError",
-        "InvalidClientInteractionProjectionError",
-        "InvalidClientInteractionRequestError",
-        "InvalidClientInteractionResolutionError",
-        "InvalidEffortError",
-        "InvalidEntryReadResultError",
-        "InvalidFunctionalityDiscoverResultError",
-        "InvalidFunctionalityListResultError",
-        "InvalidFunctionalityMutationResultError",
-        "InvalidJsonSchemaInstanceError",
-        "InvalidMcpOAuthError",
-        "InvalidMcpServerDefinitionError",
-        "InvalidModelCatalogPageError",
-        "InvalidModelCatalogQueryError",
-        "InvalidModelReadinessError",
-        "InvalidModelRouteError",
-        "InvalidNoticeError",
         "InvalidOperationResultError",
-        "InvalidParsedPathError",
-        "InvalidPlurnkStatementError",
         "InvalidProblemDetailsError",
-        "InvalidProblemProjectionError",
-        "InvalidProposalProjectionError",
-        "InvalidRangeExtentError",
-        "InvalidRollbackReportError",
-        "InvalidSessionOwnerError",
-        "InvalidSkillDefinitionError",
-        "InvalidTextRegionError",
         "MAX_TIMER_MS",
         "PLURNK_FENCE",
         "PLURNK_OPS",
@@ -61,14 +29,12 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "TurnDisposition",
         "UNKNOWN_POSITION",
         "Validator",
-        "acpConformanceReport",
         "addressOf",
         "errnoCode",
         "excerptOf",
         "formatJsonDocument",
         "isExecution",
         "isExecutionOp",
-        "isLogEntryNotification",
         "isPlurnkOp",
         "isRecord",
         "isSafeInteger",
@@ -76,7 +42,6 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "renderJsonResult",
         "requestOrigin",
         "selectSessionLoop",
-        "withoutBodies",
         "writtenOp",
     ]);
 });
@@ -91,5 +56,4 @@ test("{§operation-fences} isPlurnkOp admits the operation alphabet and nothing 
 test("{§parse-recovery} unknown statement position is one frozen contracts-owned value", () => {
     assert.deepEqual(UNKNOWN_POSITION, { line: 0, column: 0 });
     assert.equal(Object.isFrozen(UNKNOWN_POSITION), true);
-    assert.equal(Validator.validatePosition(UNKNOWN_POSITION).valid, true);
 });

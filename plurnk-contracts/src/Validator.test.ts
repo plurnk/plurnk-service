@@ -1,12 +1,13 @@
 import test, { describe } from "node:test";
 import assert from "node:assert/strict";
-import Validator, { InvalidClientInteractionProjectionError, InvalidClientInteractionRequestError, InvalidClientInteractionResolutionError, InvalidClientDisplayCapabilitiesError, InvalidCapabilityDescriptorError, InvalidCapabilityPolicyError, InvalidFunctionalityListResultError, InvalidSessionOwnerError, InvalidPlurnkStatementError, InvalidMcpServerDefinitionError, InvalidMcpOAuthError, InvalidModelCatalogPageError, InvalidModelCatalogQueryError, InvalidModelReadinessError, InvalidModelRouteError, InvalidNoticeError, InvalidOperationResultError, InvalidProblemDetailsError, InvalidProposalProjectionError, InvalidRangeExtentError, InvalidEffortError, InvalidSkillDefinitionError, InvalidTextRegionError } from "./Validator.ts";
+import Validator, { InvalidOperationResultError, InvalidProblemDetailsError } from "./Validator.ts";
 import Problems from "./Problems.ts";
 import CapabilityAdmission from "./CapabilityAdmission.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
 import { PROPOSAL_POLICIES, UNKNOWN_POSITION, SESSION_NAME } from "./types.ts";
 import { type CapabilityPolicy, type ClientDisplayCapabilities, type McpOAuth, type McpServerDefinition, type ModelCatalogPage, type RangeExtent, type CapabilityDescriptor } from "./types.generated.ts";
 import { errnoCode, isRecord, isSafeInteger } from "./guards.ts";
+import applicationOperationEventSchema from "../schema/ApplicationOperationEvent.json" with { type: "json" };
 
 describe("Validator", () => {
 test("{§configuration-repair-path} lifecycle and discovery share source identifiers independently of ownership and readiness", () => {
@@ -20,7 +21,7 @@ test("{§configuration-repair-path} lifecycle and discovery share source identif
         const result = { family: "mcp", definitions: [definition] };
         assert.deepEqual(Validator.assertFunctionalityListResult(result), result);
         for (const invalid of [{ kind: "environment" }, { source: "" }, { ...provenance, value: "secret-value" }]) {
-            assert.throws(() => Validator.assertFunctionalityListResult({ ...result, definitions: [{ ...definition, provenance: invalid }] }), InvalidFunctionalityListResultError);
+            assert.throws(() => Validator.assertFunctionalityListResult({ ...result, definitions: [{ ...definition, provenance: invalid }] }), TypeError);
         }
     }
     const discovery = { family: "mcp", candidates: [{ definition: {}, provenance }] };
@@ -33,9 +34,9 @@ test("{§agent-skills-directory}: wire definitions admit Unicode and digit-leadi
         assert.deepEqual(Validator.assertSkillDefinition(definition), definition);
     }
     for (const name of ["", "CAFÉ", "ǅemo", "Ⅳ", "caf--é", "-café", "café-", "caf_e", "cafe\u0301", "hello world", "𐐨".repeat(65)]) {
-        assert.throws(() => Validator.assertSkillDefinition({ name }), InvalidSkillDefinitionError, name);
+        assert.throws(() => Validator.assertSkillDefinition({ name }), TypeError, name);
     }
-    assert.throws(() => Validator.assertSkillDefinition({ name: "review", source: "/srv/review", scope: "project" }), InvalidSkillDefinitionError,
+    assert.throws(() => Validator.assertSkillDefinition({ name: "review", source: "/srv/review", scope: "project" }), TypeError,
         "source locations do not introduce installation scopes");
 });
 
@@ -47,7 +48,7 @@ test("{§oauth-continuation}: an authentication challenge needs no URL until the
     for (const authorization of [undefined, { url: null }, { redirectUrl: "http://127.0.0.1:9876/callback" }]) {
         assert.throws(() => Validator.assertFunctionalityListResult({ family: "mcp", definitions: [{
             alias: "remote", origin: "workspace", state: "authorization-required", ...(authorization === undefined ? {} : { authorization }),
-        }] }), InvalidFunctionalityListResultError);
+        }] }), TypeError);
     }
 });
 
@@ -86,7 +87,7 @@ test("{§capability-policy-cascade}: model routes and bounded catalog pages pres
     );
     assert.throws(
         () => Validator.assertModelRoute({ alias: "", provider: "google", model: "gemini" }),
-        InvalidModelRouteError,
+        TypeError,
     );
     assert.throws(
         () => Validator.assertModelRoute({
@@ -95,7 +96,7 @@ test("{§capability-policy-cascade}: model routes and bounded catalog pages pres
             model: "local",
             baseUrl: "http://private-host.internal/v1",
         }),
-        InvalidModelRouteError,
+        TypeError,
         "daemon-owned endpoint configuration never crosses the client wire",
     );
 
@@ -105,7 +106,7 @@ test("{§capability-policy-cascade}: model routes and bounded catalog pages pres
     );
     assert.throws(
         () => Validator.assertModelCatalogQuery({ limit: 101 }),
-        InvalidModelCatalogQueryError,
+        TypeError,
     );
 
     const unavailable = {
@@ -127,11 +128,11 @@ test("{§capability-policy-cascade}: model routes and bounded catalog pages pres
     );
     assert.throws(
         () => Validator.assertModelReadiness({ ready: true, causes: unavailable.causes }),
-        InvalidModelReadinessError,
+        TypeError,
     );
     assert.throws(
         () => Validator.assertModelReadiness({ ready: false, causes: [] }),
-        InvalidModelReadinessError,
+        TypeError,
     );
 
     const page: ModelCatalogPage = {
@@ -162,7 +163,7 @@ test("{§capability-policy-cascade}: model routes and bounded catalog pages pres
     const { efforts: _policies, ...withoutPolicies } = page.items[0].capabilities;
     assert.throws(
         () => Validator.assertModelCatalogPage({ ...page, items: [{ ...page.items[0], capabilities: withoutPolicies }] }),
-        InvalidModelCatalogPageError,
+        TypeError,
     );
     for (const efforts of [[], ["adaptive", "adaptive"], ["minimal"], ["on"]]) {
         assert.throws(
@@ -170,20 +171,20 @@ test("{§capability-policy-cascade}: model routes and bounded catalog pages pres
                 ...page,
                 items: [{ ...page.items[0], capabilities: { ...page.items[0].capabilities, efforts } }],
             }),
-            InvalidModelCatalogPageError,
+            TypeError,
             "catalog choices are present, unique, and members of the portable policy vocabulary",
         );
     }
     assert.throws(
         () => Validator.assertModelCatalogPage({ ...page, nextOffset: 0 }),
-        InvalidModelCatalogPageError,
+        TypeError,
     );
     assert.throws(
         () => Validator.assertModelCatalogPage({
             ...page,
             items: [{ ...page.items[0], selector: "google/a-different-model" }],
         }),
-        InvalidModelCatalogPageError,
+        TypeError,
     );
 });
 
@@ -192,7 +193,7 @@ test("{§capability-policy-cascade}: effort is the exact shared portable vocabul
         assert.equal(Validator.assertEffort(policy), policy);
     }
     for (const invalid of ["on", "minimal", "ultra", "", null]) {
-        assert.throws(() => Validator.assertEffort(invalid), InvalidEffortError);
+        assert.throws(() => Validator.assertEffort(invalid), TypeError);
     }
 });
 
@@ -239,19 +240,19 @@ test("{§provider-request-accounting} client interactions carry one generic tool
 
     assert.throws(
         () => Validator.assertClientInteractionRequest({ ...formRequest, requestState: "private" }),
-        InvalidClientInteractionRequestError,
+        TypeError,
     );
     assert.throws(
         () => Validator.assertClientInteractionProjection({ ...projection, workspaceId: 9 }),
-        InvalidClientInteractionProjectionError,
+        TypeError,
     );
     assert.throws(
         () => Validator.assertClientInteractionResolution({ action: "cancel", content: {} }),
-        InvalidClientInteractionResolutionError,
+        TypeError,
     );
     assert.throws(
         () => Validator.assertClientInteractionResolution({ action: "decline", content: {} }),
-        InvalidClientInteractionResolutionError,
+        TypeError,
     );
 });
 
@@ -275,7 +276,7 @@ test("{§mcp-server-definition}: MCP definitions contain transport and authoriza
         { name: "Upper", type: "stdio", command: "npx" },
         { name: "scheme", type: "streamable-http", url: "ftp://example.com/mcp" },
     ]) {
-        assert.throws(() => Validator.assertMcpServerDefinition(invalid), InvalidMcpServerDefinitionError, JSON.stringify(invalid));
+        assert.throws(() => Validator.assertMcpServerDefinition(invalid), TypeError, JSON.stringify(invalid));
     }
 });
 
@@ -297,7 +298,7 @@ test("{§mcp-server-definition}: MCP OAuth takes exactly one identity mode, and 
         { type: "client-credentials", clientId: "session", clientSecret: "literal-secret" },
         { type: "bearer", token: "${TOKEN}" },
     ]) {
-        assert.throws(() => Validator.assertMcpOAuth(invalid), InvalidMcpOAuthError, JSON.stringify(invalid));
+        assert.throws(() => Validator.assertMcpOAuth(invalid), TypeError, JSON.stringify(invalid));
     }
 });
 
@@ -315,7 +316,7 @@ test("{§mcp-server-definition}: an interactive sign-in may bind its issuer and 
         { type: "oauth", issuer: "accounts.example.com" },
         { type: "client-credentials", clientId: "session", clientSecret: "${SESSION_SECRET}", authorizationParams: { access_type: "offline" } },
     ]) {
-        assert.throws(() => Validator.assertMcpOAuth(invalid), InvalidMcpOAuthError, JSON.stringify(invalid));
+        assert.throws(() => Validator.assertMcpOAuth(invalid), TypeError, JSON.stringify(invalid));
     }
 });
 
@@ -334,7 +335,7 @@ test("{§mcp-server-definition} ClientDisplayCapabilities admits only discrimina
     ]) {
         assert.throws(
             () => Validator.assertClientDisplayCapabilities(invalid),
-            InvalidClientDisplayCapabilitiesError,
+            TypeError,
         );
     }
 });
@@ -346,7 +347,6 @@ test("{§text-region} TextRegion requires complete ordered Unicode text coordina
         endLine: 4,
         endColumn: 1,
     };
-    assert.equal(Validator.validateTextRegion(region).valid, true);
     assert.equal(Validator.assertTextRegion(region), region);
     for (const invalid of [
         { startLine: 1, startColumn: 1, endLine: 1 },
@@ -357,7 +357,7 @@ test("{§text-region} TextRegion requires complete ordered Unicode text coordina
     ]) {
         assert.throws(
             () => Validator.assertTextRegion(invalid),
-            InvalidTextRegionError,
+            TypeError,
         );
     }
 });
@@ -369,7 +369,6 @@ test("{§text-region}: RangeExtent has one compact, bounded selection shape", ()
         requested: [1, 16],
         returned: [1, 16],
     };
-    assert.equal(Validator.validateRangeExtent(extent).valid, true);
     assert.equal(Validator.assertRangeExtent(extent), extent);
     assert.deepEqual(
         Validator.assertRangeExtent({ unit: "line", total: 20, requested: [0.5, 0.5] }),
@@ -386,7 +385,7 @@ test("{§text-region}: RangeExtent has one compact, bounded selection shape", ()
     ]) {
         assert.throws(
             () => Validator.assertRangeExtent(invalid),
-            InvalidRangeExtentError,
+            TypeError,
         );
     }
 });
@@ -420,7 +419,6 @@ test("{§diagnostic-observation} Notice accepts open producer observations and t
             level: "info",
         },
     ] as const) {
-        assert.equal(Validator.validateNotice(notice).valid, true);
         assert.equal(Validator.assertNotice(notice), notice);
     }
 });
@@ -445,12 +443,8 @@ test("{§diagnostic-observation} Notice rejects missing and malformed contract f
             position: { type: "content-offset", line: 0, column: 0 },
         },
     ]) {
-        assert.equal(Validator.validateNotice(notice).valid, false);
+        assert.throws(() => Validator.assertNotice(notice), TypeError);
     }
-    assert.throws(
-        () => Validator.assertNotice({ source: "grammar", kind: "parse_error" }),
-        InvalidNoticeError,
-    );
 });
 
 test("{§diagnostic-observation} ProblemDetails accepts an RFC 9457 occurrence with factual extensions", () => {
@@ -466,7 +460,6 @@ test("{§diagnostic-observation} ProblemDetails accepts an RFC 9457 occurrence w
         recovery: "Correct or remove the matcher.",
         retryable: false,
     };
-    assert.equal(Validator.validateProblemDetails(problem).valid, true);
     assert.equal(Validator.assertProblemDetails(problem), problem);
 });
 
@@ -552,11 +545,14 @@ test("{§diagnostic-observation} Problems projects one exact Problem without row
             range: { unit: "line", total: 8, requested: [99, 99] },
         },
     );
-    assert.equal(Validator.validateProblemProjection({
-        type: problem.type,
-        detail: problem.detail,
-        title: problem.title,
-    }).valid, false);
+    assert.throws(
+        () => Validator.assertProblemProjection({
+            type: problem.type,
+            detail: problem.detail,
+            title: problem.title,
+        }),
+        TypeError,
+    );
 });
 
 test("{§diagnostic-observation} Problems rejects a status contradiction and leaves exact instance identity outside the projection", () => {
@@ -575,24 +571,24 @@ test("{§diagnostic-observation} Problems rejects a status contradiction and lea
 });
 
 test("{§diagnostic-observation} ProblemDetails rejects missing fields and non-absolute type URIs", () => {
-    assert.equal(Validator.validateProblemDetails({ status: 404 }).valid, false);
-    assert.equal(Validator.validateProblemDetails({
-        type: "not-an-absolute-uri",
-        title: "Not found",
-        status: 404,
-        detail: "Missing.",
-    }).valid, false);
-    assert.throws(
-        () => Validator.assertProblemDetails({ status: 404 }),
-        InvalidProblemDetailsError,
-    );
-    assert.equal(Validator.validateProblemDetails({
-        type: "https://problems.plurnk.xyz/scheme/file/not-found",
-        title: "Not found",
-        status: 404,
-        detail: "Missing.",
-        recovery: "",
-    }).valid, false);
+    for (const invalid of [
+        { status: 404 },
+        {
+            type: "not-an-absolute-uri",
+            title: "Not found",
+            status: 404,
+            detail: "Missing.",
+        },
+        {
+            type: "https://problems.plurnk.xyz/scheme/file/not-found",
+            title: "Not found",
+            status: 404,
+            detail: "Missing.",
+            recovery: "",
+        },
+    ]) {
+        assert.throws(() => Validator.assertProblemDetails(invalid), InvalidProblemDetailsError);
+    }
 });
 
 test("{§diagnostic-observation} OperationResult discriminates successes and RFC 9457 failures", () => {
@@ -621,7 +617,6 @@ test("{§diagnostic-observation} OperationResult discriminates successes and RFC
         },
         { status: 200, range: { unit: "line", total: 2, requested: [1, 16], complete: true } },
     ]) {
-        assert.equal(Validator.validateOperationResult(invalid).valid, false);
         assert.throws(() => Validator.assertOperationResult(invalid), InvalidOperationResultError);
     }
 });
@@ -642,11 +637,10 @@ test("{§diagnostic-observation} OperationResult rejects mismatched envelope and
         status: 200,
         range: { unit: "line", total: 2, requested: [1, 16], returned: [1, 3] },
     };
-    assert.equal(Validator.validateOperationResult(malformedRange).valid, true);
     assert.throws(
         () => Validator.assertOperationResult(malformedRange),
         (error: unknown) => error instanceof InvalidOperationResultError
-            && error.cause instanceof InvalidRangeExtentError,
+            && error.cause instanceof TypeError,
     );
 });
 
@@ -667,8 +661,7 @@ test("{§capability-policy-cascade} CapabilityPolicy accepts only its canonical 
     assert.equal(Validator.assertCapabilityPolicy(capabilities), capabilities);
 
     for (const invalid of [{}, { operation: "READ", extra: true }, { traits: ["WEB"] }]) {
-        assert.equal(Validator.validateCapabilityDescriptor(invalid).valid, false);
-        assert.throws(() => Validator.assertCapabilityDescriptor(invalid), InvalidCapabilityDescriptorError);
+        assert.throws(() => Validator.assertCapabilityDescriptor(invalid), TypeError);
     }
     for (const invalid of [
         { deny: [{}] },
@@ -676,8 +669,7 @@ test("{§capability-policy-cascade} CapabilityPolicy accepts only its canonical 
         { deny: [{ operation: "JUMP" }] },
         { extra: [] },
     ]) {
-        assert.equal(Validator.validateCapabilityPolicy(invalid).valid, false);
-        assert.throws(() => Validator.assertCapabilityPolicy(invalid), InvalidCapabilityPolicyError);
+        assert.throws(() => Validator.assertCapabilityPolicy(invalid), TypeError);
     }
 });
 
@@ -687,8 +679,7 @@ test("{§session-ownership}: owner declarations require an address, explicit sup
         assert.equal(Validator.assertSessionOwner(owner), owner);
     }
     for (const invalid of [{}, { address: "" , tools: [], interactive: false }, { address: "owner", interactive: false }, { address: "owner", tools: [] }, { address: "owner", tools: [], interactive: "yes" }, { address: "owner", tools: ["question", "question"], interactive: true }, { address: "owner", tools: [42], interactive: true }, { address: "owner", tools: [], interactive: false, undeclared: true }, null, []]) {
-        assert.equal(Validator.validateSessionOwner(invalid).valid, false);
-        assert.throws(() => Validator.assertSessionOwner(invalid), InvalidSessionOwnerError);
+        assert.throws(() => Validator.assertSessionOwner(invalid), TypeError);
     }
     assert.deepEqual(PROPOSAL_POLICIES, ["review", "accept", "reject"]);
 });
@@ -740,11 +731,7 @@ test("{§capability-policy-cascade} ProposalProjection validates one complete di
         { ...proposal, target: { scheme: null, pathname: null } },
         { ...proposal, workspaceId: 9 },
     ]) {
-        assert.equal(Validator.validateProposalProjection(invalid).valid, false);
-        assert.throws(
-            () => Validator.assertProposalProjection(invalid),
-            InvalidProposalProjectionError,
-        );
+        assert.throws(() => Validator.assertProposalProjection(invalid), TypeError);
     }
 });
 
@@ -799,7 +786,6 @@ test("{§text-region} EntryReadResult validates one exact client entry projectio
         },
         { status: failure.status, entry: null },
     ]) {
-        assert.equal(Validator.validateEntryReadResult(invalid).valid, false);
         assert.throws(
             () => Validator.assertEntryReadResult(invalid),
             /invalid EntryReadResult/,
@@ -810,7 +796,42 @@ test("{§text-region} EntryReadResult validates one exact client entry projectio
 test("{§text-region} assertPlurnkStatement returns the statement its schema accepts and refuses the rest", () => {
     const note = { op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body: "kept", position: UNKNOWN_POSITION };
     assert.equal(Validator.assertPlurnkStatement(note), note);
-    assert.throws(() => Validator.assertPlurnkStatement({ op: "NOTE" }), InvalidPlurnkStatementError);
+    assert.throws(() => Validator.assertPlurnkStatement({ op: "NOTE" }), TypeError);
+});
+
+test("{§contract-representations}: dynamic schemas resolve contracts-owned references", () => {
+    assert.doesNotThrow(() => Validator.assertJsonSchemaInstance(
+        "MCP extension input",
+        {
+            type: "object",
+            required: ["oauth"],
+            additionalProperties: false,
+            properties: {
+                oauth: { $ref: "https://schemas.plurnk.xyz/v0/McpOAuth.json" },
+            },
+        },
+        { oauth: { type: "oauth", redirectUrl: "http://127.0.0.1:8765/callback" } },
+    ));
+});
+
+test("{§notifications} dispatch observations preserve the phase/result boundary", () => {
+    const start = {
+        sessionId: 7, loopId: 9, turnId: 11, sequence: 2, origin: "model", projectRoot: null, phase: "started",
+        statement: { op: "READ", target: { kind: "local", raw: "README.md" },
+            aside: null, metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION },
+    };
+    const validate = (value: unknown) => Validator.validateJsonSchemaInstance(applicationOperationEventSchema, value);
+    for (const value of [start, { ...start, phase: "settled", result: { status: 200, content: "read body" } }]) {
+        const result = validate(value);
+        assert.equal(result.valid, true, JSON.stringify(result.errors));
+    }
+    for (const value of [
+        { ...start, result: { status: 200 } },
+        { ...start, phase: "settled" },
+        { ...start, phase: "finished" },
+        { ...start, sequence: 0 },
+        { ...start, origin: "guessed-client" },
+    ]) assert.equal(validate(value).valid, false, JSON.stringify(value));
 });
 });
 
@@ -895,7 +916,7 @@ test("{§capability-policy-cascade} policy intersection preserves conjunctive on
     }
 });
 
-test("{§capability-policy-cascade} {§capability-policy-cascade} allow pre-approves admitted demands and never overrides service deny or only ceilings", () => {
+test("{§capability-policy-cascade} allow pre-approves admitted demands and never overrides service deny or only ceilings", () => {
     const service: CapabilityPolicy = {
         only: [{ scheme: "file" }, { runtime: "brave" }],
         deny: [{ tool: "brave_web_search" }],

@@ -23,7 +23,7 @@ import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWith
 import { digestStems, packetSection, logEntries } from "./_packet.ts";
 import { copyFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { type KillStatement, InvalidCapabilityPolicyError, Validator } from "@plurnk/plurnk-contracts";
+import { type KillStatement, Validator } from "@plurnk/plurnk-contracts";
 import { urlPath, readStmt, completeStmt, copyStmt, editStmt, findStmt, regex, noteStmt } from "./_dsl.ts";
 import { missingDigestDirs, recoverDigest } from "../../bin/digest-missing.ts";
 import { clientRead } from "./_client-read.ts";
@@ -3126,7 +3126,7 @@ test("{§capability-admission}: packet assembly surfaces invalid workspace polic
             (error: unknown) => {
                 assert.ok(error instanceof Error);
                 assert.equal(error.message, `Workspace ${workspaceId} has invalid persisted capability policy.`);
-                assert.ok(error.cause instanceof InvalidCapabilityPolicyError);
+                assert.ok(error.cause instanceof TypeError);
                 return true;
             },
         );

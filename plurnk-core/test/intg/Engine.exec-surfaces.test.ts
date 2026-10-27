@@ -15,7 +15,7 @@ import { rpcCall, connect, withDaemon, runLoopToTerminal, waitFor } from "./_rpc
 import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
-import { isExecutionOp, type KillStatement, InvalidNoticeError, type Notice } from "@plurnk/plurnk-contracts";
+import { isExecutionOp, type KillStatement, type Notice } from "@plurnk/plurnk-contracts";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
 import { sendStmt, urlPath, noteStmt, completeStmt, execStmt, dispositionStmt, readStmt } from "./_dsl.ts";
 import { type Executor } from "@plurnk/plurnk-execs";
@@ -862,7 +862,7 @@ test("{§operation-results} a runtime-JavaScript notice without severity fails a
         assert.deepEqual(notices, [], "invalid third-party output is rejected before fan-out");
         assert.equal(diagnostics.length, 1, "the boundary reports the contract failure once");
         assert.match(String(diagnostics[0]?.[0]), new RegExp(`Executor '${tag}' threw outside its operation result contract`));
-        assert.ok(diagnostics[0]?.[1] instanceof InvalidNoticeError, "the contracts validator error remains the reported cause");
+        assert.ok(diagnostics[0]?.[1] instanceof TypeError, "the contracts validator error remains the reported cause");
     } finally { await db.close(); }
 });
 

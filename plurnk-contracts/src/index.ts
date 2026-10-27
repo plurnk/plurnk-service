@@ -2,39 +2,8 @@
 // themselves are published at `./schema/*.json`, never re-exported here as values.
 export {
     default as Validator,
-    InvalidCapabilityDescriptorError,
-    InvalidCapabilityPolicyError,
-    InvalidSessionOwnerError,
-    InvalidNoticeError,
     InvalidOperationResultError,
-    InvalidEntryReadResultError,
     InvalidProblemDetailsError,
-    InvalidProblemProjectionError,
-    InvalidProposalProjectionError,
-    InvalidRangeExtentError,
-    InvalidTextRegionError,
-    InvalidClientDisplayCapabilitiesError,
-    InvalidMcpServerDefinitionError,
-    InvalidSkillDefinitionError,
-    InvalidMcpOAuthError,
-    InvalidClientInteractionRequestError,
-    InvalidClientInteractionProjectionError,
-    InvalidClientInteractionResolutionError,
-    InvalidEffortError,
-    InvalidModelCatalogPageError,
-    InvalidModelCatalogQueryError,
-    InvalidFunctionalityListResultError,
-    InvalidFunctionalityDiscoverResultError,
-    InvalidFunctionalityMutationResultError,
-    InvalidRollbackReportError,
-    InvalidModelReadinessError,
-    InvalidModelRouteError,
-    InvalidAcpClientConformanceError,
-    InvalidAcpConformanceKitError,
-    InvalidAcpDiscoveryError,
-    InvalidJsonSchemaInstanceError,
-    InvalidParsedPathError,
-    InvalidPlurnkStatementError,
 } from "./Validator.ts";
 export { default as Problems } from "./Problems.ts";
 export { errnoCode, isRecord, isSafeInteger } from "./guards.ts";
@@ -51,21 +20,17 @@ export { default as CapabilityAdmission } from "./CapabilityAdmission.ts";
 export { renderJsonResult } from "./JsonResult.ts";
 export { formatJsonDocument } from "./JsonDocument.ts";
 export type { JsonReplacer } from "./JsonResult.ts";
-export { acpConformanceReport } from "./AcpConformance.ts";
 export { requestOrigin } from "./HttpOrigin.ts";
 export type { RequestHeaders } from "./HttpOrigin.ts";
-export { addressOf, withoutBodies } from "./LogRow.ts";
-export {
-    APPLICATION_NOTIFICATIONS,
-    isLogEntryNotification,
-    type ApplicationNotificationContract,
-    type LogEntryNotification,
-    type OutsideEventNotification,
-    type ProposalNotification,
-    type ReasoningEventNotification,
-    type TerminatedNotification,
+export { addressOf } from "./LogRow.ts";
+export type {
+    ApplicationNotificationContract,
+    LogEntryNotification,
+    OutsideEventNotification,
+    ProposalNotification,
+    ReasoningEventNotification,
+    TerminatedNotification,
 } from "./ApplicationNotifications.ts";
-export type { AcpConformanceRow } from "./AcpConformance.ts";
 // {§whitespace-contract} The application port is Node-bound and is its own entry, `@plurnk/plurnk-contracts/port`.
 export type * from "./Application.ts";
 export type * from "./Functionality.ts";

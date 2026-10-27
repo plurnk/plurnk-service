@@ -6,12 +6,10 @@ import { copyFileSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 let copied = 0;
-for (const source of ["schema", "conformance"]) {
-    const target = join("dist", source);
-    mkdirSync(target, { recursive: true });
-    for (const file of readdirSync(source).filter((candidate) => candidate.endsWith(".json"))) {
-        copyFileSync(join(source, file), join(target, file));
-        copied++;
-    }
+const target = join("dist", "schema");
+mkdirSync(target, { recursive: true });
+for (const file of readdirSync("schema").filter((candidate) => candidate.endsWith(".json"))) {
+    copyFileSync(join("schema", file), join(target, file));
+    copied++;
 }
 process.stdout.write(`Copied ${copied} contract JSON resources to dist\n`);

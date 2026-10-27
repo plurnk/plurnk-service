@@ -14,13 +14,12 @@
 | Exterior adapter application calls | `ApplicationPort`, from `@plurnk/plurnk-contracts/port` |
 | Workspace MCP and Agent Skills definitions | `McpServerDefinition`, `McpOAuth`, `SkillDefinition` |
 | Session Functionality lifecycle projections | `FunctionalityProvenance`, `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
-| ACP discovery, client accounting, and conformance specimens | `AcpDiscovery`, `AcpClientConformance`, `AcpConformanceKit` |
+| ACP discovery manifest | `AcpDiscovery` |
 | JSON Schemas and JSON rendering | `@plurnk/plurnk-contracts/schema/*.json`, `renderJsonResult`, `formatJsonDocument` |
 | Model language reference | `plurnk.md` in the package |
 
 - **Authoritative representations**: JSON Schema is authoritative for shared wire data shapes; TypeScript types are generated from `schema/*.json`; ANTLR grammars in `@plurnk/plurnk-parser` are authoritative for accepted model-language syntax.
 - **ACP discovery and schema enforcement**: `AcpDiscovery` enumerates the installed ACP v2 actions (`scope`, `inputSchema`, `outputSchema`), notifications (`payloadSchema`), and `display` capabilities. Boundary validators enforce these schemas without mutating them and report structured validation `issues` in RFC 9457 Problem `detail`.
-- **ACP client conformance and conformance kit**: `AcpClientConformance` accounts for every action and notification in `AcpDiscovery` as `native`, `generic`, or `unsupported` with verified evidence paths checked by `acpConformanceReport`. `AcpConformanceKit` provides the shared corpus of SSE framing and lifecycle sequences.
 - **JSON result and document presentation**: `renderJsonResult` formats compact aggregate operation rows (placing top-level array items on individual lines without rewriting stored JSON coordinates). `formatJsonDocument` performs two-space whitespace-only formatting of complete strict JSON documents before representation storage.
 
 ### §capability-policy-cascade Capability admission, proposals, and model catalog

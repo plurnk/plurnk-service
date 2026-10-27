@@ -2035,7 +2035,7 @@ test("{§operation-results} ProblemLog persists one self-identifying RFC 9457 op
             ),
         });
 
-        assert.equal(Validator.validateOperationResult(minted.result).valid, true);
+        Validator.assertOperationResult(minted.result);
         assert.deepEqual(minted.result, {
             status: 409,
             problem: {

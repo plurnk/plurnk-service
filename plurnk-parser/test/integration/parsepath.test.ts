@@ -253,13 +253,15 @@ test("{§matcher-prefix-claims} the pinned JSONPath corpus covers every admissio
     assert.equal(cases.filter((item) => !item.selector.startsWith("$")).length, 1);
 });
 
+const matcherBodySchema = { $ref: "https://schemas.plurnk.xyz/v0/MatcherBody.json" };
+
 for (const item of corpus.tests) {
     test(`{§matcher-prefix-claims} JSONPath CTS: ${item.name}`, () => {
         if (item.invalid_selector) assert.throws(() => engine.compile(item.selector), JSONPathError);
         else assert.doesNotThrow(() => engine.compile(item.selector));
 
         if (/[\r\n]/u.test(item.selector)) {
-            assert.equal(Validator.validateMatcherBody({ dialect: "jsonpath", raw: item.selector }).valid, false);
+            assert.equal(Validator.validateJsonSchemaInstance(matcherBodySchema, { dialect: "jsonpath", raw: item.selector }).valid, false);
             return;
         }
         // Heading-line syntax separates the pattern from preceding slots and EOL by horizontal whitespace.
