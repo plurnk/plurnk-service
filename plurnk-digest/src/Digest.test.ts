@@ -1,15 +1,33 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import Digest from "./Digest.ts";
-import type { DigestEvidence } from "./evidence.ts";
-import DigestRender from "./DigestRender.ts";
+import type { DigestEvidence, EvidencePacket, EvidenceRows } from "./evidence.ts";
 import Share from "./Share.ts";
 
-// ─── Digest.test.ts ───
-{
+const emptyRows = (overrides: Partial<EvidenceRows> = {}): EvidenceRows => ({
+    workspaces: [], sessions: [], loops: [], turns: [], inferenceCalls: [], modelCalls: [],
+    turnAttempts: [], providerRequests: [], logEntries: [], editRows: [], emissionRows: [],
+    reasoningRows: [], curationEffects: [], sessionRollupRows: [], opMixRows: [], environmentRows: [],
+    searchState: { channel_entries: 0, derivation_complete: 0, unfinished: 0 },
+    derivationState: { complete: 0, building: 0 }, dispositionCounts: [], dispositions: [],
+    storage: { bytes: 0, free_bytes: 0, auto_vacuum: 0 }, storageTables: [],
+    ...overrides,
+});
+
+const emptyEvidence = (rows: Partial<EvidenceRows> = {}, packets = new Map<number, EvidencePacket>()): DigestEvidence => ({
+    rows: () => emptyRows(rows),
+    packet: (turn) => ({ packet: packets.get(turn.id) ?? null, packetFailure: null }),
+    response: () => null,
+    request: () => null,
+    reasoning: () => null,
+    textWeight: (text: string) => Math.ceil(text.length / 2),
+    [Symbol.dispose]: () => {},
+});
+
 test("{§digest-evidence-reader}: reports consume an independent reader without opening SQL or loading a daemon", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-digest-independent-"));
     t.after(() => rm(root, { recursive: true, force: true }));
@@ -22,14 +40,7 @@ test("{§digest-evidence-reader}: reports consume an independent reader without 
         assert.equal(path, dbPath);
         opened++;
         return {
-            rows: () => ({
-                workspaces: [], sessions: [], loops: [], turns: [], inferenceCalls: [], modelCalls: [],
-                turnAttempts: [], providerRequests: [], logEntries: [], editRows: [], emissionRows: [],
-                reasoningRows: [], curationEffects: [], sessionRollupRows: [], opMixRows: [], environmentRows: [],
-                searchState: { channel_entries: 0, derivation_complete: 0, unfinished: 0 },
-                derivationState: { complete: 0, building: 0 }, dispositionCounts: [], dispositions: [],
-                storage: { bytes: 0, free_bytes: 0, auto_vacuum: 0 }, storageTables: [],
-            }),
+            rows: () => emptyRows(),
             packet: unexpected, response: unexpected, request: unexpected, reasoning: unexpected,
             textWeight: unexpected,
             [Symbol.dispose]: () => { closed++; },
@@ -49,37 +60,176 @@ test("{§digest-evidence-reader}: reports consume an independent reader without 
     assert.equal(opened, 1, "a refused destination never opens evidence");
 });
 
+for (const kind of ["parent", "ancestor", "database", "input-alias", "output-alias", "linked-parent", "lexical-input-alias", "linked-input-parent"] as const) {
+    test(`{§share-packet-names}: ${kind} output cannot remove its input`, async (t) => {
+        const root = await mkdtemp(join(tmpdir(), "plurnk-digest-overlap-"));
+        t.after(() => rm(root, { recursive: true, force: true }));
+        const directory = join(root, "evidence");
+        await mkdir(directory);
+        const original = join(directory, "plurnk.db");
+        await writeFile(original, "sqlite-bytes");
+        await writeFile(join(directory, "witness.txt"), "preserve source evidence");
+        const before = await readFile(original);
+        let dbPath = original;
+        let digestDir = directory;
+        if (kind === "ancestor") digestDir = root;
+        if (kind === "database") digestDir = original;
+        if (kind === "input-alias") {
+            dbPath = join(root, "input.db");
+            await symlink(original, dbPath);
+        }
+        if (kind === "output-alias") {
+            digestDir = join(root, "output");
+            await symlink(directory, digestDir, "dir");
+        }
+        if (kind === "linked-parent") {
+            const alias = join(root, "alias");
+            await symlink(root, alias, "dir");
+            digestDir = join(alias, "evidence");
+        }
+        if (kind === "lexical-input-alias" || kind === "linked-input-parent") {
+            const external = join(root, "external.db");
+            await writeFile(external, "external-bytes");
+            dbPath = join(directory, "input.db");
+            await symlink(external, dbPath);
+            if (kind === "linked-input-parent") {
+                const alias = join(root, "input-directory");
+                await symlink(directory, alias, "dir");
+                dbPath = join(alias, "input.db");
+            }
+        }
+        let failure: unknown;
+        try { Digest.run({ openEvidence: () => emptyEvidence(), dbPath, digestDir }); }
+        catch (cause) { failure = cause; }
+        assert.equal(existsSync(original), true, "digest must preserve the database pathname");
+        assert.equal(existsSync(dbPath), true, "digest must preserve the caller's input pathname");
+        assert.ok((await readFile(original)).equals(before), "digest must preserve its input database bytes");
+        assert.equal(await readFile(join(directory, "witness.txt"), "utf8"), "preserve source evidence");
+        assert.ok(failure instanceof Error);
+        assert.equal(failure.message, `${resolve(digestDir)} already exists and is not an empty folder; remove it first`);
+    });
+}
+
+test("{§share-packet-names}: a sibling with the database's filename prefix is valid; an occupied folder is refused, never cleared", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-digest-sibling-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const dbPath = join(root, "evidence.db");
+    await writeFile(dbPath, "evidence");
+    const digestDir = join(root, "evidence");
+    await mkdir(digestDir);
+    await writeFile(join(digestDir, "stale.md"), "stale");
+    assert.throws(() => Digest.run({ openEvidence: () => emptyEvidence(), dbPath, digestDir }), { message: `${digestDir} already exists and is not an empty folder; remove it first` });
+    assert.equal(await readFile(join(digestDir, "stale.md"), "utf8"), "stale", "an occupied folder is never cleared");
+    await rm(join(digestDir, "stale.md"));
+    Digest.run({ openEvidence: () => emptyEvidence(), dbPath, digestDir });
+    assert.equal(existsSync(dbPath), true);
+    assert.deepEqual(JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")).workspaces, []);
+    Digest.run({ openEvidence: () => emptyEvidence(), dbPath, digestDir: join(digestDir, "nested") });
+    assert.equal(existsSync(join(digestDir, "nested", "digest.md")), true);
+});
+
+test("{§share-packet-names}: an empty output path is not the caller's working directory", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-digest-empty-output-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const dbPath = join(root, "plurnk.db");
+    await writeFile(dbPath, "not opened during output validation");
+    assert.throws(() => Digest.run({ openEvidence: () => emptyEvidence(), dbPath, digestDir: "" }), {
+        message: "output directory must not be empty",
+    });
+    assert.equal(await readFile(dbPath, "utf8"), "not opened during output validation");
+});
+
 test("{§share-packet-names}: a workspace selected alone is the digest's workspace though it holds no session", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-digest-empty-workspace-"));
     t.after(() => rm(root, { recursive: true, force: true }));
-    const unexpected = (): never => { throw new Error("an empty workspace has no heavy evidence"); };
-    const openEvidence = (): DigestEvidence => ({
-        rows: () => ({
-            workspaces: [{ id: 3, name: "empty" }, { id: 4, name: "elsewhere" }],
-            sessions: [{ id: 40, workspace_id: 4, name: "main", provider_identity: "mock", owner: "_plurnk" }],
-            loops: [], turns: [], inferenceCalls: [], modelCalls: [],
-            turnAttempts: [], providerRequests: [], logEntries: [], editRows: [], emissionRows: [],
-            reasoningRows: [], curationEffects: [], sessionRollupRows: [], opMixRows: [], environmentRows: [],
-            searchState: { channel_entries: 0, derivation_complete: 0, unfinished: 0 },
-            derivationState: { complete: 0, building: 0 }, dispositionCounts: [], dispositions: [],
-            storage: { bytes: 0, free_bytes: 0, auto_vacuum: 0 }, storageTables: [],
-        }),
-        packet: unexpected, response: unexpected, request: unexpected, reasoning: unexpected,
-        textWeight: unexpected,
-        [Symbol.dispose]: () => {},
-    });
     const dbPath = join(root, "evidence");
     await writeFile(dbPath, "");
     const digestDir = join(root, "report");
-    Digest.run({ dbPath, digestDir, openEvidence, workspaceId: 3 });
+    Digest.run({
+        dbPath,
+        digestDir,
+        workspaceId: 3,
+        openEvidence: () => emptyEvidence({
+            workspaces: [{ id: 3, name: "empty" }, { id: 4, name: "elsewhere" }],
+            sessions: [{ id: 40, workspace_id: 4, name: "main", provider_identity: "mock", owner: "_plurnk" }],
+        }),
+    });
     const report = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as { workspaces: Array<{ name: string }>; sessions: unknown[] };
     assert.deepEqual(report.workspaces.map(({ name }) => name), ["empty"]);
     assert.deepEqual(report.sessions, []);
 });
 
-// {§digest-forensic-fidelity} — the capacity contract's 413 rows never make a win degenerate (#1096).
-test("{§digest-forensic-fidelity}: a loop that concluded under a binding budget is CLEAN; one refusal beside its 413s is DEGENERATE-WIN with a count of one", async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "plurnk-digest-capacity-"));
+test("{§share-packet-names}: a workspace named by its path is slugged for its packet folder and named verbatim in the digest", async (t) => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-digest-names-"));
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const dbPath = join(dir, "plurnk.db");
+    await writeFile(dbPath, "evidence");
+    const packet: EvidencePacket = {
+        assistant: { content: "emission", reasoning: null },
+        assistantRaw: null,
+        attributions: [],
+        attachments: [],
+        weight: 1,
+        budget: null,
+        slot: (name) => name === "system" ? "You are a session." : "## Log\n\nturn 1",
+        messages: () => [
+            { role: "system", content: "You are a session." },
+            { role: "user", content: "## Log\n\nturn 1" },
+        ],
+    };
+    const packets = new Map<number, EvidencePacket>([[1, packet], [2, packet], [3, packet]]);
+    const digestDir = join(dir, "digest");
+    Digest.run({
+        dbPath,
+        digestDir,
+        openEvidence: () => emptyEvidence({
+            workspaces: [
+                { id: 1, name: "~/ptl/plurnk-service" },
+                { id: 2, name: "~/ptl/plurnk-service/" },
+                { id: 3, name: "service" },
+            ],
+            sessions: [
+                { id: 1, workspace_id: 1, name: "clerk9", provider_identity: "mock-1", owner: "_plurnk" },
+                { id: 2, workspace_id: 2, name: "scout", provider_identity: "mock-2", owner: "_plurnk" },
+                { id: 3, workspace_id: 3, name: "mx1", provider_identity: "mock-3", owner: "_plurnk" },
+            ],
+            loops: [
+                { id: 1, session_id: 1, sequence: 1, status: 200, prompt: "work", terminated_by: "model", terminal_result: null, claimed_at: null, terminated_at: null },
+                { id: 2, session_id: 2, sequence: 1, status: 200, prompt: "work", terminated_by: "model", terminal_result: null, claimed_at: null, terminated_at: null },
+                { id: 3, session_id: 3, sequence: 1, status: 200, prompt: "work", terminated_by: "model", terminal_result: null, claimed_at: null, terminated_at: null },
+            ],
+            turns: [
+                { id: 1, loop_id: 1, sequence: 1, producer: "model", kind: "inference", status: 200, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "mock", meta: "{}", program: "emission", outside: null, packetEchoes: 0 },
+                { id: 2, loop_id: 2, sequence: 1, producer: "model", kind: "inference", status: 200, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "mock", meta: "{}", program: "emission", outside: null, packetEchoes: 0 },
+                { id: 3, loop_id: 3, sequence: 1, producer: "model", kind: "inference", status: 200, timestamp: "2026-10-12T00:00:00Z", completed_at: "2026-10-12T00:00:01Z", has_packet: 1, has_reasoning: 0, finish_reason: "stop", model: "mock", meta: "{}", program: "emission", outside: null, packetEchoes: 0 },
+            ],
+            sessionRollupRows: [
+                { session_id: 1, loops: 1, turns: 1, last_status: 200 },
+                { session_id: 2, loops: 1, turns: 1, last_status: 200 },
+                { session_id: 3, loops: 1, turns: 1, last_status: 200 },
+            ],
+        }, packets),
+    });
+    const folders = (await readdir(digestDir, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).toSorted();
+    assert.ok(folders.includes("ptl-plurnk-service"), `the first path-named workspace slugs to ptl-plurnk-service: ${folders.join(", ")}`);
+    assert.ok(folders.some((name) => /^ptl-plurnk-service-\d+$/u.test(name)), `the second, slugging alike, carries its id: ${folders.join(", ")}`);
+    assert.ok(folders.includes("service"), "a name that can name a file is kept as it is");
+    assert.ok((await readdir(join(digestDir, "ptl-plurnk-service"))).some((name) => name.startsWith("clerk9-1-1")), "the session's packet files sit in the slugged folder");
+    const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
+    assert.match(markdown, /~\/ptl\/plurnk-service/u, "the digest text keeps the workspace's name verbatim");
+    const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as { turns: Array<{ artifact: string }> };
+    assert.ok(json.turns.some((turn) => turn.artifact === "ptl-plurnk-service/clerk9-1-1"), "digest.json records the slugged stem");
+    for (const { artifact } of json.turns) {
+        const page = await readFile(join(digestDir, `${artifact}.request.md`), "utf8");
+        assert.match(page, /\[Digest\]\(\.\.\/digest\.md\)/u);
+        assert.doesNotMatch(page, /\[(?:Previous|Next)\]/u, "navigation cannot cross sessions or workspaces");
+        assert.ok(markdown.includes(`](${artifact}.request.md)`));
+    }
+});
+
+// {§digest-forensic-fidelity} — the capacity contract's 413 rows and executor completion rows never make a win degenerate (#1096, #436).
+test("{§digest-forensic-fidelity}: a loop that concluded under a binding budget or over red commands is CLEAN; genuine refusals beside them count in health and errs", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-digest-health-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const problem = (type: string, status: number, detail: string) => JSON.stringify({ status, problem: { type: `https://problems.plurnk.xyz/${type}`, title: detail, status, detail } });
     const row = (id: number, origin: string, op: string, status_rx: number, rx: string) => ({
@@ -91,29 +241,28 @@ test("{§digest-forensic-fidelity}: a loop that concluded under a binding budget
         row(1, "model", "READ", 413, problem("engine/context/result-exceeds-budget", 413, "106 lines, 2303 tokens; 1073 tokens remain: 42 lines delivered; READ a range, or KILL first.")),
         row(2, "_plurnk", "error", 413, problem("engine/context/packet-exceeds-budget", 413, "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn.")),
     ];
+    const executor = [
+        row(1, "_plurnk", "READ", 500, problem("executor/sh/spawn-failed", 500, "Could not start sh.")),
+        row(2, "_plurnk", "READ", 500, problem("executor/sh/spawn-failed", 500, "Could not start sh.")),
+    ];
     const refusal = row(3, "model", "FIND", 400, problem("scheme/log/kill-failed", 400, "The log target 'garbage' is malformed."));
-    const unexpected = (): never => { throw new Error("an operation turn without a packet reads no model call"); };
     const render = async (name: string, logEntries: ReturnType<typeof row>[]): Promise<string> => {
         const digestDir = join(root, name);
         const dbPath = join(root, `${name}.db`);
-        await writeFile(dbPath, "evidence read through the fake reader, never opened as SQLite");
-        Digest.run({ dbPath, digestDir, openEvidence: () => ({
-            rows: () => ({
+        await writeFile(dbPath, "evidence");
+        Digest.run({
+            dbPath,
+            digestDir,
+            openEvidence: () => emptyEvidence({
                 workspaces: [{ id: 1, name: "/testbed" }],
                 sessions: [{ id: 1, workspace_id: 1, name: "w", provider_identity: "mock", owner: "acp://operator" }],
                 loops: [{ id: 1, session_id: 1, sequence: 1, status: 200, prompt: "Fix it.", terminated_by: "model", terminal_result: null, claimed_at: "2026-10-12T00:00:00Z", terminated_at: "2026-10-12T00:01:00Z" }],
-                turns: [{ id: 1, loop_id: 1, sequence: 1, producer: "model" as const, kind: "operation" as const, status: 200, timestamp: "2026-10-12T00:00:30Z", completed_at: "2026-10-12T00:00:31Z", has_packet: 0 as const, has_reasoning: 0 as const, finish_reason: null, model: null, meta: null, program: null, outside: null, packetEchoes: 0 }],
-                inferenceCalls: [], modelCalls: [], turnAttempts: [], providerRequests: [], logEntries, editRows: [], emissionRows: [],
-                reasoningRows: [], curationEffects: [], sessionRollupRows: [{ session_id: 1, loops: 1, turns: 1, last_status: 200 }],
-                opMixRows: logEntries.filter((le) => le.origin === "model").map((le) => ({ session_id: 1, op: le.op, n: 1 })), environmentRows: [],
-                searchState: { channel_entries: 0, derivation_complete: 0, unfinished: 0 },
-                derivationState: { complete: 0, building: 0 }, dispositionCounts: [], dispositions: [],
-                storage: { bytes: 0, free_bytes: 0, auto_vacuum: 0 }, storageTables: [],
+                turns: [{ id: 1, loop_id: 1, sequence: 1, producer: "model", kind: "operation", status: 200, timestamp: "2026-10-12T00:00:30Z", completed_at: "2026-10-12T00:00:31Z", has_packet: 0, has_reasoning: 0, finish_reason: null, model: null, meta: null, program: null, outside: null, packetEchoes: 0 }],
+                logEntries,
+                sessionRollupRows: [{ session_id: 1, loops: 1, turns: 1, last_status: 200 }],
+                opMixRows: logEntries.filter((le) => le.origin === "model").map((le) => ({ session_id: 1, op: le.op, n: 1 })),
             }),
-            packet: () => ({ packet: null, packetFailure: null }), response: unexpected, request: unexpected, reasoning: () => null,
-            textWeight: (text: string) => Math.ceil(text.length / 2),
-            [Symbol.dispose]: () => {},
-        }) });
+        });
         return readFile(join(digestDir, "digest.md"), "utf8");
     };
     const clean = await render("clean", capacity);
@@ -122,66 +271,18 @@ test("{§digest-forensic-fidelity}: a loop that concluded under a binding budget
     const degenerate = await render("degenerate", [...capacity, refusal]);
     assert.match(degenerate, /^Health:\s+0 clean · ⚠ 1 degenerate-win · 0 failed/mu, "one refusal of the model's own statement still counts");
     assert.match(degenerate, /^#### Loop 1 \(id=1, status=200\) — ⚠ DEGENERATE-WIN \(1 errors, 0 error-items\)$/mu, "the counts leave the 413s out");
-});
-}
-
-// ─── DigestRender.test.ts ───
-{
-test("{§share-packet-names}: readable requests retain roles, order and complete nested bodies", () => {
-    const messages = [
-        { role: "system" as const, content: "Rules\n" },
-        { role: "user" as const, content: "## Log\n\n1: ## 3. assistant" },
-        { role: "assistant" as const, content: "````EDIT (a.md)\n```NOTE\nLiteral nested example\n```\n````" },
-        { role: "user" as const, content: "## Session\n{}" },
-    ];
-    const rendered = DigestRender.request(messages);
-    assert.match(rendered, /system → user → assistant → user/u);
-    const blocks = [...rendered.matchAll(/^(`{3,})text\n([\s\S]*?)\n\1$/gmu)];
-    assert.deepEqual(blocks.map((match) => match[2]), messages.map(({ content }) => content));
-    assert.deepEqual([...rendered.matchAll(/^### \d+\. (system|user|assistant)$/gmu)].map((match) => match[1]), messages.map(({ role }) => role));
-    assert.match(rendered, /not a transport capture/u);
+    const executorClean = await render("executor-clean", executor);
+    assert.match(executorClean, /CLEAN/, "red commands under a green conclusion stay CLEAN");
+    assert.doesNotMatch(executorClean, /DEGENERATE-WIN/);
+    const executorMixed = await render("executor-mixed", [...executor, refusal]);
+    assert.match(executorMixed, /errs=1\b/, "only the genuine fault counts in the errs badge");
+    assert.doesNotMatch(executorMixed, /errs=[23]\b/, "executor evidence never inflates the badge");
+    assert.match(executorMixed, /\(1 errors, 0 error-items\)/, "health counts one error");
 });
 
-// {§execution-output-identity} — a spawn's row carries the environment it received; the waterfall names every
-// value's provenance so a run's commands can never be misread as having run under the host's shell.
-// {§provider-failure-normalization} — an empty emission is read from what the wire carried.
-test("{§provider-failure-normalization} the digest reads a blank emission from the wire record", () => {
-    const line = DigestRender.wireLine({
-        content: "", reasoning: "Let me read it.",
-        wire: {
-            chunks: 8, emptyChunks: 4, fields: { reasoning_content: 1, tool_calls: 2, refusal: 1 }, channels: { refusal: "no" },
-            toolCalls: [{ index: 0, id: "call-1", type: "function", name: "READ", arguments: "{\"path\": \"django/views/debug.py\"}" }],
-            finishReasons: ["stop"],
-        },
-    });
-    assert.equal(line, "  ↳ wire: 8 chunks, 4 carried nothing, reasoning_content×1, tool_calls×2, refusal×1, tool call READ({\"path\": \"django/views/debug.py\"}), refusal: no");
-    assert.equal(DigestRender.wireLine({ content: "" }), null, "a record without a wire says nothing about it");
-    assert.equal(DigestRender.wireLine({ wire: { chunks: 1, unmappedChunks: [{ type: "message", content: [] }] } }),
-        "  ↳ wire: 1 chunks, 1 unmapped frames retained", "unmapped native envelopes are not reported as empty");
-});
-
-test("{§execution-output-identity} the digest names a spawn's environment with each value's provenance", () => {
-    const line = DigestRender.envLine({
-        PATH: { source: "host", value: "/usr/bin" },
-        HOME: { source: "host", value: "/home/x" },
-        CARGO_TARGET_DIR: { source: "session", value: "/tmp/shared" },
-        TOOLCHAIN: { source: "session", from: "alice", value: "stable" },
-        CI: { source: "masked" },
-        NO_COLOR: { source: "masked", from: "alice" },
-        NODE_ENV: { source: "workspace", value: "production" },
-    });
-    assert.equal(line, "env: host HOME,PATH · CARGO_TARGET_DIR=/tmp/shared (session) · CI (masked) · NO_COLOR (masked by alice) · NODE_ENV=production (workspace) · TOOLCHAIN=stable (from alice)");
-    assert.equal(DigestRender.envLine({}), "env: (empty)", "an empty environment is a fact, not an absence");
-    assert.equal(DigestRender.envLine(undefined), null, "an output without a recorded environment renders none");
-});
-}
-
-// ─── Share.test.ts ───
-{
 test("{§share} a missing database is named, and nothing is read or written", async () => {
     await assert.rejects(Share.write({
         dbPath: "/nonexistent/plurnk.db", folder: "/tmp/never",
         openEvidence: () => { throw new Error("a missing source must not open a reader"); },
     }), { message: "no database at /nonexistent/plurnk.db" });
 });
-}

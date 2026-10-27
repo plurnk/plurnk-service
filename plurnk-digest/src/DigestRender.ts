@@ -1,169 +1,53 @@
 // Digest renderers ({§share-packet-names}): the markdown, JSON, reasoning, and packet
 // artifacts of one DigestModel, reading heavy evidence on demand through DigestEvidence.
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join, posix } from "node:path";
+import { isRecord } from "@plurnk/plurnk-contracts";
 import {
-    aggregateProviderAccounting,
-    type ProviderAccounting,
-    type ProviderRequestAccounting,
-    type ChatMessage,
-} from "@plurnk/plurnk-providers";
-import { Validator, isRecord, type OperationResult, type ProblemDetails, isExecutionOp } from "@plurnk/plurnk-contracts";
-import type {
-    SessionRow,
-    LoopRow,
-    TurnRow,
-    ProviderRequestRow,
-    LogRow,
-    EditRow,
-    EditCensus,
-    EditForm,
-
-    DigestModel,
-    CacheLedgerEntry,
-} from "./digest-rows.ts";
-import { EDIT_FORMS } from "./digest-rows.ts";
-
-function* projectRows<T, R>(rows: Iterable<T>, project: (row: T) => R): Generator<R> {
-    for (const row of rows) yield project(row);
-}
+    accounting,
+    costSummary,
+    environmentOf,
+    envLine,
+    indentLines,
+    link,
+    literal,
+    parseJson,
+    renderStream,
+    rowProblem,
+    terminalResult,
+    usageSummary,
+    wireLine,
+} from "./DigestFormat.ts";
+import {
+    cacheBadge,
+    cacheLedger,
+    cacheLine,
+    countsAsError,
+    editCensus,
+    editForm,
+    loopHealth,
+    renderEditCensus,
+    renderEmissions,
+    renderReasonings,
+    renderRoom,
+} from "./DigestLedgers.ts";
+import { json, packetFiles, packetStems, request, turnLinks } from "./DigestArtifacts.ts";
+import type { DigestModel, LogRow, LoopRow, SessionRow, TurnRow } from "./digest-rows.ts";
 
 export default class DigestRender {
-    static #literal(body: string, language = "text"): string {
-        let length = 3;
-        for (const match of body.matchAll(/`+/gu)) length = Math.max(length, match[0].length + 1);
-        const fence = "`".repeat(length);
-        return `${fence}${language}\n${body}\n${fence}`;
-    }
-
-    static #link(from: string, target: string, label: string): string {
-        return `[${label}](${posix.relative(posix.dirname(from), target)})`;
-    }
-
-    static #turnLinks(m: DigestModel, turn: TurnRow, from: string): string[] {
-        const stem = DigestRender.packetStems(m).get(turn.id);
-        if (stem === undefined) return [];
-        return [
-            ...(turn.has_packet === 1 ? [DigestRender.#link(from, `${stem}.request.md`, "Input")] : []),
-            ...(turn.program !== null ? [DigestRender.#link(from, `${stem}.assistant.md`, "Output")] : []),
-            ...(turn.has_reasoning === 1 ? [DigestRender.#link(from, `${stem}.reasoning.md`, "Reasoning")] : []),
-        ];
-    }
-
-    static #summarize(text: unknown, n = 80): string {
-        if (text === null || text === undefined) return "";
-        const flat = (typeof text === "string" ? text : JSON.stringify(text) ?? "").replace(/\s+/g, " ").trim();
-        if (flat.length <= n) return flat;
-        return `${flat.slice(0, n)}…`;
-    }
-
-    static #indentLines(text: string, prefix = "    "): string {
-        return text.split("\n").map((line) => line.length > 0 ? `${prefix}${line}` : line).join("\n");
-    }
-
-    static parseJson(s: unknown, fallback: unknown = null): unknown {
-        if (s === null || s === undefined) return fallback;
-        const text = typeof s === "string" ? s : Buffer.isBuffer(s) ? s.toString("utf8") : null;
-        if (text === null) return fallback;
-        try { return JSON.parse(text); } catch { return fallback; }
-    }
-
-    static #requestAccounting(row: ProviderRequestRow): ProviderRequestAccounting {
-        if (row.state !== "settled" || row.accounting === null) {
-            throw new TypeError(`provider request ${row.id} is not settled`);
-        }
-        return row.accounting;
-    }
-
-    static #accounting(rows: readonly ProviderRequestRow[]): ProviderAccounting | null {
-        return rows.some((row) => row.state !== "settled")
-            ? null
-            : aggregateProviderAccounting(rows.map((row) => DigestRender.#requestAccounting(row)));
-    }
-
-    static usageSummary(accounting: ProviderAccounting | null): string {
-        if (accounting === null) return "accounting=incomplete";
-        const usage = accounting.usage;
-        const known = accounting.knownUsage;
-        const quantity = (total: number | undefined, subtotal: number | undefined): string =>
-            total !== undefined ? String(total) : subtotal === undefined ? "unknown" : `${subtotal}+?`;
-        return [
-            `input=${quantity(usage?.inputTokens, known?.inputTokens)}`,
-            `output=${quantity(usage?.outputTokens, known?.outputTokens)}`,
-            `reasoning=${quantity(usage?.outputTokenDetails?.reasoningTokens, known?.outputTokenDetails?.reasoningTokens)}`,
-            `cache-read=${quantity(usage?.inputTokenDetails?.cacheReadTokens, known?.inputTokenDetails?.cacheReadTokens)}`,
-        ].join(" ");
-    }
-
-    static costSummary(accounting: ProviderAccounting | null): string {
-        if (accounting?.costUsd != null) return `$${accounting.costUsd}`;
-        return accounting?.knownCostUsd == null ? "unknown" : `$${accounting.knownCostUsd} + ? (incomplete)`;
-    }
-
-    static #operationResult(raw: unknown, subject: string): OperationResult {
-        try {
-            return Validator.assertOperationResult(DigestRender.parseJson(raw));
-        } catch (cause) {
-            throw new Error(`${subject} does not contain a valid operation result`, { cause });
-        }
-    }
-
-    static #rowProblem(row: LogRow): ProblemDetails {
-        const result = DigestRender.#operationResult(row.rx, `failed log entry ${row.id}`);
-        if (result.problem === undefined) {
-            throw new Error(`failed log entry ${row.id} does not contain Problem Details`);
-        }
-        return result.problem;
-    }
-
-    static #terminalResult(loop: LoopRow): OperationResult | null {
-        return loop.terminal_result === null
-            ? null
-            : DigestRender.#operationResult(loop.terminal_result, `terminal loop ${loop.id}`);
-    }
-
-    static #renderTarget(le: LogRow): string | null {
-        return le.target;
-    }
-
-    static #renderStream(le: LogRow): string | null {
-        if (!isExecutionOp(le.op)) return null;
-        const attrs = DigestRender.parseJson(le.attrs, {});
-        const stream = isRecord(attrs) ? attrs.stream : undefined;
-        return typeof stream === "string" ? stream : null;
-    }
-
-    // {§execution-output-identity} — the environment a spawn received, as recorded on its row: host names by
-    // name, the Session's own values, inherited values by their source, masked names. Host values
-    // stay in digest.json. Part of the rendered line, so spawns under different environments never
-    // collapse into one group.
-    static envLine(env: unknown): string | null {
-        if (!isRecord(env)) return null;
-        const host: string[] = [];
-        const rest: string[] = [];
-        for (const [name, raw] of Object.entries(env).toSorted(([left], [right]) => left.localeCompare(right))) {
-            const record: Readonly<Record<string, unknown>> = isRecord(raw) ? raw : {};
-            const from = typeof record.from === "string" ? record.from : null;
-            if (record.source === "host") host.push(name);
-            else if (record.source === "masked") rest.push(`${name} (masked${from === null ? "" : ` by ${from}`})`);
-            else if (record.source === "workspace") rest.push(`${name}=${DigestRender.#summarize(record.value, 60)} (workspace)`);
-            else rest.push(`${name}=${DigestRender.#summarize(record.value, 60)} (${from === null ? "session" : `from ${from}`})`);
-        }
-        const parts = [...(host.length === 0 ? [] : [`host ${host.join(",")}`]), ...rest];
-        return `env: ${parts.length === 0 ? "(empty)" : parts.join(" · ")}`;
-    }
-
-    // The environment a spawn recorded on its output, found through the row's stream address.
-    static #environmentOf(le: LogRow, m: DigestModel): unknown {
-        const stream = DigestRender.#renderStream(le);
-        if (stream === null) return undefined;
-        const session = m.sessionsById.get(le.session_id);
-        return session === undefined ? undefined : m.environments.get(`${session.workspace_id}:${stream}`);
-    }
+    static parseJson = parseJson;
+    static usageSummary = usageSummary;
+    static costSummary = costSummary;
+    static envLine = envLine;
+    static wireLine = wireLine;
+    static editForm = editForm;
+    static cacheLedger = cacheLedger;
+    static packetStems = packetStems;
+    static request = request;
+    static packetFiles = packetFiles;
+    static json = json;
 
     static #renderOpLine(le: LogRow, label: string = le.op ?? "source artifact", environment?: unknown): string {
-        const target = DigestRender.#renderTarget(le) ?? "—";
-        const stream = DigestRender.#renderStream(le);
+        const target = le.target ?? "—";
+        const stream = renderStream(le);
         const state = le.state !== "resolved" ? ` state=${le.state}` : "";
         const outcome = le.outcome !== null ? ` outcome=${le.outcome}` : "";
         const streamLink = stream === null ? "" : ` stream=${stream}`;
@@ -173,32 +57,32 @@ export default class DigestRender {
         // the waterfall explains WHY each failure happened without opening packets.
         let errLine = "";
         if (le.status_rx >= 400) {
-            errLine = `\n    -> ${DigestRender.#rowProblem(le).detail.trim()}`;
+            errLine = `\n    -> ${rowProblem(le).detail.trim()}`;
         }
-        const envLine = DigestRender.envLine(environment);
-        const envText = envLine === null ? "" : `\n    ${envLine}`;
+        const env = envLine(environment);
+        const envText = env === null ? "" : `\n    ${env}`;
         const decision = le.proposalDecision;
         const approval = decision === undefined ? "" : `\n    decision=${decision.decision} resolver=${decision.resolver} at=${decision.decided_at}${decision.body === null ? "" : " body override recorded"}${decision.outcome === null ? "" : ` outcome=${decision.outcome}`}`;
         return `  ← [${le.origin}] ${label}[${le.status_rx}] ${target}${source}${state}${outcome}${streamLink}${fail}${errLine}${envText}${approval}`;
     }
 
     static #renderGroupedOpLine(row: LogRow, m: DigestModel): string {
-        const parsedAttrs = DigestRender.parseJson(row.attrs, {});
+        const parsedAttrs = parseJson(row.attrs, {});
         const attrs: Readonly<Record<string, unknown>> = isRecord(parsedAttrs) ? parsedAttrs : {};
         // {§turn-source-resources}: the announcement of an admitted emission, and whether the model retired it.
         if (row.op === "READ" && attrs.kind === "emission") {
-            return DigestRender.#renderOpLine(row, row.projection_active === 1 ? "emission" : "emission (killed)", DigestRender.#environmentOf(row, m));
+            return DigestRender.#renderOpLine(row, row.projection_active === 1 ? "emission" : "emission (killed)", environmentOf(row, m));
         }
         // {§turn-source-resources}: the turn's reasoning landed as a row, and whether the model retired it.
         if (row.op === "READ" && attrs.kind === "reasoning") {
-            return DigestRender.#renderOpLine(row, row.projection_active === 1 ? "reasoning" : "reasoning (killed)", DigestRender.#environmentOf(row, m));
+            return DigestRender.#renderOpLine(row, row.projection_active === 1 ? "reasoning" : "reasoning (killed)", environmentOf(row, m));
         }
         const materialized = row.origin === "_plurnk" && row.op === "EDIT" && attrs.kind === "entry_materialized";
         const actionlessKind = row.op === null ? attrs.kind : null;
         const label = actionlessKind === "emissionAttempt"
             ? "emission attempt"
             : row.op ?? `unrecognized actionless row (kind=${JSON.stringify(actionlessKind) ?? "absent"})`;
-        return DigestRender.#renderOpLine(row, materialized ? "materialized entry" : label, DigestRender.#environmentOf(row, m));
+        return DigestRender.#renderOpLine(row, materialized ? "materialized entry" : label, environmentOf(row, m));
     }
 
     // Human triage is not a row dump. Preserve every row in digest.json, but
@@ -222,32 +106,6 @@ export default class DigestRender {
         });
     }
 
-    // The "degenerate win" lens (owner ask): a loop's health = how many errors/strikes it earned
-    // vs whether it still concluded. A green that limped across on 16 errors is a FAILING artifact
-    // wearing a passing badge; the digest must make that impossible to miss. errors = ≥400 op rows;
-    // errorItems = minted op='error' rows (truncation/budget/steer/cycle — the strike signals).
-    // {§digest-forensic-fidelity} (#436) — a failed command's completion rows carry the
-    // executor's problem identity; a red test run is the loop's normal work, not a
-    // defect. They stay visible but never count as errors in health or the errs
-    // badge — the digest mirror of the strike rail's exemption (#425 F1).
-    static #isExecutorEvidence(le: LogRow): boolean {
-        if (le.status_rx < 400 || le.rx === null) return false;
-        const rx = DigestRender.parseJson(le.rx, null);
-        const problem = isRecord(rx) && isRecord(rx.problem) ? rx.problem : null;
-        return typeof problem?.type === "string" && problem.type.startsWith("https://problems.plurnk.xyz/executor/");
-    }
-
-    // {§digest-forensic-fidelity} (#1096) — a 413 is the capacity contract working: a result that did
-    // not fit, the over-budget mandate, a limit met. It renders like any row and never counts as an
-    // error, an error item or in the errs badge; a loop that concluded under a binding budget is CLEAN.
-    static #isCapacityEvidence(le: LogRow): boolean {
-        return le.status_rx === 413;
-    }
-
-    static #countsAsError(le: LogRow): boolean {
-        return le.status_rx >= 400 && !DigestRender.#isExecutorEvidence(le) && !DigestRender.#isCapacityEvidence(le);
-    }
-
     // {§share-packet-names} — size, free pages, vacuum mode and the largest tables, one line.
     static #storageLine(storage: DigestModel["storage"]): string {
         const mb = (bytes: number) => `${(bytes / 1_048_576).toFixed(1)} MB`;
@@ -264,184 +122,13 @@ export default class DigestRender {
         return `Claimed: ${loop.claimed_at} · first model turn +${seconds.toFixed(1)} s`;
     }
 
-    // {§digest-forensic-fidelity} — the reconstructed text envelope, each role above its content,
-    // as `.wire.json` holds it ({§share-packet-names}); null when no valid packet is stored.
-    static #promptText(turn: TurnRow, m: DigestModel): string | null {
-        const { packet } = m.evidence.packet(turn);
-        if (packet === null) return null;
-        const messages = packet.messages();
-        if (messages.length === 0) return null;
-        return messages
-            .map(({ role, content }) => `${role}\n${content}`)
-            .join("\n");
-    }
-
-    static #commonPrefixLength(left: string, right: string): number {
-        const bound = Math.min(left.length, right.length);
-        let n = 0;
-        while (n < bound && left.charCodeAt(n) === right.charCodeAt(n)) n += 1;
-        return n;
-    }
-
-    // {§digest-forensic-fidelity}: the form an EDIT authored, read from its stored marker and pattern.
-    static editForm(row: Pick<EditRow, "line_marker" | "pattern">): EditForm {
-        if (row.pattern !== null) return "pattern";
-        if (row.line_marker === null) return "whole";
-        const marker = DigestRender.parseJson(row.line_marker, { marks: [] });
-        const marks: readonly unknown[] = isRecord(marker) && Array.isArray(marker.marks) ? marker.marks : [];
-        if (marks.length === 1) {
-            const [mark] = marks;
-            if (typeof mark === "string") return "hash";
-            if (mark === -1) return "append";
-            if (mark === 0) return "prepend";
-            return "line";
-        }
-        if (marks.length === 2) return "range";
-        if (marks.length === 3) return "offset";
-        if (marks.length === 4 && marks[0] === marks[2] && marks[1] === 1 && marks[3] === 1) return "insert";
-        return "column";
-    }
-
-    static #editCensusCache = new WeakMap<DigestModel, { bySession: Map<number, EditCensus>; formById: Map<number, EditForm>; revisitById: Set<number> }>();
-
-    // {§digest-forensic-fidelity}: per session, every model EDIT by authored form and status, and the
-    // revisits — an EDIT of a path the same session edited within its previous two model turns.
-    static #editCensus(m: DigestModel): { bySession: Map<number, EditCensus>; formById: Map<number, EditForm>; revisitById: Set<number> } {
-        const cached = DigestRender.#editCensusCache.get(m);
-        if (cached !== undefined) return cached;
-        const loopSession = new Map(m.loops.map((loop) => [loop.id, loop.session_id]));
-        // A session's model turns in order; the ordinal is the distance the revisit window counts in.
-        const ordinal = new Map<number, number>();
-        const perSession = new Map<number, number>();
-        for (const turn of [...m.turns].toSorted((a, b) => a.id - b.id)) {
-            if (turn.producer !== "model") continue;
-            const sessionId = loopSession.get(turn.loop_id);
-            if (sessionId === undefined) throw new TypeError(`turn ${turn.id} has no loop in scope`);
-            const next = (perSession.get(sessionId) ?? 0) + 1;
-            perSession.set(sessionId, next);
-            ordinal.set(turn.id, next);
-        }
-        const bySession = new Map<number, EditCensus>();
-        const formById = new Map<number, EditForm>();
-        const revisitById = new Set<number>();
-        for (const [sessionId, rows] of m.editRowsBySession) {
-            const census: EditCensus = { edits: 0, refused: 0, revisits: 0, forms: Object.fromEntries(EDIT_FORMS.map((form) => [form, 0])) };
-            const lastEdited = new Map<string, number>();
-            for (const row of rows) {
-                const form = DigestRender.editForm(row);
-                formById.set(row.id, form);
-                census.edits += 1;
-                census.forms[form] = (census.forms[form] ?? 0) + 1;
-                if (row.status_rx >= 400) census.refused += 1;
-                const at = ordinal.get(row.turn_id);
-                if (at === undefined) throw new TypeError(`EDIT ${row.id} sits on a turn no model produced`);
-                if (row.pathname !== null) {
-                    const previous = lastEdited.get(row.pathname);
-                    if (previous !== undefined && previous < at && at - previous <= 2) { census.revisits += 1; revisitById.add(row.id); }
-                    lastEdited.set(row.pathname, at);
-                }
-            }
-            bySession.set(sessionId, census);
-        }
-        const result = { bySession, formById, revisitById };
-        DigestRender.#editCensusCache.set(m, result);
-        return result;
-    }
-
-    static #renderEditCensus(census: EditCensus | undefined): string {
-        if (census === undefined || census.edits === 0) return "(no edits)";
-        const forms = EDIT_FORMS.filter((form) => (census.forms[form] ?? 0) > 0).map((form) => `${form}=${census.forms[form] ?? 0}`).join(" ");
-        return `${census.edits} · ${forms} · refused=${census.refused} · revisits=${census.revisits}`;
-    }
-
-    static #cacheLedgerCache = new WeakMap<DigestModel, Map<number, CacheLedgerEntry>>();
-
-    // {§digest-forensic-fidelity} — estimate adjacent prefixes with at most two prompts resident per loop.
-    static cacheLedger(m: DigestModel): Map<number, CacheLedgerEntry> {
-        const cached = DigestRender.#cacheLedgerCache.get(m);
-        if (cached !== undefined) return cached;
-        const turnsById = new Map(m.turns.map((turn) => [turn.id, turn]));
-        const ledger = new Map<number, CacheLedgerEntry>();
-        for (const loop of m.loops) {
-            let memo: { turnId: number; text: string | null } | undefined;
-            const promptOf = (turn: TurnRow): string | null => {
-                if (memo?.turnId !== turn.id) memo = { turnId: turn.id, text: DigestRender.#promptText(turn, m) };
-                return memo.text;
-            };
-            // undefined: no previous request in this loop; null: the previous request's packet is not valid.
-            let previousText: string | null | undefined;
-            for (const request of m.requestsByLoop.get(loop.id) ?? []) {
-                const turn = turnsById.get(request.turn_id);
-                if (turn === undefined) throw new TypeError(`provider request ${request.id} has no turn in scope`);
-                const text = request.kind === "emission" ? promptOf(turn) : null;
-                const adjacentPrefixTokensEstimate = text === null || request.usage_input === null
-                    ? null
-                    : previousText === undefined
-                        ? 0
-                        : previousText === null
-                            ? null
-                            : text.length === 0
-                                ? 0
-                                : Math.round(request.usage_input * m.evidence.textWeight(text.slice(0, DigestRender.#commonPrefixLength(previousText, text))) / m.evidence.textWeight(text));
-                ledger.set(request.id, {
-                    adjacentPrefixTokensEstimate,
-                    cachedTokens: request.usage_input_cache_read,
-                    inputTokens: request.usage_input,
-                });
-                previousText = text;
-            }
-        }
-        for (const request of m.providerRequests) {
-            if (!ledger.has(request.id)) throw new TypeError(`provider request ${request.id} has no loop in scope`);
-        }
-        DigestRender.#cacheLedgerCache.set(m, ledger);
-        return ledger;
-    }
-
-    static #cacheEntries(requests: readonly ProviderRequestRow[], m: DigestModel): CacheLedgerEntry[] {
-        const ledger = DigestRender.cacheLedger(m);
-        return requests.map((request) => ledger.get(request.id)!);
-    }
-
-    // {§digest-forensic-fidelity} — sum each provider-reported counter; one absent quantity makes that sum unknown.
-    static #cacheBadge(turn: TurnRow, m: DigestModel): string {
-        const entries = DigestRender.#cacheEntries(m.requestsByTurn.get(turn.id) ?? [], m);
-        if (entries.length === 0) return "";
-        const sum = (values: Array<number | null>): string => values.some((value) => value === null)
-            ? "?"
-            : String(values.reduce<number>((total, value) => total + (value ?? 0), 0));
-        return ` cache=${sum(entries.map((entry) => entry.cachedTokens))}/${sum(entries.map((entry) => entry.inputTokens))}`;
-    }
-
-    // {§digest-forensic-fidelity} — one workspace line; unreported requests are named and left out of the percentage.
-    static #cacheLine(requests: readonly ProviderRequestRow[], m: DigestModel): string {
-        const entries = DigestRender.#cacheEntries(requests, m);
-        const reported = entries.filter((entry) => entry.cachedTokens !== null && entry.inputTokens !== null);
-        const unreported = entries.length - reported.length;
-        const cached = reported.reduce((total, entry) => total + (entry.cachedTokens ?? 0), 0);
-        const input = reported.reduce((total, entry) => total + (entry.inputTokens ?? 0), 0);
-        const pct = input === 0 ? "n/a" : `${((100 * cached) / input).toFixed(1)}%`;
-        const plural = (n: number): string => n === 1 ? "request" : "requests";
-        return [
-            `Cache: ${cached} of ${input} reported input tokens read from cache (${pct}) over ${reported.length} ${plural(reported.length)}`,
-            unreported > 0 ? `${unreported} missing input or cache usage (excluded)` : null,
-        ].filter((part) => part !== null).join(" · ");
-    }
-
-    static #loopHealth(loop: LoopRow, m: DigestModel): { errors: number; errorItems: number; verdict: string } {
-        let errors = 0;
-        let errorItems = 0;
-        for (const t of m.turnsByLoop.get(loop.id) ?? []) {
-            for (const le of m.logEntriesByTurn.get(t.id) ?? []) {
-                if (DigestRender.#countsAsError(le)) errors += 1;
-                if (le.op === "error" && !DigestRender.#isCapacityEvidence(le)) errorItems += 1;
-            }
-        }
-        const s = loop.status;
-        const verdict = s >= 400 ? `FAILED(${s})`
-            : s >= 200 && s < 300 ? (errors > 0 ? "DEGENERATE-WIN" : "CLEAN")
-            : `status=${s}`;
-        return { errors, errorItems, verdict };
+    // Among its loop's model turns, this one's ordinal: the model's own count, which skips the
+    // harness turns a reader would otherwise have to subtract.
+    static #modelTurnOrdinal(turn: TurnRow, m: DigestModel): number | null {
+        if (turn.producer !== "model") return null;
+        const siblings = (m.turnsByLoop.get(turn.loop_id) ?? []).filter((t) => t.producer === "model");
+        const index = siblings.findIndex((t) => t.id === turn.id);
+        return index < 0 ? null : index + 1;
     }
 
     static #renderTurnLine(turn: TurnRow, m: DigestModel): string {
@@ -449,13 +136,13 @@ export default class DigestRender {
         const assistant = packet?.assistant ?? null;
         const content = assistant?.content ?? "";
         const reasoning = assistant?.reasoning ?? null;
-        const accounting = DigestRender.#accounting(m.requestsByTurn.get(turn.id) ?? []);
-        const tokens = DigestRender.usageSummary(accounting);
-        const cost = ` cost=${DigestRender.costSummary(accounting)}`;
+        const acct = accounting(m.requestsByTurn.get(turn.id) ?? []);
+        const tokens = usageSummary(acct);
+        const cost = ` cost=${costSummary(acct)}`;
         const finishReason = turn.finish_reason ?? "—";
         // Render only observed transport metadata; absence makes no claim
         // about endpoint-owned settings. {§provider-instantiation}
-        const tm = DigestRender.parseJson(turn.meta ?? "null", null);
+        const tm = parseJson(turn.meta ?? "null", null);
         const railsFlag = isRecord(tm) ? tm.railsAttached : undefined;
         const attached = typeof railsFlag === "boolean" || typeof railsFlag === "string" ? railsFlag : undefined;
         const rails = attached === undefined || attached === false ? ""
@@ -464,7 +151,7 @@ export default class DigestRender {
         // {§outside-text}: the weight the model was told, so a digest reader sees the discard at a glance.
         const outside = turn.outside === null ? "" : ` outside=${m.evidence.textWeight(turn.outside)} tok`;
         const errs = (m.logEntriesByTurn.get(turn.id) ?? [])
-            .filter((le) => DigestRender.#countsAsError(le)).length;
+            .filter((le) => countsAsError(le)).length;
         const errBadge = errs > 0 ? `  ⚠ errs=${errs}` : "";
         const attempts = m.attemptsByTurn.get(turn.id) ?? [];
         const rejected = attempts.filter((attempt) => attempt.accepted === 0).length;
@@ -479,12 +166,12 @@ export default class DigestRender {
             ? ""
             : `  ⚠ ${attemptConditions.join(" ")}/${attempts.length}`;
         const packetBadge = packetFailure === null ? "" : "  ⚠ packet=invalid";
-        const stem = DigestRender.packetStems(m).get(turn.id);
+        const stem = packetStems(m).get(turn.id);
         const modelTurn = DigestRender.#modelTurnOrdinal(turn, m);
         const provenance = [modelTurn === null ? null : `model turn ${modelTurn}`, stem].filter((part) => part !== null).join(" · ");
         const lifecycle = `T${turn.sequence}${provenance === "" ? "" : ` (${provenance})`}: producer=${turn.producer} kind=${turn.kind} status=${turn.status}${turn.completed_at === null ? " state=open" : ""}`;
         const head = turn.kind === "inference"
-            ? `${lifecycle} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${DigestRender.#cacheBadge(turn, m)}${outside}${errBadge}${attemptBadge}${packetBadge}`
+            ? `${lifecycle} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${cacheBadge(turn, m)}${outside}${errBadge}${attemptBadge}${packetBadge}`
             : `${lifecycle}${errBadge}${packetBadge}`;
         let summary: string | null = null;
         if (packetFailure !== null) {
@@ -493,7 +180,7 @@ export default class DigestRender {
             summary = null;
         } else if (content.length > 0) {
             summary = content.includes("\n")
-                ? `  ↳ emission:\n${DigestRender.#indentLines(content.trimEnd(), "    ")}`
+                ? `  ↳ emission:\n${indentLines(content.trimEnd(), "    ")}`
                 : `  ↳ emission: ${content.trim()}`;
         } else if (assistant !== null) {
             summary = "  ↳ emission: (admitted empty)";
@@ -504,40 +191,16 @@ export default class DigestRender {
         }
         const reasoningLine = reasoning && reasoning.length > 0
             ? (reasoning.includes("\n")
-                ? `  ↳ reasoning:\n${DigestRender.#indentLines(reasoning.trimEnd(), "    ")}`
+                ? `  ↳ reasoning:\n${indentLines(reasoning.trimEnd(), "    ")}`
                 : `  ↳ reasoning: ${reasoning.trim()}`)
             : null;
         // {§provider-failure-normalization} — an empty emission is read from what the wire carried, never guessed at.
-        const wireLine = content.length === 0 && packet?.assistant != null ? DigestRender.wireLine(packet.assistantRaw) : null;
+        const wire = content.length === 0 && packet?.assistant != null ? wireLine(packet.assistantRaw) : null;
         const roles = packet?.messages().map(({ role }) => role).join(" → ");
         const requestLine = packet === null ? null
             : `  ↳ request: ${roles || "input sections not retained"} (${stem}.request.md)`;
         const opLines = DigestRender.#renderOpLines(m.logEntriesByTurn.get(turn.id) ?? [], m);
-        return [head, ...(requestLine ? [requestLine] : []), ...(summary ? [summary] : []), ...(reasoningLine ? [reasoningLine] : []), ...(wireLine ? [wireLine] : []), ...opLines].join("\n");
-    }
-
-    // {§provider-failure-normalization} — public so the line can be witnessed on its own.
-    static wireLine(assistantRaw: unknown): string | null {
-        const wire = isRecord(assistantRaw) && isRecord(assistantRaw.wire) ? assistantRaw.wire : null;
-        if (wire === null) return null;
-        const chunks = typeof wire.chunks === "number" ? wire.chunks : 0;
-        const emptyChunks = typeof wire.emptyChunks === "number" ? wire.emptyChunks : 0;
-        const fields = isRecord(wire.fields) ? wire.fields : {};
-        const channels = isRecord(wire.channels) ? wire.channels : {};
-        const toolCalls: readonly unknown[] = Array.isArray(wire.toolCalls) ? wire.toolCalls : [];
-        const unmappedChunks: readonly unknown[] = Array.isArray(wire.unmappedChunks) ? wire.unmappedChunks : [];
-        const parts = [
-            `${chunks} chunks`,
-            emptyChunks > 0 ? `${emptyChunks} carried nothing` : null,
-            ...Object.entries(fields).map(([field, count]) => `${field}×${String(count)}`),
-            ...toolCalls.map((call) => {
-                const name = isRecord(call) && typeof call.name === "string" ? call.name : "?";
-                return `tool call ${name}(${DigestRender.#summarize(isRecord(call) ? call.arguments : undefined, 60)})`;
-            }),
-            ...Object.entries(channels).map(([channel, text]) => `${channel}: ${DigestRender.#summarize(text, 60)}`),
-            unmappedChunks.length > 0 ? `${unmappedChunks.length} unmapped frames retained` : null,
-        ].filter((part) => part !== null);
-        return `  ↳ wire: ${parts.join(", ")}`;
+        return [head, ...(requestLine ? [requestLine] : []), ...(summary ? [summary] : []), ...(reasoningLine ? [reasoningLine] : []), ...(wire ? [wire] : []), ...opLines].join("\n");
     }
 
     static #renderSessionShape(session: SessionRow, m: DigestModel): string {
@@ -545,13 +208,13 @@ export default class DigestRender {
         const roll = m.sessionRollups.get(session.id)!;
         const opMix = (m.opMixBySession.get(session.id) ?? []).map((o) => `${o.op}=${o.n}`).join(" ");
         const requests = m.requestsBySession.get(session.id) ?? [];
-        const accounting = DigestRender.#accounting(requests);
+        const acct = accounting(requests);
         const usageStr = requests.length === 0
             ? "no provider requests"
-            : DigestRender.usageSummary(accounting);
+            : usageSummary(acct);
         const costStr = requests.length === 0
             ? "n/a"
-            : DigestRender.costSummary(accounting);
+            : costSummary(acct);
         // {§digest-forensic-fidelity} (#461): settled exchanges that carry no usage at
         // all (errored/aborted) billed server-side invisibly; say so, never price-as-zero.
         const usageless = requests.filter((row) => row.state === "settled" && row.usage_total === null).length;
@@ -583,82 +246,17 @@ export default class DigestRender {
             `Tokens:     ${usageStr}`,
             `Cost:       ${costStr}${kindStr}${usagelessStr}`,
             `Wire:       ${wireStr}`,
-            `Room:       ${DigestRender.#renderRoom(session, m)}`,
+            `Room:       ${renderRoom(session, m)}`,
             `Op mix:     ${opMix.length > 0 ? opMix : "(no ops)"}`,
-            `EDITs:      ${DigestRender.#renderEditCensus(DigestRender.#editCensus(m).bySession.get(session.id))}`,
-            `Emissions:  ${DigestRender.#renderEmissions(session, m)}`,
-            `Reasonings: ${DigestRender.#renderReasonings(session, m)}`,
+            `EDITs:      ${renderEditCensus(editCensus(m).bySession.get(session.id))}`,
+            `Emissions:  ${renderEmissions(session, m)}`,
+            `Reasonings: ${renderReasonings(session, m)}`,
         ].join("\n");
-    }
-
-    // {§digest-forensic-fidelity} — the room in provider tokens: the largest budget the model was shown, at its
-    // request's own ratio, against the capacity; the wall's estimate against the provider's count; and the
-    // requests the estimate put under the wall while the count was over it.
-    static #renderRoom(session: SessionRow, m: DigestModel): string {
-        const measured = DigestRender.#roomMeasures(session, m);
-        if (measured.length === 0) return "(no measured requests)";
-        const room = Math.max(...measured.map(({ weight, budget, count, capacity }) => budget * count / weight / capacity));
-        const errors = measured.map(({ estimate, count }) => (estimate - count) / count);
-        const missed = measured.filter(({ estimate, count, wall }) => estimate <= wall && count > wall).length;
-        const percent = (ratio: number): string => `${ratio < 0 ? "-" : "+"}${Math.abs(100 * ratio).toFixed(1)}%`;
-        return `budget up to ${Math.round(100 * room)}% of capacity · wall estimate ${percent(Math.min(...errors))} to ${percent(Math.max(...errors))} of the count`
-            + (missed === 0 ? "" : `  ⚠ ${missed} over the wall the estimate admitted`);
-    }
-
-    // One measure per packet-bearing inference turn whose request records a known capacity and wall and a
-    // provider count: the exact preflight measurement, else the reported input.
-    static #roomMeasures(session: SessionRow, m: DigestModel): Array<{ weight: number; budget: number; capacity: number; wall: number; count: number; estimate: number }> {
-        const measures = [];
-        for (const loop of m.loopsBySession.get(session.id) ?? []) {
-            for (const turn of m.turnsByLoop.get(loop.id) ?? []) {
-                if (turn.kind !== "inference" || turn.has_packet !== 1) continue;
-                const packet = m.evidence.packet(turn).packet;
-                if (packet === null || packet.budget === null || packet.budget === 0 || packet.weight === 0) continue;
-                const call = m.modelCalls.findLast((row) => row.turn_id === turn.id && row.kind === "emission" && row.capacity !== null);
-                const capacity = DigestRender.parseJson(call?.capacity);
-                const inputCapacity = isRecord(capacity) ? capacity.inputCapacity : undefined;
-                const inputWall = isRecord(capacity) ? capacity.inputWall : undefined;
-                if (typeof inputCapacity !== "number" || typeof inputWall !== "number") continue;
-                const reported = (m.requestsByTurn.get(turn.id) ?? [])
-                    .findLast((row) => row.kind === "emission" && row.outcome === "response" && row.usage_input !== null)?.usage_input ?? null;
-                const prompt = isRecord(capacity) && isRecord(capacity.prompt) ? capacity.prompt : null;
-                const count = prompt?.kind === "exact" ? (typeof prompt.tokens === "number" ? prompt.tokens : null) : reported;
-                if (count === null || count === 0) continue;
-                measures.push({
-                    weight: packet.weight, budget: packet.budget, capacity: inputCapacity, wall: inputWall, count,
-                    estimate: Math.ceil(packet.weight * inputCapacity / packet.budget),
-                });
-            }
-        }
-        return measures;
-    }
-
-    // {§turn-source-resources} — announced, retired by the model, and echoed back as headings in its own text.
-    static #renderEmissions(session: SessionRow, m: DigestModel): string {
-        const rows = m.emissionRows.filter((row) => row.session_id === session.id);
-        const killed = rows.filter((row) => row.active === 0).length;
-        const echoes = (m.loopsBySession.get(session.id) ?? [])
-            .flatMap((loop) => m.turnsByLoop.get(loop.id) ?? [])
-            .reduce((sum, turn) => sum + turn.packetEchoes, 0);
-        return `${rows.length} announced · ${killed} killed · ${echoes} header echo${echoes === 1 ? "" : "es"}`;
-    }
-
-    // {§turn-source-resources} — landed, retired by the model, and turns that reasoned.
-    static #renderReasonings(session: SessionRow, m: DigestModel): string {
-        const rows = m.reasoningRows.filter((row) => row.session_id === session.id);
-        const killed = rows.filter((row) => row.active === 0).length;
-        const reasonedTurns = (m.loopsBySession.get(session.id) ?? [])
-            .flatMap((loop) => m.turnsByLoop.get(loop.id) ?? [])
-            .filter((turn) => turn.has_reasoning === 1).length;
-        if (reasonedTurns === 0 && rows.length === 0) return "(no reasoning)";
-        if (rows.length === 0) return `0 of ${reasonedTurns} landed (unbudgeted or disabled)`;
-        if (reasonedTurns > rows.length) return `${rows.length} of ${reasonedTurns} landed · ${killed} killed`;
-        return `${rows.length} landed · ${killed} killed`;
     }
 
     static waterfall(m: DigestModel): string {
         const lines: string[] = [];
-        lines.push(`# plurnk-service digest`);
+        lines.push("# plurnk-service digest");
         lines.push("");
         lines.push(`DB: ${m.dbPath}`);
         lines.push(DigestRender.#storageLine(m.storage));
@@ -666,12 +264,12 @@ export default class DigestRender {
         const erroredCalls = m.inferenceCalls.filter((call) => call.state === "error").length;
         const pendingCalls = m.inferenceCalls.filter((call) => call.state === "pending").length;
         const bareCalls = m.modelCalls.filter((call) => call.kind === "bare").length;
-        const pendingRequests = m.providerRequests.filter((request) => request.state === "pending").length;
+        const pendingRequests = m.providerRequests.filter((req) => req.state === "pending").length;
         const packetFailures = m.turns.filter((turn) => m.evidence.packet(turn).packetFailure !== null).length;
         lines.push(`Workspaces: ${m.workspaces.length}  Sessions: ${m.sessions.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Inference calls: ${m.inferenceCalls.length} (${bareCalls} BARE, ${erroredCalls} errored, ${pendingCalls} open)  Emission attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected)  Provider requests: ${m.providerRequests.length} (${pendingRequests} open)  Log entries: ${m.logEntries.length}`);
         if (packetFailures > 0) lines.push(`Stored packet failures: ${packetFailures}`);
         lines.push(`Search: channels=${m.search.channel_entries} attached=${m.search.derivation_complete} (indexed=${m.search.indexed} excluded=${m.search.excluded} unsearchable=${m.search.unsearchable} failed=${m.search.failed}) unattached=${m.search.unfinished} artifacts=${m.search.derivation_artifacts_complete} complete/${m.search.derivation_artifacts_building} building`);
-        const health = m.loops.map((l) => DigestRender.#loopHealth(l, m));
+        const health = m.loops.map((l) => loopHealth(l, m));
         const clean = health.filter((h) => h.verdict === "CLEAN").length;
         const degen = health.filter((h) => h.verdict === "DEGENERATE-WIN").length;
         const failed = health.filter((h) => h.verdict.startsWith("FAILED")).length;
@@ -682,7 +280,7 @@ export default class DigestRender {
             lines.push("");
             lines.push(`## Workspace #${workspace.id} — ${workspace.name}`);
             lines.push("");
-            lines.push(DigestRender.#cacheLine(m.requestsByWorkspace.get(workspace.id) ?? [], m));
+            lines.push(cacheLine(m.requestsByWorkspace.get(workspace.id) ?? [], m));
             const workspaceSessions = m.sessionsByWorkspace.get(workspace.id) ?? [];
             for (const session of workspaceSessions) {
                 lines.push("");
@@ -694,16 +292,16 @@ export default class DigestRender {
                 lines.push("```");
                 const sessionLoops = m.loopsBySession.get(session.id) ?? [];
                 for (const loop of sessionLoops) {
-                    const terminal = DigestRender.#terminalResult(loop);
+                    const terminal = terminalResult(loop);
                     lines.push("");
-                    const h = DigestRender.#loopHealth(loop, m);
+                    const h = loopHealth(loop, m);
                     const badge = h.verdict === "CLEAN"
                         ? " — CLEAN"
                         : ` — ${h.verdict === "DEGENERATE-WIN" ? "⚠ DEGENERATE-WIN" : h.verdict} (${h.errors} errors, ${h.errorItems} error-items)`;
                     lines.push(`#### Loop ${loop.sequence} (id=${loop.id}, status=${loop.status})${badge}`);
                     lines.push("");
                     if (loop.prompt.includes("\n")) {
-                        lines.push("Prompt:\n" + DigestRender.#indentLines(loop.prompt.trimEnd(), "  "));
+                        lines.push("Prompt:\n" + indentLines(loop.prompt.trimEnd(), "  "));
                     } else {
                         lines.push(`Prompt: ${loop.prompt}`);
                     }
@@ -715,13 +313,13 @@ export default class DigestRender {
                     lines.push("");
                     lines.push("| Turn | Packet artifacts | Physical requests |", "| --- | --- | --- |");
                     for (const turn of m.turnsByLoop.get(loop.id) ?? []) {
-                        const requests = (m.requestsByTurn.get(turn.id) ?? []).map((request) =>
-                            DigestRender.#link("digest.md", `requests/${request.id}.md`, `${request.id}: ${request.kind} ${request.outcome ?? request.state}`));
-                        lines.push(`| ${turn.sequence} (${turn.kind}) | ${DigestRender.#turnLinks(m, turn, "digest.md").join(" · ") || "—"} | ${requests.join(" · ") || "—"} |`);
+                        const requests = (m.requestsByTurn.get(turn.id) ?? []).map((req) =>
+                            link("digest.md", `requests/${req.id}.md`, `${req.id}: ${req.kind} ${req.outcome ?? req.state}`));
+                        lines.push(`| ${turn.sequence} (${turn.kind}) | ${turnLinks(m, turn, "digest.md").join(" · ") || "—"} | ${requests.join(" · ") || "—"} |`);
                     }
                     lines.push("");
                     const turnLines = (m.turnsByLoop.get(loop.id) ?? []).map((t) => DigestRender.#renderTurnLine(t, m));
-                    lines.push(DigestRender.#literal(turnLines.join("\n"), ""));
+                    lines.push(literal(turnLines.join("\n"), ""));
                 }
             }
         }
@@ -730,7 +328,7 @@ export default class DigestRender {
 
     static reasoning(m: DigestModel): string {
         const lines: string[] = [];
-        lines.push(`# plurnk-service reasoning`);
+        lines.push("# plurnk-service reasoning");
         lines.push("");
         lines.push("Turn chronology with every provider attempt. Rejected attempts remain explicit forensic evidence.");
         for (const t of m.turns) {
@@ -742,7 +340,7 @@ export default class DigestRender {
                 lines.push("");
                 lines.push("(operation turn; no provider inference)");
                 const reasoning = m.evidence.reasoning(t);
-                if (reasoning !== null) lines.push("", DigestRender.#literal(reasoning));
+                if (reasoning !== null) lines.push("", literal(reasoning));
                 continue;
             }
             const attempts = m.attemptsByTurn.get(t.id) ?? [];
@@ -753,15 +351,15 @@ export default class DigestRender {
                     : null;
                 lines.push("");
                 if (packetFailure !== null) lines.push("(stored provider packet is invalid; see its packet artifacts)");
-                else if (typeof reasoning === "string" && reasoning.length > 0) lines.push(DigestRender.#literal(reasoning));
+                else if (typeof reasoning === "string" && reasoning.length > 0) lines.push(literal(reasoning));
                 else lines.push("(no admitted provider reasoning)");
                 continue;
             }
             for (const attempt of attempts) {
                 const retainedResponse = m.evidence.response(attempt.model_call_id);
-                const response = DigestRender.parseJson(retainedResponse, {});
+                const response = parseJson(retainedResponse, {});
                 const assistant = isRecord(response) && isRecord(response.assistant) ? response.assistant : null;
-                const parsedErrors = DigestRender.parseJson(attempt.parse_errors, []);
+                const parsedErrors = parseJson(attempt.parse_errors, []);
                 const parseErrors: readonly unknown[] = Array.isArray(parsedErrors) ? parsedErrors : [];
                 lines.push("");
                 const disposition = attempt.state === "error"
@@ -772,14 +370,14 @@ export default class DigestRender {
                             ? "admitted"
                             : "rejected";
                 lines.push(`### Attempt ${attempt.sequence} - ${disposition}`);
-                const parsedAttributions = DigestRender.parseJson(attempt.attributions, []);
+                const parsedAttributions = parseJson(attempt.attributions, []);
                 const attributions: readonly unknown[] = Array.isArray(parsedAttributions) ? parsedAttributions : [];
                 lines.push(`Attributions: ${attributions.length === 0 ? "(none)" : attributions.join(", ")}`);
                 if (attempt.failure !== null) {
-                    lines.push(`Failure: ${JSON.stringify(DigestRender.parseJson(attempt.failure, attempt.failure))}`);
+                    lines.push(`Failure: ${JSON.stringify(parseJson(attempt.failure, attempt.failure))}`);
                 }
-                for (const request of m.requestsByAttempt.get(attempt.id) ?? []) {
-                    lines.push(`Physical request ${request.sequence}: [${request.state === "settled" ? request.outcome : request.state} evidence](requests/${request.id}.md)`);
+                for (const req of m.requestsByAttempt.get(attempt.id) ?? []) {
+                    lines.push(`Physical request ${req.sequence}: [${req.state === "settled" ? req.outcome : req.state} evidence](requests/${req.id}.md)`);
                 }
                 if (attempt.accepted !== 1) {
                     for (const error of parseErrors) {
@@ -789,10 +387,10 @@ export default class DigestRender {
                     lines.push("");
                 }
                 const reasoning = assistant?.reasoning ?? null;
-                if (typeof reasoning === "string" && reasoning.length > 0) lines.push(DigestRender.#literal(reasoning));
+                if (typeof reasoning === "string" && reasoning.length > 0) lines.push(literal(reasoning));
                 else if (retainedResponse === null && attempt.state === "response") lines.push("(response evidence is not retained; readable reasoning availability is unknown)");
                 else {
-                    const reasoningTokens = DigestRender.#accounting(
+                    const reasoningTokens = accounting(
                         m.requestsByAttempt.get(attempt.id) ?? [],
                     )?.usage?.outputTokenDetails?.reasoningTokens;
                     lines.push(reasoningTokens !== undefined && reasoningTokens > 0
@@ -803,444 +401,5 @@ export default class DigestRender {
             }
         }
         return lines.join("\n");
-    }
-
-    // {§share-packet-names}: render the owned envelope, never infer roles from filenames or body text.
-    static request(messages: ReadonlyArray<ChatMessage & { content: string }>, preamble: readonly string[] = []): string {
-        const blocks = messages.map(({ role, content }, index) => {
-            return `### ${index + 1}. ${role}\n\n${DigestRender.#literal(content)}`;
-        });
-        return ["# Request", ...preamble, "## Input messages", messages.map(({ role }) => role).join(" → "),
-            messages.length === 0 ? "No input message sections are retained; the original input cannot be reconstructed."
-                : "Stored text-message envelope, not a transport capture. Native payloads and provider transformations are not shown.",
-            ...blocks, ""].join("\n\n");
-    }
-
-    // {§share-packet-names}: navigation surrounds evidence; channel files stay verbatim.
-    static #requestPreamble(m: DigestModel, turn: TurnRow): string[] {
-        const stems = DigestRender.packetStems(m);
-        const stem = stems.get(turn.id)!;
-        const from = `${stem}.request.md`;
-        const loop = m.loopsById.get(turn.loop_id)!;
-        const siblings = m.turns.filter((row) => row.has_packet === 1
-            && m.loopsById.get(row.loop_id)?.session_id === loop.session_id).toSorted((a, b) => a.id - b.id);
-        const index = siblings.findIndex(({ id }) => id === turn.id);
-        const previous = siblings[index - 1];
-        const next = siblings[index + 1];
-        const navigation = [
-            DigestRender.#link(from, "digest.md", "Digest"),
-            ...(previous === undefined ? [] : [DigestRender.#link(from, `${stems.get(previous.id)!}.request.md`, "Previous")]),
-            ...(next === undefined ? [] : [DigestRender.#link(from, `${stems.get(next.id)!}.request.md`, "Next")]),
-            ...DigestRender.#turnLinks(m, turn, from).filter((link) => !link.startsWith("[Input]")),
-        ];
-        const lines = [posix.basename(stem), navigation.join(" · ")];
-        const requests = m.requestsByTurn.get(turn.id) ?? [];
-        if (requests.length > 0) {
-            const table = ["| Request | Call | Admission | Outcome |", "| --- | --- | --- | --- |"];
-            for (const request of requests) {
-                table.push(`| ${DigestRender.#link(from, `requests/${request.id}.md`, String(request.id))} | ${request.kind} ${request.inference_call_id} | ${DigestRender.#admission(m, request)} | ${request.outcome ?? request.state} |`);
-            }
-            lines.push("## Attempts", table.join("\n"));
-        }
-        for (const attempt of m.attemptsByTurn.get(turn.id) ?? []) {
-            if (attempt.accepted === 1) continue;
-            const ordinal = String(attempt.sequence).padStart(3, "0");
-            const prefix = `${stem}.attempt${ordinal}`;
-            if (attempt.state !== "response") {
-                lines.push(`### Emission attempt ${attempt.sequence}: ${attempt.state}`,
-                    DigestRender.#link(from, `${prefix}.${attempt.state}.json`, "Call evidence"));
-                if (attempt.failure !== null) lines.push(DigestRender.#literal(attempt.failure, "json"));
-                continue;
-            }
-            const admission = attempt.accepted === 0 ? "rejected" : "unadmitted";
-            lines.push(`### Emission attempt ${attempt.sequence}: ${admission}`,
-                m.evidence.response(attempt.model_call_id) === null ? "Response evidence is not retained."
-                    : DigestRender.#link(from, `${prefix}.${admission}.assistant.md`, "Exact output"),
-                DigestRender.#literal(JSON.stringify(DigestRender.parseJson(attempt.parse_errors, []), null, 2), "json"));
-        }
-        return lines;
-    }
-
-    static #admission(m: DigestModel, request: ProviderRequestRow): string {
-        if (request.kind === "bare") return "not an emission";
-        if (request.outcome !== "response") return "not admitted";
-        const call = m.modelCalls.find(({ id }) => id === request.inference_call_id);
-        return call?.accepted === 1 ? "admitted" : call?.accepted === 0 ? "rejected" : "not admitted";
-    }
-
-    static #physicalRequest(m: DigestModel, request: ProviderRequestRow, evidence: unknown): string {
-        const from = `requests/${request.id}.md`;
-        const turn = m.turns.find(({ id }) => id === request.turn_id);
-        const fields: Readonly<Record<string, unknown>> = isRecord(evidence) ? evidence : {};
-        const capture = isRecord(fields.request) ? fields.request : undefined;
-        const lines = [
-            `# Physical request ${request.id}`,
-            [DigestRender.#link(from, "digest.md", "Digest"),
-                DigestRender.#link(from, `requests/${request.id}.json`, "Complete evidence")].join(" · "),
-            ...(turn === undefined ? [] : [`Originating turn: ${DigestRender.#turnLinks(m, turn, from).join(" · ") || "no packet artifacts retained"}`]),
-            DigestRender.#literal(JSON.stringify({
-                provider: request.provider, model: request.model, kind: request.kind,
-                inferenceCallId: request.inference_call_id, sequence: request.sequence,
-                state: request.state, outcome: request.outcome, admission: DigestRender.#admission(m, request),
-                startedAt: request.started_at, completedAt: request.completed_at,
-                ...(request.payloads_retired_at == null ? {} : { payloadsRetiredAt: request.payloads_retired_at }),
-            }, null, 2), "json"),
-            "## Accounting",
-            request.state === "pending" ? "Request is unsettled; accounting is not yet available."
-                : DigestRender.#literal(JSON.stringify(DigestRender.#requestAccounting(request), null, 2), "json"),
-            "## Dispatched request",
-            typeof capture?.body !== "string" ? "Dispatched request body was not retained."
-                : `${String(capture.method)} ${String(capture.origin)}\n\nExact serialized body; URL details and request headers are not captured.\n\n${DigestRender.#literal(capture.body, "json")}`,
-        ];
-        const call = m.modelCalls.find(({ id }) => id === request.inference_call_id);
-        if (request.outcome === "response" && call?.accepted === 0) {
-            lines.push("## Admission", "The provider returned a response, but Plurnk rejected its emission.",
-                DigestRender.#literal(JSON.stringify(DigestRender.parseJson(call.parse_errors, []), null, 2), "json"));
-        }
-        if (fields.error !== undefined) lines.push("## Failure", DigestRender.#literal(JSON.stringify(fields.error, null, 2), "json"));
-        if (evidence === null) lines.push("## Response", request.payloads_retired_at == null
-            ? "No settled response evidence is retained."
-            : `Payload retention applied at ${request.payloads_retired_at}; request identity and accounting remain.`);
-        else {
-            if (request.outcome === "error") lines.push("Partial output; this physical request failed. It is not an admitted response.");
-            for (const [field, heading] of [["reasoning", "Reasoning"], ["content", "Content"]] as const) {
-                lines.push(`## ${heading}`, typeof fields[field] === "string"
-                    ? DigestRender.#literal(fields[field]) : `No readable ${field} is retained in this request record.`);
-            }
-        }
-        return `${lines.join("\n\n")}\n`;
-    }
-
-    // Per-turn forensic files. turnOps is the source authority; PacketWire
-    // reproduces provider request slots, and assistantRaw preserves provider bytes.
-    // {§share-packet-names}: the stem each turn's packet files carry is its log coordinate, session, loop and
-    // turn, as `log:///<loop>/<turn>/…` addresses it; a digest spanning workspaces nests one folder per
-    // workspace. Shared with the turn lines so a reader never counts files by hand.
-    static #stemCache = new WeakMap<DigestModel, Map<number, string>>();
-
-    static packetStems(m: DigestModel): Map<number, string> {
-        const cached = DigestRender.#stemCache.get(m);
-        if (cached !== undefined) return cached;
-        const nested = m.workspaces.length > 1;
-        // {§share-packet-names} — a workspace is commonly named by a path (`~/ptl/x`), which cannot name a
-        // file: the stem carries a slug of the name (#1001), the digest text keeps the name verbatim, and two
-        // names that slug alike are told apart by the row's id.
-        const slugged = new Map<string, number>();
-        const segment = (name: string, id: number): string => {
-            const slug = name.replace(/^~\//u, "").replace(/[^A-Za-z0-9_.-]+/gu, "-").replace(/^[^A-Za-z0-9_]+/u, "").replace(/-+$/u, "");
-            const base = slug.length === 0 ? String(id) : slug;
-            const owner = slugged.get(base);
-            if (owner === undefined) { slugged.set(base, id); return base; }
-            return owner === id ? base : `${base}-${id}`;
-        };
-        const stems = new Map<number, string>();
-        const taken = new Set<string>();
-        for (const turn of m.turns.filter((row) => row.has_packet === 1 || row.program !== null || row.has_reasoning === 1).toSorted((a, b) => a.id - b.id)) {
-            const loop = m.loopsById.get(turn.loop_id);
-            const session = loop === undefined ? undefined : m.sessionsById.get(loop.session_id);
-            if (loop === undefined || session === undefined) throw new TypeError(`turn ${turn.id} has no loop or session in scope`);
-            const workspace = m.workspaces.find(({ id }) => id === session.workspace_id);
-            const stem = `${nested ? `${segment(workspace?.name ?? String(session.workspace_id), session.workspace_id)}/` : ""}${segment(session.name, session.id)}-${loop.sequence}-${turn.sequence}`;
-            if (taken.has(stem)) throw new TypeError(`two turns share the packet name ${stem}`);
-            taken.add(stem);
-            stems.set(turn.id, stem);
-        }
-        DigestRender.#stemCache.set(m, stems);
-        return stems;
-    }
-
-    // Among its loop's model turns, this one's ordinal: the model's own count, which skips the
-    // harness turns a reader would otherwise have to subtract.
-    static #modelTurnOrdinal(turn: TurnRow, m: DigestModel): number | null {
-        if (turn.producer !== "model") return null;
-        const siblings = (m.turnsByLoop.get(turn.loop_id) ?? []).filter((t) => t.producer === "model");
-        const index = siblings.findIndex((t) => t.id === turn.id);
-        return index < 0 ? null : index + 1;
-    }
-
-    static packetFiles(m: DigestModel): string[] {
-        const written: string[] = [];
-        const stems = DigestRender.packetStems(m);
-        const write = (file: string, body: string): void => {
-            mkdirSync(dirname(join(m.digestDir, file)), { recursive: true });
-            writeFileSync(join(m.digestDir, file), body);
-            written.push(file);
-        };
-        m.turns
-            .map((turn) => ({ turn, source: turn.program }))
-            .filter(({ turn, source }) => turn.has_packet === 1 || source !== null || turn.has_reasoning === 1)
-            .toSorted((a, b) => a.turn.id - b.turn.id)
-            .forEach(({ turn, source }) => {
-            const padded = stems.get(turn.id)!;
-            const files: Array<[string, string]> = [];
-            const { packet, packetFailure } = m.evidence.packet(turn);
-            const preamble = turn.has_packet === 1 ? DigestRender.#requestPreamble(m, turn) : [];
-            if (packetFailure !== null) {
-                files.push(
-                    [`${padded}.request.md`, ["# Request", ...preamble, "Stored packet is invalid; no input messages were reconstructed.",
-                        DigestRender.#literal(JSON.stringify(packetFailure.error, null, 2), "json"),
-                        DigestRender.#link(`${padded}.request.md`, `${padded}.packet.raw.txt`, "Stored packet")].join("\n\n")],
-                    [`${padded}.packet.raw.txt`, packetFailure.raw],
-                    [`${padded}.packet.invalid.json`, JSON.stringify({
-                        turnId: turn.id,
-                        error: packetFailure.error,
-                    }, null, 2)],
-                );
-            }
-            if (packet !== null) {
-                // {§packet-assembly} — the exact text messages the request carried; a stored packet
-                // whose log cannot be projected is evidence of its own, never a reason to stop the digest.
-                try {
-                    const messages = packet.messages();
-                    if (messages.length > 0) files.push(
-                        [`${padded}.system.md`, packet.slot("system")],
-                        [`${padded}.user.md`, packet.slot("user")],
-                        [`${padded}.wire.json`, JSON.stringify(messages, null, 2)],
-                    );
-                    files.push(
-                        [`${padded}.request.md`, DigestRender.request(messages, [
-                            ...preamble,
-                            ...(packet.attachments.length === 0 ? [] : ["## Native attachments", "Stored descriptors; selection alone does not prove transport or provider acceptance.", DigestRender.#literal(JSON.stringify(packet.attachments, null, 2), "json")]),
-                        ])],
-                    );
-                } catch (cause) {
-                    files.push([`${padded}.wire.invalid.json`, JSON.stringify({ turnId: turn.id, error: cause instanceof Error ? cause.message : String(cause) }, null, 2)]);
-                    files.push([`${padded}.request.md`, ["# Request", ...preamble,
-                        "Stored input could not be projected; no message order was reconstructed.",
-                        DigestRender.#link(`${padded}.request.md`, `${padded}.wire.invalid.json`, "Projection failure")].join("\n\n")]);
-                }
-            }
-            if (source !== null) {
-                files.push([`${padded}.assistant.md`, source]);
-            }
-            const reasoning = m.evidence.reasoning(turn);
-            if (reasoning !== null) files.push([`${padded}.reasoning.md`, reasoning]);
-            if (packet?.assistant != null) {
-                if (source !== null && packet.assistant.content !== source) {
-                    throw new TypeError(`turn ${turn.id} packet assistant differs from its turnOps source`);
-                }
-                files.push([`${padded}.assistantRaw.json`, JSON.stringify(packet.assistantRaw, null, 2)]);
-            } else if (packet !== null) {
-                files.push([
-                    `${padded}.response.md`,
-                    `# ${padded} — request only\n\nNo provider response was admitted. Rejected attempt evidence, when present, is written separately.\n`,
-                ]);
-            }
-            for (const [file, body] of files) write(file, body);
-            for (const attempt of m.attemptsByTurn.get(turn.id) ?? []) {
-                if (attempt.accepted === 1) continue;
-                const attemptPadded = String(attempt.sequence).padStart(3, "0");
-                if (attempt.state !== "response") {
-                    write(`${padded}.attempt${attemptPadded}.${attempt.state}.json`, JSON.stringify({
-                        state: attempt.state,
-                        failure: DigestRender.parseJson(attempt.failure),
-                        attributions: DigestRender.parseJson(attempt.attributions, []),
-                        openedAt: attempt.timestamp,
-                        completedAt: attempt.completed_at,
-                    }, null, 2));
-                    continue;
-                }
-                const retainedResponse = m.evidence.response(attempt.model_call_id);
-                const admission = attempt.accepted === 0 ? "rejected" : "unadmitted";
-                const prefix = `${padded}.attempt${attemptPadded}.${admission}`;
-                write(`${prefix}.parse-errors.json`, JSON.stringify(DigestRender.parseJson(attempt.parse_errors, []), null, 2));
-                write(`${prefix}.attributions.json`, JSON.stringify(DigestRender.parseJson(attempt.attributions, []), null, 2));
-                if (retainedResponse === null) {
-                    write(`${prefix}.response.md`, `# Emission attempt ${attempt.sequence}: ${admission}\n\nResponse evidence is not retained.\n`);
-                    continue;
-                }
-                const response = DigestRender.parseJson(retainedResponse, {});
-                const assistant = isRecord(response) && isRecord(response.assistant) ? response.assistant : null;
-                const attemptFiles: Array<[string, string]> = [
-                    [
-                        `${prefix}.assistant.md`,
-                        typeof assistant?.content === "string" ? assistant.content : "",
-                    ],
-                    [`${prefix}.response.json`, JSON.stringify(response, null, 2)],
-                ];
-                for (const [file, body] of attemptFiles) write(file, body);
-            }
-        });
-        for (const request of m.providerRequests) {
-            const evidence = DigestRender.parseJson(m.evidence.request(request.id));
-            write(`requests/${request.id}.md`, DigestRender.#physicalRequest(m, request, evidence));
-            write(`requests/${request.id}.json`, JSON.stringify({
-                id: request.id,
-                inferenceCallId: request.inference_call_id,
-                sequence: request.sequence,
-                provider: request.provider,
-                model: request.model,
-                state: request.state,
-                startedAt: request.started_at,
-                completedAt: request.completed_at,
-                accounting: request.state === "settled" ? DigestRender.#requestAccounting(request) : null,
-                evidence,
-            }, null, 2));
-        }
-        return written;
-    }
-
-    static *json(m: DigestModel): Generator<string> {
-        const fields = {
-            dbPath: m.dbPath,
-            storage: m.storage,
-            search: m.search,
-            workspaces: m.workspaces.map((s) => ({
-                id: s.id,
-                name: s.name,
-                accounting: DigestRender.#accounting(m.requestsByWorkspace.get(s.id) ?? []),
-            })),
-            sessions: m.sessions.map((r) => ({
-                id: r.id,
-                workspace_id: r.workspace_id,
-                name: r.name,
-                owner: r.owner,
-                accounting: DigestRender.#accounting(m.requestsBySession.get(r.id) ?? []),
-                edit_census: DigestRender.#editCensus(m).bySession.get(r.id) ?? null,
-            })),
-            loops: m.loops.map((l) => ({
-                id: l.id, session_id: l.session_id, sequence: l.sequence, status: l.status,
-                prompt: l.prompt,
-                terminated_by: l.terminated_by,
-                claimed_at: l.claimed_at,
-                terminated_at: l.terminated_at,
-                result: DigestRender.#terminalResult(l),
-                accounting: DigestRender.#accounting(m.requestsByLoop.get(l.id) ?? []),
-            })),
-            turns: projectRows(m.turns, (t) => {
-                const { packet, packetFailure } = m.evidence.packet(t);
-                return {
-                    id: t.id, loop_id: t.loop_id, sequence: t.sequence,
-                    // {§share-packet-names}: the stem of this turn's packet files, or null when it wrote none.
-                    artifact: DigestRender.packetStems(m).get(t.id) ?? null,
-                    producer: t.producer, kind: t.kind,
-                    program: t.program,
-                    status: t.status, completed_at: t.completed_at,
-                    accounting: DigestRender.#accounting(m.requestsByTurn.get(t.id) ?? []),
-                    finish_reason: t.finish_reason, model: t.model,
-                    attributions: packet?.attributions ?? [],
-                    attachments: packet === null ? null : packet.attachments ?? [],
-                    packet_failure: packetFailure,
-                    // Preserve the opaque provider and engine metadata for aggregate
-                    // tooling. {§provider-surface}, {§provider-instantiation}
-                    meta: DigestRender.parseJson(t.meta ?? "null", null),
-                };
-            }),
-            inference_calls: m.inferenceCalls.map((call) => ({
-                id: call.id,
-                workspace_id: call.workspace_id,
-                turn_id: call.turn_id,
-                sequence: call.sequence,
-                kind: call.kind,
-                state: call.state,
-                attributions: DigestRender.parseJson(call.attributions, []),
-                request_model: call.request_model,
-                accounting: DigestRender.#accounting(m.requestsByInferenceCall.get(call.id) ?? []),
-                timestamp: call.timestamp,
-                completed_at: call.completed_at,
-            })),
-            model_calls: projectRows(m.modelCalls, (call) => ({
-                id: call.id,
-                turn_id: call.turn_id,
-                sequence: call.sequence,
-                kind: call.kind,
-                state: call.state,
-                response: DigestRender.parseJson(m.evidence.response(call.id)),
-                failure: DigestRender.parseJson(call.failure),
-                attributions: DigestRender.parseJson(call.attributions, []),
-                accounting: DigestRender.#accounting(m.requestsByInferenceCall.get(call.id) ?? []),
-                finish_reason: call.finish_reason,
-                model: call.model,
-                request_model: call.request_model,
-                response_model: call.response_model,
-                timestamp: call.timestamp,
-                completed_at: call.completed_at,
-                turn_attempt_id: call.turn_attempt_id,
-                accepted: call.accepted === null ? null : call.accepted === 1,
-                parse_errors: DigestRender.parseJson(call.parse_errors, []),
-                log_entry_id: call.log_entry_id,
-            })),
-            turn_attempts: projectRows(m.turnAttempts, (attempt) => ({
-                id: attempt.id,
-                turn_id: attempt.turn_id,
-                sequence: attempt.sequence,
-                state: attempt.state,
-                accepted: attempt.accepted === null ? null : attempt.accepted === 1,
-                response: DigestRender.parseJson(m.evidence.response(attempt.model_call_id)),
-                failure: DigestRender.parseJson(attempt.failure),
-                parse_errors: DigestRender.parseJson(attempt.parse_errors, []),
-                attributions: DigestRender.parseJson(attempt.attributions, []),
-                accounting: DigestRender.#accounting(m.requestsByAttempt.get(attempt.id) ?? []),
-                finish_reason: attempt.finish_reason,
-                model: attempt.model,
-                timestamp: attempt.timestamp,
-                completed_at: attempt.completed_at,
-            })),
-            provider_requests: m.providerRequests.map((request) => ({
-                id: request.id,
-                evidence: `requests/${request.id}.json`,
-                inference_call_id: request.inference_call_id,
-                turn_attempt_id: request.turn_attempt_id,
-                kind: request.kind,
-                sequence: request.sequence,
-                state: request.state,
-                accounting: request.state === "settled"
-                    ? DigestRender.#requestAccounting(request)
-                    : null,
-                ...DigestRender.cacheLedger(m).get(request.id)!,
-                started_at: request.started_at,
-                completed_at: request.completed_at,
-                ...(request.payloads_retired_at == null ? {} : { payloadsRetiredAt: request.payloads_retired_at }),
-            })),
-            log_entries: m.logEntries.map((le) => ({
-                id: le.id, session_id: le.session_id, loop_id: le.loop_id,
-                turn_id: le.turn_id, sequence: le.sequence, origin: le.origin,
-                source: le.source, model_call_id: le.model_call_id,
-                ...(le.inherited_history === undefined ? {} : { inherited_history: le.inherited_history === 1 }),
-                ...(le.ambient_event_id === undefined ? {} : { ambient_event_id: le.ambient_event_id }),
-                attrs: DigestRender.parseJson(le.attrs, {}),
-                op: le.op, target: DigestRender.#renderTarget(le),
-                status_rx: le.status_rx, state: le.state, outcome: le.outcome,
-                ...(le.proposalDecision === undefined ? {} : { proposalDecision: le.proposalDecision }),
-                initial_folded: DigestRender.parseJson(le.initial_folded, []),
-                projection: {
-                    active: le.projection_active === 1,
-                    folded: DigestRender.parseJson(le.projection_folded, []),
-                },
-                ...(DigestRender.#renderStream(le) === null
-                    ? {}
-                    : { stream: DigestRender.#renderStream(le) }),
-                ...(DigestRender.#environmentOf(le, m) === undefined ? {} : { env: DigestRender.#environmentOf(le, m) }),
-                ...(le.status_rx >= 400 ? { problem: DigestRender.#rowProblem(le) } : {}),
-                ...(DigestRender.#editCensus(m).formById.has(le.id)
-                    ? { edit_form: DigestRender.#editCensus(m).formById.get(le.id), edit_revisit: DigestRender.#editCensus(m).revisitById.has(le.id) }
-                    : {}),
-            })),
-            log_curation_effects: m.curationEffects.map(({ active_before, active_after, folded_before, folded_after, ...effect }) => ({
-                ...effect,
-                active_before: active_before === 1,
-                active_after: active_after === 1,
-                folded_before: DigestRender.parseJson(folded_before, []),
-                folded_after: DigestRender.parseJson(folded_after, []),
-            })),
-        };
-        yield "{";
-        let fieldSeparator = "";
-        for (const [name, value] of Object.entries(fields)) {
-            yield `${fieldSeparator}\n  ${JSON.stringify(name)}: `;
-            if (typeof value === "object" && value !== null && Symbol.iterator in value) {
-                yield "[";
-                let itemSeparator = "";
-                for (const row of value as Iterable<unknown>) {
-                    yield `${itemSeparator}\n${JSON.stringify(row, null, 2).replace(/^/gm, "    ")}`;
-                    itemSeparator = ",";
-                }
-                yield itemSeparator === "" ? "]" : "\n  ]";
-            } else {
-                yield JSON.stringify(value, null, 2);
-            }
-            fieldSeparator = ",";
-        }
-        yield "\n}\n";
     }
 }
