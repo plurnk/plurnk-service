@@ -31,8 +31,6 @@ const read = async <T>(path: string, outcome: PluginOutcome, report: Report, act
 // A lexical stand-in for the client-managed data directory, which the consumer checks again at launch.
 const DATA = "/PLUGIN_DATA";
 
-const { inside, resolved, contained } = AgentPluginFiles;
-
 const pointer = (server: string): string => `mcp.json#/mcpServers/${server.replaceAll("~", "~0").replaceAll("/", "~1")}`;
 
 const parseJson = async (path: string): Promise<{ value: unknown } | null> => {
@@ -49,7 +47,7 @@ export default class PluginDirectory {
     static async load(directory: string): Promise<PluginLoad> {
         const reports: PluginReport[] = [];
         const report: Report = (path, section, outcome, message) => { reports.push({ root: directory, path, section, outcome, message }); };
-        const root = await read("", "rejected", report, () => resolved(directory));
+        const root = await read("", "rejected", report, () => AgentPluginFiles.resolved(directory));
         if (root === null || !(await read("", "rejected", report, () => stat(root)))?.isDirectory()) {
             if (reports.length > 0) return { plugin: null, reports };
             report("", "11.1", "rejected", "the plugin directory does not exist");
@@ -79,9 +77,9 @@ export default class PluginDirectory {
     // {§agent-plugins-containment} Immediate children of `skills/` whose SKILL.md resolves to a regular file.
     static async #skills(root: string, report: Report): Promise<SkillDirectory[]> {
         const location = join(root, "skills");
-        const real = await resolved(location);
+        const real = await AgentPluginFiles.resolved(location);
         if (real === null) return [];
-        if (!inside(root, real)) {
+        if (!AgentPluginFiles.inside(root, real)) {
             report("skills", "4.1", "invalid", "skills/ resolves outside the plugin root");
             return [];
         }
@@ -91,9 +89,9 @@ export default class PluginDirectory {
         }
         const skills: SkillDirectory[] = [];
         for (const name of (await readdir(real)).toSorted()) {
-            const file = await read(`skills/${name}`, "skipped", report, () => resolved(join(real, name, "SKILL.md")));
+            const file = await read(`skills/${name}`, "skipped", report, () => AgentPluginFiles.resolved(join(real, name, "SKILL.md")));
             if (file === null) continue;
-            if (!inside(root, file)) {
+            if (!AgentPluginFiles.inside(root, file)) {
                 report(`skills/${name}/SKILL.md`, "4.1", "skipped", "SKILL.md resolves outside the plugin root");
                 continue;
             }
@@ -109,9 +107,9 @@ export default class PluginDirectory {
 
     static async #mcp(root: string, report: Report): Promise<ReadonlyMap<string, McpServerEntry> | null> {
         const location = join(root, "mcp.json");
-        const real = await resolved(location);
+        const real = await AgentPluginFiles.resolved(location);
         if (real === null) return null;
-        if (!inside(root, real)) {
+        if (!AgentPluginFiles.inside(root, real)) {
             report("mcp.json", "4.1", "invalid", "mcp.json resolves outside the plugin root; MCP is disabled for this plugin");
             return null;
         }
@@ -148,12 +146,12 @@ export default class PluginDirectory {
     // {§agent-plugins-containment} A `./` command, and a working directory once its placeholders expand.
     static async #escape(root: string, entry: McpServerEntry): Promise<string | null> {
         if (entry.type !== "stdio") return null;
-        if (entry.command.startsWith("./") && !(await contained(root, resolve(root, entry.command)))) {
+        if (entry.command.startsWith("./") && !(await AgentPluginFiles.contained(root, resolve(root, entry.command)))) {
             return `command ${entry.command} resolves outside the plugin root`;
         }
         if (entry.cwd === undefined) return null;
         const expanded = expandPlaceholders(entry.cwd, { root, data: DATA });
-        if (entry.cwd.startsWith("${PLUGIN_DATA}")) return inside(DATA, resolve(expanded)) ? null : `cwd ${entry.cwd} leaves the plugin data directory`;
-        return (await contained(root, resolve(root, expanded))) ? null : `cwd ${entry.cwd} resolves outside the plugin root`;
+        if (entry.cwd.startsWith("${PLUGIN_DATA}")) return AgentPluginFiles.inside(DATA, resolve(expanded)) ? null : `cwd ${entry.cwd} leaves the plugin data directory`;
+        return (await AgentPluginFiles.contained(root, resolve(root, expanded))) ? null : `cwd ${entry.cwd} resolves outside the plugin root`;
     }
 }

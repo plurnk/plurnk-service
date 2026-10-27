@@ -13,7 +13,7 @@ import { Knob } from "@plurnk/plurnk-meta";
 import { actionError, messageOf } from "./problems.ts";
 
 const execFileP = promisify(execFile);
-const { inside, isFile } = AgentPluginFiles;
+const { isFile } = AgentPluginFiles;
 
 // The ceiling of one tool run's captured output: a bound on a child process, not a choice.
 const TOOL_OUTPUT_BYTES = 8 * 1024 * 1024;
@@ -234,7 +234,7 @@ export default class SkillSource {
             const file = join(dir, "SKILL.md");
             if (await isFile(file)) {
                 try {
-                    if (!inside(canonicalRoot, await realpath(file))) throw new Error(`${file} resolves outside the source`);
+                    if (!AgentPluginFiles.inside(canonicalRoot, await realpath(file))) throw new Error(`${file} resolves outside the source`);
                     const document = await readFile(file, "utf8");
                     const parsed = parseSkill(file, atRoot && fetched ? skillName(file, document) : basename(dir), document);
                     skills.push({ name: parsed.name, description: parsed.description, dir });
@@ -277,7 +277,7 @@ export default class SkillSource {
                     continue;
                 }
                 if (entry.isFile()) continue;
-                if (entry.isSymbolicLink() && inside(root, resolve(dir, await readlink(path)))) continue;
+                if (entry.isSymbolicLink() && AgentPluginFiles.inside(root, resolve(dir, await readlink(path)))) continue;
                 const what = entry.isSymbolicLink() ? "links outside its skill" : "is neither a file, a directory, nor an inward link";
                 throw actionError("source-unsafe", 422, `'${relative(root, path)}' ${what}.`, { path: relative(root, path), retryable: false });
             }

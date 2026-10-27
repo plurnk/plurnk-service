@@ -11,7 +11,7 @@ usage(import.meta, `
 usage: npm run types:sqlrite:write | npm run types:sqlrite:check   (from plurnk-core)
 Regenerates the SqlRite statement typings from the SQL registry with --write; without it, fails when the committed typings differ.
 Reads: src/**/*.sql.
-Writes: SqlRite.d.ts and SqlRite.test.d.ts with --write.
+Writes: SqlRite.d.ts and test/SqlRite.test.d.ts with --write.
 `);
 
 const exec = promisify(execFile);
@@ -39,7 +39,7 @@ const generate = async (directories, name) => {
 
 try {
     await generate(["migrations", "src"], "SqlRite.d.ts");
-    await generate(["migrations", "src", "test/intg"], "SqlRite.test.d.ts");
+    await generate(["migrations", "src", "test/intg"], "test/SqlRite.test.d.ts");
 } finally {
     await rm(temporary, { recursive: true, force: true });
 }
