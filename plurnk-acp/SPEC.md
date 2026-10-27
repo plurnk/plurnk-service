@@ -72,11 +72,20 @@ The integration gate runs a stock `@agentclientprotocol/sdk` v2 `ClientApp` over
 
 ## §acp-proposal-resolve 7. Human-in-the-Loop: Permissions and Elicitations
 
+```mermaid
+stateDiagram-v2
+    [*] --> running : session/prompt admitted
+    running --> requires_action : Proposal (review) or ClientInteraction
+    requires_action --> running : Peer resolves gate ($/cancel_request to sibling peers)
+    requires_action --> idle : session/cancel or loop/terminated
+    running --> idle : loop/terminated (end_turn | max_turn_requests | cancelled | refusal | error)
+```
+
 When a bound session (or observed descendant owned by `acp://operator`) pauses on a `ProposalProjection` (`disposition: "review"`; `accept`/`reject` are settled automatically by Core) or `ClientInteractionProjection`, the module emits `state_update: { state: "requires_action" }` and sends the gate to every peer observing the owning session:
 
 - **Proposals (`session/request_permission`):** `sh` proposals use `subject: { type: "command", command, cwd }`; file/scheme/MCP proposals use `subject: { type: "tool_call", toolCall }`; `options` are `allow_once`, `allow_always`, `reject_once`, `reject_always` (`optionId === kind`); `_meta.plurnk.proposal` holds the projection. Selecting an option calls `ApplicationPort.resolveProposal(logEntryId, { decision, scope, outcome }, owner)` (`allow_always`/`reject_always` pass `scope: "always"`); `cancelled` cancels the proposal.
 - **Client interactions (`elicitation/create`):** Question/form interactions use `mode: "form"` (`elicitationId`, `scope: { type: "session", sessionId }`, `message`, `requestedSchema`); OAuth consent URLs use `mode: "url"` (`url`). Answering calls `resolveClientInteraction` and emits `elicitation/complete` (`{ elicitationId }`).
-- **Cross-peer cancellation & validation:** Settling a gate sends JSON-RPC `$/cancel_request` for that request ID to all other peers where it was in flight and emits `state_update: { state: "running" }`. Prompts submitted via `session/prompt` while a gate is pending are durably queued in Core's inbox before re-presenting the gate. Invalid or stale gate resolutions fail at Core's boundary (`400 interrupt-invalid`, `400 interrupt-duplicate`, `400 session-scope-invalid`, `409 interrupt-not-pending`, `403 proposal-not-owned`).
+- **Cross-peer cancellation & validation:** Settling a gate sends JSON-RPC `$/cancel_request` for that request ID to all other peers where it was in flight and emits `state_update: { state: "running" }`. Terminating a loop (`loop/terminated`) cancels all held gates for that session across connected peers. Prompts submitted via `session/prompt` while a gate is pending are durably queued in Core's inbox before re-presenting the gate. Invalid or stale gate resolutions fail at Core's boundary (`400 interrupt-invalid`, `400 interrupt-duplicate`, `400 session-scope-invalid`, `409 interrupt-not-pending`, `403 proposal-not-owned`).
 
 ## §acp-action-binding 8. Configuration Options, Commands, and Module Actions
 
@@ -94,7 +103,20 @@ A session observes its bound session and, when `_meta.plurnk.descendants !== fal
 
 - **Event fan & input:** One Core event subscription fans out to all attached connections. `session/prompt` requires non-empty text or attachment content (`400 user-message-text-required`), passes `messageId` as Core's idempotency key (`422 message-address-reused` on conflicting reuse), addresses the causal sender as `acp://operator/sessions/<sessionId>/messages/<messageId>`, and tracks unobserved messages in `_meta.plurnk.status.inbox`.
 - **OAuth perimeter & revocation:** Under `port.credentials.mode() === "oauth"`, every non-preflight HTTP request and WebSocket upgrade on `/acp*` requires `Authorization: Bearer <token>` with scope `acp` (`401 bearer-token-required` with `WWW-Authenticate: Bearer` when missing; `401 bearer-token-invalid` / `401 bearer-token-revoked` with `error="invalid_token"` when invalid/expired/revoked; `403 bearer-scope-insufficient` with `error="insufficient_scope"` when lacking `acp`). Revoking a token family closes active streams admitted under that family with `401 credential-revoked` without cancelling running loops. Under `PLURNK_AUTH=0`, all requests are admitted as `acp://operator`.
-- **CORS & Problem Details:** When `PLURNK_ACP_ALLOW_ORIGIN` is non-empty, responses set `access-control-allow-origin`, `access-control-allow-headers: content-type, authorization, acp-connection-id, acp-session-id`, and `access-control-expose-headers: acp-connection-id, acp-session-id`, and `OPTIONS /acp*` answers `204` before auth. HTTP errors return `application/problem+json` and JSON-RPC errors carry the RFC 9457 Problem in `error.data.problem` (`parse-failed` `400`, `invalid-json` `400`, `invalid-json-rpc` `400`, `invalid-session-metadata` `400`, `reasoning-invalid` `400`, `proposal-not-owned` `403`, `bearer-token-required` `401`, `bearer-token-invalid` `401`, `bearer-token-revoked` `401`, `bearer-scope-insufficient` `403`, `credential-revoked` `401`, `service-stopping` `503`, `route-not-found` `404`, `entry-target-required` `400`, `entry-query-invalid` `400`, `history-session-required` `400`, `history-cursor-not-found` `404`, `history-loop-invalid` `400`, `history-loop-not-found` `404`, `overview-invalid` `400`, `overview-read-failed` `500`, `request-failed` `500`, `session-not-found` `404`, `session-address-invalid` `400`, `user-message-text-required` `400`, `interrupt-invalid` `400`, `interrupt-duplicate` `400`, `interrupt-not-pending` `409`, `session-scope-invalid` `400`, `request-cancelled` `499`).
+- **CORS & Problem Details:** When `PLURNK_ACP_ALLOW_ORIGIN` is non-empty, responses set `access-control-allow-origin`, `access-control-allow-headers: content-type, authorization, acp-connection-id, acp-session-id`, and `access-control-expose-headers: acp-connection-id, acp-session-id`, and `OPTIONS /acp*` answers `204` before auth. HTTP errors return `application/problem+json` and JSON-RPC errors carry the RFC 9457 Problem in `error.data.problem`:
+
+| Problem code (`https://problems.plurnk.xyz/acp/<code>`) | Status | Trigger & recovery contract |
+|---|---|---|
+| `bearer-token-required` / `bearer-token-invalid` / `bearer-token-revoked` / `credential-revoked` | 401 | Missing, malformed, expired, or revoked OAuth 2.1 access token (`WWW-Authenticate: Bearer`) |
+| `bearer-scope-insufficient` / `proposal-not-owned` | 403 | Token lacks `acp` scope, or proposal belongs to another owner |
+| `invalid-json` / `invalid-json-rpc` / `parse-failed` | 400 | Malformed JSON body, JSON-RPC envelope, or `/script` (`op.parse`) statement syntax |
+| `session-address-invalid` / `invalid-session-metadata` / `reasoning-invalid` / `session-scope-invalid` | 400 | Invalid `<workspaceId>#<sessionName>`, `_meta.plurnk` payload, reasoning mode (`"inline" \| "link"`), or session scope |
+| `user-message-text-required` / `entry-target-required` / `entry-query-invalid` / `history-session-required` / `history-loop-invalid` / `overview-invalid` | 400 | Missing or invalid prompt content, entry route query parameter, history query parameter, or overview filter |
+| `route-not-found` / `session-not-found` / `history-cursor-not-found` / `history-loop-not-found` | 404 | Unknown HTTP subroute, session address, history pagination cursor, or loop sequence |
+| `interrupt-invalid` / `interrupt-duplicate` / `interrupt-not-pending` | 400 / 409 | Malformed, duplicate, or already-settled permission/elicitation resolution |
+| `request-cancelled` | 499 | Request or stream cancelled by caller (`$/cancel_request` or `session/cancel`) |
+| `overview-read-failed` / `request-failed` / `action-failed` | 500 | Unexpected internal failure while reading overview or executing request/action |
+| `service-starting` / `service-stopping` | 503 | Request arrived before `start` completed or after `stop` began (`retryable: true`) |
 
 | Environment key | Default | Accepted value | Effect |
 |---|---|---|---|

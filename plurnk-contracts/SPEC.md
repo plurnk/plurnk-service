@@ -18,6 +18,29 @@
 | JSON Schemas and JSON rendering | `@plurnk/plurnk-contracts/schema/*.json`, `renderJsonResult`, `formatJsonDocument` |
 | Model language reference | `plurnk.md` in the package |
 
+```mermaid
+flowchart LR
+    canon["Canonical model teaching<br/>plurnk.md"]
+    free["Other admitted input"]
+    syntax["ANTLR lexer + parser<br/>syntax and document tier"]
+    ast["AstBuilder<br/>typed, serializable AST"]
+    runtime["Runtime owners<br/>stateful semantics and effects"]
+    canon --> syntax
+    canon --> free
+    free --> syntax
+    syntax --> ast
+    ast --> runtime
+```
+
+| Layer | Owner or artifact | Contract |
+| --- | --- | --- |
+| Stable current law | `SPEC.md` | Owns invariants and boundaries; forge issues retain history |
+| Canonical model teaching | `plurnk.md` | Teaches the lean spelling and operational model the model should emit |
+| Accepted syntax | `plurnkLexer.g4`, `plurnkParser.g4` | Recognizes document tiers, operation fences, slot shape, and section boundaries |
+| Typed admission | `AstBuilder` | Produces JSON-serializable unions and validates deterministic body/path syntax |
+| Shared wire data | `schema/*.json` | Defines runtime-neutral data shapes projected into generated TypeScript |
+| Stateful behavior | consuming runtime | Resolves addresses, permissions, selection arithmetic, effects, and lifecycle |
+
 - **Authoritative representations**: JSON Schema is authoritative for shared wire data shapes; TypeScript types are generated from `schema/*.json`; ANTLR grammars in `@plurnk/plurnk-parser` are authoritative for accepted model-language syntax.
 - **ACP discovery and schema enforcement**: `AcpDiscovery` enumerates the installed ACP v2 actions (`scope`, `inputSchema`, `outputSchema`), notifications (`payloadSchema`), and `display` capabilities. Boundary validators enforce these schemas without mutating them and report structured validation `issues` in RFC 9457 Problem `detail`.
 - **JSON result and document presentation**: `renderJsonResult` formats compact aggregate operation rows (placing top-level array items on individual lines without rewriting stored JSON coordinates). `formatJsonDocument` performs two-space whitespace-only formatting of complete strict JSON documents before representation storage.
@@ -33,16 +56,34 @@ flowchart LR
   D -->|yes, gated| P["ProposalDisposition (review | accept | reject)"]
 ```
 
-- **Exact selector conjunction**: A capability selector matches a `CapabilityDescriptor` when every declared field equals the descriptor and every declared `trait` is present in the descriptor's trait set. Within a policy layer, `deny` wins over `only` and `allow`; when `only` is present, at least one selector must match.
-- **Subtractive cascade**: A descriptor is admitted only when every active layer (`service` and `workspace`) admits it. Workspace policy cannot widen service policy. `CapabilityProjection` exposes `service`, `workspace`, and normalized `effective` policies.
+| Contract | Shape invariant | Runtime responsibility |
+| --- | --- | --- |
+| `CapabilityDescriptor` | One routed operation demand with its operation, access class (`read \| write \| exec \| network \| session \| interact`), resource/runtime/tool coordinates, and declared traits | Derive every demand before dispatch |
+| `CapabilityPolicy` | Exact `allow`/`only`/`deny` selectors; omitted `only` is unrestricted, present empty `only` denies all, and `allow` pre-approves admitted proposals | Intersect service and workspace policies |
+| `CapabilityProjection` | Durable `service`, client-mutable `workspace`, and normalized `effective` policies | Expose effective authority without storing session/loop policy copies |
+| `ProposalPolicy` | `review`, `accept`, or `reject` (`PROPOSAL_POLICIES`) | Read the server's disposition knob at the proposal boundary |
+| `ProposalDisposition` | Review, or automatic accept/reject with optional outcome | Select once for the pending gate |
+| `ProposalProjection` | Identity, review target, body/attrs, owner, capability selector, ACP v2 subject, stale signal, disposition | One validated projection for live delivery and reconnect |
+
+- **Exact selector conjunction**: A capability selector matches a `CapabilityDescriptor` when every declared field equals the descriptor and every declared `trait` occurs in the descriptor's trait set. Within a policy layer, `deny` wins over `only` and `allow`; when `only` is present, at least one selector must match. An empty policy admits everything; an empty `only` list admits nothing.
+- **Subtractive cascade**: Capability admission is purely subtractive and order-independent: a descriptor is admitted only when every active layer (`service` and `workspace`) admits it. Workspace policy cannot restore authority denied by the service. A demand is pre-approved across layers only when it is admitted across every layer and matches at least one layer's `allow` selector. Log/program control (`KILL (log:///...)`, native dispositions `WAIT`/`NOTE`, and targetless `SEND`) creates no capability demand.
 - **Proposals and session ownership**: `ProposalPolicy` (`review | accept | reject`) and `SessionOwner` (`address`, `clientTools`, `interactive`) govern stopped-world approval after capability admission succeeds.
-- **Effort and model catalog wire**: `Effort` is `off | adaptive | low | medium | high | xhigh | max`. `ModelRoute`, `ModelCatalogPage`, and `ModelReadiness` expose provider/model identity, capabilities (including supported `efforts`), physical limits, and required environment-variable name sets without exposing credentials or tuning internals.
+- **Effort and model catalog wire**: `Effort` is `off | adaptive | low | medium | high | xhigh | max`. `ModelRoute`, `ModelCatalogPage`, and `ModelReadiness` expose provider/model identity, capabilities (including supported `efforts`), physical limits, and alternative required environment-variable name sets (names only, never values, credentials, or tuning internals).
 
 ### §provider-request-accounting Client interactions and provider request accounting
 
-- **Client-owned interaction wire**: `ClientInteractionRequest` (`mode: "form"` with `requestedSchema` or `mode: "url"` with `elicitationId` and `url`), `ClientInteractionProjection`, and `ClientInteractionResolution` (`accept | decline | cancel`) carry structured user elicitation without leaking upstream transport state.
-- **Provider usage and cost**: `ProviderUsage` records non-negative safe integers (`inputTokens`, `outputTokens`, `totalTokens`, cache and reasoning details) without substituting zero for unknown fields. `ProviderCost` records `charged` or `estimated` decimal amounts (with optional USD equivalent) or `unknown` with a reason.
-- **Indivisible request accounting and evidence**: `ProviderRequestAccounting` binds one physical request's provider, model, outcome, status, usage, and cost in issue order across retries and failover; forensic response/failure payloads travel alongside as separate evidence. `ProviderAccounting` derives complete totals (`usage`, `costUsd`) and partial subtotals (`knownUsage`, `knownCostUsd`) from `requests`.
+| Contract | Shape invariant |
+| --- | --- |
+| `ClientInteractionRequest` | Non-empty `toolName`, `mode: "form"` with non-empty `message` and object `requestedSchema`, or `mode: "url"` with non-empty `message`, non-empty `elicitationId`, and URI `url` |
+| `ClientInteractionProjection` | Positive interaction, session, loop, and turn identities plus the exact request; workspace scope remains the containing transport envelope |
+| `ClientInteractionResolution` | Exactly `{ action: "accept", content? }`, `{ action: "decline" }`, or `{ action: "cancel" }` |
+
+| Projection | Complete total | Known subtotal |
+| --- | --- | --- |
+| Tokens (`ProviderUsage`) | Each `usage` field (`inputTokens`, `outputTokens`, `totalTokens`, cache and reasoning details) is present only if every request reports that quantity; `totalTokens === inputTokens + outputTokens` when all three are present | `knownUsage` sums each reported non-negative safe-integer field, omitting wholly unknown quantities without substituting zero for unknown |
+| Monetary (`ProviderCost`) | `costUsd` is `null` if any request lacks USD-expressible cost (`charged` or `estimated` decimal string; `unknown` requires a `reason`) | `knownCostUsd` sums expressible USD costs as an exact decimal string, or is `null` when none are known |
+
+- **Indivisible request accounting and evidence**: `ProviderRequestAccounting` binds one physical request's provider, model, outcome, optional protocol status, `ProviderUsage`, and `ProviderCost` in issue order across retries and capacity failover; a later response never replaces an earlier request. JSON-serializable forensic response/failure payloads travel alongside as separate evidence without entering client events.
 
 ---
 
@@ -150,26 +191,39 @@ Producers write `(target) <scope> [metadata] <!-- aside -->` separated by single
 
 ## §text-region 7. Runtime-neutral wire contracts, text regions, and entry reads
 
-- **`TextRegion`**: 1-based safe-integer `{ startLine, startColumn, endLine, endColumn }` counting Unicode code points with exclusive end; validated by `Validator.assertTextRegion`.
-- **`RangeExtent`**: `{ unit, total, requested: [first, last], returned?: [first, last] }` for line, result, or byte pagination; validated by `Validator.assertRangeExtent`.
-- **`EntryReadResult`**: Transport-neutral `{ status: 200, entry: ClientEntry } | { status: 400..599, problem, entry: null }` where every returned channel satisfies `contentOffset + codePointLength(content) === contentLength`.
+| Contract | Fields & Invariants |
+| --- | --- |
+| `TextRegion` | `{ startLine, startColumn, endLine, endColumn }` — 1-based positive safe integers counting Unicode code points (`LF`, `CRLF`, `CR` line separators; `CRLF` is one indivisible separator). `end` is exclusive; equal start and end identify a zero-length insertion point. Validated by `Validator.assertTextRegion`. |
+| `RangeExtent` | `{ unit: "line" \| "result" \| "byte", total, requested: [first, last], returned?: [first, last] }` — `requested` preserves the numeric request; `returned` names inclusive positive ordered positions (`<= total`) and is omitted on empty or failed selections. Validated by `Validator.assertRangeExtent`. |
+| `EntryReadResult` | `{ status: 200, entry: ClientEntry } \| { status: 400..599, problem: ProblemDetails, entry: null }` — `ClientEntry` carries `{ entryId: number \| null, target: string, channels: Record<string, ClientEntryChannel> }`. Every returned channel (`content`, `contentOffset`, `contentLength`, `mimetype`, `weight`, `state: "static" \| "active" \| "closed" \| "errored"`) satisfies `contentOffset + codePointLength(content) === contentLength`. |
 
 ### §diagnostic-observation Operation results, Problem Details, and Notices
 
-- **`OperationResult`**: Status `100..399` forbids `problem`; status `400..599` requires one RFC 9457 `ProblemDetails` object.
-- **Diagnostic observation**: Every Problem `detail`/`recovery`, parse diagnostic, and `Notice` states what was read, what was done with it, and where, plus the construct's working form — never guessing author intent or why.
-- **`Problems` and `Notice`**: `Problems.create`, `Problems.fromError`, and `Problems.project` (which strips `title`, `status`, and `instance` for compact packet rows) manage RFC 9457 problems; `Notice` carries transient non-terminal observations with optional `YOU MUST...` directives for model-output advisories.
+| Envelope / Method | Contract |
+| --- | --- |
+| `OperationResult` | Status `100..399` forbids `problem`; status `400..599` requires one RFC 9457 `ProblemDetails` object whose `status` equals the containing operation status. |
+| `ProblemDetails` | Requires `type` (stable absolute URI), `title` (stable summary with no occurrence data), `status`, and `detail` (failed subject, observed fact, and violated constraint); optional `instance`, `stage`, `recovery` (one working-form next action), `retryable`, and factual producer extensions. |
+| `Problems.fromError(error)` | If `error.result` is present, validates the complete `OperationResult` and returns its `problem`; otherwise if `error.problem` is present, validates and returns `ProblemDetails` unchanged; otherwise returns `null`. |
+| `Problems.project(problem, context)` | Produces `ProblemProjection` for model packets: retains `type` and `detail`, retains `stage`/`recovery`/`retryable`/extensions when not duplicated by the enclosing row, and strips `title`, `status`, and `instance`. |
+| `Notice` | Transient, non-terminal observation (`level`, `source`, `kind`, `message`, optional `directive` starting with `YOU MUST` / `YOU MUST NOT` / `YOU MUST ONLY` / `YOU SHOULD` / `YOU SHOULD NOT` for model-output advisories). |
+
+- **Diagnostic observation**: Every Problem `detail` and `recovery`, parse diagnostic, and `Notice` states what was read, what was done with it, and where, and may show the working form of the construct it read or refused — never guessing author intent or why.
 
 ### §mcp-server-definition Client display capabilities, MCP servers, and skills
 
-- **`ClientDisplayCapabilities`**: Ordered array of `scheme` and `mimetype` descriptors with optional non-empty `display.glyph` strings.
-- **`McpServerDefinition` and `McpOAuth`**: Closed union of `stdio` and `streamable-http` server definitions and client-managed OAuth configurations (`Validator.assertMcpOAuth`), with secrets referenced as `${NAME}`.
+- **`ClientDisplayCapabilities`**: Ordered array of closed discriminated objects (`{ kind: "scheme", scheme, display }` or `{ kind: "mimetype", mimetype, display }`), where `display.glyph` is an optional non-empty opaque string.
+- **`McpServerDefinition` and `McpOAuth`**: Closed union of `stdio` (`command`, optional `args`, `env`, `cwd`) and `streamable-http` (`url`, optional `headers`, `authorization`) definitions. `McpOAuth` (`Validator.assertMcpOAuth`) validates interactive OAuth (`callbackUrl`, mutually exclusive HTTPS Client ID Metadata Document URL / pre-registered client ID + `${NAME}` secret / Dynamic Client Registration, optional `issuer` and `authorizationParams`) and `client_credentials` grants.
 - **`SkillDefinition`**: Workspace skill definition (`name` matching `SKILL_NAME`, optional `source`, `ref`, `commit`) validated by `Validator.assertSkillDefinition`.
 
 ### §application-session-observation Exterior application port and session/loop observation
 
-- **`ApplicationPort`**: Transport-neutral interface in `@plurnk/plurnk-contracts/port` through which ACP and other adapters drive workspaces, sessions, loops, operations, proposals, client interactions, and event subscriptions (`ApplicationOperationEvent`).
-- **Session and loop observation**: `selectSessionLoop` and `lifecycleOfLoopStatus` (`idle | queued | running | parked | completed | cancelled | failed`) project durable session and loop state; `excerptOf` produces single-line message excerpts for session overviews (`application-session-overview`) and loop lists.
+| Projection / Helper | Contract |
+| --- | --- |
+| `ApplicationPort` | Transport-neutral interface in `@plurnk/plurnk-contracts/port` driving workspaces, sessions, loops (`runLoop` with causal `source`, `attachments`, `envelope`), operations, proposals, client interactions, and event subscriptions (`ApplicationOperationEvent`). |
+| `selectSessionLoop` | Chooses `running` before `parked` before `queued` (oldest unresolved sequence wins ties); with no live work, the latest terminal settlement wins. Maintenance-only loops do not change this projection. |
+| `lifecycleOfLoopStatus` | Maps loop status to client lifecycle vocabulary: no loop `idle`; `100` `queued`; `102` `running`; `202` `parked`; `< 400` `completed`; `499` `cancelled`; `>= 400` `failed` (`413` budget, `429` turn ceiling, `500` fail, `504` timeout, `508` runaway). |
+| `excerptOf` | Extracts the first non-blank line of a message truncated to at most `N` code points without splitting a character, with trailing whitespace trimmed and `continued: boolean`. |
+| `ApplicationSessionOverview` | Projects non-hidden model-origin sessions (`{ workspaceId, id, name, parentSessionId, kind, lifecycle, gates, reply }`) ordered by most recently finished reply row first, then newest unreplied sessions, always including all gated sessions before applying `limit` and reporting `omitted`. |
 
 ---
 
@@ -177,9 +231,16 @@ Producers write `(target) <scope> [metadata] <!-- aside -->` separated by single
 
 `PlurnkParseError` is a JSON-serializable `Error` carrying `{ line, column, source: "lexer" | "parser" | "visitor", severity: "error" | "warning", recovery?, attempt?, operationOmitted }`:
 
+| Representation | Line | Column | Absence or extent |
+| --- | --- | --- | --- |
+| Parser/AST `Position` | 1-based | 0-based Unicode code points | `UNKNOWN_POSITION = { line: 0, column: 0 }` is the sole unknown sentinel |
+| Notice `content-offset` | 1-based | 0-based Unicode code points | Omit or set `position` to `null` when unknown |
+| Contracts `TextRegion` | 1-based | 1-based Unicode code points | Start included, end excluded; equality is zero-width |
+| SARIF 2.1.0 region | 1-based | 1-based (`columnKind: "unicodeCodePoints"`) | End excluded; parser point adapters add 1 to `column` |
+
 | Mechanism | Contract |
 | --- | --- |
-| Working-form recovery & attempt | Every hard error (`severity: "error"`) populates `recovery` with the canonical syntax of the refused construct and `attempt` with the refused statement's source text; `operationOmitted` marks unexecuted unfenced or native-call fragments. |
-| Point positions | Parser `Position` uses 1-based line and 0-based Unicode code-point column (`UNKNOWN_POSITION = { line: 0, column: 0 }`). |
-| Regex and matcher tolerances | Lifts leading PCRE inline flags `(?ims)` with a warning; diagnoses trailing text after `/pattern/flags` and sed ranges (`/a/,/b/`); recovers unclosed `/pattern` at EOL; lifts matchers written in the body of a bodyless retrieval/KILL to the heading with an advisory. |
-| Heading & slot tolerances | Reads bare heading patterns (`naked-pattern`), peels trailing `<scope>`/`[metadata]`/`<!-- aside -->` slots from the right of a matcher, accepts log-heading notation (`OP target <scope>` without parens), recovers bare EDIT anchors (`@aB3dE`) and combined `12@aB3dE` scopes, and sets `unparsedTail` when an unclosed `(target` or `[metadata` destroys statement boundaries. |
+| Working-form recovery & attempt | Every hard error (`severity: "error"`) populates `recovery` with the canonical syntax of the refused construct and `attempt` (`{ text, verb }`) with the refused statement's source text; `operationOmitted` marks unexecuted unfenced or native-call fragments. Each malformed statement produces at most one hard error. |
+| Regex and matcher tolerances | Lifts leading PCRE inline flags `(?ims)` with a warning; diagnoses trailing text after `/pattern/flags` and sed ranges (`/a/,/b/`, `/a/,+N`); recovers unclosed `/pattern` at EOL; flags unused non-log `KILL` body lines (`This KILL takes no body; line 2 was not used.`). |
+| Heading & slot tolerances | Reads bare heading patterns (`naked-pattern`, treating bare `#channel` after a channelless target as its channel fragment), peels trailing `<scope>`/`[metadata]`/`<!-- aside -->` slots from the right of a matcher when the heading has a single target, refuses unparenthesized bare targets (`READ a.py <1,4>`), recovers bare `EDIT` anchors (`@abcde` -> `<@abcde>`) and combined `42<@abcde>` scopes, and sets `unparsedTail` when an unclosed `(target` or `[metadata` destroys statement boundaries. |
+| Log-heading notation recovery | Recovers copied log-heading forms with a warning advisory: `OP → path <scope>` is read as `(path)`; `· 900` / `· 320 tokens` token charges are dropped; `· note text` at the end of a heading is read as `<!-- note text -->` (or dropped when an explicit `<!-- aside -->` follows). |

@@ -1155,6 +1155,178 @@ sequenceDiagram
 | Diagnostic observation | Problem `detail` and notice messages report only what the producer read, what it did with it, and where, plus the working form of a refused construct; they never speculate on author intent or cause. |
 | Unregistered scheme recovery | Addressing an unknown scheme returns `501 https://problems.plurnk.xyz/Resource/scheme-not-found` and lists `Registered schemes: <comma-separated names>.` |
 
+#### Dispatch Problem Codes
+
+| Code | Status | Contract |
+| --- | ---: | --- |
+| `target-required` | 400 | *OP* requires a target path. Recovery: Write the target in parentheses on the opening fence line: `OP (path)`. |
+| `target-cardinality` | 400 | *OP* *operand* matched *n* resources; expected one. Recovery: Name one source and one destination per pair. |
+| `scheme-not-found` | 501 | Scheme '*name*' is not registered. Recovery: `Registered schemes: *names*.` |
+| `scheme-metadata-unsupported` | 400 | *OP* on '*scheme*' does not accept the `[metadata]` modifier. |
+| `operation-not-implemented` | 501 | Scheme '*name*' does not implement *OP* (or exec). |
+| `entry-read-not-implemented` | 501 | The '*scheme*' scheme does not provide entry reads. |
+| `entry-write-not-implemented` | 501 | The '*scheme*' scheme does not provide entry writes. |
+| `entry-delete-not-implemented` | 501 | The '*scheme*' scheme does not provide entry deletion. |
+| `channel-delete-not-implemented` | 501 | The '*scheme*' scheme does not provide channel deletion. |
+| `scheme-handler-threw` | 500 | The '*scheme*' scheme did not produce a result for *OP*. |
+| `exec-source-not-data` | 501 | Scheme '*name*' is not a data source for an execution. |
+| `writer-forbidden` | 403 | Writer '*origin*' cannot modify scheme '*name*'. |
+| `capability-denied` | 403 | Capability '*route*' is denied by *scope* policy. |
+| `spawn-prompt-empty` | 422 | *OP* has no prompt text. Recovery: Write the prompt on the lines beneath the *OP* fence line, or name a resource that holds it. |
+| `message-not-found` | 404 | No accepted message exists at *address*. |
+| `send-target-required` | 400 | SEND has no recipient and its loop has no published message. Recovery: Name a recipient address. |
+| `edit-collision` | 409 | EDIT collided with the current resource state ({§edit}). Recovery: *n* of *m* edits applied. READ the target for current coordinates. |
+| `edit-target-required` | 400 | A line-anchored EDIT requires a target resource. Recovery: Provide the target that rendered the line anchor. |
+| `kill-target-required` | 400 | KILL requires a target path. |
+| `kill-target-scheme-required` | 400 | KILL target requires a scheme. |
+| `session-not-found` | 404 | Session '*name*' does not exist in this workspace. |
+| `entry-operation-unsupported` | 400 | KILL requires an entry-bearing target; '*scheme*' does not provide one. |
+| `coordinate-invalid` | 400 | '*to*' is not a log coordinate ({§log-wire-format}). Recovery: Name the coordinate as `<loop>/<turn>/<item>`, as the log shows it. |
+| `coordinate-not-found` | 404 | No log entry exists at `log:///*coordinate*` ({§log-wire-format}). |
+| `project-root-required` | 400 | Rollback restores files, and this workspace has no project root ({§log-wire-format}). |
+| `resource-scheme-required` | 400 | Resource selection requires an address. |
+| `channel-required` | 400 | The '*scheme*' scheme has no default channel. Recovery: Address a named channel with a URI fragment. |
+| `binary-source-unsupported` | 415 | Channel #*name* is binary and its scheme keeps no bytes to transfer. |
+| `fork-unaddressed` | 404 | This client operation acts for no session, so FORK has no log to branch ({§connection-lifecycle}). |
+| `session-name-conflict` | 409 | Session '*name*' already exists in this workspace. Recovery: WORK or SEND (`session://*name*`) delivers a message to the live session; FORK with a name no session holds ({§session-scheme}). |
+| `no-operation` | 422 | The turn performed no operation ({§engine-rails}). |
+| `send-target-not-a-recipient` | 400 | The addressed scheme is not a SEND recipient. Recovery: Name a message address or a recipient that implements SEND. |
+| `invalid-operation-syntax` | 400 | The parser's diagnostic for an invalid operation in an admitted turn. |
+| `unreadable-pattern` | 400 | The pattern reader's diagnostic for an unreadable matcher. |
+| `completion-invalid` | 400 | A reply accepts one completion code: 200 or 499. |
+| `attachment-address-invalid` | 400 | An attachment selects one exact resource address. |
+
+#### Loop and Context Problem Codes
+
+| Code | Status | Condition |
+| --- | ---: | --- |
+| `result-exceeds-budget` | 413 | A result exceeds the remaining log budget; detail names its size, delivered portion, and a smaller selection or curation ({§tokenomics}). |
+| `window-overflow` | 413 | The packet exceeds the model's window ({§tokenomics}). |
+| `packet-exceeds-budget` | 413 | Context exceeds budget; inserts the curation mandate row ({§tokenomics}). |
+| `loop-timeout` | 504 | The loop exhausted its active execution allowance. |
+| `strike-threshold` | 508 / 500 | Repetition crossed the strike threshold (508), or another strike source crossed it (500), under {§engine-rails}. |
+| `loop-running` | 425 | The addressed execution has not concluded. |
+| `loop-cancelled` | 499 | The loop was cancelled; detail preserves the cancellation reason. |
+| `loop-threw` | 500 | The loop failed outside its operation result contract. |
+| `narration-failed` | 500 | Filesystem divergence narration failed before its operation turn settled. |
+| `provider-contract-violation` | 502 | The provider failed without returning its required Problem Details. |
+| `active-session-limit-reached` | 508 | The workspace's active sessions reach its configured limit. |
+
+#### Content, Transfer, and File Problem Codes
+
+| Code | Status | Contract |
+| --- | ---: | --- |
+| `handler-crashed` | 415 | The *mimetype* content handler failed on *key*: *cause*. |
+| `line-anchor-unsupported` | 400 | The byte view of *target* publishes no anchors. Recovery: Use byte coordinates: `<first,last>`. |
+| `line-anchor-invalid` | 400 | A line anchor in the marker is malformed or names no current line ({§line-anchors}). |
+| `channel-not-found` | 404 | The addressed channel does not exist at *target*. Recovery: Use one of the available channels: #*a*, #*b*. |
+| `binary-read-unsupported` | 415 | The representation at *target* is binary and cannot be rendered. |
+| `pattern-unapplicable` | 422 | The pattern could not be applied to *target*. |
+| `move-region-overlap` | 409 | MOVE cannot insert a whole channel into itself and then remove that channel. |
+| `mimetype-mismatch` | 415 | COPY or MOVE cannot write '*source-mimetype*' into a '*destination-mimetype*' channel. |
+| `binary-region-unsupported` | 415 | Channel #*name* is binary and cannot receive a textual region. |
+| `copy-destination-exists` | 409 | COPY or MOVE destination *address* already contains different content. |
+| `proposal-apply-missing` | 500 | The source scheme accepted its MOVE proposal without applying the source mutation. |
+| `line-anchor-collision` | 409 | READ coordinates collided with current content at *target*. |
+| `invalid-file-url` | 400 | The native file-URL diagnostic, or `File URL path must not include NUL characters.` ({§scheme-address}). |
+| `edit-empty` | 400 | EDIT requires at least one statement. Recovery: Provide an EDIT statement. |
+| `edit-batch-mismatch` | 400 | The EDIT batch spans multiple resources. Recovery: Submit a separate EDIT batch for each resource. |
+| `line-marker-required` | 400 | EDIT of an existing file requires a line marker ({§edit}). Recovery: Name the lines to replace with `<@hash>` or `<@start,@end>` from a READ of the file; `<L,1,L,1>` inserts before line L, and `<1,-1>` replaces the whole file. |
+| `creation-batch-conflict` | 409 | Multiple EDIT operations attempted to create the same file. Recovery: Create the file with one EDIT before applying additional edits. |
+| `member-read-only` | 403 | The mounted member '*path*' is read-only. |
+| `path-names-no-file` | 403 | The spelling '*path*' does not name a file: it is empty, or it names a directory. |
+| `path-occupied-by-nonmember` | 403 | A non-member file already occupies '*path*'. Recovery: Choose an unoccupied member path. |
+| `path-outside-workspace` | 403 | A symlink on '*path*' resolves outside the namespace. |
+| `binary-write-unsupported` | 415 | A text EDIT cannot author binary '*mimetype*'. |
+| `file-create-excluded` | 403 | A members exclusion (`!_glob_`) covers '*path*'. Recovery: Remove or disable the excluding members definition, or choose another path. |
+| `file-create-gitignored` | 403 | Active Git policy ignores '*path*', and no members definition includes it. Recovery: Choose a Git-admitted path or add a members definition that includes it. |
+| `file-materialization-limit` | 413 | The file exceeds the materialization byte limit and is not read into the workspace. |
+| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: FIND lists paths. EDIT creates files; `plurnk (members)` admits existing files with a `{"verb": "add", "files": ["<path>"]}` body. |
+| `body-channel-required` | 400 | A file write requires a body channel. |
+| `write-failed` | 500 | Publication or its settlement failed; distinguishes an unpublished write from an already-published one. |
+| `creation-rollback-failed` | 500 | Incorporating a newly created file failed, and rollback was incomplete. |
+| `creation-incorporation-failed` | 500 | Incorporating a newly created file failed; its exclusive creation was rolled back. |
+| `materialization-failed` | 500 | The file was written to disk but could not be registered. |
+| `delete-failed` | 500 | Deletion or projection settlement failed; distinguishes an undeleted file from an already-deleted one. |
+
+#### Execution, Entry, Client, and Functionality Problem Codes
+
+| Code | Status | Contract |
+| --- | ---: | --- |
+| `stream-not-found` | 404 | No execution exists at the requested address. Recovery, when the id holds an execution under another runtime ({§exec}): The execution at `/*id*` is `*runtime*:///*id*`. |
+| `executor-not-registered` | 400 | No executor or MCP service named '*runtime*' is registered for this session. |
+| `runtime-unavailable` | 501 | Executable tool '*runtime*' is unavailable; detail includes the availability diagnostic. |
+| `lifetime-invalid` | 400 | The execution lifetime directive is invalid; detail identifies the invalid form. |
+| `metadata-unsupported` | 400 | Executable tool '*runtime*' does not accept metadata, or stored execution output does not accept READ or FIND metadata. |
+| `target-classification-failed` | 500 | The execution target could not be inspected; detail includes a bounded cause. |
+| `source-content-unavailable` | 422 | The source scheme did not supply execution content. |
+| `stream-entry-write-failed` | 500 | The execution's stream entry could not be created. |
+| `program-is-a-tool` | 404 | The command exited 127 and names a registered tool of another runtime ({§exec}). |
+| `executor-did-not-conclude` | 500 | The executor did not produce a terminal result. |
+| `execution-cancelled` | 499 | Execution was cancelled by the service. |
+| `executor-invalid-result` | 500 | The executor returned an invalid operation result. |
+| `executor-threw` | 500 | The executor failed outside its operation result contract. |
+| `entry-narration-failed` | 500 | An executor entry could not be materialized or narrated. |
+| `read-target-required` | 400 | READ requires a log coordinate. Recovery: Provide one exact log coordinate. |
+| `coordinate-malformed` | 400 | The log coordinate '*path*' is malformed. Recovery: Use one exact loop/turn/sequence coordinate. |
+| `log-unaddressed` | 404 | This client operation acts for no session, so `log:///` names no log ({§connection-lifecycle}). |
+| `kill-failed` / `curation-failed` | 400 | The log target '*path*' (or glob '*glob*') is malformed ({§log-kill-scope}). |
+| `session-target-required` / `workspace-target-required` | 400 | EDIT requires a `session://` or `workspace:///` target. |
+| `workspace-authority-unsupported` | 400 | A `workspace:///` address takes no authority. Recovery: Use `workspace:///path` for shared workspace entries or `session://<name>/path` for session scratch. |
+| `binary-edit-unsupported` | 415 | The #*channel* channel is binary and cannot be edited. |
+| `message-not-implemented` | 501 | SEND does not deliver messages to *scheme* entries. Recovery: To reply, SEND to an Open Message address or omit the target. `SEND (session://<name>)` sends a new message. |
+| `session-entity-not-editable` / `workspace-entity-not-editable` | 400 | A session or workspace entity is not an editable entry. Recovery: EDIT requires an entry path, such as `workspace:///example.md`. |
+| `message-empty` | 400 | SEND has no message text or attachments. |
+| `scope-unsupported` | 400 | A session SEND takes no scope. |
+| `control-address-invalid` | 400 | The operation requires an authority-only session control address. |
+| `named-session-required` | 400 | A session deliverable READ requires a named session. |
+| `emission-curated-whole` | 422 | An emission source announcement must be curated whole, without a line scope. |
+| `entry-exists` | 409 | An entry already exists at the addressed resource. |
+| `invalid-expression` | 400 | The full-text or graph matcher expression is invalid. |
+| `delete-target-required` | 400 | KILL requires a target path. |
+| `interaction-not-pending` | 409 | The requested client interaction is not pending. |
+| `interaction-unsupported` | 501 | No recipient implements the requested tool for this session. |
+| `recipient-mismatch` | 403 | Only the interaction's recipient may answer it. |
+| `interaction-response-invalid` | 400 | The response does not satisfy the pending interaction's schema. |
+| `invalid-body` | 400 | A question body is not JSON, or lacks its nonempty message or requested schema. |
+| `offset-invalid` | 400 | An entry offset is not a nonnegative safe integer. |
+| `userinfo-not-allowed` | 400 | An entry target URL contains userinfo. |
+| `action-threw` / `dispatch-threw` | 500 | The client action or Plurnk actor failed outside its operation result contract. |
+| `operation-cancelled` | 499 | The client operation was cancelled: *reason* ({§connection-lifecycle}). |
+| `message-already-accepted` | 409 | The message address was already accepted in this workspace. |
+| `message-address-reused` | 422 | The message address was already accepted in this workspace with other words. |
+| `source-not-running` | 409 | The originating task is not running; no message was admitted. |
+| `loop-not-open` | 409 | The named loop is not an unfinished recipient of the session; no message was admitted. |
+| `service-starting` | 503 | The PLURNK service owns this listener but has not admitted its client interface yet. |
+| `route-not-found` / `request-target-invalid` / `route-failed` | 404 / 400 / 500 | Listener routing errors for missing routes, invalid request URLs, or uncaught route handler failures. |
+| `configuration-invalid` | 503 | The owning configuration reader's diagnostic, naming the invalid key. Recovery: Correct the named configuration input. Other capabilities remain available. |
+| `name-reserved` / `value-invalid` / `source-unknown` | 400 | Environment Functionality validation (`*alias*` reserved, non-string value, or unknown catalog package `*source*`). |
+| `query-invalid` / `headless` / `definition-invalid` / `model-scope` | 400 / 409 / 400 / 403 | Members Functionality validation and model scope ceiling (`PLURNK_SERVICE_MEMBERS_MODEL_SCOPE`). |
+| `workspace-not-found` / `workspace-busy` / `state-not-json` | 404 / 409 / 400 | Workspace lookup, concurrent capability lock conflict, or non-JSON module state. |
+| `not-configured` / `provider-unavailable` | 501 / 503 | Session has no configured provider or `*route*` failed instantiation. |
+| `effort-unsupported` / `effort-invalid` / `context-exceeds-model-budget` | 409 / 400 / 413 | Session effort or model budget validation ({§session-model-selection}). |
+| `model-session-required` / `name-conflict` | 404 / 409 | Operation requires a model session, or the session name is already taken. |
+| `offset-channel-required` / `target-invalid` / `range-not-satisfiable` | 400 / 400 / 416 | Channel offset, target URI, or 1-based line range validation. |
+| `proposal-not-pending` / `proposal-decision-unrecorded` / `proposal-policy-failed` / `handler-unavailable` / `proposal-apply-threw` | 409 / 500 / 500 / 410 / 500 | Proposal settlement and application errors ({§proposal}). |
+| `scope-cancelled` | 499 | The session scope was cancelled: *reason*. |
+| `runtime-owner-reserved` / `owner-not-found` | 409 / 404 | Session owner registration or lookup errors ({§session-ownership}). |
+| `verb-unknown` / `arguments-not-json` | 400 | Functionality lifecycle verb or JSON object body validation. |
+
+#### Pinned Wording
+
+| Sentence | Arises when |
+| --- | --- |
+| `Nothing is in flight. Continuing.` | A `WAIT` (or premature terminal) with no live work ({§session-wait-timing}). |
+| `All Open Messages resolved. Review new results; emit no OPs if finished.` | Resolved messages with unobserved results ({§loop-completion}). |
+| `Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn.` | Over-budget turn row ({§tokenomics}). |
+| `YOU MUST persist all new facts, ideas, and plans in NOTEs on every turn. The turn continued without a NOTE.` | Continuing or parked model turn without a `NOTE` ({§operation-results}). |
+| `Context window overflow: the packet exceeds the model's window.` | Context wall ({§tokenomics}). |
+| `No recipient implements the requested interaction.` | Session owner is not interactive or does not declare the required client tool ({§proposal-projection}). |
+| `Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve.` | Dispatch of an interaction tool the session's owner would not receive ({§question-tool}). |
+| `The stream was cancelled by KILL.` | Stream terminal after `KILL` ({§stream-control}). |
+| `The execution at ops://<session>/<loop> has not concluded.` | Bare `READ` of a running session's result (`425`). |
+| `The child provider failed.` | Child's provider failure read back by its parent. |
+
 ### §share Share export and candidate runtime
 
 | Command / surface | Contract |
