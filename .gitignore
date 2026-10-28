@@ -5,6 +5,7 @@ preserved-runs/
 .env
 .env.test
 !/plurnk-core/.env.test
+/plurnk-contracts/src/types.generated.ts
 /plurnk-models/src/catalog.json
 /plurnk-models/src/providers.json
 .env.local

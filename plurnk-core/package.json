@@ -32,6 +32,7 @@
     "bin": {
         "plurnk-service": "dist/service.js"
     },
+    "man": "./dist/posix/man/plurnk-service.1",
     "files": [
         ".env.defaults",
         "dist/**/*",
@@ -63,7 +64,7 @@
         "build:sql": "node --conditions=plurnk-dev scripts/copy-sql.mjs",
         "build:info": "node scripts/write-build-info.mjs",
         "build:posix": "node --conditions=plurnk-dev scripts/generate-posix.mjs",
-        "build": "npm run build:clean && npm run build:dist && npm run build:sql && npm run build:info && npm run build:posix",
+        "build": "npm run build:clean && npm run types:sqlrite:write && npm run build:dist && npm run build:sql && npm run build:info && npm run build:posix",
         "install:global": "npm run build && npm install -g .",
         "uninstall:global": "npm uninstall -g @plurnk/plurnk-service",
         "install:sandbox": "node --conditions=plurnk-dev scripts/install-sandbox.mjs install",

@@ -1,6 +1,8 @@
 # Dependencies, builds, packs
 node_modules/
 dist/
+/SqlRite.d.ts
+/test/SqlRite.test.d.ts
 *.tgz
 
 # The operator's environment; the shipped defaults and the test floor are source.
