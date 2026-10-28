@@ -760,6 +760,13 @@ export default class SessionTranslator {
 
         if (options.beforeLoopSeq === undefined && options.exactLoopSeq === undefined) {
             for (const msg of inbox) {
+                if (
+                    msg.lifecycle !== "running" &&
+                    msg.lifecycle !== "queued" &&
+                    msg.lifecycle !== "parked"
+                ) {
+                    continue;
+                }
                 const messageId = extractMessageId(msg.source ?? msg.path, translator.#acpSessionId) ?? msg.path;
                 updates.push({
                     sessionId: translator.#acpSessionId,
@@ -767,6 +774,13 @@ export default class SessionTranslator {
                         sessionUpdate: "user_message_chunk",
                         messageId,
                         content: { type: "text", text: msg.body },
+                        _meta: {
+                            plurnk: {
+                                loopId: msg.loopId,
+                                lifecycle: msg.lifecycle,
+                                published: false,
+                            },
+                        },
                     },
                 });
             }
