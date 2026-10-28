@@ -296,7 +296,7 @@ test("{§notifications}: retries produce distinct physical-request reasoning seg
     } finally { await db.close(); }
 });
 
-test("{§edit} Engine.runTurn: only accepted durable messages enter Open Messages", async () => {
+test("{§edit} Engine.runTurn: only accepted durable messages enter Open Work", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -317,7 +317,7 @@ test("{§edit} Engine.runTurn: only accepted durable messages enter Open Message
         const packet = JSON.parse(row.packet) as { assistant: unknown };
         const definition = packetSection(packet, "definition");
         assert.equal(definition, "system prompt body");
-        assert.equal(packetSection(packet, "messages"), "[]", "provider-message scaffolding is not an accepted source");
+        assert.deepEqual(JSON.parse(packetSection(packet, "work")).messages, [], "provider-message scaffolding is not an accepted source");
         assert.ok(packet.assistant !== null);
     } finally { await db.close(); }
 });
@@ -895,7 +895,7 @@ test("{§session-initialization-entry} Engine.runTurn: the second turn's log sec
         // EDIT and a SEND). Found by identity (an untargeted SEND without a reply receipt),
         // robust to the turn-0 initialization ({§session-initialization-entry}) and a
         // catalog-preview foist that shift coordinates between the arrival and the model's ops.
-        assert.ok(log.find((e) => e.logPath.endsWith("/SEND") && !("path" in e) && !("answers" in e)), "arrival row logged");
+        assert.ok(log.find((e) => e.logPath.endsWith("/SEND") && !("path" in e) && !("repliedTo" in e)), "arrival row logged");
         const edit = log.find((e) => (e.origin ?? "model") === "model" && e.logPath.endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);

@@ -982,31 +982,31 @@ export default class Dispatcher {
         const options = ReplyMetadata.read(statement.metadata);
         if ("failure" in options) return options.failure;
         const target = statement.target;
-        let answers: string[];
+        let repliedTo: string[];
         let speechOnly = false;
         if (target === null) {
-            const open = await this.#db.engine_open_messages.get<{ path: string }>({ loop_id: loopId });
+            const open = await this.#db.engine_open_messages.get<{ key_path: string }>({ loop_id: loopId });
             // {§message-completion} — with none open, the reply is speech to the loop's latest message:
             // delivered to its originating client, its outcome unchanged.
-            const message = open ?? await this.#db.message_latest_published.get<{ path: string }>({ loop_id: loopId });
+            const message = open ?? await this.#db.message_latest_published.get<{ key_path: string }>({ loop_id: loopId });
             if (message === undefined) return Dispatcher.#failure(
                 "send-target-required", 400, "SEND has no recipient and its loop has no published message.", {},
                 { recovery: "Name a recipient address.", retryable: false },
             );
-            answers = [message.path];
+            repliedTo = [message.key_path];
             speechOnly = open === undefined;
         } else {
-            const message = await this.#db.message_source_by_address.get<{ path: string }>({
+            const message = await this.#db.message_source_by_address.get<{ key_path: string }>({
                 workspace_id: schemeCtx.workspaceId, path: target.raw,
             });
             if (message === undefined) return Dispatcher.#failure(
                 "message-not-found", 404, `No accepted message exists at ${target.raw}.`, {}, { retryable: false },
             );
-            answers = [message.path];
+            repliedTo = [message.key_path];
         }
         const captured = await MessageAttachments.capture(options.metadata, schemeCtx.resources!, "message:reply");
         if ("failure" in captured) return captured.failure;
-        return { status: 200, answers,
+        return { status: 200, repliedTo,
             ...(options.completion === null || speechOnly ? {} : { completion: options.completion }),
             ...(captured.attachments.length === 0 ? {} : { attachments: MessageAttachments.receipts(captured.attachments) }) };
     }

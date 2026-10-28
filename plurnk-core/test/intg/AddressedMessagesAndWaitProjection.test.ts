@@ -141,7 +141,7 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
             const delivered = logEntries(packet).filter(({ body }) => String(body).includes("Recovered answer."));
             assert.equal(delivered.length, 1, "the reply reaches the parent exactly once");
             assert.equal(delivered[0].path, "ops://responder/1");
-            assert.equal(delivered[0].answers, undefined, "the conclusion is not another answer");
+            assert.equal(delivered[0].repliedTo, undefined, "the conclusion is not another answer");
         }
     });
 }
@@ -239,8 +239,9 @@ for (const scope of ["", " <1,-1>"]) test(`{§message-arrival} curation${scope} 
         const two = await run();
         assert.equal(two.status, 102, "one addressed answer cannot conclude over the second assignment");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: two.turnId }))!.packet);
-        assert.match(packetSection(packet, "messages"), new RegExp(second.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-        assert.ok(!packetSection(packet, "messages").includes(first));
+        const workMessages = JSON.stringify(JSON.parse(packetSection(packet, "work")).messages);
+        assert.match(workMessages, new RegExp(second.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+        assert.ok(!workMessages.includes(first));
         assert.equal((await run()).status, 200, "the last completion reply discharges the remaining obligation");
         assert.equal((await db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId }))!.count, 0);
     } finally { await db.close(); }
@@ -294,18 +295,18 @@ for (const child of [false, true]) test(`{§message-arrival} ${child ? "child" :
         if (child) {
             assert.equal(replies.length, 1, "once, not twice");
             assert.equal(replies[0].path, "ops://bob/1");
-            assert.equal(replies[0].answers, undefined, "the conclusion is not another answer");
+            assert.equal(replies[0].repliedTo, undefined, "the conclusion is not another answer");
             return;
         }
         assert.equal(replies.length, 1, "one reply, not repeated as activity and terminal deliverable");
         assert.equal(replies[0].source, "session://bob");
-        const answers = replies[0].answers;
-        assert.ok(Array.isArray(answers), "the parent packet names answered messages as answers");
-        assert.equal(answers.length, 1);
+        const repliedTo = replies[0].repliedTo;
+        assert.ok(Array.isArray(repliedTo), "the parent packet names answered messages in repliedTo");
+        assert.equal(repliedTo.length, 1);
         const answered = await db.message_source_by_address.get<{ body: string; source: string }>({
-            workspace_id: workspaceId, path: answers[0],
+            workspace_id: workspaceId, path: repliedTo[0],
         });
-        assert.equal(answered?.body, "What did you find?", "answers identifies the original request, not its recipient actor");
+        assert.equal(answered?.body, "What did you find?", "repliedTo identifies the original request, not its recipient actor");
         assert.equal(answered?.source, "session://alice");
         assert.equal(Object.hasOwn(replies[0], "recipients"), false);
         const inbox = await db.test_messages_by_loop.all({ loop_id: loopId });
@@ -380,7 +381,7 @@ for (const outcome of ["success", "failure", "cancel"] as const) {
         await f.engine.injectIntoLoop(f.childLoop, "What did you find?", [], "session://parent", {}, undefined, await sendingOperation(f.db, f.parentLoop));
         await f.run(f.child, f.childLoop, frame("SEND", "The answer is 42.") + "\n\n" + frame("FIND (*)"));
         const before = await f.run(f.parent, f.parentLoop);
-        assert.deepEqual(before.entries.filter(({ answers }) => Array.isArray(answers)), [],
+        assert.deepEqual(before.entries.filter(({ repliedTo }) => Array.isArray(repliedTo)), [],
             "the answer to the parent's own task is not delivered twice: it arrives with the conclusion");
         assert.equal(before.entries.filter(({ path: target }) => target === "ops://child/1").length, 0, "an answer before the conclusion implies no completion");
 
@@ -395,7 +396,7 @@ for (const outcome of ["success", "failure", "cancel"] as const) {
         const completion = observations[0];
         assert.equal(completion.path, "ops://child/1");
         assert.equal(completion.origin, "_plurnk");
-        assert.equal(completion.answers, undefined, "observation is not another answer");
+        assert.equal(completion.repliedTo, undefined, "observation is not another answer");
         if (outcome === "success") {
             assert.match(String(completion.body), /The answer is 42\./, "the conclusion carries what the child said");
         } else {

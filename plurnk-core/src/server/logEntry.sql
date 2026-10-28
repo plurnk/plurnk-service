@@ -46,8 +46,8 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
        (SELECT printf('log:///%d/%d/%d/%s', sender.sequence, opened.sequence, o.sequence, o.op)
         FROM ambient_events ae
         JOIN log_responses r ON r.id = ae.source_record_id
-        JOIN json_each(r.rx, '$.answers') answer
-        JOIN message_sources ms ON ms.path = answer.value AND ms.workspace_id = (SELECT w.workspace_id FROM sessions w WHERE w.id = le.session_id)
+        JOIN json_each(r.rx, '$.repliedTo') reply
+        JOIN message_sources ms ON ms.key_path = reply.value AND ms.workspace_id = (SELECT w.workspace_id FROM sessions w WHERE w.id = le.session_id)
         JOIN loop_messages m ON m.id = ms.id
         JOIN turns opened ON opened.id = m.opened_turn_id
         JOIN loops sender ON sender.id = opened.loop_id
@@ -106,8 +106,8 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
        (SELECT printf('log:///%d/%d/%d/%s', sender.sequence, opened.sequence, o.sequence, o.op)
         FROM ambient_events ae
         JOIN log_responses r ON r.id = ae.source_record_id
-        JOIN json_each(r.rx, '$.answers') answer
-        JOIN message_sources ms ON ms.path = answer.value AND ms.workspace_id = (SELECT w.workspace_id FROM sessions w WHERE w.id = le.session_id)
+        JOIN json_each(r.rx, '$.repliedTo') reply
+        JOIN message_sources ms ON ms.key_path = reply.value AND ms.workspace_id = (SELECT w.workspace_id FROM sessions w WHERE w.id = le.session_id)
         JOIN loop_messages m ON m.id = ms.id
         JOIN turns opened ON opened.id = m.opened_turn_id
         JOIN loops sender ON sender.id = opened.loop_id

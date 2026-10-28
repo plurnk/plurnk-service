@@ -236,7 +236,12 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                 for (const row of initializationRows.filter(({ op }) => op === "FIND")) {
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
                     const items = result.results ?? (result.content === undefined ? [] : JSON.parse(result.content) as unknown[]);
-                    assert.ok(items.length > 0, `the ${row.scheme ?? "file"}:${row.pathname} survey runs because it selects something`);
+                    if (row.scheme === "session") {
+                        assert.equal(row.status_rx, 200, "the session scratch survey runs even when empty so the session sees its namespace");
+                        assert.equal(items.length, 0);
+                    } else {
+                        assert.ok(items.length > 0, `the ${row.scheme ?? "file"}:${row.pathname} survey runs because it selects something`);
+                    }
                 }
                 assert.equal(initializationRows.some(LogEntryProjection.isEmission), false,
                     "`_plurnk` initialization has no content emission ({§turn-source-resources})");
@@ -283,17 +288,23 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     { scheme: "workspace", hostname: null, pathname: "/_plurnk/tools/*.md" },
                     { scheme: "workspace", hostname: null, pathname: "/_plurnk/tools/plurnk.md" },
                     { scheme: "workspace", hostname: null, pathname: "/*" },
-                ], "the surveys that select something run, in their taught order; the empty surfaces are left out ({§session-initialization-entry})");
+                    { scheme: "session", hostname: sessionName, pathname: "/*" },
+                ], "the surveys that select something and the session scratch survey run, in their taught order; the other empty surfaces are left out ({§session-initialization-entry})");
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
-                    [null, null, null, null, "workspace knowledgebase entries"],
+                    [null, null, null, null, "workspace knowledgebase entries", "session knowledgebase entries"],
                     "asides name what each namespace is",
                 );
                 for (const row of finds) {
-                    assert.equal(row.status_rx, 200, `${row.scheme}:${row.pathname} has its catalog contract status`);
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
                     const items = result.results ?? (result.content !== undefined ? JSON.parse(result.content) as unknown[] : []);
-                    assert.ok(items.length > 0, `${row.scheme}:${row.pathname} selected something`);
+                    if (row.scheme === "session") {
+                        assert.equal(row.status_rx, 200, "the empty session scratch survey runs to orient the session to its own namespace");
+                        assert.equal(items.length, 0);
+                    } else {
+                        assert.equal(row.status_rx, 200, `${row.scheme}:${row.pathname} has its catalog contract status`);
+                        assert.ok(items.length > 0, `${row.scheme}:${row.pathname} selected something`);
+                    }
                 }
                 assert.equal(sessionName.length > 0, true);
                 assert.ok(
@@ -338,8 +349,8 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "NOTE"],
-                    "initialization contains its opening NOTE, the five surveys that select something, its closing NOTE, and nothing else",
+                    ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "NOTE"],
+                    "initialization contains its opening NOTE, the six surveys, its closing NOTE, and nothing else",
                 );
                 assert.equal(initializationRows.some(({ scheme }) => scheme === "ops"), false,
                     "turn 0 reads none of its own program, and it announces no emission ({§turn-source-resources})");
@@ -537,6 +548,50 @@ for (const standing of ["absent", "ignored", "untracked", "tracked", "excluded"]
         });
     }
 }
+
+test("{§session-initialization-entry} {§session-scheme}: a pre-populated session://<name>/AGENTS.md is read on that session's turn 0", async () => {
+    const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
+    process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
+    try {
+        const provider = new Mock({
+            contextWindow: 100000,
+            responses: [
+                makeMockResponse([
+                    "````EDIT (session://child/AGENTS.md)\n# Child Role\nFocus only on parser recovery.\n````",
+                    "````WORK (session://child)\nInspect the grammar.\n````",
+                    "````WAIT\n````",
+                ].join("\n\n"), 50),
+                makeMockResponse("````SEND [200]\nChild finished.\n````", 50),
+                makeMockResponse("````SEND [200]\nParent finished.\n````", 50),
+            ],
+        });
+        await withDaemon(provider, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                const { id: workspaceId } = (await rpcCall(ws, 1, "workspace.create", { name: "session-agents-turn0" })).result as { id: number };
+                const { finalStatus } = (await runLoopToTerminal(ws, 2, { prompt: "delegate with session instructions" })) as { finalStatus: number };
+                assert.equal(finalStatus, 200);
+                const childSession = await db.session_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "child" });
+                assert.ok(childSession, "child session was created");
+                const childLoops = await db.test_loop_queue_by_session.all<{ id: number }>({ session_id: childSession.id });
+                assert.equal(childLoops.length, 1);
+                const rows = await db.test_log_entries_by_loop.all<{
+                    origin: string; op: string; scheme: string; hostname: string | null; pathname: string; status_rx: number; rx: string;
+                }>({ loop_id: childLoops[0].id });
+                const agentsRead = rows.find((row) => row.origin === "_plurnk" && row.op === "READ" && row.scheme === "session" && row.hostname === "child" && row.pathname === "/AGENTS.md");
+                assert.ok(agentsRead, "child turn 0 foists a READ of session://child/AGENTS.md");
+                assert.equal(agentsRead.status_rx, 200);
+                assert.match(JSON.parse(agentsRead.rx).content, /Focus only on parser recovery\./u);
+                const sessionSurvey = rows.find((row) => row.origin === "_plurnk" && row.op === "FIND" && row.scheme === "session" && row.hostname === "child" && row.pathname === "/*");
+                assert.ok(sessionSurvey, "child turn 0 also surveys session://child/*");
+                assert.equal(sessionSurvey.status_rx, 200);
+                assert.match(sessionSurvey.rx, /session:\/\/child\/AGENTS\.md/u);
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
+    }
+});
 });
 
 describe("mcp-catalog-composition", () => {

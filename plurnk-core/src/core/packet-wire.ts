@@ -57,8 +57,14 @@ export interface LogEntryView {
 
 // A durable operation failure, as PacketBuilder selects it: its status and the coordinate of the row that owns it.
 export interface FailurePointer { readonly status: number; readonly coordinate: string }
-// One thing the session holds open ({§child-orientation}): its status, the path the model acts on, and a detail.
-export interface OpenWorkPointer { readonly status: number | string; readonly path: string; readonly detail?: string }
+// One thing the session holds open ({§child-orientation}): its status or sender, the path the model acts on, and a detail.
+export interface OpenWorkPointer {
+    readonly status?: number | string;
+    readonly path: string;
+    readonly origin?: "user";
+    readonly source?: string;
+    readonly detail?: string;
+}
 // {§packet-inject} The working tree as the packet renders it: the counts, and the paths a snapshot carries with
 // their XY status and, for an untracked path, its membership truth.
 export type GitStatusView = GitStatus & {
@@ -158,14 +164,16 @@ export default class PacketWire {
     // (READ / SEND / KILL via the path). Orienting state, never an instruction; every list renders every
     // turn, `[]` when empty ({§child-orientation}).
     static renderOpenWork(sessions: readonly OpenWorkPointer[], streams: readonly OpenWorkPointer[], messages: readonly OpenWorkPointer[] = []): string {
-        // {§loop-completion} — the messages it sent that await completion are the third list it is held on.
+        // {§message-arrival} {§loop-completion} — unclosed inbound requests and sent messages awaiting completion.
         return `{"sessions":${PacketWire.#pointers(sessions)},\n"streams":${PacketWire.#pointers(streams)},\n"messages":${PacketWire.#pointers(messages)}}`;
     }
 
     static #pointers(rows: readonly OpenWorkPointer[]): string {
         const pointers = rows.map((r) => JSON.stringify({
-            status: r.status,
+            ...(r.status === undefined ? {} : { status: r.status }),
             path: r.path,
+            ...(typeof r.origin === "string" && r.origin.length > 0 ? { origin: r.origin } : {}),
+            ...(typeof r.source === "string" && r.source.length > 0 ? { source: r.source } : {}),
             ...(typeof r.detail === "string" && r.detail.length > 0 ? { detail: r.detail } : {}),
         }));
         return pointers.length === 0 ? "[]" : `[${pointers.join(",\n")}]`;

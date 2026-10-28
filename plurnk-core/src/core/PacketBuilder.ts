@@ -196,18 +196,16 @@ export default class PacketBuilder {
         const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
         const sessionName = await SessionName.forId(this.#db, sessionId);
         // {§message-arrival}: source addresses survive curation of their log observations.
-        const openMessages = await this.#db.engine_open_messages.all<{
+        const openMessageRows = await this.#db.engine_open_messages.all<{
             id: number; path: string; key_path: string; source: string | null;
         }>({ loop_id: loopId });
         // {§message-arrival}: the model is shown the short address, never a client's own
         // transport identity; answering either reaches the same message. The operator's message has
         // no other sender to show, so it is named ({§message-arrival}).
-        const prompt = openMessages.length > 0
-            ? `[${openMessages.map((m) => JSON.stringify({
-                path: m.key_path,
-                ...(m.source === null ? { origin: "user" } : { source: m.source }),
-            })).join(",\n")}]`
-            : "[]";
+        const openMessages = openMessageRows.map((m) => ({
+            path: m.key_path,
+            ...(m.source === null ? { origin: "user" as const } : { source: m.source }),
+        }));
         // {§packet-inject}: a non-empty override wins; otherwise read the meta-owned source per packet. The operator's
         // recap lines lead it ({§packet-inject}).
         const recapSource = recap.length > 0
@@ -273,7 +271,11 @@ export default class PacketBuilder {
         // locate its operations without moving incoming observations or reasoning receipts.
         const history = Knob.choice("PLURNK_SERVICE_EMISSION_HISTORY", ["none", "latest", "all"]);
         const programs = history === "none" ? [] : await this.#db.engine_emission_history.all<EmissionProgram>({
-            loop_id: loopId, current_turn_seq: currentTurnSeq, latest_only: history === "latest" ? 1 : 0,
+            session_id: sessionId,
+            loop_id: loopId,
+            current_loop_seq: loopSeqRow?.sequence ?? 1,
+            current_turn_seq: currentTurnSeq,
+            latest_only: history === "latest" ? 1 : 0,
         });
         const { operations, paired, turns } = OperationHistory.project(log, programs);
         for (const [coordinate, operation] of operations) paired.set(coordinate, { ...paired.get(coordinate)!, tokens: weighContent(operation) });
@@ -338,13 +340,10 @@ export default class PacketBuilder {
                 path: `session://${sessionName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq,
                 owner: { address: owner.address, interactive: owner.interactive },
             }) },
-            // child-orientation: the work this session holds open — its child sessions, its open streams and the
-            // messages it awaits — beside the messages it owes. Terse pointers (the path is the actionable
+            // child-orientation: the work this session holds open — its child sessions, its open streams, the
+            // messages it owes, and the messages it awaits. Terse pointers (the path is the actionable
             // address the model READs, SENDs to, or KILLs), never advice. {§child-orientation}
-            { name: "work", slot: "user", header: "Open Work", content: PacketWire.renderOpenWork(childSessions, childStreams, sentMessages) },
-            // The open arrivals this turn owes, as pointers; bodies arrive through their inbound SEND rows
-            // ({§message-arrival}).
-            { name: "messages", slot: "user", header: "Open Messages", content: prompt },
+            { name: "work", slot: "user", header: "Open Work", content: PacketWire.renderOpenWork(childSessions, childStreams, [...openMessages, ...sentMessages]) },
             { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices) },
             { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures) },
             { name: "recap", slot: "user", header: "Recap", content: recapContent },

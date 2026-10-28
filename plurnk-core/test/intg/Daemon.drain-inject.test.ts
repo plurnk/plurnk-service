@@ -725,7 +725,7 @@ for (const silent of [false, true]) {
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number | null; turn_id: number; origin: string; rx: string | null; attrs: string }>({ loop_id: loopId });
                 const replies = rows.filter((r) => r.op === "SEND" && r.origin === "model");
                 assert.deepEqual(replies.map(({ status_rx }) => status_rx), [200, 200, 200], "replies deliver immediately while unseen arrivals defer loop settlement");
-                assert.deepEqual(replies.map(({ rx }) => JSON.parse(rx!).answers.length), [1, 1, 1], "each reply resolves one published message, with or without speech");
+                assert.deepEqual(replies.map(({ rx }) => JSON.parse(rx!).repliedTo.length), [1, 1, 1], "each reply resolves one published message, with or without speech");
                 const turns = (await db.test_list_turns_in_loop.all({ loop_id: loopId })).filter(({ producer }) => producer === "model");
                 assert.deepEqual(turns.map(({ status }) => status), [102, 200]);
                 const prompts = rows.filter((r) => isArrivalRow(r));

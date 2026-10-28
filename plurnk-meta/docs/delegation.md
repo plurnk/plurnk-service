@@ -73,7 +73,7 @@ start new work.
 
 ## Messages
 
-Open Messages names unresolved requests; an arrival receipt's `resource` links
+`Open Work`'s `messages` list names unresolved requests; an arrival receipt's `resource` links
 to the same source. SEND to that address replies to that message. Without a path,
 SEND selects the oldest Open Message; progress leaves it open, completion advances
 to the next. With none open, name a recipient explicitly, including for corrections.

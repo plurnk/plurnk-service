@@ -134,7 +134,7 @@ export default class LogBody {
         }
 
         // Historical reply receipts remain readable after their former operation is retired.
-        const reply = isRecord(rx) && Array.isArray(rx.answers);
+        const reply = isRecord(rx) && Array.isArray(rx.repliedTo);
         if (row.op === "EDIT" || row.op === "KILL" && !reply) {
             if (isRecord(rx)) {
                 const result = rx;

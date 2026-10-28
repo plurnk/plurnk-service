@@ -109,13 +109,14 @@ export const isResponseMessage = (
     const deliveredReply = attrs.kind === "reply";
     if (entry.origin !== "model" && !deliveredReply) return false;
     if (deliveredReply) {
+        const sessionName = sessionId.slice(sessionId.indexOf("#") + 1);
         return isRecord(parsedRx)
-            && Array.isArray(parsedRx.answers)
-            && parsedRx.answers.some((addr) => extractMessageId(typeof addr === "string" ? addr : null, sessionId) !== null);
+            && Array.isArray(parsedRx.repliedTo)
+            && parsedRx.repliedTo.some((addr) => typeof addr === "string" && addr.startsWith(`message://${sessionName}/`));
     }
     if (entry.scheme === "session" || entry.scheme === "workspace") return false;
     if (typeof attrs.to === "string" && (attrs.to.startsWith("session://") || attrs.to.startsWith("workspace://"))) return false;
-    if (isRecord(parsedRx) && Array.isArray(parsedRx.answers)) return true;
+    if (isRecord(parsedRx) && Array.isArray(parsedRx.repliedTo)) return true;
     if (attrs.kind === "response" || attrs.kind === "message") return true;
     if (entry.op === "SEND" && (entry.scheme === null || entry.scheme === undefined || entry.scheme === "acp") && !entry.pathname) return true;
     return false;

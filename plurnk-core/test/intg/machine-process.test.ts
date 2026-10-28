@@ -821,9 +821,9 @@ type BaselineChapter = { readonly version: number; readonly label: string; reado
 const V4_3_3: TaggedRelease = Object.freeze({ version: 34, release: "4.3.3", tag: "v4.3.3", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_3_0: TaggedRelease = Object.freeze({ version: 33, release: "4.3.0", tag: "v4.3.0", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_0_0: TaggedRelease = Object.freeze({ version: 32, release: "4.0.0", tag: "v4.0.0", shape: "76b1dff2af95661a15e32ebea23fddaf4b07cfdc0c06af58e6ca2640e2034263" });
-const V5_0_0: BaselineChapter = Object.freeze({ version: 10, label: "5.0.0", shape: "eb983f7a985b3ba40bec17b3b16a8acd2bf1ea0300bbbceb446762c1bec78bd0" });
-const V5_0_0_CHAPTER_9: BaselineChapter = Object.freeze({ version: 9, label: "5.0.0 chapter 9", shape: "eb983f7a985b3ba40bec17b3b16a8acd2bf1ea0300bbbceb446762c1bec78bd0" });
-const V5_0_0_CHAPTER_8: BaselineChapter = Object.freeze({ version: 8, label: "5.0.0 chapter 8", shape: "eace3ea2371f551d2b69cbb830a575abf0793f0bd62d3d27bbad1cdd08368e7e" });
+const V5_0_0: BaselineChapter = Object.freeze({ version: 10, label: "5.0.0", shape: "a623ef441160b5b730cf0ee1cdfff83780173d12e5324855ede1bb461403bec5" });
+const V5_0_0_CHAPTER_9: BaselineChapter = Object.freeze({ version: 9, label: "5.0.0 chapter 9", shape: "a623ef441160b5b730cf0ee1cdfff83780173d12e5324855ede1bb461403bec5" });
+const V5_0_0_CHAPTER_8: BaselineChapter = Object.freeze({ version: 8, label: "5.0.0 chapter 8", shape: "576daf92c748c92b5f3992a9e8acfa3788301cee5c128e87e1485caecb937ae3" });
 
 const REPO_ROOT = resolve(dirname(MIGRATIONS_DIR), "..");
 

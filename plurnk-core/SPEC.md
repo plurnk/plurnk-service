@@ -162,8 +162,8 @@ Every session has one durable workspace-scoped approval owner (`session_owners`)
 
 Workspace reference documents and projected instructions are materialized into `workspace:///_plurnk/` through `_plurnk` maintenance turns whose loops are excluded from `work_loops` ({§application-session-observation}, {§application-session-observation}) and emit no ambient broadcasts.
 
-- **Project instructions**: When `<projectRoot>/AGENTS.md` exists, LoopDocs materializes `workspace:///_plurnk/AGENTS.md` and turn 0 foists a `READ` of it (global XDG `AGENTS.md` stays in the system prompt, {§packet-inject}). When root `<projectRoot>/AGENTS.local.md` exists (regardless of git ignore status, unless excluded), LoopDocs materializes `workspace:///_plurnk/AGENTS.local.md` and turn 0 foists its `READ` immediately after. Absent files produce no entry and no `404`.
-- **Catalog preview (`PLURNK_SERVICE_FILES_ITEMS`)**: When non-zero (`-1` for markerless page, positive `N` to cap `*`), turn 0 foists bodyless `FIND` surveys in order: `skill://*/SKILL.md` (`<1,-1>`, {§skills-sources}), `workspace:///_plurnk/plurnk/*.md` (`<1,-1>`), `workspace:///_plurnk/tools/*.md` (`<1,-1>`, {§tools-resource-materialization}), `workspace:///_plurnk/members/*.md` (`<1,-1>`, {§tools-resource-materialization}), `*` (`project root member files`), `workspace:///*` (`workspace knowledgebase entries`), and `session://<session>/*` (`session knowledgebase entries`). Unregistered schemes and surveys selecting zero items are omitted before recording.
+- **Project instructions**: When `<projectRoot>/AGENTS.md` exists, LoopDocs materializes `workspace:///_plurnk/AGENTS.md` and turn 0 foists a `READ` of it (global XDG `AGENTS.md` stays in the system prompt, {§packet-inject}). When root `<projectRoot>/AGENTS.local.md` exists (regardless of git ignore status, unless excluded), LoopDocs materializes `workspace:///_plurnk/AGENTS.local.md` and turn 0 foists its `READ` immediately after. When `session://<session>/AGENTS.md` exists, turn 0 foists a `READ` of it immediately after. Absent files produce no entry and no `404`.
+- **Catalog preview (`PLURNK_SERVICE_FILES_ITEMS`)**: When non-zero (`-1` for markerless page, positive `N` to cap `*`), turn 0 foists bodyless `FIND` surveys in order: `skill://*/SKILL.md` (`<1,-1>`, {§skills-sources}), `workspace:///_plurnk/plurnk/*.md` (`<1,-1>`), `workspace:///_plurnk/tools/*.md` (`<1,-1>`, {§tools-resource-materialization}), `workspace:///_plurnk/members/*.md` (`<1,-1>`, {§tools-resource-materialization}), `*` (`project root member files`), `workspace:///*` (`workspace knowledgebase entries`), and `session://<session>/*` (`session knowledgebase entries`). Unregistered schemes and non-`session://` surveys selecting zero items are omitted before recording; `session://<session>/*` always runs so the session observes its own scratch namespace.
 - **Turn-0 execution**: A model session's first loop starts with one packetless `{ producer="_plurnk", kind="initialization" }` turn (`init` rows) submitted through {§turn-record} and {§op-methods-op-dispatch}, framed by opening and closing `<!-- plan -->` `NOTE`s when any survey runs, with no fabricated emission row ({§turn-source-resources}). Initial messages arrive in the first model turn (sequence `2`, {§message-arrival}).
 
 ### §machine-processes Session topology, fork, and hiding
@@ -201,7 +201,7 @@ flowchart TB
 Every model packet includes two orienting blocks in the status clump below `## Log` ({§packet-assembly}), carrying no date, time, or timezone anywhere:
 
 - **`## Session`**: Renders `{"path": "session://<name>", "parent": <"session://..." | null>, "loop": L, "turn": T, "owner": {"address": "<owner>", "interactive": <boolean>}}`, naming the actor, its parent, the `(L, T)` coordinate this packet's response will occupy (`reasoning://<session>/L/T`, `ops://<session>/L/T`, `log:///L/T/*`), and its owner's attendance ({§session-ownership}).
-- **`## Open Work`**: Always renders (even when all lists are `[]`, as the deliberate exception to empty-section omission) as `{"sessions": [...], "streams": [...], "messages": [...]}`, listing unconcluded child sessions, active stream subscriptions, and sent messages awaiting completion ({§loop-completion}, {§schedule-delivery}). Each active stream pointer carries `detail: "elapsed <E>s; output unchanged <U>s; <channel> <lines> lines (+<growth> bytes)"` (or `output timing unknown` when `output_changed_at` is null); `opened_at` is fixed at subscription open, while `output_changed_at` resets atomically only when a published channel's content actually changes ({§exec-stream}).
+- **`## Open Work`**: Always renders (even when all lists are `[]`, as the deliberate exception to empty-section omission) as `{"sessions": [...], "streams": [...], "messages": [...]}`, listing unconcluded child sessions, active stream subscriptions, and unclosed inbound/outbound messages (`openMessages` owed by this loop followed by `sentMessages` awaiting completion; {§loop-completion}, {§schedule-delivery}). Each active stream pointer carries `detail: "elapsed <E>s; output unchanged <U>s; <channel> <lines> lines (+<growth> bytes)"` (or `output timing unknown` when `output_changed_at` is null); `opened_at` is fixed at subscription open, while `output_changed_at` resets atomically only when a published channel's content actually changes ({§exec-stream}).
 
 ## §membership File membership and project roots
 
@@ -534,7 +534,7 @@ Binary resources participate in `READ`, `FIND`, `COPY`, `MOVE`, and `KILL` witho
 The session log (`log:///<L>/<T>/<A>[/<leaf>]`) is an append-only SQLite ledger (`log_entries`) paired 1:1 with mutable active-context state (`log_entry_projection`):
 
 - **Coordinates**: `L` (1-indexed loop sequence), `T` (1-indexed turn sequence within loop), `A` (1-indexed action sequence within turn). The optional `/<leaf>` suffix names the op or kind (`READ`, `EDIT`, `emission`, `reasoning`) and aliases the same row. Foreign session authorities (`log://other/...`) are refused `400`.
-- **Immutability & redaction**: Core `log_entries` columns and `log_curation_effects` rows are protected by SQLite triggers and cascade only when containing history is deleted. Before any durable persistence, Packet assembly, fork hydration, or Digest export, URL `username`/`password` and `metadata` slots are replaced with `"__redacted__"` while query strings remain visible.
+- **Immutability & redaction**: Core `log_entries` columns and `log_curation_effects` rows are protected by SQLite triggers and cascade only when containing history is deleted. Before any durable persistence, Packet assembly, fork hydration, or Digest export, URL `username`/`password` and `metadata` slots are replaced with `"__redacted__"` while query strings remain visible; packet log rendering omits redacted `metadata` slots.
 - **Direct curation**: `KILL (log:///...)` is an active-context meta-operation; a successful `log:///` `KILL` never renders its own receipt in the packet, whereas non-log `KILL` receipts (e.g., workspace/file deletions) render and remain visible.
 
 ### §log-kill-scope Scoped curation, distillation & readable projection
@@ -616,7 +616,7 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 | --- | --- |
 | Targetless SEND | Selects the oldest published Open Message at dispatch time; progress leaves it open, `[200]`/`[499]` resolves it. With none open, delivers speech to the loop's latest published message without changing outcomes (refused only when the loop has no published message). Never broadcasts or answers unpublished arrivals. |
 | Empty & sequential replies | Empty completion replies resolve selected messages without inventing speech or erasing an earlier answer. Replies execute and deliver in authored order; the latest explicit completion reply determines each message's outcome. |
-| Receipt & history | A successful reply records `answers` (immutable message addresses answered) and remains recoverable in `message_history`. Actor-addressed SEND, WAIT, NOTE, asides, and ambient observations are not replies. |
+| Receipt & history | A successful reply records `repliedTo` (immutable `message://<session>/<key>` addresses answered) and remains recoverable in `message_history`. Actor-addressed SEND, WAIT, NOTE, asides, and ambient observations are not replies. |
 | Latest finished reply | The session's newest model-authored delivered SEND (not copied history, {§machine-processes}) recording `completion` `200` or `499`; daemon abandonment `499` replies never count. |
 | Loop answer (`ops://<session>/<loop>`) | READ resolves to the latest nonempty reply body to the loop's starting message. A failed terminal takes precedence and retains its exact Problem. Running without a reply returns `425`; concluded without speech returns `200` empty body. |
 
@@ -1034,7 +1034,7 @@ Client operations (`dispatchClientAction`, executions, typed statements, `rollba
 flowchart LR
   S["1-3. System: definition, system-policy, inject"] --> L0["4. User: initial log / log/<coord>"]
   L0 --> EH["5. Alternating assistant (emitted ops) & user (paired receipts + following log)"]
-  EH --> LT["5b. User: trailing log/<coord> + 6-13. Status clump (git, budget, session, work, messages, notices, errors, recap)"]
+  EH --> LT["5b. User: trailing log/<coord> + 6-12. Status clump (git, budget, session, work, notices, errors, recap)"]
   S & L0 & EH & LT --> TR["SchemeRegistry.transformSections(drafts, ctx)"]
   TR --> AD["PacketSections.assertDrafts -> Provider.generate(request)"]
 ```
@@ -1051,28 +1051,27 @@ flowchart LR
 | 7 | `budget` | `user` | `## Context` JSON gauge (`tokens`, `budget`, `percent`, and pressure `largest`) |
 | 8 | `session` | `user` | `## Session` JSON (`{"path": "session://<name>", "parent": <address\|null>, "loop": L, "turn": T}`) |
 | 9 | `work` | `user` | `## Open Work` JSON (`{"sessions": [...], "streams": [...], "messages": [...]}`; always present with `[]` when empty) |
-| 10 | `messages` | `user` | `## Open Messages` JSON index of unclosed inbound/outbound messages |
-| 11 | `notices` | `user` | `## Notices` callout blocks drained from `notices` |
-| 12 | `errors` | `user` | `## Errors` JSON array (`{status, path}`) indexing `status_rx >= 400` rows from the current and prior turn |
-| 13 | `recap` | `user` | `## Recap` callout directives (`PLURNK_SERVICE_RECAP_LINE_<alias>`) and `PLURNK_SERVICE_RECAP` / `recap.md` |
+| 10 | `notices` | `user` | `## Notices` callout blocks drained from `notices` |
+| 11 | `errors` | `user` | `## Errors` JSON array (`{status, path}`) indexing `status_rx >= 400` rows from the current and prior turn |
+| 12 | `recap` | `user` | `## Recap` callout directives (`PLURNK_SERVICE_RECAP_LINE_<alias>`) and `PLURNK_SERVICE_RECAP` / `recap.md` |
 
-Wire message grouping: Message 1 is `system` (`1–3`); Message 2 is `user` (initial retained `log` records before the first replayed turn's first surviving receipt); Messages `3…2k` alternate `assistant` and `user` for each replayed turn; the final `user` message carries any trailing `log/<coord>` segment and the status clump (`6–13`).
+Wire message grouping: Message 1 is `system` (`1–3`); Message 2 is `user` (initial retained `log` records before the first replayed turn's first surviving receipt); Messages `3…2k` alternate `assistant` and `user` for each replayed turn; the final `user` message carries any trailing `log/<coord>` segment and the status clump (`6–12`).
 
 ### §emission-history Emission history and paired receipts
 
-`PLURNK_SERVICE_EMISSION_HISTORY` selects how prior turns in the active loop replay as `assistant`/`user` pairs:
+`PLURNK_SERVICE_EMISSION_HISTORY` selects how prior turns in the session replay as `assistant`/`user` pairs:
 
 | Value | Contract |
 | --- | --- |
-| `all` (default) | Replays every eligible prior turn in the active loop that still has at least one surviving non-killed log receipt |
-| `latest` | Replays only the immediately preceding completed model inference turn in this loop (never falling back to an earlier turn if that turn has no surviving receipts) |
+| `all` (default) | Replays every eligible prior turn in the session (including across loops and inherited fork history) that still has at least one surviving non-killed log receipt |
+| `latest` | Replays only the immediately preceding completed model inference turn in the session (never falling back to an earlier turn if that turn has no surviving receipts) |
 | `none` | Renders all retained log records in a single `user` `log` section without `assistant` turn replay |
 
 Eligibility and paired-receipt rules:
 
-- **Admitted content turn**: A turn is eligible for emission-history replay only when its model response parsed with zero syntax errors, produced an admitted content program, and has an active emission row (`ops://<session>/<loop>/<turn>`). Each dispatched content operation records its `op_seq` ordinal in the turn's frozen canonical program; fan-out receipts retain that same ordinal.
-- **Paired receipt (`→ path`)**: In a replayed turn, the `assistant` message carries the authored operation (including its request body for `EDIT`, `NOTE`, `SEND`, `WORK`, `FORK`, or exec). Its paired receipt in the following `user` section (`emission-history/<first-surviving-receipt-coordinate>`) renders an `### <VERB> ... → <path>` H3 heading and retains retrieval/tool output, landed edit context windows, problem details, extents, and status codes while omitting the authored request body so it is never duplicated on the wire.
-- **No synthetic turns**: Unexecuted operations after a stop boundary ({§op-methods-op-dispatch}) or rejected syntax turns produce no emission-history pair.
+- **Admitted content turn**: A turn is eligible for emission-history replay when it produced an admitted content program and has an active emission row (`ops://<session>/<loop>/<turn>`), including on turns where valid statements executed alongside recoverable syntax errors. Each dispatched content operation records its `op_seq` ordinal in the turn's frozen canonical program; fan-out receipts retain that same ordinal.
+- **Paired receipt (`→ path`)**: In a replayed turn, the `assistant` message carries the authored operation (including its `<!-- aside -->` modifier and its request body for `EDIT`, `NOTE`, `SEND`, `WORK`, `FORK`, or exec). Its paired receipt in the following `user` section (`emission-history/<first-surviving-receipt-coordinate>`) renders an `### <VERB> ... → <path>` H3 heading and retains retrieval/tool output, landed edit context windows, problem details, extents, and status codes while omitting the authored request body and aside so they are never duplicated on the wire.
+- **No synthetic turns**: Unexecuted operations after a stop boundary ({§op-methods-op-dispatch}) or exhausted rejected turns produce no emission-history pair.
 
 ### §tokenomics Tokenomics: one room, one gauge, one rule
 

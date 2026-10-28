@@ -292,8 +292,8 @@ export default class PacketRowFacts {
             meta.channels = rx.channels;
         }
         // {§message-completion} — a reply's row names the prompts it answered.
-        if ((op === "SEND" || op === "KILL") && rx !== null && typeof rx === "object" && Array.isArray(rx.answers)) {
-            meta.answers = rx.answers;
+        if ((op === "SEND" || op === "KILL") && rx !== null && typeof rx === "object" && Array.isArray(rx.repliedTo)) {
+            meta.repliedTo = rx.repliedTo;
         }
         if (op === "READ" || op === "FIND") {
             if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
@@ -450,6 +450,8 @@ export default class PacketRowFacts {
     }
 
     static #metadata(value: unknown): readonly string[] | null {
-        return Array.isArray(value) && value.length > 0 && value.every((item): item is string => typeof item === "string") ? value : null;
+        if (!Array.isArray(value) || !value.every((item): item is string => typeof item === "string")) return null;
+        const visible = value.filter((item) => item !== "__redacted__");
+        return visible.length > 0 ? visible : null;
     }
 }

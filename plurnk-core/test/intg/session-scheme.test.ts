@@ -1316,7 +1316,7 @@ reading
                     const turns = await db.test_list_turns_in_loop.all<{ sequence: number; packet: string | null }>({ loop_id: loopId });
                     const observations = turns.flatMap(({ packet }) => (packet === null ? [] : logEntries(JSON.parse(packet)))
                         .filter((entry) => entry.source === "session://counter" && entry.origin === "_plurnk"));
-                    const replies = observations.filter((entry) => entry.logPath.endsWith("/SEND") && entry.status === 200 && Array.isArray(entry.answers));
+                    const replies = observations.filter((entry) => entry.logPath.endsWith("/SEND") && entry.status === 200 && Array.isArray(entry.repliedTo));
                     const conclusions = observations.filter((entry) => entry.logPath.endsWith("/READ") && entry.path === "ops://counter/1");
                     // {§message-completion}: the child's answer to its parent's own task arrives once, as the
                     // conclusion at the child's loop address.

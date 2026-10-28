@@ -518,7 +518,7 @@ export default class TurnRunner {
         const systemCtx = this.#schemeContext(args, initializationTurn?.id ?? modelTurn!.id);
         const initializationStatements = initializationTurn === null
             ? []
-            : await InitializationTurn.guidanceStatements(this.#db, workspaceId);
+            : await InitializationTurn.guidanceStatements(this.#db, workspaceId, sessionName);
         return {
             sessionName, transientOpenLogEntryId, loopSequence, createdTurnIds,
             initializationTurn, initializationPolicies, initializationStatements,

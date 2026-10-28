@@ -18,7 +18,8 @@ an entry rather than controlling that session.
 The packet's `## Session` block, below the log, names your session, its parent
 (`null` at a root), and the loop and turn you are producing. Addresses are
 literal and keep the same meaning when passed to another session. Scratch
-belongs to the workspace; a namespace does not require a namesake session.
+belongs to the workspace; a namespace does not require a namesake session, and if
+`session://exampleSessionName/AGENTS.md` exists when that session starts, its first turn reads it.
 Generated references live under `workspace:///_plurnk/`, and reference refreshes
 may replace them. EDIT creates or changes an entry, never a session; KILL with
 an entry path deletes that entry, not its session. A control address is scheme

@@ -198,18 +198,18 @@ FROM log_entries le
       AND le.op IN ('SEND', 'KILL') AND le.status_rx BETWEEN 200 AND 299
       AND le.source IS NULL AND le.inherited_history = 0
       AND json_valid(le.tx)
-      AND json_type(CASE WHEN json_valid(le.rx) THEN le.rx END, '$.answers') = 'array'
+      AND json_type(CASE WHEN json_valid(le.rx) THEN le.rx END, '$.repliedTo') = 'array'
       AND typeof(content) = 'text';
 
 CREATE VIEW IF NOT EXISTS message_responses AS
 SELECT DISTINCT r.id, m.loop_id, m.session_id, r.source, r.content, r.rx
 FROM log_responses r
 JOIN sessions producer ON producer.id = r.session_id
-JOIN json_each(r.rx, '$.answers') answer
-JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
+JOIN json_each(r.rx, '$.repliedTo') reply
+JOIN message_sources m ON m.key_path = reply.value AND m.workspace_id = producer.workspace_id
 UNION ALL
 SELECT r.id, r.loop_id, r.session_id, r.source, r.content, r.rx
-FROM log_responses r WHERE json_array_length(r.rx, '$.answers') = 0;
+FROM log_responses r WHERE json_array_length(r.rx, '$.repliedTo') = 0;
 
 CREATE VIEW IF NOT EXISTS unanswered_messages AS
 SELECT m.* FROM message_sources m
@@ -221,30 +221,30 @@ SELECT DISTINCT r.id AS source_record_id, r.loop_id, m.workspace_id,
        r.session_id AS producer_session_id, m.session_id AS recipient_session_id
 FROM log_responses r
 JOIN sessions producer ON producer.id = r.session_id
-JOIN json_each(r.rx, '$.answers') answer
-JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
+JOIN json_each(r.rx, '$.repliedTo') reply
+JOIN message_sources m ON m.key_path = reply.value AND m.workspace_id = producer.workspace_id
 UNION
 SELECT r.id, r.loop_id, m.workspace_id, r.session_id, s.sender_session_id
 FROM log_responses r
 JOIN sessions producer ON producer.id = r.session_id
-JOIN json_each(r.rx, '$.answers') answer
-JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
+JOIN json_each(r.rx, '$.repliedTo') reply
+JOIN message_sources m ON m.key_path = reply.value AND m.workspace_id = producer.workspace_id
 JOIN message_senders s ON s.message_id = m.id;
 
 -- {§session-scheme}: a child's answer to the first message its parent sent is its conclusion, not a reply.
-CREATE VIEW IF NOT EXISTS delegated_task_answers AS
+CREATE VIEW IF NOT EXISTS delegated_task_replies AS
 SELECT r.id AS source_record_id, producer.parent_session_id AS recipient_session_id
 FROM log_responses r
 JOIN sessions producer ON producer.id = r.session_id
-JOIN json_each(r.rx, '$.answers') answer
-JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
+JOIN json_each(r.rx, '$.repliedTo') reply
+JOIN message_sources m ON m.key_path = reply.value AND m.workspace_id = producer.workspace_id
 JOIN message_senders s ON s.message_id = m.id
 WHERE m.loop_id = r.loop_id AND m.ordinal = 1 AND s.sender_session_id = producer.parent_session_id;
 
 CREATE VIEW IF NOT EXISTS delivered_message_replies AS
 SELECT d.* FROM message_reply_deliveries d
 WHERE NOT EXISTS (
-    SELECT 1 FROM delegated_task_answers t
+    SELECT 1 FROM delegated_task_replies t
     WHERE t.source_record_id = d.source_record_id AND t.recipient_session_id = d.recipient_session_id
 );
 
@@ -697,7 +697,7 @@ FROM (
           OR (le.op = 'SEND' AND (
               le.status_rx >= 400
               OR json_extract(CASE WHEN json_valid(le.tx) THEN le.tx END, '$.target') IS NOT NULL
-              OR json_type(CASE WHEN json_valid(le.rx) THEN le.rx END, '$.answers') = 'array'
+              OR json_type(CASE WHEN json_valid(le.rx) THEN le.rx END, '$.repliedTo') = 'array'
           ))
           OR CASE WHEN json_valid(le.tx) THEN json_type(le.tx, '$.runtime') END = 'text'
           OR (le.op = 'KILL' AND COALESCE(le.scheme, 'file') != 'log'

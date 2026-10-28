@@ -101,23 +101,31 @@ WHERE le.loop_id = $loop_id
 ORDER BY t.sequence, le.sequence;
 
 -- PREP: engine_emission_history
--- {§emission-history}: rank completed model turns BEFORE testing eligibility.
+-- {§emission-history}: rank completed model turns across the session BEFORE testing eligibility.
 WITH completed AS (
-    SELECT id, sequence, packet, row_number() OVER (ORDER BY sequence DESC) AS recency FROM turns
-    WHERE loop_id = $loop_id AND sequence < $current_turn_seq
-      AND producer = 'model' AND kind = 'inference' AND completed_at IS NOT NULL
+    SELECT t.id, l.sequence AS loop_seq, t.sequence AS turn_seq, t.packet,
+           row_number() OVER (ORDER BY l.sequence DESC, t.sequence DESC) AS recency
+    FROM turns t
+    JOIN loops l ON l.id = t.loop_id
+    WHERE l.session_id = $session_id
+      AND (l.sequence < $current_loop_seq OR (l.id = $loop_id AND t.sequence < $current_turn_seq))
+      AND t.producer = 'model' AND t.kind = 'inference' AND t.completed_at IS NOT NULL
 )
 SELECT le.id, json_extract(le.rx, '$.content') AS content,
-    (SELECT json_group_array(DISTINCT json_extract(value, '$.runtime'))
-     FROM json_each(p.packet, '$.assistant.ops')
-     WHERE json_type(value, '$.runtime') = 'text') AS executors
+    (SELECT json_group_array(DISTINCT runtime) FROM (
+        SELECT json_extract(value, '$.runtime') AS runtime
+        FROM json_each(CASE WHEN p.packet IS NOT NULL THEN p.packet ELSE '{}' END, '$.assistant.ops')
+        WHERE json_type(value, '$.runtime') = 'text'
+        UNION
+        SELECT json_extract(op_le.tx, '$.runtime') AS runtime
+        FROM log_entries op_le
+        WHERE op_le.turn_id = p.id AND op_le.origin = 'model'
+          AND json_valid(op_le.tx) AND json_type(op_le.tx, '$.runtime') = 'text'
+    )) AS executors
 FROM completed p
 JOIN active_log_entries le ON le.turn_id = p.id AND json_extract(le.attrs, '$.kind') = 'emission'
-JOIN turn_sources source ON source.turn_id = p.id AND source.kind = 'ops'
-JOIN turn_attempts attempt ON attempt.model_call_id = source.model_call_id
 WHERE ($latest_only = 0 OR p.recency = 1)
-  AND attempt.accepted = 1 AND json_array_length(attempt.parse_errors) = 0
-ORDER BY p.sequence;
+ORDER BY p.loop_seq, p.turn_seq;
 
 -- PREP: engine_render_log
 -- Render-time log-section assembly ({§packet}).

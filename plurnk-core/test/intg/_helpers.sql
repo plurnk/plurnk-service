@@ -843,8 +843,8 @@ SELECT COALESCE(
     (SELECT r.content
      FROM log_responses r
      JOIN sessions producer ON producer.id = r.session_id
-     JOIN json_each(r.rx, '$.answers') answer
-     JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
+     JOIN json_each(r.rx, '$.repliedTo') reply
+     JOIN message_sources m ON m.key_path = reply.value AND m.workspace_id = producer.workspace_id
      WHERE m.loop_id = $loop_id AND m.ordinal = 1 AND length(r.content) > 0
      ORDER BY r.id DESC LIMIT 1),
     (SELECT content FROM message_responses WHERE loop_id = $loop_id AND length(content) > 0

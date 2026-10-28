@@ -1,6 +1,6 @@
 -- PREP: message_history
 -- {§op-methods-op-dispatch}: evidence is independent of log curation/publication.
-SELECT m.id AS id, m.loop_id AS loop_id, 'inbound' AS direction, m.source, m.body, m.evidence, '[]' AS answers
+SELECT m.id AS id, m.loop_id AS loop_id, 'inbound' AS direction, m.source, m.body, m.evidence, '[]' AS replied_to
 FROM loop_messages m
 JOIN loops l ON l.id = m.loop_id
 JOIN sessions w ON w.id = l.session_id
@@ -9,7 +9,7 @@ WHERE w.workspace_id = $workspace_id AND w.id = $session_id
 UNION ALL
 SELECT e.id, e.loop_id, 'outbound', e.source, e.content,
        json_object('attachments', json(COALESCE(json_extract(e.rx, '$.attachments'), '[]'))),
-       json_extract(e.rx, '$.answers')
+       json_extract(e.rx, '$.repliedTo')
 FROM message_responses e
 JOIN sessions w ON w.id = e.session_id
 WHERE w.workspace_id = $workspace_id AND w.id = $session_id
@@ -44,7 +44,7 @@ ORDER BY s.loop_id, s.ordinal;
 
 -- PREP: message_latest_published
 -- {§message-completion}: with none open, a targetless SEND speaks to the loop's latest published message.
-SELECT path FROM message_sources
+SELECT key_path FROM message_sources
 WHERE loop_id = $loop_id AND log_entry_id IS NOT NULL
 ORDER BY ordinal DESC LIMIT 1;
 
@@ -69,7 +69,7 @@ JOIN (
       AND op = 'SEND' AND origin = 'model' AND state = 'resolved'
       AND status_rx BETWEEN 200 AND 299
       AND source IS NULL AND inherited_history = 0
-      AND json_valid(rx) AND json_array_length(rx, '$.answers') > 0
+      AND json_valid(rx) AND json_array_length(rx, '$.repliedTo') > 0
     ORDER BY id DESC
     LIMIT 1
 ) reply
@@ -87,7 +87,7 @@ BEGIN
     SELECT m.id, NEW.id, json_extract(NEW.rx, '$.completion')
     FROM message_sources m
     JOIN sessions w ON w.id = NEW.session_id AND w.workspace_id = m.workspace_id
-    JOIN json_each(NEW.rx, '$.answers') a ON a.value = m.path
+    JOIN json_each(NEW.rx, '$.repliedTo') a ON a.value = m.key_path
     WHERE true
     ON CONFLICT(message_id) DO UPDATE SET response_id = excluded.response_id, status = excluded.status;
 END;

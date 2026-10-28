@@ -27,7 +27,7 @@ export interface ApplicationMessage {
     readonly direction: "inbound" | "outbound";
     readonly source: string | null;
     /** Message addresses answered by an outbound reply; empty for incoming messages. */
-    readonly answers: readonly string[];
+    readonly repliedTo: readonly string[];
     readonly body: string;
     readonly envelope?: Readonly<Record<string, unknown>>;
     readonly attachments: readonly MessageResource[];
@@ -35,7 +35,7 @@ export interface ApplicationMessage {
 
 /** {§methods} An accepted message its recipient has not yet observed at a turn boundary ({§message-arrival}). */
 export interface ApplicationInboxMessage {
-    /** The immutable source address Open Messages lists the message by. */
+    /** The immutable source address Open Work lists the message by. */
     readonly path: string;
     /** The causal actor's canonical address; null for the operator's own. */
     readonly source: string | null;

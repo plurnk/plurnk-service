@@ -286,7 +286,7 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
         const following = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: toxinTurn }))!.packet);
         assert.doesNotMatch(packetSection(following, "log"), /The investigation is still in progress\./u, "the next packet never carries the text");
         assert.doesNotMatch(packetSection(following, "notices"), /outside_text/u, "the empty turn's error row is the one thing the model hears of it; no second notice");
-        assert.notEqual(packetSection(following, "messages"), "[]", "the original message still needs a reply");
+        assert.notDeepEqual(JSON.parse(packetSection(following, "work")).messages, [], "the original message still needs a reply");
         assert.deepEqual(await notesOf(untranslatedTurn), []);
         assert.equal(outsideOf(untranslatedTurn), untranslated, "foreign tool-call markup is stored verbatim; nothing filters the source");
         assert.deepEqual(await notesOf(brokenTurn), ["Checking the source.", "still here"], "the narration around the unfenced heading is the turn's NOTE; the heading itself is not response text");
@@ -326,7 +326,7 @@ for (const preview of ["0", "1"]) for (const finishReason of [undefined, "stop",
             const emptyTurn = result.turnIds[2];
             const turn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: emptyTurn });
             assert.equal(turn?.status, 102);
-            assert.equal(JSON.parse(packetSection(JSON.parse(turn.packet), "messages")).length, 1, "the progress reply has not resolved the original message");
+            assert.equal(JSON.parse(packetSection(JSON.parse(turn.packet), "work")).messages.length, 1, "the progress reply has not resolved the original message");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === emptyTurn && kind === "reasoning")?.content, reasoning);
             const emptyRows = await db.test_log_entries_by_turn.all<{ sequence: number; attrs: string; rx: string }>({ turn_id: emptyTurn });

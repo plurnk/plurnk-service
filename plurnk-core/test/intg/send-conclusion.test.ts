@@ -57,17 +57,17 @@ for (const final of ["Four, precisely.", "", " \n\t"]) {
             const firstSend = firstRows.find(({ op, origin }) => op === "SEND" && origin === "model");
             assert.ok(firstSend, "the answer is delivered through the authored SEND");
             assert.equal(JSON.parse(firstSend.tx).body.raw, "Four.");
-            const answers: string[] = JSON.parse(firstSend.rx).answers;
-            assert.equal(answers.length, 1, "the SEND answers the original message");
+            const repliedTo: string[] = JSON.parse(firstSend.rx).repliedTo;
+            assert.equal(repliedTo.length, 1, "the SEND answers the original message");
 
             const concluded = await turn();
             assert.equal(concluded.status, 200);
             const result = await answer();
-            assert.equal(result.status, 200);
             assert.ok("content" in result);
+            assert.equal(result.status, 200);
             assert.equal(result.content, final.trim() ? final : "Four.");
             const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: concluded.turnId });
-            assert.deepEqual(JSON.parse(rows.find(({ op }) => op === "SEND")!.rx).answers, answers, "completion addresses the original message even without speech");
+            assert.deepEqual(JSON.parse(rows.find(({ op }) => op === "SEND")!.rx).repliedTo, repliedTo, "completion addresses the original message even without speech");
             const history = await db.message_history.all<{ direction: string; body: string }>({
                 workspace_id: ids.workspaceId, session_id: ids.sessionId, loop_id: ids.loopId,
             });
@@ -102,7 +102,8 @@ test("{§slot-order} {§message-completion}: leading completion metadata resolve
             const replies = rows.filter(({ op, origin }) => op === "SEND" && origin === "model").map(({ rx }) => JSON.parse(rx));
             assert.equal(replies.length, 1);
             assert.equal(replies[0].status, 200);
-            assert.deepEqual(replies[0].answers, [addressed]);
+            const expected = await db.message_source_by_address.get<{ key_path: string }>({ workspace_id: ids.workspaceId, path: addressed });
+            assert.deepEqual(replies[0].repliedTo, [expected!.key_path]);
         }
         const outcome = await answer();
         assert.ok("content" in outcome);
@@ -789,8 +790,14 @@ const setup = async () => {
     const loopId = await insertLoop(db, sessionId, 1);
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     const ids = { workspaceId, sessionId, loopId };
-    const message = (name: string) => `message://alice/${name}`;
-    const add = (name: string) => engine.injectIntoLoop(loopId, `Request ${name}.`, [], undefined, {}, message(name));
+    const keys = new Map<string, string>();
+    const message = (name: string) => keys.get(name)!;
+    const add = async (name: string) => {
+        const address = `message://alice/${name}`;
+        await engine.injectIntoLoop(loopId, `Request ${name}.`, [], undefined, {}, address);
+        const row = await db.message_source_by_address.get<{ key_path: string }>({ workspace_id: workspaceId, path: address });
+        keys.set(name, row!.key_path);
+    };
     await add("first");
     const turn = (content: string, reasoning: string | null = null, finishReason: NonNullable<MockResponse["assistant"]>["finishReason"] = "stop") => engine.runTurn({
         ...ids, messages: [],
@@ -826,7 +833,7 @@ for (const code of [null, 200, 499]) {
         const storedPacket = await f.db.test_get_packet.get<{ packet: string }>({ id: observation.turnId });
         const packet = JSON.parse(storedPacket!.packet);
         const receipts = logEntries(packet);
-        const reply = receipts.find(({ answers }) => Array.isArray(answers) && answers.includes(f.message("first")));
+        const reply = receipts.find(({ repliedTo }) => Array.isArray(repliedTo) && repliedTo.includes(f.message("first")));
         assert.ok(reply, "the delivered reply is present in the next packet");
         assert.equal(Object.hasOwn(reply, "status"), false, "delivery success cannot masquerade as message completion");
         assert.equal(Object.hasOwn(reply, "metadata"), false, "the paired operation supplies authored metadata");
@@ -835,7 +842,7 @@ for (const code of [null, 200, 499]) {
         const arrivals = receipts.filter(({ origin }) => origin === "user");
         assert.equal(arrivals.length, 2);
         for (const arrival of arrivals) assert.equal(Object.hasOwn(arrival, "status"), false);
-        const open = JSON.parse(packetSection(packet, "messages")) as Array<{ path: string }>;
+        const open = JSON.parse(packetSection(packet, "work")).messages as Array<{ path: string }>;
         assert.deepEqual(open.map(({ path }) => path), (code === null ? arrivals : arrivals.slice(1)).map(({ resource }) => resource));
 
         const rows = await f.db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number; rx: string }>({ turn_id: result.turnId });
@@ -872,7 +879,7 @@ for (const count of [0, 1, 2]) {
             assert.deepEqual(await f.replies(), [...before, "Implicit reply."]);
             const rows = await f.db.test_log_entries_by_turn.all<{ op: string; origin: string; rx: string }>({ turn_id: result.turnId });
             const reply = rows.find(({ op, origin }) => op === "SEND" && origin === "model");
-            assert.deepEqual(JSON.parse(reply!.rx).answers, [f.message("first")]);
+            assert.deepEqual(JSON.parse(reply!.rx).repliedTo, [f.message("first")]);
             if (count === 0) {
                 assert.equal(JSON.parse(reply!.rx).completion, undefined, "with none open, the reply is speech only");
                 assert.equal((await f.db.message_completion_outcome.get<{ status: number }>({ loop_id: f.ids.loopId }))!.status, 200,
@@ -907,7 +914,7 @@ test("{§message-completion}: progress and consecutive completions consume the q
     assert.equal(result.status, 200);
     assert.equal(await f.remaining(), 0);
     const rows = await f.db.test_log_entries_by_turn.all<{ op: string; origin: string; rx: string }>({ turn_id: result.turnId });
-    assert.deepEqual(rows.filter(({ op, origin }) => op === "SEND" && origin === "model").map(({ rx }) => JSON.parse(rx).answers),
+    assert.deepEqual(rows.filter(({ op, origin }) => op === "SEND" && origin === "model").map(({ rx }) => JSON.parse(rx).repliedTo),
         [[f.message("first")], [f.message("first")], [f.message("second")], [f.message("second")]]);
 });
 

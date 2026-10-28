@@ -39,13 +39,13 @@ test("{§packet-assembly}: historical whole-log and assistant-tail sections keep
         { name: "log", slot: "user", header: "Log", content: log, weight: 0 },
         { name: "emission-history", slot: "assistant", header: null, content, weight: 0 },
         { name: "session", slot: "user", header: "Session", content: '{"turn":3}', weight: 0 },
-        { name: "messages", slot: "user", header: "Open Messages", content: "[]", weight: 0 },
+        { name: "work", slot: "user", header: "Open Work", content: '{"sessions":[],"streams":[],"messages":[]}', weight: 0 },
     ] };
     assert.deepEqual(PacketWire.packetToWireMessages(packet), [
         { role: "system", content: "The language" },
         { role: "user", content: `## Log\n\n${log}` },
         { role: "assistant", content },
-        { role: "user", content: '## Session\n{"turn":3}\n\n## Open Messages\n[]' },
+        { role: "user", content: '## Session\n{"turn":3}\n\n## Open Work\n{"sessions":[],"streams":[],"messages":[]}' },
     ], "roles and boundaries come from sections, never headings inside source text");
 });
 
@@ -54,16 +54,16 @@ test("{§emission-history}: an empty stored section emits no heading, placeholde
         { name: "definition", slot: "system", header: null, content: "The language", weight: 0 },
         { name: "log", slot: "user", header: "Log", content: "retained log", weight: 0 },
         { name: "emission-history", slot: "assistant", header: null, content: "", weight: 0 },
-        { name: "messages", slot: "user", header: "Open Messages", content: "[]", weight: 0 },
+        { name: "work", slot: "user", header: "Open Work", content: '{"sessions":[],"streams":[],"messages":[]}', weight: 0 },
     ] };
     assert.deepEqual(PacketWire.packetToWireMessages(packet), [
         { role: "system", content: "The language" },
-        { role: "user", content: "## Log\n\nretained log\n\n## Open Messages\n[]" },
+        { role: "user", content: '## Log\n\nretained log\n\n## Open Work\n{"sessions":[],"streams":[],"messages":[]}' },
     ]);
 });
 
 test("{§packet}: structured section content directly follows its heading; Git is a NOTE", () => {
-    for (const header of ["Errors", "Context", "Open Messages"]) {
+    for (const header of ["Errors", "Context", "Open Work"]) {
         assert.equal(PacketWire.renderSection({ header, content: "[]" }), `## ${header}\n[]`);
     }
     const git = PacketWire.renderGit({ branch: "main", ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0 });
@@ -283,6 +283,15 @@ test("{§log-wire-format}: rejected inputs stay in JSON and multiline patterns c
     assert.deepEqual(meta.metadata, ["not JSON"]);
     assert.equal(meta.problem.detail, "Unsupported scope arity.");
     assert.equal(out.split("\n").length, 2);
+
+    const redactedOut = PacketWire.renderLog([{
+        coordinate: "1/2/8", op: "SEND", status: 200,
+        target: { scheme: "message", hostname: "setup", pathname: "/c705cdf0" },
+        tx: { metadata: ["__redacted__"], body: "Delivered reply." },
+        rx: { repliedTo: ["message://setup/c705cdf0"] },
+    }], tok);
+    const redactedMeta = JSON.parse(redactedOut.split("\n")[1]);
+    assert.equal(Object.hasOwn(redactedMeta, "metadata"), false, "redacted metadata slots are not rendered in the packet");
 });
 
 test("{§log-wire-format}: addressed operands and record identities remain distinct across operation families", async (t) => {

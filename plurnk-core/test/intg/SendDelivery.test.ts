@@ -319,15 +319,16 @@ test("{§message-completion}: a delivered reply names the open messages it answe
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const send = rows.find((r) => r.origin === "model" && r.op === "SEND");
             assert.equal(send?.status_rx, 200);
-            const receipt = JSON.parse(send.rx) as { answers: string[]; recipients?: unknown };
-            assert.ok(Array.isArray(receipt.answers), "a reply names answered message addresses in answers");
+            const receipt = JSON.parse(send.rx) as { repliedTo: string[]; recipients?: unknown };
+            assert.ok(Array.isArray(receipt.repliedTo), "a reply names answered message addresses in repliedTo");
             assert.equal(Object.hasOwn(receipt, "recipients"), false, "answered messages are not mislabeled as recipient actors");
-            const { answers } = receipt;
+            const { repliedTo } = receipt;
             assert.ok(modelSessionId !== undefined);
             const arrivals = rows.filter((r) => r.origin === "_plurnk" && r.op === "SEND");
             assert.equal(arrivals.length, 1, "one message in the loop");
-            assert.equal(answers.length, 1, "the receipt names the one open message");
-            const source = await db.message_source_by_address.get<{ body: string }>({ workspace_id: (await db.drain_get_session_workspace.get<{ workspace_id: number }>({ session_id: modelSessionId }))!.workspace_id, path: answers[0] });
+            assert.equal(repliedTo.length, 1, "the receipt names the one open message");
+            assert.match(repliedTo[0], /^message:\/\/[^/]+\/[0-9a-f]{8}$/, "the receipt names the short message:// key_path");
+            const source = await db.message_source_by_address.get<{ body: string }>({ workspace_id: (await db.drain_get_session_workspace.get<{ workspace_id: number }>({ session_id: modelSessionId }))!.workspace_id, path: repliedTo[0] });
             assert.equal(source?.body, "answer me", "the receipt names the durable message source");
         } finally { ws.close(); }
     });
@@ -350,7 +351,7 @@ test("{§log-wire-format} {§tokenomics}: a sent reply renders whole in the next
             const next = await runLoopToTerminal(ws, 3, { prompt: "Thanks.", sessionId: modelSessionId });
             assert.equal(next.finalStatus, 200);
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnIds!.at(-1)! }))!.packet);
-            const reply = logEntries(packet).find((row) => Array.isArray(row.answers) && row.logPath.endsWith("/SEND"));
+            const reply = logEntries(packet).find((row) => Array.isArray(row.repliedTo) && row.logPath.endsWith("/SEND"));
             assert.ok(reply, "the next model request contains the ordinary sent-message receipt");
             assert.equal(reply.preview, undefined, JSON.stringify(reply));
             assert.equal(reply.lines, 40, "the receipt states its full extent");

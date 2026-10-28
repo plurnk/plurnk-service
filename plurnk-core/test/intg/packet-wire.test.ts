@@ -246,27 +246,32 @@ for (const mode of ["none", "latest", "all"]) {
             assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0));
             const nextLoop = await insertLoop(db, sessionId, 2, "New request.");
             const next = await builder.buildRequestPacket({ workspaceId, sessionId, loopId: nextLoop, currentTurnSeq: 1, provider, initialMessages: [], gitStatus: null });
-            assert.equal(previousProgram(PacketWire.packetToWireMessages(next)), "", "replay is scoped to the current loop");
-            if (mode !== "none") assert.match(observations(PacketWire.packetToWireMessages(next)), /First memory\./u, "a NOTE of a turn that is not replayed renders as an ordinary row");
+            assert.equal(previousProgram(PacketWire.packetToWireMessages(next)), mode === "all" ? `${first}\n\n${second}\n\n${final}` : mode === "latest" ? final : "", "replay spans loops of the same session");
+            if (mode !== "all") assert.match(observations(PacketWire.packetToWireMessages(next)), /First memory\./u, "a NOTE of a turn that is not replayed renders as an ordinary row");
         } finally { await db.close(); }
     }));
 }
 
-test("{§emission-history}: all replays older eligible turns across a reasoning-only turn and a syntax failure", async () => withHistory("all", async () => {
+test("{§emission-history}: all replays sanitized active emissions across a reasoning-only turn, a partial parse recovery, and an unclosed-only turn", async () => withHistory("all", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "history-eligibility");
         const sessionId = await insertSession(db, workspaceId, null, "writer");
         const loopId = await insertLoop(db, sessionId, 1, "Work.");
         const kept = note("Kept finding.");
+        const partial = note("Partial program.");
         const provider = new Mock({ contextWindow: 100000, responses: [
             say(`${kept}\n\n${op("SEND", "Progress update.")}`), say("", note("Reasoning memory.")),
-            say(`${note("Partial program.")}\n\n\`\`\`READ (unclosed`),
+            say(`${partial}\n\n\`\`\`READ (unclosed`),
+            say("```READ (unclosed"),
             say(op("SEND [200]", "Done.")),
         ] });
-        await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 5 });
-        assert.equal(provider.received.length, 4);
-        for (const request of provider.received.slice(1)) assert.equal(previousProgram(request), `${kept}\n\n${op("SEND", "Progress update.")}`, "a syntactically partial program is not eligible, NOTE or no NOTE");
+        await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 6, maxStrikes: 3 });
+        assert.equal(provider.received.length, 5);
+        assert.equal(previousProgram(provider.received[1]), `${kept}\n\n${op("SEND", "Progress update.")}`);
+        assert.equal(previousProgram(provider.received[2]), `${kept}\n\n${op("SEND", "Progress update.")}`);
+        assert.equal(previousProgram(provider.received[3]), `${kept}\n\n${op("SEND", "Progress update.")}\n\n${partial}`, "a turn with an admitted statement and an unclosed tail replays its sanitized emission");
+        assert.equal(previousProgram(provider.received[4]), `${kept}\n\n${op("SEND", "Progress update.")}\n\n${partial}`, "a turn with no admitted statement writes no emission and leaves prior emissions intact");
     } finally { await db.close(); }
 }));
 
@@ -338,7 +343,7 @@ test("{§emission-history} {§operator-config-precedence}: complete operations r
     const loopId = await insertLoop(db, sessionId, 1, "Edit, inspect, and reply.");
     const body = "Actual replacement.\n```NOTE\nA literal nested example, not an operation.\n```\nLast line.";
     const contentNote = note("Content memory.");
-    const first = [op("EDIT (workspace:///memo.md)", body), contentNote, op("WAIT [0]", null)].join("\n\n");
+    const first = [op("EDIT (workspace:///memo.md) <!-- draft memo -->", body), contentNote, op("WAIT [0]", null)].join("\n\n");
     const readNote = note("Read it back.");
     const second = `${op("READ (workspace:///memo.md)", null)}\n\n${readNote}`;
     const reasoning = `Unretained deliberation.\n\n${note("Reasoning memory.")}`;
@@ -363,6 +368,7 @@ test("{§emission-history} {§operator-config-precedence}: complete operations r
     assert.doesNotMatch(previousProgram(provider.received[1]), /Reasoning memory/u, "reasoning operations stay in their channel");
     assert.match(afterEdit, /Reasoning memory\./u, "a reasoning NOTE persists as an ordinary row");
     assert.doesNotMatch(afterEdit, /Content memory\./u, "a paired receipt does not duplicate its authored body");
+    assert.doesNotMatch(afterEdit, /"aside":"draft memo"/u, "the aside stays on the assistant emission line, not duplicated in the paired receipt");
     assert.doesNotMatch(afterEdit, /Unretained deliberation\.|\/reasoning \(reasoning:\/\//u, "automatic reasoning return is off");
     const record = afterEdit.split("\n\n").find((text) => /^### log:\/\/\/1\/2\/\d+\/emission/u.test(text))!;
     assert.ok(record);
@@ -381,15 +387,15 @@ test("{§emission-history} {§operator-config-precedence}: complete operations r
     assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0), "each message is charged exactly once");
     const nextLoop = await insertLoop(db, sessionId, 2, "A new request.");
     const next = await builder.buildRequestPacket({ workspaceId, sessionId, loopId: nextLoop, currentTurnSeq: 1, provider, initialMessages: [], gitStatus: null });
-    assert.equal(PacketWire.sectionContent(next, "emission-history"), "", "a new loop does not inherit a prior loop's replay");
+    assert.equal(PacketWire.sectionContent(next, "emission-history"), `${first}\n\n${second}\n\n${op("SEND [200]", "Finished.")}`, "a new loop in the same session retains prior loops' active emissions");
 });
 
 for (const [name, content, reasoning, expected] of [
     ["runtime refusal", op("READ (workspace:///missing.md)", null), null, op("READ (workspace:///missing.md)", null)],
-    ["syntax failure after a valid operation", `${note("admitted")}\n\n\`\`\`READ (unclosed`, null, ""],
+    ["syntax failure after a valid operation", `${note("admitted")}\n\n\`\`\`READ (unclosed`, null, note("admitted")],
     ["reasoning-only turn", "", note("Only reasoning."), ""],
     ["content NOTE only", note("Log memory only."), null, note("Log memory only.")],
-    ["unmatched log curation", op("KILL (log:///1/1/*/FIND)", null), null, op("KILL (log:///1/1/*/FIND)", null)],
+    ["unmatched log curation", op("KILL (log:///1/1/*/READ)", null), null, op("KILL (log:///1/1/*/READ)", null)],
     ["empty turn", "", null, ""],
 ] as const) {
     test(`{§emission-history}: latest evaluates ${name} on the immediate turn, never an older program`, async (t) => withHistory("latest", async () => {
@@ -652,8 +658,8 @@ test("{§session-initialization-entry} assembled packet: the turn-0 catalog fois
         const initializationOutcomes = initialization;
         assert.deepEqual(
             initializationOutcomes.filter(({ path: target }) => target !== undefined).map(({ path: target }) => target),
-            ["workspace:///*"],
-            "only the survey with entries runs: no reference is materialized and the session's own space is new ({§session-initialization-entry})",
+            ["workspace:///*", "session://subject/*"],
+            "the survey with entries and the session's own scratch survey run ({§session-initialization-entry})",
         );
         assert.doesNotMatch(log, /workspace:\/\/\/_plurnk\/plurnk\/sh\.md/, "turn-0 never privileges the sh skill with an orientation READ");
 
@@ -794,9 +800,9 @@ test("{§packet-assembly} the initial wire preserves canonical order and the Rec
         // append-mostly history precedes per-turn status, open message pointers and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
-        assert.deepEqual(slot("user"), ["log", "git", "budget", "session", "work", "messages", "notices", "errors", "recap"]);
+        assert.deepEqual(slot("user"), ["log", "git", "budget", "session", "work", "notices", "errors", "recap"]);
         assert.deepEqual(slot("assistant"), []);
-        assert.equal(packet.sections.find((section) => section.name === "messages")?.header, "Open Messages");
+        assert.equal(packet.sections.find((section) => section.name === "work")?.header, "Open Work");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context");
         assert.equal(packetSection(packet, "recap"), "CUSTOM_RECAP_SENTINEL", "{§packet-inject}: the override replaces the source; no recap line ships ahead of it");
         assert.equal(packetSection(packet, "emission-history"), "", "the first turn has no previous program");
@@ -959,25 +965,25 @@ test("{§child-orientation} the live things a session holds — child sessions �
         const packet = await getPacket(db, result.turnId);
 
         // The live child surfaces as a terse status+path pointer under `sessions` — orienting state, not advice.
-        assert.match(packetSection(packet, "work"), /^\{"sessions":\[\{"status":102,"path":"session:\/\/session-x"\}\],\n"streams":\[\],\n"messages":\[\]\}$/, "the live child session is a status+path pointer the model READs/KILLs itself");
+        assert.match(packetSection(packet, "work"), /^\{"sessions":\[\{"status":102,"path":"session:\/\/session-x"\}\],\n"streams":\[\],\n"messages":\[\{"path":"message:\/\/[^/]+\/[0-9a-f]{8}","origin":"user"\}\]\}$/, "the live child session is a status+path pointer the model READs/KILLs itself");
         const usr = packet.sections.filter((x) => x.slot === "user").map((x) => x.name);
         assert.ok(usr.includes("work"), "{§child-orientation}: open work rides the status clump");
     } finally { await db.close(); }
 });
 
-test("{§child-orientation} no live children or streams → Open Work states every list as empty", async () => {
+test("{§child-orientation} no live children, streams, or messages → Open Work states every list as empty", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `child-orient-empty-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1, "go");
+        const loopId = await insertLoop(db, sessionId, 1, "");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
-        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [noteStmt("ok")] } }] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }] });
         // {§child-orientation} — Open Work states emptiness as `[]` for every list: the model
         // decides wait-or-complete on them, so it never infers "none" from a missing heading.
         const packet = await getPacket(db, result.turnId);
-        assert.equal(packetSection(packet, "work"), '{"sessions":[],\n"streams":[],\n"messages":[]}', "no live children, no open streams, no sent messages awaiting → all three lists state []");
+        assert.equal(packetSection(packet, "work"), '{"sessions":[],\n"streams":[],\n"messages":[]}', "no live children, no open streams, no open or sent messages → all three lists state []");
     } finally { await db.close(); }
 });
 
@@ -1202,7 +1208,7 @@ const packet = (records: readonly string[], prompt: string): DurablePacket => ({
     sections: [
         { name: "definition", slot: "system", header: null, content: "# Plurnk", weight: 2 },
         { name: "log", slot: "user", header: "Log", content: records.join("\n\n"), weight: 4, items: records },
-        { name: "messages", slot: "user", header: "Open Messages", content: prompt, weight: 1 },
+        { name: "work", slot: "user", header: "Open Work", content: prompt, weight: 1 },
     ],
     attributions: ["session://a"],
 });

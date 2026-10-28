@@ -456,7 +456,7 @@ test("{§tokenomics} a short message lands as one inbound SEND row", async () =>
     });
 });
 
-test("{§tokenomics}: a jumbo message lands folded with its size; Open Messages points to its complete log body", async () => {
+test("{§tokenomics}: a jumbo message lands folded with its size; Open Work points to its complete log body", async () => {
     await withDaemon(mock(), async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -470,7 +470,7 @@ test("{§tokenomics}: a jumbo message lands folded with its size; Open Messages 
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds[turnIds.length - 1] });
             const packet = JSON.parse(row!.packet) as { weight: number; sections?: Array<{ name: string; slot: string; header: string | null; content: string }> };
             const log = packetSection(packet, "log");
-            const promptSection = (packet.sections ?? []).find((sec) => sec.name === "messages");
+            const workSection = (packet.sections ?? []).find((sec) => sec.name === "work");
             assert.doesNotMatch(log, /prompt line 1:/, "a body that does not fit is not shown in part");
             const projectedPrompt = logEntries(packet).find((entry) => typeof entry.logPath === "string" && entry.logPath.endsWith("/SEND"));
             assert.ok(projectedPrompt, "the arrival row is in the packet");
@@ -494,11 +494,11 @@ test("{§tokenomics}: a jumbo message lands folded with its size; Open Messages 
             );
             assert.equal(recovered.status, 200);
             assert.equal(recovered.content, fat, "the advertised log READ returns the exact canonical prompt body");
-            assert.ok(promptSection, "the messages section exists");
-            assert.equal(promptSection.slot, "user", "the open-message pointers close the user-slot status clump");
-            assert.equal(promptSection.header, "Open Messages");
-            assert.match(promptSection.content, /^\[\{"path":"message:\/\/[^/]+\/[0-9a-f]{8}","origin":"user"\}\]$/, "an immutable message address, named as the operator's own request");
-            assert.doesNotMatch(promptSection.content, /prompt line 5/, "no bodies in the section");
+            assert.ok(workSection, "the work section exists");
+            assert.equal(workSection.slot, "user", "the open-work pointers close the user-slot status clump");
+            assert.equal(workSection.header, "Open Work");
+            assert.match(JSON.stringify(JSON.parse(workSection.content).messages), /^\[\{"path":"message:\/\/[^/]+\/[0-9a-f]{8}","origin":"user"\}\]$/, "an immutable message address, named as the operator's own request");
+            assert.doesNotMatch(workSection.content, /prompt line 5/, "no bodies in the section");
         } finally { ws.close(); }
     });
 });

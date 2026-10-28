@@ -59,10 +59,11 @@ const INITIALIZATION_CLOSING_NOTE: NoteStatement = {
 export default class InitializationTurn {
     // {§session-initialization-entry} — the session's first turn is the worked
     // example itself: the actual orienting operations.
-    // {§session-initialization-entry} {§session-initialization-entry} — the project AGENTS.md, then its AGENTS.local.md (materialized
-    // by LoopDocs under workspace:///_plurnk/), each get one foisted READ on the session's first loop, so local repo
-    // guidance is visible turn-0 content. Global policy stays in the system prompt; nothing else is force-read.
-    static async guidanceStatements(db: Db, workspaceId: number): Promise<Array<FindStatement | ReadStatement>> {
+    // {§session-initialization-entry} — the project AGENTS.md, its AGENTS.local.md (materialized
+    // by LoopDocs under workspace:///_plurnk/), and session://<session>/AGENTS.md when pre-populated
+    // in the session's scratch namespace, each get one foisted READ on the session's first loop.
+    // Global policy stays in the system prompt; nothing else is force-read.
+    static async guidanceStatements(db: Db, workspaceId: number, sessionName: string): Promise<Array<FindStatement | ReadStatement>> {
         const statements: Array<FindStatement | ReadStatement> = [];
         for (const name of ["/AGENTS.md", "/AGENTS.local.md"]) {
             const pathname = generatedPathname(name);
@@ -74,6 +75,20 @@ export default class InitializationTurn {
                 kind: "url", raw: `workspace://${pathname}`, scheme: "workspace",
                 username: null, password: null, hostname: null, port: null,
                 pathname, query: null, fragment: null,
+            };
+            statements.push({
+                op: "READ", aside: null, target,
+                metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
+            } satisfies ReadStatement);
+        }
+        const sessionAgents = await db.crud_find_workspace_entry.get<{ id: number }>({
+            workspace_id: workspaceId, scheme: "session", authority: sessionName, pathname: "/AGENTS.md",
+        });
+        if (sessionAgents !== undefined) {
+            const target: UrlPath = {
+                kind: "url", raw: `session://${sessionName}/AGENTS.md`, scheme: "session",
+                username: null, password: null, hostname: sessionName, port: null,
+                pathname: "/AGENTS.md", query: null, fragment: null,
             };
             statements.push({
                 op: "READ", aside: null, target,
@@ -126,10 +141,16 @@ export default class InitializationTurn {
         const admittedInitializationStatements: Array<FindStatement | ReadStatement> = [];
         for (const statement of initializationStatements) {
             if (!capabilities.allowsAcross(statement, workspaceId, initializationPolicies)) continue;
-            // {§session-initialization-entry} — a survey that would select nothing is left out of the program.
-            if (statement.op === "FIND" && !await dispatcher.selects(statement, {
-                workspaceId, sessionId, loopId, turnId: initializationTurn.id, origin: "_plurnk",
-            })) continue;
+            // {§session-initialization-entry} — a survey that would select nothing is left out of the program,
+            // except the session's own scratch survey (`session://<session>/*`), which always runs so the model
+            // sees its session namespace even when empty.
+            if (
+                statement.op === "FIND"
+                && !(statement.target?.kind === "url" && statement.target.scheme === "session")
+                && !await dispatcher.selects(statement, {
+                    workspaceId, sessionId, loopId, turnId: initializationTurn.id, origin: "_plurnk",
+                })
+            ) continue;
             admittedInitializationStatements.push(statement);
         }
         if (admittedInitializationStatements.length === 0) {

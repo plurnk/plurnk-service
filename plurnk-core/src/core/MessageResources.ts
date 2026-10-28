@@ -61,7 +61,7 @@ export default class MessageResources {
 
     static async read(db: Db, args: { workspaceId: number; sessionId: number; loopId?: number }): Promise<ApplicationMessage[]> {
         const rows = await db.message_history.all<{
-            id: number; loop_id: number; direction: "inbound" | "outbound"; source: string | null; body: string; evidence: string; answers: string;
+            id: number; loop_id: number; direction: "inbound" | "outbound"; source: string | null; body: string; evidence: string; replied_to: string;
         }>({ workspace_id: args.workspaceId, session_id: args.sessionId, loop_id: args.loopId ?? null });
         return Promise.all(rows.map(async (row) => {
             // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: a message's evidence is read back as the row stored it
@@ -71,8 +71,8 @@ export default class MessageResources {
                 bytes: await NativeContent.read(db, receipt.contentHash),
             })));
             return { id: row.id, loopId: row.loop_id, direction: row.direction, source: row.source, body: row.body,
-                // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: a message's answers are read back as the row stored them
-                answers: JSON.parse(row.answers) as string[],
+                // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: a message's repliedTo addresses are read back as the row stored them
+                repliedTo: JSON.parse(row.replied_to) as string[],
                 ...(evidence.envelope === undefined ? {} : { envelope: evidence.envelope }), attachments };
         }));
     }
