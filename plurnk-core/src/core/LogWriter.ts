@@ -1,6 +1,6 @@
 import { TurnDisposition, isExecution, isRecord, writtenOp } from "@plurnk/plurnk-contracts";
 // Durable operation recording: one log row per dispatched statement, split out of Dispatcher.
-import type { ParsedPath, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { LogAddressColumns, ParsedPath, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import ExecutionOutputs from "./ExecutionOutputs.ts";
 import { execRouteOf } from "../schemes/exec-runtime.ts";
 import type { Db } from "./Db.ts";
@@ -15,12 +15,10 @@ import LogEntryProjection from "./LogEntryProjection.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 
 // The columns `engine_insert_log_entry` takes, as one dispatch writes them.
-export interface LogRecord extends Record<string, unknown> {
+export interface LogRecord extends LogAddressColumns, Record<string, unknown> {
     session_id: number; loop_id: number; turn_id: number; sequence: number;
     origin: WriterTier; source: string | null; model_call_id: number | null;
     op: string; signal: string | null;
-    scheme: string | null; username: string | null; password: string | null;
-    hostname: string | null; port: number | null; pathname: string | null; query: string | null; fragment: string | null;
     lineMarker: string | null;
     tx: string; mimetype_tx: string; rx: string; mimetype_rx: string; status_rx: number;
     weight: number; state: string; outcome: null; attrs: string; initial_folded: string;

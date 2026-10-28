@@ -33,17 +33,63 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "errnoCode",
         "excerptOf",
         "formatJsonDocument",
+        "formatServiceUpdateReport",
         "isExecution",
         "isExecutionOp",
         "isPlurnkOp",
         "isRecord",
         "isSafeInteger",
         "lifecycleOfLoopStatus",
+        "parseFamilyCommand",
         "renderJsonResult",
         "requestOrigin",
         "selectSessionLoop",
+        "toolKindOf",
         "writtenOp",
     ]);
+});
+
+test("{§startup-admission} {§acp-action-binding} formatServiceUpdateReport and parseFamilyCommand project canonical reports and family actions", () => {
+    assert.equal(
+        Contracts.formatServiceUpdateReport({
+            catalog: {
+                status: "updated",
+                providers: 12,
+                models: 450,
+                addedModels: 3,
+                updatedAt: "2026-10-26T00:00:00.000Z",
+                path: "/tmp/models.json",
+            },
+            service: {
+                package: "@plurnk/plurnk-service",
+                version: "4.4.0",
+                artifact: "source",
+                upgradeCommand: "npm install -g @plurnk/plurnk-service@latest @plurnk/plurnk@latest",
+            },
+        }),
+        "catalog: updated (450 models across 12 providers, +3 new)\nversion: @plurnk/plurnk-service@4.4.0 (source checkout) — to update packages, stop the daemon and run: npm install -g @plurnk/plurnk-service@latest @plurnk/plurnk@latest",
+    );
+    assert.deepEqual(Contracts.parseFamilyCommand("env", ["add", "FOO", "bar"]), {
+        scopePrefix: "session",
+        sub: "add",
+        rest: ["FOO", "bar"],
+        actionName: "session.env.add",
+        params: { alias: "FOO", definition: { value: "bar" } },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("env", ["--scope", "workspace", "list"]), {
+        scopePrefix: "workspace",
+        sub: "list",
+        rest: [],
+        actionName: "workspace.env.list",
+        params: {},
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("members", ["remove", "src/a.ts"]), {
+        scopePrefix: "workspace",
+        sub: "remove",
+        rest: ["src/a.ts"],
+        actionName: "workspace.members.remove",
+        params: { file: "src/a.ts" },
+    });
 });
 
 test("{§operation-fences} isPlurnkOp admits the operation alphabet and nothing else", () => {

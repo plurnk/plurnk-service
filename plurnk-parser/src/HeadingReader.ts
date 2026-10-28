@@ -15,6 +15,8 @@ export class HeadingErrors extends BaseErrorListener {
 // {§whitespace-contract}: a heading-only grammar pass supplies shape to fence recovery.
 // It never pairs fences or admits operations; the full parse owns errors and advisories.
 export default class HeadingReader {
+    static readonly NAME = /^[A-Za-z0-9_.+-]+/u;
+
     // {§fence-pairing}: the lexer and fence pairing share recognition; the slot grammar validates
     // what follows. A slot opener suffices even when its slot is malformed, so it receives a diagnostic.
     static opens(name: string, suffix: string, executors: ReadonlySet<string>, reasoning: boolean): boolean {

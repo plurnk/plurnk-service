@@ -1,5 +1,4 @@
 import { isRecord } from "@plurnk/plurnk-contracts";
-import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
 import type { PackageAttributions, ExtensionAttribution } from "@plurnk/plurnk-meta";
 
@@ -56,23 +55,12 @@ interface SchemePackage {
 
 export default class SchemeDiscovery {
     static async discover(options: DiscoverOptions = {}): Promise<SchemeDiscoveryResult> {
-        const { signal } = options;
-        const dirs = options.packageDirs ?? await SchemeDiscovery.#defaultPackageDirs(options.cwd ?? process.cwd(), signal);
+        const { admitted, skipped } = await Meta.scanKind("scheme", options);
         const byName = new Map<string, SchemeInfo>();
         const packageAttributions = new Map<string, ExtensionAttribution>();
-        const skipped = new Set<string>();
-        for (const dir of dirs) {
-            signal?.throwIfAborted();
-            const manifest = await SchemeDiscovery.#readSchemeManifest(dir, signal);
-            if (manifest === null) continue;
-            // Host extension-trust gate: an untrusted third-party package is
-            // discovered but not surfaced for registration — recorded, never
-            // crashed on. Validation of declaration fields and attribution follows
-            // this package-level gate ({§extension-discovery}).
-            if (!Meta.isTrusted(manifest.packageName)) { skipped.add(manifest.packageName); continue; }
-            const tags = Meta.normalizeAttribution(manifest.plurnk.attribution, manifest.packageName);
-            const infos = SchemeDiscovery.#readSchemeInfos(manifest);
-            let admitted = false;
+        for (const pkg of admitted) {
+            const infos = SchemeDiscovery.#readSchemeInfos(pkg);
+            let pkgAdmitted = false;
             for (const info of infos) {
                 const existing = byName.get(info.name);
                 // Two packages (or two entries) claiming one scheme prefix is an
@@ -86,37 +74,13 @@ export default class SchemeDiscovery {
                     );
                 }
                 byName.set(info.name, info);
-                admitted = true;
+                pkgAdmitted = true;
             }
-            if (admitted && tags.length > 0) packageAttributions.set(manifest.packageName, tags);
+            if (pkgAdmitted && pkg.attribution.length > 0) {
+                packageAttributions.set(pkg.packageName, pkg.attribution);
+            }
         }
-        return { schemes: [...byName.values()], packageAttributions, skipped: [...skipped].toSorted() };
-    }
-
-    // Host extension-trust gate, read from PLURNK_EXTENSIONS_TRUSTED_ONLY — the SAME
-    // env var the host decides once and every scope-agnostic discovery
-    // surface enforces through the shared Meta contract ({§extension-discovery}):
-    //   unset / "" / "0" → OFF: every installed package trusted (no regression).
-    //   any value        → ON:  `@plurnk/*` always trusted, plus a comma-separated
-    //                           allowlist of additionally-trusted package names.
-
-    // Enumerate every installed package directory — scoped (`@scope/name`) and
-    // unscoped (`name`) — under `<cwd>/node_modules`. Unreadable dirs are the
-    // legitimate scan boundary (not-a-package, missing manifest), skipped — not
-    // a masked contract violation (cf. the matcher's sanctioned node_modules tolerance).
-    static async #defaultPackageDirs(cwd: string, signal?: AbortSignal): Promise<string[]> {
-        signal?.throwIfAborted();
-        const nm = Meta.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
-        return (await Meta.packageDirs(nm)).map((c) => c.dir).toSorted();
-    }
-
-    // The inert manifest for a package declaring plurnk.kind:"scheme" ({§extension-discovery});
-    // null for anything else, including an unnamed package. Declaration field validation happens
-    // only after the package trust gate. An abort surfaces (locality of error).
-    static async #readSchemeManifest(dir: string, signal?: AbortSignal): Promise<SchemePackage | null> {
-        const manifest = await Meta.readManifest(dir, "scheme", { signal });
-        if (manifest === null || manifest.packageName === null) return null;
-        return { packageName: manifest.packageName, plurnk: manifest.plurnk };
+        return { schemes: [...byName.values()], packageAttributions, skipped };
     }
 
     // The SchemeInfo(s) for an admitted package. A package

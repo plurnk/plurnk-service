@@ -192,8 +192,7 @@ export interface RegistrySettings {
 }
 
 export const registrySettings = (environ: NodeJS.ProcessEnv = process.env): RegistrySettings => {
-    const raw = environ.PLURNK_MCP_REGISTRY_URL;
-    if (raw === undefined) throw new Error("PLURNK_MCP_REGISTRY_URL is missing from the assembled environment floor.");
+    const raw = Knob.text("PLURNK_MCP_REGISTRY_URL", environ);
     if (raw.length > 0) {
         const refusal = "PLURNK_MCP_REGISTRY_URL must be an HTTP or HTTPS URL.";
         let url: URL;

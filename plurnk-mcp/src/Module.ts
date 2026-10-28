@@ -5,40 +5,25 @@
 // publication, and both the client and model projections.
 import { fileURLToPath } from "node:url";
 import { readDefinition } from "./definition.ts";
-import { isDeepStrictEqual } from "node:util";
-import { SdkHttpError, UnauthorizedError } from "@modelcontextprotocol/client";
-import { CompleteRequestParamsSchema } from "@modelcontextprotocol/core";
-import type { PluginContext } from "./PluginConfiguration.ts";
 import { type Notice,
-    Problems,
-    Validator,
-    isRecord,
     type FunctionalityCandidate,
     type FunctionalityDefinitionSource,
     type FunctionalityDiscoverQuery,
     type FunctionalityFamilyHandle,
     type FunctionalityOutcome,
     type FunctionalityPreparation,
-    type FunctionalityPreparedDefinition,
     type FunctionalityPrepared,
-    type McpAuthorization,
     type McpServerDefinition,
-    type McpOAuthCompletionResult,
-    type McpOAuthBeginResult,
     type JsonSchema,
-    type ProblemDetails,
     type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
-import type { ContainedConfiguration, DaemonModule, FunctionalitySeam, ModuleActionContext, ModuleSetupSeam } from "@plurnk/plurnk-modules";
+import type { ContainedConfiguration, DaemonModule, FunctionalitySeam, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 
 import ServerConnection, {
     AuthorizationRequiredError,
-    awaitsSignIn,
-    causeOf,
     isClientCredentialsRejection,
-    McpRedirectError,
 } from "./client.ts";
 import {
     configuredDefinitions,
@@ -51,12 +36,37 @@ import {
     type ToolPolicy,
 } from "./config.ts";
 import { RegistryError, registryEntries, searchRegistry, type RegistryServer } from "./registry.ts";
-import McpExecutor, { UnavailableServerExecutor, runtimeDecl, runtimeServerSummary } from "./McpExecutor.ts";
+import McpExecutor, { runtimeDecl, runtimeServerSummary } from "./McpExecutor.ts";
 import McpResources from "./McpResources.ts";
-import { type OAuthGrant, OAuthSetupError } from "./oauth.ts";
+import type { OAuthGrant } from "./oauth.ts";
+import {
+    FAMILY,
+    OWNER,
+    ModuleActionError,
+    actionError,
+    activeDetail,
+    attachmentConnection,
+    bindingOf,
+    errorsOf,
+    objectOf,
+    preparationError,
+    sameBinding,
+    statusOf,
+    unavailableRuntime,
+    workspaceIdentityOf,
+    type Attachment,
+    type ConnectedAttachment,
+    type McpBinding,
+    type PendingAuthorization,
+    type Snapshot,
+} from "./attachment.ts";
+import {
+    beginOAuth,
+    completeOAuth,
+    completePromptOrResource,
+    type ContinuationHost,
+} from "./continuation.ts";
 
-const OWNER = "@plurnk/plurnk-mcp";
-const FAMILY = "mcp";
 const NONEMPTY_STRING = { type: "string", minLength: 1 } as const;
 const OPEN_OBJECT = { type: "object", additionalProperties: true } as const;
 const MCP_DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/McpServerDefinition.json" } as const;
@@ -70,235 +80,9 @@ const actionInput = (
     ...(required.length === 0 ? {} : { required: [...required] }),
 });
 
-interface McpBinding extends FunctionalityPreparedDefinition {
-    readonly definition: McpServerDefinition;
-    readonly context?: PluginContext;
-}
-
-interface ActiveAttachment extends McpBinding {
-    readonly kind: "active";
-    readonly connection: ServerConnection;
-    readonly executor: McpExecutor;
-    readonly runtime: RuntimeRegistration;
-}
-
-interface AuthorizationAttachment extends McpBinding {
-    readonly kind: "authorization-required";
-    readonly connection: ServerConnection;
-    readonly authorizationUrl: string | undefined;
-}
-
-interface UnavailableAttachment extends McpBinding {
-    readonly kind: "unavailable";
-    readonly problem: ProblemDetails;
-}
-
-type ConnectedAttachment = ActiveAttachment | AuthorizationAttachment;
-type Attachment = ConnectedAttachment | UnavailableAttachment;
-// The committed attachments a preparation hands the coordinator, by server name.
-type Snapshot = ReadonlyMap<string, Attachment>;
-
-const attachmentConnection = (attachment: Attachment): ServerConnection | undefined =>
-    attachment.kind === "unavailable" ? undefined : attachment.connection;
-
-// {§mcp-configuration} An enabled server that cannot run still answers to its alias: a call to it is refused with
-// the state that keeps it from running, never as a name nothing registered.
-const unavailableRuntime = (attachment: AuthorizationAttachment | UnavailableAttachment): RuntimeRegistration => {
-    const { name } = attachment.definition;
-    const detail = attachment.kind === "authorization-required"
-        ? "it awaits the operator's sign-in"
-        : typeof attachment.problem.diagnostic === "string" ? attachment.problem.diagnostic : attachment.problem.detail;
-    return {
-        namespaceOwner: OWNER,
-        decl: runtimeDecl(name, runtimeServerSummary(name, undefined), false),
-        executor: new UnavailableServerExecutor(name, detail),
-        availability: { available: false, detail },
-    };
-};
-
-// {§oauth-continuation} — a pending authorization is process memory per
-// (workspace, alias): the challenged connection, its URL, the workspace residency it
-// holds, and the accepted grant awaiting capability publication.
-interface PendingAuthorization extends McpBinding {
-    readonly connection: ServerConnection;
-    readonly releaseWorkspace: () => void;
-    prepared?: ActiveAttachment;
-    authorized?: boolean;
-    completion?: { readonly callbackUrl: string; readonly result: Promise<McpOAuthCompletionResult> };
-}
-
 export interface ModuleOptions {
     readonly env?: NodeJS.ProcessEnv;
 }
-
-class ModuleActionError extends Error {
-    readonly problem: ProblemDetails;
-
-    constructor(problem: ProblemDetails, cause?: unknown) {
-        super(problem.detail, { cause });
-        this.name = "ModuleActionError";
-        this.problem = problem;
-    }
-}
-
-const actionError = (
-    code: string,
-    status: number,
-    detail: string,
-    extensions: Readonly<Record<string, unknown>> = {},
-    cause?: unknown,
-): ModuleActionError => new ModuleActionError(
-    Problems.create("mcp:management", code, status, detail, {
-        stage: "mcp-management",
-        ...extensions,
-    }),
-    cause,
-);
-
-const errorsOf = (error: unknown): unknown[] =>
-    error instanceof AggregateError ? [...error.errors] : [error];
-
-const preparationError = (
-    definition: McpServerDefinition,
-    authorization: McpAuthorization | undefined,
-    cause: unknown,
-    closeCause?: unknown,
-    observation: Readonly<Record<string, unknown>> = {},
-): ModuleActionError => {
-    const completeCause = closeCause === undefined
-        ? cause
-        : new AggregateError(
-            [cause, closeCause],
-            `MCP server '${definition.name}' preparation and cleanup failed.`,
-        );
-    const setup = causeOf(cause, OAuthSetupError);
-    if (setup !== undefined) return actionError(setup.code, 502, setup.message,
-        { server: definition.name, ...(setup.recovery === undefined ? {} : { recovery: setup.recovery }), retryable: false }, completeCause);
-    // {§oauth-client-credentials} — a rejected grant is an authorization fact,
-    // never a generic unavailability.
-    if (authorization?.type === "client-credentials" && isClientCredentialsRejection(cause)) {
-        return actionError(
-            "oauth-client-credentials-failed",
-            502,
-            `MCP server '${definition.name}' rejected the client-credentials grant.`,
-            {
-                server: definition.name,
-                type: definition.type,
-                clientId: authorization.clientId,
-                ...(authorization.issuer === undefined
-                    ? {}
-                    : { issuer: authorization.issuer }),
-                retryable: false,
-            },
-            completeCause,
-        );
-    }
-    // {§mcp-transports} — the operator corrects the endpoint; retrying cannot.
-    const redirect = causeOf(cause, McpRedirectError);
-    if (redirect !== undefined) {
-        return actionError(
-            "server-redirected",
-            502,
-            redirect.message,
-            { server: definition.name, url: redirect.url, ...(redirect.location === null ? {} : { location: redirect.location }), retryable: false },
-            completeCause,
-        );
-    }
-    const http = causeOf(cause, SdkHttpError);
-    if (http?.status === 401 || causeOf(cause, UnauthorizedError) !== undefined) {
-        return actionError("server-authentication-failed", 502,
-            `MCP server '${definition.name}' rejected authentication (HTTP 401).`,
-            { server: definition.name, upstreamStatus: 401, retryable: false }, completeCause);
-    }
-    return actionError(
-        "server-unavailable",
-        502,
-        `Configured MCP server '${definition.name}' is unavailable.`,
-        {
-            server: definition.name,
-            type: definition.type,
-            retryable: true,
-            ...observation,
-        },
-        completeCause,
-    );
-};
-
-const objectOf = (value: unknown): Record<string, unknown> | null => isRecord(value) ? value : null;
-
-const assertActionKeys = (
-    params: Readonly<Record<string, unknown>>,
-    allowed: readonly string[],
-): void => {
-    const extras = Object.keys(params).filter((key) => !allowed.includes(key));
-    if (extras.length > 0) {
-        throw actionError(
-            "parameters-invalid",
-            400,
-            `Unsupported parameter(s): ${extras.join(", ")}.`,
-            { retryable: false },
-        );
-    }
-};
-
-const requiredString = (
-    params: Readonly<Record<string, unknown>>,
-    key: string,
-): string => {
-    const value = params[key];
-    if (typeof value !== "string" || value.length === 0) {
-        throw actionError(
-            "parameters-invalid",
-            400,
-            `'${key}' must be a non-empty string.`,
-            { field: key, retryable: false },
-        );
-    }
-    return value;
-};
-
-const workspaceIdentityOf = (context: ModuleActionContext): WorkspaceCapabilityIdentity => {
-    if (context.scope !== "workspace") throw new Error("MCP actions require a workspace-scoped context.");
-    return { workspaceId: context.workspaceId };
-};
-
-const sameBinding = (left: McpBinding, right: McpBinding): boolean =>
-    isDeepStrictEqual([left.definition, left.context], [right.definition, right.context]);
-
-// The coordinator hands this module its own admitted definitions back as the contract's objects: the
-// definition is read through its schema, the plugin context through the two paths it names.
-const isPluginContext = (value: object): value is PluginContext =>
-    "root" in value && typeof value.root === "string" && "data" in value && typeof value.data === "string";
-const pluginContextOf = (value: object): PluginContext => {
-    if (!isPluginContext(value)) throw new TypeError("An MCP binding's plugin context names its root and data paths.");
-    return value;
-};
-const bindingOf = (value: FunctionalityPreparedDefinition): McpBinding => ({
-    definition: Validator.assertMcpServerDefinition(value.definition),
-    ...(value.context === undefined ? {} : { context: pluginContextOf(value.context) }),
-});
-
-const statusOf = (error: unknown): number | null => {
-    if (typeof error !== "object" || error === null) return null;
-    const problem = (error as { problem?: { status?: unknown } }).problem
-        ?? (error as { result?: { problem?: { status?: unknown } } }).result?.problem;
-    return typeof problem?.status === "number" ? problem.status : null;
-};
-
-// An active alias's detail: its server's catalog, and the summary of a grant its connection presents ({§oauth-continuation}).
-const activeDetail = ({ executor: { catalog }, connection }: ActiveAttachment): object => {
-    const grant = connection.oauthGrant?.summary;
-    return {
-        protocolVersion: catalog.protocolVersion,
-        server: catalog.server ?? null,
-        capabilities: catalog.capabilities,
-        tools: catalog.tools.map(({ name }) => name).toSorted(),
-        resources: catalog.resources.length,
-        resourceTemplates: catalog.resourceTemplates.length,
-        prompts: catalog.prompts.length,
-        ...(grant === undefined ? {} : { grant }),
-    };
-};
 
 // {§mcp-module} — the registry `discover` searches.
 interface Registry {
@@ -391,13 +175,14 @@ export default class Module implements DaemonModule<SetupSeam> {
             refreshIfChanged: (identity) => this.#refreshIfChanged(identity),
         });
         // Protocol continuations beneath the common grammar.
+        const continuation = this.#continuationHost();
         seam.registerModuleAction({
             name: "workspace.mcp.oauth.begin",
             scope: "workspace",
             residency: "required",
             inputSchema: actionInput({ alias: NONEMPTY_STRING, redirectUrl: NONEMPTY_STRING }, ["alias", "redirectUrl"]),
             outputSchema: { $ref: "https://schemas.plurnk.xyz/v0/McpOAuthBeginResult.json" },
-            handler: (params, context) => this.#beginOAuth(workspaceIdentityOf(context), params),
+            handler: (params, context) => beginOAuth(continuation, workspaceIdentityOf(context), params),
         });
         seam.registerModuleAction({
             name: "workspace.mcp.oauth.complete",
@@ -405,7 +190,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             residency: "required",
             inputSchema: actionInput({ alias: NONEMPTY_STRING, callbackUrl: NONEMPTY_STRING }, ["alias", "callbackUrl"]),
             outputSchema: { $ref: "https://schemas.plurnk.xyz/v0/McpOAuthCompletionResult.json" },
-            handler: (params, context) => this.#completeOAuth(workspaceIdentityOf(context), params),
+            handler: (params, context) => completeOAuth(continuation, workspaceIdentityOf(context), params),
         });
         seam.registerModuleAction({
             name: "workspace.mcp.complete",
@@ -418,7 +203,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 context: OPEN_OBJECT,
             }, ["server", "ref", "argument"]),
             outputSchema: OPEN_OBJECT,
-            handler: (params, context) => this.#complete(workspaceIdentityOf(context).workspaceId, params),
+            handler: (params, context) => completePromptOrResource(continuation, workspaceIdentityOf(context).workspaceId, params),
         });
     }
 
@@ -877,185 +662,22 @@ export default class Module implements DaemonModule<SetupSeam> {
         await this.#closeOwned(connections);
     }
 
-    // {§oauth-continuation} Client callback state travels with the prepared connection, not its definition.
-    async #beginOAuth(identity: WorkspaceCapabilityIdentity, params: Readonly<Record<string, unknown>>): Promise<McpOAuthBeginResult> {
-        assertActionKeys(params, ["alias", "redirectUrl"]);
-        const alias = requiredString(params, "alias");
-        const redirectUrl = requiredString(params, "redirectUrl");
-        const redirect = URL.parse(redirectUrl);
-        if (redirect === null || redirect.username || redirect.password || redirect.hash || redirect.port === "0"
-            || !(redirect.protocol === "https:" || (redirect.protocol === "http:" && ["127.0.0.1", "[::1]", "localhost"].includes(redirect.hostname)))) {
-            throw actionError("oauth-redirect-invalid", 400, "The OAuth callback must use HTTPS or HTTP loopback with a usable port.", { retryable: false });
-        }
-        const current = this.#attachments.get(identity.workspaceId)?.get(alias);
-        if (current === undefined) throw actionError("server-not-connected", 409, `MCP server '${alias}' is not connected for this workspace.`, { retryable: false });
-        if (current.kind === "active") return { status: 200, alias };
-        const definition = current.definition;
-        if (definition.type !== "streamable-http"
-            || (definition.authorization !== undefined && definition.authorization.type !== "oauth")
-            || Object.keys(definition.headers ?? {}).some((name) => name.toLowerCase() === "authorization")
-            || (definition.authorization?.redirectUrl !== undefined && definition.authorization.redirectUrl !== redirectUrl)) {
-            throw actionError("oauth-configuration-conflict", 409,
-                `MCP server '${alias}' is not configured for this interactive OAuth callback.`, { retryable: false });
-        }
-        const key = this.#pendingKey(identity.workspaceId, alias);
-        if (this.#pending.get(key)?.authorized === true) return { status: 202, alias };
-        if (this.#authorizing.has(key)) throw actionError("oauth-busy", 409, `MCP server '${alias}' is already starting authorization.`, { retryable: true });
-        this.#authorizing.add(key);
-        try {
-            const connected = await this.#prepareAttachment(identity.workspaceId, current, undefined, redirectUrl);
-            if (connected.kind === "unavailable") throw new Error("OAuth preparation returned an unavailable attachment.");
-            // {§oauth-continuation} An alias awaiting a sign-in for a refused request starts one on a connection its
-            // server never challenges; one whose connection was challenged and is no longer is accepted as it is.
-            const prepared = connected.kind === "active" && this.#challenged.has(key) ? await this.#beginUnchallenged(connected) : connected;
-            if (this.#attachments.get(identity.workspaceId)?.get(alias) !== current) {
-                await this.#closeOwned([prepared.connection]);
-                throw actionError("oauth-target-conflict", 409, `MCP server '${alias}' changed while its OAuth authorization was pending.`,
-                    { workspaceId: identity.workspaceId, alias, recovery: "Start authorization again from the server's current definition.", retryable: false });
-            }
-            const previous = this.#pending.get(key);
-            const pending: PendingAuthorization = {
-                ...prepared,
-                releaseWorkspace: this.#retain(identity.workspaceId),
-                ...(prepared.kind === "active" ? { prepared, authorized: true } : {}),
-            };
-            this.#pending.set(key, pending);
-            if (previous !== undefined) {
-                previous.releaseWorkspace();
-                if (previous.connection !== attachmentConnection(current)) await this.#closeOwned([previous.connection]);
-            }
-            if (prepared.kind === "authorization-required") {
-                if (prepared.authorizationUrl === undefined) throw new Error("OAuth preparation with a callback omitted its authorization URL.");
-                return { status: 202, alias, authorization: { url: prepared.authorizationUrl } };
-            }
-            this.#dirty.set(key, Symbol());
-            this.#refreshCatalog(identity.workspaceId, alias);
-            return { status: 202, alias };
-        } finally { this.#authorizing.delete(key); }
-    }
-
-    // {§oauth-continuation} The SDK's authorization starts on the connection; one it finds authorized stays active.
-    async #beginUnchallenged(connected: ActiveAttachment): Promise<ConnectedAttachment> {
-        let authorizationUrl: string | undefined;
-        try {
-            authorizationUrl = await connected.connection.beginAuthorization();
-        } catch (cause) {
-            let closeCause: unknown;
-            try {
-                await this.#closeOwned([connected.connection]);
-            } catch (error) {
-                closeCause = error;
-            }
-            const { definition } = connected;
-            throw preparationError(definition, definition.type === "streamable-http" ? definition.authorization : undefined, cause, closeCause);
-        }
-        if (authorizationUrl === undefined) return connected;
+    #continuationHost(): ContinuationHost {
         return {
-            definition: connected.definition,
-            ...(connected.context === undefined ? {} : { context: connected.context }),
-            kind: "authorization-required",
-            connection: connected.connection,
-            authorizationUrl,
+            isClosed: () => this.#closed,
+            attachments: this.#attachments,
+            pending: this.#pending,
+            authorizing: this.#authorizing,
+            challenged: this.#challenged,
+            dirty: this.#dirty,
+            grants: this.#grants,
+            pendingKey: (workspaceId, name) => this.#pendingKey(workspaceId, name),
+            retain: (workspaceId) => this.#retain(workspaceId),
+            closeOwned: (connections) => this.#closeOwned(connections),
+            prepareAttachment: (workspaceId, binding, connection, oauthRedirectUrl, signal) =>
+                this.#prepareAttachment(workspaceId, binding, connection, oauthRedirectUrl, signal),
+            refreshCatalog: (workspaceId, name, attempt) => this.#refreshCatalog(workspaceId, name, attempt),
         };
-    }
-
-    // {§oauth-continuation} — grant acceptance precedes ordinary catalog publication.
-    async #completeOAuth(identity: WorkspaceCapabilityIdentity, params: Readonly<Record<string, unknown>>): Promise<McpOAuthCompletionResult> {
-        assertActionKeys(params, ["alias", "callbackUrl"]);
-        const alias = requiredString(params, "alias");
-        const callbackUrl = requiredString(params, "callbackUrl");
-        const key = this.#pendingKey(identity.workspaceId, alias);
-        const pending = this.#pending.get(key);
-        if (pending === undefined) {
-            // {§oauth-continuation} — restart during pending authorization surfaces
-            // as a factual not-pending state, never a secret replay.
-            throw actionError(
-                "oauth-not-pending",
-                404,
-                `MCP server '${alias}' has no pending OAuth authorization.`,
-                { workspaceId: identity.workspaceId, alias, retryable: false },
-            );
-        }
-        const current = this.#attachments.get(identity.workspaceId)?.get(alias);
-        if (current === undefined || !sameBinding(current, pending)) {
-            throw actionError(
-                "oauth-target-conflict",
-                409,
-                `MCP server '${alias}' changed while its OAuth authorization was pending.`,
-                { workspaceId: identity.workspaceId, alias, recovery: "Start authorization again from the server's current definition.", retryable: false },
-            );
-        }
-        if (pending.completion !== undefined) {
-            if (pending.completion.callbackUrl !== callbackUrl) throw actionError(
-                "oauth-callback-invalid", 400,
-                `OAuth authorization for MCP server '${alias}' could not be completed.`,
-                { workspaceId: identity.workspaceId, alias, retryable: false },
-            );
-            return pending.completion.result;
-        }
-        const result = (async (): Promise<McpOAuthCompletionResult> => {
-            try {
-                await pending.connection.finishAuthorization(callbackUrl);
-            } catch (cause) {
-                delete pending.completion;
-                throw actionError(
-                    "oauth-callback-invalid",
-                    400,
-                    `OAuth authorization for MCP server '${alias}' could not be completed.`,
-                    { workspaceId: identity.workspaceId, alias, retryable: false },
-                    cause,
-                );
-            }
-            if (this.#pending.get(key) !== pending || this.#closed) throw actionError(
-                "oauth-target-conflict", 409,
-                `MCP server '${alias}' changed while its OAuth authorization was pending.`,
-                { workspaceId: identity.workspaceId, alias, retryable: false },
-            );
-            pending.authorized = true;
-            // {§oauth-continuation} The accepted sign-in is the alias's grant, replacing any before it.
-            const grant = pending.connection.oauthGrant;
-            if (grant !== undefined) {
-                this.#grants.set(key, { definition: pending.definition, ...(pending.context === undefined ? {} : { context: pending.context }), grant });
-            }
-            this.#dirty.set(key, Symbol());
-            this.#refreshCatalog(identity.workspaceId, alias);
-            return { status: 202, alias };
-        })();
-        pending.completion = { callbackUrl, result };
-        return result;
-    }
-
-    async #complete(workspaceId: number, params: Readonly<Record<string, unknown>>): Promise<unknown> {
-        assertActionKeys(params, ["server", "ref", "argument", "context"]);
-        const server = requiredString(params, "server");
-        const attachment = this.#attachments.get(workspaceId)?.get(server);
-        if (attachment === undefined || attachment.kind !== "active") {
-            throw actionError(
-                "server-not-connected",
-                409,
-                `MCP server '${server}' is not connected for this workspace.`,
-                { workspaceId, name: server, retryable: false },
-            );
-        }
-        // The protocol's own schema proves the completion's parameters; a context that is not an object is not sent.
-        const completion = CompleteRequestParamsSchema.safeParse({
-            ref: params.ref,
-            argument: params.argument,
-            ...(objectOf(params.context) === null ? {} : { context: params.context }),
-        });
-        if (!completion.success) {
-            const issues = completion.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ");
-            throw actionError("completion-parameters-invalid", 400, `MCP completion parameters do not match the protocol: ${issues}.`, { retryable: false });
-        }
-        try {
-            return await attachment.connection.complete(completion.data);
-        } catch (cause) {
-            if (cause instanceof AuthorizationRequiredError) {
-                // {§mcp-host-composition}
-                throw actionError("authorization-required", 401, awaitsSignIn(server), { workspaceId, name: server, retryable: false }, cause);
-            }
-            throw cause;
-        }
     }
 
     // {§oauth-continuation} The alias's grant, for a connection with the definition it was accepted for, while it holds tokens.

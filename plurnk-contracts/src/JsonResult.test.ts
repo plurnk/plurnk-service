@@ -2,7 +2,7 @@ import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import { renderJsonResult, requestOrigin } from "./index.ts";
 import { formatJsonDocument } from "./JsonDocument.ts";
-import { addressOf } from "./LogRow.ts";
+import { addressOf, toolKindOf } from "./LogRow.ts";
 import { excerptOf } from "./Excerpt.ts";
 import { lifecycleOfLoopStatus, selectSessionLoop } from "./LoopLifecycle.ts";
 
@@ -78,6 +78,25 @@ test("{§acp-plurnk-metadata} addressOf formats scheme URIs, file paths, and nul
     assert.equal(addressOf({ scheme: "ops", hostname: "helper", pathname: "/1" }), "ops://helper/1");
     assert.equal(addressOf({ scheme: null, pathname: "src/a.ts", fragment: "stderr" }), "src/a.ts#stderr");
     assert.equal(addressOf({ scheme: null, pathname: null }), null);
+});
+
+test("{§acp-plurnk-metadata} {§capability-policy-cascade} toolKindOf maps verbs and schemes to canonical tool-call kinds", () => {
+    assert.equal(toolKindOf("READ", "file"), "read");
+    assert.equal(toolKindOf("READ", "http"), "fetch");
+    assert.equal(toolKindOf("READ", "https"), "fetch");
+    assert.equal(toolKindOf("EDIT", "file"), "edit");
+    assert.equal(toolKindOf("COPY", "file"), "edit");
+    assert.equal(toolKindOf("MOVE", "file"), "move");
+    assert.equal(toolKindOf("KILL", "file"), "delete");
+    assert.equal(toolKindOf("FIND", "workspace"), "search");
+    assert.equal(toolKindOf("NOTE", null), "think");
+    assert.equal(toolKindOf("WAIT", null), "think");
+    assert.equal(toolKindOf("SEND", null), "other");
+    assert.equal(toolKindOf("WORK", null), "execute");
+    assert.equal(toolKindOf("FORK", null), "execute");
+    assert.equal(toolKindOf("EXEC", null), "execute");
+    assert.equal(toolKindOf("sh", "sh"), "execute");
+    assert.equal(toolKindOf(null, null), "other");
 });
 });
 

@@ -22,7 +22,7 @@ export { formatJsonDocument } from "./JsonDocument.ts";
 export type { JsonReplacer } from "./JsonResult.ts";
 export { requestOrigin } from "./HttpOrigin.ts";
 export type { RequestHeaders } from "./HttpOrigin.ts";
-export { addressOf } from "./LogRow.ts";
+export { addressOf, toolKindOf, type LogAddressColumns, type ProposalToolKind } from "./LogRow.ts";
 export type {
     ApplicationNotificationContract,
     LogEntryNotification,
@@ -32,6 +32,7 @@ export type {
     TerminatedNotification,
 } from "./ApplicationNotifications.ts";
 // {§whitespace-contract} The application port is Node-bound and is its own entry, `@plurnk/plurnk-contracts/port`.
+export { formatServiceUpdateReport, parseFamilyCommand } from "./Application.ts";
 export type * from "./Application.ts";
 export type * from "./Functionality.ts";
 

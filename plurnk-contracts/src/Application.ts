@@ -1,4 +1,6 @@
+import { isRecord } from "./guards.ts";
 import type { LoopLifecycle } from "./LoopLifecycle.ts";
+import type { LogAddressColumns } from "./LogRow.ts";
 import type { JsonSchema, ModelRoute, OperationResult } from "./types.ts";
 import type { RequestHeaders } from "./HttpOrigin.ts";
 
@@ -186,7 +188,7 @@ export interface ApplicationGauge {
 // client renders ordering without re-deriving it from DB keys. {§methods-invocation}
 // A type alias, not an interface: a serialized wire bag must satisfy index-signature
 // consumers (Record<string, unknown>), which TypeScript grants aliases but not interfaces.
-export type LogEntryWire = {
+export type LogEntryWire = LogAddressColumns & {
     id: number;
     session_id: number;
     // {§methods-invocation} The session whose log holds the row, by its immutable name.
@@ -201,14 +203,6 @@ export type LogEntryWire = {
     source: string | null;
     op: string | null;
     signal: unknown;
-    scheme: string | null;
-    username: string | null;
-    password: string | null;
-    hostname: string | null;
-    port: number | null;
-    pathname: string | null;
-    query: string | null;
-    fragment: string | null;
     lineMarker: unknown;
     tx: unknown;
     mimetype_tx: string;
@@ -259,6 +253,161 @@ export interface ApplicationServiceUpdateResult {
         readonly upgradeCommand: string;
     };
 }
+
+/** {§startup-admission} Formats an operator-triggered model catalog refresh result. */
+export const formatServiceUpdateReport = (result: ApplicationServiceUpdateResult | Record<string, unknown>): string => {
+    const cat = isRecord(result.catalog) ? result.catalog : {};
+    const svc = isRecord(result.service) ? result.service : {};
+    const addedModels = typeof cat.addedModels === "number" ? cat.addedModels : 0;
+    const added = addedModels > 0 ? `, +${addedModels} new` : "";
+    const status = typeof cat.status === "string" ? cat.status : "updated";
+    const models = typeof cat.models === "number" ? cat.models : 0;
+    const providers = typeof cat.providers === "number" ? cat.providers : 0;
+    const catLine = `catalog: ${status} (${models} models across ${providers} providers${added})`;
+    const suffix = svc.artifact === "source" ? " (source checkout)" : "";
+    const pkg = typeof svc.package === "string" ? svc.package : "@plurnk/plurnk-service";
+    const ver = typeof svc.version === "string" ? svc.version : "";
+    const upgradeCmd = typeof svc.upgradeCommand === "string"
+        ? svc.upgradeCommand
+        : "npm install -g @plurnk/plurnk-service@latest @plurnk/plurnk@latest";
+    const verLine = `version: ${pkg}@${ver}${suffix} — to update packages, stop the daemon and run: ${upgradeCmd}`;
+    return `${catLine}\n${verLine}`;
+};
+
+export interface ParsedFamilyCommand {
+    readonly scopePrefix: "workspace" | "session";
+    readonly sub: string;
+    readonly rest: readonly string[];
+    readonly actionName: string;
+    readonly params: Record<string, unknown>;
+}
+
+/** {§acp-action-binding} Parses a family command (`mcp`, `skills`, `members`, `env`, `schedule`) into its action kind and parameters. */
+export const parseFamilyCommand = (family: string, args: readonly string[]): ParsedFamilyCommand => {
+    let scopePrefix: "workspace" | "session" = family === "env" ? "session" : "workspace";
+    const filteredArgs: string[] = [];
+    for (let i = 0; i < args.length; i += 1) {
+        const tok = args[i] ?? "";
+        if (tok === "--scope" && args[i + 1] !== undefined) {
+            scopePrefix = args[i + 1] === "workspace" ? "workspace" : "session";
+            i += 1;
+            continue;
+        }
+        if (tok.startsWith("--scope=")) {
+            scopePrefix = tok.slice("--scope=".length) === "workspace" ? "workspace" : "session";
+            continue;
+        }
+        if (tok.length > 0) {
+            filteredArgs.push(tok);
+        }
+    }
+    const sub = filteredArgs[0] ?? "list";
+    const rest = filteredArgs.slice(1);
+    const actionName = `${scopePrefix}.${family}.${sub}`;
+
+    if (sub === "list") {
+        return { scopePrefix, sub, rest, actionName, params: {} };
+    }
+    if (sub === "discover") {
+        const query = rest.join(" ");
+        return {
+            scopePrefix,
+            sub,
+            rest,
+            actionName,
+            params: query.length > 0 ? { query, source: query } : {},
+        };
+    }
+    if (sub === "enable" || sub === "disable" || sub === "remove") {
+        const target = rest[0] ?? "";
+        return {
+            scopePrefix,
+            sub,
+            rest,
+            actionName,
+            params: family === "members" ? { file: target } : { alias: target },
+        };
+    }
+    if ((sub === "add" || sub === "replace") && family === "mcp") {
+        const alias = rest[0] ?? "";
+        const target = rest[1] ?? "";
+        const extraArgs = rest.slice(2);
+        const definition = /^https?:\/\//iu.test(target)
+            ? { name: alias, type: "streamable-http", url: target }
+            : {
+                  name: alias,
+                  type: "stdio",
+                  command: target,
+                  ...(extraArgs.length > 0 ? { args: extraArgs } : {}),
+              };
+        return {
+            scopePrefix,
+            sub,
+            rest,
+            actionName: `workspace.mcp.${sub}`,
+            params: { alias, definition },
+        };
+    }
+    if ((sub === "add" || sub === "replace") && family === "skills") {
+        const alias = rest[0] ?? "";
+        const source = rest[1] ?? "";
+        const refIdx = rest.indexOf("--ref");
+        const ref = refIdx >= 0 ? rest[refIdx + 1] : undefined;
+        const definition = {
+            name: alias,
+            source,
+            ...(ref !== undefined ? { ref } : {}),
+        };
+        return {
+            scopePrefix,
+            sub,
+            rest,
+            actionName: `workspace.skills.${sub}`,
+            params: { alias, definition },
+        };
+    }
+    if (sub === "add" && family === "members") {
+        return {
+            scopePrefix,
+            sub,
+            rest,
+            actionName: "workspace.members.add",
+            params: { files: rest },
+        };
+    }
+    if ((sub === "add" || sub === "replace") && family === "env") {
+        const alias = rest[0] ?? "";
+        const value = rest.slice(1).join(" ");
+        return {
+            scopePrefix,
+            sub,
+            rest,
+            actionName: `${scopePrefix}.env.${sub}`,
+            params: { alias, definition: { value } },
+        };
+    }
+    if ((sub === "add" || sub === "replace") && family === "schedule") {
+        const alias = rest[0] ?? "";
+        const sessionArg = rest[1] ?? "";
+        const rule = rest[2] ?? "";
+        const prompt = rest.slice(3).join(" ");
+        const target = sessionArg.startsWith("session://") ? sessionArg : `session://${sessionArg}`;
+        return {
+            scopePrefix,
+            sub,
+            rest,
+            actionName: `workspace.schedule.${sub}`,
+            params: { alias, definition: { rule, target, prompt } },
+        };
+    }
+    return {
+        scopePrefix,
+        sub,
+        rest,
+        actionName,
+        params: rest.length > 0 ? { args: rest } : {},
+    };
+};
 
 export type ApplicationEventHandler = (
     workspaceId: number | null,

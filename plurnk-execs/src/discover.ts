@@ -8,13 +8,6 @@ import Policy from "./policy.ts";
 import RuntimeDeclaration from "./RuntimeDeclaration.ts";
 import type { Discovery, DiscoverOptions, ExecInfo } from "./types.ts";
 
-// An exec package's parsed manifest — its name and the `plurnk` block. Read
-// once per package so the trust gate can run before tags are materialized.
-interface ExecManifest {
-    packageName: string;
-    plurnk: Record<string, unknown>;
-}
-
 // Build the flat runtime-tag registry from installed executor packages
 // ({§executor-discovery}). `index.ts` re-exports `Discover.scan` as discover;
 // internal calls retain the class binding so that detached export stays usable.
@@ -38,24 +31,14 @@ interface ExecManifest {
 // installation ambiguity.
 export default class Discover {
     static async scan(options: DiscoverOptions = {}): Promise<Discovery> {
-        const dirs = options.packageDirs ?? await Discover.#defaultPackageDirs(options.cwd ?? process.cwd());
+        const { admitted, skipped } = await Meta.scanKind("exec", options);
 
         const registry = new Map<string, ExecInfo>();
         const packageAttributions = new Map<string, ExtensionAttribution>();
-        const skipped = new Set<string>();
         const disabled = new Set<string>();
-        for (const dir of dirs) {
-            const manifest = await Discover.#readExecManifest(dir);
-            if (manifest === null) continue; // not an exec package
-            // Trust is enforced before any dynamic runtimes function is imported
-            // ({§executor-policy}).
-            if (!Meta.isTrusted(manifest.packageName)) {
-                skipped.add(manifest.packageName);
-                continue;
-            }
-            const tags = Meta.normalizeAttribution(manifest.plurnk.attribution, manifest.packageName);
-            let admitted = false;
-            for (const info of await Discover.#readExecInfos(dir, manifest)) {
+        for (const pkg of admitted) {
+            let pkgAdmitted = false;
+            for (const info of await Discover.#readExecInfos(pkg.dir, pkg)) {
                 // Boot policy removes a tag before registration; consumer-owned
                 // layers can reuse the same parser ({§executor-policy}).
                 if (!Policy.isEnabled(info.runtime)) {
@@ -70,31 +53,21 @@ export default class Discover {
                     );
                 }
                 registry.set(info.runtime, info);
-                admitted = true;
+                pkgAdmitted = true;
             }
-            if (admitted && tags.length > 0) packageAttributions.set(manifest.packageName, tags);
+            if (pkgAdmitted && pkg.attribution.length > 0) {
+                packageAttributions.set(pkg.packageName, pkg.attribution);
+            }
         }
 
-        return { registry, packageAttributions, skipped: [...skipped].toSorted(), disabled: [...disabled].toSorted() };
-    }
-
-
-    // Enumerate scoped and unscoped packages under the nearest node_modules;
-    // `#readExecManifest` retains only declared executor packages.
-    static async #defaultPackageDirs(cwd: string): Promise<string[]> {
-        const nm = Meta.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
-        return (await Meta.packageDirs(nm)).map((c) => c.dir).toSorted();
-    }
-
-    // The manifest of a declared executor package ({§extension-discovery}); discover() silently
-    // skips everything else (not "skipped by trust", just not an exec package).
-    static async #readExecManifest(dir: string): Promise<ExecManifest | null> {
-        const manifest = await Meta.readManifest(dir, "exec");
-        return manifest === null ? null : { packageName: manifest.packageName ?? "", plurnk: manifest.plurnk };
+        return { registry, packageAttributions, skipped, disabled: [...disabled].toSorted() };
     }
 
     // Produce one ExecInfo per static or dynamic runtime declaration.
-    static async #readExecInfos(dir: string, { packageName, plurnk }: ExecManifest): Promise<ExecInfo[]> {
+    static async #readExecInfos(
+        dir: string,
+        { packageName, plurnk }: { readonly packageName: string; readonly plurnk: Record<string, unknown> },
+    ): Promise<ExecInfo[]> {
         const infos: ExecInfo[] = [];
         for (const raw of await Discover.#runtimeDecls(dir, packageName, plurnk)) {
             const decl = RuntimeDeclaration.assert(raw, packageName);

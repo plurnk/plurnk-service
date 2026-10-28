@@ -2,6 +2,7 @@ import {
     CapabilityAdmission,
     InvalidOperationResultError,
     isPlurnkOp,
+    toolKindOf,
     TurnDisposition,
     Validator,
     isExecution,
@@ -593,29 +594,7 @@ export default class ProposalLifecycle {
         op: string,
         scheme: string | null,
     ): Extract<NonNullable<ProposalProjection["subject"]>, { type: "tool_call" }>["kind"] {
-        switch (op) {
-            case "READ":
-                return scheme === "http" || scheme === "https" ? "fetch" : "read";
-            case "EDIT":
-            case "COPY":
-                return "edit";
-            case "MOVE":
-                return "move";
-            case "KILL":
-                return "delete";
-            case "FIND":
-                return "search";
-            case "NOTE":
-            case "WAIT":
-                return "think";
-            case "SEND":
-                return "other";
-            case "WORK":
-            case "FORK":
-                return "execute";
-            default:
-                return "execute";
-        }
+        return toolKindOf(op, scheme);
     }
 
     static #buildUnifiedDiff(filePath: string, oldText: string, newText: string): string {

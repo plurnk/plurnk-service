@@ -205,3 +205,14 @@ test("{§lint-gate} runtime direction audit reports unresolved imports and refus
     await rm(join(tempRoot, "plurnk-core/dist"), { recursive: true });
     await assert.rejects(inspectDirections(tempRoot), /plurnk-core.*no built JavaScript/);
 });
+
+test("{§lint-gate} runtime direction audit scans shipped JS for dist-less workspaces", async (t) => {
+    const tempRoot = await directionFixture(t, { "plurnk-core/src/a.ts": "export const a = 1;" });
+    await mkdir(join(tempRoot, "plurnk-spec-check"), { recursive: true });
+    await writeFile(join(tempRoot, "plurnk-spec-check/package.json"), JSON.stringify({ files: ["check.mjs", "README.md"] }));
+    await writeFile(join(tempRoot, "plurnk-spec-check/check.mjs"), "export const ok = true;");
+    await writeFile(join(tempRoot, "package.json"), JSON.stringify({ workspaces: ["plurnk-core", "plurnk-spec-check"], type: "module" }));
+    const report = await inspectDirections(tempRoot);
+    assert.deepEqual(report.violations, []);
+    assert.equal(report.modules.length, 2);
+});

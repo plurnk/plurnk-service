@@ -1,4 +1,3 @@
-import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
 import type {
     PackageAttributions,
@@ -44,7 +43,7 @@ export type Discovery = {
 
 
 export const discover = async (options: DiscoverOptions = {}): Promise<Discovery> => {
-    const dirs = options.packageDirs ?? await defaultPackageDirs(options.cwd ?? process.cwd());
+    const dirs = options.packageDirs ?? await Meta.resolvedPackageDirs(options.cwd ?? process.cwd());
     const env = options.env ?? process.env;
 
     const registry = new Map<string, string>();
@@ -71,13 +70,6 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
         if (tags.length > 0) packageAttributions.set(info.packageName, tags);
     }
     return { registry, skipped, packageAttributions, grammarStyles };
-};
-
-// Enumerate every installed package directory — scoped and unscoped — under
-// `<cwd>/node_modules`. Unreadable node_modules (e.g. nothing installed) → [].
-const defaultPackageDirs = async (cwd: string): Promise<string[]> => {
-    const nm = Meta.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
-    return (await Meta.packageDirs(nm)).map((c) => c.dir).toSorted();
 };
 
 // One inert manifest record for a provider package, or null for anything that

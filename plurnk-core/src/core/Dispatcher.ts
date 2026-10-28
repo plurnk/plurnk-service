@@ -1,9 +1,9 @@
 import { parsePath } from "@plurnk/plurnk-parser";
-import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import AmbientMembers from "./AmbientMembers.ts";
-import { TurnDisposition, UNKNOWN_POSITION, PathSyntax, Validator, isExecution, isRecord } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, PathSyntax, Validator, isExecution, isRecord } from "@plurnk/plurnk-contracts";
 import Turn from "./Turn.ts";
-import type { BareStatement, CapabilityProjection, DispositionStatement, EditStatement, FindStatement, ForkStatement, KillStatement, NoteStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, CapabilityProjection, DispositionStatement, EditStatement, FindStatement, ForkStatement, KillStatement, NoteStatement, ParsedPath, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -12,35 +12,30 @@ import type NoticeChannel from "./NoticeChannel.ts";
 import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 import type { AppliedProposalResolution, ProposalSettlement } from "./ProposalLifecycle.ts";
-import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import { entryAddress, foldAuthorityIntoPath, renderAddress, renderAuthoredTarget, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
+import { foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import SessionName from "./SessionName.ts";
 import Namespace from "./namespace.ts";
 import FileAddress from "./FileAddress.ts";
-import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
+import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 import type { EngineNotifications } from "./notifications.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
-import DbMessageCaps from "./caps/DbMessageCaps.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import type LoopLifecycle from "./LoopLifecycle.ts";
 import Results, { OperationFailureError } from "./results.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
-import { CoreSchemeAdapterBase, coreRepresentationProvider, type ExecSource } from "./CoreSchemeServices.ts";
+import type { ExecSource } from "./CoreSchemeServices.ts";
 import { InvalidOperationResultError, MessageAttachments, type SchemeCtx, type SchemeHandler, type SchemeResult, type StoredEntryData } from "@plurnk/plurnk-schemes";
 import type { LogCurationOutcome, LogCurationPlan } from "../schemes/Log.ts";
 import ResourceMutations from "./ResourceMutations.ts";
 import ResourceSelector from "./ResourceSelector.ts";
 import { primaryTargetOf } from "./statement-primary.ts";
-import LogBody from "./LogBody.ts";
-import BodyPreview from "../content/body-preview.ts";
-import LineSelection from "../content/line-selection.ts";
-import ReadResolve from "../content/read-resolve.ts";
 import LogVisibility from "./LogVisibility.ts";
 import PacketWire, { type StoredLogRow } from "./packet-wire.ts";
 import { isContextReceipt, reserved, resultPrefix, resultSize, unfitResult, type ContextFit } from "./ContextFit.ts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
-import EntryAddressBinding, { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
+import type EntryAddressBinding from "./EntryAddressBinding.ts";
+import type { EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import SessionControlHandler from "./SessionControlHandler.ts";
 import SessionControlAddress from "./SessionControlAddress.ts";
 import KillHandler from "./KillHandler.ts";
@@ -48,14 +43,12 @@ import TurnDispositionHandler, { type CompletionEvidence, type PacketBoundaries 
 import ReplyMetadata from "./ReplyMetadata.ts";
 import LogWriter from "./LogWriter.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
-import DurableStatement from "./DurableStatement.ts";
 import DataStatementRunner from "./DataStatementRunner.ts";
 import ResourceBindings from "./ResourceBindings.ts";
 import type EditSequence from "./EditSequence.ts";
-
-// SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
-// READ/FIND are not gated — they read, never mutating an entry.
-const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "KILL", "FORK", "WORK"]);
+import EntryRepresentation from "./EntryRepresentation.ts";
+import DispatchAdmission from "./DispatchAdmission.ts";
+import TurnSourceWriter from "./TurnSourceWriter.ts";
 
 
 export type DispatchContext = {
@@ -128,12 +121,6 @@ export type UnaryStatement = Exclude<PlurnkStatement, { op: "COPY" | "MOVE" }>;
 type LogCurationHandler = {
     curate(statement: KillStatement, ctx: SchemeCtx, maxLogEntryId: number): Promise<LogCurationOutcome>;
 };
-interface CoreSchemeWithCrud {
-    readEntry?: (pathname: string, ctx: SchemeCtx) => Promise<ReadEntryResult>;
-    writeEntry?: (pathname: string, entry: EntryData, ctx: SchemeCtx) => Promise<WriteEntryResult>;
-    deleteEntry?: (pathname: string, ctx: SchemeCtx) => Promise<DeleteEntryResult>;
-    deleteChannel?: (pathname: string, channel: string, ctx: SchemeCtx) => Promise<DeleteEntryResult>;
-}
 
 export type SchemeWithEntryAddress = Pick<SchemeHandler, "resolveEntryAddress">;
 
@@ -190,6 +177,9 @@ export default class Dispatcher {
     readonly #disposition: TurnDispositionHandler;
     readonly #logWriter: LogWriter;
     readonly #dataRun: DataStatementRunner;
+    readonly #entries: EntryRepresentation;
+    readonly #admission: DispatchAdmission;
+    readonly #turnSources: TurnSourceWriter;
 
     constructor({ db, lifecycle, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, notify, liveSubscriptions, entryAddresses }: {
         db: Db;
@@ -222,10 +212,32 @@ export default class Dispatcher {
         this.#entryAddresses = entryAddresses;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
         this.#lifecycle = lifecycle;
+        this.#admission = new DispatchAdmission({
+            schemes,
+            capabilities: this.#capabilities,
+            failure: Dispatcher.#failure,
+        });
+        this.#dataRun = new DataStatementRunner({
+            schemes: this.#schemes,
+            liveSubscriptions: this.#liveSubscriptions,
+            resolveDataEntryAddress: (args) => this.#entries.resolveDataEntryAddress(args),
+            prepareDataRepresentation: (args) => this.#entries.prepareDataRepresentation(args),
+            failure: Dispatcher.#failure,
+        });
+        this.#entries = new EntryRepresentation({
+            schemes: this.#schemes,
+            weighContent: this.#weighContent,
+            liveSubscriptions: this.#liveSubscriptions,
+            entryAddresses: this.#entryAddresses,
+            dataRun: this.#dataRun,
+            workspaceRoot: (workspaceId) => this.#workspaceRoot(workspaceId),
+            buildSchemeCtx: (ids) => this.#buildSchemeCtx(ids),
+            failure: Dispatcher.#failure,
+        });
         this.#resourceSelector = new ResourceSelector({
             schemes,
-            admitRead: (statement, ctx) => this.#checkCapabilities(statement, ctx),
-            prepareDataRepresentation: (args) => this.#prepareDataRepresentation({
+            admitRead: (statement, ctx) => this.#admission.checkCapabilities(statement, ctx),
+            prepareDataRepresentation: (args) => this.#entries.prepareDataRepresentation({
                 ...args,
                 handler: args.handler,
             }),
@@ -233,23 +245,45 @@ export default class Dispatcher {
         this.#resourceMutations = new ResourceMutations({
             schemes,
             liveSubscriptions,
-            checkWritable: (statement, origin, workspaceId) => this.#checkWritable(statement, origin, workspaceId),
-            checkCapabilities: (statement, ctx) => this.#checkCapabilities(statement, ctx),
+            checkWritable: (statement, origin, workspaceId) => this.#admission.checkWritable(statement, origin, workspaceId),
+            checkCapabilities: (statement, ctx) => this.#admission.checkCapabilities(statement, ctx),
             editTargetIdentity: (statement, workspaceId, sessionId) => this.#editTargetIdentity(statement, workspaceId, sessionId),
             selection: this.#resourceSelector,
             resolveDataEntryAddress: (args) => this.#entryAddresses.resolve(args),
-            readEntry: (scheme, address, ctx) => this.#readEntry(scheme, address, ctx),
-            writeEntry: (scheme, address, entry, ctx) => this.#writeEntry(scheme, address, entry, ctx),
+            readEntry: (scheme, address, ctx) => this.#entries.readEntry(scheme, address, ctx),
+            writeEntry: (scheme, address, entry, ctx) => this.#entries.writeEntry(scheme, address, entry, ctx),
             deleteChannel: (scheme, address, channel, ctx) =>
-                this.#deleteChannel(scheme, address, channel, ctx),
+                this.#entries.deleteChannel(scheme, address, channel, ctx),
             applyProposal: (statement, result, resolution, ids) =>
                 this.#proposals.sessionApply(statement, result, resolution, ids),
         });
         this.#sessionControl = new SessionControlHandler({ db: this.#db, failure: Dispatcher.#failure });
-        this.#kill = new KillHandler({ db: this.#db, schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, cancelSession: this.#notify.cancelSession, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), boundEntryContext: this.#boundEntryContext.bind(this), handlerContext: this.#handlerContext.bind(this), deleteEntry: this.#deleteEntry.bind(this), failure: Dispatcher.#failure });
+        this.#kill = new KillHandler({
+            db: this.#db,
+            schemes: this.#schemes,
+            liveSubscriptions: this.#liveSubscriptions,
+            cancelSession: this.#notify.cancelSession,
+            resolveDataEntryAddress: (args) => this.#entries.resolveDataEntryAddress(args),
+            boundEntryContext: (routedScheme, address, ctx) => this.#entries.boundEntryContext(routedScheme, address, ctx),
+            handlerContext: (scheme, ctx, authority) => this.#entries.handlerContext(scheme, ctx, authority),
+            deleteEntry: (scheme, address, ctx) => this.#entries.deleteEntry(scheme, address, ctx),
+            failure: Dispatcher.#failure,
+        });
         this.#disposition = new TurnDispositionHandler({ db: this.#db, lifecycle: this.#lifecycle, unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this) });
         this.#logWriter = new LogWriter({ db: this.#db, weighContent: this.#weighContent, extractTarget: this.#extractTarget.bind(this), canonColumns: this.#canonColumns.bind(this), signalToJson: this.#signalToJson.bind(this), isProposal: Dispatcher.#isProposal });
-        this.#dataRun = new DataStatementRunner({ schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), prepareDataRepresentation: this.#prepareDataRepresentation.bind(this), failure: Dispatcher.#failure });
+        this.#turnSources = new TurnSourceWriter({
+            db: this.#db,
+            schemes: this.#schemes,
+            weighContent: this.#weighContent,
+            logWriter: this.#logWriter,
+            dataRun: this.#dataRun,
+            buildSchemeCtx: (context) => this.#buildSchemeCtx(context),
+            checkCapabilities: (statement, ctx) => this.#admission.checkCapabilities(statement, ctx),
+            operationEvent: (context, phase, result) => this.#operationEvent(context, phase, result),
+            noticeFilePaths: (context) => this.#noticeFilePaths(context),
+            notifySettled: (context, logEntryId) => this.#notifySettled(context, logEntryId),
+            failure: Dispatcher.#failure,
+        });
     }
 
     // workspace → project_root, memoized: {§fs-namespace} fixes the root immutably at
@@ -258,155 +292,6 @@ export default class Dispatcher {
 
     evictWorkspaceCache(workspaceId: number): void {
         this.#rootCache.delete(workspaceId);
-    }
-
-    async #handlerContext(scheme: string, ctx: PlurnkSchemeContext, authority = ""): Promise<SchemeCtxImpl | null> {
-        const manifest = this.#schemes.manifestFor(scheme, ctx.workspaceId);
-        return manifest === undefined
-            ? null
-            : new SchemeCtxImpl(ctx, scheme, manifest, this.#liveSubscriptions, {
-                authority,
-            });
-    }
-
-    #boundEntryContext(
-        routedScheme: string,
-        address: ResolvedDataEntryAddress,
-        ctx: PlurnkSchemeContext,
-    ): SchemeCtxImpl | null {
-        const manifest = this.#schemes.manifestFor(routedScheme, ctx.workspaceId);
-        return manifest?.category === "data"
-            ? new SchemeCtxImpl(ctx, address.scheme, manifest, this.#liveSubscriptions, {
-                authority: address.authority,
-            })
-            : null;
-    }
-
-    #coreCrud(scheme: string, workspaceId: number): CoreSchemeWithCrud | undefined {
-        const handler = this.#schemes.get(scheme, workspaceId);
-        return handler instanceof CoreSchemeAdapterBase
-            ? handler as CoreSchemeAdapterBase & CoreSchemeWithCrud
-            : undefined;
-    }
-
-    async #readEntry(scheme: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
-        const { pathname } = address;
-        const handler = this.#coreCrud(scheme, ctx.workspaceId);
-        const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
-        if (typeof handler?.readEntry === "function" && handlerCtx !== null) {
-            return Results.assert(await handler.readEntry(pathname, handlerCtx));
-        }
-        const caps = handlerCtx?.entries;
-        if (caps === undefined) {
-            return Dispatcher.#failure(
-                "entry-read-not-implemented",
-                501,
-                `The '${scheme}' scheme does not provide entry reads.`,
-                { entry: null },
-                {
-                    stage: "entry-read",
-                    scheme,
-                    target: renderAddress(address),
-                    retryable: false,
-                },
-            );
-        }
-        const result = Results.assert(await caps.read(pathname));
-        return Results.assert({
-            ...result,
-            status: result.status,
-            entry: result.entry === null
-                ? null
-                : {
-                    channels: { ...result.entry.channels },
-                    ...(result.entry.attributes === undefined
-                        ? {}
-                        : { attributes: { ...result.entry.attributes } }),
-                },
-        });
-    }
-
-    async #writeEntry(scheme: string, address: ResolvedDataEntryAddress, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
-        const { pathname } = address;
-        const handler = this.#coreCrud(scheme, ctx.workspaceId);
-        const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
-        if (typeof handler?.writeEntry === "function" && handlerCtx !== null) {
-            return Results.assert(await handler.writeEntry(pathname, entry, handlerCtx));
-        }
-        const caps = handlerCtx?.entries;
-        if (caps === undefined) {
-            return Dispatcher.#failure(
-                "entry-write-not-implemented",
-                501,
-                `The '${scheme}' scheme does not provide entry writes.`,
-                { created: false, entryId: null },
-                {
-                    stage: "entry-write",
-                    scheme,
-                    target: renderAddress(address),
-                    retryable: false,
-                },
-            );
-        }
-        return Results.assert(await caps.write(pathname, entry));
-    }
-
-    async #deleteEntry(scheme: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
-        const { pathname } = address;
-        const handler = this.#coreCrud(scheme, ctx.workspaceId);
-        const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
-        if (typeof handler?.deleteEntry === "function" && handlerCtx !== null) {
-            return Results.assert(await handler.deleteEntry(pathname, handlerCtx));
-        }
-        const caps = handlerCtx?.entries;
-        if (caps === undefined) {
-            return Dispatcher.#failure(
-                "entry-delete-not-implemented",
-                501,
-                `The '${scheme}' scheme does not provide entry deletion.`,
-                {},
-                {
-                    stage: "entry-delete",
-                    scheme,
-                    target: renderAddress(address),
-                    retryable: false,
-                },
-            );
-        }
-        return Results.assert(await caps.delete(pathname));
-    }
-
-    async #deleteChannel(
-        scheme: string,
-        address: ResolvedDataEntryAddress,
-        channel: string,
-        ctx: PlurnkSchemeContext,
-    ): Promise<DeleteEntryResult> {
-        const { pathname } = address;
-        const handler = this.#coreCrud(scheme, ctx.workspaceId);
-        const handlerCtx = this.#boundEntryContext(scheme, address, ctx);
-        if (typeof handler?.deleteChannel === "function" && handlerCtx !== null) {
-            return Results.assert(await handler.deleteChannel(pathname, channel, handlerCtx));
-        }
-        const caps = handlerCtx?.entries;
-        if (caps === undefined) {
-            return Dispatcher.#failure(
-                "channel-delete-not-implemented",
-                501,
-                `The '${scheme}' scheme does not provide channel deletion.`,
-                {},
-                {
-                    stage: "channel-delete",
-                    scheme,
-                    target: renderAddress(address),
-                    channel,
-                    retryable: false,
-                },
-            );
-        }
-        return Results.assert(
-            await caps.delete(pathname, channel),
-        );
     }
     async #workspaceRoot(workspaceId: number): Promise<string | null> {
         if (this.#rootCache.has(workspaceId)) return this.#rootCache.get(workspaceId) ?? null;
@@ -547,18 +432,6 @@ export default class Dispatcher {
             result = Results.assert({ ...result, rowsWritten: Results.rowsWritten(result) + 1 });
         }
         return { ...execution, result };
-    }
-
-    // {§matcher-prefix-claims} — a matcher the parser could not read refuses its one operation with the parser's
-    // diagnostic and working form: the operation's own row, soft on the rail, never a contract strike.
-    static #unreadableMatcher(statement: PlurnkStatement): DispatchResult | null {
-        const matchers = statement.op === "COPY" || statement.op === "MOVE"
-            ? [statement.source.matcher, statement.destination.matcher]
-            : ["matcher" in statement ? statement.matcher : null];
-        const unreadable = matchers.find((matcher) => matcher !== null && matcher !== undefined && matcher.dialect === "unreadable");
-        if (unreadable === undefined || unreadable === null || unreadable.dialect !== "unreadable") return null;
-        return Results.failure("grammar:matcher", "unreadable-pattern", 400, unreadable.message, {},
-            { stage: "matcher", recovery: unreadable.recovery, retryable: false });
     }
 
     static #distillationOf(statement: PlurnkStatement): { body: string; target: string } | null {
@@ -731,9 +604,9 @@ export default class Dispatcher {
         let result: DispatchResult | undefined;
         let resolved: Exclude<TargetSelection, { result: DispatchResult }> | null = null;
         let curationPlan: LogCurationPlan | null = null;
-        const denial = this.#checkWritable(statement, origin, workspaceId)
-            ?? await this.#checkCapabilities(statement, schemeCtx)
-            ?? Dispatcher.#unreadableMatcher(statement);
+        const denial = this.#admission.checkWritable(statement, origin, workspaceId)
+            ?? await this.#admission.checkCapabilities(statement, schemeCtx)
+            ?? DispatchAdmission.unreadableMatcher(statement);
         if (denial !== null) {
             result = denial;
         } else {
@@ -964,227 +837,26 @@ export default class Dispatcher {
     }
 
     capabilityProjection(workspaceId: number): Promise<CapabilityProjection> {
-        return this.#capabilities.projection(workspaceId);
+        return this.#admission.capabilityProjection(workspaceId);
     }
 
-    // {§scheme-address} A client read acquires `target` as exact READ does, from the session's perspective: the
-    // representation a core scheme computes, or a data entry. Only core's own acquisition runs for it: a core scheme's
-    // preparation, and the materialization of a message core retains, whichever module minted its address
-    // ({§message-source-scheme}); never an extension's. Null for a target no data or computing scheme claims.
-    async readClientEntry(context: {
+    readClientEntry(context: {
         target: ParsedPath;
         workspaceId: number;
         sessionId: number;
     }): Promise<ClientEntryAcquisition | null> {
-        const { target, workspaceId, sessionId } = context;
-        const routedScheme = schemeNameOf(target);
-        if (routedScheme === null) return null;
-        const coreCtx = this.#buildSchemeCtx({ workspaceId, sessionId, loopId: 0, turnId: 0, origin: "client" });
-        return ResourceBindings.using(this.#schemes, coreCtx, async (ctx) => {
-            try {
-                const binding = await ResourceBindings.resolve(target, ctx);
-                if (binding === undefined) return null;
-                const neutral = target.kind === "url"
-                    ? { ...target, raw: renderTarget({ ...target, fragment: null }) ?? target.raw, fragment: null }
-                    : target;
-                const computing = coreRepresentationProvider(binding.handler);
-                if (computing !== null) {
-                    const resolved = await computing.resolveCoreRepresentation(neutral, ctx);
-                    if ("result" in resolved) return resolved.result.status >= 400 ? { kind: "refused", result: resolved.result } : null;
-                    return { kind: "computed", target: resolved.identity ?? renderAuthoredTarget(neutral), channels: this.#computedChannels(resolved) };
-                }
-                if (binding.manifest.category !== "data") return null;
-                const handler = binding.handler;
-                const coreScheme = this.#schemes.coreOwns(routedScheme);
-                const resolved = coreScheme
-                    ? await this.#prepareDataRepresentation({ target, metadata: null, routedScheme, handler, manifest: binding.manifest, ctx, publishedChannel: null })
-                    : await this.#resolveDataEntryAddress({ target, routedScheme, handler, manifest: binding.manifest, ctx });
-                if (resolved.result !== null && resolved.result.status >= 400) return { kind: "refused", result: resolved.result };
-                if (resolved.address === null) return null;
-                if (!coreScheme) {
-                    const retained = await new DbMessageCaps(ctx, routedScheme).prepare(neutral.raw);
-                    if (retained.status >= 400 && retained.status !== 404) return { kind: "refused", result: retained };
-                }
-                const rendered = resolved.address.scheme === "file"
-                    ? entryAddress("file", "", resolved.address.pathname, await this.#workspaceRoot(workspaceId))
-                    : renderAuthoredTarget(neutral);
-                return { kind: "stored", address: {
-                    scheme: resolved.address.scheme,
-                    authority: resolved.address.authority,
-                    pathname: resolved.address.pathname,
-                    target: rendered,
-                } };
-            } catch (error) {
-                if (error instanceof OperationFailureError) return { kind: "refused", result: error.result };
-                throw error;
-            }
-        });
+        return this.#entries.readClientEntry(context);
     }
 
-    // {§scheme-address} {§log-kill-scope} A computed representation's channels as a client reads them:
-    // deliberate trimming applied, each weighed as a stored channel is.
-    #computedChannels(resolved: { readonly representation: StoredEntryData; readonly visibleLines?: Readonly<Record<string, readonly number[]>> }): Record<string, ComputedClientChannel> {
-        return Object.fromEntries(Object.entries(resolved.representation.channels).map(([name, { content, mimetype, state }]) => {
-            const retained = resolved.visibleLines?.[name];
-            const visible = retained === undefined ? content : LineSelection.retain(content, retained).content;
-            return [name, { content: visible, mimetype, state, weight: visible.length === 0 ? 0 : this.#weighContent(visible) }];
-        }));
-    }
-
-    async bindEntryAddress(
+    bindEntryAddress(
         target: ParsedPath,
         ctx: PlurnkSchemeContext,
     ): Promise<PreparedRepresentation | null> {
-        const routedScheme = schemeNameOf(target);
-        if (routedScheme === null) return null;
-        return ResourceBindings.using(this.#schemes, ctx, async (boundCtx) => {
-            try {
-                const binding = await ResourceBindings.resolve(target, boundCtx);
-                if (binding?.manifest.category !== "data") return null;
-                return this.#resolveDataEntryAddress({ target, routedScheme,
-                    handler: binding.handler, manifest: binding.manifest, ctx: boundCtx });
-            } catch (error) {
-                if (error instanceof OperationFailureError) return { address: null, result: error.result };
-                throw error;
-            }
-        });
+        return this.#entries.bindEntryAddress(target, ctx);
     }
 
-    async #resolveDataEntryAddress({
-        target,
-        routedScheme,
-        handler,
-        manifest,
-        ctx,
-        access = "read",
-    }: {
-        target: ParsedPath;
-        routedScheme: string;
-        handler: SchemeWithEntryAddress;
-        manifest: SchemeManifest;
-        ctx: PlurnkSchemeContext;
-        access?: "read" | "write";
-    }): Promise<PreparedRepresentation> {
-        if (manifest.category !== "data") {
-            throw new TypeError(`Scheme '${routedScheme}' is not entry-bearing.`);
-        }
-        return this.#entryAddresses.resolve({ target, routedScheme, handler, manifest, ctx, access });
-    }
-
-    async #prepareDataRepresentation({
-        target,
-        metadata,
-        routedScheme,
-        handler,
-        manifest,
-        ctx,
-        publishedChannel,
-        resolved: priorResolution,
-    }: {
-        target: ParsedPath;
-        metadata: readonly string[] | null;
-        routedScheme: string;
-        handler: SchemeWithEntryAddress & SchemeHandler;
-        manifest: SchemeManifest;
-        ctx: PlurnkSchemeContext;
-        publishedChannel: string | null;
-        resolved?: PreparedRepresentation;
-    }): Promise<PreparedRepresentation> {
-        if (metadata !== null && manifest.metadataModifier !== true) {
-            return {
-                address: null,
-                result: Dispatcher.#failure(
-                    "scheme-metadata-unsupported",
-                    400,
-                    `Resource acquisition from '${routedScheme}' does not accept the [metadata] modifier.`,
-                    {},
-                    { scheme: routedScheme, retryable: false },
-                ),
-            };
-        }
-        const resolved = priorResolution ?? await this.#resolveDataEntryAddress({
-            target, routedScheme, handler, manifest, ctx,
-        });
-        if (
-            resolved.address === null
-            || resolved.result !== null
-            || typeof handler.prepareRepresentation !== "function"
-        ) {
-            return resolved;
-        }
-        const address = resolved.address;
-        const selectionNeutralTarget = target.kind === "url"
-            ? {
-                ...target,
-                raw: renderTarget({ ...target, fragment: null }) ?? target.raw,
-                fragment: null,
-            }
-            : target;
-        const preparationCtx = new SchemeCtxImpl(
-            ctx,
-            target.kind === "url" ? target.scheme : routedScheme,
-            manifest,
-            this.#liveSubscriptions,
-            {
-                authority: address.authority,
-                publishedChannel,
-            },
-        );
-        const prepared = Results.assertRepresentationPreparation(
-            await handler.prepareRepresentation({
-                target: selectionNeutralTarget,
-                metadata,
-                authority: address.authority,
-                pathname: address.pathname,
-            }, preparationCtx),
-        );
-        return {
-            address,
-            result: prepared.status === 200 ? null : prepared,
-        };
-    }
-
-    // An accepted execution reads a non-file source through the same registered
-    // handler and addressed context as an authored READ. {§exec-target-routing}
-    async readExecSource(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ExecSource> {
-        return ResourceBindings.using(this.#schemes, ctx,
-            (boundCtx) => this.#readExecSource(statement, boundCtx));
-    }
-
-    async #readExecSource(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ExecSource> {
-        const schemeName = schemeNameOf(statement.target);
-        const binding = await ResourceBindings.resolve(statement.target, ctx);
-        const manifest = binding?.manifest;
-        if (manifest !== undefined && manifest.category !== "data") {
-            return { nativePath: null, result: Dispatcher.#failure(
-                "exec-source-not-data",
-                501,
-                `Scheme '${schemeName}' is not a data source for an execution.`,
-                {},
-                {
-                    scheme: schemeName,
-                    category: manifest.category,
-                    retryable: false,
-                },
-            ) };
-        }
-        const result = Results.assertReadResult(await this.#dataRun.run(schemeName, statement, ctx));
-        const target = statement.target;
-        const handler = binding?.handler;
-        const selectedChannel = target?.fragment ?? null;
-        if (result.status !== 200 || target === null || handler === undefined || manifest?.category !== "data"
-            || (selectedChannel !== null && selectedChannel !== manifest.defaultChannel)) {
-            return { result, nativePath: null };
-        }
-        const resolved = await this.#resolveDataEntryAddress({ target, routedScheme: schemeName!, handler, manifest, ctx });
-        if (resolved.result !== null) return { result: resolved.result, nativePath: null };
-        const source = resolved.address === null ? undefined : handler.byteSource?.(resolved.address, EntryAddressBinding.addressContext(ctx));
-        if (source?.nativePath === undefined) return { result, nativePath: null };
-        const nativePath = await source.nativePath();
-        if (nativePath === null) return { nativePath: null, result: Dispatcher.#failure(
-            "entry-not-found", 404, "The execution's source file no longer exists.", {}, { target: target.raw },
-        ) };
-        return { result, nativePath };
+    readExecSource(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ExecSource> {
+        return this.#entries.readExecSource(statement, ctx);
     }
 
     // The one place per-dispatch coordinates are built. Functionality resolves by workspace
@@ -1233,275 +905,33 @@ export default class Dispatcher {
         return context;
     }
 
-    // SPEC {§scheme-surface}: engine rejects writes whose origin is outside the target
-    // scheme's manifest.writableBy.
-    // - Read-side ops (READ and FIND) are not gated.
-    // - SEND broadcast (path=null) has no target scheme; not gated.
-    // - COPY: dst scheme writableBy applies.
-    // - MOVE: both src (delete) and dst (write) schemes' writableBy apply.
-    #checkWritable(statement: PlurnkStatement, origin: WriterTier, workspaceId: number): DispatchResult | null {
-        if (!isExecution(statement) && !MUTATING_OPS.has(statement.op)) return null;
-        if (TurnDisposition.is(statement) || statement.op === "SEND" && statement.target === null) return null;
-
-        // An execution's operation authority always belongs to the exec scheme;
-        // runtime-specific resource authority is gated separately below.
-        if (isExecution(statement)) {
-            return this.#denyIfDisallowed("exec", origin, workspaceId);
-        }
-
-        // {§stream-control}: process control and facet-claimed SEND are not writes to
-        // stored output. The workspace execution binding owns KILL and SEND.
-        if (statement.op === "KILL" || statement.op === "SEND") {
-            const target = schemeNameOf(statement.target);
-            if (target !== null && this.#schemes.isRuntimeScheme(target, workspaceId)) return null;
-        }
-
-        // Session control (FORK/WORK → session://<name>, spawn or fork) is gated by session://'s writableBy — its
-        // body is a seed prompt, not a dst path, so the entry-COPY dst-parse below doesn't apply.
-        // {§machine-processes}
-        if (this.#isSessionControl(statement)) return this.#denyIfDisallowed("session", origin, workspaceId, statement.target);
-
-        if (statement.op === "COPY" || statement.op === "MOVE") {
-            const dst = statement.destination.target;
-            const dstScheme = schemeNameOf(dst);
-            const dstDenial = this.#denyIfDisallowed(dstScheme, origin, workspaceId, dst);
-            if (dstDenial !== null) return dstDenial;
-            if (statement.op === "MOVE") {
-                const srcScheme = schemeNameOf(statement.source.target);
-                if (srcScheme !== dstScheme) {
-                    const srcDenial = this.#denyIfDisallowed(srcScheme, origin, workspaceId, statement.source.target);
-                    if (srcDenial !== null) return srcDenial;
-                }
-            }
-            return null;
-        }
-
-        const target = schemeNameOf(statement.target);
-        const denial = this.#denyIfDisallowed(target, origin, workspaceId, statement.target);
-        // {§send} — SEND addresses recipients, not otherwise
-        // read-only resources. State that boundary without guessing whether the
-        // model intended a reply, deletion, or directed message.
-        if (denial !== null && statement.op === "SEND" && origin === "model") {
-            return Dispatcher.#failure(
-                "send-target-not-a-recipient",
-                400,
-                "The addressed scheme is not a SEND recipient.",
-                {},
-                {
-                    target: statement.target?.raw ?? String(target),
-                    stage: "dispatch",
-                    recovery: "Name a message address or a recipient that implements SEND.",
-                    retryable: false,
-                },
-            );
-        }
-        return denial;
-    }
-
-    // {§execution-output-identity} The manifest that governs the coordinate decides: a runtime
-    // scheme's facet may make its claimed resources writable where the stored output is not.
-    #denyIfDisallowed(schemeName: string | null, origin: WriterTier, workspaceId: number, target: ParsedPath | null = null): DispatchResult | null {
-        if (schemeName === null) return null;
-        const handler = this.#schemes.get(schemeName, workspaceId);
-        if (handler === undefined) return null;
-        const manifest = this.#schemes.manifestAt(schemeName, target, workspaceId);
-        if (manifest === undefined) throw new Error(`registered scheme '${schemeName}' has no manifest`);
-        if (manifest.writableBy.includes(origin)) return null;
-        return Dispatcher.#failure(
-            "writer-forbidden",
-            403,
-            `Writer '${origin}' cannot modify scheme '${schemeName}'.`,
-            {},
-            {
-                writer: origin,
-                scheme: schemeName,
-                allowedWriters: [...manifest.writableBy],
-                retryable: false,
-            },
-        ); // {§scheme-surface}
-    }
-
-    // {§capability-admission} — one resolver gates every operation route before
-    // execution or proposal handling. Unknown routes continue to their ordinary
-    // owner; a known policy denial is one factual, non-presumptuous 403.
-    async #checkCapabilities(
-        statement: PlurnkStatement,
-        ctx: PlurnkSchemeContext,
-    ): Promise<DispatchResult | null> {
-        const denied = await this.#capabilities.denial(
-            statement,
-            ctx.workspaceId,
-            ctx.writer,
-            async (target) => (await ResourceBindings.resolve(target, ctx))?.manifest,
-            ctx.sessionId,
-        );
-        if (denied === null) return null;
-        const { descriptor, scope } = denied;
-        const route = [
-            descriptor.operation,
-            descriptor.scheme,
-            descriptor.runtime,
-            descriptor.tool,
-        ].filter((part) => part !== undefined).join("/");
-        return Dispatcher.#failure(
-            "capability-denied",
-            403,
-            `Capability '${route}' is denied by ${scope} policy.`,
-            {},
-            {
-                ...descriptor,
-                policyScope: scope,
-                // {§question-tool} Every other ring is operator configuration and speaks for itself.
-                ...(scope === "owner" ? { recovery: CapabilityResolver.UNATTENDED_RECOVERY } : {}),
-                retryable: false,
-            },
-        );
-    }
-
     capabilityDenial(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<SchemeResult | null> {
-        return ResourceBindings.using(this.#schemes, ctx,
-            (boundCtx) => this.#checkCapabilities(statement, boundCtx));
+        return this.#admission.capabilityDenial(statement, ctx);
     }
 
     referenceVisibility(ctx: PlurnkSchemeContext): Promise<(pathname: string) => boolean> {
-        return this.#capabilities.referenceVisibility(ctx.workspaceId, ctx.sessionId);
+        return this.#admission.referenceVisibility(ctx);
     }
 
-    // Session control is FORK/WORK (grammar 0.74.55), not COPY — its body
-    // is the new session's seed prompt, not a destination path. The COPY gates and ResourceMutations.handleCopy
-    // branch on this so they never parse the prompt as a dst path.
-    #isSessionControl(statement: PlurnkStatement): statement is ForkStatement | WorkStatement {
-        return statement.op === "FORK" || statement.op === "WORK"; // session control targets session://<name> (grammar 0.74.55)
-    }
-
-    // {§turn-source-resources} — rejected provider bytes, never an admitted program.
-    async writeEmissionAttempt({ verbatim, sessionId, loopId, turnId, sequence, modelCallId }: {
+    writeEmissionAttempt(params: {
         verbatim: string; sessionId: number; loopId: number; turnId: number; sequence: number;
         modelCallId: number;
     }): Promise<number> {
-        const durableAttrs = { kind: "emissionAttempt" };
-        const rx = JSON.stringify({ content: verbatim, mimetype: "text/vnd.plurnk" });
-        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
-            session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
-            origin: "model", source: null, model_call_id: modelCallId,
-            op: null, signal: null,
-            scheme: null, username: null, password: null, hostname: null, port: null,
-            pathname: null, query: null, fragment: null, lineMarker: null,
-            tx: "", mimetype_tx: "text/vnd.plurnk",
-            rx,
-            mimetype_rx: "application/json",
-            status_rx: 200,
-            weight: LogBody.weight({
-                op: null,
-                attrs: durableAttrs,
-                tx: "",
-                rx,
-                mimetypeTx: "text/vnd.plurnk",
-                mimetypeRx: "application/json",
-            }, this.#weighContent),
-            state: "resolved", outcome: null,
-            attrs: JSON.stringify(durableAttrs),
-            initial_folded: LogVisibility.serialize(LogVisibility.FOLDED),
-        });
-        if (row === undefined) throw new Error("Dispatcher.writeEmissionAttempt: insert returned no row");
-        return row.id;
+        return this.#turnSources.writeEmissionAttempt(params);
     }
 
-    // {§turn-source-resources} — the announcement of an admitted emission: the harness's born-folded READ of its
-    // own turn's ops source, whose frozen body is the complete canonical content program.
-    async writeEmission({ content, sessionName, loopSeq, turnSeq, sessionId, loopId, turnId, sequence }: {
+    writeEmission(params: {
         content: string; sessionName: string; loopSeq: number; turnSeq: number;
         sessionId: number; loopId: number; turnId: number; sequence: number;
     }): Promise<number> {
-        if (content.length === 0) throw new Error("Dispatcher.writeEmission: an admitted emission is never empty");
-        const pathname = `/${loopSeq}/${turnSeq}`;
-        const statement: ReadStatement = {
-            op: "READ", aside: null, metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
-            target: {
-                kind: "url", raw: `ops://${sessionName}${pathname}`, scheme: "ops",
-                username: null, password: null, hostname: sessionName, port: null, pathname, query: null, fragment: null,
-            },
-        };
-        const durableAttrs = { kind: "emission" };
-        const tx = JSON.stringify(DurableStatement.project(statement));
-        const rx = JSON.stringify({ status: 200, content, mimetype: "text/vnd.plurnk" });
-        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
-            session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
-            origin: "_plurnk", source: null, model_call_id: null,
-            op: "READ", signal: null,
-            scheme: "ops", username: null, password: null, hostname: sessionName, port: null,
-            pathname, query: null, fragment: null, lineMarker: null,
-            tx, mimetype_tx: "application/json",
-            rx,
-            mimetype_rx: "application/json",
-            status_rx: 200,
-            weight: LogBody.weight({
-                op: "READ",
-                attrs: durableAttrs,
-                tx,
-                rx,
-                mimetypeTx: "application/json",
-                mimetypeRx: "application/json",
-            }, this.#weighContent),
-            state: "resolved", outcome: null,
-            attrs: JSON.stringify(durableAttrs),
-            initial_folded: LogVisibility.serialize(LogVisibility.FOLDED),
-        });
-        if (row === undefined) throw new Error("Dispatcher.writeEmission: insert returned no row");
-        return row.id;
+        return this.#turnSources.writeEmission(params);
     }
 
-    // {§turn-source-resources} — the model's own reasoning, landed as the harness's READ of the turn's reasoning
-    // source immediately before the emission row: whole when it fits the row's page, otherwise its last page
-    // (#999: a turn's conclusions sit at its end), only when the packet has room for it after everything else
-    // this turn lands; without room, no row and nothing else changes.
-    async writeReasoning({ content: reasoning, sessionName, loopSeq, turnSeq, sessionId, loopId, turnId, sequence, fit }: {
+    writeReasoning(params: {
         content: string; sessionName: string; loopSeq: number; turnSeq: number;
         sessionId: number; loopId: number; turnId: number; sequence: number; fit: ContextFit | undefined;
     }): Promise<number | null> {
-        if (reasoning.length === 0) return null;
-        const pathname = `/${loopSeq}/${turnSeq}`;
-        const pageLines = Knob.optionalInteger("PLURNK_SERVICE_REASONING_TRAILING_LINES", -1) ?? Knob.integer("PLURNK_SERVICE_PREVIEW_LINES", 1);
-        if (pageLines === 0) throw new ConfigurationError("PLURNK_SERVICE_REASONING_TRAILING_LINES", "PLURNK_SERVICE_REASONING_TRAILING_LINES must be -1 or a positive integer.");
-        const tail = pageLines === -1 ? null : BodyPreview.selectTail(reasoning, pageLines);
-        const lineMarker = tail === null || tail.whole ? null : tail.marker;
-        const projected = lineMarker === null ? null : await ReadResolve.resolve({ content: reasoning, mimetype: "text/markdown", lineMarker });
-        const statement: ReadStatement = {
-            op: "READ", aside: null, metadata: null, lineMarker, matcher: null, body: null, position: UNKNOWN_POSITION,
-            target: {
-                kind: "url", raw: `reasoning://${sessionName}${pathname}`, scheme: "reasoning",
-                username: null, password: null, hostname: sessionName, port: null, pathname, query: null, fragment: null,
-            },
-        };
-        const durableAttrs = { kind: "reasoning" };
-        const tx = JSON.stringify(DurableStatement.project(statement));
-        const rx = JSON.stringify(projected === null
-            ? { status: 200, content: reasoning, mimetype: "text/markdown" }
-            : { ...projected, mimetype: "text/markdown" });
-        const weight = LogBody.weight({
-            op: "READ", attrs: durableAttrs, tx, rx, mimetypeTx: "application/json", mimetypeRx: "application/json",
-        }, this.#weighContent);
-        if (fit !== undefined) {
-            const remaining = await fit.remaining();
-            if (remaining !== null && weight > remaining) return null;
-        }
-        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
-            session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
-            origin: "_plurnk", source: null, model_call_id: null,
-            op: "READ", signal: null,
-            scheme: "reasoning", username: null, password: null, hostname: sessionName, port: null,
-            pathname, query: null, fragment: null, lineMarker: lineMarker === null ? null : JSON.stringify(lineMarker),
-            tx, mimetype_tx: "application/json",
-            rx,
-            mimetype_rx: "application/json",
-            status_rx: 200,
-            weight,
-            state: "resolved", outcome: null,
-            attrs: JSON.stringify(durableAttrs),
-            initial_folded: LogVisibility.serialize(LogVisibility.OPEN),
-        });
-        if (row === undefined) throw new Error("Dispatcher.writeReasoning: insert returned no row");
-        return row.id;
+        return this.#turnSources.writeReasoning(params);
     }
 
     // {§session-scheme} WORK and FORK overload their slot by scheme: a `session://`
@@ -1515,7 +945,7 @@ export default class Dispatcher {
     ): Promise<{ statement: WorkStatement | ForkStatement } | { result: DispatchResult }> {
         if (statement.target === null || SessionControlAddress.isSessionScheme(statement.target)) return { statement };
         const read: ReadStatement = { ...statement, op: "READ", matcher: null, body: null, lineMarker: { marks: [1, -1] } };
-        const denial = await this.#checkCapabilities(read, ctx);
+        const denial = await this.#admission.checkCapabilities(read, ctx);
         if (denial !== null) return { result: denial };
         const result = Results.assertReadResult(await this.#dataRun.run(schemeNameOf(read.target), read, ctx));
         if (result.status !== 200 && result.status !== 204) return { result };
@@ -1532,70 +962,18 @@ export default class Dispatcher {
         return { statement: { ...statement, target: null, body: prompt } };
     }
 
-    // {§op-methods-op-dispatch} Reuse exact READ projection without its log/presentation layer.
-    async prepareBarePrompt(
+    prepareBarePrompt(
         context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin"> & { statement: BareStatement },
     ): Promise<{ prompt: string } | { result: DispatchResult }> {
-        await this.#operationEvent(context, "started");
-        await this.#noticeFilePaths(context);
-        return ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context), async (ctx) => {
-            try {
-                return await this.#prepareBarePrompt(context.statement, ctx);
-            } catch (error) {
-                if (error instanceof OperationFailureError) return { result: error.result };
-                throw error;
-            }
-        });
+        return this.#turnSources.prepareBarePrompt(context);
     }
 
-    async #prepareBarePrompt(statement: BareStatement, ctx: PlurnkSchemeContext): Promise<{ prompt: string } | { result: DispatchResult }> {
-        const denial = await this.#checkCapabilities(statement, ctx);
-        if (denial !== null) return { result: denial };
-        let resource = "";
-        if (statement.target !== null) {
-            const read: ReadStatement = {
-                ...statement,
-                op: "READ",
-                matcher: null,
-                body: null,
-                lineMarker: { marks: [1, -1] },
-            };
-            const result = Results.assertReadResult(await this.#dataRun.run(schemeNameOf(read.target), read, ctx));
-            if (result.status !== 200 && result.status !== 204) return { result };
-            if (typeof result.content === "string") resource = result.content;
-            else if (result.content !== null) {
-                throw new InvalidOperationResultError("BARE source READ returned non-text content.");
-            }
-        }
-        const prompt = [resource, statement.body].filter((part) => part !== "").join("\n\n");
-        // {§op-methods-op-dispatch} — empty combined text is a refusal that creates no model call.
-        if (prompt.trim() === "") {
-            return { result: Dispatcher.#failure(
-                "bare-prompt-empty", 422,
-                `BARE has no prompt text: the prompt is the fence body, a resource path, or both.${statement.aside === null || statement.aside === "" ? "" : " Its aside was not read as the prompt."}`,
-                {}, { retryable: false },
-            ) };
-        }
-        return { prompt };
-    }
-
-    // {§op-methods-op-dispatch} Provider work runs concurrently; receipts commit in authored order.
-    async recordBareResult(
+    recordBareResult(
         context: Omit<DispatchContext, "statement"> & { statement: BareStatement },
         result: DispatchResult,
         modelCallId: number | null,
     ): Promise<DispatchResult> {
-        Results.assert(result);
-        const logEntryId = await this.#logWriter.writeLog({
-            ...context,
-            result,
-            curationPlan: null,
-            modelCallId,
-        });
-        context.onDispatch?.(logEntryId);
-        await this.#notifySettled(context, logEntryId);
-        await this.#operationEvent(context, "settled", result);
-        return result;
+        return this.#turnSources.recordBareResult(context, result, modelCallId);
     }
 
 

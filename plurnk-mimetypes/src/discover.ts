@@ -1,5 +1,4 @@
 import { isRecord } from "@plurnk/plurnk-contracts";
-import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
 import type { ExtensionAttribution } from "@plurnk/plurnk-meta";
 import MimetypeExtensionError from "./MimetypeExtensionError.ts";
@@ -30,7 +29,7 @@ import type {
 // operator-trusted third-party package overrides the floor handler on collision,
 // while untrusted third-party packages are blocked by the trust predicate.
 export async function discover(options: DiscoverOptions = {}): Promise<Discovery> {
-    const dirs = options.packageDirs ?? await defaultPackageDirs(options.cwd ?? process.cwd());
+    const dirs = options.packageDirs ?? await Meta.resolvedPackageDirs(options.cwd ?? process.cwd(), { floorFirst: true });
     const env = options.env ?? process.env;
     const isTrusted = (name: string): boolean => Meta.isTrusted(name, env);
 
@@ -117,22 +116,6 @@ function survivingPackageAttributions(
         .filter((handler) => handler.source === "package")
         .map((handler) => handler.packageName));
     return new Map([...discovered].filter(([packageName]) => surviving.has(packageName)));
-}
-
-// Enumerate every installed package directory under `<cwd>/node_modules` —
-// unscoped (`name`) and scoped (`@scope/name`) alike. `@plurnk` packages are
-// returned FIRST as the default floor so operator-trusted third-party handlers
-// win last-loaded collisions (see the conflict note on discover()). Non-package
-// entries (`.bin`, `.cache`, dotfiles) are skipped. Failures (no node_modules)
-// yield [].
-async function defaultPackageDirs(cwd: string): Promise<string[]> {
-    const nm = Meta.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
-    const candidates = await Meta.packageDirs(nm);
-    // ORDERING POLICY (ours, not the primitives'): @plurnk packages FIRST as the
-    // floor so operator-trusted third-party handlers override them on collision.
-    const plurnk = candidates.filter((c) => c.name.startsWith("@plurnk/")).map((c) => c.dir).toSorted();
-    const thirdParty = candidates.filter((c) => !c.name.startsWith("@plurnk/")).map((c) => c.dir).toSorted();
-    return [...plurnk, ...thirdParty];
 }
 
 interface MimetypeManifest {

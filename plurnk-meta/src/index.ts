@@ -54,6 +54,19 @@ export interface ExtensionManifest {
     readonly plurnk: Record<string, unknown>;
 }
 
+export interface ScannedExtensionPackage {
+    readonly dir: string;
+    readonly manifestPath: string;
+    readonly packageName: string;
+    readonly plurnk: Record<string, unknown>;
+    readonly attribution: ExtensionAttribution;
+}
+
+export interface ExtensionKindScan {
+    readonly admitted: ScannedExtensionPackage[];
+    readonly skipped: string[];
+}
+
 // Authored package.json shape retained only where a published kind descriptor
 // requires that projection. Discovery and consumers exchange ExtensionAttribution.
 export type ExtensionAttributionDeclaration = string | string[];
@@ -331,5 +344,54 @@ export default class Meta {
             if (parent === dir) return null;
             dir = parent;
         }
+    }
+
+    static async resolvedPackageDirs(
+        cwd: string,
+        { floorFirst = false }: { floorFirst?: boolean } = {},
+    ): Promise<string[]> {
+        const nm = Meta.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
+        const candidates = await Meta.packageDirs(nm);
+        if (floorFirst) {
+            const plurnk = candidates.filter((c) => c.name.startsWith("@plurnk/")).map((c) => c.dir).toSorted();
+            const thirdParty = candidates.filter((c) => !c.name.startsWith("@plurnk/")).map((c) => c.dir).toSorted();
+            return [...plurnk, ...thirdParty];
+        }
+        return candidates.map((c) => c.dir).toSorted();
+    }
+
+    static async scanKind(
+        kind: ExtensionKind,
+        options: {
+            readonly cwd?: string;
+            readonly packageDirs?: ReadonlyArray<string>;
+            readonly env?: Record<string, string | undefined>;
+            readonly signal?: AbortSignal;
+            readonly floorFirst?: boolean;
+        } = {},
+    ): Promise<ExtensionKindScan> {
+        const { cwd = process.cwd(), packageDirs, env = process.env, signal, floorFirst = false } = options;
+        signal?.throwIfAborted();
+        const dirs = packageDirs ?? await Meta.resolvedPackageDirs(cwd, { floorFirst });
+        const admitted: ScannedExtensionPackage[] = [];
+        const skipped = new Set<string>();
+        for (const dir of dirs) {
+            signal?.throwIfAborted();
+            const manifest = await Meta.readManifest(dir, kind, { signal });
+            if (manifest === null || manifest.packageName === null) continue;
+            if (!Meta.isTrusted(manifest.packageName, env)) {
+                skipped.add(manifest.packageName);
+                continue;
+            }
+            const attribution = Meta.normalizeAttribution(manifest.plurnk.attribution, manifest.packageName);
+            admitted.push({
+                dir,
+                manifestPath: manifest.manifestPath,
+                packageName: manifest.packageName,
+                plurnk: manifest.plurnk,
+                attribution,
+            });
+        }
+        return { admitted, skipped: [...skipped].toSorted() };
     }
 }

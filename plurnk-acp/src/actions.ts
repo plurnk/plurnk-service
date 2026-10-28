@@ -1,7 +1,14 @@
 // {§acp-action-binding} {§acp-daemon-client} `_plurnk/action` dispatch, discovery advertisement, and slash commands.
 
 import { RequestError, type SessionUpdate } from "@agentclientprotocol/sdk/experimental/v2/unstable";
-import { Validator, isRecord, isSafeInteger, type AcpDiscovery } from "@plurnk/plurnk-contracts";
+import {
+    Validator,
+    formatServiceUpdateReport,
+    isRecord,
+    isSafeInteger,
+    parseFamilyCommand,
+    type AcpDiscovery,
+} from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import SessionTranslator from "./SessionTranslator.ts";
@@ -14,10 +21,395 @@ import {
     type BoundSession,
 } from "./sessions.ts";
 
+const TARGET_PROPS = {
+    workspace: { type: "string" },
+    workspaceId: { type: "integer" },
+    session: { type: "string" },
+    sessionId: { type: ["string", "integer"] },
+    cwd: { type: "string" },
+    projectRoot: { type: ["string", "null"] },
+} as const;
+
+const EMPTY_OBJECT_SCHEMA = {
+    type: "object",
+    additionalProperties: false,
+    properties: {},
+} as const;
+
+const BUILTIN_ACTIONS: Readonly<
+    Record<
+        string,
+        {
+            readonly scope: "daemon" | "workspace" | "session";
+            readonly inputSchema: Record<string, unknown>;
+            readonly outputSchema: Record<string, unknown>;
+        }
+    >
+> = {
+    ping: {
+        scope: "daemon",
+        inputSchema: EMPTY_OBJECT_SCHEMA,
+        outputSchema: EMPTY_OBJECT_SCHEMA,
+    },
+    discover: {
+        scope: "daemon",
+        inputSchema: EMPTY_OBJECT_SCHEMA,
+        outputSchema: {
+            type: "object",
+            required: ["schemaVersion", "actions", "notifications", "display"],
+            additionalProperties: false,
+            properties: {
+                schemaVersion: { type: "integer", const: 1 },
+                actions: { type: "object" },
+                notifications: { type: "object" },
+                display: { type: "array" },
+            },
+        },
+    },
+    "models.list": {
+        scope: "daemon",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+                search: { type: "string" },
+                provider: { type: "string" },
+                availability: { enum: ["configured", "all"] },
+                all: { type: "boolean" },
+                offset: { type: "integer", minimum: 0 },
+                limit: { type: "integer", minimum: 1 },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["total", "offset", "items"],
+            additionalProperties: false,
+            properties: {
+                total: { type: "integer" },
+                offset: { type: "integer" },
+                nextOffset: { type: "integer" },
+                items: { type: "array" },
+            },
+        },
+    },
+    "service.update": {
+        scope: "daemon",
+        inputSchema: EMPTY_OBJECT_SCHEMA,
+        outputSchema: {
+            type: "object",
+            required: ["catalog", "service"],
+            additionalProperties: false,
+            properties: {
+                catalog: { type: "object" },
+                service: { type: "object" },
+            },
+        },
+    },
+    "workspace.create": {
+        scope: "daemon",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+                name: { type: "string" },
+                projectRoot: { type: ["string", "null"] },
+                settings: { type: ["string", "object"] },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["workspaceId", "workspaceName"],
+            additionalProperties: true,
+            properties: {
+                workspaceId: { type: "integer" },
+                workspaceName: { type: "string" },
+                projectRoot: { type: ["string", "null"] },
+                projectLabel: { type: ["string", "null"] },
+            },
+        },
+    },
+    "workspace.attach": {
+        scope: "daemon",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+                id: { type: "integer" },
+                workspaceId: { type: "integer" },
+                name: { type: "string" },
+                projectRoot: { type: "string" },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["workspaceId", "workspaceName"],
+            additionalProperties: true,
+            properties: {
+                workspaceId: { type: "integer" },
+                workspaceName: { type: "string" },
+                projectRoot: { type: ["string", "null"] },
+                projectLabel: { type: ["string", "null"] },
+            },
+        },
+    },
+    "workspace.list": {
+        scope: "daemon",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+                hidden: { type: "boolean" },
+                includeHidden: { type: "boolean" },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["workspaces"],
+            additionalProperties: false,
+            properties: {
+                workspaces: { type: "array" },
+            },
+        },
+    },
+    "workspace.sessions": {
+        scope: "workspace",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+                ...TARGET_PROPS,
+                hidden: { type: "boolean" },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["sessions"],
+            additionalProperties: false,
+            properties: {
+                sessions: { type: "array" },
+            },
+        },
+    },
+    "workspace.rename": {
+        scope: "workspace",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+                ...TARGET_PROPS,
+                from: { type: "string" },
+                name: { type: "string" },
+                to: { type: "string" },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["id", "name"],
+            additionalProperties: false,
+            properties: {
+                id: { type: "integer" },
+                name: { type: "string" },
+            },
+        },
+    },
+    "workspace.share": {
+        scope: "workspace",
+        inputSchema: {
+            type: "object",
+            required: ["folder"],
+            additionalProperties: false,
+            properties: {
+                ...TARGET_PROPS,
+                folder: { type: "string" },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["folder"],
+            additionalProperties: true,
+            properties: {
+                folder: { type: "string" },
+            },
+        },
+    },
+    "workspace.rollback": {
+        scope: "session",
+        inputSchema: {
+            type: "object",
+            required: ["to"],
+            additionalProperties: false,
+            properties: {
+                ...TARGET_PROPS,
+                to: { type: "string" },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["to", "restored", "skipped", "stopped"],
+            additionalProperties: false,
+            properties: {
+                to: { type: "string" },
+                restored: { type: "array" },
+                skipped: { type: "array" },
+                stopped: { type: ["object", "null"] },
+            },
+        },
+    },
+    "workspace.capabilities.get": {
+        scope: "workspace",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+                ...TARGET_PROPS,
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["service", "workspace", "effective"],
+            additionalProperties: false,
+            properties: {
+                service: { type: "object" },
+                workspace: { type: "object" },
+                effective: { type: "object" },
+            },
+        },
+    },
+    "workspace.capabilities.set": {
+        scope: "workspace",
+        inputSchema: {
+            type: "object",
+            required: ["policy"],
+            additionalProperties: false,
+            properties: {
+                ...TARGET_PROPS,
+                policy: { type: "object" },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["service", "workspace", "effective"],
+            additionalProperties: false,
+            properties: {
+                service: { type: "object" },
+                workspace: { type: "object" },
+                effective: { type: "object" },
+            },
+        },
+    },
+    "workspace.prompts": {
+        scope: "workspace",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+                ...TARGET_PROPS,
+                limit: { type: "integer", minimum: 1 },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["prompts"],
+            additionalProperties: false,
+            properties: {
+                prompts: { type: "array", items: { type: "string" } },
+            },
+        },
+    },
+    "session.loops": {
+        scope: "workspace",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+                ...TARGET_PROPS,
+                loopSeq: { type: "integer", minimum: 1 },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["items"],
+            additionalProperties: false,
+            properties: {
+                items: { type: "array" },
+                updates: { type: "array" },
+            },
+        },
+    },
+    "log.read": {
+        scope: "session",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+                ...TARGET_PROPS,
+                loopId: { type: "integer" },
+                turnId: { type: "integer" },
+                sinceId: { type: "integer" },
+                beforeId: { type: "integer" },
+                limit: { type: "integer", minimum: 1 },
+                loopSeq: { type: "integer", minimum: 1 },
+                turnSeq: { type: "integer", minimum: 1 },
+                sequence: { type: "integer", minimum: 1 },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["entries"],
+            additionalProperties: false,
+            properties: {
+                entries: { type: "array" },
+            },
+        },
+    },
+    "entry.read": {
+        scope: "session",
+        inputSchema: {
+            type: "object",
+            required: ["target"],
+            additionalProperties: false,
+            properties: {
+                ...TARGET_PROPS,
+                target: { type: "string" },
+                channel: { type: "string" },
+                offset: { type: "integer", minimum: 0 },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["status"],
+            additionalProperties: true,
+            properties: {
+                status: { type: "integer" },
+                entry: { type: "object" },
+            },
+        },
+    },
+    "op.parse": {
+        scope: "workspace",
+        inputSchema: {
+            type: "object",
+            required: ["text"],
+            additionalProperties: false,
+            properties: {
+                ...TARGET_PROPS,
+                text: { type: "string" },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["results"],
+            additionalProperties: false,
+            properties: {
+                results: { type: "array" },
+            },
+        },
+    },
+};
+
 const buildDiscovery = async (seam: ApplicationPort): Promise<AcpDiscovery> => {
     const display = (await seam.listClientDisplayCapabilities?.()) ?? [];
     const moduleActions = seam.listModuleActions?.() ?? [];
-    const objSchema = { type: "object", additionalProperties: true } as const;
     const actions: Record<
         string,
         {
@@ -25,26 +417,7 @@ const buildDiscovery = async (seam: ApplicationPort): Promise<AcpDiscovery> => {
             readonly inputSchema: Record<string, unknown>;
             readonly outputSchema: Record<string, unknown>;
         }
-    > = {
-        ping: { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
-        discover: { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
-        "models.list": { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
-        "service.update": { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
-        "workspace.create": { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
-        "workspace.attach": { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
-        "workspace.list": { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
-        "workspace.sessions": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
-        "workspace.rename": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
-        "workspace.share": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
-        "workspace.rollback": { scope: "session", inputSchema: objSchema, outputSchema: objSchema },
-        "workspace.capabilities.get": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
-        "workspace.capabilities.set": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
-        "workspace.prompts": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
-        "session.loops": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
-        "log.read": { scope: "session", inputSchema: objSchema, outputSchema: objSchema },
-        "entry.read": { scope: "session", inputSchema: objSchema, outputSchema: objSchema },
-        "op.parse": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
-    };
+    > = { ...BUILTIN_ACTIONS };
     for (const act of moduleActions) {
         actions[act.name] = {
             scope: act.scope,
@@ -56,7 +429,16 @@ const buildDiscovery = async (seam: ApplicationPort): Promise<AcpDiscovery> => {
         schemaVersion: 1,
         actions,
         notifications: {
-            "session/update": { payloadSchema: objSchema },
+            "session/update": {
+                payloadSchema: {
+                    type: "object",
+                    required: ["sessionUpdate"],
+                    additionalProperties: true,
+                    properties: {
+                        sessionUpdate: { type: "string" },
+                    },
+                },
+            },
         },
         display,
     };
@@ -151,6 +533,14 @@ export const handlePlurnkAction = async (
         ? rawParams.sessionId
         : "1#user";
 
+    const builtin = BUILTIN_ACTIONS[kind];
+    if (builtin !== undefined) {
+        const validation = Validator.validateJsonSchemaInstance(builtin.inputSchema, params);
+        if (!validation.valid) {
+            throw new RequestError(-32602, `Action '${kind}' rejected parameters.`);
+        }
+    }
+
     if (kind === "ping") {
         return {};
     }
@@ -206,10 +596,16 @@ export const handlePlurnkAction = async (
     }
 
     if (kind === "models.list") {
+        const availability =
+            params.availability === "configured" || params.availability === "all"
+                ? params.availability
+                : params.all === true
+                  ? ("all" as const)
+                  : undefined;
         return seam.listModels({
             ...(typeof params.search === "string" ? { search: params.search } : {}),
             ...(typeof params.provider === "string" ? { provider: params.provider } : {}),
-            ...(typeof params.all === "boolean" ? { all: params.all } : {}),
+            ...(availability !== undefined ? { availability } : {}),
             ...(typeof params.offset === "number" ? { offset: params.offset } : {}),
             ...(typeof params.limit === "number" ? { limit: params.limit } : {}),
         });
@@ -478,52 +874,36 @@ export const executeSlashCommand = async (
     if (cmd === "update") {
         const res = await invoke({ ...envelope, kind: "service.update", params: {} });
         if (isRecord(res) && isRecord(res.catalog) && isRecord(res.service)) {
-            const added = typeof res.catalog.addedModels === "number" && res.catalog.addedModels > 0
-                ? `, +${res.catalog.addedModels} new`
-                : "";
-            const catLine = `catalog: ${String(res.catalog.status)} (${String(res.catalog.models)} models across ${String(res.catalog.providers)} providers${added})`;
-            const suffix = res.service.artifact === "source" ? " (source checkout)" : "";
-            const upgradeCmd = typeof res.service.upgradeCommand === "string"
-                ? res.service.upgradeCommand
-                : "npm install -g @plurnk/plurnk-service@latest @plurnk/plurnk@latest";
-            const verLine = `version: ${String(res.service.package)}@${String(res.service.version)}${suffix} — to update packages, stop the daemon and run: ${upgradeCmd}`;
-            return `${catLine}\n${verLine}`;
+            return formatServiceUpdateReport(res);
         }
         return typeof res === "string" ? res : JSON.stringify(res);
     }
     const tokens = rest.length > 0 ? rest.split(/\s+/u) : [];
-    const verb = tokens[0] ?? "list";
-    const alias = tokens[1];
-    const actionName = `workspace.${cmd}.${verb}`;
-    const actionParams: Record<string, unknown> = alias !== undefined ? { alias } : {};
-    try {
-        const res = await invoke({ ...envelope, kind: actionName, params: actionParams });
-        if (isRecord(res)) {
-            const definitions = Array.isArray(res.definitions)
-                ? res.definitions
-                : Array.isArray(res.items)
-                  ? res.items
-                  : null;
-            if (definitions !== null) {
-                if (definitions.length === 0) {
-                    return `${cmd}: none`;
-                }
-                return definitions
-                    .map((item) => {
-                        if (!isRecord(item)) return String(item);
-                        const name = typeof item.alias === "string"
-                            ? item.alias
-                            : typeof item.name === "string"
-                              ? item.name
-                              : "";
-                        const state = typeof item.state === "string" ? item.state : "active";
-                        return `${name}  ${state}`;
-                    })
-                    .join("\n");
+    const parsed = parseFamilyCommand(cmd, tokens);
+    const res = await invoke({ ...envelope, kind: parsed.actionName, params: parsed.params });
+    if (isRecord(res)) {
+        const definitions = Array.isArray(res.definitions)
+            ? res.definitions
+            : Array.isArray(res.items)
+              ? res.items
+              : null;
+        if (definitions !== null) {
+            if (definitions.length === 0) {
+                return `${cmd}: none`;
             }
+            return definitions
+                .map((item) => {
+                    if (!isRecord(item)) return String(item);
+                    const name = typeof item.alias === "string"
+                        ? item.alias
+                        : typeof item.name === "string"
+                          ? item.name
+                          : "";
+                    const state = typeof item.state === "string" ? item.state : "active";
+                    return `${name}  ${state}`;
+                })
+                .join("\n");
         }
-        return `Executed /${cmd}`;
-    } catch {
-        return `Executed /${cmd}`;
     }
+    return `Executed /${cmd}`;
 };

@@ -49,6 +49,7 @@ export default class NativeToolCalls {
     // The lines that belong to native markup. Fence lines inside them are the markup's own, not
     // Markdown quotation.
     static markupLines(input: string): Set<number> {
+        if (!MARKERS.some((marker) => input.includes(marker))) return new Set();
         const inside = new Set<number>();
         for (const block of NativeToolCalls.#blocks(input, [])) {
             for (let line = block.startLine; line <= block.endLine; line += 1) inside.add(line);

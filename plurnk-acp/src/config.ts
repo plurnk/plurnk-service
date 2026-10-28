@@ -1,4 +1,5 @@
-import { isSafeInteger } from "@plurnk/plurnk-contracts";
+import { MAX_TIMER_MS } from "@plurnk/plurnk-contracts";
+import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 
 export interface ModuleOptions {
     readonly allowOrigin?: string;
@@ -21,56 +22,26 @@ export interface ResolvedModuleOptions {
     readonly overviewSessions: number;
 }
 
-const parsePositiveSafeInt = (key: string, raw: string | undefined, floor: number): number => {
-    if (raw === undefined) return floor;
-    const trimmed = raw.trim();
-    if (!/^\d+$/.test(trimmed)) {
-        throw new Error(`${key} must be a positive safe integer; received '${raw}'`);
-    }
-    const n = Number(trimmed);
-    if (!isSafeInteger(n) || n <= 0) {
-        throw new Error(`${key} must be a positive safe integer; received '${raw}'`);
+const parseHeartbeatMs = (env: Readonly<Record<string, string | undefined>>): number => {
+    const n = Knob.integer("PLURNK_ACP_HEARTBEAT_MS", 0, env);
+    if (n > MAX_TIMER_MS) {
+        throw new ConfigurationError(
+            "PLURNK_ACP_HEARTBEAT_MS",
+            `PLURNK_ACP_HEARTBEAT_MS must be a safe integer in 0..${MAX_TIMER_MS}; got ${JSON.stringify(env.PLURNK_ACP_HEARTBEAT_MS)}.`,
+        );
     }
     return n;
 };
-
-const parseHeartbeatMs = (raw: string | undefined, floor: number): number => {
-    if (raw === undefined) return floor;
-    const trimmed = raw.trim();
-    if (!/^\d+$/.test(trimmed)) {
-        throw new Error(`PLURNK_ACP_HEARTBEAT_MS must be a safe integer in 0..2147483647; received '${raw}'`);
-    }
-    const n = Number(trimmed);
-    if (!isSafeInteger(n) || n < 0 || n > 2147483647) {
-        throw new Error(`PLURNK_ACP_HEARTBEAT_MS must be a safe integer in 0..2147483647; received '${raw}'`);
-    }
-    return n;
-};
-
-const parseMaxTurns = (raw: string | undefined, floor: number | undefined): number | undefined => {
-    if (raw === undefined || raw.trim() === "") return floor;
-    const trimmed = raw.trim();
-    if (!/^-?\d+$/.test(trimmed)) {
-        throw new Error(`PLURNK_ACP_MAX_TURNS must be -1 or a non-negative safe integer; received '${raw}'`);
-    }
-    const n = Number(trimmed);
-    if (!isSafeInteger(n) || n < -1) {
-        throw new Error(`PLURNK_ACP_MAX_TURNS must be -1 or a non-negative safe integer; received '${raw}'`);
-    }
-    return n;
-};
-
-const parseAllowOrigin = (raw: string | undefined, floor: string): string => raw ?? floor;
 
 export const resolveModuleOptions = (opts: ModuleOptions = {}): ResolvedModuleOptions => {
-    const env = opts.env ?? process.env;
-    const allowOrigin = opts.allowOrigin ?? parseAllowOrigin(env.PLURNK_ACP_ALLOW_ORIGIN, "*");
-    const maxTurns = opts.maxTurns ?? parseMaxTurns(env.PLURNK_ACP_MAX_TURNS, undefined);
-    const heartbeatMs = opts.heartbeatMs ?? parseHeartbeatMs(env.PLURNK_ACP_HEARTBEAT_MS, 15000);
-    const historyLoops = opts.historyLoops ?? parsePositiveSafeInt("PLURNK_ACP_HISTORY_LOOPS", env.PLURNK_ACP_HISTORY_LOOPS, 2);
-    const historyPageChars = opts.historyPageChars ?? parsePositiveSafeInt("PLURNK_ACP_HISTORY_PAGE_CHARS", env.PLURNK_ACP_HISTORY_PAGE_CHARS, 2000000);
-    const excerptChars = opts.excerptChars ?? parsePositiveSafeInt("PLURNK_ACP_EXCERPT_CHARS", env.PLURNK_ACP_EXCERPT_CHARS, 240);
-    const overviewSessions = opts.overviewSessions ?? parsePositiveSafeInt("PLURNK_ACP_OVERVIEW_SESSIONS", env.PLURNK_ACP_OVERVIEW_SESSIONS, 200);
+    const env = opts.env === undefined ? process.env : { ...process.env, ...opts.env };
+    const allowOrigin = opts.allowOrigin ?? Knob.text("PLURNK_ACP_ALLOW_ORIGIN", env);
+    const maxTurns = opts.maxTurns ?? (Knob.optionalInteger("PLURNK_ACP_MAX_TURNS", -1, env) ?? undefined);
+    const heartbeatMs = opts.heartbeatMs ?? parseHeartbeatMs(env);
+    const historyLoops = opts.historyLoops ?? Knob.integer("PLURNK_ACP_HISTORY_LOOPS", 1, env);
+    const historyPageChars = opts.historyPageChars ?? Knob.integer("PLURNK_ACP_HISTORY_PAGE_CHARS", 1, env);
+    const excerptChars = opts.excerptChars ?? Knob.integer("PLURNK_ACP_EXCERPT_CHARS", 1, env);
+    const overviewSessions = opts.overviewSessions ?? Knob.integer("PLURNK_ACP_OVERVIEW_SESSIONS", 1, env);
     return {
         allowOrigin,
         maxTurns,

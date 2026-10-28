@@ -102,6 +102,7 @@ export default class PlurnkParser {
     // quotation is judged with the markup itself blanked, so its own fence lines quote nothing.
     static #quotedMarkup(input: string, executors: readonly string[]): Set<number> {
         const markup = NativeToolCalls.markupLines(input);
+        if (markup.size === 0) return markup;
         const blanked = input.split("\n").map((line, index) => markup.has(index) ? "" : line).join("\n");
         const lexer = new plurnkLexer(CharStream.fromString(blanked));
         for (const name of executors) lexer.knownExecutors.add(name);

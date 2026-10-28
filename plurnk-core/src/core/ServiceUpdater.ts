@@ -1,4 +1,4 @@
-import type { ApplicationServiceUpdateResult } from "@plurnk/plurnk-contracts";
+import { formatServiceUpdateReport, type ApplicationServiceUpdateResult } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import { updateCatalogCache } from "@plurnk/plurnk-models";
 import { getBuildInfo, type BuildInfo } from "../build-info.ts";
@@ -53,10 +53,6 @@ export default class ServiceUpdater {
     }
 
     static formatReport(result: ApplicationServiceUpdateResult): string {
-        const added = result.catalog.addedModels > 0 ? `, +${result.catalog.addedModels} new` : "";
-        const catLine = `catalog: ${result.catalog.status} (${result.catalog.models} models across ${result.catalog.providers} providers${added})`;
-        const suffix = result.service.artifact === "source" ? " (source checkout)" : "";
-        const verLine = `version: ${result.service.package}@${result.service.version}${suffix} — to update packages, stop the daemon and run: ${result.service.upgradeCommand}`;
-        return `${catLine}\n${verLine}`;
+        return formatServiceUpdateReport(result);
     }
 }

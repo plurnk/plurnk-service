@@ -9,45 +9,18 @@
 
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
 import type { ChatContentPart, ChatMessage } from "@plurnk/plurnk-providers";
-import { relative, sep } from "node:path";
-import { Problems, Validator, isRecord, isSafeInteger, type Notice, type ParsedPath, type RangeExtent, isExecutionOp } from "@plurnk/plurnk-contracts";
-import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
-import BodyPreview from "../content/body-preview.ts";
-import { renderAuthoredTarget, renderTarget } from "./plurnk-uri.ts";
+import { isRecord, isSafeInteger, type Notice } from "@plurnk/plurnk-contracts";
 import GitState, { type GitStatus } from "./git-state.ts";
-import LogBody, { type ResolvedLogBody } from "./LogBody.ts";
+import LogBody from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
-import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
-import ScopeFormat from "../content/scope-format.ts";
-import PatternEdits from "../content/pattern-edits.ts";
-import { Results as SchemeResults, type MatchEvidence, type PacketSectionDraft } from "@plurnk/plurnk-schemes";
-import {
-    assertEditReceipt,
-    assertResourceEffects,
-    LineAnchors,
-    type EditReceipt,
-} from "../content/index.ts";
+import LogVisibility from "./LogVisibility.ts";
+import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
+import { LineAnchors } from "../content/index.ts";
+// {§log-wire-format} — the attachment kinds and their readout weights live in one table.
+import { audioWeight, imageWeight, pdfWeight } from "./attachments.ts";
+import PacketRowFacts, { type ActionTarget, type RowIdentity, type StatementTx } from "./packet-row-facts.ts";
+import PacketBodyFormat, { type RowBody, type VisibleLogBody } from "./packet-body-format.ts";
 
-// {§packet} — sections arrive from both the in-memory request and
-// the durable packet re-parsed by the digest. The latter uses the loose view
-// below and is narrowed at the rendering boundary.
-interface ActionTarget {
-    kind?: unknown;
-    raw?: unknown;
-    scheme?: string | null;
-    hostname?: string | null;
-    port?: number | null;
-    pathname?: string | null;
-    query?: string | null;
-    fragment?: string | null;
-    username?: string | null;
-    password?: string | null;
-}
-// The durable statement supplies operand identity and bodies without asking the packet mirror to re-serialize the
-// model's complete emission tag. Parsed from its stored column, it is a record whose fields are proved where read.
-type StatementTx = Readonly<Record<string, unknown>>;
-// A stored result, parsed: a record whose fields are proved where read.
-type RxView = Readonly<Record<string, unknown>>;
 // One `log_entries` row joined to its loop and turn, as `engine_render_log` yields it.
 export interface StoredLogRow {
     id: number | null; loop_seq: number; turn_seq: number; sequence: number;
@@ -59,6 +32,7 @@ export interface StoredLogRow {
     tx: string; mimetype_tx: string; initial_folded: string; folded: string; source: string | null; attrs: string | null;
     producer: string;
 }
+
 export interface LogEntryView {
     id?: number | null;
     coordinate?: unknown;
@@ -80,6 +54,7 @@ export interface LogEntryView {
     lineAnchors?: readonly string[];
     lineNumberWidth?: number;
 }
+
 // A durable operation failure, as PacketBuilder selects it: its status and the coordinate of the row that owns it.
 export interface FailurePointer { readonly status: number; readonly coordinate: string }
 // One thing the session holds open ({§child-orientation}): its status, the path the model acts on, and a detail.
@@ -89,15 +64,18 @@ export interface OpenWorkPointer { readonly status: number | string; readonly pa
 export type GitStatusView = GitStatus & {
     readonly files?: readonly { readonly path: string; readonly status: string; readonly member?: string | null }[];
 };
+
 // Loose view of a section re-parsed from `turns.packet` JSON (the digest path).
 interface SectionView { name?: unknown; slot?: unknown; header?: unknown; content?: unknown; weight?: unknown }
 interface Packet { sections?: SectionView[] }
 interface MessageSections { role: PacketSectionDraft["slot"]; sections: SectionView[] }
 type WeighContent = (text: string) => number;
+
 export interface ReplayedOperation {
     readonly tokens: number;
 }
-interface RenderLogOptions {
+
+export interface RenderLogOptions {
     readonly acceptedAttachmentKinds?: ReadonlySet<PacketAttachment["kind"]>;
     // {§fs-namespace} Base for project-relative receipt addresses; null is headless.
     readonly projectRoot?: string | null;
@@ -119,46 +97,10 @@ export interface RenderedLog {
     readonly attachments: readonly PacketAttachment[];
 }
 
-// {§log-wire-format} — the attachment kinds and their readout weights live in one table.
-import { audioWeight, imageWeight, pdfWeight } from "./attachments.ts";
-
 interface RenderedLogRow {
     readonly content: string;
     readonly curationTarget: ReclaimableLogItem | null;
     readonly attachment: PacketAttachment | null;
-}
-
-interface VisibleLogBody {
-    readonly content: string;
-    readonly ordinals: readonly number[];
-    readonly readableContent: string;
-    readonly readableOrdinals: readonly number[];
-    readonly folded: LogFoldRanges;
-    readonly trimmed: LogFoldRanges;
-    readonly totalLines: number;
-    readonly fullyFolded: boolean;
-}
-
-// One log row through the four stages of its rendering: identity, result facts, body, accounting.
-interface RowIdentity {
-    readonly meta: Record<string, unknown>;
-    readonly op: string | null;
-    readonly tx: StatementTx | null;
-    readonly coordinate: string | null;
-    readonly path: string;
-    readonly renderedLeaf: string;
-    readonly target: string | null;
-    readonly description: string | null;
-}
-interface RowResultFacts {
-    readonly matches?: readonly MatchEvidence[];
-    readonly findItems: number | null;
-    readonly range: RangeExtent | null;
-    readonly structuredMutationReceipt: boolean;
-}
-interface RowBody {
-    readonly body: string;
-    readonly display: "none" | "folded" | "open";
 }
 
 export default class PacketWire {
@@ -183,7 +125,6 @@ export default class PacketWire {
         const separator = s.content.startsWith("{") || s.content.startsWith("[") ? "\n" : "\n\n";
         return (header ? `## ${header}${separator}${s.content}` : s.content).replace(/\n+$/, "");
     }
-
 
     // Durable operation failures render as `{status, path}` JSON pointers to the log rows that
     // own their exact RFC 9457 results.
@@ -299,275 +240,15 @@ export default class PacketWire {
         }));
     }
 
-    // Number a non-READ body line as `<N>:<line>` — `N:` followed by NO separator whitespace
-    // ({§zero-width-column-one-insert}): the leading digit prevents column-zero fence collisions and gives
-    // the model line refs for free (`READ (...) <42-46>`), while the absence of any separator means a
-    // reproduced line has nothing between `N:` and the content to copy. The content's OWN leading whitespace is
-    // content, preserved verbatim. `N` is left-padded to the body's line-range width so every body
-    // keeps one stable content column; FIND rows pass the complete result-set width so their pages
-    // share a column with the whole set.
-    static #numberLines(body: string, start = 1, width = 0): string {
-        let line = start;
-        if (width <= 0) {
-            const breaks = body.match(/(\r\n|\r(?!\n)|\n)(?=[\s\S])/g)?.length ?? 0;
-            width = String(start + breaks).length;
-        }
-        const prefix = (): string => `${String(line++).padStart(width, " ")}:`;
-        return `${prefix()}${body.replace(
-            /(\r\n|\r(?!\n)|\n)(?=[\s\S])/g,
-            (separator) => `${separator}${prefix()}`,
-        )}`;
-    }
-
-    static #numberSelectedLines(
-        body: string,
-        ordinals: readonly number[],
-        startLine: number,
-        lineAnchors: readonly string[] | null,
-        lineNumberWidth: number | null,
-        numericLineNumberWidth: number,
-        sourceLineNumbers: readonly number[] | null,
-    ): string {
-        const lines = TextCoordinates.logicalLines(body);
-        if (lines.length !== ordinals.length) {
-            throw new TypeError("A sparse log-body projection requires one source ordinal per rendered line.");
-        }
-        if (sourceLineNumbers !== null && ordinals.some((ordinal) => ordinal < 1 || ordinal > sourceLineNumbers.length)) {
-            throw new TypeError("A sparse log-body projection's ordinals must address its source line numbers.");
-        }
-        const displayed = ordinals.map((ordinal) => sourceLineNumbers === null ? startLine + ordinal - 1 : sourceLineNumbers[ordinal - 1]);
-        const width = lineAnchors === null
-            ? numericLineNumberWidth > 0
-                ? numericLineNumberWidth
-                : String(Math.max(...displayed)).length
-            : lineNumberWidth ?? 0;
-        if (lineAnchors !== null && !LineAnchors.isLineNumberWidth(width)) {
-            throw new TypeError("An anchored sparse log-body projection requires a valid source line width.");
-        }
-        return lines.map((line, index) => {
-            const ordinal = ordinals[index];
-            const lineNumber = displayed[index];
-            const content = body.slice(line.start, line.contentEnd);
-            if (lineAnchors === null) {
-                return `${String(lineNumber).padStart(width, " ")}:${content}${line.separator}`;
-            }
-            const anchor = lineAnchors[ordinal - 1];
-            if (!LineAnchors.isAnchor(anchor)) {
-                throw new TypeError(`A sparse READ projection has no line anchor for body line ${ordinal}.`);
-            }
-            // {§line-anchors}: ` 42<@abcde>text`, exactly as LineAnchors.render frames a whole projection.
-            return `${String(lineNumber).padStart(width)}<${anchor}>${content}${line.separator}`;
-        }).join("");
-    }
-
-    // The single content-body renderer EVERY output-emitting op routes through.
-    // Exact READ content receives source-width-aligned `@hash N:`; other textual bodies receive `N:`.
-    // Matchers consume canonical content before this presentation projection.
-    // Empty content produces no body.
-    static #renderContentBody(
-        content: string,
-        startLine: number | null = 1,
-        lineAnchors: readonly string[] | null = null,
-        lineNumberWidth: number | null = null,
-        numericLineNumberWidth = 0,
-        lineOrdinals: readonly number[] | null = null,
-        sourceLineNumbers: readonly number[] | null = null,
-    ): string {
-        if (content.length === 0) return "";
-        // `startLine === null` means the producer already supplied numbered
-        // content; re-numbering would duplicate its coordinates.
-        const rendered = startLine !== null
-            ? lineOrdinals !== null
-                ? PacketWire.#numberSelectedLines(
-                    content,
-                    lineOrdinals,
-                    startLine,
-                    lineAnchors,
-                    lineNumberWidth,
-                    numericLineNumberWidth,
-                    sourceLineNumbers,
-                )
-                : lineAnchors === null
-                    ? PacketWire.#numberLines(content, startLine, numericLineNumberWidth)
-                    : LineAnchors.render(content, startLine, lineAnchors, lineNumberWidth ?? 0)
-            : content;
-        return PacketWire.#frameBody(rendered);
-    }
-
-    // Tolerant JSON parser for log entries' persisted rx/tx strings. The engine
-    // pre-parses application/json mimetypes; malformed stored text is not JSON.
-    static #safeParse(s: string): unknown {
-        try { return JSON.parse(s); } catch { return null; }
-    }
-
     // {§log-wire-format} Orientation precedes telemetry on every receipt.
     static #canonicalJson(obj: Record<string, unknown>): string {
         return JSON.stringify(Object.fromEntries(Object.keys(obj).toSorted().map((key) => [key, obj[key]])));
     }
 
-    static #receiptMeta(value: unknown): Record<string, string | number> {
-        const receipt: EditReceipt = assertEditReceipt(value);
-        // The durable receipt keeps the full revision for forensics; the model gets no token it
-        // cannot use.
-        const head = {
-            extent: `${receipt.unit} ${receipt.before}->${receipt.after}`,
-            ...(receipt.parseIssues === undefined
-                ? {}
-                : { parseIssues: `${receipt.parseIssues.before}->${receipt.parseIssues.after}` }),
-        };
-        if ("effect" in receipt) {
-            return {
-                ...head,
-                change: `${receipt.unit} -${receipt.effect.removed} +${receipt.effect.inserted}`,
-                effect: `${receipt.effect.source} -> ${receipt.effect.result}`,
-                // {§edit-result-receipt-projection} — what a deletion took, so it can be put back from the receipt.
-                ...(receipt.effect.removedText === undefined ? {} : { removed: receipt.effect.removedText }),
-            };
-        }
-        return {
-            ...head,
-            disposition: receipt.disposition,
-            requested: receipt.requested,
-            ...(receipt.replacement === undefined
-                ? {}
-                : {
-                    change: `${receipt.unit} -${receipt.replacement.removed} +${receipt.replacement.inserted}`,
-                    replacement: `${receipt.replacement.source} -> ${receipt.replacement.result}`,
-                }),
-        };
-    }
-
-    // {§log-wire-format} Every body line carries its ordinary text coordinate,
-    // which makes an empty Markdown line and an H3 record boundary unavailable
-    // to source content. Already-numbered producer output is checked here too.
-    static #frameBody(body: string): string {
-        const endsWithLineBreak = /(?:\r\n|\r|\n)$/.test(body);
-        const lines = body.split(/\r\n|\r|\n/);
-        const contentLines = endsWithLineBreak ? lines.slice(0, -1) : lines;
-        const unframed = contentLines.find((line) => !/^ *[1-9]\d*:/.test(line) && !LineAnchors.isAnchoredLine(line));
-        if (contentLines.length === 0 || unframed !== undefined) {
-            throw new TypeError(`A packet log body requires a positive coordinate prefix on every physical line; got ${JSON.stringify((unframed ?? "").slice(0, 80))}.`);
-        }
-        return endsWithLineBreak ? body.replace(/(?:\r\n|\r|\n)$/, "") : body;
-    }
-
-    // {§log-wire-format} — row identity belongs to the H3, not its operand metadata.
-    static #entryPath(coordinate: string | null, leaf: string): string {
-        if (coordinate === null) throw new TypeError("A packet log row requires an addressable coordinate.");
-        return `log:///${coordinate}/${leaf}`;
-    }
-
-    static #visibleBody(
-        entry: LogEntryView,
-        body: ReturnType<typeof LogBody.resolve>,
-    ): VisibleLogBody {
-        const trimmed = LogVisibility.parse(entry.folded ?? LogVisibility.OPEN);
-        const folded = LogVisibility.combine(LogVisibility.parse(entry.initial_folded ?? LogVisibility.OPEN), trimmed);
-        const lines = TextCoordinates.logicalLines(body.content);
-        const totalLines = lines.length;
-        const clipped = LogVisibility.clipped(folded, totalLines);
-        const ordinals = LogVisibility.visibleLineOrdinals(clipped, totalLines);
-        const readableOrdinals = LogVisibility.visibleLineOrdinals(trimmed, totalLines);
-        const select = (selected: readonly number[]) => selected.map((ordinal) => {
-            const line = lines[ordinal - 1];
-            return body.content.slice(line.start, line.end);
-        }).join("");
-        return {
-            content: select(ordinals),
-            ordinals,
-            readableContent: select(readableOrdinals),
-            readableOrdinals,
-            folded: clipped,
-            trimmed: LogVisibility.clipped(trimmed, totalLines),
-            totalLines,
-            fullyFolded: LogVisibility.fullyFolded(clipped, totalLines),
-        };
-    }
-
     // {§message-arrival} — an inbound SEND row: harness-published, the sender's statement as its
     // sent side. {§message-arrival}: a `source` names the actor; absence is the owner.
     static isArrival(e: { readonly op?: unknown; readonly origin?: unknown; readonly attrs?: unknown }): boolean {
-        if (e.op !== "SEND" || e.origin !== "_plurnk") return false;
-        const attrs: unknown = typeof e.attrs === "string" ? JSON.parse(e.attrs) : e.attrs;
-        return isRecord(attrs) && attrs.kind === "message";
-    }
-
-    // {§packet} — a body the model did not author or ask for exactly takes its first page in
-    // the packet: not the model's own row, not a retrieval (paged at its source), not an emission row,
-    // and not the operator's message, which keeps its own rule ({§message-arrival}).
-    static #receivedBody(e: LogEntryView, op: string | null): boolean {
-        if (e.origin === "model" || op === "READ" || op === "FIND" || LogEntryProjection.isEmission(e)) return false;
-        if (PacketWire.isArrival(e)) {
-            const source = typeof e.source === "string" ? e.source : null;
-            return source !== null && source.startsWith("session://");
-        }
-        return true;
-    }
-
-    // One preview function for every bounded model-facing projection. Lines protect ordinary
-    // documents and Unicode characters protect a single-line bomb. Once a physical line is complete,
-    // a character cut retreats to that line boundary rather than exposing a partial coordinate prefix.
-    static #preview(text: string): { text: string; cut: boolean; chunk: string | null } {
-        const coordinates = new TextCoordinates(text);
-        const physicalLines = coordinates.logicalLines();
-        const { end } = BodyPreview.select(text);
-        const cut = end < text.length;
-        return {
-            text: text.slice(0, end),
-            cut,
-            chunk: cut ? PacketWire.#chunk(coordinates, physicalLines, end, text.length) : null,
-        };
-    }
-
-    static #chunk(coordinates: TextCoordinates, lines: readonly TextLine[], end: number, completeEnd: number): string {
-        const finalCompleteLine = lines.findIndex((line) => line.separator.length > 0 && line.end === end);
-        if (finalCompleteLine !== -1) {
-            const selected = ScopeFormat.lines(1, finalCompleteLine + 1);
-            if (finalCompleteLine + 1 === lines.length) {
-                throw new Error("a bounded body chunk must differ from its complete line extent");
-            }
-            return `${selected} of ${ScopeFormat.count("line", lines.length)}`;
-        }
-        const selectedRegion = coordinates.regionFromOffsets(0, end);
-        const completeRegion = coordinates.regionFromOffsets(0, completeEnd);
-        if (selectedRegion === null || completeRegion === null) {
-            throw new Error("a character-bound body chunk must resolve to exact text coordinates");
-        }
-        const selected = ScopeFormat.region(selectedRegion);
-        const complete = ScopeFormat.region(completeRegion);
-        if (selected === complete) {
-            throw new Error("a bounded body chunk must differ from its complete text extent");
-        }
-        return `${selected} of ${complete}`;
-    }
-
-    static #sparseChunk(completeContent: string, visibleContent: string, visibleOrdinals: readonly number[], projectedContent: string): string {
-        const end = projectedContent.length;
-        const coordinates = new TextCoordinates(visibleContent);
-        const lines = coordinates.logicalLines();
-        const finalCompleteLine = lines.findIndex((line) => line.separator.length > 0 && line.end === end);
-        if (finalCompleteLine !== -1) {
-            const selectedOrdinals = visibleOrdinals.slice(0, finalCompleteLine + 1);
-            const runs: Array<[number, number]> = [];
-            for (const ordinal of selectedOrdinals) {
-                const previous = runs.at(-1);
-                if (previous === undefined || ordinal !== previous[1] + 1) runs.push([ordinal, ordinal]);
-                else previous[1] = ordinal;
-            }
-            const selected = runs.map(([start, finish]) => ScopeFormat.lines(start, finish)).join(",");
-            return `${selected} of ${ScopeFormat.count("line", TextCoordinates.logicalLines(completeContent).length)}`;
-        }
-        const local = coordinates.regionFromOffsets(0, end);
-        const complete = new TextCoordinates(completeContent).regionFromOffsets(0, completeContent.length);
-        if (local === null || complete === null) {
-            throw new Error("a sparse character-bound chunk must resolve to exact text coordinates");
-        }
-        const startLine = visibleOrdinals[local.startLine - 1];
-        const endLine = visibleOrdinals[local.endLine - 1];
-        if (startLine === undefined || endLine === undefined) {
-            throw new Error("a sparse character-bound chunk must map to canonical body lines");
-        }
-        return `${ScopeFormat.region({ ...local, startLine, endLine })} of ${ScopeFormat.region(complete)}`;
+        return PacketRowFacts.isArrival(e);
     }
 
     static #renderLogEntries(entries: readonly LogEntryView[], weighContent: WeighContent, options: RenderLogOptions): RenderedLogRow[] {
@@ -583,24 +264,19 @@ export default class PacketWire {
             });
         });
         const visibility = entries.map((entry, index) =>
-            PacketWire.#visibleBody(entry, bodies[index]));
+            PacketBodyFormat.visibleBody(entry, bodies[index]));
         return entries.map((e, index) => {
-            const identity = PacketWire.#rowIdentity(e, options);
+            const identity = PacketRowFacts.rowIdentity(e, options);
             // Parse rx once — reused for the matcher/items enrichment and the body.
-            const parsedRx = typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx;
+            const parsedRx = typeof e.rx === "string" ? PacketRowFacts.safeParse(e.rx) : e.rx;
             const rx = isRecord(parsedRx) ? parsedRx : null;
-            const facts = PacketWire.#rowResultFacts(identity, e, rx, bodies[index]);
+            const facts = PacketRowFacts.rowResultFacts(identity, e, rx, bodies[index]);
             const paired = options.paired?.has(String(e.coordinate)) ?? false;
             const projected = paired && bodies[index].provenance === "authored"
                 ? { body: "", projectedLineCount: 0, display: "folded" as const }
-                : PacketWire.#rowBody(identity, e, bodies[index], visibility[index], facts);
+                : PacketBodyFormat.rowBody(identity, e, bodies[index], visibility[index], facts);
             return PacketWire.#rowAccounting(identity, e, visibility[index], projected, weighContent, options);
         });
-    }
-
-    static #attrsOf(e: { readonly attrs?: unknown }): Record<string, unknown> {
-        const attrs = typeof e.attrs === "string" ? PacketWire.#safeParse(e.attrs) : e.attrs;
-        return isRecord(attrs) ? attrs : {};
     }
 
     // One stored log row as the renderer sees it: the durable columns decoded once, a transient
@@ -661,371 +337,6 @@ export default class PacketWire {
         return row.curationTarget?.tokens ?? 0;
     }
 
-    // The row's identity and authored facts: who wrote it, what it addressed, and the statuses
-    // that stay explicit. `meta` is the metadata line under construction; each later stage adds
-    // to it, and {§log-wire-format}'s canonical JSON sorts the keys, so the order of stages never
-    // reaches the wire.
-    static #rowIdentity(e: LogEntryView, options: RenderLogOptions): RowIdentity {
-        const meta: Record<string, unknown> = {};
-        const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
-        const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
-        const renderedLeaf = LogEntryProjection.leaf(e);
-        const path = PacketWire.#entryPath(coordinate, renderedLeaf);
-        // Absence = "model" — the session's own authorship is the default (#338). An arrival is an
-        // inbound SEND row the harness published ({§message-arrival}): its stored origin says
-        // nothing, so the row names its sender instead (#706).
-        // {§turn-source-resources}: an emission row is stored as the harness's, but names its author.
-        const author = LogEntryProjection.isEmission(e) ? e.producer : e.origin;
-        if (typeof author === "string" && author !== "model" && !PacketWire.isArrival(e)) meta.origin = author;
-        // {§env-delta}: render the causal session address or
-        // subsystem token when present; absence means the owning session.
-        // {§message-arrival} an arrival whose source is the transport's own name for it adds
-        // nothing to its address; a peer's or an agent's source still shows.
-        const attrs = PacketWire.#attrsOf(e);
-        const selfAddressed = attrs.selfAddressed === true;
-        if (typeof e.source === "string" && e.source.length > 0 && !selfAddressed) meta.source = e.source;
-        // {§message-arrival}: every other sender has an address; the operator's message is named
-        // for the model, or it reads as the model's own SEND.
-        if (PacketWire.isArrival(e) && meta.source === undefined) meta.origin = "user";
-        if (e.source === "file" && Object.hasOwn(attrs, "git")) {
-            const git = attrs.git;
-            if (typeof git !== "string" || git.length !== 2) {
-                throw new TypeError("A source=file log row carries malformed Git XY metadata.");
-            }
-            meta.git = git;
-        }
-        // {§log-wire-format}: routine success is implicit, independently of the operation.
-        if (typeof e.status === "number" && e.status !== 200) meta.status = e.status;
-        const parsedTx = typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx;
-        const tx: StatementTx | null = isRecord(parsedTx) ? parsedTx : null;
-        const replay = options.paired?.get(String(e.coordinate));
-        const paired = replay !== undefined;
-        if (!paired && typeof tx?.aside === "string") meta.aside = tx.aside;
-        const authored = PacketWire.#authoredPath(tx?.target);
-        const target = PacketWire.#operandPath(e.target ?? PacketWire.#actionTarget(tx?.target), options.projectRoot ?? null, authored);
-        const pair = op === "COPY" || op === "MOVE";
-        const selections: Array<StatementTx | null> = pair
-            ? [PacketWire.#selection(tx?.source), PacketWire.#selection(tx?.destination)]
-            : [{ ...tx, target: e.target ?? tx?.target }];
-        const paths = selections.map((selection) => PacketWire.#operandPath(PacketWire.#actionTarget(selection?.target), options.projectRoot ?? null, authored));
-        if (pair && typeof e.status === "number" && e.status < 400 && paths.some((candidate) => candidate === null)) {
-            throw new Error(`A successful ${op} log row must retain both operand selections.`);
-        }
-        for (const field of ["scope", "metadata"] as const) {
-            if (paired) continue;
-            const values = selections.map((selection) => field === "scope"
-                ? PacketWire.#requestScope(selection?.lineMarker)
-                : PacketWire.#metadata(selection?.metadata));
-            if (pair) {
-                const pairedValues = Object.fromEntries(values.flatMap((value, index) => value === null ? [] : [[index === 0 ? "from" : "to", value]]));
-                if (Object.keys(pairedValues).length > 0) meta[field] = pairedValues;
-            } else if (values[0] !== null) meta[field] = values[0];
-        }
-        // {§log-wire-format}: describe resources and patterns directly; never serialize an OP.
-        const parts = selections.flatMap((selection, index) => {
-            const matcher = selection?.matcher;
-            const pattern = isRecord(matcher) ? matcher.raw : undefined;
-            return [
-                ...(paths[index] === null ? [] : [`(${paths[index]})`]),
-                ...(typeof pattern !== "string" || pattern.length === 0 ? []
-                    : [/[\r\n]/u.test(pattern) ? JSON.stringify(pattern) : pattern]),
-            ];
-        });
-        // {§emission-history}: every receipt names its operand; a paired one leaves its pattern to the replayed operation.
-        const operands = paths.filter((candidate) => candidate !== null).map((candidate) => `(${candidate})`).join(" ");
-        const description = op === "error" || op === "extension" || parts.length === 0 ? null
-            : !paired ? parts.join(" ") : operands.length > 0 ? operands : null;
-        // {§execution-output-identity} The created identity is an outcome, not an authored target.
-        if ((op === "WORK" || op === "FORK") && typeof attrs.session === "string") {
-            meta.session = attrs.session;
-            // {§session-scheme} — a WORK that reached a session the name already held says so.
-            if (attrs.delivered === "message") meta.delivered = "message";
-        }
-        // {§session-wait-timing} — the accepted bound, not elapsed time or the current configuration.
-        if (op === "WAIT" && Object.hasOwn(attrs, "waiting")) {
-            const seconds = attrs.waiting;
-            if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
-                throw new TypeError("A WAIT receipt carries a malformed waiting bound.");
-            }
-            meta.waitSeconds = seconds;
-        }
-        // An execution's output is a separate stream entry ({§exec-stream}); its address rides in a
-        // `stream` link, distinct from the runtime-owned invocation target.
-        // {§exec-target-routing} {§fs-namespace} — the receipt names the working directory only
-        // when it is not the project root, and then in project-relative form.
-        if (isExecutionOp(op) && typeof attrs.cwd === "string") {
-            const cwd = PacketWire.#projectRelativeCwd(attrs.cwd, options.projectRoot ?? null);
-            if (cwd !== null) meta.cwd = cwd;
-        }
-        if (isExecutionOp(op) && typeof attrs.stream === "string") {
-            meta.stream = attrs.stream;
-        }
-        return { meta, op, tx, coordinate, path, renderedLeaf, target, description };
-    }
-
-    // The row's result facts from its rx, added to the metadata line stage by stage: the attachments and the
-    // returned address, the terminal stream's exit, the Problem or detail, the retrieval extents, and the
-    // structured mutation receipts. Returns what the body projection needs to know about the result.
-    static #rowResultFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null, fullBody: ResolvedLogBody): RowResultFacts {
-        const { meta, op } = identity;
-        if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.attachments) && rx.attachments.length > 0) {
-            meta.attachments = rx.attachments.map(({ name, mediaType, target }) => ({ name, mediaType, path: target }));
-        }
-        // {§log-wire-format}: preserve the returned address, not a second authored target.
-        if (rx !== null && typeof rx === "object" && typeof rx.resource === "string"
-            && rx.resource.length > 0 && rx.resource !== identity.target && rx.resource !== meta.stream) {
-            meta.resource = rx.resource;
-        }
-        PacketWire.#streamReadFacts(meta, op, rx);
-        PacketWire.#problemFacts(identity, e, rx);
-        const { findItems, range } = PacketWire.#retrievalFacts(identity, e, rx, fullBody);
-        const structuredMutationReceipt = PacketWire.#mutationReceiptFacts(meta, op, rx);
-        return {
-            findItems, range, structuredMutationReceipt,
-            ...(op === "READ" && rx?.matches !== undefined
-                ? { matches: SchemeResults.assertMatchEvidenceList(rx.matches) } : {}),
-        };
-    }
-
-        // {§exec-stream}: explicit and automatic READs preserve the same
-        // durable liveness facts, including an empty active channel.
-    static #streamReadFacts(meta: RowIdentity["meta"], op: RowIdentity["op"], rx: RxView | null): void {
-        if (op === "READ" && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "terminal")) {
-            if (typeof rx.terminal !== "boolean") {
-                throw new TypeError("A stream READ result carries a malformed terminal flag.");
-            }
-            meta.terminal = rx.terminal;
-            if (Object.hasOwn(rx, "exitCode")) {
-                if (typeof rx.exitCode !== "number" || !Number.isSafeInteger(rx.exitCode)) {
-                    throw new TypeError("A stream READ result carries a malformed exitCode.");
-                }
-                meta.exitCode = rx.exitCode;
-            }
-            // {§executor-results} — a producer's full-page fact survives projection as written.
-            if (Object.hasOwn(rx, "page")) {
-                const page = rx.page;
-                if (!isRecord(page) || !isSafeInteger(page.size) || !isSafeInteger(page.returned)) {
-                    throw new TypeError("A stream READ result carries a malformed page.");
-                }
-                meta.page = { size: page.size, returned: page.returned };
-            }
-        }
-    }
-
-        // {§diagnostic-observation} — the exact durable Problem remains the
-        // failure authority; the packet carries only facts not already
-        // owned by its enclosing row. Errors remains only an index.
-    // The success-side sibling (#342): a sub-problem receipt may carry one
-    // terse `detail` (e.g. the EDIT 304) so situational teaching is paid
-    // only when the situation occurs, never in the hot path.
-    static #problemFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null): void {
-        const { meta } = identity;
-        if (typeof e.status === "number" && e.status >= 400 && rx !== null && typeof rx === "object") {
-            const problem = Validator.assertProblemDetails(rx.problem);
-            meta.problem = Problems.project(problem, {
-                status: e.status,
-                row: { ...meta, target: identity.target },
-            });
-        }
-        if (!Object.hasOwn(meta, "problem") && rx !== null && typeof rx.detail === "string" && rx.detail.length > 0) {
-            meta.detail = rx.detail;
-        }
-    }
-
-        // {§log-wire-format}: one extent/coordinate owner plus
-        // only FIND aggregates that add information beyond that extent.
-    static #retrievalFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null, fullBody: ResolvedLogBody): { findItems: number | null; range: RangeExtent | null } {
-        const { meta, op, tx } = identity;
-        let findItems: number | null = null;
-        let range: RangeExtent | null = null;
-        const patterned = tx !== null && tx !== undefined && typeof tx === "object" && isRecord(tx.matcher) && typeof tx.matcher.raw === "string";
-        if (patterned && op !== "FIND" && rx !== null && typeof rx === "object" && typeof rx.matched === "number") meta.matched = rx.matched;
-        // {§channel-selection} — a READ names the resource's other channels with their
-        // tokens, so the row itself shows the choice a FIND listing would.
-        if (op === "READ" && rx !== null && typeof rx === "object" && rx.channels !== null && typeof rx.channels === "object") {
-            meta.channels = rx.channels;
-        }
-        // {§message-completion} — a reply's row names the prompts it answered.
-        if ((op === "SEND" || op === "KILL") && rx !== null && typeof rx === "object" && Array.isArray(rx.answers)) {
-            meta.answers = rx.answers;
-        }
-        if (op === "READ" || op === "FIND") {
-            if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
-                const parsed = PacketWire.#safeParse(rx.content);
-                if (Array.isArray(parsed)) findItems = parsed.length;
-            }
-            range = rx !== null && typeof rx === "object" && rx.range !== undefined
-                ? Validator.assertRangeExtent(rx.range)
-                : null;
-            const problem = isRecord(meta.problem) ? meta.problem : null;
-            const problemOwnsRange = typeof e.status === "number" && e.status >= 400 && problem !== null && Object.hasOwn(problem, "range");
-            if (problemOwnsRange) {
-                Validator.assertRangeExtent(problem?.range);
-                delete meta.scope;
-            }
-            if (range !== null && !problemOwnsRange) {
-                delete meta.scope;
-                const sparse = fullBody.lineOrdinals !== undefined
-                    && range.returned !== undefined
-                    && fullBody.lineOrdinals.length !== range.returned[1] - range.returned[0] + 1;
-                // A row whose Problem does not own the range retrieved successfully, even when it
-                // carries its execution's failure: its extent takes the one scope notation.
-                meta.range = ScopeFormat.range(range, sparse);
-            } else if (range === null && !problemOwnsRange && op === "READ" && rx !== null && typeof rx === "object" && rx.region !== undefined) {
-                delete meta.scope;
-                meta.range = ScopeFormat.region(Validator.assertTextRegion(rx.region));
-            }
-            // These are underlying selected-content weights, distinct from
-            // the emitted body's generic `tokens` measurement.
-            if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.itemsWeightTotal === "number" && rx.itemsWeightTotal > 0) {
-                meta.itemsTokenTotal = rx.itemsWeightTotal;
-            }
-            if (
-                op === "FIND"
-                && rx !== null
-                && typeof rx === "object"
-                && typeof rx.returnedItemsWeightTotal === "number"
-                && rx.returnedItemsWeightTotal > 0
-                && rx.returnedItemsWeightTotal !== rx.itemsWeightTotal
-            ) {
-                meta.returnedItemsTokenTotal = rx.returnedItemsWeightTotal;
-            }
-            if (
-                op === "FIND"
-                && patterned
-                && range?.unit === "resource"
-                && rx !== null
-                && typeof rx === "object"
-                && typeof rx.matchLocationCount === "number"
-                && rx.matchLocationCount > 0
-            ) {
-                meta.matchLocationCount = rx.matchLocationCount;
-            }
-        }
-        return { findItems, range };
-    }
-
-        // {§edit-result-receipt-projection} {§edit-result-receipt-projection}
-        // EDIT/scoped entry KILL own one receipt; COPY/MOVE own resource effects whose
-        // optional receipts describe scoped textual materializations.
-    static #mutationReceiptFacts(meta: RowIdentity["meta"], op: RowIdentity["op"], rx: RxView | null): boolean {
-        let structuredMutationReceipt = false;
-        if ((op === "EDIT" || op === "KILL") && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "receipt")) {
-            Object.assign(meta, PacketWire.#receiptMeta(rx.receipt));
-            structuredMutationReceipt = true;
-        }
-        if (
-            (op === "COPY" || op === "MOVE")
-            && rx !== null
-            && typeof rx === "object"
-            && Object.hasOwn(rx, "effects")
-        ) {
-            const effects = assertResourceEffects(rx.effects);
-            meta.effects = effects.map((effect) => ({
-                path: effect.target,
-                action: effect.action,
-                ...(effect.receipt === undefined
-                    ? {}
-                    : PacketWire.#receiptMeta(effect.receipt)),
-            }));
-            structuredMutationReceipt = effects.some((effect) => effect.receipt !== undefined);
-        }
-        return structuredMutationReceipt;
-    }
-
-    // The body the row shows: the canonical full body, shared with log READ, log FIND and search
-    // derivation, whole. Whether a result fit was decided where it landed ({§tokenomics}).
-    static #rowBody(
-        identity: RowIdentity,
-        e: LogEntryView,
-        fullBody: ResolvedLogBody,
-        bodyVisibility: VisibleLogBody,
-        facts: RowResultFacts,
-    ): RowBody {
-        const { meta, op } = identity;
-        const projectedBody = {
-            ...fullBody,
-            content: bodyVisibility.fullyFolded ? bodyVisibility.readableContent : bodyVisibility.content,
-        };
-        const emptyFind = op === "FIND" && e.status === 200 && facts.findItems === 0;
-        const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;
-        const lineNumberWidth = op === "READ" ? e.lineNumberWidth ?? null : null;
-        if (lineAnchors !== null) {
-            LineAnchors.assertProjection(fullBody.content, lineAnchors);
-        }
-        const findRange = op === "FIND" ? facts.range : null;
-        const bodyStartLine = findRange?.returned?.[0] ?? fullBody.startLine;
-        const numericLineNumberWidth = findRange === null
-            ? bodyStartLine === null || bodyVisibility.totalLines === 0
-                ? 0
-                : String(fullBody.lineOrdinals?.at(-1) ?? bodyStartLine + bodyVisibility.totalLines - 1).length
-            : String(findRange.total).length;
-        const sourceOrdinals = bodyVisibility.fullyFolded
-            ? bodyVisibility.readableOrdinals
-            : bodyVisibility.ordinals;
-        // {§packet} — what came back unasked in size is its first page here too; what the
-        // model authored or asked for exactly, and a retrieval's own page, render whole.
-        const projection = PacketWire.#receivedBody(e, op)
-            ? PacketWire.#preview(projectedBody.content)
-            : { text: projectedBody.content, cut: false, chunk: null };
-        const projectedText = projection.text;
-        const projectedLineCount = TextCoordinates.logicalLines(projectedText).length;
-        const projectedOrdinals = sourceOrdinals.slice(0, projectedLineCount);
-        if (facts.matches !== undefined && !bodyVisibility.fullyFolded) {
-            const physicalLines = projectedOrdinals.map((ordinal) => fullBody.lineOrdinals?.[ordinal - 1]
-                ?? (fullBody.startLine ?? 1) + ordinal - 1);
-            const evidence = PatternEdits.visible(facts.matches, physicalLines).map(({ region, enclosingRegion, locator }) => ({
-                ...(locator === undefined ? {} : { locator }),
-                ...(region === undefined ? {} : { region: ScopeFormat.region(region) }),
-                ...(enclosingRegion === undefined ? {} : { enclosingRegion: ScopeFormat.region(enclosingRegion) }),
-            }));
-            if (evidence.length > 0) {
-                const shown = BodyPreview.items(evidence, JSON.stringify);
-                meta.matches = shown;
-                if (shown.length !== evidence.length) meta.matchLocationCount = evidence.length;
-            }
-        }
-        const body = emptyFind || projectedText.length === 0
-            ? ""
-            : PacketWire.#renderContentBody(
-                projectedText,
-                bodyStartLine,
-                lineAnchors,
-                lineNumberWidth,
-                numericLineNumberWidth,
-                bodyStartLine === null ? null : projectedOrdinals,
-                fullBody.lineOrdinals ?? null,
-            );
-
-        // lines beside tokens on a non-retrieval row with a navigable body — the count of
-        // `N:`-numbered lines (fences and unnumbered prose don't count), so the model can plan
-        // a <start,end> slice before paying for a READ. READ/FIND own typed extents instead.
-        if (fullBody.content.length > 0 && op !== "READ" && op !== "FIND") {
-            meta.lines = bodyVisibility.totalLines;
-        }
-
-        if (bodyVisibility.trimmed.length > 0 && !bodyVisibility.fullyFolded) {
-            meta.trimmed = LogVisibility.format(bodyVisibility.trimmed);
-        }
-
-        const display = bodyVisibility.readableContent.length === 0
-            ? "none"
-            : bodyVisibility.fullyFolded
-                ? "folded"
-                : body.length === 0
-                    ? "none"
-                    : "open";
-        // {§log-wire-format} — a page states what it shows of what the row holds.
-        const projectedChunk = projection.chunk !== null && bodyVisibility.folded.length > 0 && !bodyVisibility.fullyFolded
-            ? PacketWire.#sparseChunk(fullBody.content, projectedBody.content, sourceOrdinals, projection.text)
-            : projection.chunk;
-        if (display === "open" && projectedChunk !== null) {
-            meta.preview = projectedChunk;
-            delete meta.lines;
-        }
-        return { body, display };
-    }
-
     // The row's native attachment, a landed-unfit arrival's size, and the accounting field that
     // participates in the row it measures: iterate until its decimal width and therefore the
     // rendered row's curation weight are stable. {§log-wire-format}
@@ -1045,7 +356,7 @@ export default class PacketWire {
             ? nativeCandidate : null;
         // {§tokenomics} — an arrival that did not fit landed folded with its size beside it: the lines
         // and tokens of the body the model can READ at this row's address.
-        const unfit = PacketWire.#attrsOf(e).unfit;
+        const unfit = PacketRowFacts.attrsOf(e).unfit;
         if (unfit !== null && typeof unfit === "object") meta.size = unfit;
         // {§log-wire-format}: retained native content shares the row's curation lifetime.
         const attachment = !(bodyVisibility.totalLines > 0 && bodyVisibility.fullyFolded)
@@ -1171,80 +482,6 @@ export default class PacketWire {
         return `log:///${attachment.coordinate}/READ (${attachment.path}) (${facts.join(", ")}): the bytes of that READ row, retained until it is KILLed. Not a new arrival.`;
     }
 
-    static #projectRelativeCwd(cwd: string, projectRoot: string | null): string | null {
-        if (projectRoot === null || cwd === projectRoot) return null;
-        const spelled = relative(projectRoot, cwd);
-        return spelled.length === 0 ? null : spelled.split(sep).join("/");
-    }
-
-    static #operandPath(target: ActionTarget | null | undefined, projectRoot: string | null, authored: ParsedPath | null): string | null {
-        if (target === null || target === undefined) return null;
-        if (typeof target.raw === "string" && (target.kind === "local" || target.scheme == null)) {
-            return renderAuthoredTarget({ kind: "local", raw: target.raw, fragment: target.fragment ?? null });
-        }
-        return PacketWire.#renderActionTarget(target, projectRoot, authored);
-    }
-
-    static #renderActionTarget(target: ActionTarget | null | undefined, projectRoot: string | null, authored: ParsedPath | null): string | null {
-        if (target === null || target === undefined) return null;
-        return renderTarget({
-            scheme: target.scheme,
-            hostname: target.hostname,
-            port: target.port,
-            pathname: target.pathname,
-            query: target.query,
-            fragment: target.fragment,
-        }, projectRoot, authored);
-    }
-
-    static #requestScope(marker: unknown): string | null {
-        if (marker === null || marker === undefined) return null;
-        const marks = isRecord(marker) ? marker.marks : undefined;
-        const isMark = (mark: unknown): mark is number | string => typeof mark === "string" || typeof mark === "number";
-        if (!Array.isArray(marks) || !marks.every(isMark)) {
-            throw new TypeError("An operation scope must retain its authored marks.");
-        }
-        const [first, ...rest] = marks;
-        if (first === undefined) throw new TypeError("An operation scope must retain its authored marks.");
-        // Failed selections still describe what was attempted; the operation owns validity.
-        return ScopeFormat.marker({ marks: [first, ...rest] });
-    }
-
-    // {§packet} A stored operand target: the address columns as nullable strings, the port a number, the
-    // authored `kind` and `raw` read where used. A field of another type is a malformed row.
-    static #actionTarget(value: unknown): ActionTarget | null {
-        if (value === null || value === undefined) return null;
-        if (!isRecord(value)) throw new TypeError("A stored operand target must be an object.");
-        const text = (name: string): string | null | undefined => {
-            const field = value[name];
-            if (field === undefined || field === null || typeof field === "string") return field;
-            throw new TypeError(`A stored operand target carries a malformed ${name}.`);
-        };
-        const port = value.port;
-        if (port !== undefined && port !== null && typeof port !== "number") {
-            throw new TypeError("A stored operand target carries a malformed port.");
-        }
-        return {
-            kind: value.kind, raw: value.raw, scheme: text("scheme"), hostname: text("hostname"), port, pathname: text("pathname"),
-            query: text("query"), fragment: text("fragment"), username: text("username"), password: text("password"),
-        };
-    }
-
-    // The target as the model authored it, when the stored statement's target is a path the grammar names; a row
-    // whose stored target is not renders without its authored spelling.
-    static #authoredPath(value: unknown): ParsedPath | null {
-        if (value === null || value === undefined) return null;
-        return Validator.validateParsedPath(value).valid ? Validator.assertParsedPath(value) : null;
-    }
-
-    static #selection(value: unknown): StatementTx | null {
-        return isRecord(value) ? value : null;
-    }
-
-    static #metadata(value: unknown): readonly string[] | null {
-        return Array.isArray(value) && value.length > 0 && value.every((item): item is string => typeof item === "string") ? value : null;
-    }
-
     // {§packet-inject}: the count line, then one bounded line per non-empty class. Untracked paths are
     // named because they are NOT members ({§membership}) — the user admits them.
     static #renderGitState(git: GitStatusView): string {
@@ -1271,5 +508,4 @@ export default class PacketWire {
             });
         return [head, ...lines].join("\n");
     }
-
 }

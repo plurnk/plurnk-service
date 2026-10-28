@@ -928,6 +928,16 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         }),
                     /Action 'workspace\.mcp\.list' rejected parameters\./,
                 );
+                await assert.rejects(
+                    () =>
+                        ctx.request("_plurnk/action", {
+                            kind: "ping",
+                            params: { unexpectedField: 123 },
+                        }),
+                    /Action 'ping' rejected parameters\./,
+                );
+                assert.equal(discovered.actions.ping?.inputSchema.additionalProperties, false);
+                assert.deepEqual(discovered.actions["op.parse"]?.inputSchema.required, ["text"]);
 
                 const updateAction = await ctx.request<{ catalog: { status: string }; service: { artifact: string } }>(
                     "_plurnk/action",
@@ -944,6 +954,14 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     sessionId: "1#user",
                     prompt: [{ type: "text", text: "/mcp list" }],
                 });
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.prompt, {
+                            sessionId: "1#user",
+                            prompt: [{ type: "text", text: "/env list" }],
+                        }),
+                    /Action 'session\.env\.list' is not registered\./,
+                );
                 await ctx.request(methods.agent.session.prompt, {
                     sessionId: "1#user",
                     prompt: [{ type: "text", text: "/update" }],

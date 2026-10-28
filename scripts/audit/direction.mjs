@@ -4,11 +4,12 @@ import { resolve } from "node:path";
 import { cruise } from "dependency-cruiser";
 import configuration from "../lib/dependency-cruiser.mjs";
 import { usage } from "../lib/usage.mjs";
+import { shipsDist } from "../package-build-policy.mjs";
 
 usage(import.meta, `
 usage: npm run audit:direction
 Runtime import-direction audit with dependency-cruiser over the built output: runtime imports are the compiler's output, not a second reading of TypeScript (#1053). On demand, never a gate.
-Reads: each workspace's dist/.
+Reads: each workspace's dist/ (or shipped JS for dist-less workspaces).
 Writes: violations to stdout; exit 1 on any.
 `);
 
@@ -16,6 +17,12 @@ export const inspectDirections = async (root) => {
     const { workspaces } = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
     const sources = [];
     for (const workspace of workspaces) {
+        const manifest = JSON.parse(await readFile(resolve(root, workspace, "package.json"), "utf8").catch(() => "{}"));
+        if (Array.isArray(manifest.files) && !shipsDist(manifest)) {
+            const shipped = manifest.files.filter((entry) => typeof entry === "string" && /\.[cm]?js$/u.test(entry));
+            sources.push(...shipped.map((entry) => resolve(root, workspace, entry)));
+            continue;
+        }
         const directory = resolve(root, workspace, "dist");
         const files = await Array.fromAsync(glob("**/*.{js,mjs,cjs}", { cwd: directory }));
         if (files.length === 0) throw new Error(`${workspace}: no built JavaScript; run npm run build first`);

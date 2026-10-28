@@ -10,6 +10,7 @@ import {
     addressOf,
     isRecord,
     isSafeInteger,
+    toolKindOf,
     type ApplicationInboxMessage,
     type ApplicationLoopPacket,
     type LogEntryNotification,
@@ -20,40 +21,24 @@ import {
     type TerminatedNotification,
 } from "@plurnk/plurnk-contracts";
 import { buildUnifiedDiff } from "./diff.ts";
+import {
+    attrRecord,
+    cleanReceipt,
+    extractMessageId,
+    invocationCoordinate,
+    isResponseMessage,
+    parseJsonOrValue,
+    statusOf,
+    txBody,
+} from "./log-entry-projection.ts";
+import { replaySessionHistory, type ReplayResult } from "./replay.ts";
 
 export interface AcpSessionUpdate {
     readonly sessionId: string;
     readonly update: SessionUpdate;
 }
 
-interface ReplayHistoryLinks {
-    readonly older?: string;
-    readonly newer?: string;
-}
-
-type ReplayResult = AcpSessionUpdate[] & {
-    readonly updates: AcpSessionUpdate[];
-    readonly history: ReplayHistoryLinks;
-};
-
-const MODEL_FACTS: ReadonlySet<string> = new Set(["lineAnchors", "lineAnchorIdentity", "lineNumberWidth"]);
-
 export const terminalIdForEntry = (logEntryId: number): string => `term:${logEntryId}`;
-
-const extractMessageId = (source: string | null, sessionId: string): string | null => {
-    if (typeof source !== "string" || source.length === 0) return null;
-    try {
-        const url = new URL(source);
-        if (url.protocol !== "acp:") return null;
-        const segments = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
-        if (segments.length === 4 && segments[0] === "sessions" && segments[2] === "messages") {
-            return segments[1] === sessionId ? segments[3] ?? null : null;
-        }
-        return null;
-    } catch {
-        return null;
-    }
-};
 
 export default class SessionTranslator {
     readonly #acpSessionId: string;
@@ -98,146 +83,21 @@ export default class SessionTranslator {
         return `${row.loop_seq}/${row.turn_seq}/${row.sequence}`;
     }
 
-    static #invocationCoordinate(ref: string | undefined): string | null {
-        if (typeof ref !== "string" || ref.length === 0) return null;
-        const match = /^log:\/\/\/(\d+\/\d+\/\d+)(?:\/|$)/u.exec(ref);
-        return match?.[1] ?? ref;
-    }
-
     static toolKindOf(op: string | null, scheme: string | null): ToolKind {
-        switch (op) {
-            case "READ":
-                return scheme === "http" || scheme === "https" ? "fetch" : "read";
-            case "EDIT":
-            case "COPY":
-                return "edit";
-            case "MOVE":
-                return "move";
-            case "KILL":
-                return "delete";
-            case "FIND":
-                return "search";
-            case "NOTE":
-            case "WAIT":
-                return "think";
-            case "SEND":
-                return "other";
-            case "WORK":
-            case "FORK":
-            case "EXEC":
-                return "execute";
-            default:
-                return op === null ? "other" : "execute";
-        }
-    }
-
-    static #statusOf(row: { readonly status_rx?: unknown }): number {
-        return typeof row.status_rx === "number" ? row.status_rx : 200;
+        return toolKindOf(op, scheme);
     }
 
     static toolStatusOf(row: { readonly state?: unknown; readonly status_rx?: unknown; readonly attrs?: unknown }): ToolCallStatus {
         if (row.state === "proposed") return "pending";
-        const statusRx = SessionTranslator.#statusOf(row);
+        const statusRx = statusOf(row);
         if (row.state === "failed" || row.state === "cancelled" || statusRx >= 400) {
             return "failed";
         }
-        const attrs = SessionTranslator.#attrRecord(row.attrs);
+        const attrs = attrRecord(row.attrs);
         if (statusRx < 400 && (typeof attrs.stream === "string" || typeof attrs.message === "string" || statusRx === 202)) {
             return "in_progress";
         }
         return "completed";
-    }
-
-    static #parsed(value: unknown): unknown {
-        if (value === undefined || value === "") return null;
-        if (typeof value !== "string") return value;
-        try {
-            return JSON.parse(value) as unknown;
-        } catch {
-            return value;
-        }
-    }
-
-    static #txBody(tx: unknown, attrs?: Readonly<Record<string, unknown>>, parsedRx?: unknown): string {
-        const parsed = SessionTranslator.#parsed(tx);
-        if (typeof parsed === "string") return parsed;
-        if (isRecord(parsed)) {
-            if (typeof parsed.body === "string") return parsed.body;
-            if (isRecord(parsed.body)) {
-                if (typeof parsed.body.raw === "string") return parsed.body.raw;
-                if (parsed.body.json !== undefined) return JSON.stringify(parsed.body.json);
-            }
-        }
-        if (attrs !== undefined) {
-            if (typeof attrs.body === "string") return attrs.body;
-            if (typeof attrs.content === "string") return attrs.content;
-        }
-        if (isRecord(parsedRx) && typeof parsedRx.content === "string") {
-            return parsedRx.content;
-        }
-        return "";
-    }
-
-    static #attrRecord(attrs: unknown): Readonly<Record<string, unknown>> {
-        const parsed = SessionTranslator.#parsed(attrs);
-        return isRecord(parsed) ? parsed : {};
-    }
-
-    static #cleanReceipt(rx: unknown): {
-        readonly receipt: unknown;
-        readonly contentBlocks: ToolCallContent[];
-    } {
-        const parsed = SessionTranslator.#parsed(rx);
-        if (!isRecord(parsed)) {
-            const text = typeof rx === "string" ? rx : rx == null ? "" : JSON.stringify(rx);
-            return {
-                receipt: parsed,
-                contentBlocks: text.length > 0 ? [{ type: "content", content: { type: "text", text } }] : [],
-            };
-        }
-        const rawContent = typeof parsed.content === "string" && parsed.content.length > 0 ? parsed.content : null;
-        const kept = Object.entries(parsed).filter(([key]) => !MODEL_FACTS.has(key));
-        const receipt = Object.fromEntries(kept);
-        const contentBlocks: ToolCallContent[] = [];
-        if (rawContent !== null) {
-            contentBlocks.push({
-                type: "content",
-                content: { type: "text", text: rawContent },
-            });
-        } else if (isRecord(parsed.problem) && typeof parsed.problem.detail === "string") {
-            contentBlocks.push({
-                type: "content",
-                content: { type: "text", text: parsed.problem.detail },
-            });
-        }
-        return { receipt, contentBlocks };
-    }
-
-    static #isResponseMessage(
-        entry: LogEntryWire,
-        parsedRx: unknown,
-        attrs: Readonly<Record<string, unknown>>,
-        text: string,
-        sessionId: string,
-    ): boolean {
-        if ("inherited_history" in entry && entry.inherited_history === 1) return false;
-        if (entry.op !== "SEND" && entry.op !== "KILL") return false;
-        const statusRx = SessionTranslator.#statusOf(entry);
-        if (statusRx < 200 || statusRx >= 300) return false;
-        if (text.trim().length === 0) return false;
-        const deliveredReply = attrs.kind === "reply";
-        if (entry.origin !== "model" && !deliveredReply) return false;
-        if (deliveredReply) {
-            return isRecord(parsedRx)
-                && Array.isArray(parsedRx.answers)
-                && parsedRx.answers.some((addr) => extractMessageId(typeof addr === "string" ? addr : null, sessionId) !== null);
-        }
-        if (entry.scheme === "session" || entry.scheme === "workspace") return false;
-        if (typeof attrs.to === "string" && (attrs.to.startsWith("session://") || attrs.to.startsWith("workspace://"))) return false;
-        if (isRecord(parsedRx) && Array.isArray(parsedRx.answers)) return true;
-        if (attrs.kind === "response" || attrs.kind === "message") return true;
-        if (entry.op === "SEND" && (entry.scheme === null || entry.scheme === undefined || entry.scheme === "acp") && !entry.pathname) return true;
-        return false;
     }
 
     logEntry({ entry }: LogEntryNotification): AcpSessionUpdate[] {
@@ -245,14 +105,14 @@ export default class SessionTranslator {
 
         const updates: AcpSessionUpdate[] = [];
         const coordinate = SessionTranslator.coordinateOf(entry);
-        const attrs = SessionTranslator.#attrRecord(entry.attrs);
-        const parsedTx = SessionTranslator.#parsed(entry.tx);
-        const parsedRx = SessionTranslator.#parsed(entry.rx);
-        const text = SessionTranslator.#txBody(parsedTx, attrs, parsedRx);
-        const { receipt, contentBlocks } = SessionTranslator.#cleanReceipt(entry.rx);
+        const attrs = attrRecord(entry.attrs);
+        const parsedTx = parseJsonOrValue(entry.tx);
+        const parsedRx = parseJsonOrValue(entry.rx);
+        const text = txBody(parsedTx, attrs, parsedRx);
+        const { receipt, contentBlocks } = cleanReceipt(entry.rx);
         const rawAddress = addressOf(entry);
         const address = rawAddress ?? (typeof attrs.path === "string" ? attrs.path : null);
-        const statusRx = SessionTranslator.#statusOf(entry);
+        const statusRx = statusOf(entry);
 
         const reasoningTurnKey = `${entry.session_id}:${entry.turn_id}`;
         if (
@@ -276,7 +136,7 @@ export default class SessionTranslator {
         }
 
         // 1. Agent response message
-        const isResponse = SessionTranslator.#isResponseMessage(entry, parsedRx, attrs, text, this.#acpSessionId);
+        const isResponse = isResponseMessage(entry, parsedRx, attrs, text, this.#acpSessionId);
         const isBodiedWait = entry.origin === "model" && entry.op === "WAIT" && text.trim().length > 0;
         const opMeta = {
             id: entry.id,
@@ -316,7 +176,7 @@ export default class SessionTranslator {
                 : completingAnswer
                     ? entry.answering
                     : undefined;
-        const targetCallId = SessionTranslator.#invocationCoordinate(rawInvocation);
+        const targetCallId = invocationCoordinate(rawInvocation);
         if (targetCallId !== null) {
             const dischargeContent: ToolCallContent[] = entry.op === "SEND" && text.length > 0
                 ? [{ type: "content", content: { type: "text", text } }]
@@ -709,96 +569,6 @@ export default class SessionTranslator {
             readonly exactLoopSeq?: number;
         } = {},
     ): ReplayResult {
-        const activeRows = rows
-            .filter((row) => !("inherited_history" in row && row.inherited_history === 1))
-            .toSorted(
-                (a, b) =>
-                    (a.loop_seq - b.loop_seq) ||
-                    (a.turn_seq - b.turn_seq) ||
-                    (a.sequence - b.sequence) ||
-                    (a.id - b.id),
-            );
-        const allLoopSeqs = [...new Set(activeRows.map((r) => r.loop_seq).filter(isSafeInteger))].toSorted((a, b) => a - b);
-
-        let candidateSeqs = allLoopSeqs;
-        if (typeof options.exactLoopSeq === "number") {
-            candidateSeqs = allLoopSeqs.filter((seq) => seq === options.exactLoopSeq);
-        } else if (typeof options.beforeLoopSeq === "number") {
-            candidateSeqs = allLoopSeqs.filter((seq) => seq < options.beforeLoopSeq!);
-        }
-
-        const selectedLoops =
-            typeof options.exactLoopSeq !== "number" &&
-            typeof options.historyLoops === "number" &&
-            options.historyLoops > 0 &&
-            candidateSeqs.length > options.historyLoops
-                ? new Set(candidateSeqs.slice(-options.historyLoops))
-                : new Set(candidateSeqs);
-
-        const updates: AcpSessionUpdate[] = [];
-        for (let i = 0; i < activeRows.length; i += 1) {
-            const row = activeRows[i];
-            if (!selectedLoops.has(row.loop_seq)) continue;
-            updates.push(...translator.logEntry({ entry: row }));
-            const attrs = SessionTranslator.#attrRecord(row.attrs);
-            if (typeof attrs.stream === "string") {
-                const streamEnded = activeRows
-                    .slice(i + 1)
-                    .some(
-                        (later) =>
-                            addressOf(later) === attrs.stream ||
-                            later.loop_seq > row.loop_seq ||
-                            (later.loop_seq === row.loop_seq && later.turn_seq > row.turn_seq),
-                    );
-                if (streamEnded) {
-                    updates.push(
-                        ...translator.terminalConcluded(row.id, SessionTranslator.#statusOf(row)),
-                    );
-                }
-            }
-        }
-
-        if (options.beforeLoopSeq === undefined && options.exactLoopSeq === undefined) {
-            for (const msg of inbox) {
-                if (
-                    msg.lifecycle !== "running" &&
-                    msg.lifecycle !== "queued" &&
-                    msg.lifecycle !== "parked"
-                ) {
-                    continue;
-                }
-                const messageId = extractMessageId(msg.source ?? msg.path, translator.#acpSessionId) ?? msg.path;
-                updates.push({
-                    sessionId: translator.#acpSessionId,
-                    update: {
-                        sessionUpdate: "user_message_chunk",
-                        messageId,
-                        content: { type: "text", text: msg.body },
-                        _meta: {
-                            plurnk: {
-                                loopId: msg.loopId,
-                                lifecycle: msg.lifecycle,
-                                published: false,
-                            },
-                        },
-                    },
-                });
-            }
-        }
-
-        const selectedSorted = [...selectedLoops].toSorted((a, b) => a - b);
-        const oldestSelected = selectedSorted[0];
-        const newestSelected = selectedSorted.at(-1);
-        const hasOlder = oldestSelected !== undefined && allLoopSeqs.some((seq) => seq < oldestSelected);
-        const hasNewer = newestSelected !== undefined && allLoopSeqs.some((seq) => seq > newestSelected);
-
-        const baseOrigin = translator.#origin ?? "http://127.0.0.1";
-        const messagesBase = `${baseOrigin}/acp/${translator.#workspaceId}/${translator.#sessionId}/messages?session=${encodeURIComponent(translator.#acpSessionId)}`;
-        const history: ReplayHistoryLinks = {
-            ...(hasOlder && oldestSelected !== undefined ? { older: `${messagesBase}&before=${oldestSelected}` } : {}),
-            ...(hasNewer && newestSelected !== undefined ? { newer: `${messagesBase}&after=${newestSelected}` } : {}),
-        };
-
-        return Object.assign(updates, { updates, history });
+        return replaySessionHistory(translator, rows, inbox, options);
     }
 }

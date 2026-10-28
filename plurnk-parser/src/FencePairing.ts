@@ -4,6 +4,7 @@
 // full-context predictions are uncached ({§whitespace-contract}). The specification of the search
 // below — its alphabet, its preference order and its repair cost — is {§fence-pairing}.
 
+import { isPlurnkOp } from "@plurnk/plurnk-contracts";
 import HeadingReader from "./HeadingReader.ts";
 
 type FenceCharacter = "`" | "~";
@@ -48,7 +49,7 @@ export type Pairing = {
 };
 
 type PairingOptions = {
-    readonly operations: ReadonlySet<string>;
+    readonly operations?: ReadonlySet<string>;
     readonly executors: ReadonlySet<string>;
     /** {§op-shapes} — other operations quote rather than execute. */
     readonly reasoning: boolean;
@@ -58,8 +59,6 @@ type PairingOptions = {
      * true for a runtime with none, is no opinion. */
     readonly wellFormed?: (runtime: string, body: string) => boolean;
 };
-
-const NAME = /^[A-Za-z0-9_.+-]+/u;
 
 // Decided ahead of the grammar because a fence's role depends on every fence after it ({§fence-pairing}).
 export default class FencePairing {
@@ -119,9 +118,9 @@ export default class FencePairing {
     // alone or with a slot, or an executor with its operand (sh and env are words); reasoning opens none.
     static #split(fence: string, next: string, options: PairingOptions): Split | null {
         if (options.reasoning) return null;
-        const name = NAME.exec(next)?.[0];
+        const name = HeadingReader.NAME.exec(next)?.[0];
         if (name === undefined) return null;
-        const native = options.operations.has(name);
+        const native = options.operations ? options.operations.has(name) : isPlurnkOp(name);
         const after = next.slice(name.length);
         if (!HeadingReader.opens(name, after, options.executors, options.reasoning)) return null;
         const rest = after.trimStart();
@@ -130,8 +129,9 @@ export default class FencePairing {
     }
 
     static #line(text: string, options: PairingOptions): Line {
+        const isNative = (name: string): boolean => options.operations ? options.operations.has(name) : isPlurnkOp(name);
         const naked = HeadingReader.nakedHeading(text, options.reasoning);
-        if (naked !== null && options.operations.has(naked.name)) return { kind: "name", name: naked.name, alone: naked.alone };
+        if (naked !== null && isNative(naked.name)) return { kind: "name", name: naked.name, alone: naked.alone };
         const match = /^( {0,3})(`{3,}|~{3,})(.*)$/u.exec(text);
         if (match === null) return { kind: "text" };
         const character: FenceCharacter = match[2].startsWith("`") ? "`" : "~";
@@ -148,9 +148,9 @@ export default class FencePairing {
             }
             // {§fence-pairing}: recognition must agree with OPEN in the lexer, including unknown
             // names with explicit slots; availability never changes their syntactic shape.
-            const name = NAME.exec(tail)?.[0];
+            const name = HeadingReader.NAME.exec(tail)?.[0];
             if (name !== undefined && HeadingReader.opens(name, tail.slice(name.length), options.executors, options.reasoning)) {
-                return { kind: "heading", width, ...options.heading(text.trimStart(), name), runtime: options.operations.has(name) ? null : name };
+                return { kind: "heading", width, ...options.heading(text.trimStart(), name), runtime: isNative(name) ? null : name };
             }
             if (tail.includes("`")) return { kind: "text" };
         }
