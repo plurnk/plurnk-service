@@ -140,15 +140,15 @@
         "@plurnk/plurnk-schemes-http": "2.0.5",
         "@possumtech/sqlrite": "^6.6.1",
         "diff": "^9.0.0",
-        "glob": "^13.0.6",
-        "minimatch": "^10.2.6",
+        "glob": "^14.0.3",
+        "minimatch": "^11.0.2",
         "@plurnk/plurnk-digest": "3.2.3",
         "@plurnk/plurnk-otel": "1.0.0"
     },
     "devDependencies": {
         "@modelcontextprotocol/server": "2.4.0",
         "@opentelemetry/sdk-trace": "^3.0.0",
-        "marked": "^18.1.1",
+        "marked": "^18.1.2",
         "zod": "4.6.7"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-core#readme",

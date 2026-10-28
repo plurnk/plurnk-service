@@ -33,7 +33,7 @@ import { bindListener } from "./_http.ts";
 import { type ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { context, trace, SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
-import { type ExportResult } from "@opentelemetry/core";
+import { ExportResultCode, type ExportResult } from "@opentelemetry/core";
 import { TracerProvider, SimpleSpanProcessor, type ReadableSpan, type SpanExporter } from "@opentelemetry/sdk-trace";
 import { recordGenAiSpans } from "../fixtures/genai-spans.ts";
 import { mountMemoryTracing } from "./_observe-memory.ts";
@@ -655,7 +655,7 @@ describe("observe-exporter-failure", () => {
 
 class ExplodingExporter implements SpanExporter {
     export(_spans: ReadableSpan[], resultCallback: (result: ExportResult) => void): void {
-        resultCallback({ code: 1, error: new Error("exporter exploded") });
+        resultCallback({ code: ExportResultCode.FAILED, error: new Error("exporter exploded") });
     }
     shutdown(): Promise<void> { return Promise.resolve(); }
     forceFlush?(): Promise<void> { return Promise.resolve(); }

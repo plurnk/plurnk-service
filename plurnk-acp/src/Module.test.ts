@@ -842,6 +842,11 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     resumed._meta as { plurnk?: { history?: { older?: string } } } | undefined
                 )?.plurnk?.history;
                 assert.ok(historyMeta?.older, "older history link is present");
+                await waitFor(
+                    () =>
+                        replayed.some((u) => u.sessionUpdate === "user_message_chunk") &&
+                        replayed.some((u) => u.sessionUpdate === "agent_message_chunk"),
+                );
                 assert.ok(replayed.some((u) => u.sessionUpdate === "user_message_chunk"));
                 assert.ok(replayed.some((u) => u.sessionUpdate === "agent_message_chunk"));
 

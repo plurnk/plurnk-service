@@ -60,7 +60,7 @@
     "dependencies": {
         "@lezer/xml": "^1.0.6",
         "@xmldom/xmldom": "^0.9.10",
-        "xpath": "^0.0.35"
+        "xpath": "^0.0.36"
     },
     "peerDependencies": {
         "@plurnk/plurnk-mimetypes": "^3.0.0"

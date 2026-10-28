@@ -25,4 +25,5 @@ release artifacts.
 
 The daemon and its extensions execute local tools by design. A report should
 distinguish intended operator-authorized execution from a bypass of the
-documented authority boundary.
+documented authority boundary. For the control map, trust boundaries, and
+operator hardening checklist, see [ASSURANCE.md](./ASSURANCE.md).

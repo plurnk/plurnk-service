@@ -21,9 +21,10 @@ import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import { packetSection } from "./_packet.ts";
 import { type Db } from "../../src/core/Db.ts";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 // eslint-disable-next-line no-restricted-imports -- this witness writes a released-shape database and reads sqlite_master.
 import { DatabaseSync } from "node:sqlite";
@@ -813,24 +814,47 @@ describe("schema-baseline", () => {
 
 
 
-// {§db-migrations} — every released schema version from the 4.0.0 support floor forward and the
-// fingerprint of its shape: each release freezes what it shipped, and a database from any of them
-// keeps its path through the versions after it. A database from before the 4.0.0 floor upgrades
-// through @plurnk/plurnk-service@4.3.3 first.
-type Release = { readonly version: number; readonly release: string; readonly shape: string };
-const V4_3_3: Release = Object.freeze({ version: 10, release: "4.3.3", shape: "eb983f7a985b3ba40bec17b3b16a8acd2bf1ea0300bbbceb446762c1bec78bd0" });
-const V4_3_0: Release = Object.freeze({ version: 9, release: "4.3.0", shape: "eb983f7a985b3ba40bec17b3b16a8acd2bf1ea0300bbbceb446762c1bec78bd0" });
-const V4_0_0: Release = Object.freeze({ version: 8, release: "4.0.0", shape: "eace3ea2371f551d2b69cbb830a575abf0793f0bd62d3d27bbad1cdd08368e7e" });
+// {§db-migrations} — tagged historical releases keep their shipped version and shape fingerprint
+// built directly from their git tags, while the 5.0.0 re-founded baseline owns its own chapters.
+type TaggedRelease = { readonly version: number; readonly release: string; readonly tag: string; readonly shape: string };
+type BaselineChapter = { readonly version: number; readonly label: string; readonly shape: string };
+const V4_3_3: TaggedRelease = Object.freeze({ version: 34, release: "4.3.3", tag: "v4.3.3", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
+const V4_3_0: TaggedRelease = Object.freeze({ version: 33, release: "4.3.0", tag: "v4.3.0", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
+const V4_0_0: TaggedRelease = Object.freeze({ version: 32, release: "4.0.0", tag: "v4.0.0", shape: "76b1dff2af95661a15e32ebea23fddaf4b07cfdc0c06af58e6ca2640e2034263" });
+const V5_0_0: BaselineChapter = Object.freeze({ version: 10, label: "5.0.0", shape: "eb983f7a985b3ba40bec17b3b16a8acd2bf1ea0300bbbceb446762c1bec78bd0" });
+const V5_0_0_CHAPTER_9: BaselineChapter = Object.freeze({ version: 9, label: "5.0.0 chapter 9", shape: "eb983f7a985b3ba40bec17b3b16a8acd2bf1ea0300bbbceb446762c1bec78bd0" });
+const V5_0_0_CHAPTER_8: BaselineChapter = Object.freeze({ version: 8, label: "5.0.0 chapter 8", shape: "eace3ea2371f551d2b69cbb830a575abf0793f0bd62d3d27bbad1cdd08368e7e" });
 
-// A database at a released version, in a temporary root the test removes when it ends.
-const released = async (t: Pick<TestContext, "after">, release: Pick<Release, "version">): Promise<string> => {
+const REPO_ROOT = resolve(dirname(MIGRATIONS_DIR), "..");
+
+// A database at a tagged released version, built from the git tag's own migrations.
+const released = async (t: Pick<TestContext, "after">, release: TaggedRelease): Promise<string> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-released-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const dir = join(root, "migrations");
     await mkdir(dir);
-    const chapters = (await readdir(MIGRATIONS_DIR)).filter((name) => Number(name.split("_")[0]) <= release.version);
-    await Promise.all(chapters.map((name) => copyFile(join(MIGRATIONS_DIR, name), join(dir, name))));
+    const chapters = execFileSync("git", ["ls-tree", "--name-only", `${release.tag}:plurnk-core/migrations`], { cwd: REPO_ROOT, encoding: "utf8" })
+        .split("\n")
+        .filter((name) => name.endsWith(".sql") && Number(name.split("_")[0]) <= release.version);
+    assert.equal(chapters.length, release.version, `${release.tag} ships ${release.version} migration chapters`);
+    await Promise.all(chapters.map((name) => {
+        const sql = execFileSync("git", ["show", `${release.tag}:plurnk-core/migrations/${name}`], { cwd: REPO_ROOT, encoding: "utf8" });
+        return writeFile(join(dir, name), sql);
+    }));
     const path = join(root, "released.db");
+    new SqlRiteSync({ path, dir }).close();
+    return path;
+};
+
+// A database at a chapter of the current re-founded baseline.
+const baseline = async (t: Pick<TestContext, "after">, chapter: Pick<BaselineChapter, "version">): Promise<string> => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-baseline-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const dir = join(root, "migrations");
+    await mkdir(dir);
+    const chapters = (await readdir(MIGRATIONS_DIR)).filter((name) => Number(name.split("_")[0]) <= chapter.version);
+    await Promise.all(chapters.map((name) => copyFile(join(MIGRATIONS_DIR, name), join(dir, name))));
+    const path = join(root, "baseline.db");
     new SqlRiteSync({ path, dir }).close();
     return path;
 };
@@ -844,8 +868,8 @@ const shape = (path: string): string => {
     } finally { db.close(); }
 };
 
-test(`{§db-migrations} {§machine-processes}: a ${V4_0_0.release} database keeps every row, each workspace and session shown`, async (t) => {
-    const path = await released(t, V4_0_0);
+test(`{§db-migrations} {§machine-processes}: a ${V5_0_0_CHAPTER_8.label} database keeps every row, each workspace and session shown`, async (t) => {
+    const path = await baseline(t, V5_0_0_CHAPTER_8);
     const before = new DatabaseSync(path);
     before.exec(`
         PRAGMA foreign_keys = ON;
@@ -868,8 +892,8 @@ test(`{§db-migrations} {§machine-processes}: a ${V4_0_0.release} database keep
     } finally { after.close(); }
 });
 
-test(`{§db-migrations} {§session-ownership}: a ${V4_3_0.release} database collapses historical operator owners onto the workspace ACP operator owner`, async (t) => {
-    const path = await released(t, V4_3_0);
+test(`{§db-migrations} {§session-ownership}: a ${V5_0_0_CHAPTER_9.label} database collapses historical operator owners onto the workspace ACP operator owner`, async (t) => {
+    const path = await baseline(t, V5_0_0_CHAPTER_9);
     const before = new DatabaseSync(path);
     try {
         before.exec(`
@@ -908,7 +932,7 @@ test(`{§db-migrations} {§session-ownership}: a ${V4_3_0.release} database coll
     } finally { after.close(); }
 });
 
-test("{§db-migrations}: a database from before the 4.0.0 support floor is refused naming the stepping-stone release", async (t) => {
+test("{§db-migrations}: a database from before the 5.0.0 support floor or from a newer release is refused naming both versions read", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-pre-floor-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     for (const version of [8, 28]) {
@@ -919,15 +943,23 @@ test("{§db-migrations}: a database from before the 4.0.0 support floor is refus
         new SqlRiteSync({ path: dbPath, dir }).close();
         await assert.rejects(
             () => openMigrated(dbPath),
-            /precedes the 4\.0\.0 support floor; upgrade through @plurnk\/plurnk-service@4\.3\.3 first/,
+            new RegExp(`database schema \\(version ${version}\\) precedes the 5\\.0\\.0 support floor \\(schema version 10\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
         );
     }
+    const newerPath = await baseline(t, V5_0_0);
+    const raw = new DatabaseSync(newerPath);
+    try { raw.exec("PRAGMA user_version = 99;"); }
+    finally { raw.close(); }
+    await assert.rejects(
+        () => openMigrated(newerPath),
+        /database schema \(version 99\) is newer than this build \(schema version 10\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
+    );
 });
 
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.ok(versions.length >= V4_0_0.version, "the released versions are all present");
+    assert.equal(versions.length, V5_0_0.version, "the 5.0.0 baseline versions are all present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});
@@ -936,8 +968,19 @@ test("{§db-migrations}: versions are consecutive from 1 and a fresh database la
 });
 
 for (const release of [V4_3_3, V4_3_0, V4_0_0]) {
-    test(`{§db-migrations}: versions 1-${release.version} keep the ${release.release} shape`, async (t) => {
-        assert.equal(shape(await released(t, release)), release.shape, `a released migration changed shape; add the next MIGRATE version instead of editing versions 1-${release.version}`);
+    test(`{§db-migrations}: tagged ${release.release} (v${release.version}) keeps its released shape and is refused by the 5.0.0 baseline naming both versions read`, async (t) => {
+        const path = await released(t, release);
+        assert.equal(shape(path), release.shape, `tagged ${release.tag} shape matches its frozen fingerprint`);
+        await assert.rejects(
+            () => openMigrated(path),
+            new RegExp(`database schema \\(version ${release.version}\\) precedes the 5\\.0\\.0 support floor \\(schema version 10\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
+        );
+    });
+}
+
+for (const chapter of [V5_0_0, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
+    test(`{§db-migrations}: versions 1-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
+        assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 1-${chapter.version}`);
     });
 }
 });

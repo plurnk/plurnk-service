@@ -753,7 +753,7 @@ Every daemon database access goes through package-owned SqlRite statements (`nod
 
 | Concern | Rule |
 | --- | --- |
-| Baseline & migrations | `migrations/001_workspaces`..`008_interactions` form the 4.0.0 baseline. Released migrations are frozen; shape changes add a new versioned file with upgrade coverage from the support floor. Pre-floor or mismatched databases refuse open with remediation guidance. |
+| Baseline & migrations | `migrations/001_workspaces`..`010_operator_owners` form the 5.0.0 re-founded baseline. Released migrations are frozen; shape changes add a new versioned file with upgrade coverage from the support floor. Pre-floor, newer-release, or mismatched databases refuse open naming both schema versions read and non-destructive remediation guidance. |
 | Process triggers (`INIT`) | Row-writing triggers live in `-- INIT: <name>` blocks alongside their statements (`DROP TRIGGER IF EXISTS` + `CREATE TRIGGER`), running on the writer after `MIGRATE`. Baseline migrations hold only schema and `RAISE` guard triggers. |
 | Validation topology & identity | SQL CHECK constraints and guard triggers enforce storage invariants once, matching JSON Schema gates at `Results` and `Validator`. Every entry has non-null unique identity `(workspace_id, scheme, authority, pathname)` cascading on workspace delete; namespace schemes use `authority = ""`, file members use `scheme = "file"`. |
 | Indexes | Every FK column checked by delete/cascade/update is indexed, no `PREP` query scans a growing table unless whole-table by design, and every explicit index has a query-plan, FK, or uniqueness owner. |

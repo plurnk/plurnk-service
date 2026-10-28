@@ -716,28 +716,43 @@ describe("db-baseline-hint", () => {
 
 test("{§db-migrations}: opening a database whose shape disagrees with its version names the remedy", async () => {
     const result = await launch({}, async ({ dir, dbPath }) => {
-        // A database past every version whose entry_channels has another shape: no migration
-        // runs, and the statements naming today's columns cannot prepare.
-        const older = join(dir, "older-baseline");
-        await mkdir(older);
-        await writeFile(join(older, "099_other.sql"), "-- MIGRATE: 99 other\nCREATE TABLE entry_channels (entry_id INTEGER, name TEXT, content TEXT);\n");
-        new SqlRiteSync({ path: dbPath, dir: older }).close();
+        const mismatched = join(dir, "mismatched-baseline");
+        await mkdir(mismatched);
+        await writeFile(
+            join(mismatched, "010_other.sql"),
+            "-- MIGRATE: 10 other\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\nCREATE TABLE session_references (id INTEGER NOT NULL PRIMARY KEY);\nCREATE TABLE entry_channels (entry_id INTEGER, name TEXT, content TEXT);\n",
+        );
+        new SqlRiteSync({ path: dbPath, dir: mismatched }).close();
     });
     assert.equal(result.code, 1, `the launcher fails closed (stderr: ${result.stderr})`);
     assert.match(result.stderr, /shape disagrees with its schema version/, "the operator is told what the failure is");
-    assert.match(result.stderr, /newer release needs that release; .* deleted with its -wal and -shm sidecars/, "and what to do about it");
+    assert.match(result.stderr, /point PLURNK_SERVICE_DB_PATH at a new file or move the database and its -wal and -shm sidecars aside/, "and what to do about it without deleting the database");
     assert.match(result.stderr, /cause: no such (?:column|table)/, "SQLite's own diagnosis stays attached");
 });
 
-test("{§db-migrations}: opening a pre-floor database names the stepping-stone release", async () => {
+test("{§db-migrations}: opening a database newer than the build names both versions read", async () => {
+    const result = await launch({}, async ({ dir, dbPath }) => {
+        const newer = join(dir, "newer-release");
+        await mkdir(newer);
+        await writeFile(
+            join(newer, "099_future.sql"),
+            "-- MIGRATE: 99 future\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\nCREATE TABLE session_references (id INTEGER NOT NULL PRIMARY KEY);\n",
+        );
+        new SqlRiteSync({ path: dbPath, dir: newer }).close();
+    });
+    assert.equal(result.code, 1, `the launcher fails closed (stderr: ${result.stderr})`);
+    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 10\)/, "both schema versions read are named");
+});
+
+test("{§db-migrations}: opening a pre-floor database names both versions read and non-destructive remediation", async () => {
     const result = await launch({}, async ({ dir, dbPath }) => {
         const legacy = join(dir, "pre-floor");
         await mkdir(legacy);
-        await writeFile(join(legacy, "028_legacy.sql"), "-- MIGRATE: 28 legacy\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\n");
+        await writeFile(join(legacy, "034_legacy.sql"), "-- MIGRATE: 34 legacy\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\n");
         new SqlRiteSync({ path: dbPath, dir: legacy }).close();
     });
     assert.equal(result.code, 1, `the launcher fails closed (stderr: ${result.stderr})`);
-    assert.match(result.stderr, /precedes the 4\.0\.0 support floor; upgrade through @plurnk\/plurnk-service@4\.3\.3 first/, "the stepping-stone release is named");
+    assert.match(result.stderr, /database schema \(version 34\) precedes the 5\.0\.0 support floor \(schema version 10\); point PLURNK_SERVICE_DB_PATH at a new file or move the database/, "both versions and non-destructive remediation are named");
 });
 });
 

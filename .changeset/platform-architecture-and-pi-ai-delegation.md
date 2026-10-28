@@ -4,7 +4,7 @@
 "@plurnk/plurnk-models": major
 "@plurnk/plurnk-spec-check": minor
 "@plurnk/plurnk-acp": minor
-"@plurnk/plurnk-service": minor
+"@plurnk/plurnk-service": major
 "@plurnk/plurnk-mcp": patch
 "@plurnk/plurnk-mimetypes": patch
 "@plurnk/plurnk-mimetypes-application-ipynb": patch

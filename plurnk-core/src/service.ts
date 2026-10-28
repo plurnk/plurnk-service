@@ -212,10 +212,10 @@ export default class Service {
             // A missing column or table after migration means the shape disagrees with the version
             // ({§db-migrations}). Say so; the bare cause reads like a bug.
             const diagnosis = cause instanceof Error ? cause.message : String(cause);
-            const baseline = /precedes the 4\.0\.0 support floor/.test(diagnosis)
+            const baseline = /precedes the 5\.0\.0 support floor|is newer than this build/.test(diagnosis)
                 ? ` — ${diagnosis}`
                 : /^no such (?:column|table)\b|\bhas no column named\b/.test(diagnosis)
-                    ? ` — the database shape disagrees with its schema version: a database from before 4.0.0 upgrades through @plurnk/plurnk-service@4.3.3 first; a database from a newer release needs that release; one from an unreleased development build is deleted with its -wal and -shm sidecars once every daemon holding it has stopped`
+                    ? ` — the database shape disagrees with its schema version: point PLURNK_SERVICE_DB_PATH at a new file or move the database and its -wal and -shm sidecars aside once every daemon holding it has stopped ({§db-migrations})`
                     : "";
             throw new Error(`open ${dbPath} failed${hint}${baseline}`, { cause });
         }

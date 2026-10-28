@@ -21,15 +21,15 @@ import SessionTranslator from "./SessionTranslator.ts";
 export const OWNER_ADDRESS = "acp://operator";
 
 export const AVAILABLE_COMMANDS: readonly AvailableCommand[] = Object.freeze([
-    { name: "mcp", description: "Manage workspace MCP servers" },
-    { name: "skills", description: "Manage workspace skills" },
-    { name: "members", description: "Manage workspace members" },
-    { name: "env", description: "Manage workspace environment variables" },
-    { name: "schedule", description: "Manage workspace schedules" },
-    { name: "rollback", description: "Roll back reversible session operations" },
-    { name: "share", description: "Write a diagnostic digest of the workspace" },
-    { name: "script", description: "Execute PLURNK statements directly" },
-    { name: "update", description: "Update the model catalog and service packages" },
+    { type: "command", name: "mcp", description: "Manage workspace MCP servers" },
+    { type: "command", name: "skills", description: "Manage workspace skills" },
+    { type: "command", name: "members", description: "Manage workspace members" },
+    { type: "command", name: "env", description: "Manage workspace environment variables" },
+    { type: "command", name: "schedule", description: "Manage workspace schedules" },
+    { type: "command", name: "rollback", description: "Roll back reversible session operations" },
+    { type: "command", name: "share", description: "Write a diagnostic digest of the workspace" },
+    { type: "command", name: "script", description: "Execute PLURNK statements directly" },
+    { type: "command", name: "update", description: "Update the model catalog" },
 ]);
 
 export interface BoundSession {

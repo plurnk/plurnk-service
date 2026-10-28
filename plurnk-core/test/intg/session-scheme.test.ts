@@ -1490,7 +1490,7 @@ const childPrompts = async (db: Db, parentSessionId: number) => {
     const children = await db.test_children_of_session.all<{ id: number; name: string }>({ session_id: parentSessionId });
     assert.equal(children.length, 1, "exactly one child session exists");
     const child = children[0];
-    const prompts = ((await db.test_messages_by_session.all({ session_id: child.id })) as Array<{ body: string }>)
+    const prompts = (await db.test_messages_by_session.all({ session_id: child.id }))
         .map(({ body }) => ({ content: body }));
     return { child, prompts };
 };
