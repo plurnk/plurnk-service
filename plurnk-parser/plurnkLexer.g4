@@ -524,6 +524,17 @@ private openerFollowsAt(at: number): boolean {
     return name !== "" && this.headingName(name, cursor);
 }
 
+// After a body closer's fence run, an inline-chained opener opens next; any other trailing
+// characters on the closer's line are discarded as part of the closer ({§fence-pairing}, #1329).
+private closeBodySection(): void {
+    this.inlineChain = this.openerFollows();
+    if (!this.inlineChain && !this.asideToLineEnd(this.skipHorizontal(1))) {
+        while (this.inputStream.LA(1) > 0 && this.inputStream.LA(1) !== 0x0A && this.inputStream.LA(1) !== 0x0D) {
+            this.interpreter.consume(this.inputStream);
+        }
+    }
+}
+
 private targetScopeEnd(): boolean {
     let offset = 1;
     while (this.inputStream.LA(offset) === 0x20 || this.inputStream.LA(offset) === 0x09) offset++;
@@ -673,8 +684,8 @@ METADATA_END : ']' { this.slotReady = true; } -> type(RBRACKET), mode(SLOTS) ;
 mode BODY;
 // {§operation-fences} the block's own closer; {§operation-fences} a heading ends it instead, and
 // the EOL becomes a synthetic SECTION_END whose text carries no backtick ({§operation-fences}).
-B_END : { this.closingAfterEol() }? EOL [ \t]* FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
-B_EMPTY_END : { (this.atLineStart() || this.inlineBody) && this.closingAt(1) }? [ \t]* FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
+B_END : { this.closingAfterEol() }? EOL [ \t]* FENCE [ \t]* { this.closeBodySection(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
+B_EMPTY_END : { (this.atLineStart() || this.inlineBody) && this.closingAt(1) }? [ \t]* FENCE [ \t]* { this.closeBodySection(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 // {§fence-pairing} — the heading already carried its closer, so the matcher or inline
 // body after it ends with that line and the block never reaches for the next operation.
 B_CLOSED_EOL : { this.inlineCloserSeen }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;

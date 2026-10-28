@@ -160,3 +160,7 @@ example distillation or summarization
 ```plurnk (env) <!-- persists for this session's commands -->
 {"verb":"add","alias":"PLANET","definition":{"value":"world"}}
 ```
+
+```sh
+echo "Hello, $PLANET."
+```

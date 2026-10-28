@@ -1,6 +1,7 @@
 import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import PlurnkParser from "../../src/PlurnkParser.ts";
+import FencePairing from "../../src/FencePairing.ts";
 import { TurnDisposition, type DispositionStatement, isExecution, writtenOp, type PlurnkStatement, type ParseResult, PLURNK_FENCE } from "@plurnk/plurnk-contracts";
 import { cells } from "./fence-matrix.ts";
 import { readFileSync } from "node:fs";
@@ -341,6 +342,44 @@ test("{§fence-pairing} the recorded corrupting EDIT deletes its line instead of
 test("{§fence-pairing} a bodied EDIT keeps exactly its body; a closer followed by prose is still body", () => {
     assert.equal((statements("````EDIT (a.md) <3>\nnew line\n```` <!-- why -->")[0] as { body: string | null }).body, "new line");
     assert.equal((statements("````EDIT (doc.md) <1,-1>\nbody\n```` then prose\n````")[0] as { body: string | null }).body, "body\n```` then prose");
+});
+
+test("{§fence-pairing} a closing fence with stray trailing text closes the operation as a repair and discards the trailing characters (#1329)", () => {
+    const executors = ["sh", "gitea", "plurnk"];
+    for (const closer of ["```!] Nail it.", "``` // end"]) {
+        for (const [header, body, expectedOp] of [
+            ["gitea (issue_read)", '{"owner":"plurnk","repo":"plurnk-service","issue_number":1}', "gitea"],
+            ["plurnk (members)", '{"verb":"list"}', "plurnk"],
+            ["sh", "echo hello", "sh"],
+            ["EDIT (a.md) <1,1>", "replacement", "EDIT"],
+            ["SEND [200]", "Final answer.", "SEND"],
+        ] as const) {
+            const source = `\`\`\`${header}\n${body}\n${closer}`;
+            const pairing = FencePairing.pair(source, {
+                executors: new Set(executors),
+                reasoning: false,
+                heading: (_h, name) => ({
+                    selfClosed: false,
+                    bodiless: false,
+                    prose: name === "SEND",
+                    mutation: name === "EDIT",
+                }),
+            });
+            const end = pairing.ends.get(0);
+            assert.equal(end?.kind, "closer", `${header} (${closer})`);
+            assert.equal(end?.line, 2, `${header} (${closer})`);
+            assert.deepEqual(pairing.repairs, [2], `${header} (${closer})`);
+
+            const parsed = PlurnkParser.parse(source, { executors });
+            assert.equal(parsed.unparsedTail, undefined, `${header} (${closer})`);
+            assert.deepEqual(parsed.items.filter((item) => item.kind === "text"), [], `${header} (${closer}) discards closer trailing text`);
+            assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), [], `${header} (${closer})`);
+            const ops = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+            assert.deepEqual(ops.map(writtenOp), [expectedOp], `${header} (${closer})`);
+            const actualBody = ops[0].op === "SEND" ? ops[0].body?.raw : "body" in ops[0] ? ops[0].body : null;
+            assert.equal(actualBody, body, `${header} (${closer})`);
+        }
+    }
 });
 });
 

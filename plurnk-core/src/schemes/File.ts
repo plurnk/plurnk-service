@@ -195,15 +195,13 @@ export default class File extends CoreSchemeAdapterBase {
             const root = await FileAddress.projectRoot(core);
             if (root === null) return null;
             const key = Namespace.canonicalize(pathname, root);
-            return key === null || key.startsWith("../") ? null : join(root, key);
+            return key === null ? null : join(root, key);
         };
         return new FileByteSource(locate);
     }
 
-    // {§fs-namespace} — a file is read only as a member, so a miss speaks of the address's
-    // membership and never of the disk. Inside the root occupancy is not secret ({§fs-write-surface}),
-    // and an occupied path says so. Beyond it the disk stays dark: nothing is looked at, and the
-    // sentence is true whether or not a file is there — it neither claims absence nor hints at presence.
+    // {§fs-namespace} — a file is read only as a member: an occupied non-member file on disk says so
+    // and names the admission door; an absent path reports that no member is at the address.
     static #beyondRoot(key: string): boolean { return key === ".." || key.startsWith("../"); }
 
     async missRefusal(pathname: string, core: PlurnkSchemeContext, fields: Record<string, null>): Promise<SchemeResultBase | null> {
@@ -211,12 +209,12 @@ export default class File extends CoreSchemeAdapterBase {
         if (root === null) return null;
         const key = Namespace.canonicalize(pathname, root);
         if (key === null) return null;
-        const occupant = key.startsWith("../") ? null : await File.#occupant(root, key);
-        if (occupant?.isDirectory() === true) {
+        const occupant = await File.#occupant(root, key);
+        if (!File.#beyondRoot(key) && occupant?.isDirectory() === true) {
             const { code, detail, extensions } = File.#directoryFacts(key, "READ", root);
             return Results.failure("scheme:file", code, 404, detail, fields, extensions);
         }
-        const occupied = occupant !== null;
+        const occupied = occupant !== null && (!File.#beyondRoot(key) || occupant.isFile());
         // {§fs-namespace} — admission is the recovery for an untracked file; a file an exclusion covers or
         // the repository ignores no model definition admits, so its refusal says who can (#1005).
         const exclusion = occupied ? await GitMembership.exclusionOf(core.db, core.workspaceId, key) : null;

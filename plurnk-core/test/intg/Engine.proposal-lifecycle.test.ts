@@ -974,11 +974,14 @@ const harness = async (t: TestContext, env: Record<string, string>) => {
     };
     // A person reviews: the session is owned by an interactive client, and the server disposition is review.
     const attend = async (): Promise<void> => { await ownSession(db, workspaceId, sessionId); serverProposals(t, "review"); };
-    return { db, daemon, workspaceId, sessionId, notices, model, client, definitions, member, paths, review, attend };
+    return { db, daemon, workspaceId, sessionId, root, notices, model, client, definitions, member, paths, review, attend };
 };
 
-test("{§membership-auto-add} READ: an untracked file is admitted as the Session's own definition and read; ignored, excluded, beyond-root and directory targets are not", { timeout: 60_000 }, async (t) => {
+test("{§membership-auto-add} READ: an untracked or outside-root file is admitted as the Session's own definition and read; ignored, excluded, missing and directory targets are not (#1330)", { timeout: 60_000 }, async (t) => {
     const h = await harness(t, {});
+    const sister = `plurnk-sister-${crypto.randomUUID()}.md`;
+    await writeFile(join(h.root, "..", sister), "# sister\ngamma\n");
+    t.after(async () => { await rm(join(h.root, "..", sister), { force: true }); });
     const read = await h.model("````READ (loose.md)````") as { status: number; content?: string | null };
     assert.equal(read.status, 200, JSON.stringify(read));
     assert.match(String(read.content), /# loose/u, "the admitted file is read in the same operation");
@@ -992,6 +995,13 @@ test("{§membership-auto-add} READ: an untracked file is admitted as the Session
     assert.match(h.notices[0], /"level":"warn"/u);
     assert.doesNotMatch(h.notices[0], /"directive"/u, "the notice carries no directive");
 
+    const sisterKey = `../${sister}`;
+    const readSister = await h.model(`\`\`\`\`READ (${sisterKey})\`\`\`\``) as { status: number; content?: string | null };
+    assert.equal(readSister.status, 200, JSON.stringify(readSister));
+    assert.match(String(readSister.content), /# sister/u, "the outside-root file is admitted and read in the same operation (#1330)");
+    assert.equal(await h.member(sisterKey), true);
+    assert.equal(h.notices.length, 2);
+
     for (const [program, code, pathname] of [
         ["````READ (ignored.log)````", "entry-not-member", "ignored.log"],
         ["````READ (loose2.md)````", "entry-not-member", "loose2.md"],
@@ -1003,7 +1013,7 @@ test("{§membership-auto-add} READ: an untracked file is admitted as the Session
         assert.match(refused.problem?.type ?? "", new RegExp(`/${code}$`, "u"), program);
         assert.equal(await h.member(pathname), false, `${pathname} is never admitted`);
     }
-    assert.equal(h.notices.length, 1, "the refusals announce nothing");
+    assert.equal(h.notices.length, 2, "the refusals announce nothing");
 });
 
 test("{§membership-auto-add} READ by glob: the universe fans out, and each untracked file read is admitted", { timeout: 60_000 }, async (t) => {

@@ -587,13 +587,17 @@ class Search {
             yield { kind: "child", cost: ZERO, effects: [{ kind: "quotation", line: i }], child: { kind: "quotation", character: line.character, width: line.width, bareOpened: false, name: "", top: true, quoted: true }, line: i, flags };
             return;
         }
+        const closable = context.top && context.kind === "operation" && this.#closable(context, flags, line.character, line.width);
         const push: Move = { kind: "child", cost: ZERO, effects: [], child: { kind: "nested", character: line.character, width: line.width, bareOpened: false, name: "", top: false, quoted: context.quoted, prose: context.prose }, line: i, flags: { ...flags, empty: false, written: true } };
         // Outside a quotation a labeled fence is a code block the author declared; reading it as text ranks with a
         // hidden operation, so no reading ends a body early by discarding one.
-        const text: Move = { kind: "stay", cost: context.quoted ? DEMOTE : DISCARDED, effects: [], next, flags: { ...flags, empty: false, written: true } };
+        const text: Move = { kind: "stay", cost: context.quoted ? DEMOTE : DISCARDED, effects: [], next, flags: { ...flags, empty: false, holds: flags.holds || closable, written: true } };
         // A labeled fence opens a literal nested block, or is text — a demotion (inside a quotation, text first
         // on a tie, as CommonMark reads it).
         if (context.quoted) { yield text; yield push; return; }
+        if (closable) {
+            yield { kind: "end", cost: REPAIR, effects: [{ kind: "repair", line: i }], end: next, record: { kind: "closer", line: i } };
+        }
         yield push;
         yield text;
     }

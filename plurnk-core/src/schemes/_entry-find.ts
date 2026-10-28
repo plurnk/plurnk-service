@@ -443,7 +443,7 @@ export default class EntryFind {
             });
             // {§membership-auto-add} — an exact miss on a candidate is a listing or a match, not a 404.
             const ambientExact = exact === undefined && address.ambient !== undefined && scheme === "file"
-                && !scope.pathname.startsWith("../") && (await address.ambient.candidates(scope.pathname)).includes(scope.pathname);
+                && (await address.ambient.candidates(scope.pathname)).includes(scope.pathname);
             if (exact === undefined && !ambientExact) {
                 const target = EntryFind.#targetPath(scheme, authority, scope.pathname, fragment, projectRoot);
                 return {
@@ -504,7 +504,7 @@ export default class EntryFind {
         let ambientKeys: string[] = [];
         if (address.ambient !== undefined && scheme === "file" && !multipleAuthorities
             && !(statement.matcher !== null && (statement.matcher.dialect === "fts" || statement.matcher.dialect === "graph"))
-            && !(scope?.candidatePrefix?.startsWith("../") ?? false)) {
+            && (scope?.kind === "exact" || !(scope?.candidatePrefix?.startsWith("../") ?? false))) {
             const known = new Set(candidates.map((candidate) => candidate.pathname));
             try {
                 ambientKeys = (await address.ambient.candidates(scope?.candidatePrefix ?? null))

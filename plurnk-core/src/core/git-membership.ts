@@ -495,13 +495,17 @@ export default class GitMembership {
     }
 
     // {§membership-auto-add} — the model's universe beyond membership: files inside the root that the
-    // repository neither tracks nor ignores (every file, when no repository governs the root), minus
-    // every exclusion, under a literal path prefix. None is a member; nothing here is materialized.
+    // repository neither tracks nor ignores (every file, when no repository governs the root), plus exact
+    // outside-root files on disk, minus every exclusion, under a literal path prefix. None is a member;
+    // nothing here is materialized.
     static async ambientCandidates(db: Db, workspaceId: number, prefix: string | null, signal: AbortSignal | undefined): Promise<string[]> {
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return [];
         const literal = prefix === null || prefix === "" ? "" : prefix;
-        if (literal.startsWith("../") || literal === "..") return [];
+        if (literal === "..") return [];
+        if (literal.startsWith("../")) {
+            return await GitMembership.isAmbientCandidate(db, workspaceId, literal, signal) ? [literal] : [];
+        }
         const directory = literal.includes("/") ? literal.slice(0, literal.lastIndexOf("/")) : "";
         const constraints = await db.crud_list_workspace_constraints.all<OverlayRow>({ workspace_id: workspaceId });
         const excludeGlobs = constraints.filter((c) => c.effect === "exclude").map((c) => c.glob);
@@ -514,10 +518,10 @@ export default class GitMembership {
             .toSorted();
     }
 
-    // {§membership-auto-add} — whether one key is in that universe: inside the root, a file, unexcluded,
+    // {§membership-auto-add} — whether one key is in that universe: a file on disk, unexcluded,
     // and not ignored by the governing repository.
     static async isAmbientCandidate(db: Db, workspaceId: number, key: string, signal: AbortSignal | undefined): Promise<boolean> {
-        if (key === "" || key === ".." || key.startsWith("../") || isAbsolute(key)) return false;
+        if (key === "" || key === ".." || key.endsWith("/..") || isAbsolute(key)) return false;
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return false;
         try {

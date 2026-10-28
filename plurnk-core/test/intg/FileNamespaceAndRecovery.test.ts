@@ -648,30 +648,25 @@ test("{§fs-namespace}: directory recognition does not probe outside-root paths"
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
 
-test("{§fs-namespace}: beyond the root a miss is the same sentence whether or not a file is there", async () => {
+test("{§fs-namespace}: beyond the root an existing non-member reports occupancy while an absent path reports entry-not-found (#1330)", async () => {
     const { root, db, ctx } = await setup();
-    const present = `plurnk-dark-${crypto.randomUUID()}.md`;
-    const absent = `plurnk-dark-${crypto.randomUUID()}.md`;
+    const present = `plurnk-present-${crypto.randomUUID()}.md`;
+    const absent = `plurnk-absent-${crypto.randomUUID()}.md`;
     try {
         // A real file beside the root, and a name nothing holds. Neither is a member.
         await writeFile(join(root, "..", present), "somebody else's\n");
         const there = await readFileScheme(readStmt(`../${present}`), ctx);
         const notThere = await readFileScheme(readStmt(`../${absent}`), ctx);
-        for (const [result, name] of [[there, present], [notThere, absent]] as const) {
-            assert.equal(result.status, 404);
-            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
-            const address = resolve(root, "..", name);   // {§fs-namespace} absolute beyond the root
-            assert.equal(result.problem?.detail, `No member of this workspace is at '${address}'.`, "about the address's membership: it neither claims absence nor hints at presence");
-            assert.equal(result.problem?.recovery, `'${address}' is outside the project root: only a members definition under the operator's namespace scope admits it.`, "the recovery speaks of the address too, true under every members scope (#1005)"); // {§operation-results}
-        }
-        // The disk beyond the root stays dark: swap the names and the two answers are one answer,
-        // apart from where each refused read was recorded.
-        const normalize = (result: typeof there, name: string): string => {
-            const { instance, ...problem } = result.problem!;
-            assert.ok(instance, "each refused read is its own recorded act");
-            return JSON.stringify({ ...result, problem }).replaceAll(name, "<name>");
-        };
-        assert.equal(normalize(there, present), normalize(notThere, absent));
+        assert.equal(there.status, 404);
+        assert.equal(there.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-member");
+        assert.equal(there.problem?.detail, `'../${present}' exists on disk but is not a member of this workspace.`);
+        assert.equal(there.problem?.recovery, "Admit it with `plurnk (members)` and a `{\"verb\": \"add\", \"files\": [\"<path>\"]}` body.");
+
+        assert.equal(notThere.status, 404);
+        assert.equal(notThere.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
+        const address = resolve(root, "..", absent);   // {§fs-namespace} absolute beyond the root
+        assert.equal(notThere.problem?.detail, `No member of this workspace is at '${address}'.`);
+        assert.equal(notThere.problem?.recovery, `'${address}' is outside the project root: only a members definition under the operator's namespace scope admits it.`);
     } finally {
         await rm(join(root, "..", present), { force: true });
         await db.close();
