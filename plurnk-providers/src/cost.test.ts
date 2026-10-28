@@ -581,7 +581,7 @@ const fixture = (billing: Record<string, unknown>, failure = false) => {
     const provider = new ModelProvider({
         model: "requested-model",
         providerModel: sdk.providerModel,
-        reasoningRequestProviderOptions: (effort) => ({ openrouter: { reasoning: { effort } } }),
+        reasoningRequestBody: (effort) => ({ reasoning: { effort } }),
         normalizeCost: providerCostNormalizer("openrouter"),
         estimateCost: () => ({ kind: "estimated", amount: { amount: "999", currency: "USD" }, source: "fixture catalog" }),
         source: "provider:openrouter",

@@ -1,27 +1,8 @@
 // The provider-specific request body and headers one generate call sends: reasoning, grammar, sampling, repetition, slots, metadata. Split out of ModelProvider; every knob it reads is injected.
-import type { Effort, JSONValue } from "./types.ts";
+import type { Effort } from "./types.ts";
 import { type EffortSetting } from "./env.ts";
 import { fixedEffort } from "./reasoning-effort.ts";
-import type { ReasoningStyle, GrammarStyle, CacheAffinity, ModelProviderOptions } from "./ModelProvider.ts";
-
-const isJsonObject = (value: JSONValue | undefined): value is Record<string, JSONValue> =>
-    typeof value === "object" && value !== null && !Array.isArray(value);
-
-const mergeJsonObjects = (
-    left: Record<string, JSONValue | undefined>,
-    right: Record<string, JSONValue | undefined>,
-): Record<string, JSONValue | undefined> => Object.fromEntries(
-    [...new Set([...Object.keys(left), ...Object.keys(right)])].map((key) => {
-        const leftValue = left[key];
-        const rightValue = right[key];
-        return [
-            key,
-            isJsonObject(leftValue) && isJsonObject(rightValue)
-                ? mergeJsonObjects(leftValue, rightValue)
-                : rightValue ?? leftValue,
-        ];
-    }),
-);
+import type { ReasoningStyle, GrammarStyle } from "./ModelProvider.ts";
 
 // Anthropic's older manual-reasoning protocol needs an absolute allowance while
 // PLURNK's durable contract names an effort. These fractions match the native
@@ -64,8 +45,7 @@ export default class ModelRequestBody {
     readonly #reasoningBudget: number | null;
     readonly #additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
     readonly #effort: EffortSetting;
-    readonly #adaptiveEffortProviderOptions: ModelProviderOptions | undefined;
-    readonly #controlOptions: ModelProviderOptions | undefined;
+    readonly #nativeAdaptiveThinking: boolean;
     readonly #repeatPenalty: number | null;
     readonly #dryMultiplier: number | undefined;
     readonly #dryBase: number | undefined;
@@ -74,18 +54,16 @@ export default class ModelRequestBody {
     readonly #reasoningStyle: ReasoningStyle;
     readonly #source: string;
     readonly #grammarStyle: GrammarStyle;
-    readonly #cacheAffinity: CacheAffinity | undefined;
-    readonly #reasoningResponseProviderOptions: ModelProviderOptions | undefined;
     readonly #supportsSlotPinning: boolean;
     readonly #slotCount: number | null;
     #runSlots = new Map<string, number>();
     #nextSlot = 0;
 
-    constructor({ reasoningBudget, additiveReasoningProvider, effort, adaptiveEffortProviderOptions, repeatPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source, grammarStyle, cacheAffinity, reasoningResponseProviderOptions, controlOptions, supportsSlotPinning, slotCount }: {
+    constructor({ reasoningBudget, additiveReasoningProvider, effort, nativeAdaptiveThinking, repeatPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source, grammarStyle, supportsSlotPinning, slotCount }: {
         reasoningBudget: number | null;
         additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
         effort: EffortSetting;
-        adaptiveEffortProviderOptions: ModelProviderOptions | undefined;
+        nativeAdaptiveThinking: boolean;
         repeatPenalty: number | null;
         dryMultiplier: number | undefined;
         dryBase: number | undefined;
@@ -94,17 +72,13 @@ export default class ModelRequestBody {
         reasoningStyle: ReasoningStyle;
         source: string;
         grammarStyle: GrammarStyle;
-        cacheAffinity: CacheAffinity | undefined;
-        reasoningResponseProviderOptions: ModelProviderOptions | undefined;
-        controlOptions: ModelProviderOptions | undefined;
         supportsSlotPinning: boolean;
         slotCount: number | null;
     }) {
-        this.#controlOptions = controlOptions;
         this.#reasoningBudget = reasoningBudget;
         this.#additiveReasoningProvider = additiveReasoningProvider;
         this.#effort = effort;
-        this.#adaptiveEffortProviderOptions = adaptiveEffortProviderOptions;
+        this.#nativeAdaptiveThinking = nativeAdaptiveThinking;
         this.#repeatPenalty = repeatPenalty;
         this.#dryMultiplier = dryMultiplier;
         this.#dryBase = dryBase;
@@ -113,8 +87,6 @@ export default class ModelRequestBody {
         this.#reasoningStyle = reasoningStyle;
         this.#source = source;
         this.#grammarStyle = grammarStyle;
-        this.#cacheAffinity = cacheAffinity;
-        this.#reasoningResponseProviderOptions = reasoningResponseProviderOptions;
         this.#supportsSlotPinning = supportsSlotPinning;
         this.#slotCount = slotCount;
     }
@@ -217,50 +189,13 @@ export default class ModelRequestBody {
         return { id_slot: slot };
     }
 
-
-
-    requestProviderOptions(
-        sessionId: string,
-        nativeReasoningBudget: number | null,
-        declaredOptions?: ModelProviderOptions,
-    ): ModelProviderOptions | undefined {
-        const responseOptions = this.#effort.mode === "off"
-            ? undefined
-            : this.#reasoningResponseProviderOptions;
-        const adaptiveOptions = this.#effort.mode === "adaptive"
-            && nativeReasoningBudget === null
-            ? this.#adaptiveEffortProviderOptions
-            : undefined;
-        const nativeReasoning = nativeReasoningBudget !== null
-            ? this.#additiveReasoningProvider === "anthropic"
-                ? { anthropic: { thinking: { type: "enabled", budgetTokens: nativeReasoningBudget } } }
-                : this.#additiveReasoningProvider === "bedrock"
-                    ? { bedrock: { reasoningConfig: { type: "enabled", budgetTokens: nativeReasoningBudget } } }
-                    : undefined
-            : undefined;
-        const options: ModelProviderOptions = {};
-        // {§provider-request-authority} — the deployment's controls ride every native request, beside
-        // whatever reasoning shape the route or its declared fields chose.
-        for (const part of [...(declaredOptions === undefined ? [responseOptions, adaptiveOptions, nativeReasoning] : [declaredOptions]), this.#controlOptions]) {
-            for (const [provider, values] of Object.entries(part ?? {})) {
-                options[provider] = mergeJsonObjects(options[provider] ?? {}, values);
-            }
-        }
-        if (this.#cacheAffinity?.target === "provider-option") {
-            const { provider, name } = this.#cacheAffinity;
-            options[provider] = { ...options[provider], [name]: sessionId };
-        }
-        return Object.keys(options).length === 0 ? undefined : options;
-    }
-
-
     nativeReasoningBudget(
         outputBudget: number | null,
         configuredReasoningBudget: number | null,
     ): number | null {
         if (this.#additiveReasoningProvider === undefined || this.#effort.mode === "off") return null;
         if (configuredReasoningBudget !== null) return configuredReasoningBudget;
-        if (this.#adaptiveEffortProviderOptions !== undefined) return null;
+        if (this.#nativeAdaptiveThinking) return null;
         if (outputBudget === null) {
             throw new TypeError(
                 `${this.#source}: manual provider reasoning requires a resolved total output budget`,

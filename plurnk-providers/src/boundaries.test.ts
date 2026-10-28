@@ -48,7 +48,6 @@ test("{§provider-interface} the OpenAI-compatible entrypoint excludes Node-owne
         "ModelProvider.ts",
         "ModelRequestBody.ts",
         "RequestCapture.ts",
-        "modelTransport.ts",
         "capacity.ts",
         "cost.ts",
         "env.ts",

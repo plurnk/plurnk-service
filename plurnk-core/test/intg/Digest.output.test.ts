@@ -326,7 +326,7 @@ for (const capture of [false, true]) {
         assert.equal(failed.evidence.content, failedContent);
         assert.equal(failed.evidence.reasoning, "Partial failed reasoning.");
         assert.equal(failed.evidence.rawBody[0].id, "request-1");
-        assert.match(failed.evidence.error.message, /without a finish reason/);
+        assert.match(failed.evidence.error.message, /Stream ended without finish_reason/);
         assert.equal(recovered.accounting.outcome, "response");
         assert.equal(recovered.evidence.reasoning, "Fresh reasoning.");
         assert.equal(recovered.evidence.content, "````SEND [200]\nRecovered.\n````");
@@ -340,7 +340,7 @@ for (const capture of [false, true]) {
         assert.match(failurePage, /Partial output; this physical request failed/u);
         assert.match(failurePage, /Partial failed reasoning\./u);
         assert.ok(failurePage.includes(failedContent));
-        assert.match(failurePage, /without a finish reason/u);
+        assert.match(failurePage, /Stream ended without finish_reason/u);
         if (capture) {
             assert.equal(failed.evidence.request.body, bodies[0]);
             assert.equal(recovered.evidence.request.body, bodies[1]);

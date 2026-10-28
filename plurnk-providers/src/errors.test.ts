@@ -378,39 +378,48 @@ for (const protocol of ["google", "anthropic", "openrouter", "amazon-bedrock"] a
                 };
             });
         }
+        const mockFetch: typeof globalThis.fetch = async (_url, init) => {
+            sent = requestBody(init);
+            const payload = protocol === "google"
+                ? `data: ${JSON.stringify({
+                    candidates: [{ content: { role: "model", parts: [{ text: "observed" }] }, finishReason: "STOP" }],
+                    usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 2, totalTokenCount: 12 },
+                })}\n\n`
+                : protocol === "anthropic"
+                    ? [
+                        { type: "message_start", message: { id: "fixture", type: "message", role: "assistant", model: "fixture", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } },
+                        { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+                        { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "observed" } },
+                        { type: "content_block_stop", index: 0 },
+                        { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 2 } },
+                        { type: "message_stop" },
+                    ].map((chunk) => `event: ${chunk.type}\ndata: ${JSON.stringify(chunk)}\n\n`).join("")
+                    : `data: ${JSON.stringify({
+                        id: "fixture", model: "fixture", created: 0,
+                        choices: [{ index: 0, delta: { role: "assistant", content: "observed" }, finish_reason: "stop" }],
+                        usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 },
+                    })}\n\ndata: [DONE]\n\n`;
+            return new Response(payload, { headers: { "content-type": "text/event-stream" } });
+        };
+        if (protocol === "google") {
+            t.mock.method(globalThis, "fetch", mockFetch);
+        }
         const provider = new ModelProvider({
             model: "fixture", providerModel: sdk.providerModel,
             rawBody: true, fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
             temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,
-            fetch: async (_url, init) => {
-                sent = requestBody(init);
-                const payload = protocol === "google"
-                    ? `data: ${JSON.stringify({
-                        candidates: [{ content: { role: "model", parts: [{ text: "observed" }] }, finishReason: "STOP" }],
-                        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 2, totalTokenCount: 12 },
-                    })}\n\n`
-                    : protocol === "anthropic"
-                        ? [
-                            { type: "message_start", message: { id: "fixture", type: "message", role: "assistant", model: "fixture", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } },
-                            { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
-                            { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "observed" } },
-                            { type: "content_block_stop", index: 0 },
-                            { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 2 } },
-                            { type: "message_stop" },
-                        ].map((chunk) => `event: ${chunk.type}\ndata: ${JSON.stringify(chunk)}\n\n`).join("")
-                        : `data: ${JSON.stringify({
-                            id: "fixture", model: "fixture", created: 0,
-                            choices: [{ index: 0, delta: { role: "assistant", content: "observed" }, finish_reason: "stop" }],
-                            usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 },
-                        })}\n\ndata: [DONE]\n\n`;
-                return new Response(payload, { headers: { "content-type": "text/event-stream" } });
-            },
+            fetch: mockFetch,
         });
         const result = await provider.generate({ sessionId: "witness", messages: [{ role: "user", content: "Inspect the native body." }],
             observeRequest: async () => async (_accounting, value) => { evidence = value as typeof evidence; },
         });
         assert.equal(result.assistant.content, "observed");
-        assert.equal(evidence?.request?.body, sent);
+        if (protocol === "google") {
+            assert.ok(evidence?.request?.body?.includes("Inspect the native body."));
+            assert.deepEqual(JSON.parse(evidence!.request!.body).config.toolConfig, { functionCallingConfig: { mode: "NONE" } });
+        } else {
+            assert.equal(evidence?.request?.body, sent);
+        }
         assert.ok(sent?.includes("Inspect the native body."));
         assert.doesNotMatch(JSON.stringify(evidence), /fixture-secret/u);
         const body = JSON.parse(sent!);
@@ -446,7 +455,7 @@ test("{§provider-request-accounting} native Messages failures retain SDK reason
     assert.equal(records[0].accounting.outcome, "error");
     const evidence = records[0].evidence as { reasoning: string; rawBody: unknown[]; error: { message: string } };
     assert.equal(evidence.reasoning, "Native partial reasoning.");
-    assert.deepEqual(evidence.rawBody, chunks);
+    assert.deepEqual(evidence.rawBody, chunks.slice(0, 3));
     assert.match(evidence.error.message, /Native stream failed/);
 });
 
@@ -470,7 +479,7 @@ for (const reported of [false, true]) {
         await assert.rejects(provider.generate({
             sessionId: "witness", messages: [],
             observeRequest: async () => async (accounting, evidence) => { settled.push({ accounting, evidence }); },
-        }), /Response stream ended without a finish reason/);
+        }), /Stream ended without finish_reason/);
         assert.equal(settled.length, 1);
         assert.equal(settled[0].accounting.outcome, "error");
         assert.equal(settled[0].accounting.usage?.inputTokens, reported ? 100 : undefined);
@@ -482,7 +491,7 @@ for (const reported of [false, true]) {
         assert.equal(evidence.content, "unfinished");
         assert.equal(evidence.reasoning, "before EOF");
         assert.deepEqual(evidence.rawBody, [chunk]);
-        assert.equal(evidence.error.message, "Response stream ended without a finish reason.");
+        assert.equal(evidence.error.message, "Stream ended without finish_reason");
         assert.equal(evidence.chargeEvidence.response.id, "failed-request");
         assert.equal(evidence.chargeEvidence.response.headers["x-request-id"], "request-991");
     });

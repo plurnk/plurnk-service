@@ -16,35 +16,6 @@ import type {
     Effort,
 } from "@plurnk/plurnk-contracts";
 
-export type JSONValue =
-    | null
-    | string
-    | number
-    | boolean
-    | { [key: string]: JSONValue | undefined }
-    | JSONValue[];
-
-export type CallWarning =
-    | {
-        readonly type: "unsupported";
-        readonly feature: string;
-        readonly details?: string;
-    }
-    | {
-        readonly type: "compatibility";
-        readonly feature: string;
-        readonly details?: string;
-    }
-    | {
-        readonly type: "deprecated";
-        readonly setting: string;
-        readonly message: string;
-    }
-    | {
-        readonly type: "other";
-        readonly message: string;
-    };
-
 export type ProviderModelApi =
     | "openai-completions"
     | "openai-responses"
@@ -72,7 +43,6 @@ export interface ProviderModel {
     readonly compat?: OpenAICompletionsCompat;
     readonly apiKey?: string;
     readonly env?: Readonly<Record<string, string | undefined>>;
-    readonly namespace?: string;
     readonly includeTopK?: boolean;
     readonly xaiPreferResponses?: boolean;
     readonly onPayload?: (payload: unknown, model: ProviderModel) => unknown;

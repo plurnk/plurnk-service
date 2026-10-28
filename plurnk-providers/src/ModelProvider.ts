@@ -6,20 +6,35 @@
 // protocol. The compatible URL path serves PLURNK extensions and local endpoint
 // probes.
 
-import type { CallWarning, ChatMessage, GrammarEvidence, JSONValue, PromptTokenMeasurement, Provider, ProviderAttempt, ProviderCostNormalizer, ProviderGenerateArgs, ProviderModel, ProviderRequestAccounting, ProviderRequestCapacity, ProviderRequestSettlement, ProviderResponse, ProviderUsage, Effort, InputModality } from "./types.ts";
+import {
+    normalizeContext,
+    type AssistantMessage,
+    type AssistantMessageEventStream,
+    type Context,
+    type ImageContent,
+    type Model,
+    type TextContent,
+    type TranscriptContext,
+} from "@earendil-works/pi-ai";
+import { stream as streamAnthropic } from "@earendil-works/pi-ai/api/anthropic-messages";
+import { stream as streamBedrockConverseStream } from "@earendil-works/pi-ai/api/bedrock-converse-stream";
+import { stream as streamGoogleGenerativeAi } from "@earendil-works/pi-ai/api/google-generative-ai";
+import { stream as streamOpenAICompletions } from "@earendil-works/pi-ai/api/openai-completions";
+import { stream as streamOpenAIResponses } from "@earendil-works/pi-ai/api/openai-responses";
+import type { ChatMessage, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAttempt, ProviderAttemptFinishReason, ProviderChargeEvidence, ProviderCostNormalizer, ProviderGenerateArgs, ProviderModel, ProviderRequestAccounting, ProviderRequestCapacity, ProviderRequestSettlement, ProviderResponse, ProviderUsage, Effort, InputModality, TokenLogprob } from "./types.ts";
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
 import { EFFORTS, MAX_TIMER_MS, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import type { EffortSetting, ReasoningResponseStyle } from "./env.ts";
 import { UnsupportedEffortError } from "./types.ts";
-import { executeProviderModel, executeOpenAICompatible, transportFailureOutputObserved, transportFailureEvidence } from "./modelTransport.ts";
 import { APICallError, RetryError, toProviderError, ProviderError, ProviderTimeoutError } from "./errors.ts";
 import type { ProviderNotice } from "./notices.ts";
+import { withoutNativeTools } from "./native-tools.ts";
 import { assertPromptTokenMeasurement, estimatePromptTokens } from "./promptTokens.ts";
 import { emitWarningOnce } from "./warnings.ts";
-import { outboundFetch, type ExtensionAttribution, type ExtensionAttributionContext } from "@plurnk/plurnk-meta";
+import { outboundFetch, syncAmbientHttp, type ExtensionAttribution, type ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 import { resolveProviderCost } from "./cost.ts";
 import { validateProviderRequestAccounting } from "./accounting.ts";
-import { validateProviderUsage } from "./usage.ts";
+import { UsageDetailError, normalizeUsage, validateProviderUsage } from "./usage.ts";
 import { assessRequestCapacity, effectiveInputCapacity, effectiveInputWall, effectiveOutputBudget, effectiveOutputFloor, effectiveReasoningBudget } from "./capacity.ts";
 import { nativeFixedEffort } from "./reasoning-effort.ts";
 import ModelRequestBody from "./ModelRequestBody.ts";
@@ -97,13 +112,7 @@ export type NativeEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 // service-managed constrained sampling; endpoint-owned settings are not inferred.
 export type GrammarStyle = "none" | "llamacpp";
 
-export type CacheAffinity =
-    | { readonly target: "header" | "body"; readonly name: string }
-    | { readonly target: "provider-option"; readonly provider: string; readonly name: string };
-
-export type ModelProviderOptions = Record<string, Record<string, JSONValue | undefined>>;
-
-
+export type CacheAffinity = { readonly target: "header" | "body"; readonly name: string };
 
 export type ModelProviderConfig = {
     inferenceAdmission?: InferenceAdmission;
@@ -127,7 +136,7 @@ export type ModelProviderConfig = {
     // admissible values; provider-default is reserved for a documented native
     // dynamic option/default or a route with no caller-selectable effort.
     adaptiveEffort?: NativeEffort | "provider-default";
-    adaptiveEffortProviderOptions?: ModelProviderOptions;
+    nativeAdaptiveThinking?: boolean;
     // Native Anthropic and Bedrock transports interpret generic maxOutputTokens as
     // visible output and add an explicit provider reasoning budget. This marker lets the
     // adapter subtract that subset so the resulting wire cap remains PLURNK's
@@ -136,7 +145,6 @@ export type ModelProviderConfig = {
     reasoningStyle?: ReasoningStyle;          // default "none"
     outputTokenField?: "max_tokens" | "max_completion_tokens";
     reasoningRequestBody?: (mode: Effort, reasoningBudget: number | null) => Record<string, unknown>;
-    reasoningRequestProviderOptions?: (mode: Effort, reasoningBudget: number | null) => ModelProviderOptions | undefined;
     reasoningResponseStyle?: ReasoningResponseStyle; // {§provider-interface}; default "verbatim"
     countPromptTokens?: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     estimateCost?: (usage: ProviderUsage | undefined) => ProviderCost;
@@ -148,16 +156,13 @@ export type ModelProviderConfig = {
     cacheAffinity?: CacheAffinity;
     // {§provider-sdk-boundary} Already policy-gated by provider construction.
     // The transport attaches it to only the final leading system instruction.
-    systemCacheProviderOptions?: ModelProviderOptions;
-    // {§provider-effort} Route-owned native option needed to expose
-    // readable reasoning. Applied only when the effective posture is not off.
-    reasoningResponseProviderOptions?: ModelProviderOptions;
+    systemCacheBreakpoint?: boolean;
     // Optional provider-configured service tier. Unlike caller sampling, this is
     // a fixed deployment choice and therefore wins on every request; a native route
     // carries it only as {§provider-request-authority} allows.
     serviceTier?: string;
-    // {§provider-request-authority} — which global request controls a native route's adapter documents as
-    // provider options, and under which namespace. Absent on a native route means none.
+    // {§provider-request-authority} — which global request controls a native route's adapter documents,
+    // and under which namespace. Absent on a native route means none.
     requestControls?: NativeRequestControls;
     apiKeyRejectedMessage?: string;            // friendly hint when a present key is 401/403-rejected (distinct from unset); default undefined
     eosText?: string;                          // server-reported eos_token, stripped from the content tail (--special renders it as text); default undefined
@@ -248,6 +253,506 @@ class ProviderReasoningObserverError extends Error {
     }
 }
 
+const ProviderFailureTransportSymbol = Symbol("plurnk.provider.failureTransport");
+
+interface FailureEvidence {
+    readonly status?: number;
+    readonly usage?: ProviderUsage;
+    readonly chargeEvidence: ProviderChargeEvidence;
+    readonly content: string;
+    readonly reasoning: string;
+    readonly error: { readonly name: string; readonly message: string };
+    readonly rawBody?: unknown;
+    readonly outputObserved?: boolean;
+}
+
+const serializeError = (error: unknown): { readonly name: string; readonly message: string } =>
+    error instanceof Error
+        ? { name: error.name, message: error.message }
+        : { name: "Error", message: String(error) };
+
+// {§provider-failure-normalization} (#971) — evidence is keyed by the failure object, so the object
+// must be this request's own. A caller's abort reason is shared by every request on that signal (or
+// may not be an object), so it is wrapped per request before anything is keyed on it.
+const abortFailure = (signal: AbortSignal): Error => {
+    const reason: unknown = signal.reason;
+    if (reason instanceof Error) {
+        const copy = new Error(reason.message, { cause: reason });
+        copy.name = reason.name;
+        return copy;
+    }
+    return new DOMException(
+        typeof reason === "string" && reason.length > 0 ? reason : "The operation was aborted.",
+        "AbortError",
+    );
+};
+
+const attachFailureEvidence = (error: unknown, evidence: FailureEvidence): void => {
+    if ((typeof error === "object" && error !== null) || typeof error === "function") {
+        Object.defineProperty(error, ProviderFailureTransportSymbol, {
+            value: evidence,
+            enumerable: false,
+            configurable: true,
+        });
+    }
+};
+
+const readFailureEvidence = (error: unknown): FailureEvidence => {
+    if ((typeof error === "object" && error !== null) || typeof error === "function") {
+        const attached = (error as { [ProviderFailureTransportSymbol]?: FailureEvidence })[ProviderFailureTransportSymbol];
+        if (attached !== undefined) return attached;
+    }
+    if (APICallError.isInstance(error)) {
+        return {
+            status: error.statusCode,
+            chargeEvidence: { response: { headers: error.responseHeaders } },
+            content: "",
+            reasoning: "",
+            error: serializeError(error),
+            ...(error.responseBody !== undefined ? { rawBody: error.responseBody } : {}),
+        };
+    }
+    if (RetryError.isInstance(error) && error.errors.length > 0) {
+        return readFailureEvidence(error.errors.at(-1));
+    }
+    return {
+        chargeEvidence: { response: {} },
+        content: "",
+        reasoning: "",
+        error: serializeError(error),
+    };
+};
+
+const headersToRecord = (headers: Headers): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (const [key, value] of headers.entries()) out[key] = value;
+    return out;
+};
+
+const toPiContext = (messages: readonly ChatMessage[]): TranscriptContext => {
+    const systemParts: string[] = [];
+    const contextMessages: Context["messages"] = [];
+    let leadingSystem = true;
+    for (const message of messages) {
+        if (leadingSystem && message.role === "system") {
+            systemParts.push(typeof message.content === "string"
+                ? message.content
+                : message.content.map((part) => part.type === "text" ? part.text : "").join(""));
+            continue;
+        }
+        leadingSystem = false;
+        if (message.role === "assistant") {
+            const text = typeof message.content === "string"
+                ? message.content
+                : message.content.map((part) => part.type === "text" ? part.text : "").join("");
+            contextMessages.push({
+                role: "assistant",
+                content: [{ type: "text", text }],
+                api: "openai-completions",
+                provider: "openai",
+                model: "unknown",
+                usage: {
+                    input: 0,
+                    output: 0,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                    totalTokens: 0,
+                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                },
+                stopReason: "stop",
+                timestamp: 0,
+            });
+            continue;
+        }
+        const content: string | (TextContent | ImageContent)[] = typeof message.content === "string"
+            ? message.content
+            : message.content.map((part): TextContent | ImageContent =>
+                part.type === "text"
+                    ? { type: "text", text: part.text }
+                    : { type: "image", data: Buffer.from(part.data).toString("base64"), mimeType: part.mediaType });
+        contextMessages.push({
+            role: "user",
+            content,
+            timestamp: 0,
+        });
+    }
+    return normalizeContext({
+        ...(systemParts.length > 0 ? { systemPrompt: systemParts.join("\n\n") } : {}),
+        messages: contextMessages,
+    });
+};
+
+const mapOpenAICompatibleMessages = (
+    messages: readonly ChatMessage[],
+    systemCacheBreakpoint: boolean,
+): readonly Record<string, unknown>[] => {
+    let lastLeadingSystemIndex = -1;
+    if (systemCacheBreakpoint) {
+        for (let i = 0; i < messages.length; i += 1) {
+            if (messages[i].role !== "system") break;
+            lastLeadingSystemIndex = i;
+        }
+    }
+    return messages.map((message, index) => {
+        if (index === lastLeadingSystemIndex && typeof message.content === "string") {
+            return {
+                role: message.role,
+                content: [{
+                    type: "text",
+                    text: message.content,
+                    cache_control: { type: "ephemeral" },
+                }],
+            };
+        }
+        if (typeof message.content === "string") {
+            return { role: message.role, content: message.content };
+        }
+        return {
+            role: message.role,
+            content: message.content.map((part) => {
+                if (part.type === "text") return { type: "text", text: part.text };
+                const base64 = Buffer.from(part.data).toString("base64");
+                if (part.mediaType.startsWith("audio/")) {
+                    return {
+                        type: "input_audio",
+                        input_audio: {
+                            data: base64,
+                            format: part.mediaType.slice("audio/".length),
+                        },
+                    };
+                }
+                return {
+                    type: "image_url",
+                    image_url: { url: `data:${part.mediaType};base64,${base64}` },
+                };
+            }),
+        };
+    });
+};
+
+const applyAnthropicPayloadAdjustments = (
+    params: Record<string, unknown>,
+    messages: readonly ChatMessage[],
+    systemCacheBreakpoint: boolean,
+    serviceTier: string | undefined,
+): void => {
+    if (serviceTier !== undefined) {
+        params.service_tier = serviceTier;
+    }
+    if (systemCacheBreakpoint && Array.isArray(params.system) && params.system.length > 0) {
+        const last = params.system.at(-1);
+        if (isRecord(last)) {
+            last.cache_control = { type: "ephemeral" };
+        }
+    }
+    const wireMessages = Array.isArray(params.messages) ? params.messages : undefined;
+    if (wireMessages === undefined) return;
+    const nonSystem = messages.filter((m) => m.role !== "system");
+    for (let i = 0; i < Math.min(wireMessages.length, nonSystem.length); i += 1) {
+        const sourceMsg = nonSystem[i];
+        const wireMsg = wireMessages[i];
+        if (!Array.isArray(sourceMsg.content) || !isRecord(wireMsg) || !Array.isArray(wireMsg.content)) continue;
+        for (let j = 0; j < Math.min(sourceMsg.content.length, wireMsg.content.length); j += 1) {
+            const sourcePart = sourceMsg.content[j];
+            const wireBlock = wireMsg.content[j];
+            if (sourcePart.type === "file"
+                && sourcePart.mediaType === "application/pdf"
+                && isRecord(wireBlock)
+                && wireBlock.type === "image") {
+                wireBlock.type = "document";
+            }
+        }
+    }
+};
+
+const RESOURCE_INTERRUPTED_FINISH_REASONS: ReadonlySet<string> = new Set([
+    "preempted",
+    "insufficient_system_resource",
+    "model_overloaded",
+    "server_overloaded",
+]);
+
+const normalizeStopReason = (
+    stopReason: AssistantMessage["stopReason"] | undefined,
+    rawStopReason: string | undefined,
+): { finishReason: ProviderAttemptFinishReason; rawFinishReason?: string } => {
+    const raw = typeof rawStopReason === "string" && rawStopReason.length > 0 ? rawStopReason : undefined;
+    if (raw !== undefined) {
+        if (RESOURCE_INTERRUPTED_FINISH_REASONS.has(raw)) {
+            return { finishReason: "resource_interrupted", rawFinishReason: raw };
+        }
+        switch (raw) {
+            case "stop":
+            case "end_turn":
+            case "stop_sequence":
+            case "STOP":
+            case "completed":
+            case "complete":
+                return { finishReason: "stop", rawFinishReason: raw };
+            case "length":
+            case "max_tokens":
+            case "MAX_TOKENS":
+            case "incomplete":
+            case "max_output_tokens":
+                return { finishReason: "length", rawFinishReason: raw };
+            case "tool_calls":
+            case "tool_use":
+            case "function_call":
+                return { finishReason: "tool_calls", rawFinishReason: raw };
+            case "content_filter":
+            case "refusal":
+            case "safety":
+            case "recitation":
+            case "SAFETY":
+            case "RECITATION":
+            case "BLOCKLIST":
+            case "PROHIBITED_CONTENT":
+            case "SPII":
+            case "IMAGE_SAFETY":
+            case "content_filtered":
+            case "guardrail_intervened":
+                return { finishReason: "content_filter", rawFinishReason: raw };
+            default:
+                return { finishReason: "error", rawFinishReason: raw };
+        }
+    }
+    switch (stopReason) {
+        case "stop":
+            return { finishReason: "stop" };
+        case "length":
+            return { finishReason: "length" };
+        case "toolUse":
+            return { finishReason: "tool_calls" };
+        case "error":
+        case "aborted":
+            return { finishReason: "error" };
+        default:
+            return { finishReason: null };
+    }
+};
+
+const extractFromAssistantMessage = (message: AssistantMessage | undefined) => {
+    if (message === undefined) {
+        return {
+            content: "",
+            reasoning: "",
+            reasoningProjected: false,
+            toolCalls: [] as { index: number; id: string; type: string; name: string; arguments: string }[],
+            finishReason: null as ProviderAttemptFinishReason,
+            rawFinishReason: undefined as string | undefined,
+        };
+    }
+    let content = "";
+    let reasoning = "";
+    const toolCalls: { index: number; id: string; type: string; name: string; arguments: string }[] = [];
+    for (const block of message.content) {
+        if (block.type === "text") {
+            content += block.text;
+        } else if (block.type === "thinking") {
+            if (block.thinking.length > 0) {
+                reasoning += block.thinking;
+            } else if (typeof block.thinkingSignature === "string" && block.thinkingSignature.startsWith("[")) {
+                try {
+                    const details: unknown = JSON.parse(block.thinkingSignature);
+                    if (Array.isArray(details)) {
+                        for (const detail of details) {
+                            if (!isRecord(detail)) continue;
+                            if (typeof detail.text === "string") reasoning += detail.text;
+                            else if (typeof detail.summary === "string") reasoning += detail.summary;
+                        }
+                    }
+                } catch {
+                    // signature is opaque
+                }
+            }
+        } else if (block.type === "toolCall") {
+            toolCalls.push({
+                index: toolCalls.length,
+                id: block.id,
+                type: "function",
+                name: block.name,
+                arguments: JSON.stringify(block.arguments),
+            });
+        }
+    }
+    const { finishReason, rawFinishReason } = normalizeStopReason(message.stopReason, message.rawStopReason);
+    return {
+        content,
+        reasoning,
+        reasoningProjected: reasoning.length > 0,
+        toolCalls,
+        finishReason,
+        rawFinishReason,
+    };
+};
+
+const STANDARD_CHUNK_KEYS: ReadonlySet<string> = new Set([
+    "id",
+    "object",
+    "created",
+    "model",
+    "choices",
+    "usage",
+    "charge",
+    "system_fingerprint",
+    "service_tier",
+    "type",
+    "index",
+    "delta",
+    "message",
+    "content_block",
+    "candidates",
+    "usageMetadata",
+    "modelVersion",
+    "responseId",
+    "contentBlockStart",
+    "contentBlockDelta",
+    "contentBlockStop",
+    "messageStart",
+    "messageStop",
+    "metadata",
+    "amazon-bedrock-invocationMetrics",
+]);
+
+const STANDARD_DELTA_KEYS: ReadonlySet<string> = new Set([
+    "role",
+    "content",
+    "reasoning_content",
+    "reasoning",
+    "reasoning_text",
+    "reasoning_details",
+    "tool_calls",
+    "function_call",
+    "audio",
+]);
+
+const extractLogprobs = (choice: Record<string, unknown>): TokenLogprob[] => {
+    if (!isRecord(choice.logprobs) || !Array.isArray(choice.logprobs.content)) return [];
+    const out: TokenLogprob[] = [];
+    for (const item of choice.logprobs.content) {
+        if (!isRecord(item) || typeof item.token !== "string" || typeof item.logprob !== "number") continue;
+        const top = Array.isArray(item.top_logprobs)
+            ? item.top_logprobs.flatMap((alt) =>
+                isRecord(alt) && typeof alt.token === "string" && typeof alt.logprob === "number"
+                    ? [{ token: alt.token, logprob: alt.logprob }]
+                    : [])
+            : undefined;
+        out.push({
+            token: item.token,
+            logprob: item.logprob,
+            ...(top !== undefined && top.length > 0 ? { top } : {}),
+        });
+    }
+    return out;
+};
+
+const collectChunkForensics = (rawChunks: readonly unknown[]) => {
+    let id: string | undefined;
+    let model: string | undefined;
+    let rawUsage: Record<string, unknown> | undefined;
+    let charge: unknown;
+    let rawFinishReason: string | undefined;
+    const logprobs: TokenLogprob[] = [];
+    const metadata: Record<string, unknown> = {};
+    const channels: Record<string, string> = {};
+    for (const chunk of rawChunks) {
+        if (!isRecord(chunk)) continue;
+        if (typeof chunk.id === "string" && chunk.id.length > 0) id = chunk.id;
+        else if (typeof chunk.responseId === "string" && chunk.responseId.length > 0) id = chunk.responseId;
+        else if (isRecord(chunk.message) && typeof chunk.message.id === "string") id = chunk.message.id;
+        if (typeof chunk.model === "string" && chunk.model.length > 0) model = chunk.model;
+        else if (typeof chunk.modelVersion === "string" && chunk.modelVersion.length > 0) model = chunk.modelVersion;
+        else if (isRecord(chunk.message) && typeof chunk.message.model === "string") model = chunk.message.model;
+        for (const [key, value] of Object.entries(chunk)) {
+            if (!STANDARD_CHUNK_KEYS.has(key) && value !== undefined) {
+                metadata[key] = value;
+            }
+        }
+        if (chunk.charge !== undefined) {
+            charge = chunk.charge;
+        }
+        if (isRecord(chunk.usage)) {
+            rawUsage = Object.assign(rawUsage ?? {}, chunk.usage);
+        }
+        if (isRecord(chunk.message) && isRecord(chunk.message.usage)) {
+            rawUsage = Object.assign(rawUsage ?? {}, chunk.message.usage);
+        }
+        if (isRecord(chunk.delta) && typeof chunk.delta.stop_reason === "string" && chunk.delta.stop_reason.length > 0) {
+            rawFinishReason = chunk.delta.stop_reason;
+        }
+        if (typeof chunk.stopReason === "string" && chunk.stopReason.length > 0) {
+            rawFinishReason = chunk.stopReason;
+        }
+        if (Array.isArray(chunk.candidates)) {
+            for (const candidate of chunk.candidates) {
+                if (isRecord(candidate) && typeof candidate.finishReason === "string" && candidate.finishReason.length > 0) {
+                    rawFinishReason = candidate.finishReason;
+                }
+            }
+        }
+        if (Array.isArray(chunk.choices)) {
+            for (const choice of chunk.choices) {
+                if (!isRecord(choice)) continue;
+                logprobs.push(...extractLogprobs(choice));
+                if (typeof choice.finish_reason === "string" && choice.finish_reason.length > 0) {
+                    rawFinishReason = choice.finish_reason;
+                }
+                if (isRecord(choice.delta)) {
+                    for (const [key, value] of Object.entries(choice.delta)) {
+                        if (!STANDARD_DELTA_KEYS.has(key) && typeof value === "string" && value.length > 0) {
+                            channels[key] = (channels[key] ?? "") + value;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return { id, model, rawUsage, charge, rawFinishReason, logprobs, metadata, channels };
+};
+
+const toUsageFromPiMessage = (
+    message: AssistantMessage | undefined,
+    rawUsage: Record<string, unknown> | undefined,
+): ProviderUsage | undefined => {
+    const sdkUsage = (() => {
+        if (message === undefined) return undefined;
+        const { input, output, cacheRead, cacheWrite, totalTokens } = message.usage;
+        const reasoning = (message.usage as { reasoning?: number }).reasoning;
+        if (input === 0 && output === 0 && cacheRead === 0 && cacheWrite === 0 && totalTokens === 0) {
+            return undefined;
+        }
+        const totalInput = input + cacheRead + cacheWrite;
+        return {
+            inputTokens: totalInput,
+            outputTokens: output,
+            totalTokens: totalTokens || totalInput + output,
+            inputTokenDetails: {
+                noCacheTokens: input,
+                cacheReadTokens: cacheRead,
+                cacheWriteTokens: cacheWrite,
+            },
+            ...(typeof reasoning === "number" && reasoning > 0
+                ? {
+                    outputTokenDetails: {
+                        textTokens: Math.max(0, output - reasoning),
+                        reasoningTokens: reasoning,
+                    },
+                }
+                : {}),
+        };
+    })();
+    if (rawUsage !== undefined) {
+        try {
+            const normalized = normalizeUsage(rawUsage, sdkUsage);
+            if (normalized !== undefined) return normalized;
+        } catch (error) {
+            if (error instanceof UsageDetailError) return error.usage;
+            throw error;
+        }
+    }
+    return sdkUsage;
+};
+
 // Drop trailing occurrences of a server-rendered EOG marker. llama-server
 // under --special renders EOS as literal text, so a raw-EOS-ended turn carries a
 // trailing <eos> the grammar never sanctioned. Trailing-only + exact-match, so it
@@ -260,47 +765,40 @@ const stripTrailingSpecial = (content: string, marker: string): string => {
     return out;
 };
 
-const providerWarningMessage = (warning: CallWarning): string => {
-    switch (warning.type) {
-        case "unsupported":
-        case "compatibility":
-            return `${warning.type} ${warning.feature}${warning.details === undefined ? "" : `: ${warning.details}`}`;
-        case "deprecated": return `deprecated ${warning.setting}: ${warning.message}`;
-        case "other": return warning.message;
-    }
-};
-
-
-// {§provider-request-authority} — the global controls a native adapter documents as provider options.
+// {§provider-request-authority} — the global controls a native adapter documents.
 export interface NativeRequestControls {
     readonly namespace: string;
     readonly serviceTier: boolean;
     readonly logprobs: boolean;
 }
 
-// {§provider-request-authority} — a native route forwards a configured control only through its
-// adapter's documented provider option; a control the adapter does not document is named once and not
+// {§provider-request-authority} — a native route forwards a configured control only when its
+// adapter documents it; a control the adapter does not document is named once and not
 // sent, never dropped in silence (#988).
-const nativeControlOptions = (
+const resolveRequestControls = (
     source: string,
     controls: NativeRequestControls | undefined,
     serviceTier: string | undefined,
     topLogprobs: number | null,
-): ModelProviderOptions | undefined => {
-    const options: Record<string, string | number | boolean> = {};
+): { readonly serviceTier?: string; readonly topLogprobs?: number } => {
     const unsupported = (knob: string): void => emitWarningOnce(
         `${source}: ${knob} is not a provider option this route's SDK${controls === undefined ? "" : ` (${controls.namespace})`} documents, so it is not sent`,
         "PLURNK_REQUEST_CONTROL_UNSUPPORTED",
     );
+    let resolvedServiceTier: string | undefined;
     if (serviceTier !== undefined) {
-        if (controls?.serviceTier === true) options.serviceTier = serviceTier;
+        if (controls?.serviceTier === true) resolvedServiceTier = serviceTier;
         else unsupported("PLURNK_PROVIDERS_SERVICE_TIER");
     }
+    let resolvedTopLogprobs: number | undefined;
     if (topLogprobs !== null) {
-        if (controls?.logprobs === true) options.logprobs = topLogprobs > 0 ? topLogprobs : true;
+        if (controls?.logprobs === true) resolvedTopLogprobs = topLogprobs;
         else unsupported("PLURNK_PROVIDERS_TOP_LOGPROBS");
     }
-    return controls === undefined || Object.keys(options).length === 0 ? undefined : { [controls.namespace]: options };
+    return {
+        ...(resolvedServiceTier === undefined ? {} : { serviceTier: resolvedServiceTier }),
+        ...(resolvedTopLogprobs === undefined ? {} : { topLogprobs: resolvedTopLogprobs }),
+    };
 };
 
 export default class ModelProvider implements Provider {
@@ -326,7 +824,7 @@ export default class ModelProvider implements Provider {
     #effort: EffortSetting;
     #supportedEfforts: readonly Effort[];
     #adaptiveEffort: NativeEffort | "provider-default";
-    #adaptiveEffortProviderOptions: ModelProviderOptions | undefined;
+    #nativeAdaptiveThinking: boolean;
     readonly #samplingDefaults: Readonly<Record<string, number>>;
     #repeatPenalty: number | null;
     #dryMultiplier: number | undefined;
@@ -336,7 +834,6 @@ export default class ModelProvider implements Provider {
     #reasoningStyle: ReasoningStyle;
     readonly #outputTokenField: "max_tokens" | "max_completion_tokens";
     readonly #reasoningRequestBody: ((mode: Effort, reasoningBudget: number | null) => Record<string, unknown>) | undefined;
-    readonly #reasoningRequestProviderOptions: ((mode: Effort, reasoningBudget: number | null) => ModelProviderOptions | undefined) | undefined;
     #reasoningResponseStyle: ReasoningResponseStyle;
     #countPromptTokens: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     #promptTokensUrl: string | undefined;
@@ -345,10 +842,9 @@ export default class ModelProvider implements Provider {
     #source: string;
     #grammarStyle: GrammarStyle;
     #cacheAffinity: CacheAffinity | undefined;
-    #systemCacheProviderOptions: ModelProviderOptions | undefined;
-    #reasoningResponseProviderOptions: ModelProviderOptions | undefined;
+    #systemCacheBreakpoint: boolean;
     #serviceTier: string | undefined;
-    #controlOptions: ModelProviderOptions | undefined;
+    #resolvedControls: { readonly serviceTier?: string; readonly topLogprobs?: number };
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
     #retryAttempts: number;
@@ -399,7 +895,7 @@ export default class ModelProvider implements Provider {
             ...new Set(config.supportedEfforts ?? EFFORTS),
         ]);
         this.#adaptiveEffort = config.adaptiveEffort ?? "provider-default";
-        this.#adaptiveEffortProviderOptions = config.adaptiveEffortProviderOptions;
+        this.#nativeAdaptiveThinking = config.nativeAdaptiveThinking === true;
         if (!this.#supportedEfforts.includes(this.#effort.mode)) {
             throw new UnsupportedEffortError(
                 config.source ?? "provider",
@@ -429,15 +925,11 @@ export default class ModelProvider implements Provider {
         this.#retryAttempts = config.retryAttempts;
         this.#errorDetailLimit = config.errorDetailLimit;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
-        if (this.#providerModel !== undefined && (config.outputTokenField !== undefined || config.reasoningRequestBody !== undefined)) {
+        if (this.#providerModel !== undefined && config.outputTokenField !== undefined) {
             throw new TypeError(`${config.source ?? "provider"}: compatible request body projections require an OpenAI-compatible URL`);
-        }
-        if (this.#providerModel === undefined && config.reasoningRequestProviderOptions !== undefined) {
-            throw new TypeError(`${config.source ?? "provider"}: native reasoning provider options require a model transport`);
         }
         this.#outputTokenField = config.outputTokenField ?? "max_tokens";
         this.#reasoningRequestBody = config.reasoningRequestBody;
-        this.#reasoningRequestProviderOptions = config.reasoningRequestProviderOptions;
         this.#reasoningResponseStyle = config.reasoningResponseStyle ?? "verbatim";
         if (config.countPromptTokens !== undefined && config.promptTokensUrl !== undefined) {
             throw new Error(`${config.source ?? "provider"}: configure countPromptTokens or promptTokensUrl, not both`);
@@ -453,29 +945,12 @@ export default class ModelProvider implements Provider {
         this.#source = config.source ?? "provider";
         this.#grammarStyle = config.grammarStyle ?? "none";
         this.#cacheAffinity = config.cacheAffinity;
-        this.#systemCacheProviderOptions = config.systemCacheProviderOptions;
-        this.#reasoningResponseProviderOptions = config.reasoningResponseProviderOptions;
-        if (this.#providerModel === undefined && this.#cacheAffinity?.target === "provider-option") {
-            throw new Error(`${this.#source}: native provider-option cache affinity requires a model transport`);
-        }
-        if (this.#providerModel !== undefined && this.#cacheAffinity?.target === "body") {
-            throw new Error(`${this.#source}: body cache affinity requires an OpenAI-compatible URL`);
-        }
-        if (this.#providerModel === undefined && this.#systemCacheProviderOptions !== undefined) {
-            throw new Error(`${this.#source}: system cache provider options require a model transport`);
-        }
-        if (this.#providerModel === undefined && this.#reasoningResponseProviderOptions !== undefined) {
-            throw new Error(`${this.#source}: reasoning response provider options require a model transport`);
+        this.#systemCacheBreakpoint = config.systemCacheBreakpoint === true;
+        if (this.#providerModel === undefined && this.#systemCacheBreakpoint) {
+            throw new Error(`${this.#source}: system cache breakpoints require a model transport`);
         }
         if (this.#providerModel === undefined && this.#additiveReasoningProvider !== undefined) {
             throw new Error(`${this.#source}: additive reasoning projection requires a model transport`);
-        }
-        if (this.#cacheAffinity?.target === "provider-option"
-            && Object.hasOwn(
-                this.#reasoningResponseProviderOptions?.[this.#cacheAffinity.provider] ?? {},
-                this.#cacheAffinity.name,
-            )) {
-            throw new Error(`${this.#source}: reasoning response options conflict with cache-affinity option ${this.#cacheAffinity.provider}.${this.#cacheAffinity.name}`);
         }
         this.#serviceTier = config.serviceTier;
         this.#apiKeyRejectedMessage = config.apiKeyRejectedMessage;
@@ -487,9 +962,12 @@ export default class ModelProvider implements Provider {
         if (this.#providerModel === undefined && config.requestControls !== undefined) {
             throw new Error(`${this.#source}: native request controls require a model transport`);
         }
-        this.#controlOptions = this.#providerModel === undefined
-            ? undefined
-            : nativeControlOptions(this.#source, config.requestControls, this.#serviceTier, this.#topLogprobs);
+        this.#resolvedControls = this.#providerModel === undefined
+            ? {
+                ...(this.#serviceTier === undefined ? {} : { serviceTier: this.#serviceTier }),
+                ...(this.#topLogprobs === null ? {} : { topLogprobs: this.#topLogprobs }),
+            }
+            : resolveRequestControls(this.#source, config.requestControls, this.#serviceTier, this.#topLogprobs);
         this.#rawBody = config.rawBody ?? false;
         this.#servedModel = config.servedModel;
         this.#requiresOutputBudget = config.requiresOutputBudget;
@@ -516,7 +994,6 @@ export default class ModelProvider implements Provider {
             throw new Error(`${this.#source}: effort and generation envelope disagree on reasoningBudget`);
         }
         this.#reasoningRequestBody?.(this.#effort.mode, this.#reasoningBudget);
-        this.#reasoningRequestProviderOptions?.(this.#effort.mode, this.#reasoningBudget);
         if (this.#requiresOutputBudget === true && this.#outputBudget === null) {
             throw new Error(`${this.#source}: this backend requires a resolved PLURNK_PROVIDERS_OUTPUT_BUDGET`);
         }
@@ -540,7 +1017,7 @@ export default class ModelProvider implements Provider {
                 return tokens;
             };
         }
-        this.#requestBody = new ModelRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, effort: this.#effort, adaptiveEffortProviderOptions: this.#adaptiveEffortProviderOptions, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, grammarStyle: this.#grammarStyle, cacheAffinity: this.#cacheAffinity, reasoningResponseProviderOptions: this.#reasoningResponseProviderOptions, controlOptions: this.#controlOptions, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
+        this.#requestBody = new ModelRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, effort: this.#effort, nativeAdaptiveThinking: this.#nativeAdaptiveThinking, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, grammarStyle: this.#grammarStyle, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
@@ -746,6 +1223,11 @@ export default class ModelProvider implements Provider {
                 ? { [this.#cacheAffinity.name]: sessionId }
                 : {}),
         };
+        for (const field of ["tools", "tool_choice", "functions", "function_call", "parallel_tool_calls"]) {
+            if (field in body) {
+                throw new TypeError("PLURNK provider requests cannot declare native tools");
+            }
+        }
 
         // Per-request headers = static auth/routing only.
         const headers = new Headers(this.#headers);
@@ -776,7 +1258,6 @@ export default class ModelProvider implements Provider {
         let recoveredAfterOutput = false;
         const executeAdmittedRequest = async () => {
             const capture = this.#rawBody ? new RequestCapture() : undefined;
-            const fetch = capture?.fetch(this.#fetch ?? outboundFetch) ?? this.#fetch;
             let requestReasoningStream = "";
             let structuredReasoning = false;
             const envelopes = preserveGrammarSentence ? LeadingReasoning.TEMPLATE
@@ -853,56 +1334,511 @@ export default class ModelProvider implements Provider {
             };
             let response;
             try {
-                response = this.#providerModel === undefined
-                    ? await executeOpenAICompatible({
-                        url: this.#url!,
-                        model: this.#model,
-                        headers: requestHeaders,
-                        body,
-                        messages,
-                        signal: operationSignal,
-                        fetch,
-                        captureRawBody: this.#rawBody,
-                        ...observers,
-                    })
-                    : await executeProviderModel({
-                        providerModel: this.#providerModel,
-                        fetch,
-                        ...(capture === undefined ? {} : { captureRequest: (req) => capture.record(req) }),
-                        headers: requestHeaders,
-                        providerOptions: this.#requestBody.requestProviderOptions(
-                            sessionId,
-                            nativeReasoningBudget,
-                            this.#reasoningRequestProviderOptions?.(this.#effort.mode, capacity.reasoningBudget),
-                        ),
-                        systemProviderOptions: this.#systemCacheProviderOptions,
-                        messages,
-                        signal: operationSignal,
-                        captureRawBody: this.#rawBody,
-                        ...observers,
-                        temperature: typeof requestSampling.temperature === "number" ? requestSampling.temperature : undefined,
-                        topP: typeof requestSampling.top_p === "number" ? requestSampling.top_p : undefined,
-                        topK: typeof requestSampling.top_k === "number" ? requestSampling.top_k : undefined,
-                        presencePenalty: typeof requestSampling.presence_penalty === "number" ? requestSampling.presence_penalty : undefined,
-                        frequencyPenalty: typeof requestSampling.frequency_penalty === "number" ? requestSampling.frequency_penalty : undefined,
-                        stopSequences: typeof requestSampling.stop === "string"
-                            ? [requestSampling.stop]
-                            : Array.isArray(requestSampling.stop) && requestSampling.stop.every((value) => typeof value === "string")
-                                ? requestSampling.stop
-                                : undefined,
-                        seed: typeof requestSampling.seed === "number" ? requestSampling.seed : undefined,
-                        maxOutputTokens: this.#requestBody.nativeMaxOutputTokens(capacity.outputBudget, nativeReasoningBudget),
-                        reasoning: this.#reasoningRequestProviderOptions !== undefined
-                            ? "provider-default"
-                            : this.#effort.mode === "off"
-                                ? "none"
-                                : this.#effort.mode === "adaptive"
-                                    ? this.#adaptiveEffort
-                                    : nativeFixedEffort(this.#effort.mode),
+                const effectiveModel: ProviderModel = this.#providerModel ?? {
+                    id: this.#model,
+                    api: "openai-completions",
+                    provider: this.#source,
+                    baseUrl: this.#url!.replace(/\/chat\/completions\/?$/, ""),
+                    compat: {
+                        supportsStore: false,
+                        supportsDeveloperRole: false,
+                        supportsUsageInStreaming: false,
+                        supportsFinishReason: true,
+                    },
+                };
+                const buildPiModel = <TApi extends ProviderModel["api"]>(api: TApi): Model<TApi> => ({
+                    id: effectiveModel.id,
+                    name: effectiveModel.name ?? effectiveModel.id,
+                    api,
+                    provider: effectiveModel.provider,
+                    baseUrl: effectiveModel.baseUrl,
+                    reasoning: effectiveModel.reasoning ?? true,
+                    input: [...(effectiveModel.input ?? ["text", "image"])],
+                    cost: effectiveModel.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                    contextWindow: effectiveModel.contextWindow ?? 128_000,
+                    maxTokens: effectiveModel.maxTokens ?? 32_768,
+                    ...(effectiveModel.headers === undefined ? {} : { headers: { ...effectiveModel.headers } }),
+                });
+                const context = toPiContext(messages);
+                const rawChunks: unknown[] = [];
+                let httpResponse: { status: number; headers: Record<string, string>; ok: boolean } | undefined;
+                let httpErrorBody: string | undefined;
+                let capturedTransportError: unknown;
+                let requestUrl = this.#url ?? effectiveModel.baseUrl;
+                let requestBodyValues: unknown;
+
+                const baseFetch = capture?.fetch(this.#fetch ?? outboundFetch) ?? this.#fetch ?? outboundFetch;
+                const customFetch: ProviderFetch = async (input, init) => {
+                    const effectiveInput = this.#providerModel === undefined && this.#url !== undefined
+                        ? this.#url
+                        : input;
+                    requestUrl = typeof effectiveInput === "string"
+                        ? effectiveInput
+                        : effectiveInput instanceof URL
+                            ? effectiveInput.toString()
+                            : effectiveInput.url;
+                    if (typeof init?.body === "string") {
+                        try {
+                            requestBodyValues = JSON.parse(init.body);
+                        } catch {
+                            requestBodyValues = init.body;
+                        }
+                    }
+                    try {
+                        const res = await baseFetch(effectiveInput, init);
+                        httpResponse = {
+                            status: res.status,
+                            headers: headersToRecord(res.headers),
+                            ok: res.ok,
+                        };
+                        if (!res.ok) {
+                            try {
+                                httpErrorBody = await res.clone().text();
+                            } catch {
+                                // ignore clone read error
+                            }
+                        }
+                        return res;
+                    } catch (err) {
+                        capturedTransportError = err;
+                        throw err;
+                    }
+                };
+
+                const temperature = typeof requestSampling.temperature === "number" ? requestSampling.temperature : undefined;
+                const topP = typeof requestSampling.top_p === "number" ? requestSampling.top_p : undefined;
+                const topK = typeof requestSampling.top_k === "number" ? requestSampling.top_k : undefined;
+                const presencePenalty = typeof requestSampling.presence_penalty === "number" ? requestSampling.presence_penalty : undefined;
+                const frequencyPenalty = typeof requestSampling.frequency_penalty === "number" ? requestSampling.frequency_penalty : undefined;
+                const stopSequences = typeof requestSampling.stop === "string"
+                    ? [requestSampling.stop]
+                    : Array.isArray(requestSampling.stop) && requestSampling.stop.every((value): value is string => typeof value === "string")
+                        ? requestSampling.stop
+                        : undefined;
+                const seed = typeof requestSampling.seed === "number" ? requestSampling.seed : undefined;
+                const maxTokens = this.#providerModel === undefined
+                    ? effectiveMaxOutputTokens
+                    : this.#requestBody.nativeMaxOutputTokens(capacity.outputBudget, nativeReasoningBudget);
+                const reasoning = this.#providerModel === undefined || this.#reasoningRequestBody !== undefined
+                    ? "provider-default"
+                    : this.#effort.mode === "off"
+                        ? "none"
+                        : this.#effort.mode === "adaptive"
+                            ? this.#adaptiveEffort
+                            : nativeFixedEffort(this.#effort.mode);
+
+                const commonOptions = {
+                    signal: operationSignal,
+                    headers: requestHeaders,
+                    ...(temperature === undefined ? {} : { temperature }),
+                    ...(maxTokens === undefined ? {} : { maxTokens }),
+                    onProviderStreamEvent: (rawEvent: unknown) => {
+                        rawChunks.push(rawEvent);
+                    },
+                };
+
+                const onPayload = async (payload: unknown) => {
+                    const transformed = effectiveModel.onPayload !== undefined
+                        ? await effectiveModel.onPayload(payload, effectiveModel)
+                        : payload;
+                    const params = isRecord(transformed) ? { ...transformed } : {};
+                    if (effectiveModel.api === "openai-completions") {
+                        if (topP !== undefined) params.top_p = topP;
+                        if (topK !== undefined && effectiveModel.includeTopK === true) params.top_k = topK;
+                        if (presencePenalty !== undefined) params.presence_penalty = presencePenalty;
+                        if (frequencyPenalty !== undefined) params.frequency_penalty = frequencyPenalty;
+                        if (stopSequences !== undefined) params.stop = stopSequences;
+                        if (seed !== undefined) params.seed = seed;
+                        if (this.#systemCacheBreakpoint
+                            || messages.some((m) => Array.isArray(m.content) && m.content.some((p) => p.type === "file" && !p.mediaType.startsWith("image/")))) {
+                            params.messages = mapOpenAICompatibleMessages(messages, this.#systemCacheBreakpoint);
+                        } else if (messages[0]?.role === "system" && Array.isArray(params.messages)) {
+                            const first: unknown = params.messages[0];
+                            if (!isRecord(first) || (first.role !== "system" && first.role !== "developer")) {
+                                params.messages.unshift({ role: "system", content: "" });
+                            }
+                        }
+                        if (this.#providerModel === undefined) {
+                            for (const [key, value] of Object.entries(body)) {
+                                if (value === undefined) delete params[key];
+                                else params[key] = value;
+                            }
+                        } else {
+                            if (this.#reasoningRequestBody !== undefined) {
+                                Object.assign(params, this.#reasoningRequestBody(this.#effort.mode, capacity.reasoningBudget));
+                            }
+                            if (this.#cacheAffinity?.target === "body") {
+                                params[this.#cacheAffinity.name] = sessionId;
+                            }
+                            if (this.#resolvedControls.topLogprobs !== undefined) {
+                                params.logprobs = true;
+                                params.top_logprobs = this.#resolvedControls.topLogprobs;
+                            }
+                            if (this.#resolvedControls.serviceTier !== undefined) {
+                                params.service_tier = this.#resolvedControls.serviceTier;
+                            }
+                        }
+                    } else if (effectiveModel.api === "openai-responses") {
+                        if (topP !== undefined) params.top_p = topP;
+                        if (this.#cacheAffinity?.target === "body") {
+                            params[this.#cacheAffinity.name] = sessionId;
+                        }
+                        if (this.#resolvedControls.serviceTier !== undefined) {
+                            params.service_tier = this.#resolvedControls.serviceTier;
+                        }
+                        if (this.#resolvedControls.topLogprobs !== undefined) {
+                            const existingInclude = Array.isArray(params.include)
+                                ? params.include.filter((item): item is string => typeof item === "string")
+                                : [];
+                            if (!existingInclude.includes("message.output_text.logprobs")) {
+                                params.include = [...existingInclude, "message.output_text.logprobs"];
+                            }
+                            params.top_logprobs = this.#resolvedControls.topLogprobs;
+                        }
+                    } else if (effectiveModel.api === "anthropic-messages") {
+                        if (topP !== undefined) params.top_p = topP;
+                        if (topK !== undefined) params.top_k = topK;
+                        if (stopSequences !== undefined) params.stop_sequences = stopSequences;
+                        applyAnthropicPayloadAdjustments(params, messages, this.#systemCacheBreakpoint, this.#resolvedControls.serviceTier);
+                    } else if (effectiveModel.api === "google-generative-ai") {
+                        const config: Record<string, unknown> = isRecord(params.config) ? { ...params.config } : {};
+                        if (topP !== undefined) config.topP = topP;
+                        if (topK !== undefined) config.topK = topK;
+                        if (presencePenalty !== undefined) config.presencePenalty = presencePenalty;
+                        if (frequencyPenalty !== undefined) config.frequencyPenalty = frequencyPenalty;
+                        if (stopSequences !== undefined) config.stopSequences = stopSequences;
+                        if (seed !== undefined) config.seed = seed;
+                        if (this.#resolvedControls.serviceTier !== undefined) {
+                            config.serviceTier = this.#resolvedControls.serviceTier;
+                        }
+                        params.config = withoutNativeTools(config, "generate-content");
+                        try {
+                            capture?.record({
+                                method: "POST",
+                                origin: new URL(effectiveModel.baseUrl).origin,
+                                body: JSON.stringify(params),
+                            });
+                        } catch {
+                            // ignore invalid URL
+                        }
+                        requestBodyValues = params;
+                        return params;
+                    } else if (effectiveModel.api === "bedrock-converse-stream") {
+                        const inferenceConfig: Record<string, unknown> = isRecord(params.inferenceConfig)
+                            ? { ...params.inferenceConfig }
+                            : {};
+                        if (topP !== undefined) inferenceConfig.topP = topP;
+                        if (stopSequences !== undefined) inferenceConfig.stopSequences = stopSequences;
+                        if (Object.keys(inferenceConfig).length > 0) params.inferenceConfig = inferenceConfig;
+                        if (this.#resolvedControls.serviceTier !== undefined) {
+                            params.serviceTier = { type: this.#resolvedControls.serviceTier };
+                        }
+                    }
+                    const toolProtocol = effectiveModel.api === "bedrock-converse-stream"
+                        ? "amazon-bedrock"
+                        : effectiveModel.api === "anthropic-messages"
+                            ? "messages"
+                            : "openai";
+                    const nextParams = withoutNativeTools(params, toolProtocol);
+                    if (effectiveModel.api === "bedrock-converse-stream") {
+                        try {
+                            capture?.record({
+                                method: "POST",
+                                origin: new URL(effectiveModel.baseUrl).origin,
+                                body: JSON.stringify(nextParams),
+                            });
+                        } catch {
+                            // ignore invalid URL
+                        }
+                    }
+                    requestBodyValues = nextParams;
+                    return nextParams;
+                };
+
+                const startStream = (): AssistantMessageEventStream => {
+                    switch (effectiveModel.api) {
+                        case "openai-completions": {
+                            const reasoningEffort = this.#providerModel === undefined || reasoning === "none" || reasoning === "provider-default"
+                                ? undefined
+                                : reasoning;
+                            return streamOpenAICompletions(
+                                {
+                                    ...buildPiModel("openai-completions"),
+                                    ...(effectiveModel.compat === undefined ? {} : { compat: { ...effectiveModel.compat } }),
+                                },
+                                context,
+                                {
+                                    ...commonOptions,
+                                    fetch: customFetch,
+                                    apiKey: effectiveModel.apiKey ?? "plurnk-unset",
+                                    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+                                    onPayload,
+                                },
+                            );
+                        }
+                        case "openai-responses": {
+                            const reasoningEffort = reasoning === "none" || reasoning === "provider-default" ? undefined : reasoning;
+                            return streamOpenAIResponses(buildPiModel("openai-responses"), context, {
+                                ...commonOptions,
+                                fetch: customFetch,
+                                apiKey: effectiveModel.apiKey ?? "plurnk-unset",
+                                ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+                                onPayload,
+                            });
+                        }
+                        case "anthropic-messages": {
+                            const effortOption = reasoning !== "none" && reasoning !== "provider-default"
+                                ? (reasoning === "minimal" ? "low" : reasoning === "xhigh" ? "max" : reasoning)
+                                : undefined;
+                            return streamAnthropic(
+                                {
+                                    ...buildPiModel("anthropic-messages"),
+                                    ...(this.#nativeAdaptiveThinking ? { compat: { forceAdaptiveThinking: true } } : {}),
+                                },
+                                context,
+                                {
+                                    ...commonOptions,
+                                    fetch: customFetch,
+                                    apiKey: effectiveModel.apiKey ?? "plurnk-unset",
+                                    cacheRetention: "none",
+                                    ...(reasoning === "none"
+                                        ? { thinkingEnabled: false }
+                                        : this.#nativeAdaptiveThinking
+                                            ? {
+                                                thinkingEnabled: true,
+                                                ...(effortOption === undefined ? {} : { effort: effortOption }),
+                                            }
+                                            : nativeReasoningBudget !== null
+                                                ? { thinkingEnabled: true, thinkingBudgetTokens: nativeReasoningBudget }
+                                                : {}),
+                                    onPayload,
+                                },
+                            );
+                        }
+                        case "google-generative-ai": {
+                            syncAmbientHttp();
+                            const googleLevel: "MINIMAL" | "LOW" | "MEDIUM" | "HIGH" = reasoning === "minimal"
+                                ? "MINIMAL"
+                                : reasoning === "low"
+                                    ? "LOW"
+                                    : reasoning === "medium"
+                                        ? "MEDIUM"
+                                        : "HIGH";
+                            const googleThinking = reasoning === "none"
+                                ? { enabled: false }
+                                : nativeReasoningBudget !== null
+                                    ? { enabled: true, budgetTokens: nativeReasoningBudget }
+                                    : reasoning !== "provider-default"
+                                        ? {
+                                            enabled: true,
+                                            level: googleLevel,
+                                        }
+                                        : undefined;
+                            return streamGoogleGenerativeAi(buildPiModel("google-generative-ai"), context, {
+                                ...commonOptions,
+                                ...(effectiveModel.apiKey === undefined ? {} : { apiKey: effectiveModel.apiKey }),
+                                ...(googleThinking === undefined ? {} : { thinking: googleThinking }),
+                                onPayload,
+                            });
+                        }
+                        case "bedrock-converse-stream": {
+                            syncAmbientHttp();
+                            const bedrockReasoning = reasoning === "none" || reasoning === "provider-default"
+                                ? undefined
+                                : (reasoning === "xhigh" ? "max" : reasoning);
+                            return streamBedrockConverseStream(buildPiModel("bedrock-converse-stream"), context, {
+                                ...commonOptions,
+                                ...(bedrockReasoning === undefined ? {} : { reasoning: bedrockReasoning }),
+                                ...(nativeReasoningBudget !== null && bedrockReasoning !== undefined
+                                    ? {
+                                        thinkingBudgets: {
+                                            minimal: nativeReasoningBudget,
+                                            low: nativeReasoningBudget,
+                                            medium: nativeReasoningBudget,
+                                            high: nativeReasoningBudget,
+                                        },
+                                    }
+                                    : {}),
+                                onPayload,
+                            });
+                        }
+                    }
+                };
+
+                let outputObserved = false;
+                let finalMessage: AssistantMessage | undefined;
+                let lastErrorMessage: AssistantMessage | undefined;
+                let streamError: string | undefined;
+
+                const stream = startStream();
+                for await (const event of stream) {
+                    if (event.type === "text_delta" && event.delta.length > 0) {
+                        outputObserved = true;
+                        observers.observeText?.(event.delta);
+                    } else if (event.type === "thinking_delta" && event.delta.length > 0) {
+                        outputObserved = true;
+                        observers.observeReasoning?.(event.delta);
+                    } else if (event.type === "toolcall_start" || event.type === "toolcall_delta" || event.type === "toolcall_end") {
+                        outputObserved = true;
+                    } else if (event.type === "done") {
+                        finalMessage = event.message;
+                    } else if (event.type === "error") {
+                        lastErrorMessage = event.error;
+                        if (event.error.rawStopReason !== undefined
+                            && !operationSignal?.aborted
+                            && capturedTransportError === undefined
+                            && httpResponse?.ok !== false) {
+                            finalMessage = event.error;
+                        } else {
+                            streamError = event.error.errorMessage ?? "Provider stream failed";
+                        }
+                    }
+                }
+
+                const forensics = collectChunkForensics(rawChunks);
+                const messageInfo = extractFromAssistantMessage(finalMessage ?? lastErrorMessage);
+                const responseHeaders = httpResponse?.headers;
+                const responseId = finalMessage?.responseId ?? lastErrorMessage?.responseId ?? forensics.id;
+
+                if (finalMessage === undefined) {
+                    const failureRawBody = rawChunks.length > 0
+                        ? rawChunks
+                        : httpErrorBody !== undefined && httpErrorBody.length > 0
+                            ? httpErrorBody
+                            : undefined;
+                    if (operationSignal?.aborted) {
+                        const abortError = abortFailure(operationSignal);
+                        const usage = toUsageFromPiMessage(lastErrorMessage, forensics.rawUsage);
+                        attachFailureEvidence(abortError, {
+                            status: httpResponse?.status,
+                            usage,
+                            chargeEvidence: {
+                                ...(forensics.charge === undefined ? {} : { charge: forensics.charge }),
+                                ...(forensics.rawUsage === undefined ? {} : { usage: forensics.rawUsage }),
+                                response: {
+                                    ...(responseId === undefined ? {} : { id: responseId }),
+                                    ...(responseHeaders === undefined ? {} : { headers: responseHeaders }),
+                                },
+                            },
+                            content: messageInfo.content,
+                            reasoning: messageInfo.reasoning,
+                            error: serializeError(abortError),
+                            ...(failureRawBody === undefined ? {} : { rawBody: failureRawBody }),
+                            outputObserved: outputObserved || messageInfo.content.length > 0 || messageInfo.reasoning.length > 0,
+                        });
+                        throw abortError;
+                    }
+                    const statusCode = httpResponse !== undefined && !httpResponse.ok ? httpResponse.status : undefined;
+                    if (capturedTransportError !== undefined && statusCode === undefined) {
+                        const usage = toUsageFromPiMessage(lastErrorMessage, forensics.rawUsage);
+                        attachFailureEvidence(capturedTransportError, {
+                            status: httpResponse?.status,
+                            usage,
+                            chargeEvidence: {
+                                ...(forensics.charge === undefined ? {} : { charge: forensics.charge }),
+                                ...(forensics.rawUsage === undefined ? {} : { usage: forensics.rawUsage }),
+                                response: {
+                                    ...(responseId === undefined ? {} : { id: responseId }),
+                                    ...(responseHeaders === undefined ? {} : { headers: responseHeaders }),
+                                },
+                            },
+                            content: messageInfo.content,
+                            reasoning: messageInfo.reasoning,
+                            error: serializeError(capturedTransportError),
+                            ...(failureRawBody === undefined ? {} : { rawBody: failureRawBody }),
+                            outputObserved: outputObserved || messageInfo.content.length > 0 || messageInfo.reasoning.length > 0,
+                        });
+                        throw capturedTransportError;
+                    }
+                    let parsedErrorData: unknown;
+                    let errorMessage = streamError ?? `HTTP ${statusCode ?? "error"}`;
+                    if (httpErrorBody !== undefined && httpErrorBody.length > 0) {
+                        try {
+                            parsedErrorData = JSON.parse(httpErrorBody);
+                            if (isRecord(parsedErrorData)) {
+                                const errField = parsedErrorData.error;
+                                if (isRecord(errField) && typeof errField.message === "string" && errField.message.length > 0) {
+                                    errorMessage = errField.message;
+                                } else if (typeof errField === "string" && errField.length > 0) {
+                                    errorMessage = errField;
+                                } else if (typeof parsedErrorData.message === "string" && parsedErrorData.message.length > 0) {
+                                    errorMessage = parsedErrorData.message;
+                                } else {
+                                    errorMessage = httpErrorBody;
+                                }
+                            }
+                        } catch {
+                            errorMessage = httpErrorBody;
+                        }
+                    }
+                    const apiError = new APICallError({
+                        message: errorMessage,
+                        url: requestUrl,
+                        requestBodyValues,
+                        statusCode,
+                        responseHeaders,
+                        responseBody: httpErrorBody,
+                        data: parsedErrorData,
                     });
+                    const usage = toUsageFromPiMessage(lastErrorMessage, forensics.rawUsage);
+                    let charge: unknown = forensics.charge;
+                    if (parsedErrorData !== undefined && isRecord(parsedErrorData) && isRecord(parsedErrorData.usage)) {
+                        charge = parsedErrorData.usage.cost ?? charge;
+                    }
+                    attachFailureEvidence(apiError, {
+                        status: statusCode,
+                        usage,
+                        chargeEvidence: {
+                            ...(charge === undefined ? {} : { charge }),
+                            ...(forensics.rawUsage === undefined ? {} : { usage: forensics.rawUsage }),
+                            response: {
+                                ...(responseId === undefined ? {} : { id: responseId }),
+                                ...(responseHeaders === undefined ? {} : { headers: responseHeaders }),
+                            },
+                        },
+                        content: messageInfo.content,
+                        reasoning: messageInfo.reasoning,
+                        error: serializeError(apiError),
+                        ...(failureRawBody === undefined ? {} : { rawBody: failureRawBody }),
+                        outputObserved: outputObserved || messageInfo.content.length > 0 || messageInfo.reasoning.length > 0,
+                    });
+                    throw apiError;
+                }
+
+                const usage = toUsageFromPiMessage(finalMessage, forensics.rawUsage);
+                const chargeEvidence: ProviderChargeEvidence = {
+                    ...(forensics.charge === undefined ? {} : { charge: forensics.charge }),
+                    ...(forensics.rawUsage === undefined ? {} : { usage: forensics.rawUsage }),
+                    response: {
+                        ...(responseId === undefined ? {} : { id: responseId }),
+                        ...(responseHeaders === undefined ? {} : { headers: responseHeaders }),
+                    },
+                };
+                response = {
+                    id: responseId,
+                    model: forensics.model ?? finalMessage.model ?? effectiveModel.id,
+                    content: messageInfo.content,
+                    reasoning: messageInfo.reasoning,
+                    reasoningProjected: messageInfo.reasoningProjected,
+                    finishReason: messageInfo.finishReason,
+                    ...(messageInfo.rawFinishReason === undefined ? {} : { rawFinishReason: messageInfo.rawFinishReason }),
+                    usage,
+                    chargeEvidence,
+                    logprobs: forensics.logprobs,
+                    metadata: forensics.metadata,
+                    wire: {
+                        chunks: rawChunks.length,
+                        emptyChunks: 0,
+                        fields: {},
+                        channels: forensics.channels,
+                        toolCalls: messageInfo.toolCalls,
+                        unmappedChunks: [],
+                    },
+                    ...(this.#rawBody ? { rawBody: rawChunks } : {}),
+                };
             } catch (error) {
-                if (transportFailureOutputObserved(error)) recoveredAfterOutput = true;
-                const failure = transportFailureEvidence(error);
+                const failure = readFailureEvidence(error);
+                if (failure.outputObserved) recoveredAfterOutput = true;
                 await settleAccounting(
                     "error",
                     failure.usage,
@@ -1077,15 +2013,6 @@ export default class ModelProvider implements Provider {
                 kind: "provider_retry",
                 level: "warn",
                 message: "A provider stream failed after model output began; this response is a complete retry, not a continuation.",
-                position: null,
-            });
-        }
-        for (const warning of raw.warnings) {
-            (notices ??= []).push({
-                source: this.#source,
-                kind: "provider_warning",
-                level: "warn",
-                message: providerWarningMessage(warning),
                 position: null,
             });
         }

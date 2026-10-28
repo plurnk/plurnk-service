@@ -137,17 +137,6 @@ test("{§provider-request-authority} attribution rejects malformed URLs", () => 
     );
 });
 
-test("{§provider-effort} the Google adapter owns its readable-reasoning response projection", () => {
-    assert.deepEqual(
-        createProviderModel("google", "gemini-flash-latest", { GEMINI_API_KEY: "test-key" })?.reasoningResponseProviderOptions,
-        { google: { thinkingConfig: { includeThoughts: true } } },
-    );
-    assert.equal(
-        createProviderModel("cerebras", "gemma-4-31b", { CEREBRAS_API_KEY: "test-key" })?.reasoningResponseProviderOptions,
-        undefined,
-    );
-});
-
 test("{§provider-monetary-evidence} createProviderModel attaches DeepInfra's documented response-cost normalizer", () => {
     const sdk = createProviderModel("deepinfra", "zai-org/GLM-5.2", {
         DEEPINFRA_API_KEY: "test-key",
@@ -209,11 +198,11 @@ test("{§model-fact-resolution} ordered credential fallbacks are rejected at con
 test("{§provider-sdk-boundary} the adapter supplies each documented cache-affinity projection", () => {
     assert.deepEqual(
         createProviderModel("openai", "gpt-4.1-mini", withProviderDefaults({ OPENAI_API_KEY: "key" }))?.cacheAffinity,
-        { target: "provider-option", provider: "openai", name: "promptCacheKey" },
+        { target: "body", name: "prompt_cache_key" },
     );
     assert.deepEqual(
         createProviderModel("deepinfra", "zai-org/GLM-5.2", withProviderDefaults({ DEEPINFRA_API_KEY: "key" }))?.cacheAffinity,
-        { target: "provider-option", provider: "deepinfra", name: "prompt_cache_key" },
+        { target: "body", name: "prompt_cache_key" },
     );
     assert.deepEqual(
         createProviderModel("openrouter", "openai/gpt-5", withProviderDefaults({ OPENROUTER_API_KEY: "key" }))?.cacheAffinity,
@@ -227,11 +216,10 @@ test("{§provider-sdk-boundary} the adapter supplies each documented cache-affin
 });
 
 test("{§provider-sdk-boundary} explicit stable-system cache breakpoints exist only where a provider supports them", () => {
-    const cacheControl = { type: "ephemeral" };
-    const system = (provider: string, model: string, env: NodeJS.ProcessEnv) => createProviderModel(provider, model, withProviderDefaults(env))?.systemCacheProviderOptions;
-    assert.deepEqual(system("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "key" }), { anthropic: { cacheControl } });
-    assert.deepEqual(system("openrouter", "anthropic/claude-sonnet-4.6", { OPENROUTER_API_KEY: "key" }), { openrouter: { cacheControl } });
-    assert.deepEqual(system("openrouter", "~anthropic/claude-sonnet-latest", { OPENROUTER_API_KEY: "key" }), { openrouter: { cacheControl } });
+    const system = (provider: string, model: string, env: NodeJS.ProcessEnv) => createProviderModel(provider, model, withProviderDefaults(env))?.systemCacheBreakpoint;
+    assert.equal(system("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "key" }), true);
+    assert.equal(system("openrouter", "anthropic/claude-sonnet-4.6", { OPENROUTER_API_KEY: "key" }), true);
+    assert.equal(system("openrouter", "~anthropic/claude-sonnet-latest", { OPENROUTER_API_KEY: "key" }), true);
     assert.equal(system("openrouter", "openai/gpt-5", { OPENROUTER_API_KEY: "key" }), undefined);
     assert.equal(system("deepseek", "deepseek-v4-flash", { DEEPSEEK_API_KEY: "key" }), undefined);
     assert.equal(system("minimax", "MiniMax-M2.5", { MINIMAX_API_KEY: "key" }), undefined, "another provider on the Anthropic adapter declares none");
@@ -245,7 +233,7 @@ test("{§provider-sdk-boundary} an operator-declared compatible provider receive
         PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV: "ACME_API_KEY",
     });
     assert.equal(sdk?.cacheAffinity, undefined);
-    assert.equal(sdk?.systemCacheProviderOptions, undefined);
+    assert.equal(sdk?.systemCacheBreakpoint, undefined);
 });
 
 test("{§provider-configuration} a cataloged compatible provider fails before transport when its declared credential is absent", () => {

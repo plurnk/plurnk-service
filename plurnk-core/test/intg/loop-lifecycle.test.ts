@@ -105,7 +105,7 @@ test("{§operation-results} {§session-loop-lifecycle} cancelTree never resurrec
 
         await lifecycle.finish(
             firstLoop,
-            Results.failure("lifecycle:cancel", "loop-cancelled", 499, "The loop was cancelled: daemon_stopping.", undefined, {
+            Results.failure("lifecycle:cancel", "loop-cancelled", 499, "The loop was cancelled: daemon_stopping.", {
                 reason: "daemon_stopping",
                 stage: "loop",
                 retryable: false,

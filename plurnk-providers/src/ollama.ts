@@ -54,7 +54,6 @@ export const ollamaProviderFromEnv = async (
         name: model,
         api: "openai-completions",
         provider: "ollama",
-        namespace: "ollama",
         baseUrl: `${baseUrl}/v1`,
         reasoning: true,
         input: ["text", "image"],

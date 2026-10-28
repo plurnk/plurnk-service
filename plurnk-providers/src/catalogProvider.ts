@@ -27,7 +27,6 @@ import ModelProvider, {
     type ModelProviderConfig,
     type GrammarStyle,
     type NativeEffort,
-    type ModelProviderOptions,
     type CacheAffinity,
     type NativeRequestControls,
 } from "./ModelProvider.ts";
@@ -134,7 +133,6 @@ const reasoningCapabilities = (
     readonly efforts: readonly [Effort, ...Effort[]];
     readonly outputTokenField?: "max_tokens" | "max_completion_tokens";
     readonly reasoningRequestBody?: (mode: Effort, reasoningBudget: number | null) => Record<string, unknown>;
-    readonly reasoningRequestProviderOptions?: (mode: Effort, reasoningBudget: number | null) => ModelProviderOptions | undefined;
 } => {
     const declaredEfforts = declaredReasoningEfforts(name, env);
     const wireEfforts = info === undefined ? [...declaredEfforts] : catalogWireEfforts(info, declaredEfforts);
@@ -170,24 +168,22 @@ const reasoningCapabilities = (
             return {
                 declaredEfforts,
                 efforts,
-                reasoningRequestProviderOptions: (mode, budget) => {
-                    if (mode === "off") return { openrouter: { reasoning: { effort: "none" } } };
+                reasoningRequestBody: (mode, budget) => {
+                    if (mode === "off") return { reasoning: { effort: "none" } };
                     if (budget !== null) {
                         if (mode !== "adaptive") {
                             throw new TypeError(`${name} provider: reasoning effort and budget are exclusive; choose one control`);
                         }
                         assertCatalogReasoningBudget(name, info, budget);
-                        return { openrouter: { reasoning: { enabled: true, max_tokens: budget } } };
+                        return { reasoning: { enabled: true, max_tokens: budget } };
                     }
                     if (mode !== "adaptive") {
-                        return { openrouter: { reasoning: { enabled: true, effort: mode } } };
+                        return { reasoning: { enabled: true, effort: mode } };
                     }
                     return {
-                        openrouter: {
-                            reasoning: adaptiveWireEffort === undefined
-                                ? { enabled: true }
-                                : { enabled: true, effort: adaptiveWireEffort },
-                        },
+                        reasoning: adaptiveWireEffort === undefined
+                            ? { enabled: true }
+                            : { enabled: true, effort: adaptiveWireEffort },
                     };
                 },
             };
@@ -196,13 +192,13 @@ const reasoningCapabilities = (
             return {
                 declaredEfforts,
                 efforts,
-                reasoningRequestProviderOptions: (mode, budget) => {
+                reasoningRequestBody: (mode, budget) => {
                     if (budget !== null) {
                         throw new TypeError(`${name} provider: reasoning budget is unsupported on this route`);
                     }
-                    if (mode === "off") return { [name]: { reasoningEffort: "none" } };
-                    if (mode !== "adaptive") return { [name]: { reasoningEffort: mode } };
-                    return adaptiveWireEffort === undefined ? undefined : { [name]: { reasoningEffort: adaptiveWireEffort } };
+                    if (mode === "off") return { reasoning_effort: "none" };
+                    if (mode !== "adaptive") return { reasoning_effort: mode };
+                    return adaptiveWireEffort === undefined ? {} : { reasoning_effort: adaptiveWireEffort };
                 },
             };
         }
@@ -290,18 +286,18 @@ const adaptiveEffortProjection = ({
     reasoningCapable: boolean;
     info?: ModelInfo;
     declared: readonly Exclude<ModelEffort, null>[];
-}): Pick<ModelProviderConfig, "adaptiveEffort" | "adaptiveEffortProviderOptions"> => {
+}): Pick<ModelProviderConfig, "adaptiveEffort" | "nativeAdaptiveThinking"> => {
     if (!reasoningCapable) return { adaptiveEffort: "provider-default" };
     if (name === "anthropic" && model.includes("claude-")) {
         return {
             adaptiveEffort: "provider-default",
-            adaptiveEffortProviderOptions: { anthropic: { thinking: { type: "adaptive", display: "summarized" } } },
+            nativeAdaptiveThinking: true,
         };
     }
     if (name === "amazon-bedrock" && model.includes("claude-")) {
         return {
             adaptiveEffort: "provider-default",
-            adaptiveEffortProviderOptions: { bedrock: { reasoningConfig: { type: "adaptive" } } },
+            nativeAdaptiveThinking: true,
         };
     }
     if (info !== undefined) {
@@ -325,8 +321,7 @@ export const providerFromModelAdapter = ({
     info,
     attributions,
     cacheAffinity,
-    systemCacheProviderOptions,
-    reasoningResponseProviderOptions,
+    systemCacheBreakpoint,
     additiveReasoningProvider,
     requestControls,
     grammarStyle,
@@ -346,8 +341,7 @@ export const providerFromModelAdapter = ({
     // capability; "none" keeps the grammar off the wire.
     grammarStyle?: GrammarStyle;
     cacheAffinity?: CacheAffinity;
-    systemCacheProviderOptions?: ModelProviderOptions;
-    reasoningResponseProviderOptions?: ModelProviderOptions;
+    systemCacheBreakpoint?: boolean;
     additiveReasoningProvider?: "anthropic" | "bedrock";
     requestControls?: NativeRequestControls;
     endpoint?: string;
@@ -374,7 +368,6 @@ export const providerFromModelAdapter = ({
         efforts,
         outputTokenField,
         reasoningRequestBody,
-        reasoningRequestProviderOptions,
     } = reasoningCapabilities(
         name, env, info, providerModel !== undefined,
     );
@@ -453,14 +446,10 @@ export const providerFromModelAdapter = ({
         errorDetailLimit: parseRequiredInt(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT", name),
         ...(outputTokenField === undefined ? {} : { outputTokenField }),
         ...(reasoningRequestBody === undefined ? {} : { reasoningRequestBody }),
-        ...(reasoningRequestProviderOptions === undefined ? {} : { reasoningRequestProviderOptions }),
         ...(affinityEnabled && cacheAffinity !== undefined ? { cacheAffinity } : {}),
-        ...(cacheWritePolicy === "stable-system" && systemCacheProviderOptions !== undefined
-            ? { systemCacheProviderOptions }
+        ...(cacheWritePolicy === "stable-system" && systemCacheBreakpoint === true
+            ? { systemCacheBreakpoint: true }
             : {}),
-        ...(reasoningResponseProviderOptions === undefined
-            ? {}
-            : { reasoningResponseProviderOptions }),
         serviceTier: env.PLURNK_PROVIDERS_SERVICE_TIER,
         ...(requestControls === undefined ? {} : { requestControls }),
         estimateCost,
@@ -513,8 +502,7 @@ export const catalogProviderFromEnv = (
         endpoint: adapted.endpoint,
         headers: adapted.compatible?.headers,
         cacheAffinity: adapted.cacheAffinity,
-        systemCacheProviderOptions: adapted.systemCacheProviderOptions,
-        reasoningResponseProviderOptions: adapted.reasoningResponseProviderOptions,
+        systemCacheBreakpoint: adapted.systemCacheBreakpoint,
         additiveReasoningProvider: adapted.additiveReasoningProvider,
         ...(adapted.requestControls === undefined ? {} : { requestControls: adapted.requestControls }),
         contextWindow,

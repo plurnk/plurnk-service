@@ -3,7 +3,6 @@ import { Validator, type ModelReadiness, type ModelReadinessCause } from "@plurn
 import { providerCostNormalizer } from "./accounting.ts";
 import { providerSetting, providerEnvPrefix as envPrefix } from "./provider-env.ts";
 import type {
-    ModelProviderOptions,
     CacheAffinity,
     NativeRequestControls,
 } from "./ModelProvider.ts";
@@ -18,10 +17,9 @@ export type ProviderModelAdapter = {
         readonly headers: Readonly<Record<string, string>>;
     };
     readonly cacheAffinity?: CacheAffinity;
-    readonly systemCacheProviderOptions?: ModelProviderOptions;
-    readonly reasoningResponseProviderOptions?: ModelProviderOptions;
+    readonly systemCacheBreakpoint?: boolean;
     readonly additiveReasoningProvider?: "anthropic" | "bedrock";
-    // {§provider-request-authority} — the global controls this adapter documents as provider options.
+    // {§provider-request-authority} — the global controls this adapter documents.
     readonly requestControls?: NativeRequestControls;
     readonly catalog: ProviderInfo | null;
 };
@@ -292,9 +290,8 @@ const resolveAdapterProvider = (
 const providerCacheAffinity = (provider: string): CacheAffinity | undefined => {
     switch (provider) {
         case "openai":
-            return { target: "provider-option", provider: "openai", name: "promptCacheKey" };
         case "deepinfra":
-            return { target: "provider-option", provider: "deepinfra", name: "prompt_cache_key" };
+            return { target: "body", name: "prompt_cache_key" };
         case "openrouter":
             return { target: "header", name: "x-session-id" };
         case "cloudflare-workers-ai":
@@ -305,15 +302,9 @@ const providerCacheAffinity = (provider: string): CacheAffinity | undefined => {
     }
 };
 
-const providerSystemCacheOptions = (provider: string, model: string): ModelProviderOptions | undefined => {
-    if (provider === "anthropic") {
-        return { anthropic: { cacheControl: { type: "ephemeral" } } };
-    }
-    if (provider === "openrouter" && (model.startsWith("anthropic/") || model.startsWith("~anthropic/"))) {
-        return { openrouter: { cacheControl: { type: "ephemeral" } } };
-    }
-    return undefined;
-};
+const providerSystemCacheBreakpoint = (provider: string, model: string): boolean =>
+    provider === "anthropic"
+    || provider === "openrouter" && (model.startsWith("anthropic/") || model.startsWith("~anthropic/"));
 
 export const createProviderModel = (
     provider: string,
@@ -325,10 +316,10 @@ export const createProviderModel = (
     if (resolved === null) return null;
     const { catalog, url } = resolved;
     const cacheAffinity = providerCacheAffinity(provider);
-    const systemCacheProviderOptions = providerSystemCacheOptions(provider, model);
+    const systemCacheBreakpoint = providerSystemCacheBreakpoint(provider, model);
     return {
         ...modelFromAdapter(provider, model, { ...env }, catalog, url),
-        ...(systemCacheProviderOptions === undefined ? {} : { systemCacheProviderOptions }),
+        ...(systemCacheBreakpoint ? { systemCacheBreakpoint: true } : {}),
         ...(cacheAffinity === undefined ? {} : { cacheAffinity }),
         endpoint: url,
     };
@@ -340,7 +331,6 @@ const openAICompletionsModel = (
     id: string,
     options: {
         provider: string;
-        namespace: string;
         baseUrl: string;
         apiKey?: string;
         headers?: Readonly<Record<string, string>>;
@@ -352,7 +342,6 @@ const openAICompletionsModel = (
     name: id,
     api: "openai-completions",
     provider: options.provider,
-    namespace: options.namespace,
     baseUrl: options.baseUrl.replace(/\/+$/, ""),
     reasoning: true,
     input: ["text", "image"],
@@ -366,7 +355,7 @@ const openAICompletionsModel = (
         supportsStore: false,
         supportsDeveloperRole: false,
         maxTokensField: options.maxTokensField ?? "max_tokens",
-        supportsReasoningEffort: false,
+        supportsReasoningEffort: true,
         supportsUsageInStreaming: options.provider !== "mistral",
         supportsFinishReason: true,
     },
@@ -389,7 +378,6 @@ const modelFromAdapter = (
             return {
                 providerModel: openAICompletionsModel(model, {
                     provider: "openai",
-                    namespace: "openai",
                     baseUrl: url ?? "https://api.openai.com/v1",
                     apiKey: requireApiKey(provider, env, catalog),
                     includeTopK: false,
@@ -401,7 +389,6 @@ const modelFromAdapter = (
             return {
                 providerModel: openAICompletionsModel(model, {
                     provider: "groq",
-                    namespace: "groq",
                     baseUrl: url ?? "https://api.groq.com/openai/v1",
                     apiKey: requireApiKey(provider, env, catalog),
                     includeTopK: false,
@@ -413,7 +400,6 @@ const modelFromAdapter = (
             return {
                 providerModel: openAICompletionsModel(model, {
                     provider: "cerebras",
-                    namespace: "cerebras",
                     baseUrl: url ?? "https://api.cerebras.ai/v1",
                     apiKey: requireApiKey(provider, env, catalog),
                     includeTopK: false,
@@ -425,7 +411,6 @@ const modelFromAdapter = (
             return {
                 providerModel: openAICompletionsModel(model, {
                     provider: "mistral",
-                    namespace: "mistral",
                     baseUrl: url ?? "https://api.mistral.ai/v1",
                     apiKey: requireApiKey(provider, env, catalog),
                     includeTopK: false,
@@ -437,7 +422,6 @@ const modelFromAdapter = (
             return {
                 providerModel: openAICompletionsModel(model, {
                     provider: "togetherai",
-                    namespace: "togetherai",
                     baseUrl: url ?? "https://api.together.xyz/v1",
                     apiKey: requireApiKey(provider, env, catalog),
                     includeTopK: false,
@@ -452,7 +436,6 @@ const modelFromAdapter = (
                     name: model,
                     api: "openai-responses",
                     provider: "xai",
-                    namespace: "xai",
                     baseUrl: (url ?? "https://api.x.ai/v1").replace(/\/+$/, ""),
                     reasoning: true,
                     input: ["text", "image"],
@@ -470,7 +453,6 @@ const modelFromAdapter = (
             return {
                 providerModel: openAICompletionsModel(model, {
                     provider: "deepinfra",
-                    namespace: "deepinfra",
                     baseUrl: url ?? "https://api.deepinfra.com/v1/openai",
                     apiKey: requireApiKey(provider, env, catalog),
                     includeTopK: false,
@@ -487,7 +469,6 @@ const modelFromAdapter = (
                     name: model,
                     api: "google-generative-ai",
                     provider: "google",
-                    namespace: "google",
                     baseUrl: (url ?? "https://generativelanguage.googleapis.com/v1beta").replace(/\/+$/, ""),
                     reasoning: true,
                     input: ["text", "image"],
@@ -495,9 +476,6 @@ const modelFromAdapter = (
                     contextWindow: 128_000,
                     maxTokens: 16_384,
                     apiKey: requireApiKey(provider, env, catalog),
-                },
-                reasoningResponseProviderOptions: {
-                    google: { thinkingConfig: { includeThoughts: true } },
                 },
                 requestControls: { namespace: "google", serviceTier: true, logprobs: false },
                 catalog,
@@ -509,7 +487,6 @@ const modelFromAdapter = (
                     name: model,
                     api: "anthropic-messages",
                     provider: "anthropic",
-                    namespace: "anthropic",
                     baseUrl: (url ?? "https://api.anthropic.com").replace(/\/+$/, "").replace(/\/v1$/, ""),
                     reasoning: true,
                     input: ["text", "image"],
@@ -530,7 +507,6 @@ const modelFromAdapter = (
                     name: model,
                     api: "bedrock-converse-stream",
                     provider: "amazon-bedrock",
-                    namespace: "bedrock",
                     baseUrl: (url ?? `https://bedrock-runtime.${region}.amazonaws.com`).replace(/\/+$/, ""),
                     reasoning: true,
                     input: ["text", "image"],
@@ -551,7 +527,6 @@ const modelFromAdapter = (
             return {
                 providerModel: openAICompletionsModel(model, {
                     provider: "openrouter",
-                    namespace: "openrouter",
                     baseUrl: url ?? "https://openrouter.ai/api/v1",
                     apiKey: requireApiKey(provider, env, catalog),
                     ...(attributionHeaders && Object.keys(attributionHeaders).length > 0 ? { headers: attributionHeaders } : {}),

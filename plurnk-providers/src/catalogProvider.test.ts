@@ -11,7 +11,7 @@ import { resetEmittedWarnings } from "./warnings.ts";
 import { BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
 import { UnsupportedEffortError } from "./types.ts";
 import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
-import { executeProviderModel, executeOpenAICompatible } from "./modelTransport.ts";
+import ModelProvider from "./ModelProvider.ts";
 import { withoutNativeTools } from "./native-tools.ts";
 import { ollamaProviderFromEnv } from "./ollama.ts";
 
@@ -552,7 +552,7 @@ test("{§provider-effort} Google adaptive reasoning requests and preserves reada
 
     assert.deepEqual(bodies[0]?.generationConfig?.thinkingConfig, {
         includeThoughts: true,
-        thinkingLevel: "high",
+        thinkingLevel: "HIGH",
     }, "Gemini adaptive selects its documented high posture and readable summary");
     assert.equal(result?.assistant.reasoning, "consider");
     assert.equal(result?.assistant.content, "done");
@@ -606,7 +606,7 @@ test("{§provider-effort} native Anthropic adaptive policy uses adaptive thinkin
         },
     });
     await provider.generate({ sessionId: "session", messages: [{ role: "user", content: "hello" }] });
-    assert.deepEqual(body?.thinking, { type: "adaptive" });
+    assert.deepEqual(body?.thinking, { type: "adaptive", display: "summarized" });
     assert.equal(body?.output_config, undefined);
 });
 
@@ -1116,16 +1116,31 @@ const assertToolFree = (body: Record<string, unknown>, protocol: Protocol): void
 
 test("{§provider-interface} compatible wire explicitly disables native tools", async () => {
     const requests: Record<string, unknown>[] = [];
-    const result = await executeOpenAICompatible({
-        ...request, url: "https://fixture.test/v1/chat/completions", model: "fixture",
-        body: { reasoning_effort: "high" },
+    const provider = new ModelProvider({
+        model: "fixture",
+        url: "https://fixture.test/v1/chat/completions",
+        headers: request.headers,
+        fetchTimeoutMs: 1_000,
+        operationTimeoutMs: 5_000,
+        effort: { mode: "high", budget: null },
+        supportedEfforts: ["off", "adaptive", "high"],
+        reasoningRequestBody: () => ({ reasoning_effort: "high" }),
+        temperature: null,
+        repeatPenalty: null,
+        retryAttempts: 0,
+        rawBody: true,
         fetch: async (_url, init) => {
             requests.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
             return response("chat");
         },
     });
-    assert.equal(result.content, "answer");
-    assert.equal(result.usage?.totalTokens, 12);
+    const result = await provider.generate({
+        sessionId: "fixture",
+        messages: request.messages,
+        maxOutputTokens: request.maxOutputTokens,
+    });
+    assert.equal(result.assistant.content, "answer");
+    assert.equal(result.accounting[0]?.usage?.totalTokens, 12);
     assert.equal(requests.length, 1);
     assertToolFree(requests[0], "chat");
     assert.equal(requests[0].reasoning_effort, "high");
@@ -1152,13 +1167,27 @@ test("{§provider-interface} the protocol projection cannot acquire tools or mut
 test("{§provider-interface} request extensions cannot override the managed opt-out", async () => {
     let dispatched = false;
     for (const field of ["tools", "tool_choice", "functions", "function_call", "parallel_tool_calls"]) {
-        await assert.rejects(executeOpenAICompatible({
-            ...request, url: "https://fixture.test/v1/chat/completions", model: "fixture",
-            body: { [field]: "caller override" },
+        const provider = new ModelProvider({
+            model: "fixture",
+            url: "https://fixture.test/v1/chat/completions",
+            headers: request.headers,
+            fetchTimeoutMs: 1_000,
+            operationTimeoutMs: 5_000,
+            effort: { mode: "off", budget: null },
+            reasoningRequestBody: () => ({ [field]: "caller override" }),
+            temperature: null,
+            repeatPenalty: null,
+            retryAttempts: 0,
             fetch: async () => { dispatched = true; return response("chat"); },
-        }), {
-            name: "TypeError", message: `OpenAI-compatible request extensions may not override SDK-owned field ${JSON.stringify(field)}`,
         });
+        await assert.rejects(
+            provider.generate({
+                sessionId: "fixture",
+                messages: request.messages,
+                maxOutputTokens: request.maxOutputTokens,
+            }),
+            /PLURNK provider requests cannot declare native tools/,
+        );
     }
     assert.equal(dispatched, false);
 });
@@ -1184,9 +1213,25 @@ test("{§provider-interface} Bedrock uses its valid no-tool configuration", asyn
         AWS_BEARER_TOKEN_BEDROCK: "fixture-only", AWS_REGION: "us-east-1",
     });
     assert.ok(sdk?.providerModel);
-    const result = await executeProviderModel({ ...request, providerModel: sdk.providerModel });
-    assert.equal(result.content, "answer");
-    assert.equal(result.usage?.totalTokens, 12);
+    const provider = new ModelProvider({
+        model: "fixture",
+        providerModel: sdk.providerModel,
+        headers: request.headers,
+        fetchTimeoutMs: 1_000,
+        operationTimeoutMs: 5_000,
+        effort: { mode: "off", budget: null },
+        temperature: null,
+        repeatPenalty: null,
+        retryAttempts: 0,
+        rawBody: true,
+    });
+    const result = await provider.generate({
+        sessionId: "fixture",
+        messages: request.messages,
+        maxOutputTokens: request.maxOutputTokens,
+    });
+    assert.equal(result.assistant.content, "answer");
+    assert.equal(result.accounting[0]?.usage?.totalTokens, 12);
     assert.ok(body);
     for (const key of ["tools", "toolConfig", "tool_choice"]) assert.equal(key in body, false);
 });
@@ -1240,9 +1285,25 @@ test("{§provider-interface} configured adapter families preserve the opt-out on
                 FIXTURE_API_KEY: "fixture-only",
             });
             assert.ok(sdk?.providerModel);
-            const result = await executeProviderModel({ ...request, providerModel: sdk.providerModel });
-            assert.equal(result.content, "answer");
-            assert.equal(result.usage?.totalTokens, 12);
+            const provider = new ModelProvider({
+                model: "fixture",
+                providerModel: sdk.providerModel,
+                headers: request.headers,
+                fetchTimeoutMs: 1_000,
+                operationTimeoutMs: 5_000,
+                effort: { mode: "off", budget: null },
+                temperature: null,
+                repeatPenalty: null,
+                retryAttempts: 0,
+                rawBody: true,
+            });
+            const result = await provider.generate({
+                sessionId: "fixture",
+                messages: request.messages,
+                maxOutputTokens: request.maxOutputTokens,
+            });
+            assert.equal(result.assistant.content, "answer");
+            assert.equal(result.accounting[0]?.usage?.totalTokens, 12);
             assert.equal(requests.length, 1);
             assertToolFree(requests[0], protocol);
         });

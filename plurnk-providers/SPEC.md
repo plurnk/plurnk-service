@@ -1,6 +1,6 @@
 # `@plurnk/plurnk-providers` Specification
 
-Stable model-provider contract, capacity and monetary accounting authority, and transport adapter over `@mariozechner/pi-ai` (`streamSimple`, `getModel`, `getEnvApiKey`) and OpenAI-compatible HTTP endpoints.
+Stable model-provider contract, capacity and monetary accounting authority, and transport adapter over `@earendil-works/pi-ai` (`@earendil-works/pi-ai/api/*` `stream`) and OpenAI-compatible HTTP endpoints.
 
 ## §provider-interface Provider and runtime-neutral contract
 
@@ -8,7 +8,7 @@ Stable model-provider contract, capacity and monetary accounting authority, and 
 
 | Subpath | Surface | Runtime boundary |
 |---|---|---|
-| `@plurnk/plurnk-providers` | Full `Provider` contract, `PiAiProvider`, `Pool`, `Mock`, `instantiateProvider`, `loadActiveProvider`, `discover`, and configuration helpers | Node >= 26 |
+| `@plurnk/plurnk-providers` | Full `Provider` contract, `ModelProvider`, `Pool`, `Mock`, `instantiateProvider`, `loadActiveProvider`, `discover`, and configuration helpers | Node >= 26 |
 | `@plurnk/plurnk-providers/accounting` | `aggregateProviderAccounting`, `estimateProviderCost`, `providerCostNormalizer`, `resolveProviderCost`, `sumProviderCostsUsd`, `validateProviderUsage` | Runtime-neutral (browser-bundlable) |
 | `@plurnk/plurnk-providers/errors` | `ProviderError`, `RETRYABLE_PROVIDER_KINDS`, `classifyProviderError`, `toProviderError`, `providerSource` | Runtime-neutral (browser-bundlable) |
 
@@ -56,11 +56,10 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 
 ## §provider-sdk-boundary SDK and transport boundary
 
-`piAiProvider.ts` delegates streaming, protocol framing, and vendor request assembly to `@mariozechner/pi-ai` (`streamSimple`) across all supported APIs (`anthropic-messages`, `openai-completions`, `openai-responses`, `google-generative-ai`, `google-vertex`, `bedrock-converse-stream`, `mistral-conversations`):
+`ModelProvider.ts` delegates streaming, protocol framing, and vendor request assembly to `@earendil-works/pi-ai` (`@earendil-works/pi-ai/api/*` `stream`) across all supported APIs (`anthropic-messages`, `openai-completions`, `openai-responses`, `google-generative-ai`, `bedrock-converse-stream`):
 
 - Prompt cache affinity (`PLURNK_PROVIDERS_CACHE_AFFINITY=1`) projects each provider's documented session key (`sessionId` -> `prompt_cache_key` / `x-session-id` / `x-session-affinity`).
-- Stable-system cache write policy (`PLURNK_PROVIDERS_CACHE_WRITE_POLICY=stable-system`) attaches ephemeral cache retention (`cacheRetention: "short"`) on providers that support prompt cache breakpoints (Anthropic and Anthropic routes on OpenRouter).
-- SDK warnings surface as `provider_warning` notices ({§diagnostic-observation}).
+- Stable-system cache write policy (`PLURNK_PROVIDERS_CACHE_WRITE_POLICY=stable-system`) attaches ephemeral cache retention (`cache_control: { type: "ephemeral" }`) on providers that support prompt cache breakpoints (Anthropic and Anthropic routes on OpenRouter).
 
 ## §provider-effort Reasoning effort and readable trace
 
