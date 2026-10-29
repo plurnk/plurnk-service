@@ -101,16 +101,23 @@ export default class ClientReads {
                     retryable: false },
             );
         }
-        const releaseCapabilities = await this.#residency.acquire(workspaceId);
+        let parsed;
+        try {
+            parsed = parsePath(args.target);
+        } catch {
+            parsed = null;
+        }
+        // {§module-workspace-residency}: sessions own their session-scoped context; inspecting a
+        // session:// entry does not lease workspace Functionality.
+        const requiresResidency = parsed === null || parsed.kind !== "url" || parsed.scheme !== "session";
+        const releaseCapabilities = requiresResidency
+            ? await this.#residency.acquire(workspaceId)
+            : () => {};
         let releaseWorkspace: (() => void) | undefined;
         try {
             releaseWorkspace = await this.#workspaceGate.acquireTurn(workspaceId, sessionId);
-            await this.#residency.reconcile(workspaceId);
-            let parsed;
-            try {
-                parsed = parsePath(args.target);
-            } catch {
-                parsed = null;
+            if (requiresResidency) {
+                await this.#residency.reconcile(workspaceId);
             }
             if (parsed === null || parsed.kind !== "url") {
                 return entryReadResult(Results.failure(

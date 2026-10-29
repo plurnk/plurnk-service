@@ -111,6 +111,10 @@ export default class SchemeRegistry {
         this.#registerClaimed(name, handler, claim);
     }
 
+    registerCore(name: string, handler: RegisteredScheme): void {
+        this.#registerBuiltIn(name, handler);
+    }
+
     static readonly #CORE_CLAIM: NamespaceClaim = {
         key: "core:@plurnk/plurnk-service",
         label: "core package '@plurnk/plurnk-service'",

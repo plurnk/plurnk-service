@@ -37,6 +37,7 @@ import type {
     ApplicationLoopProjection,
     ApplicationGauge,
     ApplicationProviderAlias,
+    ApplicationPersonaProjection,
     ApplicationServiceUpdateResult,
     LogEntryWire,
     ApplicationEventHandler,
@@ -297,4 +298,5 @@ export interface ApplicationPort extends HttpHost {
         readonly workspaceId: number;
         readonly policy: CapabilityPolicy;
     }): Promise<CapabilityProjection>;
+    listPersonas?(args: { readonly workspaceId: number }): Promise<readonly ApplicationPersonaProjection[]>;
 }

@@ -1,7 +1,7 @@
 import { isRecord } from "./guards.ts";
 import type { LoopLifecycle } from "./LoopLifecycle.ts";
 import type { LogAddressColumns } from "./LogRow.ts";
-import type { JsonSchema, ModelRoute, OperationResult } from "./types.ts";
+import type { Effort, JsonSchema, ModelRoute, OperationResult } from "./types.ts";
 import type { RequestHeaders } from "./HttpOrigin.ts";
 
 export type ProposalDecision = "accept" | "reject" | "cancel";
@@ -561,4 +561,13 @@ export interface CredentialAuthority {
     publish(face: CredentialFace): void;
     /** The published face, or null while nothing issues: the daemon authenticates nothing. */
     face(): CredentialFace | null;
+}
+
+export interface ApplicationPersonaProjection {
+    readonly name: string;
+    readonly description: string;
+    readonly body: string;
+    readonly source: string;
+    readonly model?: string;
+    readonly effort?: Effort;
 }

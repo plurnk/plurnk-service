@@ -237,6 +237,15 @@ export const applySystemPrompt = async (
     }
     const body = parts.join("\n\n");
     if (body.length === 0) return;
+    const targetUri = `session://${sessionName}/AGENTS.md`;
+    const existing = await seam.readEntry({
+        workspaceId,
+        sessionId,
+        target: targetUri,
+    });
+    if (existing.status === 200 && existing.entry?.channels.body?.content === body) {
+        return;
+    }
     await seam.ensureRuntimeSession(workspaceId);
     await seam.dispatchClientAction({
         workspaceId,
@@ -249,7 +258,7 @@ export const applySystemPrompt = async (
                 metadata: null,
                 target: {
                     kind: "url",
-                    raw: `session://${sessionName}/AGENTS.md`,
+                    raw: targetUri,
                     scheme: "session",
                     username: null,
                     password: null,
@@ -262,6 +271,50 @@ export const applySystemPrompt = async (
                 lineMarker: { marks: [1, -1] },
                 matcher: null,
                 body,
+                position: { line: 0, column: 0 },
+            },
+        ],
+    });
+};
+
+const clearSystemPrompt = async (
+    seam: ApplicationPort,
+    workspaceId: number,
+    sessionId: number,
+    sessionName: string,
+): Promise<void> => {
+    const targetUri = `session://${sessionName}/AGENTS.md`;
+    const existing = await seam.readEntry({
+        workspaceId,
+        sessionId,
+        target: targetUri,
+    });
+    if (existing.status !== 200) return;
+    await seam.ensureRuntimeSession(workspaceId);
+    await seam.dispatchClientAction({
+        workspaceId,
+        actor: OWNER_ADDRESS,
+        contextSessionId: sessionId,
+        statements: [
+            {
+                op: "KILL",
+                aside: null,
+                metadata: null,
+                target: {
+                    kind: "url",
+                    raw: targetUri,
+                    scheme: "session",
+                    username: null,
+                    password: null,
+                    hostname: sessionName,
+                    port: null,
+                    pathname: "/AGENTS.md",
+                    query: null,
+                    fragment: null,
+                },
+                lineMarker: null,
+                matcher: null,
+                body: null,
                 position: { line: 0, column: 0 },
             },
         ],
@@ -702,10 +755,39 @@ export const buildConfigOptions = async (
 ): Promise<SessionConfigOption[]> => {
     const providerCatalog = tryListProviders(seam);
     const aliases = providerCatalog.aliases ?? [];
-    const [{ model, spawnModel }, capabilities] = await Promise.all([
+    const [{ model, spawnModel }, capabilities, personas, session] = await Promise.all([
         seam.readSessionModel({ workspaceId, sessionId }),
         seam.readWorkspaceCapabilities({ workspaceId }),
+        seam.listPersonas?.({ workspaceId }) ?? Promise.resolve([]),
+        seam.readSession({ workspaceId, identity: { id: sessionId } }).catch(() => null),
     ]);
+    const agentsEntry = session === null
+        ? null
+        : await seam.readEntry({
+            workspaceId,
+            sessionId,
+            target: `session://${session.name}/AGENTS.md`,
+        }).catch(() => null);
+    const rawAgentsBody = agentsEntry !== null && agentsEntry.status === 200
+        ? (agentsEntry.entry?.channels.body?.content ?? "").trim()
+        : "";
+    const matchedPersona = rawAgentsBody.length > 0
+        ? personas.find((p) => p.body.trim() === rawAgentsBody)
+        : undefined;
+    const currentPersonaValue = rawAgentsBody.length === 0
+        ? "none"
+        : (matchedPersona?.name ?? "custom");
+    const personaOptions = [
+        { value: "none", name: "None (default)", description: null },
+        ...personas.map((p) => ({
+            value: p.name,
+            name: p.name,
+            description: p.description,
+        })),
+        ...(currentPersonaValue === "custom"
+            ? [{ value: "custom", name: "Custom (session AGENTS.md)", description: null }]
+            : []),
+    ];
     const effortInfo = model !== null
         ? await seam.readSessionEffort({ workspaceId, sessionId })
         : { effort: null, supportedEfforts: [] as const };
@@ -788,6 +870,14 @@ export const buildConfigOptions = async (
                 { value: "allow", name: "Auto-approve all operations", description: null },
                 { value: "deny", name: "Deny gated operations", description: null },
             ],
+        },
+        {
+            configId: "persona",
+            name: "Persona",
+            category: "_persona",
+            type: "select",
+            currentValue: currentPersonaValue,
+            options: personaOptions,
         },
     ];
 
@@ -1076,6 +1166,54 @@ export const applyConfigOption = async (
                 throw RequestError.invalidParams({ detail: `Unsupported mode '${value}'.` });
             }
             break;
+        case "persona": {
+            if (value === "none") {
+                await clearSystemPrompt(seam, bound.workspaceId, bound.sessionId, bound.sessionName);
+                break;
+            }
+            const personas = (await seam.listPersonas?.({ workspaceId: bound.workspaceId })) ?? [];
+            const matched = personas.find((p) => p.name === value);
+            if (matched === undefined) {
+                throw RequestError.invalidParams({ detail: `Unknown persona '${value}'.` });
+            }
+            await applySystemPrompt(seam, bound.workspaceId, bound.sessionId, bound.sessionName, {
+                mode: "append",
+                content: [{ type: "text", text: matched.body }],
+            });
+            if (matched.model !== undefined || matched.effort !== undefined) {
+                const { model } = await seam.readSessionModel({
+                    workspaceId: bound.workspaceId,
+                    sessionId: bound.sessionId,
+                });
+                if (model === null && matched.model !== undefined) {
+                    await seam.setSessionModel({
+                        workspaceId: bound.workspaceId,
+                        sessionId: bound.sessionId,
+                        selector: matched.model,
+                        ...(matched.effort === undefined ? {} : { effort: matched.effort }),
+                    });
+                } else if (matched.effort !== undefined && model?.effortSource !== "explicit") {
+                    const effortInfo = await seam.readSessionEffort({
+                        workspaceId: bound.workspaceId,
+                        sessionId: bound.sessionId,
+                    }).catch(() => null);
+                    if (
+                        effortInfo !== null &&
+                        effortInfo.source !== "explicit" &&
+                        effortInfo.effort !== null &&
+                        (effortInfo.supportedEfforts.length === 0 ||
+                            effortInfo.supportedEfforts.includes(matched.effort))
+                    ) {
+                        await seam.setSessionEffort({
+                            workspaceId: bound.workspaceId,
+                            sessionId: bound.sessionId,
+                            effort: matched.effort,
+                        });
+                    }
+                }
+            }
+            break;
+        }
         default: {
             const colonIdx = configId.indexOf(":");
             const family = colonIdx > 0 ? configId.slice(0, colonIdx) : "";

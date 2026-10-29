@@ -217,6 +217,12 @@ export default class InitializationTurn {
             },
             {
                 op: "FIND", aside: null,
+                target: { kind: "url", raw: "persona://*/PERSONA.md", scheme: "persona", username: null, password: null, hostname: "*", port: null, pathname: "/PERSONA.md", query: null, fragment: null },
+                metadata: null,
+                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+            },
+            {
+                op: "FIND", aside: null,
                 target: workspaceCatalogTarget("plurnk"),
                 metadata: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,

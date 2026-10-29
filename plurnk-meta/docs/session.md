@@ -13,13 +13,14 @@ an entry rather than controlling that session.
 | `message://exampleSessionName/ab3d5678` | Retained message | READ/FIND/COPY inspect; SEND replies. Neither EDIT nor KILL changes its source. |
 | `ops://exampleSessionName/1` | What that loop said, or how it ended | READ/FIND/COPY inspect; source is immutable. |
 | `session://exampleSessionName/example.md` | Named scratch entry | Read and write from any session in the workspace. |
+| `persona://examplePersona/PERSONA.md` | Discovered persona role | READ/FIND/COPY inspect; COPY to `session://<name>/AGENTS.md` binds role. |
 | `workspace:///example.md` | Shared commons entry | Read and write. |
 
 The packet's `## Session` block, below the log, names your session, its parent
 (`null` at a root), and the loop and turn you are producing. Addresses are
 literal and keep the same meaning when passed to another session. Scratch
 belongs to the workspace; a namespace does not require a namesake session, and if
-`session://exampleSessionName/AGENTS.md` exists when that session starts, its first turn reads it.
+`session://exampleSessionName/AGENTS.md` exists when that session starts (or is written later), its next turn reads the unread revision.
 Generated references live under `workspace:///_plurnk/`, and reference refreshes
 may replace them. EDIT creates or changes an entry, never a session; KILL with
 an entry path deletes that entry, not its session. A control address is scheme

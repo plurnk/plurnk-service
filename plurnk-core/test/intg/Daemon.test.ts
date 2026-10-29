@@ -145,6 +145,7 @@ test("{§manifest} {§mimetype-discovery} Daemon composes deterministic scheme a
                                 { kind: "scheme", scheme: "message", display: {} },
                 { kind: "scheme", scheme: "note", display: {} },
                 { kind: "scheme", scheme: "ops", display: {} },
+                { kind: "scheme", scheme: "persona", display: {} },
                 { kind: "scheme", scheme: "reasoning", display: {} },
                 { kind: "scheme", scheme: "session", display: {} },
                 { kind: "scheme", scheme: "skill", display: {} },

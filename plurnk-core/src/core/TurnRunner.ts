@@ -3,7 +3,7 @@ import NativeContent from "./NativeContent.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { PathSyntax, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import type { Provider } from "@plurnk/plurnk-providers";
-import type { ApplicationGauge, BareStatement, CapabilityPolicy, FindStatement, Notice, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { ApplicationGauge, BareStatement, CapabilityPolicy, FindStatement, Notice, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
 
 // {§turn-source-resources} {§turn-source-resources}: source text and its durable turn coordinates.
 export type AdmittedTextSource = { readonly content: string; readonly sessionName: string; readonly loopSeq: number; readonly turnSeq: number };
@@ -600,6 +600,7 @@ export default class TurnRunner {
         const fit = this.#fitFor(args, facts);
         const messages = await this.#publishMessages(args, turnId, fit);
         let nextActionIndex = await this.#readOpenPaths(args, turnId, messages.openPaths, messages.nextActionIndex, fit);
+        nextActionIndex = await this.#readUnreadSessionAgents(args, container.sessionName, turnId, nextActionIndex, fit);
         // {§env-delta} — materialize ambient observations before packet
         // composition and reserve their action indices. {§exec-stream} owns the
         // distinct byte-cursor path for this session's streams.
@@ -684,6 +685,60 @@ export default class TurnRunner {
             nextActionIndex++;
         }
         return nextActionIndex;
+    }
+
+    // {§session-initialization-entry}: when session://<session>/AGENTS.md is created or updated after
+    // Turn 0 (or after a fork), foist one READ of the unread revision before packet assembly.
+    async #readUnreadSessionAgents(
+        { workspaceId, sessionId, loopId, onDispatch, onSettled }: TurnArgs,
+        sessionName: string,
+        turnId: number,
+        fromSequence: number,
+        fit: ContextFit,
+    ): Promise<number> {
+        const check = await this.#db.engine_session_unread_agents.get<{ unread: number }>({
+            workspace_id: workspaceId,
+            session_id: sessionId,
+            session_name: sessionName,
+        });
+        if (check?.unread !== 1) return fromSequence;
+        const target: UrlPath = {
+            kind: "url",
+            raw: `session://${sessionName}/AGENTS.md`,
+            scheme: "session",
+            username: null,
+            password: null,
+            hostname: sessionName,
+            port: null,
+            pathname: "/AGENTS.md",
+            query: null,
+            fragment: null,
+        };
+        const statement: ReadStatement = {
+            op: "READ",
+            aside: null,
+            target,
+            metadata: null,
+            lineMarker: null,
+            matcher: null,
+            body: null,
+            position: UNKNOWN_POSITION,
+        };
+        const policies = (await this.#capabilities.layers(workspaceId, sessionId)).map((layer) => layer.policy);
+        if (!this.#capabilities.allowsAcross(statement, workspaceId, policies)) return fromSequence;
+        await this.#dispatch({
+            statement,
+            workspaceId,
+            sessionId,
+            loopId,
+            turnId,
+            sequence: fromSequence,
+            origin: "_plurnk",
+            onDispatch,
+            onSettled,
+            fit,
+        });
+        return fromSequence + 1;
     }
 
     async #buildPacket(args: TurnArgs, facts: PacketFacts): Promise<RequestPacket> {

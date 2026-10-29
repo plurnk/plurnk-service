@@ -26,6 +26,12 @@ The child's task, continuing from what you already know.
 The follow-up task or additional information goes here.
 ```
 
+Write `session://child/AGENTS.md` (with EDIT or `COPY (persona://examplePersona/PERSONA.md) (session://child/AGENTS.md)`) before WORK to give a
+fresh child session role instructions that its first turn reads automatically;
+FORK copies `session://<parent>/AGENTS.md` into `session://<child>/AGENTS.md`
+with the rest of your named scratch, and updating `session://<name>/AGENTS.md`
+later causes that session's next turn to read the updated instructions.
+
 Parents observe a direct child's mutations, messages, executor invocations, and
 session launches, including failed actions, as rows in their own log.
 Exploration and context curation (NOTE, READ, FIND, BARE, WAIT, and log KILL)

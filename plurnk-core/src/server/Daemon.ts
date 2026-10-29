@@ -26,13 +26,14 @@ import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } f
 import MessageAbandonment from "./MessageAbandonment.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { Validator, isRecord, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionHiding, type ApplicationWorkspaceHiding, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, type ApplicationPersonaProjection, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionHiding, type ApplicationWorkspaceHiding, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
 import type { WorkspaceRow } from "./envelope.ts";
 import ClientInput from "./client-input.ts";
 import WorkspacePlugins from "./WorkspacePlugins.ts";
+import WorkspacePersonas from "./WorkspacePersonas.ts";
 import { agentRootScopes, workspacePaths, type ConfigurationRootScope } from "./AgentRoots.ts";
 import ExecEnv from "../schemes/exec-env.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
@@ -135,6 +136,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§content-store} — the operator's retention, run on a cadence and at shutdown.
     #retention: Retention | null = null;
     readonly #plugins: WorkspacePlugins;
+    readonly #personas: WorkspacePersonas;
     readonly #members: MembersFunctionality;
     // {§methods} — the broadcast's in-process event source. A transport
     // module (plurnk-acp) subscribes and fans out to its OWN clients; core emits, never owns
@@ -222,6 +224,21 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId),
             preparationChanged: (workspaceId, preparation) => this.#broadcast({ workspaceId }, "workspace/preparation", { workspaceId, preparation }) });
         this.#plugins = new WorkspacePlugins({ db, hostPaths, nodeModules: this.#nodeModulesPath });
+        this.#personas = new WorkspacePersonas({ db, hostPaths, plugins: this.#plugins });
+        if (!this.#schemes.has("persona")) {
+            this.#schemes.registerCore("persona", new ResourceTreeScheme("persona", {
+                trees: (workspaceId) => this.#personas.trees(workspaceId),
+                refusal: WorkspacePersonas.refusal,
+            }));
+        }
+        this.registerWorkspaceCapabilityProvider("@plurnk/plurnk-service:personas", {
+            activate: async ({ workspaceId }) => {
+                await this.#personas.refresh(workspaceId);
+            },
+            deactivate: async ({ workspaceId }) => {
+                this.#personas.clear(workspaceId);
+            },
+        });
         // {§tools-resource-materialization} — Core's own family: file membership on the same surface.
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine });
         this.#functionality.register(this.#members);
@@ -259,7 +276,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             // the first subsequent model turn sees their exact result.
             workspaceTurnStarting: async ({ workspaceId }) => {
                 await this.#functionality.refreshChanged({ workspaceId });
-                return [...this.configurationNotices(), ...this.#functionality.configurationNotices(workspaceId), ...this.#plugins.notices(workspaceId)];
+                await this.#personas.refresh(workspaceId);
+                return [...this.configurationNotices(), ...this.#functionality.configurationNotices(workspaceId), ...this.#plugins.notices(workspaceId), ...this.#personas.notices(workspaceId)];
             },
             // session:// KILL (terminate) — cancel the addressed session subtree and
             // tear down its held streams before the operation completes.
@@ -573,6 +591,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     listWorkspaces(query: { readonly hidden?: boolean } = {}): Promise<Array<WorkspaceRow & { project_label: string | null }>> {
         return this.#places.listWorkspaces(query);
+    }
+
+    async listPersonas(args: { readonly workspaceId: number }): Promise<readonly ApplicationPersonaProjection[]> {
+        const workspaceId = ClientInput.assertId("workspace.personas.list", "workspaceId", args.workspaceId);
+        return await this.#personas.read(workspaceId);
     }
 
     listSessions(
