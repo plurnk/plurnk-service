@@ -1,6 +1,7 @@
 // {§acp-session-owner} {§acp-proposal-resolve} {§acp-topology-scope}
 // Per-connection ACP v2 AgentApp factory and JSON-RPC request/notification handlers.
 
+import { fileURLToPath } from "node:url";
 import {
     PROTOCOL_VERSION,
     RequestError,
@@ -21,8 +22,10 @@ import {
 } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import {
     Problems,
+    isRecord,
     lifecycleOfLoopStatus,
     selectSessionLoop,
+    type MessageResource,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
@@ -128,12 +131,12 @@ export const createConnectionAgent = (
                 session: {
                     prompt: {
                         image: {},
-                        audio: {},
                         embeddedContext: {},
                     },
                     delete: {},
                     fork: {},
                 },
+                providers: {},
             },
         };
     });
@@ -146,6 +149,14 @@ export const createConnectionAgent = (
                 providerId: a.alias,
                 supported: [a.provider],
                 required: false,
+                ...(a.active
+                    ? {
+                          current: {
+                              apiType: a.provider,
+                              baseUrl: `plurnk://${a.provider}/${a.model}`,
+                          },
+                      }
+                    : {}),
                 _meta: {
                     plurnk: { ...a },
                 },
@@ -241,6 +252,18 @@ export const createConnectionAgent = (
         peer.client = ctx.client;
         try {
             assertSinglePortSecurity(ctx.params);
+            const rawReplayFrom = ctx.params.replayFrom;
+            let shouldReplay = false;
+            if (rawReplayFrom !== undefined && rawReplayFrom !== null) {
+                if (isRecord(rawReplayFrom) && rawReplayFrom.type === "start") {
+                    shouldReplay = true;
+                } else {
+                    throw new RequestError(
+                        -32602,
+                        "Unsupported or malformed replayFrom cursor; only { type: \"start\" } or null is supported.",
+                    );
+                }
+            }
             const bound = await resolveSessionBinding(
                 seam,
                 httpOrigin(),
@@ -270,8 +293,10 @@ export const createConnectionAgent = (
                 historyLoops: opts.historyLoops,
             });
 
-            for (const { update } of replayed) {
-                notifyPeerSession(peer, bound.acpSessionId, update);
+            if (shouldReplay) {
+                for (const { update } of replayed) {
+                    notifyPeerSession(peer, bound.acpSessionId, update);
+                }
             }
 
             for (const notice of seam.configurationNotices()) {
@@ -510,25 +535,84 @@ export const createConnectionAgent = (
                     true,
                     ctx.params._meta,
                 ));
-            const text = ctx.params.prompt
-                .map((block: ContentBlock): string => (block.type === "text" && typeof block.text === "string" ? block.text : ""))
-                .filter((part: string) => part.length > 0)
-                .join("\n");
-            if (text.trim().length === 0) {
+            const textParts: string[] = [];
+            const promptOpenPaths: string[] = [];
+            const attachments: MessageResource[] = [];
+            for (const block of ctx.params.prompt as readonly ContentBlock[]) {
+                if (block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
+                    textParts.push(block.text);
+                } else if (block.type === "resource_link" && typeof block.uri === "string" && block.uri.length > 0) {
+                    let targetPath = block.uri;
+                    if (block.uri.startsWith("file://")) {
+                        try {
+                            targetPath = fileURLToPath(block.uri);
+                        } catch {
+                            targetPath = block.uri;
+                        }
+                    }
+                    promptOpenPaths.push(targetPath);
+                } else if (block.type === "resource" && isRecord(block.resource)) {
+                    const res = block.resource;
+                    const uri = typeof res.uri === "string" && res.uri.length > 0 ? res.uri : "resource";
+                    const mediaType =
+                        typeof res.mimeType === "string" && res.mimeType.length > 0
+                            ? res.mimeType
+                            : "text" in res
+                              ? "text/plain"
+                              : "application/octet-stream";
+                    if ("text" in res && typeof res.text === "string") {
+                        attachments.push({
+                            name: uri,
+                            mediaType,
+                            bytes: new TextEncoder().encode(res.text),
+                            target: uri,
+                        });
+                    } else if ("blob" in res && typeof res.blob === "string") {
+                        attachments.push({
+                            name: uri,
+                            mediaType,
+                            bytes: new Uint8Array(Buffer.from(res.blob, "base64")),
+                            target: uri,
+                        });
+                    }
+                } else if (block.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string") {
+                    const name = typeof block.uri === "string" && block.uri.length > 0 ? block.uri : "image";
+                    attachments.push({
+                        name,
+                        mediaType: block.mimeType,
+                        bytes: new Uint8Array(Buffer.from(block.data, "base64")),
+                        ...(typeof block.uri === "string" && block.uri.length > 0 ? { target: block.uri } : {}),
+                    });
+                }
+            }
+            const plurnkMeta = extractPlurnkMeta(ctx.params._meta);
+            const mergedOpenPaths = [
+                ...(plurnkMeta.openPaths ?? []),
+                ...promptOpenPaths,
+            ];
+            const rawText = textParts.join("\n");
+            if (rawText.trim().length === 0 && attachments.length === 0 && mergedOpenPaths.length === 0) {
                 throw new RequestError(
                     -32602,
                     "Prompt must contain non-empty text. (user-message-text-required)",
                     Problems.create("acp", "user-message-text-required", 400, "Prompt must contain non-empty text."),
                 );
             }
-            const plurnkMeta = extractPlurnkMeta(ctx.params._meta);
+            const text =
+                rawText.trim().length > 0
+                    ? rawText
+                    : mergedOpenPaths.length > 0
+                      ? mergedOpenPaths.map((p) => `<${p}>`).join("\n")
+                      : "";
             const messageId = plurnkMeta.messageId ?? crypto.randomUUID();
             const messageAddress = `acp://operator/sessions/${encodeURIComponent(bound.acpSessionId)}/messages/${encodeURIComponent(messageId)}`;
+            const admissionBody =
+                text.length > 0 ? text : attachments.map((a) => `<${a.name}>`).join("\n");
 
             await seam.messageAdmission({
                 workspaceId: bound.workspaceId,
                 address: messageAddress,
-                body: text,
+                body: admissionBody,
             });
 
             const trimmed = text.trim();
@@ -636,8 +720,9 @@ export const createConnectionAgent = (
                     prompt: text,
                     source: messageAddress,
                     messageAddress,
+                    ...(attachments.length > 0 ? { attachments } : {}),
                     ...(maxTurns !== undefined ? { maxTurns } : {}),
-                    ...(plurnkMeta.openPaths !== undefined ? { openPaths: plurnkMeta.openPaths } : {}),
+                    ...(mergedOpenPaths.length > 0 ? { openPaths: mergedOpenPaths } : {}),
                     ...(plurnkMeta.envelope !== undefined ? { envelope: plurnkMeta.envelope } : {}),
                 });
             } catch (runErr) {

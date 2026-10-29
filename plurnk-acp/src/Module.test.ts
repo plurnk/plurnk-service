@@ -144,6 +144,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.equal(init.response.protocolVersion, PROTOCOL_VERSION);
                 assert.ok(init.response.capabilities?.session);
                 assert.ok(init.response.capabilities?.session?.fork);
+                assert.ok(init.response.capabilities?.providers);
+                assert.equal(init.response.capabilities?.session?.prompt?.audio, undefined);
             });
 
             const wsStream = createWebSocketStream(h.wsUrl, {
@@ -175,7 +177,17 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.ok(created.configOptions?.some((opt) => opt.configId === "model"));
                 assert.ok(created.configOptions?.some((opt) => opt.configId === "thought_level"));
                 assert.ok(Array.isArray(created.availableCommands));
-                assert.ok(created.availableCommands?.some((cmd) => cmd.name === "mcp"));
+                const mcpCmd = created.availableCommands?.find((cmd) => cmd.name === "mcp");
+                assert.ok(
+                    mcpCmd &&
+                        "input" in mcpCmd &&
+                        mcpCmd.input !== null &&
+                        typeof mcpCmd.input === "object" &&
+                        "type" in mcpCmd.input &&
+                        mcpCmd.input.type === "text",
+                );
+                const updateCmd = created.availableCommands?.find((cmd) => cmd.name === "update");
+                assert.ok(updateCmd && (!("input" in updateCmd) || updateCmd.input === undefined));
 
                 await assert.rejects(
                     () =>
@@ -249,6 +261,63 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
 
                 const providers = await ctx.request(methods.agent.providers.list, {});
                 assert.ok(providers.providers.length > 0);
+                assert.equal(providers.providers[0]?.current?.apiType, "mocktest");
+                assert.equal(providers.providers[0]?.current?.baseUrl, "plurnk://mocktest/mock-v1");
+
+                let mcpEnabled = true;
+                const origListActions = h.port.listModuleActions.bind(h.port);
+                const origInvokeAction = h.port.invokeModuleAction.bind(h.port);
+                h.port.listModuleActions = () => [
+                    ...origListActions(),
+                    {
+                        name: "workspace.mcp.enable",
+                        scope: "workspace",
+                        inputSchema: { type: "object", properties: { alias: { type: "string" } } },
+                        outputSchema: { type: "object" },
+                    },
+                    {
+                        name: "workspace.mcp.disable",
+                        scope: "workspace",
+                        inputSchema: { type: "object", properties: { alias: { type: "string" } } },
+                        outputSchema: { type: "object" },
+                    },
+                ];
+                h.port.invokeModuleAction = async (name, params, context) => {
+                    if (name === "workspace.mcp.list") {
+                        return {
+                            definitions: [
+                                {
+                                    alias: "git-srv",
+                                    state: mcpEnabled ? "active" : "disabled",
+                                },
+                            ],
+                        };
+                    }
+                    if (name === "workspace.mcp.disable") {
+                        mcpEnabled = false;
+                        return {};
+                    }
+                    if (name === "workspace.mcp.enable") {
+                        mcpEnabled = true;
+                        return {};
+                    }
+                    return await origInvokeAction(name, params, context);
+                };
+
+                try {
+                    const toggledMcp = await ctx.request(methods.agent.session.setConfigOption, {
+                        sessionId: session.sessionId,
+                        configId: "mcp:git-srv",
+                        type: "boolean",
+                        value: false,
+                    });
+                    const mcpOpt = toggledMcp.configOptions.find((c) => c.configId === "mcp:git-srv");
+                    assert.equal(mcpOpt?.type, "boolean");
+                    assert.equal(mcpOpt?.currentValue, false);
+                } finally {
+                    h.port.listModuleActions = origListActions;
+                    h.port.invokeModuleAction = origInvokeAction;
+                }
 
                 const updatedModel = await ctx.request(methods.agent.session.setConfigOption, {
                     sessionId: session.sessionId,
@@ -343,6 +412,39 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             }),
                         /message-address-reused/,
                     );
+
+                    let capturedRunLoop: Parameters<typeof h.port.runLoop>[0] | undefined;
+                    const origRunLoop = h.port.runLoop.bind(h.port);
+                    h.port.runLoop = async (args) => {
+                        capturedRunLoop = args;
+                        return await origRunLoop(args);
+                    };
+                    try {
+                        await ctx.request(methods.agent.session.prompt, {
+                            sessionId: session.sessionId,
+                            prompt: [
+                                { type: "text", text: "Inspect these" },
+                                { type: "resource_link", uri: "file:///workspace/alpha/README.md", name: "README.md" },
+                                {
+                                    type: "resource",
+                                    resource: { uri: "mem:///note.txt", mimeType: "text/plain", text: "embedded body" },
+                                },
+                                {
+                                    type: "image",
+                                    mimeType: "image/png",
+                                    data: Buffer.from("png-bytes").toString("base64"),
+                                    uri: "file:///workspace/alpha/diagram.png",
+                                },
+                            ],
+                        });
+                        await session.readTextUntilIdle();
+                        assert.deepEqual(capturedRunLoop?.openPaths, ["/workspace/alpha/README.md"]);
+                        assert.equal(capturedRunLoop?.attachments?.length, 2);
+                        assert.equal(capturedRunLoop?.attachments?.[0]?.name, "mem:///note.txt");
+                        assert.equal(capturedRunLoop?.attachments?.[1]?.mediaType, "image/png");
+                    } finally {
+                        h.port.runLoop = origRunLoop;
+                    }
                 });
             });
         } finally {
@@ -1004,6 +1106,30 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 replayed.push(params.update);
             });
             await app.connectWith(stream, async (ctx) => {
+                // Omitted replayFrom does not replay historical turns
+                await ctx.request(methods.agent.session.resume, {
+                    sessionId: "1#user",
+                    cwd: "/workspace/alpha",
+                });
+                await waitFor(() => replayed.some((u) => u.sessionUpdate === "state_update"));
+                assert.equal(
+                    replayed.some((u) => u.sessionUpdate === "user_message_chunk" || u.sessionUpdate === "agent_message_chunk"),
+                    false,
+                    "omitted replayFrom skips replaying history",
+                );
+
+                // Unsupported replayFrom cursor fails with -32602 Invalid params
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.resume, {
+                            sessionId: "1#user",
+                            cwd: "/workspace/alpha",
+                            replayFrom: { type: "_unknown_cursor" },
+                        }),
+                    /Unsupported or malformed replayFrom cursor/,
+                );
+
+                replayed.length = 0;
                 const resumed = await ctx.request(methods.agent.session.resume, {
                     sessionId: "1#user",
                     cwd: "/workspace/alpha",

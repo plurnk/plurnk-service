@@ -21,14 +21,54 @@ import SessionTranslator from "./SessionTranslator.ts";
 export const OWNER_ADDRESS = "acp://operator";
 
 export const AVAILABLE_COMMANDS: readonly AvailableCommand[] = Object.freeze([
-    { type: "command", name: "mcp", description: "Manage workspace MCP servers" },
-    { type: "command", name: "skills", description: "Manage workspace skills" },
-    { type: "command", name: "members", description: "Manage workspace members" },
-    { type: "command", name: "env", description: "Manage workspace environment variables" },
-    { type: "command", name: "schedule", description: "Manage workspace schedules" },
-    { type: "command", name: "rollback", description: "Roll back reversible session operations" },
-    { type: "command", name: "share", description: "Write a diagnostic digest of the workspace" },
-    { type: "command", name: "script", description: "Execute PLURNK statements directly" },
+    {
+        type: "command",
+        name: "mcp",
+        description: "Manage workspace MCP servers",
+        input: { type: "text", hint: "<list|add|remove|enable|disable> ..." },
+    },
+    {
+        type: "command",
+        name: "skills",
+        description: "Manage workspace skills",
+        input: { type: "text", hint: "<list|add|remove|enable|disable> ..." },
+    },
+    {
+        type: "command",
+        name: "members",
+        description: "Manage workspace members",
+        input: { type: "text", hint: "<list|add|remove|enable|disable> ..." },
+    },
+    {
+        type: "command",
+        name: "env",
+        description: "Manage workspace environment variables",
+        input: { type: "text", hint: "<list|set|unset> ..." },
+    },
+    {
+        type: "command",
+        name: "schedule",
+        description: "Manage workspace schedules",
+        input: { type: "text", hint: "<list|add|remove|enable|disable> ..." },
+    },
+    {
+        type: "command",
+        name: "rollback",
+        description: "Roll back reversible session operations",
+        input: { type: "text", hint: "<coordinate>" },
+    },
+    {
+        type: "command",
+        name: "share",
+        description: "Write a diagnostic digest of the workspace",
+        input: { type: "text", hint: "<folder>" },
+    },
+    {
+        type: "command",
+        name: "script",
+        description: "Execute PLURNK statements directly",
+        input: { type: "text", hint: "<statements>" },
+    },
     { type: "command", name: "update", description: "Update the model catalog" },
 ]);
 
@@ -566,7 +606,7 @@ export const buildConfigOptions = async (
             ? "allow"
             : "propose";
 
-    return [
+    const options: SessionConfigOption[] = [
         {
             configId: "model",
             name: "Model",
@@ -608,6 +648,33 @@ export const buildConfigOptions = async (
             ],
         },
     ];
+
+    const registeredActions = seam.listModuleActions?.() ?? [];
+    for (const family of ["mcp", "skills", "schedule"] as const) {
+        if (!registeredActions.some((a) => a.name === `workspace.${family}.list`)) continue;
+        const listed = await seam
+            .invokeModuleAction(`workspace.${family}.list`, {}, { scope: "workspace", workspaceId })
+            .catch(() => null);
+        if (!isRecord(listed)) continue;
+        const items = Array.isArray(listed.definitions)
+            ? listed.definitions
+            : Array.isArray(listed.items)
+              ? listed.items
+              : [];
+        for (const item of items) {
+            if (!isRecord(item) || typeof item.alias !== "string" || item.alias.length === 0) continue;
+            const enabled = item.state !== "disabled" && item.enabled !== false;
+            options.push({
+                configId: `${family}:${item.alias}`,
+                name: `${family}:${item.alias}`,
+                category: "other",
+                type: "boolean",
+                currentValue: enabled,
+            });
+        }
+    }
+
+    return options;
 };
 
 export const applyConfigOption = async (
