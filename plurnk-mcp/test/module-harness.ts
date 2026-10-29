@@ -71,7 +71,7 @@ interface ModuleHarness {
     readonly module: ReturnType<typeof Module.init>;
     readonly seam: {
         readWorkspacePlugins: () => Promise<{ plugins: never[]; roots: Record<string, never> }>;
-        workspacePaths: () => Promise<{ home: string; projectRoot: null; configurationRoots: never[] }>;
+        workspacePaths: (workspaceId: number) => Promise<{ home: string; workspaceName: string; projectRoot: null; configurationRoots: never[] }>;
         workspaceStateDirectory: (workspaceId: number, owner: string) => Promise<string>;
         readWorkspaceEnvironment: () => Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
         operatorEnvironment: () => NodeJS.ProcessEnv;
@@ -138,7 +138,12 @@ export const harness = (env: Record<string, string> = {}, beforeRefresh: () => P
     };
     const seam = {
         readWorkspacePlugins: async () => ({ plugins: [], roots: {} }),
-        workspacePaths: async () => ({ home: stateRoot, projectRoot: null, configurationRoots: [] }),
+        workspacePaths: async (workspaceId: number) => ({
+            home: stateRoot,
+            workspaceName: `workspace-${workspaceId}`,
+            projectRoot: null,
+            configurationRoots: [],
+        }),
         workspaceStateDirectory: async (workspaceId: number, owner: string) => {
             const directory = stateDirectory(workspaceId, owner);
             mkdirSync(directory, { recursive: true });

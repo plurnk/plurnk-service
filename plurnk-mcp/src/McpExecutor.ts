@@ -11,6 +11,7 @@ import type {
     Effect,
     ExecArgs,
     ExecResult,
+    Executor,
     Notice,
     RuntimeAvailability,
     RuntimeDecl,
@@ -197,6 +198,7 @@ export default class McpExecutor extends BaseExecutor {
     #read: ReadonlySet<string> = new Set();
     #registry: RuntimeToolRegistry | null = null;
     readonly #retainWorkspace: () => () => void;
+    readonly #resolveCallerMeta: ((workspaceId: number, sessionId: number) => Promise<Readonly<Record<string, unknown>> | undefined>) | undefined;
     #catalog: ServerCatalog | null = null;
 
     constructor(
@@ -204,11 +206,29 @@ export default class McpExecutor extends BaseExecutor {
         connection: ServerConnection,
         retainWorkspace: () => () => void,
         policy: Partial<ToolPolicy> = {},
+        resolveCallerMeta?: (workspaceId: number, sessionId: number) => Promise<Readonly<Record<string, unknown>> | undefined>,
     ) {
         super(metadata);
         this.#connection = connection;
         this.#tools = policy.tools ?? null;
         this.#retainWorkspace = retainWorkspace;
+        this.#resolveCallerMeta = resolveCallerMeta;
+    }
+
+    forContext(workspaceId: number, sessionId: number): Executor {
+        return {
+            runtime: this.runtime,
+            glyph: this.glyph,
+            channels: this.channels,
+            defaultChannel: this.defaultChannel,
+            publishedChannel: this.publishedChannel,
+            manifest: this.manifest,
+            probe: (signal) => this.probe(signal),
+            effect: (target) => this.effect(target),
+            prepare: (input) => this.prepare(input),
+            toolRegistry: () => this.toolRegistry(),
+            run: (args) => this.#run(args, { workspaceId, sessionId }),
+        };
     }
 
     get channels(): Readonly<Record<string, ChannelDecl>> {
@@ -303,7 +323,11 @@ export default class McpExecutor extends BaseExecutor {
         };
     }
 
-    async run({
+    async run(args: ExecArgs): Promise<ExecResult> {
+        return this.#run(args);
+    }
+
+    async #run({
         runtime,
         body,
         target,
@@ -313,7 +337,7 @@ export default class McpExecutor extends BaseExecutor {
         emit,
         interact,
         entry,
-    }: ExecArgs): Promise<ExecResult> {
+    }: ExecArgs, caller?: { readonly workspaceId: number; readonly sessionId: number }): Promise<ExecResult> {
         const fail = (
             code: string,
             status: number,
@@ -397,6 +421,9 @@ export default class McpExecutor extends BaseExecutor {
             if (tool === undefined) {
                 throw new Error(`MCP tool '${target}' is absent from the prepared catalog.`);
             }
+            const meta = caller === undefined || this.#resolveCallerMeta === undefined
+                ? undefined
+                : await this.#resolveCallerMeta(caller.workspaceId, caller.sessionId);
             const result = await this.#connection.callTool(
                 target,
                 args,
@@ -404,6 +431,7 @@ export default class McpExecutor extends BaseExecutor {
                 (progress) => emit(progressNotice(runtime, target, progress)),
                 interact,
                 tool,
+                meta,
             );
             write("json", JSON.stringify(result, null, 2), "application/json");
             setState("json", "closed");

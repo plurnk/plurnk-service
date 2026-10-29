@@ -517,3 +517,70 @@ test("{§mcp-tasks} cancelling one resource READ does not cancel another caller'
         await connection.close();
     }
 });
+
+test("{§mcp-open-work} reading a subscribable resource during an active loop opens a StreamSubscription that closes on notifications/resources/updated", async () => {
+    let version = 1;
+    const connection = {
+        async readResource(uri: string) {
+            return {
+                contents: [{
+                    uri,
+                    mimeType: "text/plain",
+                    text: `state-v${version}`,
+                }],
+            };
+        },
+    } as unknown as ServerConnection;
+    const catalog = {
+        protocolVersion: "2026-07-28",
+        server: { name: "sub", version: "1" },
+        capabilities: { resources: { subscribe: true } },
+        tools: [],
+        resources: [{ uri: "fixture://live", name: "live" }],
+        resourceTemplates: [],
+        prompts: [],
+        unsupportedLists: [],
+    } as unknown as ServerCatalog;
+    const resources = new McpResources("sub", connection, catalog);
+    const { ctx, entries, subscriptions } = context();
+    Object.assign(ctx, { loopId: 7 });
+    const pathname = "/resources/fixture%3A%2F%2Flive";
+    const result = await resources.prepareRepresentation(preparationRequest(pathname), ctx);
+    assert.equal(result.status, 200);
+    assert.equal(entries.get(pathname)?.channels.body?.content, "state-v1");
+    assert.equal(subscriptions.has(pathname), true, "active loop opens a StreamSubscription for subscribable resources");
+
+    version = 2;
+    await resources.notifyResourceUpdated("fixture://live");
+    assert.equal(entries.get(pathname)?.channels.body?.content, "state-v2");
+    assert.equal(subscriptions.get(pathname)?.closedWith, 200, "resource update closes the StreamSubscription with 200");
+});
+
+test("{§mcp-open-work} server /messages/<id> targets delegate to the workspace message mailbox", async () => {
+    const { connection, resources } = await configured();
+    try {
+        const { ctx } = context();
+        assert.equal(resources.claims("/messages/1"), true);
+        const prepared = await resources.prepareRepresentation(preparationRequest("/messages/1"), ctx);
+        assert.equal(prepared.status, 200);
+        const found = await resources.find({
+            target: preparationRequest("/messages").target,
+            pathname: "/messages",
+            regex: null,
+            where: null,
+            limit: null,
+            offset: null,
+        } as never, ctx);
+        assert.equal(found.status, 200);
+        const sent = await resources.send({
+            target: preparationRequest("/messages/1").target,
+            authority: "",
+            pathname: "/messages/1",
+            completion: 200,
+            payload: { kind: "inline", content: "ack" },
+        } as never, ctx);
+        assert.equal(sent.status, 200);
+    } finally {
+        await connection.close();
+    }
+});

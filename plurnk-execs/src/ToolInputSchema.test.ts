@@ -93,7 +93,7 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
             },
             $defs: { selector: { oneOf: [{ type: "string" }, { type: "integer" }] } },
         }),
-        '(verb: "list"|"add"; alias?: string, definition?: {name: string, type: "stdio", command: string, args?: string[], env?: object, cwd?: string}|{name: string, type: "streamable-http", url: string, headers?: object, authorization?: object}, selector?: any)',
+        '(verb: "list"|"add"; alias?: string, definition?: {name: string, type: "stdio", command: string, args?: string[], env?: object, cwd?: string, … +2 opt}|{name: string, type: "streamable-http", url: string, headers?: object, authorization?: object, plurnkWorkspace?: string|string[], … +1 opt}, selector?: any)',
     );
 });
 

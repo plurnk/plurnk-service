@@ -62,8 +62,20 @@ Shared definitions may come from `~/.agents/mcp.json`,
 containing a `mcpServers` map. Nearer files override farther ones; environment
 definitions override files. `list` reports the winning file and entry.
 Live management changes the workspace, never those files. File edits are
-picked up before the next turn; enabledness and tool filters still use
-`PLURNK_MCP_<alias>_ENABLED` and `PLURNK_MCP_<alias>_TOOLS`.
+picked up before the next turn; enabledness, tool filters, and Open Work bindings
+use `PLURNK_MCP_<alias>_ENABLED`, `PLURNK_MCP_<alias>_TOOLS`,
+`PLURNK_MCP_<alias>_WORKSPACE`, and `PLURNK_MCP_<alias>_SESSION`.
+
+Definitions may also set `plurnkSession` (default target session) and
+`plurnkWorkspace` (workspace name, array of workspace names, or `"*"` for
+operator-scoped definitions; workspace-scoped definitions are confined to their
+own workspace). Read-only host variables `PLURNK_WORKSPACE`, `PLURNK_SESSION`
+(when bound), `PLURNK_PROJECT_ROOT` (when present), and `PLURNK_STATE_DIR` are
+available to `${NAME}` expansion and `stdio` subprocesses. Inbound
+`sampling/createMessage` requests arrive as Open Messages at
+`<server>:///messages/<id>` and are answered with `SEND [200]` (or declined with
+`SEND [499]`); subscribable resources (`READ (<server>:///resources/<uri>)`) open
+a stream that wakes the session when `notifications/resources/updated` arrives.
 
 Installed Agent Plugins contribute servers from their root `mcp.json` through
 the same family. Within each scope standalone definitions win; nearer scopes

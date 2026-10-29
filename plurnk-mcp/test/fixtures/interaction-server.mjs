@@ -169,20 +169,33 @@ server.registerTool(
 server.registerTool(
     "sampling",
     {
-        description: "Attempt an unsupported sampling request.",
+        description: "Request a sampling completion.",
         inputSchema: z.object({}),
     },
-    async () => inputRequired({
-        inputRequests: {
-            sample: inputRequired.createMessage({
-                messages: [{
-                    role: "user",
-                    content: { type: "text", text: "Say hello." },
-                }],
-                maxTokens: 32,
-            }),
-        },
-    }),
+    async (_args, ctx) => {
+        const response = inputResponse(ctx.mcpReq.inputResponses, "sample");
+        if (response.kind === "missing") {
+            return inputRequired({
+                inputRequests: {
+                    sample: inputRequired.createMessage({
+                        messages: [{
+                            role: "user",
+                            content: { type: "text", text: "Say hello." },
+                        }],
+                        maxTokens: 32,
+                    }),
+                },
+            });
+        }
+        return {
+            content: [{
+                type: "text",
+                text: response.kind === "sampling" && response.result.content?.type === "text"
+                    ? response.result.content.text
+                    : response.kind,
+            }],
+        };
+    },
 );
 
 server.registerResource(

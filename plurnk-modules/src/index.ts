@@ -122,6 +122,7 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Defi
 export interface WorkspacePaths {
     readonly home: string;
     readonly projectRoot: string | null;
+    readonly workspaceName?: string;
     readonly configurationRoots: readonly {
         readonly scope: string;
         readonly directory: string;

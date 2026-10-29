@@ -109,7 +109,18 @@ const propertySignature = (raw: JsonSchema, depth = 0, root?: JsonSchema): strin
         }
     }
     if (declared.length > 0) return declared.join("|");
-    if (Array.isArray(prop.oneOf) || Array.isArray(prop.anyOf)) return "object";
+    const union = Array.isArray(prop.oneOf)
+        ? prop.oneOf
+        : Array.isArray(prop.anyOf)
+            ? prop.anyOf
+            : null;
+    if (union !== null) {
+        const leafTypes = union.map((branch) => propertySignature(objectOf(branch), 1, prop));
+        if (leafTypes.length > 0 && leafTypes.length <= 4 && leafTypes.every((t) => t !== "any" && t !== "object")) {
+            return [...new Set(leafTypes)].join("|");
+        }
+        return "object";
+    }
     return "any";
 };
 

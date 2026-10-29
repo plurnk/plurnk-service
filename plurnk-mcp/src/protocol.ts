@@ -4,8 +4,10 @@ export const MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID = "io.modelcontextprotoco
 
 export const staticClientCapabilities = (): {
     readonly elicitation: { readonly form: Record<string, never>; readonly url: Record<string, never> };
+    readonly sampling: Record<string, never>;
     readonly extensions: Readonly<Record<string, Record<string, never>>>;
 } => ({
     elicitation: { form: {}, url: {} },
+    sampling: {},
     extensions: { [MCP_TASKS_EXTENSION_ID]: {} },
 });

@@ -56,7 +56,10 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
             this.#manifest.name,
             manifest,
             this.liveSubscriptions(),
-            target === null ? { } : { authority: entryCoordinateOf(target, manifest.authority ?? "namespace").authority },
+            {
+                ...(target === null ? {} : { authority: entryCoordinateOf(target, manifest.authority ?? "namespace").authority }),
+                publishedChannel: manifest.defaultChannel,
+            },
         );
     }
 

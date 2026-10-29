@@ -171,6 +171,7 @@ test("{§mcp-authority} protocol authority pins the MCP revision, SDK version, a
     assert.equal(packageJson.devDependencies["@modelcontextprotocol/conformance"], "0.2.0-alpha.12");
     assert.deepEqual(staticClientCapabilities(), {
         elicitation: { form: {}, url: {} },
+        sampling: {},
         extensions: { [MCP_TASKS_EXTENSION_ID]: {} },
     });
 });

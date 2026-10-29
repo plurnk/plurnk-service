@@ -225,6 +225,58 @@ test("{§mcp-authority} one pacing, stated on the panel, doubles from its floor 
     );
 });
 
+test("{§mcp-configuration} {§mcp-open-work} WORKSPACE and SESSION controls and definition fields are validated", () => {
+    assert.deepEqual(serverSettings("bot", {
+        ...floor,
+        PLURNK_MCP_bot_WORKSPACE: "ops",
+        PLURNK_MCP_bot_SESSION: "inbox",
+    }), {
+        tools: null,
+        workspace: "ops",
+        session: "inbox",
+    });
+    assert.deepEqual(serverSettings("bot", {
+        ...floor,
+        PLURNK_MCP_bot_WORKSPACE: '["ops","triage"]',
+    }), {
+        tools: null,
+        workspace: ["ops", "triage"],
+    });
+    assert.deepEqual(serverSettings("bot", {
+        ...floor,
+        PLURNK_MCP_bot_WORKSPACE: "*",
+    }), {
+        tools: null,
+        workspace: "*",
+    });
+    assert.throws(
+        () => serviceDefinitions({ ...floor, PLURNK_MCP_bot_WORKSPACE: "[]" }),
+        /PLURNK_MCP_bot_WORKSPACE must be a non-empty workspace name/u,
+    );
+    assert.throws(
+        () => serviceDefinitions({ ...floor, PLURNK_MCP_bot_WORKSPACE: '["ops","ops"]' }),
+        /PLURNK_MCP_bot_WORKSPACE contains duplicate workspace name 'ops'/u,
+    );
+    assert.throws(
+        () => serviceDefinitions({ ...floor, PLURNK_MCP_bot_WORKSPACE: "   " }),
+        /PLURNK_MCP_bot_WORKSPACE must be a non-empty workspace name/u,
+    );
+    assert.throws(
+        () => serviceDefinitions({ ...floor, PLURNK_MCP_bot_SESSION: "   " }),
+        /PLURNK_MCP_bot_SESSION must be a non-empty session name/u,
+    );
+    const bound = {
+        name: "bot",
+        type: "stdio" as const,
+        command: "node",
+        plurnkWorkspace: ["ops", "triage"],
+        plurnkSession: "inbox",
+    };
+    assert.deepEqual(readDefinition(bound), bound);
+    assert.throws(() => readDefinition({ ...bound, plurnkWorkspace: [] }), /plurnkWorkspace/u);
+    assert.throws(() => readDefinition({ ...bound, plurnkSession: "" }), /plurnkSession/u);
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Server Definition ({§mcp-server-definition})
 // ─────────────────────────────────────────────────────────────────────────────

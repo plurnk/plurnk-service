@@ -1,6 +1,7 @@
 import {
     Results,
     ResourceNames,
+    type EntryCaps,
     type EntryData,
     type EntryFindResult,
     type EntryStorageReadResult,
@@ -8,9 +9,13 @@ import {
     type FindStatement,
     type RepresentationPreparationRequest,
     type RepresentationPreparationResult,
+    type RuntimeSchemeFacet,
     type SchemeCtx,
     type SchemeResult,
+    type SendStatement,
+    type StreamSubscription,
 } from "@plurnk/plurnk-schemes";
+import { PathSyntax } from "@plurnk/plurnk-contracts";
 import { ErrorDetail } from "@plurnk/plurnk-execs";
 import type ServerConnection from "./client.ts";
 import { AuthorizationRequiredError, awaitsSignIn, type ServerCatalog } from "./client.ts";
@@ -22,6 +27,8 @@ const RESOURCES = "/resources";
 const RESOURCE_PREFIX = `${RESOURCES}/`;
 const PROMPTS = "/prompts";
 const PROMPT_PREFIX = `${PROMPTS}/`;
+const MESSAGES = "/messages";
+const MESSAGE_PREFIX = `${MESSAGES}/`;
 const RESOURCE_KIND = "mcp-resource";
 const CATALOG_KIND = "mcp-resource-catalog";
 const PROMPT_KIND = "mcp-prompt";
@@ -132,15 +139,42 @@ const catalogEntry = (content: string, kind: string): EntryData => ({
     attributes: { kind },
 });
 
+interface ResourceStreamWatcher {
+    readonly uri: string;
+    readonly root: string;
+    readonly entries: EntryCaps;
+    readonly meta: Readonly<Record<string, unknown>> | undefined;
+    readonly subscription: StreamSubscription;
+}
+
 export default class McpResources {
     readonly #server: string;
     readonly #connection: ServerConnection;
     readonly #catalog: ServerCatalog;
+    readonly #resolveCallerMeta: ((workspaceId: number, sessionId: number) => Promise<Readonly<Record<string, unknown>> | undefined>) | undefined;
+    readonly #openStreams: boolean;
+    readonly #resourceStreams = new Map<string, ResourceStreamWatcher>();
 
-    constructor(server: string, connection: ServerConnection, catalog: ServerCatalog) {
+    constructor(
+        server: string,
+        connection: ServerConnection,
+        catalog: ServerCatalog,
+        resolveCallerMeta?: (workspaceId: number, sessionId: number) => Promise<Readonly<Record<string, unknown>> | undefined>,
+        openStreams = true,
+    ) {
         this.#server = server;
         this.#connection = connection;
         this.#catalog = catalog;
+        this.#resolveCallerMeta = resolveCallerMeta;
+        this.#openStreams = openStreams;
+    }
+
+    get manifest(): RuntimeSchemeFacet["manifest"] {
+        return {
+            channels: { body: "text/markdown" },
+            defaultChannel: "body",
+            writableBy: ["model", "client", "_plurnk"],
+        };
     }
 
     claims(pathname: string): boolean {
@@ -148,7 +182,45 @@ export default class McpResources {
             || pathname === RESOURCES
             || pathname.startsWith(RESOURCE_PREFIX)
             || pathname === PROMPTS
-            || pathname.startsWith(PROMPT_PREFIX);
+            || pathname.startsWith(PROMPT_PREFIX)
+            || pathname === MESSAGES
+            || pathname.startsWith(MESSAGE_PREFIX);
+    }
+
+    async notifyResourceUpdated(uri: string): Promise<void> {
+        const watcher = this.#resourceStreams.get(uri);
+        if (watcher === undefined || watcher.subscription.aborted) return;
+        this.#resourceStreams.delete(uri);
+        try {
+            const updated = await this.#connection.readResource(
+                uri,
+                watcher.subscription,
+                undefined,
+                watcher.meta,
+            );
+            if (watcher.subscription.aborted) return;
+            await this.#writeResourceResult(watcher.root, updated, watcher.entries);
+            if (watcher.subscription.aborted) return;
+            await watcher.subscription.close({ status: 200 }, "resource updated");
+        } catch (error) {
+            if (watcher.subscription.aborted) return;
+            await watcher.subscription.close(
+                Results.failure(
+                    "scheme:mcp",
+                    "resource-update-failed",
+                    502,
+                    "MCP resource update read failed.",
+                    {},
+                    {
+                        server: this.#server,
+                        stage: "mcp-resource",
+                        diagnostic: diagnostic(error),
+                        retryable: true,
+                    },
+                ),
+                "resource update failed",
+            ).catch(() => undefined);
+        }
     }
 
     async #materializeCatalog(ctx: SchemeCtx): Promise<void> {
@@ -241,11 +313,15 @@ export default class McpResources {
             }
             args[key] = value;
         }
+        const meta = this.#resolveCallerMeta === undefined
+            ? undefined
+            : await this.#resolveCallerMeta(ctx.workspaceId, ctx.sessionId);
         const result = await this.#connection.getPrompt(
             name,
             Object.keys(args).length === 0 ? undefined : args,
             ctx.signal,
             (interaction, signal) => ctx.interactions.request(interaction, signal),
+            meta,
         );
         const names = new ResourceNames();
         const messages = [];
@@ -275,6 +351,35 @@ export default class McpResources {
         }));
     }
 
+    async #writeResourceResult(
+        root: string,
+        result: Awaited<ReturnType<ServerConnection["readResource"]>>,
+        entries: EntryCaps,
+    ): Promise<string[]> {
+        const names = new ResourceNames();
+        const paths: string[] = [];
+        if (result.contents.length !== 1) {
+            for (const resource of result.contents) {
+                const child = `${root}/resources/${names.allocate(ResourceContent.name(resource), resource.uri)}`;
+                requireEntrySuccess(await entries.write(child, {
+                    channels: { body: ResourceContent.channel(resource) },
+                    attributes: { kind: RESOURCE_KIND },
+                }));
+                paths.push(child);
+            }
+        }
+        const body = result.contents.length === 1 ? ResourceContent.channel(result.contents[0])
+            : { content: (await Promise.all(paths.map(async (path) => `<${await entries.address(path)}>`))).join("\n"), mimetype: "text/markdown" };
+        requireEntrySuccess(await entries.write(root, {
+            channels: {
+                body,
+                json: { content: JSON.stringify(result, null, 2), mimetype: "application/json" },
+            },
+            attributes: { kind: RESOURCE_KIND },
+        }));
+        return paths;
+    }
+
     async #materializeResource(pathname: string, ctx: SchemeCtx): Promise<void> {
         const [encoded, folder, leaf, ...tail] = pathname.slice(RESOURCE_PREFIX.length).split("/");
         if (!encoded || (folder !== undefined && (folder !== "resources" || !leaf || tail.length !== 0))) {
@@ -286,35 +391,56 @@ export default class McpResources {
         } catch (cause) {
             throw new ResourceAddressError(`Invalid encoded MCP resource address '${pathname}'.`, { cause });
         }
+        const meta = this.#resolveCallerMeta === undefined
+            ? undefined
+            : await this.#resolveCallerMeta(ctx.workspaceId, ctx.sessionId);
         const result = await this.#connection.readResource(
             uri,
             ctx.signal,
             (interaction, signal) => ctx.interactions.request(interaction, signal),
+            meta,
         );
         const root = `${RESOURCE_PREFIX}${encoded}`;
-        const names = new ResourceNames();
-        const paths: string[] = [];
-        if (result.contents.length !== 1) {
-            for (const resource of result.contents) {
-                const child = `${root}/resources/${names.allocate(ResourceContent.name(resource), resource.uri)}`;
-                requireEntrySuccess(await ctx.entries.write(child, {
-                    channels: { body: ResourceContent.channel(resource) },
-                    attributes: { kind: RESOURCE_KIND },
-                }));
-                paths.push(child);
-            }
-        }
-        const body = result.contents.length === 1 ? ResourceContent.channel(result.contents[0])
-            : { content: (await Promise.all(paths.map(async (path) => `<${await ctx.entries.address(path)}>`))).join("\n"), mimetype: "text/markdown" };
-        requireEntrySuccess(await ctx.entries.write(root, {
-            channels: {
-                body,
-                json: { content: JSON.stringify(result, null, 2), mimetype: "application/json" },
-            },
-            attributes: { kind: RESOURCE_KIND },
-        }));
+        const paths = await this.#writeResourceResult(root, result, ctx.entries);
         if (pathname !== root && !paths.includes(pathname)) {
             throw new EntryOperationFailure(Results.failure("scheme:mcp", "resource-part-not-found", 404, "The resource response does not contain this part.", {}, { target: await ctx.entries.address(pathname) }));
+        }
+        if (
+            this.#openStreams
+            && this.#catalog.capabilities.resources?.subscribe === true
+            && pathname === root
+            && ctx.loopId > 0
+            && "subscriptions" in ctx
+            && ctx.subscriptions !== undefined
+            && !this.#resourceStreams.has(uri)
+        ) {
+            let closed = false;
+            const subscription = await ctx.subscriptions.open(root, {
+                cancel: async () => {
+                    const active = this.#resourceStreams.get(uri)?.subscription;
+                    this.#resourceStreams.delete(uri);
+                    if (closed || active === undefined) return;
+                    closed = true;
+                    await active.close(
+                        Results.failure(
+                            "lifecycle:cancel",
+                            "stream-cancelled",
+                            499,
+                            "The MCP resource watch was cancelled.",
+                            {},
+                            { server: this.#server, stage: "mcp-resource", retryable: false },
+                        ),
+                        "resource watch cancelled",
+                    );
+                },
+            });
+            this.#resourceStreams.set(uri, {
+                uri,
+                root,
+                entries: ctx.entries,
+                meta,
+                subscription,
+            });
         }
     }
 
@@ -324,6 +450,9 @@ export default class McpResources {
     ): Promise<RepresentationPreparationResult> {
         const pathname = request.pathname;
         try {
+            if (pathname === MESSAGES || pathname.startsWith(MESSAGE_PREFIX)) {
+                return await ctx.messages.prepare(request.target.raw);
+            }
             const exactResource = pathname.startsWith(RESOURCE_PREFIX)
                 && !/[*?[\]{}]/.test(pathname);
             if (exactResource) {
@@ -360,6 +489,16 @@ export default class McpResources {
 
     async find(statement: FindStatement, ctx: SchemeCtx): Promise<EntryFindResult> {
         try {
+            if (statement.target !== null && statement.target.kind === "url") {
+                const pathname = PathSyntax.decodeParens(statement.target.pathname);
+                if (pathname === MESSAGES || pathname.startsWith(MESSAGE_PREFIX)) {
+                    const prepared = await ctx.messages.prepare();
+                    if (Results.isErrorStatus(prepared.status)) {
+                        return findEntryFailure(new EntryOperationFailure(prepared));
+                    }
+                    return await ctx.entries.operations.find(statement);
+                }
+            }
             await this.#materializeCatalog(ctx);
             return await ctx.entries.operations.find(statement);
         } catch (error) {
@@ -375,5 +514,9 @@ export default class McpResources {
                 },
             );
         }
+    }
+
+    async send(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult> {
+        return ctx.messages.reply(statement);
     }
 }

@@ -30,6 +30,7 @@ import {
 import PluginConfiguration from "./PluginConfiguration.ts";
 import { aliasOf, registryEntries, type RegistryServer } from "./registry.ts";
 import ServerConnection from "./client.ts";
+import { OpenWorkCoordinator, type StartSeam } from "./openWork.ts";
 
 const fixture = fileURLToPath(new URL("../test/fixtures/echo-server.mjs", import.meta.url));
 const legacyFixture = fileURLToPath(new URL("../test/fixtures/legacy-server.mjs", import.meta.url));
@@ -746,4 +747,287 @@ test("{§mcp-module} what needs a person's input first, and what plurnk cannot l
     none({ packages: [{ registryType: "mcpb", identifier: "https://example.com/server.mcpb", version: "1.0.0", transport: { type: "stdio" } }] });
     none({ remotes: [{ type: "sse", url: "https://mcp.example.com/sse" }] });
     none({ remotes: [{ type: "streamable-http", url: "https://mcp.example.com/{tenant}/mcp" }] });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Open Work & Workspace Containment ({§mcp-open-work})
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("{§mcp-open-work} workspace-scoped definitions cannot bind another workspace or wildcard while operator definitions filter by bound workspace", async () => {
+    const pinned = {
+        ...stdio("pinned"),
+        plurnkWorkspace: "workspace-1",
+        plurnkSession: "inbox",
+    };
+    const router = {
+        ...stdio("router"),
+        plurnkWorkspace: "*",
+        plurnkSession: "triage",
+    };
+    const h = harness({
+        PLURNK_MCP_pinned: JSON.stringify(pinned),
+        PLURNK_MCP_router: JSON.stringify(router),
+    });
+    await h.setup();
+    try {
+        await rejectsManagementProblem(
+            () => h.adapter().admit(
+                { definition: { ...stdio("escape"), plurnkWorkspace: "workspace-2" } },
+                h.identity(1),
+            ),
+            "workspace-scope-forbidden",
+            403,
+        );
+        await rejectsManagementProblem(
+            () => h.adapter().admit(
+                { definition: { ...stdio("wildcard"), plurnkWorkspace: "*" } },
+                h.identity(1),
+            ),
+            "workspace-scope-forbidden",
+            403,
+        );
+        const sameWorkspace = { ...stdio("local"), plurnkWorkspace: "workspace-1", plurnkSession: "chat" };
+        assert.deepEqual(
+            await h.adapter().admit({ definition: sameWorkspace }, h.identity(1)),
+            { alias: "local", definition: sameWorkspace },
+        );
+
+        const ws1Available = await h.adapter().available(h.identity(1));
+        assert.equal(ws1Available.find(({ alias }) => alias === "pinned")?.enabled, true);
+        assert.equal(ws1Available.find(({ alias }) => alias === "router")?.enabled, true);
+
+        const ws2Available = await h.adapter().available(h.identity(2));
+        assert.equal(ws2Available.find(({ alias }) => alias === "pinned")?.enabled, false);
+        assert.equal(ws2Available.find(({ alias }) => alias === "router")?.enabled, true);
+    } finally {
+        await h.module.stop();
+    }
+});
+
+test("{§mcp-open-work} synthetic variables expand in server definitions and populate stdio launch environments", async () => {
+    const h = harness();
+    await h.setup();
+    try {
+        const definition: McpServerDefinition = {
+            ...stdio("echo", [fixture], {
+                env: {
+                    BOUND_WS: "${PLURNK_WORKSPACE}",
+                    BOUND_SESSION: "${PLURNK_SESSION}",
+                    BOUND_STATE: "${PLURNK_STATE_DIR}",
+                },
+            }),
+            plurnkSession: "inbox-${PLURNK_WORKSPACE}",
+        };
+        const prepared = await h.lane(1, new Map([["echo", definition]]));
+        assert.equal(prepared.outcomes.get("echo")?.state, "active");
+        assert.ok(
+            h.leases() >= 1,
+            "a session-bound server holds a workspace residency lease while active",
+        );
+    } finally {
+        await h.teardown(1);
+        await h.module.stop();
+    }
+});
+
+test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an Open Message, auto-creates workspaces and sessions, and settles on SEND or loop termination", async () => {
+    const coordinator = new OpenWorkCoordinator();
+    const workspaces: Array<{ id: number; name: string }> = [{ id: 1, name: "ops" }];
+    const sessions = new Map<string, { id: number; name: string }>();
+    const admittedMessages: Array<{ workspaceId: number; address: string; body: string }> = [];
+    const inbox = new Map<string, Array<{ path: string; loopId: number; lifecycle: "queued" | "running" | "parked" }>>();
+    let listener: ((workspaceId: number | null, method: string, params: unknown) => void) | null = null;
+    let nextLoopId = 10;
+
+    const seam = {
+        listWorkspaces: async () => workspaces.map((ws) => ({
+            id: ws.id,
+            name: ws.name,
+            project_root: null,
+            project_label: null,
+            created_at: "2026-10-28T00:00:00Z",
+            hidden_at: null,
+        })),
+        createWorkspace: async ({ name }: { readonly name?: string }) => {
+            const ws = { id: workspaces.length + 1, name: name ?? `ws-${workspaces.length + 1}` };
+            workspaces.push(ws);
+            return { workspaceId: ws.id, workspaceName: ws.name, projectRoot: null, projectLabel: null };
+        },
+        activateWorkspace: async () => undefined,
+        listSessions: async () => [],
+        readSession: async ({ workspaceId, identity }: { readonly workspaceId: number; readonly identity: { readonly id: number } | { readonly name: string } }) => {
+            if ("name" in identity) {
+                const found = sessions.get(`${workspaceId}:${identity.name}`);
+                return found === undefined ? null : { id: found.id, name: found.name };
+            }
+            for (const [key, value] of sessions) {
+                if (key.startsWith(`${workspaceId}:`) && value.id === identity.id) {
+                    return { id: value.id, name: value.name };
+                }
+            }
+            return null;
+        },
+        createSession: async ({ workspaceId, name }: { readonly workspaceId: number; readonly name?: string }) => {
+            const created = { id: sessions.size + 1, name: name ?? "s1" };
+            sessions.set(`${workspaceId}:${created.name}`, created);
+            return { sessionId: created.id, sessionName: created.name, model: null };
+        },
+        messageAdmission: async ({ workspaceId, address, body }: { readonly workspaceId: number; readonly address: string; readonly body: string }) => {
+            admittedMessages.push({ workspaceId, address, body });
+            return "new" as const;
+        },
+        runLoop: async ({ workspaceId, sessionId, messageAddress }: { readonly workspaceId: number; readonly sessionId: number; readonly messageAddress?: string }) => {
+            const loopId = ++nextLoopId;
+            if (messageAddress !== undefined) {
+                const key = `${workspaceId}:${sessionId}`;
+                const list = inbox.get(key) ?? [];
+                list.push({ path: messageAddress, loopId, lifecycle: "running" });
+                inbox.set(key, list);
+            }
+            return { status: 202 as const, workspaceId, sessionId, loopId, queued: false };
+        },
+        readInbox: async ({ workspaceId, sessionId }: { readonly workspaceId: number; readonly sessionId: number }) => (inbox.get(`${workspaceId}:${sessionId}`) ?? []).map((item, idx) => ({
+            messageId: idx + 1,
+            path: item.path,
+            source: "telegram",
+            body: "prompt",
+            sessionId,
+            loopId: item.loopId,
+            lifecycle: item.lifecycle,
+            createdAt: "2026-10-28T00:00:00Z",
+        })),
+        subscribeToEvents: (cb: (workspaceId: number | null, method: string, params: unknown) => void) => {
+            listener = cb;
+            return () => { listener = null; };
+        },
+    } as unknown as StartSeam;
+
+    coordinator.attachSeam(seam);
+    try {
+        // 1. Auto-creates workspace and session on wildcard operator binding and resolves via progressive + final SEND [200]
+        const samplePromise = coordinator.sample({
+            server: "telegram",
+            binding: {
+                operatorScoped: true,
+                workspaceScope: "*",
+                defaultWorkspace: "ops",
+                defaultSession: "inbox",
+                resident: true,
+            },
+            params: {
+                systemPrompt: "Answer concisely.",
+                messages: [{
+                    role: "user",
+                    content: { type: "text", text: "Deploy status?" },
+                }],
+                maxTokens: 128,
+                _meta: {
+                    plurnkWorkspace: "matrix-room",
+                    plurnkSession: "thread-42",
+                    plurnkMessageId: "msg-1",
+                },
+            },
+        });
+
+        await delay(10);
+        assert.equal(admittedMessages.length, 1);
+        assert.equal(admittedMessages[0]?.address, "telegram:///messages/msg-1");
+        assert.equal(admittedMessages[0]?.body, "Answer concisely.\n\nDeploy status?");
+        const createdWs = workspaces.find((ws) => ws.name === "matrix-room")!;
+        assert.ok(createdWs);
+
+        // Emit progressive chunk (no completion) then final SEND [200]
+        listener!(createdWs.id, "log/entry", {
+            op: "SEND",
+            status_rx: 200,
+            rx: { repliedTo: ["telegram:///messages/msg-1"] },
+            tx: { body: "Part 1." },
+        });
+        listener!(createdWs.id, "log/entry", {
+            op: "SEND",
+            status_rx: 200,
+            rx: { completion: 200, repliedTo: ["telegram:///messages/msg-1"] },
+            tx: { body: "All green." },
+        });
+
+        const result = await samplePromise;
+        assert.deepEqual(result, {
+            role: "assistant",
+            content: { type: "text", text: "Part 1.\n\nAll green." },
+            model: "plurnk",
+            stopReason: "endTurn",
+        });
+
+        // 2. Rejects when SEND [499] declines the message
+        const declinedPromise = coordinator.sample({
+            server: "telegram",
+            binding: {
+                operatorScoped: false,
+                workspaceScope: new Set(["ops"]),
+                defaultWorkspace: "ops",
+                defaultSession: "inbox",
+                resident: true,
+            },
+            params: {
+                messages: [{ role: "user", content: { type: "text", text: "Decline me." } }],
+                maxTokens: 64,
+                _meta: { plurnkMessageId: "msg-2" },
+            },
+        });
+        await delay(10);
+        listener!(1, "log/entry", {
+            op: "SEND",
+            status_rx: 200,
+            rx: { completion: 499, repliedTo: ["telegram:///messages/msg-2"] },
+            tx: { body: "Cannot fulfill request." },
+        });
+        await assert.rejects(declinedPromise, /Cannot fulfill request\./u);
+
+        // 3. Rejects cross-workspace routing when workspaceScope does not include target
+        await assert.rejects(
+            () => coordinator.sample({
+                server: "telegram",
+                binding: {
+                    operatorScoped: false,
+                    workspaceScope: new Set(["ops"]),
+                    defaultWorkspace: "ops",
+                    defaultSession: "inbox",
+                    resident: true,
+                },
+                params: {
+                    messages: [{ role: "user", content: { type: "text", text: "Escape." } }],
+                    maxTokens: 64,
+                    _meta: { plurnkWorkspace: "other" },
+                },
+            }),
+            /not permitted to route work to workspace 'other'/u,
+        );
+
+        // 4. Rejects when loop terminates without a reply
+        const unansweredPromise = coordinator.sample({
+            server: "telegram",
+            binding: {
+                operatorScoped: false,
+                workspaceScope: new Set(["ops"]),
+                defaultWorkspace: "ops",
+                defaultSession: "inbox",
+                resident: true,
+            },
+            params: {
+                messages: [{ role: "user", content: { type: "text", text: "Unanswered." } }],
+                maxTokens: 64,
+                _meta: { plurnkMessageId: "msg-3" },
+            },
+        });
+        await delay(10);
+        inbox.set("1:2", []);
+        listener!(1, "loop/terminated", {
+            loopId: nextLoopId,
+            sessionId: 2,
+            result: { status: 500 },
+        });
+        await assert.rejects(unansweredPromise, /ended without a reply/u);
+    } finally {
+        coordinator.close();
+    }
 });

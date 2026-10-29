@@ -783,8 +783,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     async workspacePaths(workspaceId: number): ReturnType<HostSetupSeam["workspacePaths"]> {
-        const workspace = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
-        return workspacePaths(this.#hostPaths, workspace?.project_root ?? null);
+        const workspace = await this.#db.envelope_get_workspace.get<{ name: string; project_root: string | null }>({ id: workspaceId });
+        return {
+            ...workspacePaths(this.#hostPaths, workspace?.project_root ?? null),
+            ...(workspace === undefined ? {} : { workspaceName: workspace.name }),
+        };
     }
 
     // {§functionality-inspection}

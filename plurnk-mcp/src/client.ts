@@ -54,6 +54,7 @@ import {
     INPUT_REQUIRED_MAX_ROUNDS,
     runInputRequiredRequest,
     type ClientInteractionHandler,
+    type SamplingHandler,
 } from "./inputRequired.ts";
 import InteractiveOAuthProvider, { OAuthGrant } from "./oauth.ts";
 import ExtensionChannel from "./extensionChannel.ts";
@@ -67,6 +68,7 @@ import Subscriptions from "./subscriptions.ts";
 import PluginConfiguration, { type PluginContext } from "./PluginConfiguration.ts";
 import {
     callToolWithTasks,
+    driveServerTask,
     serverSupportsTasks,
 } from "./tasks.ts";
 
@@ -128,13 +130,17 @@ export interface ServerConnectionOptions {
     readonly environment?: NodeJS.ProcessEnv;
     // {§mcp-configuration} Host-owned cwd when the definition does not select one.
     readonly cwd?: string;
+    readonly resident?: boolean;
+    readonly interact?: ClientInteractionHandler;
+    readonly sample?: SamplingHandler;
+    readonly onResourceUpdated?: (uri: string, meta?: Readonly<Record<string, unknown>>) => void;
     readonly onCatalogChanged?: (error: Error | null) => void;
     readonly onInfrastructureError?: (error: Error) => void;
     // {§mcp-host-composition} A request was refused for want of a sign-in the definition does not configure.
     readonly onAuthorizationRequired?: () => void;
 }
 
-export type { ClientInteractionHandler } from "./inputRequired.ts";
+export type { ClientInteractionHandler, SamplingHandler } from "./inputRequired.ts";
 
 const message = (error: unknown): string =>
     error instanceof Error ? error.message : String(error);
@@ -474,6 +480,7 @@ interface OpenClient {
 }
 
 const openClient = async (
+    serverName: string,
     definition: ResolvedDefinition,
     environ: NodeJS.ProcessEnv,
     options: ServerConnectionOptions,
@@ -529,6 +536,18 @@ const openClient = async (
         },
     );
     client.onerror = (error): void => options.onInfrastructureError?.(error);
+    if (options.sample !== undefined) {
+        client.setRequestHandler("sampling/createMessage", (request, ctx) =>
+            options.sample!(request.params, ctx.mcpReq.signal));
+    }
+    if (options.onResourceUpdated !== undefined) {
+        client.setNotificationHandler("notifications/resources/updated", (notification) => {
+            options.onResourceUpdated!(
+                notification.params.uri,
+                isRecord(notification.params._meta) ? notification.params._meta : undefined,
+            );
+        });
+    }
     try {
         await client.connect(transport, {
             timeout: connectTimeoutMs(environ),
@@ -574,17 +593,34 @@ const openClient = async (
     const negotiated = client.getNegotiatedProtocolVersion() ?? "";
     const discover = client.getDiscoverResult();
     const modern = era === "modern" && negotiated === MCP_PROTOCOL_VERSION && discover !== undefined;
+    const tasksSupported = serverSupportsTasks(discover?.capabilities ?? client.getServerCapabilities());
+    const subscriptions = new Subscriptions(client, {
+        timeout: requestTimeoutMs(environ),
+        retry: retryPacing(environ),
+        tasks: tasksSupported,
+        resident: options.resident === true,
+        onError: options.onInfrastructureError,
+    });
+    if (modern && (options.sample !== undefined || options.interact !== undefined)) {
+        client.onTaskNotification((notification) => {
+            void driveServerTask(notification, {
+                server: serverName,
+                interact: options.interact,
+                sample: options.sample,
+                timeout: requestTimeoutMs(environ),
+                channel: client,
+                subscriptions,
+            }).catch((cause: unknown) => {
+                options.onInfrastructureError?.(cause instanceof Error ? cause : new Error(String(cause)));
+            });
+        });
+    }
     return {
         client,
         transport,
         extensions: modern ? client : null,
         protocolVersion: negotiated,
-        subscriptions: new Subscriptions(client, {
-            timeout: requestTimeoutMs(environ),
-            retry: retryPacing(environ),
-            tasks: serverSupportsTasks(discover?.capabilities ?? client.getServerCapabilities()),
-            onError: options.onInfrastructureError,
-        }),
+        subscriptions,
     };
 };
 
@@ -665,7 +701,7 @@ export default class ServerConnection {
                 transport.stderr.pipe(process.stderr, { end: false });
             }
             this.#openingTransport = transport;
-            return openClient(definition, this.#environ, this.#options, transport);
+            return openClient(this.#definition.name, definition, this.#environ, this.#options, transport);
         })().catch((cause: unknown) => {
             if (
                 cause instanceof AuthorizationRequiredError
@@ -891,6 +927,7 @@ export default class ServerConnection {
         onProgress?: (progress: Progress) => void,
         interact?: ClientInteractionHandler,
         toolDefinition?: Tool,
+        meta?: Readonly<Record<string, unknown>>,
     ): Promise<CallToolResult> {
         return this.#request(async ({ client, subscriptions, extensions }, requestSignal) => {
             const timeout = requestTimeoutMs(this.#environ);
@@ -911,7 +948,9 @@ export default class ServerConnection {
                     tool,
                     signal: requestSignal,
                     onProgress,
-                    interact,
+                    interact: interact ?? this.#options.interact,
+                    sample: this.#options.sample,
+                    meta,
                     timeout,
                     channel: extensions ?? (() => { throw new Error("MCP tasks channel absent on a non-modern connection."); })(),
                     subscriptions,
@@ -927,9 +966,15 @@ export default class ServerConnection {
             return runInputRequiredRequest<CallToolResult>({
                 server: this.#definition.name,
                 operation: "tools/call",
-                originalParams: { name, arguments: args },
+                originalParams: {
+                    name,
+                    arguments: args,
+                    ...(meta === undefined ? {} : { _meta: meta }),
+                },
                 signal,
-                interact,
+                interact: interact ?? this.#options.interact,
+                sample: this.#options.sample,
+                meta,
                 onProgress,
                 timeout,
                 requestLeg: (params, options) => client.callTool(
@@ -944,15 +989,21 @@ export default class ServerConnection {
         uri: string,
         signal?: AbortSignal,
         interact?: ClientInteractionHandler,
+        meta?: Readonly<Record<string, unknown>>,
     ): Promise<ReadResourceResult> {
         return this.#request(async ({ client, subscriptions }, requestSignal) => {
             await subscriptions.selectResource(uri, requestSignal);
             return runInputRequiredRequest<ReadResourceResult>({
                 server: this.#definition.name,
                 operation: "resources/read",
-                originalParams: { uri },
+                originalParams: {
+                    uri,
+                    ...(meta === undefined ? {} : { _meta: meta }),
+                },
                 signal: requestSignal,
-                interact,
+                interact: interact ?? this.#options.interact,
+                sample: this.#options.sample,
+                meta,
                 timeout: requestTimeoutMs(this.#environ),
                 requestLeg: (params, options, retry) => client.readResource(
                     READ_RESOURCE_PARAMS.parse(params),
@@ -967,13 +1018,20 @@ export default class ServerConnection {
         args: Record<string, string> | undefined,
         signal?: AbortSignal,
         interact?: ClientInteractionHandler,
+        meta?: Readonly<Record<string, unknown>>,
     ): Promise<GetPromptResult> {
         return this.#request(async ({ client }, requestSignal) => runInputRequiredRequest<GetPromptResult>({
             server: this.#definition.name,
             operation: "prompts/get",
-            originalParams: { name, ...(args === undefined ? {} : { arguments: args }) },
+            originalParams: {
+                name,
+                ...(args === undefined ? {} : { arguments: args }),
+                ...(meta === undefined ? {} : { _meta: meta }),
+            },
             signal: requestSignal,
-            interact,
+            interact: interact ?? this.#options.interact,
+            sample: this.#options.sample,
+            meta,
             timeout: requestTimeoutMs(this.#environ),
             requestLeg: (params, options) => client.getPrompt(
                 GET_PROMPT_PARAMS.parse(params),

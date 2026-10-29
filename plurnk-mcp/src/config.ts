@@ -15,6 +15,8 @@ const ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/gu;
 export interface ToolPolicy {
     // Exact enabled tool names; null enables every tool the server lists.
     readonly tools: readonly string[] | null;
+    readonly workspace?: string | readonly string[];
+    readonly session?: string;
 }
 
 export const expandReferences = (value: string, environ: NodeJS.ProcessEnv, field: string): string =>
@@ -40,26 +42,64 @@ const jsonStrings = (raw: string, field: string): string[] => {
 const uniqueNames = (values: readonly string[], field: string, what: string): string[] => {
     const unique = new Set<string>();
     for (const value of values) {
-        if (value.length === 0) throw new ConfigurationError(field, `${field} contains an empty ${what}.`);
+        if (value.trim().length === 0) throw new ConfigurationError(field, `${field} contains an empty ${what}.`);
         if (unique.has(value)) throw new ConfigurationError(field, `${field} contains duplicate ${what} '${value}'.`);
         unique.add(value);
     }
     return [...unique];
 };
 
+const workspaceSetting = (raw: string, field: string): string | readonly string[] | undefined => {
+    if (raw.length === 0) return undefined;
+    if (raw.trim().length === 0) {
+        throw new ConfigurationError(field, `${field} must be a non-empty workspace name or JSON array of workspace names.`);
+    }
+    if (raw.startsWith("[")) {
+        const values = uniqueNames(jsonStrings(raw, field), field, "workspace name");
+        if (values.length === 0) {
+            throw new ConfigurationError(field, `${field} must be a non-empty workspace name or JSON array of workspace names.`);
+        }
+        if (values.includes("*") && values.length > 1) {
+            throw new ConfigurationError(field, `${field} cannot combine '*' with named workspaces.`);
+        }
+        return values;
+    }
+    return raw;
+};
+
 const configuration = (environ: NodeJS.ProcessEnv) => {
-    const resources = new ResourceEnvironment(PREFIX, { controls: CONTROLS, settings: ["TOOLS"] }, environ);
+    const resources = new ResourceEnvironment(PREFIX, { controls: CONTROLS, settings: ["TOOLS", "WORKSPACE", "SESSION"] }, environ);
     const tools = new Map([...resources.settings("TOOLS")].map(([alias, { key, value }]) => [
         alias,
         value.length === 0 ? null : uniqueNames(jsonStrings(value, key), key, "tool name"),
     ] as const));
-    return { resources, tools };
+    const workspaces = new Map<string, string | readonly string[]>();
+    for (const [alias, { key, value }] of resources.settings("WORKSPACE")) {
+        const parsed = workspaceSetting(value, key);
+        if (parsed !== undefined) workspaces.set(alias, parsed);
+    }
+    const sessions = new Map<string, string>();
+    for (const [alias, { key, value }] of resources.settings("SESSION")) {
+        if (value.length === 0) continue;
+        if (value.trim().length === 0) {
+            throw new ConfigurationError(key, `${key} must be a non-empty session name.`);
+        }
+        sessions.set(alias, value);
+    }
+    return { resources, tools, workspaces, sessions };
 };
 
 // Settings are validated even before their resource exists ({§env-knob}).
-export const serverSettings = (alias: string, environ: NodeJS.ProcessEnv = process.env): ToolPolicy => ({
-    tools: configuration(environ).tools.get(alias) ?? null,
-});
+export const serverSettings = (alias: string, environ: NodeJS.ProcessEnv = process.env): ToolPolicy => {
+    const config = configuration(environ);
+    const workspace = config.workspaces.get(alias);
+    const session = config.sessions.get(alias);
+    return {
+        tools: config.tools.get(alias) ?? null,
+        ...(workspace === undefined ? {} : { workspace }),
+        ...(session === undefined ? {} : { session }),
+    };
+};
 
 export const serviceDefinitions = (environ: NodeJS.ProcessEnv = process.env): Array<FunctionalityServiceDefinition & { definition: McpServerDefinition }> => {
     const { resources } = configuration(environ);

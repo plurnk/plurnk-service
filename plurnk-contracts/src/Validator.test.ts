@@ -259,9 +259,9 @@ test("{§provider-request-accounting} client interactions carry one generic tool
 test("{§mcp-server-definition}: MCP definitions contain transport and authorization, not installation or runtime state", () => {
     const definitions: McpServerDefinition[] = [
         { name: "local-validator", type: "stdio", command: "./bin/validator", args: ["--config", "${CONFIG}"], env: { TOKEN: "${VALIDATOR_TOKEN}" }, cwd: "/srv/validator" },
-        { name: "npx-server", type: "stdio", command: "npx", args: ["-y", "example-server@1.0.0"] },
-        { name: "deployment-api", type: "streamable-http", url: "https://deploy.example.com/mcp", headers: { "X-Tenant": "${TENANT}" } },
-        { name: "creds", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "${TOKEN}" } },
+        { name: "npx-server", type: "stdio", command: "npx", args: ["-y", "example-server@1.0.0"], plurnkWorkspace: "ops", plurnkSession: "inbox" },
+        { name: "deployment-api", type: "streamable-http", url: "https://deploy.example.com/mcp", headers: { "X-Tenant": "${TENANT}" }, plurnkWorkspace: ["ops", "prod"], plurnkSession: "${PLURNK_SESSION}" },
+        { name: "creds", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "${TOKEN}" }, plurnkWorkspace: "*" },
         { name: "oauth", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "oauth", redirectUrl: "http://localhost/callback" } },
         { name: "client", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "client-credentials", clientId: "session", clientSecret: "${SECRET}" } },
     ];
@@ -275,6 +275,10 @@ test("{§mcp-server-definition}: MCP definitions contain transport and authoriza
         { name: "secret", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "literal-secret" } },
         { name: "Upper", type: "stdio", command: "npx" },
         { name: "scheme", type: "streamable-http", url: "ftp://example.com/mcp" },
+        { name: "empty-ws", type: "stdio", command: "npx", plurnkWorkspace: "" },
+        { name: "empty-ws-array", type: "stdio", command: "npx", plurnkWorkspace: [] },
+        { name: "empty-ws-item", type: "stdio", command: "npx", plurnkWorkspace: ["ops", ""] },
+        { name: "empty-session", type: "streamable-http", url: "https://example.com/mcp", plurnkSession: "" },
     ]) {
         assert.throws(() => Validator.assertMcpServerDefinition(invalid), TypeError, JSON.stringify(invalid));
     }

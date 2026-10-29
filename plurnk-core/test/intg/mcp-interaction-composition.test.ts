@@ -583,7 +583,7 @@ for (const state of ["failed", "cancelled", "unsupported-input"] as const) {
         const packet = provider.received[1].map(chatMessageText).join("\n");
         assert.match(packet, /executor\/mcp\/tool-call-failed/);
         assert.match(packet, state === "failed" ? /task execution exploded/
-            : state === "cancelled" ? /cancelled/ : /sampling\/createMessage/);
+            : state === "cancelled" ? /cancelled/ : /roots\/list/);
         assert.equal(updatesOf(events).some((u) => u.sessionUpdate === "tool_call_update" && u.title === "mcp_input_required"), false);
         const wsId = terminal.result?._meta?.plurnk?.workspaceId;
         assert.ok(typeof wsId === "number");

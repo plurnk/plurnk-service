@@ -37,6 +37,7 @@ export interface ActiveAttachment extends McpBinding {
     readonly connection: ServerConnection;
     readonly executor: McpExecutor;
     readonly runtime: RuntimeRegistration;
+    readonly resident?: boolean;
 }
 
 export interface AuthorizationAttachment extends McpBinding {

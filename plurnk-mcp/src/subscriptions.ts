@@ -11,6 +11,7 @@ export interface SubscriptionOptions {
     readonly timeout: number;
     readonly retry: RetryPacing;
     readonly tasks?: boolean;
+    readonly resident?: boolean;
     readonly onError?: (error: Error) => void;
 }
 
@@ -69,7 +70,11 @@ export default class Subscriptions {
         this.#options = options;
         this.#current = client.autoOpenedSubscription;
         if (this.#current === undefined) {
-            if (hasSelections(this.#filter())) this.#scheduleRetry();
+            if (hasSelections(this.#filter())) {
+                this.#scheduleRetry();
+            } else if (this.#options.resident === true) {
+                this.#refresh();
+            }
         } else {
             this.#observe(this.#current);
         }
@@ -140,7 +145,7 @@ export default class Subscriptions {
     async #replace(): Promise<void> {
         if (this.#closed) return;
         const filter = this.#filter();
-        if (!hasSelections(filter)) {
+        if (!hasSelections(filter) && this.#options.resident !== true) {
             const prior = this.#current;
             this.#current = undefined;
             if (prior !== undefined) await prior.close();

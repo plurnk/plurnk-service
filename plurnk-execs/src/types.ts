@@ -291,6 +291,7 @@ export interface Executor {
     // ({§executor-results}); authored body text is never an admission input.
     effect(target: string | null): Effect;
     toolRegistry?(workspaceId?: number): RuntimeToolRegistry;
+    forContext?(workspaceId: number, sessionId: number): Executor;
 }
 
 // One runtime a module contributes, published under its namespace owner ({§core-extension-composition}).

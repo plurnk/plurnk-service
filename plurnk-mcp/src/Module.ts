@@ -3,6 +3,7 @@
 // complete connection definitions, preparation with OAuth
 // continuation, tool/resource publication, catalog refresh, and teardown. The coordinator owns the lifecycle, durable workspace state, atomic
 // publication, and both the client and model projections.
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readDefinition } from "./definition.ts";
 import { type Notice,
@@ -33,8 +34,20 @@ import {
     retryPacing,
     registrySettings,
     serverSettings,
+    serviceDefinitions,
     type ToolPolicy,
 } from "./config.ts";
+import {
+    OpenWorkCoordinator,
+    assertWorkspaceDefinitionScope,
+    matchesWorkspaceBinding,
+    rawSessionBinding,
+    rawWorkspaceBinding,
+    resolveServerBinding,
+    withSyntheticEnv,
+    type ServerBinding,
+    type StartSeam,
+} from "./openWork.ts";
 import { RegistryError, registryEntries, searchRegistry, type RegistryServer } from "./registry.ts";
 import McpExecutor, { runtimeDecl, runtimeServerSummary } from "./McpExecutor.ts";
 import McpResources from "./McpResources.ts";
@@ -123,6 +136,9 @@ export default class Module implements DaemonModule<SetupSeam> {
     readonly #connections = new Set<ServerConnection>();
     readonly #refreshTimers = new Map<string, NodeJS.Timeout>();
     readonly #retainWorkspace = new Map<number, () => () => void>();
+    readonly #residentLeases = new Map<number, () => void>();
+    readonly #operatorAliases = new Map<number, ReadonlySet<string>>();
+    readonly #openWork = new OpenWorkCoordinator();
     #handle: FunctionalityFamilyHandle | undefined;
     #closed = false;
     #stopping: Promise<void> | null = null;
@@ -169,7 +185,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             }),
             available: (identity) => this.#available(identity),
             configurationNotices: ({ workspaceId }) => this.#configurationNotices.get(workspaceId) ?? [],
-            admit: (input) => this.#admit(input),
+            admit: (input, identity) => this.#admit(input, identity),
             prepare: (preparation) => this.#prepare(preparation),
             teardown: (snapshot, identity) => this.#teardown(snapshot, identity),
             refreshIfChanged: (identity) => this.#refreshIfChanged(identity),
@@ -207,14 +223,114 @@ export default class Module implements DaemonModule<SetupSeam> {
         });
     }
 
+    async start(seam: StartSeam): Promise<void> {
+        this.#openWork.attachSeam(seam);
+        await this.#startResidentWorkspaces(seam);
+    }
+
+    async #startResidentWorkspaces(seam: StartSeam): Promise<void> {
+        let envDefs: ReturnType<typeof serviceDefinitions>;
+        try {
+            envDefs = serviceDefinitions(this.#env).filter((entry) => entry.enabled);
+        } catch {
+            return;
+        }
+        let workspaces = await seam.listWorkspaces({ hidden: false });
+        const needsBootstrapWorkspace = envDefs.some((entry) => {
+            try {
+                return rawWorkspaceBinding(entry.definition, this.#env) !== undefined
+                    || rawSessionBinding(entry.definition, this.#env) !== undefined;
+            } catch {
+                return false;
+            }
+        });
+        if (workspaces.length === 0 && needsBootstrapWorkspace) {
+            await this.#openWork.ensureWorkspace("default");
+            workspaces = await seam.listWorkspaces({ hidden: false });
+        }
+        let operatorDefs = envDefs;
+        if (workspaces.length > 0) {
+            try {
+                const firstId = workspaces[0].id;
+                const { configurationRoots } = await this.#paths(firstId);
+                const nonProjectDirs = configurationRoots
+                    .filter(({ scope }) => scope !== "project")
+                    .map(({ directory }) => directory);
+                const plugins = await this.#plugins(firstId);
+                const nonProjectPlugins = {
+                    ...plugins,
+                    plugins: plugins.plugins.filter(({ scope }) => scope !== "project"),
+                    report: () => {},
+                };
+                operatorDefs = (await configuredDefinitions(nonProjectDirs, this.#env, nonProjectPlugins))
+                    .filter((entry) => entry.enabled);
+            } catch {
+                // Invalid optional configuration is reported lazily during workspace sync ({§configuration-repair-path}).
+            }
+        }
+        const activateIds = new Set<number>();
+        for (const entry of operatorDefs) {
+            let rawWs: string | readonly string[] | undefined;
+            let rawSess: string | undefined;
+            try {
+                rawWs = rawWorkspaceBinding(entry.definition, this.#env);
+                rawSess = rawSessionBinding(entry.definition, this.#env);
+            } catch {
+                continue;
+            }
+            if (rawWs === undefined && rawSess === undefined) continue;
+            const targetWorkspaces: Array<{ readonly id: number; readonly name: string }> = [];
+            if (rawWs === undefined || rawWs === "*" || (Array.isArray(rawWs) && rawWs.includes("*"))) {
+                if (workspaces.length === 0) {
+                    const created = await this.#openWork.ensureWorkspace("default");
+                    workspaces = await seam.listWorkspaces({ hidden: false });
+                    targetWorkspaces.push(created);
+                } else {
+                    for (const ws of workspaces) targetWorkspaces.push({ id: ws.id, name: ws.name });
+                }
+            } else {
+                const names = typeof rawWs === "string" ? [rawWs] : [...rawWs];
+                for (const name of names) {
+                    targetWorkspaces.push(await this.#openWork.ensureWorkspace(name));
+                }
+            }
+            for (const ws of targetWorkspaces) {
+                if (rawSess !== undefined && rawSess.length > 0 && !rawSess.includes("${")) {
+                    await this.#openWork.ensureSession(ws.id, rawSess);
+                }
+                activateIds.add(ws.id);
+            }
+        }
+        for (const workspaceId of activateIds) {
+            await seam.activateWorkspace({ workspaceId });
+        }
+    }
+
     async #available(identity: WorkspaceCapabilityIdentity): ReturnType<typeof configuredDefinitions> {
         expandedServerNames(this.#env);
         const { workspaceId } = identity;
         const notices: Notice[] = [];
         this.#configurationNotices.set(workspaceId, notices);
-        const { configurationRoots } = await this.#paths(workspaceId);
-        return configuredDefinitions(configurationRoots.map(({ directory }) => directory), this.#env, {
-            ...await this.#plugins(workspaceId), report: (notice) => notices.push(notice),
+        const { configurationRoots, workspaceName } = await this.#paths(workspaceId);
+        const pluginSet = await this.#plugins(workspaceId);
+        const definitions = await configuredDefinitions(configurationRoots.map(({ directory }) => directory), this.#env, {
+            ...pluginSet, report: (notice) => notices.push(notice),
+        });
+        const projectFiles = new Set([
+            ...configurationRoots.filter(({ scope }) => scope === "project").map(({ directory }) => join(directory, "mcp.json")),
+            ...pluginSet.plugins.filter(({ scope }) => scope === "project").map(({ root }) => join(root, "mcp.json")),
+        ]);
+        const operatorAliases = new Set(
+            definitions
+                .filter((entry) => entry.provenance === undefined || !projectFiles.has(entry.provenance.source))
+                .map((entry) => entry.alias),
+        );
+        this.#operatorAliases.set(workspaceId, operatorAliases);
+        return definitions.map((entry) => {
+            if (operatorAliases.has(entry.alias) && !matchesWorkspaceBinding(entry.definition, this.#env, workspaceName)) {
+                return { ...entry, enabled: false };
+            }
+            return entry;
         });
     }
 
@@ -244,7 +360,7 @@ export default class Module implements DaemonModule<SetupSeam> {
     }
 
     // {§mcp-server-definition} Live additions use the same schema as configured definitions.
-    async #admit(input: unknown): Promise<FunctionalityDefinitionSource<McpServerDefinition>> {
+    async #admit(input: unknown, identity?: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource<McpServerDefinition>> {
         const params = objectOf(input) ?? {};
         let definition: McpServerDefinition;
         try {
@@ -255,6 +371,13 @@ export default class Module implements DaemonModule<SetupSeam> {
         const alias = typeof params.alias === "string" ? params.alias : definition.name;
         if (alias !== definition.name) {
             throw actionError("alias-mismatch", 400, `Alias '${alias}' must equal the definition's name '${definition.name}'.`, { alias, name: definition.name, retryable: false });
+        }
+        if (identity !== undefined && definition.plurnkWorkspace !== undefined) {
+            const [{ workspaceName }, environment] = await Promise.all([
+                this.#paths(identity.workspaceId),
+                this.#workspaceEnvironment(identity.workspaceId),
+            ]);
+            assertWorkspaceDefinitionScope(definition, workspaceName, environment(this.#env));
         }
         return { alias, definition };
     }
@@ -324,17 +447,64 @@ export default class Module implements DaemonModule<SetupSeam> {
             this.#assertOpen();
             // {§mcp-module} — a configured server inherits the operator's environment beneath the
             // workspace layer, as every MCP client launches one; the model's command ceiling is not its base.
-            const cwd = candidate === undefined && definition.type === "stdio" && definition.cwd === undefined && context === undefined
-                ? await this.#stateDirectory(workspaceId, `${OWNER}/${definition.name}`) : undefined;
+            const needsDefaultCwd = candidate === undefined && definition.type === "stdio" && definition.cwd === undefined && context === undefined;
+            const needsStateDir = needsDefaultCwd || (candidate === undefined && JSON.stringify(definition).includes("${PLURNK_STATE_DIR}"));
+            const stateDir = needsStateDir ? await this.#stateDirectory(workspaceId, `${OWNER}/${definition.name}`) : undefined;
+            const cwd = needsDefaultCwd ? stateDir : undefined;
             signal?.throwIfAborted();
             this.#assertOpen();
+            const { projectRoot, workspaceName = "default" } = await this.#paths(workspaceId);
+            signal?.throwIfAborted();
+            this.#assertOpen();
+            const workspaceEnv = environment(this.#env);
+            let workspaceSettings: ToolPolicy;
+            try {
+                workspaceSettings = serverSettings(definition.name, workspaceEnv);
+            } catch (cause) {
+                throw actionError("server-settings-invalid", 422, `MCP server '${definition.name}' has invalid settings: ${cause instanceof Error ? cause.message : String(cause)}`, {
+                    server: definition.name, retryable: false,
+                }, cause);
+            }
+            let serverBinding: ServerBinding;
+            try {
+                serverBinding = resolveServerBinding({
+                    definition,
+                    workspaceSettings,
+                    operatorSettings: settings,
+                    operatorScoped: this.#operatorAliases.get(workspaceId)?.has(definition.name) ?? false,
+                    workspaceName,
+                    expansionEnv: workspaceEnv,
+                });
+            } catch (cause) {
+                if (cause instanceof ModuleActionError) throw cause;
+                throw actionError("server-settings-invalid", 422, `MCP server '${definition.name}' has invalid binding settings: ${cause instanceof Error ? cause.message : String(cause)}`, {
+                    server: definition.name, retryable: false,
+                }, cause);
+            }
+            const syntheticContext = {
+                workspaceName,
+                sessionName: serverBinding.defaultSession,
+                projectRoot,
+                stateDir,
+            };
+            let schemeRef: McpResources | undefined;
             const grant = oauthRedirectUrl === undefined ? this.#grantFor(workspaceId, binding) : undefined;
-            candidate ??= new ServerConnection(definition, environment(this.#env), {
+            candidate ??= new ServerConnection(definition, withSyntheticEnv(workspaceEnv, syntheticContext), {
                 ...(oauthRedirectUrl === undefined ? {} : { oauthRedirectUrl }),
                 ...(grant === undefined ? {} : { oauthGrant: grant }),
                 ...(cwd === undefined ? {} : { cwd }),
                 ...(context === undefined ? {} : { plugin: context }),
-                environment: environment(this.#operatorEnvironment()),
+                resident: serverBinding.resident,
+                sample: (params, reqSignal) => this.#openWork.sample({
+                    server: definition.name,
+                    binding: serverBinding,
+                    params,
+                    signal: reqSignal,
+                }),
+                onResourceUpdated: (uri) => {
+                    void schemeRef?.notifyResourceUpdated(uri);
+                },
+                environment: withSyntheticEnv(environment(this.#operatorEnvironment()), syntheticContext),
                 onCatalogChanged: (error) => {
                     if (error !== null) {
                         console.error(`MCP server '${definition.name}' catalog refresh failed:`, error);
@@ -356,20 +526,32 @@ export default class Module implements DaemonModule<SetupSeam> {
                 },
             });
             this.#connections.add(candidate);
+            const callerMeta = (wsId: number, sessId: number) =>
+                this.#openWork.resolveCallerMeta(wsId, sessId, workspaceName);
             const executor = new McpExecutor(
                 { runtime: definition.name, glyph: "🔌" },
                 candidate,
                 () => this.#retain(workspaceId),
-                { tools: settings.tools },
+                { tools: workspaceSettings.tools ?? settings.tools },
+                callerMeta,
             );
             const availability = await executor.requireAvailable(signal);
             signal?.throwIfAborted();
+            const scheme = new McpResources(
+                definition.name,
+                candidate,
+                executor.catalog,
+                callerMeta,
+                serverBinding.resident,
+            );
+            schemeRef = scheme;
             return {
                 ...(context === undefined ? {} : { context }),
                 kind: "active",
                 definition,
                 connection: candidate,
                 executor,
+                resident: serverBinding.resident,
                 runtime: {
                     namespaceOwner: OWNER,
                     decl: runtimeDecl(
@@ -380,7 +562,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                     ),
                     executor,
                     availability,
-                    scheme: new McpResources(definition.name, candidate, executor.catalog),
+                    scheme,
                 },
             };
         } catch (cause) {
@@ -406,6 +588,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 if (closeCause !== undefined) throw new AggregateError([signal.reason, closeCause], "MCP preparation cancellation and cleanup failed.");
                 throw signal.reason;
             }
+            if (cause instanceof ModuleActionError && closeCause === undefined) throw cause;
             throw preparationError(definition, definition.type === "streamable-http" ? definition.authorization : undefined, cause, closeCause, {
                 elapsedMs,
                 timeoutMs: connectTimeoutMs(this.#env),
@@ -586,7 +769,21 @@ export default class Module implements DaemonModule<SetupSeam> {
                     this.#pending.set(key, pending);
                     published.added.push({ key, pending });
                 }
+                const wantsResidentLease = [...next.values()].some(
+                    (attachment) => attachment.kind === "active" && attachment.resident === true,
+                );
+                let acquiredResidentLease: (() => void) | undefined;
+                if (wantsResidentLease && !this.#residentLeases.has(workspaceId)) {
+                    acquiredResidentLease = this.#retain(workspaceId);
+                    this.#residentLeases.set(workspaceId, acquiredResidentLease);
+                }
                 return () => {
+                    if (acquiredResidentLease !== undefined) {
+                        if (this.#residentLeases.get(workspaceId) === acquiredResidentLease) {
+                            this.#residentLeases.delete(workspaceId);
+                        }
+                        acquiredResidentLease();
+                    }
                     for (const { key, pending } of published.added) {
                         if (this.#pending.get(key) === pending) this.#pending.delete(key);
                         pending.releaseWorkspace();
@@ -599,6 +796,16 @@ export default class Module implements DaemonModule<SetupSeam> {
                 };
             },
             commit: async () => {
+                const wantsResidentLease = [...next.values()].some(
+                    (attachment) => attachment.kind === "active" && attachment.resident === true,
+                );
+                if (!wantsResidentLease) {
+                    const release = this.#residentLeases.get(workspaceId);
+                    if (release !== undefined) {
+                        this.#residentLeases.delete(workspaceId);
+                        release();
+                    }
+                }
                 // {§mcp-setup} A published snapshot acknowledges only
                 // its captured invalidation, never a newer notification or an aborted candidate.
                 for (const [key, invalidation] of refreshed) {
@@ -656,9 +863,15 @@ export default class Module implements DaemonModule<SetupSeam> {
         }
         for (const key of [...this.#challenged]) if (key.startsWith(`${workspaceId}:`)) this.#challenged.delete(key);
         const connections = [...snapshot.values()].flatMap((attachment) => attachmentConnection(attachment) ?? []);
+        const residentRelease = this.#residentLeases.get(workspaceId);
+        if (residentRelease !== undefined) {
+            this.#residentLeases.delete(workspaceId);
+            residentRelease();
+        }
         this.#attachments.delete(workspaceId);
         this.#retainWorkspace.delete(workspaceId);
         this.#identities.delete(workspaceId);
+        this.#operatorAliases.delete(workspaceId);
         await this.#closeOwned(connections);
     }
 
@@ -732,6 +945,7 @@ export default class Module implements DaemonModule<SetupSeam> {
 
     async #stop(): Promise<void> {
         this.#closed = true;
+        this.#openWork.close();
         for (const timer of this.#refreshTimers.values()) clearTimeout(timer);
         this.#refreshTimers.clear();
         this.#dirty.clear();
@@ -739,10 +953,13 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#grants.clear();
         const closing = this.#closeOwned([...this.#connections]);
         this.#attachments.clear();
+        for (const release of this.#residentLeases.values()) release();
+        this.#residentLeases.clear();
         for (const pending of this.#pending.values()) pending.releaseWorkspace();
         this.#pending.clear();
         this.#retainWorkspace.clear();
         this.#identities.clear();
+        this.#operatorAliases.clear();
         await closing;
     }
 }

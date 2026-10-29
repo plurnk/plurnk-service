@@ -19,6 +19,7 @@ import {
     remainingTimeout,
     runInputRequiredRequest,
     type ClientInteractionHandler,
+    type SamplingHandler,
 } from "./inputRequired.ts";
 import { mcpParamHeaders } from "./protocolHeaders.ts";
 import { MCP_TASKS_EXTENSION_ID } from "./protocol.ts";
@@ -39,6 +40,7 @@ interface Task {
     readonly lastUpdatedAt: string;
     readonly ttlMs: number | null;
     readonly pollIntervalMs?: number;
+    readonly _meta?: Readonly<Record<string, unknown>>;
 }
 
 interface InputRequiredTask extends Task {
@@ -74,6 +76,18 @@ export interface TaskCallOptions {
     readonly signal?: AbortSignal;
     readonly onProgress?: (progress: Progress) => void;
     readonly interact?: ClientInteractionHandler;
+    readonly sample?: SamplingHandler;
+    readonly meta?: Readonly<Record<string, unknown>>;
+    readonly timeout: number;
+    readonly channel: ExtensionChannel;
+    readonly subscriptions: Subscriptions;
+}
+
+export interface ServerTaskOptions {
+    readonly server: string;
+    readonly signal?: AbortSignal;
+    readonly interact?: ClientInteractionHandler;
+    readonly sample?: SamplingHandler;
     readonly timeout: number;
     readonly channel: ExtensionChannel;
     readonly subscriptions: Subscriptions;
@@ -145,6 +159,7 @@ const parseTask = (
     ) {
         throw protocolShapeError(surface, "'pollIntervalMs' must be a non-negative integer.");
     }
+    const meta = asRecord(record._meta);
     return {
         taskId,
         status,
@@ -153,6 +168,7 @@ const parseTask = (
         ttlMs,
         ...(statusMessage === undefined ? {} : { statusMessage }),
         ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
+        ...(meta === undefined ? {} : { _meta: meta }),
     };
 };
 
@@ -366,11 +382,32 @@ class TaskInbox {
     }
 }
 
+const claimedTasks = new WeakMap<ExtensionChannel, Set<string>>();
+
+const channelClaims = (channel: ExtensionChannel): Set<string> => {
+    let set = claimedTasks.get(channel);
+    if (set === undefined) {
+        set = new Set<string>();
+        claimedTasks.set(channel, set);
+    }
+    return set;
+};
+
+const mergeTaskMeta = (
+    base?: Readonly<Record<string, unknown>>,
+    task?: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> | undefined => {
+    if (base === undefined && task === undefined) return undefined;
+    return { ...base, ...task };
+};
+
 const driveTask = async (
     task: CreateTaskResult,
     options: TaskCallOptions,
     deadline: number,
 ): Promise<CallToolResult> => {
+    const claims = channelClaims(options.channel);
+    claims.add(task.taskId);
     const inbox = new TaskInbox(task.taskId);
     const stopWatching = options.channel.onTaskNotification((value) => inbox.push(value));
     let release: (() => void) | undefined;
@@ -408,6 +445,8 @@ const driveTask = async (
                         operation: "tasks/update",
                         inputRequests: fresh,
                         interact: options.interact,
+                        sample: options.sample,
+                        meta: mergeTaskMeta(options.meta, state._meta),
                         signal: options.signal,
                         deadline,
                     });
@@ -461,6 +500,98 @@ const driveTask = async (
         }
         throw cause;
     } finally {
+        claims.delete(task.taskId);
+        stopWatching();
+        release?.();
+    }
+};
+
+export const driveServerTask = async (
+    notification: unknown,
+    options: ServerTaskOptions,
+): Promise<void> => {
+    const raw = asRecord(notification);
+    const taskId = typeof raw?.taskId === "string" && raw.taskId.length > 0 ? raw.taskId : undefined;
+    if (taskId === undefined) return;
+    const claims = channelClaims(options.channel);
+    if (claims.has(taskId)) return;
+    claims.add(taskId);
+    const inbox = new TaskInbox(taskId);
+    const stopWatching = options.channel.onTaskNotification((value) => inbox.push(value));
+    let release: (() => void) | undefined;
+    const answered = new Set<string>();
+    const deadline = Date.now() + options.timeout;
+    let terminal = false;
+    try {
+        let state = parseDetailedTask(notification, "notification", taskId);
+        release = options.subscriptions.selectTask(taskId);
+        while (true) {
+            options.signal?.throwIfAborted();
+            if (state.status === "completed" || state.status === "failed" || state.status === "cancelled") {
+                terminal = true;
+                return;
+            }
+            if (state.status === "input_required" && "inputRequests" in state) {
+                const fresh = Object.fromEntries(Object.entries(state.inputRequests)
+                    .filter(([key]) => !answered.has(key)));
+                if (Object.keys(fresh).length > 0) {
+                    const responses = await resolveInputRequests({
+                        server: options.server,
+                        operation: "tasks/update",
+                        inputRequests: fresh,
+                        interact: options.interact,
+                        sample: options.sample,
+                        meta: state._meta,
+                        signal: options.signal,
+                        deadline,
+                    });
+                    options.signal?.throwIfAborted();
+                    const update = asRecord(await taskRequest(
+                        options.channel,
+                        "tasks/update",
+                        { taskId, inputResponses: responses },
+                        remainingTimeout(deadline, "tasks/update"),
+                        options.signal,
+                    ));
+                    if (update?.resultType !== "complete") {
+                        throw protocolShapeError("tasks/update result", "expected resultType 'complete'.");
+                    }
+                    for (const key of Object.keys(fresh)) answered.add(key);
+                }
+            }
+            const interval = state.status === "working"
+                || (state.status === "input_required" && "inputRequests" in state)
+                ? Math.max(MINIMUM_POLL_INTERVAL_MS, state.pollIntervalMs ?? OWN_POLL_INTERVAL_MS)
+                : 0;
+            const remaining = remainingTimeout(deadline, "Task");
+            const nextNotification = await inbox.next(Math.min(interval, remaining), options.signal);
+            if (nextNotification !== undefined) {
+                state = parseDetailedTask(nextNotification, "notification", taskId);
+                continue;
+            }
+            const result = await taskRequest(
+                options.channel,
+                "tasks/get",
+                { taskId },
+                remainingTimeout(deadline, "tasks/get"),
+                options.signal,
+            );
+            state = parseDetailedTask(result, "tasks/get result", taskId);
+        }
+    } catch (cause) {
+        if (!terminal) {
+            try {
+                await cancelTask(options.channel, taskId, options.timeout);
+            } catch (cancellationFailure) {
+                throw new AggregateError(
+                    [cause, cancellationFailure],
+                    `MCP task '${taskId}' failed and cancellation also failed.`,
+                );
+            }
+        }
+        throw cause;
+    } finally {
+        claims.delete(taskId);
         stopWatching();
         release?.();
     }
@@ -480,10 +611,16 @@ export const callToolWithTasks = async (options: TaskCallOptions): Promise<CallT
     >({
         server: options.server,
         operation: "tools/call",
-        originalParams: { name: options.name, arguments: options.args },
+        originalParams: {
+            name: options.name,
+            arguments: options.args,
+            ...(options.meta === undefined ? {} : { _meta: options.meta }),
+        },
         signal: options.signal,
         onProgress: options.onProgress,
         interact: options.interact,
+        sample: options.sample,
+        meta: options.meta,
         timeout: options.timeout,
         requestLeg: (params, requestOptions) => taskAwareToolLeg(
             options.channel,

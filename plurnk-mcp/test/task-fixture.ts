@@ -224,15 +224,9 @@ export const taskHandler = (mode: TaskFixtureMode = "interaction"): TaskFixture 
                     resultType: "complete",
                     ...taskState("input_required", {
                         inputRequests: {
-                            sample: {
-                                method: "sampling/createMessage",
-                                params: {
-                                    messages: [{
-                                        role: "user",
-                                        content: { type: "text", text: "Summarize." },
-                                    }],
-                                    maxTokens: 32,
-                                },
+                            roots: {
+                                method: "roots/list",
+                                params: {},
                             },
                         },
                     }),

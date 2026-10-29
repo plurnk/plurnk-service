@@ -24,10 +24,23 @@ import type {
 import { setTimeout as delay } from "node:timers/promises";
 import { addAbortListener } from "node:events";
 
+type ValidatedValue<S> = S extends { readonly "~standard": { validate(input: unknown): infer R } }
+    ? R extends { readonly issues?: undefined; readonly value: infer V } ? V : never
+    : never;
+
+export type SamplingMessageRequest = ValidatedValue<typeof specTypeSchemas.CreateMessageRequest>;
+export type SamplingMessageParams = SamplingMessageRequest["params"];
+export type SamplingMessageResult = ValidatedValue<typeof specTypeSchemas.CreateMessageResult>;
+
 export type ClientInteractionHandler = (
     request: ClientInteractionRequest,
     signal?: AbortSignal,
 ) => Promise<ClientInteractionResolution>;
+
+export type SamplingHandler = (
+    request: SamplingMessageParams,
+    signal?: AbortSignal,
+) => Promise<SamplingMessageResult>;
 
 type InputRequiredMethod = "tools/call" | "resources/read" | "prompts/get" | "tasks/update";
 type CoreInputRequiredParams = CallToolRequest["params"]
@@ -56,6 +69,8 @@ interface InputRequiredRequestOptions<T, P extends object> {
     readonly signal?: AbortSignal;
     readonly onProgress?: (progress: Progress) => void;
     readonly interact?: ClientInteractionHandler;
+    readonly sample?: SamplingHandler;
+    readonly meta?: Readonly<Record<string, unknown>>;
     readonly timeout: number;
     readonly requestLeg: InputRequiredLeg<T, P>;
 }
@@ -65,6 +80,8 @@ interface ResolveInputRequestsOptions {
     readonly operation: InputRequiredMethod;
     readonly inputRequests: Readonly<Record<string, unknown>>;
     readonly interact?: ClientInteractionHandler;
+    readonly sample?: SamplingHandler;
+    readonly meta?: Readonly<Record<string, unknown>>;
     readonly signal?: AbortSignal;
     readonly deadline: number;
 }
@@ -89,24 +106,37 @@ const formatValidationIssues = (issues: readonly { message: string; path?: reado
         ? `${issue.path.map(String).join(".")}: ${issue.message}`
         : issue.message).join(", ");
 
-const supportedElicitations = (
+type EmbeddedInputRequest =
+    | { readonly kind: "elicitation"; readonly key: string; readonly request: ElicitRequest }
+    | { readonly kind: "sampling"; readonly key: string; readonly request: SamplingMessageRequest };
+
+const supportedInputRequests = (
     server: string,
     operation: InputRequiredMethod,
     inputRequests: Readonly<Record<string, unknown>>,
-): [string, ElicitRequest][] => Object.entries(inputRequests).map(([key, candidate]) => {
+): EmbeddedInputRequest[] => Object.entries(inputRequests).map(([key, candidate]) => {
     const method = isRecord(candidate) ? candidate.method : undefined;
-    if (method !== "elicitation/create") {
-        throw new Error(
-            `MCP server '${server}' requested unsupported embedded input method '${String(method)}' during '${operation}'; Plurnk advertises only elicitation form and URL modes.`,
-        );
+    if (method === "elicitation/create") {
+        const parsed = specTypeSchemas.ElicitRequest["~standard"].validate(candidate);
+        if (parsed.issues !== undefined) {
+            throw new Error(
+                `MCP server '${server}' supplied invalid elicitation '${key}' during '${operation}': ${formatValidationIssues(parsed.issues)}.`,
+            );
+        }
+        return { kind: "elicitation", key, request: parsed.value };
     }
-    const parsed = specTypeSchemas.ElicitRequest["~standard"].validate(candidate);
-    if (parsed.issues !== undefined) {
-        throw new Error(
-            `MCP server '${server}' supplied invalid elicitation '${key}' during '${operation}': ${formatValidationIssues(parsed.issues)}.`,
-        );
+    if (method === "sampling/createMessage") {
+        const parsed = specTypeSchemas.CreateMessageRequest["~standard"].validate(candidate);
+        if (parsed.issues !== undefined) {
+            throw new Error(
+                `MCP server '${server}' supplied invalid sampling request '${key}' during '${operation}': ${formatValidationIssues(parsed.issues)}.`,
+            );
+        }
+        return { kind: "sampling", key, request: parsed.value };
     }
-    return [key, parsed.value];
+    throw new Error(
+        `MCP server '${server}' requested unsupported embedded input method '${String(method)}' during '${operation}'; Plurnk advertises only elicitation (form and URL) and sampling.`,
+    );
 });
 
 const interactionRequest = (
@@ -135,29 +165,53 @@ export const resolveInputRequests = async ({
     operation,
     inputRequests,
     interact,
+    sample,
+    meta,
     signal,
     deadline,
 }: ResolveInputRequestsOptions): Promise<Record<string, InputResponse>> => {
     signal?.throwIfAborted();
-    const entries = supportedElicitations(server, operation, inputRequests);
+    const entries = supportedInputRequests(server, operation, inputRequests);
     if (entries.length === 0) return {};
-    if (interact === undefined) {
+    if (entries.some((entry) => entry.kind === "elicitation") && interact === undefined) {
         throw new Error(
             `MCP server '${server}' requires client input during '${operation}', but this operation has no client interaction owner.`,
+        );
+    }
+    if (entries.some((entry) => entry.kind === "sampling") && sample === undefined) {
+        throw new Error(
+            `MCP server '${server}' requires sampling during '${operation}', but this operation has no sampling owner.`,
         );
     }
     const controller = new AbortController();
     const inputSignal = signal === undefined ? controller.signal : AbortSignal.any([signal, controller.signal]);
     const timer = setTimeout(() => controller.abort(timeoutError(operation)), remainingTimeout(deadline, operation));
     timer.unref();
-    const cancelled = Promise.withResolvers<ClientInteractionResolution>();
+    const cancelled = Promise.withResolvers<never>();
     const listener = addAbortListener(inputSignal, () => cancelled.reject(inputSignal.reason));
     try {
-        const pairs = await Promise.all(entries.map(async ([key, elicitRequest]): Promise<[string, InputResponse]> => {
-            const request = interactionRequest(elicitRequest);
-            const resolution = await Promise.race([interact(request, inputSignal), cancelled.promise]);
+        const pairs = await Promise.all(entries.map(async (entry): Promise<[string, InputResponse]> => {
+            if (entry.kind === "sampling") {
+                const mergedMeta = meta !== undefined || isRecord(entry.request.params._meta)
+                    ? { ...meta, ...(isRecord(entry.request.params._meta) ? entry.request.params._meta : {}) }
+                    : undefined;
+                const params: SamplingMessageParams = mergedMeta === undefined
+                    ? entry.request.params
+                    : { ...entry.request.params, _meta: mergedMeta };
+                const result = await Promise.race([sample!(params, inputSignal), cancelled.promise]);
+                inputSignal.throwIfAborted();
+                const parsed = specTypeSchemas.CreateMessageResult["~standard"].validate(result);
+                if (parsed.issues !== undefined) {
+                    throw new Error(
+                        `MCP sampling response '${entry.key}' is invalid: ${formatValidationIssues(parsed.issues)}.`,
+                    );
+                }
+                return [entry.key, parsed.value];
+            }
+            const request = interactionRequest(entry.request);
+            const resolution = await Promise.race([interact!(request, inputSignal), cancelled.promise]);
             inputSignal.throwIfAborted();
-            return [key, await resolvedInputResponse(key, request, resolution)];
+            return [entry.key, await resolvedInputResponse(entry.key, request, resolution)];
         }));
         return Object.fromEntries(pairs);
     } catch (error) {
@@ -216,6 +270,8 @@ export const runInputRequiredRequest = async <
     signal,
     onProgress,
     interact,
+    sample,
+    meta,
     timeout,
     requestLeg,
 }: InputRequiredRequestOptions<T, P>): Promise<T> => {
@@ -259,6 +315,8 @@ export const runInputRequiredRequest = async <
                 operation,
                 inputRequests,
                 interact,
+                sample,
+                meta,
                 signal,
                 deadline,
             });

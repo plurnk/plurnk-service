@@ -1135,3 +1135,192 @@ test("{§execution-output-identity} workspaces: NOT NULL enforced on name", asyn
 });
 });
 
+describe("mcp-open-work", () => {
+test("{§mcp-open-work} MCP server auto-creates bound workspace and session, routes sampling/createMessage resolved by SEND, and wakes parked loops on notifications/resources/updated", { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
+    let feedText = "feed-v1";
+    const outboundMetas: Array<{ method?: string; meta?: Record<string, unknown> }> = [];
+    const handler = createMcpHandler(() => {
+        const server = new McpServer(
+            { name: "telegram-bot", version: "1.0.0" },
+            { capabilities: { resources: { subscribe: true } } },
+        );
+        server.registerResource(
+            "feed",
+            "fixture://feed",
+            {
+                mimeType: "text/plain",
+                cacheHint: { ttlMs: 60_000, cacheScope: "public" },
+            },
+            async (uri) => ({
+                contents: [{
+                    uri: uri.href,
+                    mimeType: "text/plain",
+                    text: feedText,
+                }],
+            }),
+        );
+        server.registerTool(
+            "ask-inbox",
+            {
+                description: "Route a question to the operator inbox session via sampling/createMessage.",
+                inputSchema: fromJsonSchema({ type: "object", additionalProperties: false }),
+            },
+            async (_args, ctx) => {
+                const reply = inputResponse(ctx.mcpReq.inputResponses, "reply");
+                if (reply.kind === "missing") {
+                    return inputRequired({
+                        inputRequests: {
+                            reply: inputRequired.createMessage({
+                                messages: [{
+                                    role: "user",
+                                    content: { type: "text", text: "Approve production deploy?" },
+                                }],
+                                maxTokens: 64,
+                                _meta: {
+                                    plurnkSession: "inbox",
+                                    plurnkMessageId: "tg-42",
+                                },
+                            }),
+                        },
+                    });
+                }
+                return {
+                    content: [{
+                        type: "text",
+                        text: reply.kind === "sampling"
+                            && !Array.isArray(reply.result.content)
+                            && reply.result.content.type === "text"
+                            ? reply.result.content.text
+                            : reply.kind,
+                    }],
+                };
+            },
+        );
+        return server;
+    }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
+
+    const served = await serveMcpHttp(t, handler, async (request) => {
+        const body = await request.clone().json() as {
+            method?: string;
+            params?: { _meta?: Record<string, unknown> };
+        };
+        if (body.method === "tools/call" || body.method === "resources/read") {
+            outboundMetas.push({ method: body.method, meta: body.params?._meta });
+        }
+        return null;
+    });
+
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, {
+        telegram: {
+            ...httpEntry(served.url),
+            plurnkWorkspace: "ops",
+            plurnkSession: "inbox",
+        },
+    });
+
+    // Step 2 responses:
+    // - responses[0]: caller Turn 1 invokes `telegram (ask-inbox)` and parks in 202
+    // - responses[1]: inbox Turn 1 (woken by `telegram:///messages/tg-42`) replies `SEND (telegram:///messages/tg-42) [200]`
+    // - responses[2]: caller Turn 2 observes `Approved by inbox!` and completes `SEND [200]`
+    // Step 3 responses:
+    // - responses[3]: inbox Turn 1 reads subscribable `telegram:///resources/fixture%3A%2F%2Ffeed`
+    // - responses[4]: inbox Turn 2 observes `feed-v1` and parks in 202 on the open resource stream
+    // - responses[5]: inbox Turn 3 (woken by `notifications/resources/updated`) observes `feed-v2` and completes `SEND [200]`
+    const provider = new Mock({
+        contextWindow: 1_000_000,
+        responses: [
+            makeRawMockResponse([
+                PlurnkParser.frame("telegram (ask-inbox)", "{}"),
+                PlurnkParser.frame("SEND [200]", "Waiting for inbox approval."),
+            ].join("\n\n")),
+            makeRawMockResponse(
+                PlurnkParser.frame("SEND (telegram:///messages/tg-42) [200]", "Approved by inbox!"),
+            ),
+            makeRawMockResponse(PlurnkParser.frame("SEND [200]", "Caller observed approval.")),
+            makeRawMockResponse([
+                PlurnkParser.frame("READ (telegram:///resources/fixture%3A%2F%2Ffeed)", null),
+                PlurnkParser.frame("SEND [200]", "Subscribed to feed."),
+            ].join("\n\n")),
+            makeRawMockResponse(PlurnkParser.frame("SEND [200]", "Waiting for feed update.")),
+            makeRawMockResponse(PlurnkParser.frame("SEND [200]", "Inbox observed feed-v2.")),
+        ],
+    });
+
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider, hostPaths });
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }), "@plurnk/plurnk-mcp");
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+
+    // 1. Resident server startup auto-created workspace "ops" and session "inbox"
+    const workspaces = await daemon.listWorkspaces();
+    const ops = workspaces.find((ws) => ws.name === "ops");
+    assert.ok(ops, "resident server startup auto-created workspace 'ops'");
+    const inboxSession = await daemon.readSession({ workspaceId: ops.id, identity: { name: "inbox" } });
+    assert.ok(inboxSession, "resident server startup auto-created session 'inbox'");
+
+    // 2. Start a caller loop in session "caller" that invokes `telegram (ask-inbox)`
+    const { sessionId: callerId } = await daemon.createSession({ workspaceId: ops.id, name: "caller" });
+    const callerLoop = await daemon.runLoop({
+        workspaceId: ops.id,
+        sessionId: callerId,
+        prompt: "Ask inbox for approval.",
+        maxTurns: 3,
+    });
+    const lifecycle = new LoopLifecycle(db);
+    await waitForDb(() => lifecycle.status(callerLoop.loopId), (status) => status === 200, { timeoutMs: 10_000 });
+
+    const callerLog = await daemon.readLog({ workspaceId: ops.id, sessionId: callerId, loopId: callerLoop.loopId, limit: 100 });
+    const callerFoistedRead = callerLog.find((entry) =>
+        entry.origin === "_plurnk"
+        && entry.op === "READ"
+        && entry.scheme === "telegram");
+    assert.ok(callerFoistedRead, "caller loop received foisted READ of telegram (ask-inbox) output");
+    assert.match(JSON.stringify(callerFoistedRead.rx), /Approved by inbox!/u);
+
+    // 3. Start a loop in session "inbox" that reads subscribable `fixture://feed` and parks in 202
+    const inboxStreamLoop = await daemon.runLoop({
+        workspaceId: ops.id,
+        sessionId: inboxSession.id,
+        prompt: "Monitor fixture://feed for updates.",
+        maxTurns: 4,
+    });
+    await waitForDb(() => lifecycle.status(inboxStreamLoop.loopId), (status) => status === 202, { timeoutMs: 10_000 });
+
+    // Outbound calls stamped unforgeable plurnkWorkspace and plurnkSession metadata
+    assert.ok(
+        outboundMetas.some((item) =>
+            item.method === "tools/call"
+            && item.meta?.plurnkWorkspace === "ops"
+            && item.meta?.plurnkSession === "caller"),
+        `expected outbound tools/call meta with ops/caller; got ${JSON.stringify(outboundMetas)}`,
+    );
+    assert.ok(
+        outboundMetas.some((item) =>
+            item.method === "resources/read"
+            && item.meta?.plurnkWorkspace === "ops"
+            && item.meta?.plurnkSession === "inbox"),
+        `expected outbound resources/read meta with ops/inbox; got ${JSON.stringify(outboundMetas)}`,
+    );
+
+    const streams = await daemon.readStreams({ workspaceId: ops.id, sessionId: inboxSession.id });
+    assert.ok(
+        streams.some((stream) => stream.target === "telegram:///resources/fixture%3A%2F%2Ffeed"),
+        `expected open stream on telegram:///resources/fixture%3A%2F%2Ffeed; got ${JSON.stringify(streams)}`,
+    );
+
+    // 4. Push `notifications/resources/updated` for `fixture://feed` -> closes stream (200) and wakes parked loop with foisted `_plurnk` READ
+    feedText = "feed-v2";
+    handler.notify.resourceUpdated("fixture://feed");
+    await waitForDb(() => lifecycle.status(inboxStreamLoop.loopId), (status) => status === 200, { timeoutMs: 10_000 });
+
+    const inboxLog = await daemon.readLog({ workspaceId: ops.id, sessionId: inboxSession.id, loopId: inboxStreamLoop.loopId, limit: 100 });
+    const foistedRead = inboxLog.find((entry) =>
+        entry.origin === "_plurnk"
+        && entry.op === "READ"
+        && JSON.stringify(entry.rx).includes("feed-v2"));
+    assert.ok(foistedRead, "resource update materialized a foisted _plurnk READ with feed-v2 in the woken turn");
+});
+});
+

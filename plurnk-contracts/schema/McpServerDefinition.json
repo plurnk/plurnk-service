@@ -18,6 +18,28 @@
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*$"
         },
+        "plurnkWorkspace": {
+            "description": "Target workspace name(s) or '*' for operator-scoped multi-workspace routing; ${NAME} references expand against the operator environment.",
+            "oneOf": [
+                {
+                    "type": "string",
+                    "minLength": 1
+                },
+                {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                }
+            ]
+        },
+        "plurnkSession": {
+            "description": "Default target session name in the workspace for server-initiated Open Work; ${NAME} references expand against the workspace-composed operator environment.",
+            "type": "string",
+            "minLength": 1
+        },
         "stdio": {
             "title": "McpStdioServerDefinition",
             "type": "object",
@@ -58,6 +80,12 @@
                     "description": "An absolute working directory, optionally using ${NAME} references. When absent the host supplies a workspace-owned state directory outside the project.",
                     "type": "string",
                     "minLength": 1
+                },
+                "plurnkWorkspace": {
+                    "$ref": "#/$defs/plurnkWorkspace"
+                },
+                "plurnkSession": {
+                    "$ref": "#/$defs/plurnkSession"
                 }
             }
         },
@@ -114,6 +142,12 @@
                             "$ref": "https://schemas.plurnk.xyz/v0/McpOAuth.json"
                         }
                     ]
+                },
+                "plurnkWorkspace": {
+                    "$ref": "#/$defs/plurnkWorkspace"
+                },
+                "plurnkSession": {
+                    "$ref": "#/$defs/plurnkSession"
                 }
             }
         }

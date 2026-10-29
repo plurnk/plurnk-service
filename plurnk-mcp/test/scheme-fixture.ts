@@ -23,12 +23,45 @@ export const preparationRequest = (pathname: string): RepresentationPreparationR
 export const context = (): {
     ctx: SchemeCtx;
     entries: Map<string, EntryData>;
+    subscriptions: Map<string, {
+        aborted: boolean;
+        close(result: { status: number }): Promise<void>;
+        closedWith?: number;
+    }>;
 } => {
     const entries = new Map<string, EntryData>();
+    const subscriptions = new Map<string, {
+        aborted: boolean;
+        close(result: { status: number }): Promise<void>;
+        closedWith?: number;
+    }>();
     const ctx = {
+        workspaceId: 1,
+        sessionId: 1,
+        loopId: 0,
         signal: undefined,
         interactions: {
             request: async () => ({ status: "cancelled" as const }),
+        },
+        subscriptions: {
+            open: async (pathname: string) => {
+                const sub: {
+                    aborted: boolean;
+                    close(result: { status: number }): Promise<void>;
+                    closedWith?: number;
+                } = {
+                    aborted: false,
+                    close: async (result) => {
+                        sub.closedWith = result.status;
+                    },
+                };
+                subscriptions.set(pathname, sub);
+                return sub;
+            },
+        },
+        messages: {
+            prepare: async () => ({ status: 200 as const }),
+            reply: async () => ({ status: 200 as const }),
         },
         entries: {
             address: async (pathname: string) => `echo://owner${pathname}`,
@@ -43,8 +76,19 @@ export const context = (): {
                     entryId: entries.size,
                 };
             },
-            operations: {},
+            operations: {
+                find: async () => ({
+                    status: 200 as const,
+                    content: "",
+                    mimetype: "text/markdown",
+                    results: [],
+                    itemsWeightTotal: 0,
+                    returnedItemsWeightTotal: 0,
+                    matchingPathCount: 0,
+                    matchLocationCount: 0,
+                }),
+            },
         },
     } as unknown as SchemeCtx;
-    return { ctx, entries };
+    return { ctx, entries, subscriptions };
 };

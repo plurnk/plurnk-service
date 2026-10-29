@@ -936,11 +936,9 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         tempPath: string | null;
     }): Promise<SchemeResult> {
         const { runtime, body, cwd, target, metadata, ctx, pathname, entryId, lifecycle, signal, controller, timeoutSec, tempPath, coordinate } = opts;
-        // {§functionality-model-projection} — a Core-owned manager acts for the invoking Session. The
-        // framework's ExecArgs carries no Session identity, so Core binds it here, at the operation.
-        const executor = opts.executor instanceof FunctionalityManager
-            ? opts.executor.forContext(ctx.workspaceId, ctx.sessionId)
-            : opts.executor;
+        // {§functionality-model-projection} — a module or Core-owned runtime may bind the invoking Session.
+        // The framework's ExecArgs carries no Session identity, so Core binds it here, at the operation.
+        const executor = opts.executor.forContext?.(ctx.workspaceId, ctx.sessionId) ?? opts.executor;
         const db = ctx.db;
         // an execution's `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
         // holds the process open; cleared in finally so a spawn that finishes first leaves no timer.

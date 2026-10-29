@@ -467,7 +467,7 @@ test("{§mcp-host-composition} unsupported Task input fails before interaction a
                 },
                 tool,
             ),
-            /unsupported embedded input method 'sampling\/createMessage'/i,
+            /unsupported embedded input method 'roots\/list'/i,
         );
         assert.equal(interactions, 0);
         assert.equal(fixture.updates.length, 0);
@@ -684,6 +684,158 @@ test("{§mcp-tasks} the same current Task lifecycle composes over a plain stdio 
             type: "text",
             text: "plain stdio Task completed",
         }]);
+    } finally {
+        await connection.close();
+    }
+});
+
+test("{§mcp-open-work} inline MRTR sampling/createMessage resolves via the sampling handler", async () => {
+    const sampled: unknown[] = [];
+    const connection = new ServerConnection(
+        stdioServer("interaction", [interactionServerFixture]),
+        env,
+        {
+            sample: async (params) => {
+                sampled.push(params);
+                return {
+                    role: "assistant",
+                    content: { type: "text", text: "Hello from PlurnkSEND!" },
+                    model: "plurnk",
+                    stopReason: "endTurn",
+                };
+            },
+        },
+    );
+    try {
+        const result = await connection.callTool("sampling", {});
+        assert.equal(sampled.length, 1);
+        assert.deepEqual(result.content, [{
+            type: "text",
+            text: "Hello from PlurnkSEND!",
+        }]);
+    } finally {
+        await connection.close();
+    }
+});
+
+test("{§mcp-open-work} outbound requests stamp unforgeable plurnkWorkspace and plurnkSession metadata and server-pushed tasks answer sampling/createMessage", async (t) => {
+    const fixture = taskHandler();
+    const pushedTaskId = "task-pushed-sample";
+    let pushController: ReadableStreamDefaultController<Uint8Array> | undefined;
+    let pushSubId: string | number | undefined;
+    const pushedUpdates: Array<Record<string, unknown>> = [];
+    const outboundMetas: Array<{ method?: string; meta?: unknown }> = [];
+    const served = await serveMcpHttp(t, fixture.handler, async (request) => {
+        const message = await request.clone().json() as {
+            id?: string | number;
+            method?: string;
+            params?: Record<string, unknown>;
+        };
+        if (
+            message.method === "tools/call"
+            || message.method === "resources/read"
+            || message.method === "prompts/get"
+        ) {
+            outboundMetas.push({
+                method: message.method,
+                meta: message.params?._meta,
+            });
+        }
+        if (message.method === "subscriptions/listen") {
+            const filter = message.params?.notifications as { taskIds?: string[] } | undefined;
+            if (filter?.taskIds === undefined) {
+                const encoder = new TextEncoder();
+                return new Response(new ReadableStream<Uint8Array>({
+                    start(controller) {
+                        pushController = controller;
+                        pushSubId = message.id;
+                        controller.enqueue(encoder.encode(
+                            `event: message\ndata: ${JSON.stringify({
+                                jsonrpc: "2.0",
+                                method: "notifications/subscriptions/acknowledged",
+                                params: {
+                                    notifications: filter ?? {},
+                                    _meta: { "io.modelcontextprotocol/subscriptionId": message.id },
+                                },
+                            })}\n\n`,
+                        ));
+                        request.signal.addEventListener("abort", () => {
+                            try { controller.close(); } catch { /* closed */ }
+                        }, { once: true });
+                    },
+                }), {
+                    status: 200,
+                    headers: { "Content-Type": "text/event-stream" },
+                });
+            }
+        }
+        if (message.method === "tasks/update" && message.params?.taskId === pushedTaskId) {
+            pushedUpdates.push(message.params);
+            return Response.json({
+                jsonrpc: "2.0",
+                id: message.id,
+                result: { resultType: "complete" },
+            });
+        }
+        return fixture.route(request);
+    });
+    const sampled: Array<{ params: unknown }> = [];
+    const connection = new ServerConnection(httpServer("pushed-tasks", served.url), taskEnv, {
+        resident: true,
+        sample: async (params) => {
+            sampled.push({ params });
+            return {
+                role: "assistant",
+                content: { type: "text", text: "Answered via SEND [200]" },
+                model: "plurnk",
+                stopReason: "endTurn",
+            };
+        },
+    });
+    try {
+        await connection.connect();
+        await waitFor(() => pushController !== undefined);
+        const encoder = new TextEncoder();
+        pushController!.enqueue(encoder.encode(
+            `event: message\ndata: ${JSON.stringify({
+                jsonrpc: "2.0",
+                method: "notifications/tasks",
+                params: {
+                    taskId: pushedTaskId,
+                    status: "input_required",
+                    createdAt: "2026-08-16T04:00:00Z",
+                    lastUpdatedAt: "2026-08-16T04:00:00Z",
+                    ttlMs: 60_000,
+                    inputRequests: {
+                        reply: {
+                            method: "sampling/createMessage",
+                            params: {
+                                messages: [{
+                                    role: "user",
+                                    content: { type: "text", text: "Server-pushed task prompt." },
+                                }],
+                                maxTokens: 64,
+                                _meta: {
+                                    plurnkWorkspace: "ops",
+                                    plurnkSession: "triage",
+                                },
+                            },
+                        },
+                    },
+                    _meta: { "io.modelcontextprotocol/subscriptionId": pushSubId },
+                },
+            })}\n\n`,
+        ));
+        await waitFor(() => pushedUpdates.length === 1);
+        assert.equal(sampled.length, 1);
+        assert.deepEqual(pushedUpdates[0]?.inputResponses, {
+            reply: {
+                role: "assistant",
+                content: { type: "text", text: "Answered via SEND [200]" },
+                model: "plurnk",
+                stopReason: "endTurn",
+            },
+        });
     } finally {
         await connection.close();
     }
