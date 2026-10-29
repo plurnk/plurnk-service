@@ -18,6 +18,7 @@ import type { GateTracker } from "./gates.ts";
 import { attrRecord, parseJsonOrValue, txBody } from "./log-entry-projection.ts";
 import type SessionTranslator from "./SessionTranslator.ts";
 import {
+    buildAvailableCommands,
     formatSessionId,
     isDescendantSession,
     selectBoundSessionForTarget,
@@ -423,6 +424,24 @@ export const dispatchDaemonEvent = (
                         },
                     });
                 }
+            }
+            if (Array.isArray(preparation) && preparation.length === 0) {
+                void buildAvailableCommands(seam, workspaceId)
+                    .then((availableCommands) => {
+                        for (const peer of peers) {
+                            const visited = new Set<BoundSession>();
+                            for (const session of peer.sessions.values()) {
+                                if (visited.has(session)) continue;
+                                visited.add(session);
+                                if (session.workspaceId !== workspaceId) continue;
+                                notifyPeerSession(peer, session.acpSessionId, {
+                                    sessionUpdate: "available_commands_update",
+                                    availableCommands,
+                                });
+                            }
+                        }
+                    })
+                    .catch(() => undefined);
             }
             break;
         }

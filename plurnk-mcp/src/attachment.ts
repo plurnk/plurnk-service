@@ -250,6 +250,15 @@ export const activeDetail = ({ executor: { catalog }, connection }: ActiveAttach
         resources: catalog.resources.length,
         resourceTemplates: catalog.resourceTemplates.length,
         prompts: catalog.prompts.length,
+        ...(catalog.prompts.length > 0
+            ? {
+                  promptDefinitions: catalog.prompts.map((p) => ({
+                      name: p.name,
+                      ...(p.description !== undefined ? { description: p.description } : {}),
+                      ...(p.arguments !== undefined ? { arguments: p.arguments } : {}),
+                  })),
+              }
+            : {}),
         ...(grant === undefined ? {} : { grant }),
     };
 };

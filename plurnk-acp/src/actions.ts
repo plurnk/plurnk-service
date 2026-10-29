@@ -14,6 +14,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import SessionTranslator from "./SessionTranslator.ts";
 import {
     OWNER_ADDRESS,
+    buildAvailableCommands,
     formatSessionId,
     parseSessionId,
     resolveWorkspace,
@@ -863,6 +864,23 @@ export const handlePlurnkAction = async (
                     elicitationId: `mcp-oauth:${target.workspaceId}:${alias}`,
                 })
                 .catch(() => undefined);
+        }
+        if (
+            (kind.startsWith("workspace.skills.") || kind.startsWith("workspace.mcp.")) &&
+            !kind.endsWith(".list") &&
+            !kind.endsWith(".discover") &&
+            !kind.endsWith(".complete")
+        ) {
+            const availableCommands = await buildAvailableCommands(seam, target.workspaceId);
+            const visited = new Set<string>();
+            for (const s of peer.sessions.values()) {
+                if (s.workspaceId !== target.workspaceId || visited.has(s.acpSessionId)) continue;
+                visited.add(s.acpSessionId);
+                notifyPeerSession(peer, s.acpSessionId, {
+                    sessionUpdate: "available_commands_update",
+                    availableCommands,
+                });
+            }
         }
     }
     return actionResult;

@@ -36,22 +36,24 @@ import type { ResolvedModuleOptions } from "./config.ts";
 import type { GateTracker } from "./gates.ts";
 import SessionTranslator from "./SessionTranslator.ts";
 import {
-    AVAILABLE_COMMANDS,
     applyAcpMcpServers,
     applyAdditionalDirectories,
     applyConfigOption,
     applySystemPrompt,
     assertSinglePortSecurity,
+    buildAvailableCommands,
     buildConfigOptions,
     extractPlurnkMeta,
     formatSessionId,
     listSessionsOverview,
+    resolvePromptCommand,
     resolveSessionBinding,
     selectBoundSessionForTarget,
     toRequestError,
     tryListProviders,
     type AcpPeer,
     type BoundSession,
+    type ResolvedPromptCommand,
 } from "./sessions.ts";
 
 export interface ConnectionAgentContext {
@@ -234,8 +236,9 @@ export const createConnectionAgent = (
                 ctx.params.systemPrompt,
             );
             const providerCatalog = tryListProviders(seam);
-            const [configOptions, modelInfo] = await Promise.all([
+            const [configOptions, availableCommands, modelInfo] = await Promise.all([
                 buildConfigOptions(seam, bound.workspaceId, bound.sessionId),
+                buildAvailableCommands(seam, bound.workspaceId),
                 seam.readSessionModel({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
             ]);
             for (const notice of seam.configurationNotices()) {
@@ -259,7 +262,7 @@ export const createConnectionAgent = (
             return {
                 sessionId: bound.acpSessionId,
                 configOptions,
-                availableCommands: [...AVAILABLE_COMMANDS],
+                availableCommands,
                 _meta: {
                     plurnk: {
                         sessionId: bound.sessionId,
@@ -332,7 +335,7 @@ export const createConnectionAgent = (
             );
 
             const providerCatalog = tryListProviders(seam);
-            const [entries, inbox, loops, proposals, interactions, workspaceSessions, configOptions, modelInfo, spend, streams, budget] = await Promise.all([
+            const [entries, inbox, loops, proposals, interactions, workspaceSessions, configOptions, availableCommands, modelInfo, spend, streams, budget] = await Promise.all([
                 seam.readLog({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.readInbox({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.listSessionLoops({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
@@ -340,6 +343,7 @@ export const createConnectionAgent = (
                 seam.pendingClientInteractions(bound.workspaceId),
                 seam.listSessions(bound.workspaceId),
                 buildConfigOptions(seam, bound.workspaceId, bound.sessionId),
+                buildAvailableCommands(seam, bound.workspaceId),
                 seam.readSessionModel({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.sessionAccounting({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.readStreams({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
@@ -431,7 +435,7 @@ export const createConnectionAgent = (
 
             return {
                 configOptions,
-                availableCommands: [...AVAILABLE_COMMANDS],
+                availableCommands,
                 _meta: {
                     plurnk: {
                         sessionId: bound.sessionId,
@@ -586,6 +590,10 @@ export const createConnectionAgent = (
                     ctx.params.configId,
                     ctx.params.value,
                 );
+                const availableCommands =
+                    ctx.params.configId.startsWith("skills:") || ctx.params.configId.startsWith("mcp:")
+                        ? await buildAvailableCommands(seam, bound.workspaceId)
+                        : null;
                 const modelInfo = await seam.readSessionModel({
                     workspaceId: bound.workspaceId,
                     sessionId: bound.sessionId,
@@ -607,6 +615,17 @@ export const createConnectionAgent = (
                             _meta: statusMeta,
                         },
                     },
+                    ...(availableCommands !== null
+                        ? [
+                              {
+                                  sessionId: s.acpSessionId,
+                                  update: {
+                                      sessionUpdate: "available_commands_update" as const,
+                                      availableCommands,
+                                  },
+                              },
+                          ]
+                        : []),
                 ]);
                 return { configOptions, _meta: statusMeta };
             } catch (err) {
@@ -631,9 +650,39 @@ export const createConnectionAgent = (
             const textParts: string[] = [];
             const promptOpenPaths: string[] = [];
             const attachments: MessageResource[] = [];
+            let pendingBuiltinCommand: Extract<ResolvedPromptCommand, { readonly kind: "builtin" }> | null = null;
             for (const block of ctx.params.prompt as readonly ContentBlock[]) {
+                const rawBlock: unknown = block;
                 if (block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
                     textParts.push(block.text);
+                } else if (
+                    isRecord(rawBlock) &&
+                    rawBlock.type === "command" &&
+                    typeof rawBlock.name === "string"
+                ) {
+                    const cmdName = rawBlock.name;
+                    const cmdInput = rawBlock.input;
+                    const resolved = await resolvePromptCommand(seam, bound.workspaceId, cmdName, cmdInput);
+                    if (resolved?.kind === "builtin") {
+                        if (ctx.params.prompt.length === 1) {
+                            pendingBuiltinCommand = resolved;
+                        }
+                        const suffix = resolved.rest.length > 0 ? ` ${resolved.rest}` : "";
+                        textParts.push(`/${resolved.cmd}${suffix}`);
+                    } else if (resolved?.kind === "open_path") {
+                        promptOpenPaths.push(resolved.target);
+                        if (resolved.text.length > 0) {
+                            textParts.push(resolved.text);
+                        }
+                    } else {
+                        const rawInputStr =
+                            typeof cmdInput === "string"
+                                ? cmdInput.trim()
+                                : isRecord(cmdInput) && typeof cmdInput.text === "string"
+                                  ? cmdInput.text.trim()
+                                  : "";
+                        textParts.push(rawInputStr.length > 0 ? `/${cmdName} ${rawInputStr}` : `/${cmdName}`);
+                    }
                 } else if (block.type === "resource_link" && typeof block.uri === "string" && block.uri.length > 0) {
                     let targetPath = block.uri;
                     if (block.uri.startsWith("file://")) {
@@ -678,6 +727,19 @@ export const createConnectionAgent = (
                     });
                 }
             }
+            if (pendingBuiltinCommand === null && textParts.length === 1 && textParts[0].trim().startsWith("/")) {
+                const trimmedPart = textParts[0].trim();
+                const spaceIdx = trimmedPart.indexOf(" ");
+                const rawCmd = spaceIdx === -1 ? trimmedPart.slice(1) : trimmedPart.slice(1, spaceIdx);
+                const rest = spaceIdx === -1 ? "" : trimmedPart.slice(spaceIdx + 1).trim();
+                const resolved = await resolvePromptCommand(seam, bound.workspaceId, rawCmd, rest);
+                if (resolved?.kind === "builtin") {
+                    pendingBuiltinCommand = resolved;
+                } else if (resolved?.kind === "open_path") {
+                    promptOpenPaths.push(resolved.target);
+                    textParts.splice(0, textParts.length, ...(resolved.text.length > 0 ? [resolved.text] : []));
+                }
+            }
             const plurnkMeta = extractPlurnkMeta(ctx.params._meta);
             const mergedOpenPaths = [
                 ...(plurnkMeta.openPaths ?? []),
@@ -708,50 +770,44 @@ export const createConnectionAgent = (
                 body: admissionBody,
             });
 
-            const trimmed = text.trim();
-            if (trimmed.startsWith("/")) {
-                const spaceIdx = trimmed.indexOf(" ");
-                const cmd = (spaceIdx === -1 ? trimmed.slice(1) : trimmed.slice(1, spaceIdx)).toLowerCase();
-                const rest = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
-                if (AVAILABLE_COMMANDS.some((c) => c.name === cmd)) {
-                    broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
-                        {
-                            sessionId: s.acpSessionId,
-                            update: {
-                                sessionUpdate: "state_update",
-                                state: "running",
-                            },
+            if (pendingBuiltinCommand !== null) {
+                broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
+                    {
+                        sessionId: s.acpSessionId,
+                        update: {
+                            sessionUpdate: "state_update",
+                            state: "running",
                         },
-                    ]);
-                    const replyText = await executeSlashCommand(
-                        seam,
-                        httpOrigin(),
-                        bound,
-                        cmd,
-                        rest,
-                        peer,
-                        notifyPeerSession,
-                    );
-                    broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
-                        {
-                            sessionId: s.acpSessionId,
-                            update: {
-                                sessionUpdate: "agent_message_chunk",
-                                messageId,
-                                content: { type: "text", text: replyText },
-                            },
+                    },
+                ]);
+                const replyText = await executeSlashCommand(
+                    seam,
+                    httpOrigin(),
+                    bound,
+                    pendingBuiltinCommand.cmd,
+                    pendingBuiltinCommand.rest,
+                    peer,
+                    notifyPeerSession,
+                );
+                broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
+                    {
+                        sessionId: s.acpSessionId,
+                        update: {
+                            sessionUpdate: "agent_message_chunk",
+                            messageId,
+                            content: { type: "text", text: replyText },
                         },
-                        {
-                            sessionId: s.acpSessionId,
-                            update: {
-                                sessionUpdate: "state_update",
-                                state: "idle",
-                                stopReason: "end_turn",
-                            },
+                    },
+                    {
+                        sessionId: s.acpSessionId,
+                        update: {
+                            sessionUpdate: "state_update",
+                            state: "idle",
+                            stopReason: "end_turn",
                         },
-                    ]);
-                    return { messageId };
-                }
+                    },
+                ]);
+                return { messageId };
             }
 
             notifyPeerSession(peer, bound.acpSessionId, {

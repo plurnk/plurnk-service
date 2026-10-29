@@ -6,6 +6,7 @@ import {
     PlanUpdateContent,
     PROTOCOL_VERSION,
     SessionUpdate,
+    type ContentBlock,
     type RequestPermissionRequest,
     type CreateElicitationRequest,
 } from "@agentclientprotocol/sdk/experimental/v2/unstable";
@@ -270,6 +271,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.equal(providers.providers[0]?.current?.baseUrl, "plurnk://mocktest/mock-v1");
 
                 let mcpEnabled = true;
+                let skillEnabled = true;
                 const origListActions = h.port.listModuleActions.bind(h.port);
                 const origInvokeAction = h.port.invokeModuleAction.bind(h.port);
                 h.port.listModuleActions = () => [
@@ -286,6 +288,24 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         inputSchema: { type: "object", properties: { alias: { type: "string" } } },
                         outputSchema: { type: "object" },
                     },
+                    {
+                        name: "workspace.skills.list",
+                        scope: "workspace",
+                        inputSchema: { type: "object" },
+                        outputSchema: { type: "object" },
+                    },
+                    {
+                        name: "workspace.skills.enable",
+                        scope: "workspace",
+                        inputSchema: { type: "object", properties: { alias: { type: "string" } } },
+                        outputSchema: { type: "object" },
+                    },
+                    {
+                        name: "workspace.skills.disable",
+                        scope: "workspace",
+                        inputSchema: { type: "object", properties: { alias: { type: "string" } } },
+                        outputSchema: { type: "object" },
+                    },
                 ];
                 h.port.invokeModuleAction = async (name, params, context) => {
                     if (name === "workspace.mcp.list") {
@@ -294,6 +314,28 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 {
                                     alias: "git-srv",
                                     state: mcpEnabled ? "active" : "disabled",
+                                    detail: {
+                                        promptDefinitions: [
+                                            {
+                                                name: "review",
+                                                description: "Review git diff",
+                                                arguments: [{ name: "branch", required: true }],
+                                            },
+                                        ],
+                                    },
+                                },
+                            ],
+                        };
+                    }
+                    if (name === "workspace.skills.list") {
+                        return {
+                            definitions: [
+                                {
+                                    alias: "triage",
+                                    state: skillEnabled ? "active" : "disabled",
+                                    detail: {
+                                        description: "Triage repository issues",
+                                    },
                                 },
                             ],
                         };
@@ -304,6 +346,14 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     }
                     if (name === "workspace.mcp.enable") {
                         mcpEnabled = true;
+                        return {};
+                    }
+                    if (name === "workspace.skills.disable") {
+                        skillEnabled = false;
+                        return {};
+                    }
+                    if (name === "workspace.skills.enable") {
+                        skillEnabled = true;
                         return {};
                     }
                     return await origInvokeAction(name, params, context);
@@ -319,6 +369,34 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     const mcpOpt = toggledMcp.configOptions.find((c) => c.configId === "mcp:git-srv");
                     assert.equal(mcpOpt?.type, "boolean");
                     assert.equal(mcpOpt?.currentValue, false);
+
+                    await ctx.request(methods.agent.session.setConfigOption, {
+                        sessionId: session.sessionId,
+                        configId: "mcp:git-srv",
+                        type: "boolean",
+                        value: true,
+                    });
+                    await waitFor(
+                        () => updates.filter((u) => u.sessionUpdate === "available_commands_update").length >= 2,
+                    );
+                    const cmdUpdates = updates.filter(
+                        (u): u is Extract<SessionUpdate, { sessionUpdate: "available_commands_update" }> =>
+                            u.sessionUpdate === "available_commands_update",
+                    );
+                    assert.ok(cmdUpdates.length >= 2);
+                    const latestCmds = cmdUpdates.at(-1)?.availableCommands ?? [];
+                    assert.ok(latestCmds.some((c) => c.name === "triage" && c.description === "Triage repository issues"));
+                    assert.ok(
+                        latestCmds.some(
+                            (c) =>
+                                c.name === "git-srv:review" &&
+                                c.description === "Review git diff" &&
+                                typeof c.input === "object" &&
+                                c.input !== null &&
+                                "hint" in c.input &&
+                                c.input.hint === "branch=<value>",
+                        ),
+                    );
                 } finally {
                     h.port.listModuleActions = origListActions;
                     h.port.invokeModuleAction = origInvokeAction;
@@ -447,6 +525,77 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         assert.equal(capturedRunLoop?.attachments?.length, 2);
                         assert.equal(capturedRunLoop?.attachments?.[0]?.name, "mem:///note.txt");
                         assert.equal(capturedRunLoop?.attachments?.[1]?.mediaType, "image/png");
+
+                        const origListActions = h.port.listModuleActions.bind(h.port);
+                        const origInvokeAction = h.port.invokeModuleAction.bind(h.port);
+                        h.port.listModuleActions = () => [
+                            ...origListActions(),
+                            {
+                                name: "workspace.skills.list",
+                                scope: "workspace",
+                                inputSchema: { type: "object" },
+                                outputSchema: { type: "object" },
+                            },
+                        ];
+                        h.port.invokeModuleAction = async (name, params, context) => {
+                            if (name === "workspace.skills.list") {
+                                return {
+                                    definitions: [
+                                        {
+                                            alias: "triage",
+                                            state: "active",
+                                            detail: { description: "Triage repository issues" },
+                                        },
+                                    ],
+                                };
+                            }
+                            if (name === "workspace.mcp.list") {
+                                return {
+                                    definitions: [
+                                        {
+                                            alias: "git-srv",
+                                            state: "active",
+                                            detail: {
+                                                promptDefinitions: [
+                                                    {
+                                                        name: "review",
+                                                        description: "Review git diff",
+                                                        arguments: [{ name: "branch" }],
+                                                    },
+                                                ],
+                                            },
+                                        },
+                                    ],
+                                };
+                            }
+                            return await origInvokeAction(name, params, context);
+                        };
+                        try {
+                            await ctx.request(methods.agent.session.prompt, {
+                                sessionId: session.sessionId,
+                                prompt: [
+                                    {
+                                        type: "command",
+                                        name: "triage",
+                                        input: "Check bug #42",
+                                    } as unknown as ContentBlock,
+                                    {
+                                        type: "command",
+                                        name: "git-srv:review",
+                                        input: "branch=main",
+                                    } as unknown as ContentBlock,
+                                ],
+                            });
+                            await session.readTextUntilIdle();
+                            assert.deepEqual(capturedRunLoop?.openPaths, [
+                                "skill://triage/SKILL.md",
+                                "git-srv:///prompts/review?branch=main",
+                            ]);
+                            assert.equal(capturedRunLoop?.prompt, "Check bug #42");
+                        } finally {
+                            h.port.listModuleActions = origListActions;
+                            h.port.invokeModuleAction = origInvokeAction;
+                        }
                     } finally {
                         h.port.runLoop = origRunLoop;
                     }
