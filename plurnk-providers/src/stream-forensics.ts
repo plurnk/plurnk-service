@@ -98,7 +98,7 @@ export const RETRYABLE_MALFORMED_FINISH_REASONS: ReadonlySet<string> = new Set([
 const LEADING_THINK_ENVELOPE = /^(?:\s*<think>[\s\S]*?<\/think>\s*)+/;
 const SINGLE_LINE_FENCE = /^[ \t]*(`{3,}|~{3,})[ \t]*([^`~\s].*?)[ \t]*\1[ \t]*$/;
 const OPEN_FENCE = /^[ \t]*(`{3,}|~{3,})[ \t]*([^`~\s].*)$/;
-const CLOSE_FENCE = /^[ \t]*(`{3,}|~{3,})[ \t]*$/;
+const CLOSE_FENCE = /^[ \t]*(`{3,}|~{3,})[^\w\s`~]?[ \t]*$/;
 
 // {§provider-failure-normalization} A response whose visible content consists entirely of one or more
 // balanced, closed operation fences (with no unclosed fence and no trailing unfenced text) has already

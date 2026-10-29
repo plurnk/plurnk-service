@@ -1905,5 +1905,110 @@ test("{§outside-text} (#478) a cut too deep to parse names the truncation, neve
         assert.doesNotMatch(provider.packets[1], /Parser: /, "the parser's symptom never blames the model for the ceiling's cut");
     } finally { await db.close(); }
 });
+
+test("{§parse-recovery} {§provider-failure-normalization} {§outside-text}: ModelProvider SSE stream composes thinking-only turns, glitched closers with vendor finish errors, and retry closers at token ceiling without strikes or body corruption", async () => {
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
+    try {
+        let call = 0;
+        const sse = (chunks: unknown[]) => new Response(
+            [...chunks.map((chunk) => `data: ${JSON.stringify(chunk)}`), "data: [DONE]"].join("\n\n"),
+            { status: 200, headers: { "content-type": "text/event-stream" } },
+        );
+        const provider = new ModelProvider({
+            model: "seam-witness",
+            url: "https://provider.test/v1/chat/completions",
+            contextWindow: 100_000,
+            fetch: async () => {
+                call++;
+                if (call === 1) {
+                    return sse([
+                        {
+                            id: "turn-1",
+                            object: "chat.completion.chunk",
+                            created: 1,
+                            model: "seam-witness",
+                            choices: [{ index: 0, delta: { reasoning_content: "Planning before emitting operations." }, finish_reason: null }],
+                        },
+                        {
+                            id: "turn-1",
+                            object: "chat.completion.chunk",
+                            created: 2,
+                            model: "seam-witness",
+                            choices: [{ index: 0, delta: { content: "" }, finish_reason: "stop" }],
+                            usage: { prompt_tokens: 10, completion_tokens: 6, total_tokens: 16, completion_tokens_details: { reasoning_tokens: 6 } },
+                        },
+                    ]);
+                }
+                if (call === 2) {
+                    return sse([
+                        {
+                            id: "turn-2",
+                            object: "chat.completion.chunk",
+                            created: 3,
+                            model: "seam-witness",
+                            choices: [{
+                                index: 0,
+                                delta: { content: "````EDIT (workspace:///seams.md)\nrepaired\n````*\n\n```NOTE\nkept\n```*" },
+                                finish_reason: "MALFORMED_RESPONSE",
+                            }],
+                            usage: { prompt_tokens: 14, completion_tokens: 12, total_tokens: 26 },
+                        },
+                    ]);
+                }
+                return sse([
+                    {
+                        id: "turn-3",
+                        object: "chat.completion.chunk",
+                        created: 4,
+                        model: "seam-witness",
+                        choices: [{
+                            index: 0,
+                            delta: { content: "````SEND [200]\nall seams green\n```!] Nail it.\n````" },
+                            finish_reason: "length",
+                        }],
+                        usage: { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28 },
+                    },
+                ]);
+            },
+            fetchTimeoutMs: 1_000,
+            operationTimeoutMs: 5_000,
+            temperature: 0.2,
+            repeatPenalty: 1.15,
+            effort: { mode: "off", budget: null },
+            retryAttempts: 0,
+            source: "provider:seam-witness",
+        });
+
+        const result = await engine.runLoop({
+            provider,
+            workspaceId,
+            sessionId,
+            loopId,
+            maxStrikes: 3,
+            messages: [{ role: "user", content: "verify the provider-parser-engine seam" }],
+        });
+
+        assert.equal(result.result.status, 200);
+        assert.equal(result.reason, "external");
+        assert.equal(call, 3, "three clean turns with zero resamples or retries");
+        assert.equal(result.turnIds.length, 4, "initialization plus three admitted model turns");
+
+        const entry = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+            pathname: "/seams.md",
+            scheme: "workspace",
+            name: "body",
+        });
+        assert.equal(entry?.content, "repaired");
+
+        const rows = await db.engine_render_log.all<{ op: string; origin: string; tx: string; rx: string }>({ session_id: sessionId });
+        assert.equal(rows.filter(({ op, origin }) => op === "error" && origin === "model").length, 0, "neither glitched closers nor retry closers produce parser/model error rows");
+        const emptyTurnRow = rows.find(({ op, origin }) => op === "error" && origin === "_plurnk");
+        assert.match(emptyTurnRow?.rx ?? "", /no-operation/, "the thinking-only turn records one recoverable no-operation rail prompt");
+        const send = rows.find(({ op, origin }) => op === "SEND" && origin === "model");
+        assert.equal(JSON.parse(send!.tx).body?.raw, "all seams green", "the retry closer is stripped before SEND body extraction");
+    } finally {
+        await db.close();
+    }
+});
 });
 

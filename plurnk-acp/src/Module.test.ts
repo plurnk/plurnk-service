@@ -1144,6 +1144,46 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 });
                 await waitFor(() => updates.some((u) => u.sessionUpdate === "state_update" && u.state === "idle"));
                 assert.ok(updates.some((u) => u.sessionUpdate === "state_update" && u.state === "idle"));
+
+                // Pre-loop refusal in seam.runLoop must broadcast a terminal state_update: idle (stopReason: refusal) after running
+                updates.length = 0;
+                const origRunLoop = h.port.runLoop.bind(h.port);
+                h.port.runLoop = async () => ({
+                    action: "enqueued_new_loop",
+                    loopId: 0,
+                    status: 409,
+                    problem: {
+                        type: "https://problems.plurnk.xyz/daemon/provider/model-not-configured",
+                        title: "Model not configured",
+                        status: 409,
+                        detail: "No model is selected for this session.",
+                    },
+                });
+                try {
+                    await assert.rejects(
+                        () =>
+                            ctx.request(methods.agent.session.prompt, {
+                                sessionId: "1#user",
+                                prompt: [{ type: "text", text: "Fail pre-loop" }],
+                            }),
+                        /No model is selected for this session\./,
+                    );
+                    await waitFor(() =>
+                        updates.some(
+                            (u) =>
+                                u.sessionUpdate === "state_update" &&
+                                u.state === "idle" &&
+                                u.stopReason === "refusal",
+                        ),
+                    );
+                    const lastState = updates
+                        .toReversed()
+                        .find((u) => u.sessionUpdate === "state_update");
+                    assert.equal(lastState?.sessionUpdate, "state_update");
+                    assert.equal((lastState as Extract<SessionUpdate, { sessionUpdate: "state_update" }>).state, "idle");
+                } finally {
+                    h.port.runLoop = origRunLoop;
+                }
             });
         } finally {
             await h.close();

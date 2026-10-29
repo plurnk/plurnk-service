@@ -605,18 +605,52 @@ export const createConnectionAgent = (
             ]);
 
             const maxTurns = plurnkMeta.maxTurns ?? opts.maxTurns;
-            const ack = await seam.runLoop({
-                workspaceId: bound.workspaceId,
-                sessionId: bound.sessionId,
-                prompt: text,
-                source: messageAddress,
-                messageAddress,
-                ...(maxTurns !== undefined ? { maxTurns } : {}),
-                ...(plurnkMeta.openPaths !== undefined ? { openPaths: plurnkMeta.openPaths } : {}),
-                ...(plurnkMeta.envelope !== undefined ? { envelope: plurnkMeta.envelope } : {}),
-            });
+            const broadcastPromptRefusal = (problem: ProblemDetails): void => {
+                broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
+                    {
+                        sessionId: s.acpSessionId,
+                        update: {
+                            sessionUpdate: "state_update",
+                            state: "idle",
+                            stopReason: "refusal",
+                            _meta: {
+                                plurnk: {
+                                    terminal: {
+                                        status: problem.status ?? 500,
+                                        turnCount: 0,
+                                        elapsedMs: 0,
+                                        reason: "refusal",
+                                        problem,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                ]);
+            };
+            let ack: Awaited<ReturnType<typeof seam.runLoop>>;
+            try {
+                ack = await seam.runLoop({
+                    workspaceId: bound.workspaceId,
+                    sessionId: bound.sessionId,
+                    prompt: text,
+                    source: messageAddress,
+                    messageAddress,
+                    ...(maxTurns !== undefined ? { maxTurns } : {}),
+                    ...(plurnkMeta.openPaths !== undefined ? { openPaths: plurnkMeta.openPaths } : {}),
+                    ...(plurnkMeta.envelope !== undefined ? { envelope: plurnkMeta.envelope } : {}),
+                });
+            } catch (runErr) {
+                const reqErr = toRequestError(runErr);
+                const problemData =
+                    Problems.fromError(runErr) ??
+                    Problems.create("module:acp", "prompt-failed", 500, reqErr.message);
+                broadcastPromptRefusal(problemData);
+                throw reqErr;
+            }
 
             if (ack.problem !== undefined) {
+                broadcastPromptRefusal(ack.problem);
                 throw new RequestError(-32000, ack.problem.detail, ack.problem);
             }
 

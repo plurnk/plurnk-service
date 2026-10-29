@@ -79,7 +79,7 @@ const freePort = () => new Promise((accept, reject) => {
     });
 });
 
-const runClient = (file, args, options) => new Promise((accept, reject) => {
+const runClientOutcome = (file, args, options) => new Promise((accept, reject) => {
     const child = spawn(file, args, {
         cwd: options.cwd,
         env: options.env,
@@ -91,14 +91,22 @@ const runClient = (file, args, options) => new Promise((accept, reject) => {
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk) => { stdout += chunk; });
     child.stderr.on("data", (chunk) => { stderr += chunk; });
-    const timer = setTimeout(() => child.kill("SIGTERM"), options.timeout);
+    const timer = setTimeout(() => {
+        child.kill("SIGTERM");
+        reject(new Error(`client timed out after ${options.timeout}ms: ${args.join(" ")}\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+    }, options.timeout);
     child.once("error", reject);
     child.once("exit", (code, signal) => {
         clearTimeout(timer);
-        if (code === 0) accept({ stdout, stderr });
-        else reject(new Error(`client exited ${code ?? signal}\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+        accept({ code, signal, stdout, stderr });
     });
 });
+
+const runClient = async (file, args, options) => {
+    const { code, signal, stdout, stderr } = await runClientOutcome(file, args, options);
+    if (code === 0) return { stdout, stderr };
+    throw new Error(`client exited ${code ?? signal}\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+};
 
 const pack = async (cwd, args = []) => {
     const packed = packRecords((await run("npm", [
@@ -161,6 +169,12 @@ const spawnInstalledTui = (clientBin, args, env) => {
                 throw new Error(`installed TUI exited ${result.exitCode}\n${output}`);
             }
         },
+        waitExit: (timeout = 10_000) => Promise.race([
+            exited,
+            new Promise((_, reject) => setTimeout(() => reject(new Error(
+                `installed TUI did not exit within ${timeout}ms\n${output.slice(-2_000)}`,
+            )), timeout)),
+        ]),
         kill: () => {
             try { term.kill(); } catch { /* already exited */ }
         },
@@ -273,6 +287,7 @@ try {
         "--session", "Cli_Session",
         "--project-root", "",
         "--model", "journey",
+        "--env", "CONFORMANCE_VAR=admitted_from_cli",
         "--max-turns", "2",
         "--timeout", "20",
         "Exercise the installed one-shot interface.",
@@ -290,7 +305,44 @@ try {
         || JSON.stringify(modelOps) !== JSON.stringify(["SEND"])) {
         throw new Error(`installed CLI returned the wrong semantic record\n${cli.stdout}`);
     }
-    process.stdout.write("installed one-shot CLI journey GREEN: workspace + Turn 0 + delivered response + observed completion\n");
+    const envInspected = await runClient(process.execPath, [
+        clientBin, "--workspace", "installed-cli", "--session", "Cli_Session", "env", "list",
+    ], { cwd: install, env: clientEnv, timeout: 30_000 });
+    if (!/CONFORMANCE_VAR\s+active\s+admitted_from_cli/u.test(envInspected.stdout)) {
+        throw new Error(`installed CLI did not persist --env on session admission: ${envInspected.stdout}`);
+    }
+
+    // Pre-admission startup refusals (--model, --effort, --env) must exit 1 cleanly without hanging in CLI or PTY TUI.
+    const badModelCli = await runClientOutcome(clientBin, [
+        "--workspace", "installed-cli", "--session", "granite", "--project-root", "", "--model", "granite", "Hello",
+    ], { cwd: install, env: clientEnv, timeout: 10_000 });
+    if (badModelCli.code !== 1 || !badModelCli.stderr.includes("Provider alias 'granite' is not declared.")) {
+        throw new Error(`bad --model in CLI did not exit 1 cleanly: code=${badModelCli.code} stderr=${badModelCli.stderr}`);
+    }
+    const badEffortCli = await runClientOutcome(clientBin, [
+        "--workspace", "installed-cli", "--session", "granite", "--project-root", "", "--model", "journey", "--effort", "bogus", "Hello",
+    ], { cwd: install, env: clientEnv, timeout: 10_000 });
+    if (badEffortCli.code !== 1 || !/effort|thought_level|bogus/iu.test(badEffortCli.stderr)) {
+        throw new Error(`bad --effort in CLI did not exit 1 cleanly: code=${badEffortCli.code} stderr=${badEffortCli.stderr}`);
+    }
+    const badEnvCli = await runClientOutcome(clientBin, [
+        "--workspace", "installed-cli", "--session", "granite", "--project-root", "", "--env", "PLURNK_MODEL=illegal", "Hello",
+    ], { cwd: install, env: clientEnv, timeout: 10_000 });
+    if (badEnvCli.code !== 1 || !/PLURNK_MODEL|reserved/iu.test(badEnvCli.stderr)) {
+        throw new Error(`reserved --env in CLI did not exit 1 cleanly: code=${badEnvCli.code} stderr=${badEnvCli.stderr}`);
+    }
+    tui = spawnInstalledTui(clientBin, [
+        "--workspace", "installed-tui", "--session", "granite", "--project-root", "", "--model", "granite",
+    ], clientEnv);
+    const badTuiResult = await tui.waitExit(10_000);
+    const badTuiOutput = tui.output();
+    tui = undefined;
+    if (badTuiResult.exitCode !== 1
+        || !badTuiOutput.includes("Provider alias 'granite' is not declared.")
+        || badTuiOutput.includes("\x1b[?2004h")) {
+        throw new Error(`bad --model in PTY TUI did not exit 1 cleanly without raw-mode queries: exit=${badTuiResult.exitCode}\n${badTuiOutput}`);
+    }
+    process.stdout.write("installed one-shot CLI journey GREEN: workspace + Turn 0 + delivered response + observed completion + startup refusal gates\n");
     // {§file-snapshot-revision} {§file-snapshot-revision}: real packed code, SQLite and disk, with client acceptance.
     const files = await runClient(clientBin, [
         "--json", "--yolo", "--workspace", "installed-files", "--session", "File_Session",
@@ -343,6 +395,10 @@ try {
     assertIncludes(tuiOutput, "The installed interactive journey is complete.", "installed TUI completion reply");
     tui.write("/skills\r");
     await tui.waitFor(/plurnk\s+active/);
+    tui.write("/model granite\r");
+    await tui.waitFor(wrapped("Provider alias 'granite' is not declared."));
+    tui.write("/model journey\r");
+    await tui.waitFor(/model \(Model\):/);
     await tui.exit();
     tui = undefined;
     process.stdout.write("installed interactive TUI journey GREEN: Functionality + message/indexed READ + references + reasoning + NOTE + SEND + status\n");
