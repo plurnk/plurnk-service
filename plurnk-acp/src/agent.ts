@@ -340,10 +340,32 @@ export const createConnectionAgent = (
             notifyPeerSession(peer, bound.acpSessionId, currentState);
 
             for (const proposal of sessionProposals) {
+                if (proposal.sessionId !== bound.sessionId) {
+                    const childRow = workspaceSessions.find((w) => w.id === proposal.sessionId);
+                    const childName = childRow?.name ?? proposal.session ?? String(proposal.sessionId);
+                    notifyPeerSession(peer, bound.acpSessionId, {
+                        sessionUpdate: "subagent_update",
+                        sessionId: formatSessionId(bound.workspaceId, childName),
+                        title: childName,
+                        capabilities: { cancel: {} },
+                        state: { state: "requires_action" },
+                    });
+                }
                 const gate = gates.openOrGet(bound.workspaceId, proposal.sessionId, "proposal", proposal);
                 gates.dispatchToPeer(gate, peer, bound, seam, peers, notifyPeerSession, broadcastSessionUpdate);
             }
             for (const interaction of sessionInteractions) {
+                if (interaction.sessionId !== bound.sessionId) {
+                    const childRow = workspaceSessions.find((w) => w.id === interaction.sessionId);
+                    const childName = childRow?.name ?? String(interaction.sessionId);
+                    notifyPeerSession(peer, bound.acpSessionId, {
+                        sessionUpdate: "subagent_update",
+                        sessionId: formatSessionId(bound.workspaceId, childName),
+                        title: childName,
+                        capabilities: { cancel: {} },
+                        state: { state: "requires_action" },
+                    });
+                }
                 const gate = gates.openOrGet(bound.workspaceId, interaction.sessionId, "interaction", undefined, interaction);
                 gates.dispatchToPeer(gate, peer, bound, seam, peers, notifyPeerSession, broadcastSessionUpdate);
             }

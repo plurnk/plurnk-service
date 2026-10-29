@@ -1,6 +1,6 @@
 // {§acp-action-binding} {§acp-daemon-client} `_plurnk/action` dispatch, discovery advertisement, and slash commands.
 
-import { RequestError, type SessionUpdate } from "@agentclientprotocol/sdk/experimental/v2/unstable";
+import { RequestError, methods, type SessionUpdate } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import {
     Validator,
     formatServiceUpdateReport,
@@ -817,17 +817,55 @@ export const handlePlurnkAction = async (
             },
         });
     }
-    if (registered.scope === "session") {
-        return await seam.invokeModuleAction(kind, params, {
-            scope: "session",
-            workspaceId: target.workspaceId,
-            sessionId: target.sessionId,
-        });
+    const actionResult =
+        registered.scope === "session"
+            ? await seam.invokeModuleAction(kind, params, {
+                  scope: "session",
+                  workspaceId: target.workspaceId,
+                  sessionId: target.sessionId,
+              })
+            : await seam.invokeModuleAction(kind, params, {
+                  scope: "workspace",
+                  workspaceId: target.workspaceId,
+              });
+    if (peer !== undefined && peer.client !== null) {
+        if (
+            kind === "workspace.mcp.oauth.begin" &&
+            isRecord(actionResult) &&
+            isRecord(actionResult.authorization) &&
+            typeof actionResult.authorization.url === "string"
+        ) {
+            const alias =
+                typeof actionResult.alias === "string"
+                    ? actionResult.alias
+                    : typeof params.alias === "string"
+                      ? params.alias
+                      : "mcp";
+            void peer.client
+                .request(methods.client.elicitation.create, {
+                    scope: "session",
+                    sessionId: sessionHint,
+                    mode: "url",
+                    elicitationId: `mcp-oauth:${target.workspaceId}:${alias}`,
+                    url: actionResult.authorization.url,
+                    message: `Authorize MCP server '${alias}'`,
+                })
+                .catch(() => undefined);
+        } else if (kind === "workspace.mcp.oauth.complete") {
+            const alias =
+                isRecord(actionResult) && typeof actionResult.alias === "string"
+                    ? actionResult.alias
+                    : typeof params.alias === "string"
+                      ? params.alias
+                      : "mcp";
+            void peer.client
+                .notify(methods.client.elicitation.complete, {
+                    elicitationId: `mcp-oauth:${target.workspaceId}:${alias}`,
+                })
+                .catch(() => undefined);
+        }
     }
-    return await seam.invokeModuleAction(kind, params, {
-        scope: "workspace",
-        workspaceId: target.workspaceId,
-    });
+    return actionResult;
 };
 
 export const executeSlashCommand = async (

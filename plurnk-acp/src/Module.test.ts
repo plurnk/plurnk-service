@@ -880,6 +880,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
 
                     assert.equal(permissionRequests1.length, 1);
                     assert.equal(permissionRequests1[0]?.subject?.type, "command");
+                    if (permissionRequests1[0]?.subject?.type === "command") {
+                        assert.equal(permissionRequests1[0].subject.toolCallId, "proposal:501");
+                        assert.equal(permissionRequests1[0].subject.terminalId, "term:501");
+                    }
                     assert.deepEqual(
                         permissionRequests1[0]?.options.map((o) => ({ optionId: o.optionId, kind: o.kind })),
                         [
@@ -1353,6 +1357,237 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 } finally {
                     h.port.runLoop = origRunLoop;
                 }
+            });
+        } finally {
+            await h.close();
+        }
+    });
+
+    test("{§acp-body-reference} {§acp-plurnk-metadata} {§acp-proposal-resolve} {§acp-topology-scope}: DiffChange operations, 1-based ToolCallLocation.line, URL elicitation for MCP OAuth, and subagent_update ordering", async () => {
+        const h = await createHarness();
+        try {
+            h.port.sessions.push({
+                id: 2,
+                workspaceId: 1,
+                name: "worker",
+                created_at: "2026-10-25T00:00:00.000Z",
+                origin: "model",
+                owner: "acp://operator",
+                parentSessionId: 1,
+                kind: "work",
+                lifecycle: "running",
+                hidden_at: null,
+            });
+            const origListModuleActions = h.port.listModuleActions.bind(h.port);
+            h.port.listModuleActions = () => [
+                ...origListModuleActions(),
+                {
+                    name: "workspace.mcp.oauth.begin",
+                    scope: "workspace",
+                    inputSchema: {
+                        type: "object",
+                        properties: { alias: { type: "string" } },
+                    },
+                    outputSchema: { type: "object" },
+                },
+                {
+                    name: "workspace.mcp.oauth.complete",
+                    scope: "workspace",
+                    inputSchema: {
+                        type: "object",
+                        properties: { alias: { type: "string" }, callbackUrl: { type: "string" } },
+                    },
+                    outputSchema: { type: "object" },
+                },
+            ];
+            const origInvoke = h.port.invokeModuleAction.bind(h.port);
+            h.port.invokeModuleAction = async (name, params, ctx) => {
+                if (name === "workspace.mcp.oauth.begin") {
+                    return {
+                        status: 202,
+                        alias: "github",
+                        authorization: { url: "https://auth.example.com/authorize?state=xyz" },
+                    };
+                }
+                if (name === "workspace.mcp.oauth.complete") {
+                    return {
+                        status: 202,
+                        alias: "github",
+                    };
+                }
+                return origInvoke(name, params, ctx);
+            };
+
+            const updates: SessionUpdate[] = [];
+            const urlElicitations: CreateElicitationRequest[] = [];
+            const completedElicitations: string[] = [];
+            const stream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
+            const clientApp = createAcpClient()
+                .onNotification(methods.client.session.update, ({ params }) => {
+                    updates.push(params.update);
+                })
+                .onRequest(methods.client.elicitation.create, async ({ params }) => {
+                    urlElicitations.push(params);
+                    return { action: "accept" };
+                })
+                .onNotification(methods.client.elicitation.complete, ({ params }) => {
+                    completedElicitations.push(params.elicitationId);
+                });
+
+            await clientApp.connectWith(stream, async (ctx) => {
+                await ctx.request(methods.agent.session.resume, {
+                    sessionId: "1#user",
+                    cwd: "/workspace/alpha",
+                });
+
+                // 1. DiffChange: add (201), delete (KILL), move (MOVE), and 1-based line on READ/EDIT
+                h.port.emitEvent(1, "log/entry", {
+                    entry: makeLogEntry({
+                        id: 801,
+                        session_id: 1,
+                        sequence: 1,
+                        op: "EDIT",
+                        pathname: "/workspace/alpha/created.ts",
+                        status_rx: 201,
+                        tx: { op: "EDIT", lineMarker: { marks: [12] } },
+                        attrs: { original: "", patched: "export const x = 1;\n" },
+                        rx: { status: 201 },
+                    }),
+                });
+                h.port.emitEvent(1, "log/entry", {
+                    entry: makeLogEntry({
+                        id: 802,
+                        session_id: 1,
+                        sequence: 2,
+                        op: "KILL",
+                        pathname: "/workspace/alpha/deleted.ts",
+                        status_rx: 204,
+                        attrs: { original: "old\n", patched: "" },
+                        rx: { status: 204 },
+                    }),
+                });
+                h.port.emitEvent(1, "log/entry", {
+                    entry: makeLogEntry({
+                        id: 803,
+                        session_id: 1,
+                        sequence: 3,
+                        op: "MOVE",
+                        pathname: "/workspace/alpha/new-name.ts",
+                        status_rx: 200,
+                        attrs: { oldPath: "/workspace/alpha/old-name.ts", to: "/workspace/alpha/new-name.ts" },
+                        rx: { status: 200 },
+                    }),
+                });
+
+                await waitFor(() =>
+                    updates.some((u) => u.sessionUpdate === "tool_call_update" && u.toolCallId === "1/1/3"),
+                );
+
+                const addCall = updates.find(
+                    (u): u is Extract<SessionUpdate, { sessionUpdate: "tool_call_update" }> =>
+                        u.sessionUpdate === "tool_call_update" && u.toolCallId === "1/1/1",
+                );
+                assert.deepEqual(addCall?.locations, [{ path: "/workspace/alpha/created.ts", line: 12 }]);
+                const addDiff = addCall?.content?.find((c) => c.type === "diff");
+                assert.deepEqual(
+                    addDiff && "changes" in addDiff ? addDiff.changes : undefined,
+                    [{ operation: "add", path: "/workspace/alpha/created.ts" }],
+                );
+
+                const delCall = updates.find(
+                    (u): u is Extract<SessionUpdate, { sessionUpdate: "tool_call_update" }> =>
+                        u.sessionUpdate === "tool_call_update" && u.toolCallId === "1/1/2",
+                );
+                const delDiff = delCall?.content?.find((c) => c.type === "diff");
+                assert.deepEqual(
+                    delDiff && "changes" in delDiff ? delDiff.changes : undefined,
+                    [{ operation: "delete", path: "/workspace/alpha/deleted.ts" }],
+                );
+
+                const moveCall = updates.find(
+                    (u): u is Extract<SessionUpdate, { sessionUpdate: "tool_call_update" }> =>
+                        u.sessionUpdate === "tool_call_update" && u.toolCallId === "1/1/3",
+                );
+                const moveDiff = moveCall?.content?.find((c) => c.type === "diff");
+                assert.deepEqual(
+                    moveDiff && "changes" in moveDiff ? moveDiff.changes : undefined,
+                    [
+                        {
+                            operation: "move",
+                            oldPath: "/workspace/alpha/old-name.ts",
+                            path: "/workspace/alpha/new-name.ts",
+                        },
+                    ],
+                );
+
+                // 2. URL-mode elicitation for workspace.mcp.oauth.begin / complete
+                await ctx.request("_plurnk/action", {
+                    sessionId: "1#user",
+                    kind: "workspace.mcp.oauth.begin",
+                    params: { alias: "github" },
+                });
+                await waitFor(() => urlElicitations.length === 1);
+                assert.equal(urlElicitations[0]?.mode, "url");
+                if (urlElicitations[0]?.mode === "url") {
+                    assert.equal(urlElicitations[0].url, "https://auth.example.com/authorize?state=xyz");
+                    assert.equal(urlElicitations[0].elicitationId, "mcp-oauth:1:github");
+                }
+
+                await ctx.request("_plurnk/action", {
+                    sessionId: "1#user",
+                    kind: "workspace.mcp.oauth.complete",
+                    params: { alias: "github", callbackUrl: "http://127.0.0.1:9999/cb?code=1&state=xyz" },
+                });
+                await waitFor(() => completedElicitations.includes("mcp-oauth:1:github"));
+
+                // 3. Descendant log/entry followed immediately by loop/terminated preserves FIFO subagent_update order
+                updates.length = 0;
+                h.port.emitEvent(1, "log/entry", {
+                    entry: makeLogEntry({
+                        id: 804,
+                        session_id: 2,
+                        session_name: "worker",
+                        loop_seq: 1,
+                        turn_seq: 1,
+                        sequence: 1,
+                        origin: "model",
+                        op: "SEND",
+                        attrs: { body: "Done working" },
+                        rx: { status: 200, content: "Done working" },
+                    }),
+                });
+                h.port.emitEvent(1, "loop/terminated", {
+                    sessionId: 2,
+                    loopId: 2,
+                    turnIds: [1],
+                    hitMaxTurns: false,
+                    result: { status: 200 },
+                });
+
+                await waitFor(
+                    () =>
+                        updates.filter((u) => u.sessionUpdate === "subagent_update").length >= 2 &&
+                        updates.some((u) => u.sessionUpdate === "session_message"),
+                );
+                const subagentIdx0 = updates.findIndex(
+                    (u) =>
+                        SessionUpdate.isSubagentUpdate(u) &&
+                        u.state !== null &&
+                        typeof u.state === "object" &&
+                        "state" in u.state &&
+                        u.state.state === "running",
+                );
+                const msgIdx = updates.findIndex((u) => u.sessionUpdate === "session_message");
+                const subagentIdx1 = updates.findIndex(
+                    (u) =>
+                        SessionUpdate.isSubagentUpdate(u) &&
+                        u.state !== null &&
+                        typeof u.state === "object" &&
+                        "state" in u.state &&
+                        u.state.state === "idle",
+                );
+                assert.ok(subagentIdx0 >= 0 && msgIdx > subagentIdx0, "running subagent_update precedes session_message");
+                assert.ok(subagentIdx1 > msgIdx, "idle subagent_update follows child session_message");
             });
         } finally {
             await h.close();

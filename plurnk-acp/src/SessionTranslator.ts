@@ -22,11 +22,12 @@ import {
     type ReasoningEventNotification,
     type TerminatedNotification,
 } from "@plurnk/plurnk-contracts";
-import { buildUnifiedDiff } from "./diff.ts";
+import { buildDiffChanges, buildUnifiedDiff } from "./diff.ts";
 import {
     attrRecord,
     cleanReceipt,
     extractMessageId,
+    extractStartLine,
     invocationCoordinate,
     isResponseMessage,
     parseJsonOrValue,
@@ -278,7 +279,13 @@ export default class SessionTranslator {
                 const path = address ?? entry.pathname ?? "";
                 content.push({
                     type: "diff",
-                    changes: [{ operation: "modify", path }],
+                    changes: buildDiffChanges({
+                        op: entry.op,
+                        path,
+                        statusRx,
+                        attrs,
+                        parsedTx,
+                    }),
                     patch: {
                         format: "git_patch",
                         text: attrs.patch,
@@ -288,12 +295,33 @@ export default class SessionTranslator {
                 const path = address ?? entry.pathname ?? "";
                 content.push({
                     type: "diff",
-                    changes: [{ operation: "modify", path }],
+                    changes: buildDiffChanges({
+                        op: entry.op,
+                        path,
+                        statusRx,
+                        attrs,
+                        parsedTx,
+                    }),
                     patch: {
                         format: "git_patch",
                         text: buildUnifiedDiff(path, attrs.original, attrs.patched),
                     },
                 });
+            } else if (entry.op === "MOVE" || entry.op === "COPY") {
+                const path = address ?? entry.pathname ?? "";
+                const changes = buildDiffChanges({
+                    op: entry.op,
+                    path,
+                    statusRx,
+                    attrs,
+                    parsedTx,
+                });
+                if (changes.some((c) => c.operation === "move" || c.operation === "copy")) {
+                    content.push({
+                        type: "diff",
+                        changes,
+                    });
+                }
             }
 
             if (typeof attrs.stream === "string") {
@@ -323,6 +351,8 @@ export default class SessionTranslator {
                 ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(`log:///${coordinate}/${entry.op}`)}`
                 : undefined;
 
+            const startLine = extractStartLine(attrs, parsedTx, parsedRx);
+
             updates.push({
                 sessionId: this.#acpSessionId,
                 update: {
@@ -332,7 +362,16 @@ export default class SessionTranslator {
                     title,
                     kind,
                     status,
-                    ...(address === null ? {} : { locations: [{ path: address }] }),
+                    ...(address === null
+                        ? {}
+                        : {
+                              locations: [
+                                  {
+                                      path: address,
+                                      ...(startLine !== undefined ? { line: startLine } : {}),
+                                  },
+                              ],
+                          }),
                     rawInput,
                     rawOutput: receipt,
                     ...(content.length === 0 ? {} : { content }),

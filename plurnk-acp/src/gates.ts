@@ -18,9 +18,10 @@ import {
     type ProposalResolution,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
-import { buildUnifiedDiff } from "./diff.ts";
+import { buildDiffChanges, buildUnifiedDiff } from "./diff.ts";
+import { extractStartLine } from "./log-entry-projection.ts";
 import { OWNER_ADDRESS, type AcpPeer, type BoundSession } from "./sessions.ts";
-import SessionTranslator from "./SessionTranslator.ts";
+import SessionTranslator, { terminalIdForEntry } from "./SessionTranslator.ts";
 
 interface Resolution extends ProposalResolution {
     readonly logEntryId: number;
@@ -59,16 +60,25 @@ const proposalToolCall = (
     const kind = subject?.type === "tool_call"
         ? subject.kind
         : SessionTranslator.toolKindOf(proposal.op, proposal.target?.scheme ?? null);
-    const locations = subject?.type === "tool_call"
-        ? subject.locations
+    const startLine = extractStartLine(attrs);
+    const locations = subject?.type === "tool_call" && subject.locations !== undefined
+        ? subject.locations.map((loc, idx) =>
+              idx === 0 && startLine !== undefined && !("line" in loc)
+                  ? { ...loc, line: startLine }
+                  : loc,
+          )
         : target !== null
-            ? [{ path: target }]
+            ? [{ path: target, ...(startLine !== undefined ? { line: startLine } : {}) }]
             : undefined;
     const content: ToolCallContent[] = [];
     if (subject?.type === "tool_call" && subject.diff !== undefined) {
         content.push({
             type: "diff",
-            changes: [{ operation: "modify", path: subject.diff.path }],
+            changes: buildDiffChanges({
+                op: proposal.op,
+                path: subject.diff.path,
+                attrs,
+            }),
             patch: {
                 format: "git_patch",
                 text: subject.diff.patch,
@@ -78,7 +88,11 @@ const proposalToolCall = (
         const path = target ?? "";
         content.push({
             type: "diff",
-            changes: [{ operation: "modify", path }],
+            changes: buildDiffChanges({
+                op: proposal.op,
+                path,
+                attrs,
+            }),
             patch: {
                 format: "git_patch",
                 text: attrs.patch,
@@ -88,7 +102,11 @@ const proposalToolCall = (
         const path = target ?? "";
         content.push({
             type: "diff",
-            changes: [{ operation: "modify", path }],
+            changes: buildDiffChanges({
+                op: proposal.op,
+                path,
+                attrs,
+            }),
             patch: {
                 format: "git_patch",
                 text: buildUnifiedDiff(path, attrs.original, attrs.patched),
@@ -149,6 +167,8 @@ const proposalPermissionRequest = (
                 type: "command",
                 command: proposal.subject.command,
                 cwd: proposal.subject.cwd,
+                toolCallId: proposalKey(proposal.logEntryId),
+                terminalId: terminalIdForEntry(proposal.logEntryId),
             },
             options: [...STANDARD_PERMISSION_OPTIONS],
             _meta: {

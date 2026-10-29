@@ -1,7 +1,7 @@
 // {§acp-plurnk-metadata} Pure log-entry field extraction and response classification for ACP v2 translation.
 
 import type { ToolCallContent } from "@agentclientprotocol/sdk/experimental/v2/unstable";
-import { isRecord, type LogEntryWire } from "@plurnk/plurnk-contracts";
+import { isRecord, isSafeInteger, type LogEntryWire } from "@plurnk/plurnk-contracts";
 
 const MODEL_FACTS: ReadonlySet<string> = new Set(["lineAnchors", "lineAnchorIdentity", "lineNumberWidth"]);
 
@@ -120,4 +120,57 @@ export const isResponseMessage = (
     if (attrs.kind === "response" || attrs.kind === "message") return true;
     if (entry.op === "SEND" && (entry.scheme === null || entry.scheme === undefined || entry.scheme === "acp") && !entry.pathname) return true;
     return false;
+};
+
+export const extractStartLine = (
+    attrs: Readonly<Record<string, unknown>>,
+    parsedTx?: unknown,
+    parsedRx?: unknown,
+): number | undefined => {
+    for (const candidate of [attrs.line, attrs.startLine]) {
+        if (isSafeInteger(candidate) && candidate >= 1) {
+            return candidate;
+        }
+    }
+    if (isRecord(parsedTx) && isRecord(parsedTx.lineMarker) && Array.isArray(parsedTx.lineMarker.marks)) {
+        const firstMark = parsedTx.lineMarker.marks[0];
+        if (isSafeInteger(firstMark) && firstMark >= 1) {
+            return firstMark;
+        }
+        if (typeof firstMark === "string") {
+            const match = /^:?(\d+)/u.exec(firstMark);
+            if (match !== null) {
+                const parsed = Number.parseInt(match[1] ?? "", 10);
+                if (isSafeInteger(parsed) && parsed >= 1) return parsed;
+            }
+        }
+    }
+    if (isRecord(parsedRx)) {
+        if (isRecord(parsedRx.range) && parsedRx.range.unit === "line" && Array.isArray(parsedRx.range.returned)) {
+            const start = parsedRx.range.returned[0];
+            if (isSafeInteger(start) && start >= 1) {
+                return start;
+            }
+        }
+        if (isRecord(parsedRx.receipt)) {
+            const effectObj = isRecord(parsedRx.receipt.effect)
+                ? parsedRx.receipt.effect
+                : isRecord(parsedRx.receipt.replacement)
+                  ? parsedRx.receipt.replacement
+                  : null;
+            const span = typeof effectObj?.result === "string"
+                ? effectObj.result
+                : typeof parsedRx.receipt.requested === "string"
+                  ? parsedRx.receipt.requested
+                  : null;
+            if (span !== null) {
+                const match = /^:?(\d+)/u.exec(span);
+                if (match !== null) {
+                    const parsed = Number.parseInt(match[1] ?? "", 10);
+                    if (isSafeInteger(parsed) && parsed >= 1) return parsed;
+                }
+            }
+        }
+    }
+    return undefined;
 };

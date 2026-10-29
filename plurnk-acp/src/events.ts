@@ -41,6 +41,28 @@ const isClientInteractionProjection = (v: unknown): v is ClientInteractionProjec
 const isNoticePayload = (v: unknown): v is { readonly notice: Notice } =>
     isRecord(v) && isRecord(v.notice);
 
+const workspaceTaskQueues = new WeakMap<DaemonEventDispatchContext, Map<number, Promise<void>>>();
+
+const enqueueWorkspaceSessionsTask = (
+    ctx: DaemonEventDispatchContext,
+    workspaceId: number,
+    fn: (sessions: Awaited<ReturnType<ApplicationPort["listSessions"]>>) => void,
+): void => {
+    let byWs = workspaceTaskQueues.get(ctx);
+    if (byWs === undefined) {
+        byWs = new Map();
+        workspaceTaskQueues.set(ctx, byWs);
+    }
+    const prev = byWs.get(workspaceId) ?? Promise.resolve();
+    const next = prev
+        .then(async () => {
+            const sessions = await ctx.seam.listSessions(workspaceId);
+            fn(sessions);
+        })
+        .catch(() => undefined);
+    byWs.set(workspaceId, next);
+};
+
 export interface DaemonEventDispatchContext {
     readonly seam: ApplicationPort;
     readonly peers: ReadonlySet<AcpPeer>;
@@ -108,41 +130,38 @@ export const dispatchDaemonEvent = (
                         subagentRunId: `ops://${sessionName}/${loopSeq}`,
                     },
                 };
-                void seam
-                    .listSessions(workspaceId)
-                    .then((sessions) => {
-                        for (const peer of peers) {
-                            const visited = new Set<BoundSession>();
-                            for (const session of peer.sessions.values()) {
-                                if (visited.has(session)) continue;
-                                visited.add(session);
-                                if (session.workspaceId !== workspaceId || !isDescendantSession(sessions, sessionId, session.sessionId)) {
-                                    continue;
-                                }
+                enqueueWorkspaceSessionsTask(ctx, workspaceId, (sessions) => {
+                    for (const peer of peers) {
+                        const visited = new Set<BoundSession>();
+                        for (const session of peer.sessions.values()) {
+                            if (visited.has(session)) continue;
+                            visited.add(session);
+                            if (session.workspaceId !== workspaceId || !isDescendantSession(sessions, sessionId, session.sessionId)) {
+                                continue;
+                            }
+                            notifyPeerSession(peer, session.acpSessionId, {
+                                sessionUpdate: "subagent_update",
+                                sessionId: childSessionId,
+                                title: sessionName,
+                                description: summary,
+                                capabilities: { cancel: {} },
+                                state: { state: "running" },
+                                _meta: childMeta,
+                            });
+                            if (entryRec.op === "SEND" && messageText.length > 0) {
+                                const isChildToParent = entryRec.origin === "model";
                                 notifyPeerSession(peer, session.acpSessionId, {
-                                    sessionUpdate: "subagent_update",
-                                    sessionId: childSessionId,
-                                    title: sessionName,
-                                    description: summary,
-                                    capabilities: { cancel: {} },
-                                    state: { state: "running" },
+                                    sessionUpdate: "session_message",
+                                    messageId: `session://${sessionName}#${coord}`,
+                                    senderSessionId: isChildToParent ? childSessionId : session.acpSessionId,
+                                    recipientSessionId: isChildToParent ? session.acpSessionId : childSessionId,
+                                    content: [{ type: "text", text: messageText }],
                                     _meta: childMeta,
                                 });
-                                if (entryRec.op === "SEND" && messageText.length > 0) {
-                                    const isChildToParent = entryRec.origin === "model";
-                                    notifyPeerSession(peer, session.acpSessionId, {
-                                        sessionUpdate: "session_message",
-                                        messageId: `session://${sessionName}#${coord}`,
-                                        senderSessionId: isChildToParent ? childSessionId : session.acpSessionId,
-                                        recipientSessionId: isChildToParent ? session.acpSessionId : childSessionId,
-                                        content: [{ type: "text", text: messageText }],
-                                        _meta: childMeta,
-                                    });
-                                }
                             }
                         }
-                    })
-                    .catch(() => undefined);
+                    }
+                });
             }
             break;
         }
@@ -240,28 +259,25 @@ export const dispatchDaemonEvent = (
                   : status >= 400
                     ? ({ state: "idle" as const, stopReason: "refusal" as const })
                     : ({ state: "idle" as const, stopReason: "end_turn" as const });
-            void seam
-                .listSessions(workspaceId)
-                .then((sessions) => {
-                    const sessionRow = sessions.find((w) => w.id === sessionId);
-                    const sessionName = sessionRow?.name ?? String(sessionId);
-                    for (const peer of peers) {
-                        const visited = new Set<BoundSession>();
-                        for (const session of peer.sessions.values()) {
-                            if (visited.has(session)) continue;
-                            visited.add(session);
-                            if (session.workspaceId !== workspaceId || !isDescendantSession(sessions, sessionId, session.sessionId)) {
-                                continue;
-                            }
-                            notifyPeerSession(peer, session.acpSessionId, {
-                                sessionUpdate: "subagent_update",
-                                sessionId: formatSessionId(workspaceId, sessionName),
-                                state: childState,
-                            });
+            enqueueWorkspaceSessionsTask(ctx, workspaceId, (sessions) => {
+                const sessionRow = sessions.find((w) => w.id === sessionId);
+                const sessionName = sessionRow?.name ?? String(sessionId);
+                for (const peer of peers) {
+                    const visited = new Set<BoundSession>();
+                    for (const session of peer.sessions.values()) {
+                        if (visited.has(session)) continue;
+                        visited.add(session);
+                        if (session.workspaceId !== workspaceId || !isDescendantSession(sessions, sessionId, session.sessionId)) {
+                            continue;
                         }
+                        notifyPeerSession(peer, session.acpSessionId, {
+                            sessionUpdate: "subagent_update",
+                            sessionId: formatSessionId(workspaceId, sessionName),
+                            state: childState,
+                        });
                     }
-                })
-                .catch(() => undefined);
+                }
+            });
             break;
         }
         case "loop/proposal": {
@@ -293,17 +309,26 @@ export const dispatchDaemonEvent = (
                 }
             }
             if (remainingPeers.length > 0) {
-                void seam
-                    .listSessions(workspaceId)
-                    .then((sessions) => {
-                        for (const peer of remainingPeers) {
-                            const ancestorSession = selectBoundSessionForTarget(peer, workspaceId, proposal.sessionId, sessions);
-                            if (ancestorSession !== undefined) {
-                                gates.dispatchToPeer(gate, peer, ancestorSession, seam, peers, notifyPeerSession, broadcastSessionUpdate);
+                enqueueWorkspaceSessionsTask(ctx, workspaceId, (sessions) => {
+                    const childRow = sessions.find((w) => w.id === proposal.sessionId);
+                    const childName = childRow?.name ?? proposal.session ?? String(proposal.sessionId);
+                    const childSessionId = formatSessionId(workspaceId, childName);
+                    for (const peer of remainingPeers) {
+                        const ancestorSession = selectBoundSessionForTarget(peer, workspaceId, proposal.sessionId, sessions);
+                        if (ancestorSession !== undefined) {
+                            if (ancestorSession.sessionId !== proposal.sessionId) {
+                                notifyPeerSession(peer, ancestorSession.acpSessionId, {
+                                    sessionUpdate: "subagent_update",
+                                    sessionId: childSessionId,
+                                    title: childName,
+                                    capabilities: { cancel: {} },
+                                    state: { state: "requires_action" },
+                                });
                             }
+                            gates.dispatchToPeer(gate, peer, ancestorSession, seam, peers, notifyPeerSession, broadcastSessionUpdate);
                         }
-                    })
-                    .catch(() => undefined);
+                    }
+                });
             }
             break;
         }
@@ -335,17 +360,26 @@ export const dispatchDaemonEvent = (
                 }
             }
             if (remainingPeers.length > 0) {
-                void seam
-                    .listSessions(workspaceId)
-                    .then((sessions) => {
-                        for (const peer of remainingPeers) {
-                            const ancestorSession = selectBoundSessionForTarget(peer, workspaceId, interaction.sessionId, sessions);
-                            if (ancestorSession !== undefined) {
-                                gates.dispatchToPeer(gate, peer, ancestorSession, seam, peers, notifyPeerSession, broadcastSessionUpdate);
+                enqueueWorkspaceSessionsTask(ctx, workspaceId, (sessions) => {
+                    const childRow = sessions.find((w) => w.id === interaction.sessionId);
+                    const childName = childRow?.name ?? String(interaction.sessionId);
+                    const childSessionId = formatSessionId(workspaceId, childName);
+                    for (const peer of remainingPeers) {
+                        const ancestorSession = selectBoundSessionForTarget(peer, workspaceId, interaction.sessionId, sessions);
+                        if (ancestorSession !== undefined) {
+                            if (ancestorSession.sessionId !== interaction.sessionId) {
+                                notifyPeerSession(peer, ancestorSession.acpSessionId, {
+                                    sessionUpdate: "subagent_update",
+                                    sessionId: childSessionId,
+                                    title: childName,
+                                    capabilities: { cancel: {} },
+                                    state: { state: "requires_action" },
+                                });
                             }
+                            gates.dispatchToPeer(gate, peer, ancestorSession, seam, peers, notifyPeerSession, broadcastSessionUpdate);
                         }
-                    })
-                    .catch(() => undefined);
+                    }
+                });
             }
             break;
         }
