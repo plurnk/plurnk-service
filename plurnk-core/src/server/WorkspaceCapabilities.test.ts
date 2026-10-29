@@ -298,7 +298,11 @@ test("{§functionality-inspection} one root selection serves module files withou
     t.after(() => { if (previous === undefined) delete process.env.PLURNK_SERVICE_ROOTS; else process.env.PLURNK_SERVICE_ROOTS = previous; });
     const paths = new HostPaths({ home: "/home/ada", env: { XDG_CONFIG_HOME: "/config", PLURNK_SERVICE_STATE_ROOT: "/isolated" } });
     process.env.PLURNK_SERVICE_ROOTS = "global,project,plurnk";
-    const inherited = [{ scope: "plurnk", directory: "/config/plurnk" }, { scope: "global", directory: "/home/ada/.agents" }];
+    const inherited = [
+        { scope: "plurnk", directory: "/config/plurnk" },
+        { scope: "xdg-global", directory: "/config/agents" },
+        { scope: "global", directory: "/home/ada/.agents" },
+    ];
     assert.deepEqual(workspacePaths(paths, "/project"), {
         home: "/home/ada", projectRoot: "/project",
         configurationRoots: [{ scope: "project", directory: "/project/.agents" }, ...inherited],
@@ -355,7 +359,7 @@ test("{§functionality-inspection} a daemon reads only the roots the knob names"
     t.after(() => rm(project, { recursive: true, force: true }));
     const { plugins: reader, hostPaths } = await plugins(t, project);
     const read = await reader.read(1);
-    assert.deepEqual(read.roots, { project: hostPaths.projectPluginsDir(project), plurnk: null, global: null });
+    assert.deepEqual(read.roots, { project: hostPaths.projectPluginsDir(project), plurnk: null, "xdg-global": null, global: null });
 });
 
 test("{§functionality-inspection} data belongs to a canonical installed instance, not merely a plugin name", async (t) => {

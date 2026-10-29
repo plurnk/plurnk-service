@@ -6,6 +6,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Turn from "../../src/core/Turn.ts";
 import StoredPacket, { type StoredPacketSection, type DurablePacket } from "../../src/core/StoredPacket.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
+import HostPaths from "../../src/core/HostPaths.ts";
 import Paths from "../../src/Paths.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
@@ -947,6 +948,40 @@ test("{§session-initialization-entry} assembled packet: PLURNK_SERVICE_POLICY r
         if (priorPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = priorPolicy;
         await rm(dir, { recursive: true, force: true });
     }
+});
+
+test("{§packet-inject} {§host-path-layout} unset PLURNK_SERVICE_POLICY composes $XDG_CONFIG_HOME/agents/AGENTS.md, ~/.agents/AGENTS.md, and $XDG_CONFIG_HOME/plurnk/AGENTS.md in order", async (t) => {
+    const priorPolicy = process.env.PLURNK_SERVICE_POLICY;
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-policy-cascade-"));
+    const db = await openMigrated();
+    t.after(async () => {
+        await db.close();
+        if (priorPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = priorPolicy;
+        await rm(dir, { recursive: true, force: true });
+    });
+    const hostPaths = new HostPaths({
+        home: join(dir, "home"),
+        env: { XDG_CONFIG_HOME: join(dir, "config") },
+    });
+    await mkdir(hostPaths.xdgAgentsDir, { recursive: true });
+    await mkdir(hostPaths.globalAgentsDir, { recursive: true });
+    await mkdir(hostPaths.configDir, { recursive: true });
+    await writeFile(hostPaths.xdgPolicyFile, "# XDG global rules");
+    await writeFile(hostPaths.globalPolicyFile, "# Home global rules");
+    await writeFile(hostPaths.policyFile, "# Plurnk rules");
+    delete process.env.PLURNK_SERVICE_POLICY;
+
+    const workspaceId = await insertWorkspace(db, `pkt-policy-cascade-${crypto.randomUUID()}`);
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "go");
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, hostPaths });
+    const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
+    const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+    const packet = await getPacket(db, result.turnId);
+    assert.equal(
+        packetSection(packet, "system-policy"),
+        "# XDG global rules\n\n# Home global rules\n\n# Plurnk rules",
+    );
 });
 
 test("{§child-orientation} the live things a session holds — child sessions — surface as terse pointers in the status clump", async () => {

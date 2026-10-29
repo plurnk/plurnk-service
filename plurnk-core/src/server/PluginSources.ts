@@ -4,10 +4,10 @@ import { join } from "node:path";
 import Meta, { ConfigurationError, type PackageCandidate } from "@plurnk/plurnk-meta";
 import { PluginRoots, type PluginDiscovery } from "@plurnk/plurnk-agent-plugins";
 import HostPaths from "../core/HostPaths.ts";
-import { AGENT_ROOT_SCOPES, agentRootScopes, type AgentRootScope } from "./AgentRoots.ts";
+import { CONFIGURATION_ROOT_SCOPES, agentRootScopes, type ConfigurationRootScope } from "./AgentRoots.ts";
 
 export interface PluginSourceSet extends PluginDiscovery {
-    readonly roots: Readonly<Record<AgentRootScope, string | null>>;
+    readonly roots: Readonly<Record<ConfigurationRootScope, string | null>>;
     readonly packages: readonly PackageCandidate[];
     readonly pluginPackages: ReadonlySet<string>;
     readonly configurationErrors: readonly ConfigurationError[];
@@ -32,9 +32,10 @@ export default class PluginSources {
             configurationErrors.push(cause);
             selected = new Set();
         }
-        const roots = {
+        const roots: Readonly<Record<ConfigurationRootScope, string | null>> = {
             project: selected.has("project") && projectRoot !== null ? hostPaths.projectPluginsDir(projectRoot) : null,
             plurnk: selected.has("plurnk") ? hostPaths.plurnkPluginsDir : null,
+            "xdg-global": selected.has("global") && hostPaths.xdgPluginsDir !== hostPaths.globalPluginsDir ? hostPaths.xdgPluginsDir : null,
             global: selected.has("global") ? hostPaths.globalPluginsDir : null,
         };
         const packages = (packageDirs ?? await Meta.packageDirs(nodeModules))
@@ -55,7 +56,7 @@ export default class PluginSources {
                 }
             }
         }
-        const discovered = await PluginRoots.discover(AGENT_ROOT_SCOPES.flatMap((scope) => {
+        const discovered = await PluginRoots.discover(CONFIGURATION_ROOT_SCOPES.flatMap((scope) => {
             const directory = roots[scope];
             return directory === null ? [] : [{ scope, directory }];
         }), readablePlugins.map((directory) => ({ scope: "npm", directory })));

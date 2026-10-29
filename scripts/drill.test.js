@@ -205,7 +205,7 @@ test("{§credential-authority} test entrypoints exclude personal XDG policy whil
     const fixturePolicy = "# Benchmark policy\nFIXTURE_ONLY_SENTINEL";
     const fixturePath = resolve(directory, "fixture.md");
     writeFileSync(fixturePath, fixturePolicy);
-    const baseEnv = { ...process.env, XDG_CONFIG_HOME: directory };
+    const baseEnv = { ...process.env, HOME: directory, XDG_CONFIG_HOME: directory };
     delete baseEnv.PLURNK_SERVICE_POLICY;
     const live = await liveInvocation();
     const policyLoader = new URL("../plurnk-core/src/core/packet-inject.ts", import.meta.url).href;

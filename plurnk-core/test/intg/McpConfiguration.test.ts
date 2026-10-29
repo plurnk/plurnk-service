@@ -54,7 +54,7 @@ test("{§mcp-configuration} a global mcp.json supplies callable servers without 
 test("{§mcp-configuration} workspace and environment overrides restore the current file definition and enabledness", async (t) => {
     const { hostPaths, env } = await mcpFixture(t, {});
     const project = join(hostPaths.home, "project");
-    const directories = [join(project, ".agents"), hostPaths.configDir, join(hostPaths.home, ".agents")];
+    const directories = [join(project, ".agents"), hostPaths.configDir, hostPaths.xdgAgentsDir, join(hostPaths.home, ".agents")];
     for (const directory of directories) await mkdir(directory, { recursive: true });
     for (const [index, directory] of directories.entries()) {
         await writeFile(join(directory, "mcp.json"), JSON.stringify({ mcpServers: { fixture: stdioEntry("echo-server.mjs", { SOURCE: String(index) }) } }));
@@ -93,7 +93,9 @@ test("{§mcp-configuration} workspace and environment overrides restore the curr
     assert.equal((await list())[0].state, "disabled", "restart preserves inherited enabledness without a local mask");
     await rm(join(directories[1], "mcp.json"));
     assert.equal((await list())[0].provenance?.source, join(directories[2], "mcp.json"));
-    assert.deepEqual(await readdir(directories[2]), ["mcp.json"], "workspace mutations never manufacture plugin files");
+    await rm(join(directories[2], "mcp.json"));
+    assert.equal((await list())[0].provenance?.source, join(directories[3], "mcp.json"));
+    assert.deepEqual(await readdir(directories[3]), ["mcp.json"], "workspace mutations never manufacture plugin files");
 });
 
 test("{§mcp-configuration} malformed files leave chat usable and normal turns publish repairs, changes, and removal", { timeout: 30_000 }, async (t) => {

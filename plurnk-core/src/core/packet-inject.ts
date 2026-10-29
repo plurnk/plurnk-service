@@ -19,11 +19,17 @@ const readPolicy = async (path: string, explicit: boolean): Promise<string | nul
     catch (err) { if (explicit) throw err; return null; }
 };
 
-// {§packet-inject}: the panel's PLURNK_SERVICE_POLICY (~-expanded), or when unset the policy member
+// {§packet-inject}: the panel's PLURNK_SERVICE_POLICY (~-expanded), or when unset the policy members
 // of {§host-path-layout}; an explicitly empty value is off.
 export const readSystemPolicy = async (hostPaths: HostPaths = new HostPaths()): Promise<string | null> => {
     const raw = process.env.PLURNK_SERVICE_POLICY;
     if (raw !== undefined && raw.trim() === "") return null; // explicit empty → off (test isolation)
     const env = raw?.trim();
-    return readPolicy(env ? resolveInjectPath(env, hostPaths) : hostPaths.policyFile, !!env);
+    if (env) return readPolicy(resolveInjectPath(env, hostPaths), true);
+    const sections: string[] = [];
+    for (const candidate of hostPaths.policyFiles) {
+        const text = await readPolicy(candidate, false);
+        if (text !== null) sections.push(text);
+    }
+    return sections.length > 0 ? sections.join("\n\n") : null;
 };

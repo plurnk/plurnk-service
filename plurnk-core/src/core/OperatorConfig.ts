@@ -49,7 +49,7 @@ export default class OperatorConfig {
             "# PLURNK_MODEL=local",
             "",
             "# AGENT SKILLS — project skills live in .agents/skills, plurnk-only skills in",
-            "# $XDG_CONFIG_HOME/plurnk/skills, and user-global skills in ~/.agents/skills.",
+            "# $XDG_CONFIG_HOME/plurnk/skills, and user-global skills in $XDG_CONFIG_HOME/agents/skills or ~/.agents/skills.",
             "# Bind them per workspace with /skills (clients) or plurnk (skills) (model).",
             "# Local folders stay live; Git/archive sources are retained workspace copies.",
             "",

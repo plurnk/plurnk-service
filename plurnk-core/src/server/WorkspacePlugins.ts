@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import type { InstalledPlugin, WorkspacePluginSet } from "@plurnk/plurnk-agent-plugins";
 import type { Db } from "../core/Db.ts";
 import type HostPaths from "../core/HostPaths.ts";
-import type { AgentRootScope } from "./AgentRoots.ts";
+import type { ConfigurationRootScope } from "./AgentRoots.ts";
 import PluginSources from "./PluginSources.ts";
 import { join } from "node:path";
 import type { Notice } from "@plurnk/plurnk-contracts";
@@ -25,7 +25,7 @@ export default class WorkspacePlugins {
         this.#nodeModules = nodeModules;
     }
 
-    async read(workspaceId: number): Promise<WorkspacePluginSet<AgentRootScope>> {
+    async read(workspaceId: number): Promise<WorkspacePluginSet<ConfigurationRootScope>> {
         const workspace = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const projectRoot = workspace?.project_root ?? null;
         const { plugins, reports, roots, configurationErrors } = await PluginSources.read({

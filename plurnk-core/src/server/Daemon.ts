@@ -33,7 +33,7 @@ import Credentials from "./Credentials.ts";
 import type { WorkspaceRow } from "./envelope.ts";
 import ClientInput from "./client-input.ts";
 import WorkspacePlugins from "./WorkspacePlugins.ts";
-import { agentRootScopes, workspacePaths } from "./AgentRoots.ts";
+import { agentRootScopes, workspacePaths, type ConfigurationRootScope } from "./AgentRoots.ts";
 import ExecEnv from "../schemes/exec-env.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
 import ResourceTreeScheme from "../schemes/ResourceTreeScheme.ts";
@@ -61,7 +61,6 @@ import WorkspaceResidency from "./WorkspaceResidency.ts";
 import type { DaemonModule, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration } from "@plurnk/plurnk-modules";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { WorkspacePluginSet } from "@plurnk/plurnk-agent-plugins";
-import type { AgentRootScope } from "./AgentRoots.ts";
 import type { HostFunctionalityAdapter, HostSetupSeam, WorkspaceCapabilityProvider, WorkspaceCapabilityPublication, WorkspaceCapabilityReplacement } from "./ModuleHost.ts";
 import Functionality from "./Functionality.ts";
 import { observedSync } from "../observe/spans.ts";
@@ -791,7 +790,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     // {§functionality-inspection}
-    readWorkspacePlugins(workspaceId: number): Promise<WorkspacePluginSet<AgentRootScope>> {
+    readWorkspacePlugins(workspaceId: number): Promise<WorkspacePluginSet<ConfigurationRootScope>> {
         return this.#plugins.read(workspaceId);
     }
 

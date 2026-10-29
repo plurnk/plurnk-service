@@ -9,7 +9,7 @@ import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
 import type { FunctionalityAdapter, FunctionalitySeam, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import type { RuntimeSchemeFacet, SchemeRegistrationSeam, ResourceTreeRegistrationSeam } from "@plurnk/plurnk-schemes";
-import type { AgentRootScope } from "./AgentRoots.ts";
+import type { ConfigurationRootScope } from "./AgentRoots.ts";
 
 // A family as the host's coordinator receives it: the runtimes a resident family prepares are
 // executor registrations, and the face its manager may expose is a scheme facet.
@@ -62,6 +62,6 @@ export type HostSetupSeam = ModuleSetupSeam
     & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet>
     & SchemeRegistrationSeam
     & ResourceTreeRegistrationSeam
-    & WorkspacePluginsSeam<AgentRootScope>
+    & WorkspacePluginsSeam<ConfigurationRootScope>
     & ProvidedSkillsSeam
     & CapabilityProviderSeam;

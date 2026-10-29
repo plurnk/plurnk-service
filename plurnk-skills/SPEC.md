@@ -7,7 +7,7 @@
 | Layer (low to high) | Definition source & contract |
 | --- | --- |
 | Service | Host-provided trees (`ProvidedSkillsSeam`, omitting `source`). |
-| Standard locations | Every `<root>/<name>/SKILL.md` under global, plurnk, then project roots ({§functionality-inspection}), nearer roots shadowing farther ones and all shadowing host-provided trees by name. Standard roots are read-only configuration inputs; Plurnk neither installs into nor deletes from them. |
+| Standard locations | Every `<root>/<name>/SKILL.md` under project, plurnk, XDG global (`$XDG_CONFIG_HOME/agents/skills`), and home global (`~/.agents/skills`) roots ({§functionality-inspection}), nearer roots shadowing farther ones and all shadowing host-provided trees by name. Standard roots are read-only configuration inputs; Plurnk neither installs into nor deletes from them. |
 | Cascading environment | `PLURNK_SKILLS_<name>={"name":"<name>","source":"…","ref"?:"…"}` replaces the complete definition; `PLURNK_SKILLS_ENABLED` and `<name>_ENABLED` control enabledness ({§env-knob}). Decoded alias must equal `name` ({§agent-skills-directory}, including digit-leading and Unicode names). Validates shape, names, remote URLs, and Git-only `ref` without fetching; `commit` is service-recorded and refused as input. |
 | Live workspace | ```` ```plurnk (skills) ```` `add` creates and `replace` assigns `{ alias, definition }` (`alias = name`, requiring `source`) ({§functionality-replacement}). `discover { source }` inertly lists standard skills in `source`. |
 

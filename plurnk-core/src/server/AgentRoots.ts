@@ -6,6 +6,9 @@ import type HostPaths from "../core/HostPaths.ts";
 export const AGENT_ROOT_SCOPES = ["project", "plurnk", "global"] as const;
 export type AgentRootScope = typeof AGENT_ROOT_SCOPES[number];
 
+export const CONFIGURATION_ROOT_SCOPES = ["project", "plurnk", "xdg-global", "global"] as const;
+export type ConfigurationRootScope = typeof CONFIGURATION_ROOT_SCOPES[number];
+
 const isScope = (value: string): value is AgentRootScope => (AGENT_ROOT_SCOPES as readonly string[]).includes(value);
 
 export const agentRootScopes = (environment: NodeJS.ProcessEnv = process.env): ReadonlySet<AgentRootScope> => {
@@ -24,10 +27,18 @@ export const workspacePaths = (paths: HostPaths, projectRoot: string | null): Wo
         projectRoot,
         configurationRoots: AGENT_ROOT_SCOPES.flatMap((scope) => {
             if (!selected.has(scope)) return [];
-            const directory = scope === "global" ? paths.globalAgentsDir
-                : scope === "plurnk" ? paths.configDir
-                    : projectRoot === null ? null : paths.projectAgentsDir(projectRoot);
-            return directory === null ? [] : [{ scope, directory }];
+            if (scope === "project") {
+                return projectRoot === null ? [] : [{ scope: "project", directory: paths.projectAgentsDir(projectRoot) }];
+            }
+            if (scope === "plurnk") {
+                return [{ scope: "plurnk", directory: paths.configDir }];
+            }
+            return paths.xdgAgentsDir === paths.globalAgentsDir
+                ? [{ scope: "global", directory: paths.globalAgentsDir }]
+                : [
+                    { scope: "xdg-global", directory: paths.xdgAgentsDir },
+                    { scope: "global", directory: paths.globalAgentsDir },
+                ];
         }),
     };
 };

@@ -205,6 +205,7 @@ test("{§module-seam-slices} a module receives the bound project and ordered inp
     const folderless = await daemon.createWorkspace({ name: "folderless-paths" });
     const inherited = [
         { scope: "plurnk", directory: join(root, "config/plurnk") },
+        { scope: "xdg-global", directory: join(root, "config/agents") },
         { scope: "global", directory: join(root, ".agents") },
     ];
     assert.deepEqual(await readPaths(bound.workspaceId), {

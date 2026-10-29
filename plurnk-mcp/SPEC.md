@@ -64,8 +64,9 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
 | 2 | Environment | `PLURNK_MCP_<alias>` (complete `McpServerDefinition` JSON; transport and auth replace together) |
 | 3 | Project | `<project>/.agents/mcp.json`, then selected project plugins |
 | 4 | Plurnk-only | `$XDG_CONFIG_HOME/plurnk/mcp.json`, then selected Plurnk plugins |
-| 5 | Shared global | `~/.agents/mcp.json`, then selected global plugins |
-| 6 | Installed npm plugins | Selected plugin bundles in the installed graph |
+| 5 | Shared XDG global | `$XDG_CONFIG_HOME/agents/mcp.json`, then selected XDG global plugins |
+| 6 | Shared home global | `~/.agents/mcp.json`, then selected home global plugins |
+| 7 | Installed npm plugins | Selected plugin bundles in the installed graph |
 
 - **Standalone `mcp.json` files:** Object with required `mcpServers` map and optional `$schema` string. Omitted `type` is inferred from `command` (`stdio`) or `url` (`streamable-http`). Whole winning entry is selected before validation (no field merging or fallback from an invalid winner). Reported with `provenance: { kind: "file", source: <file>, reference: "/mcpServers/<alias>" }`.
 - **Agent Plugins (`PluginConfiguration`):** Validated plugin components ({§agent-plugins-containment}, {§agent-plugins-containment}, {§functionality-adapter}) carry `{ root, data }` context and `provenance: { kind: "plugin", source, reference }`:

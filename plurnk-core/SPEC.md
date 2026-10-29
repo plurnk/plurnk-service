@@ -798,7 +798,7 @@ On XDG-compatible hosts, artifact semantics select the default location. An unse
 | Durable user data | `$XDG_DATA_HOME` (default `~/.local/share`) | `plurnk/plurnk.db` and SQLite sidecars; `plurnk/plugins/<plugin>/` (`PLUGIN_DATA`) |
 | Persistent operational state | `$XDG_STATE_HOME` (default `~/.local/state`) | On-demand workspace/module directories ({§module-seam-slices}) |
 | Reproducible cache | `$XDG_CACHE_HOME` (default `~/.cache`) | `plurnk/models.json` cached model catalog ({§model-catalog-cache}, {§startup-admission}); created on explicit update |
-| Shared global roots | User home | `.agents/skills/<name>/SKILL.md`, `.agents/mcp.json`, `.agents/plugins/<plugin>/` ({§functionality-inspection}) |
+| Shared global roots | `$XDG_CONFIG_HOME` then user home | `agents/AGENTS.md`, `agents/mcp.json`, `agents/skills/<name>/SKILL.md`, `agents/plugins/<plugin>/` (`xdg-global`), then `.agents/AGENTS.md`, `.agents/mcp.json`, `.agents/skills/<name>/SKILL.md`, `.agents/plugins/<plugin>/` (`global`, {§functionality-inspection}) |
 
 `PLURNK_SERVICE_STATE_ROOT` (absolute; `~/` expands; relative fails hard by name) replaces data, state, cache, and runtime homes with `<root>/{data,state,cache,runtime}`, moving the default database with them (`PLURNK_SERVICE_DB_PATH` still overrides explicitly). Newly created config/data directories use `0700` and newly seeded `.env` files use `0600`.
 
@@ -925,7 +925,7 @@ Invalid optional configuration never removes the agent's repair environment:
 - **Inspection is not demand**: `list` and `discover` never acquire residency, join preparation, reconcile docs, or extend warm timers; enabled definitions not yet prepared by a resident publication report `dormant`.
 - **Preparation visibility**: `workspacePreparationStatus(workspaceId)` and `workspace/preparation` broadcast `{ workspaceId, preparation: [{ family, phase: "preparing" | "publishing", alias, since }] }` until settlement.
 - **Hot-load (`refreshIfChanged`)**: turn admission checks out-of-band sources under the workspace gate before packet assembly and republishes only when enabled definitions or tracked content changed.
-- **Agent Plugins and discovery roots**: `PLURNK_SERVICE_ROOTS` (comma list of `project`, `plurnk`, `global`; default all three) selects which `.agents` and `$XDG_CONFIG_HOME/plurnk` roots are read. Plugins resolve in order: `<project>/.agents/plugins/*`, `$XDG_CONFIG_HOME/plurnk/plugins/*`, `~/.agents/plugins/*`, then installed npm plugin bundles (with `PLUGIN_DATA` under `$XDG_DATA_HOME/plurnk/plugins/<name>/<sha256(canonical-root)>`). Adapters may also expose a `scheme` facet (`env://`, `schedule://`) claiming a path subtree.
+- **Agent Plugins and discovery roots**: `PLURNK_SERVICE_ROOTS` (comma list of `project`, `plurnk`, `global`; default all three) selects which `.agents` and `$XDG_CONFIG_HOME` roots are read. Plugins resolve in order: `<project>/.agents/plugins/*`, `$XDG_CONFIG_HOME/plurnk/plugins/*`, `$XDG_CONFIG_HOME/agents/plugins/*`, `~/.agents/plugins/*`, then installed npm plugin bundles (with `PLUGIN_DATA` under `$XDG_DATA_HOME/plurnk/plugins/<name>/<sha256(canonical-root)>`). Adapters may also expose a `scheme` facet (`env://`, `schedule://`) claiming a path subtree.
 
 ### §env-functionality Environment family and env scheme
 
@@ -1044,7 +1044,7 @@ flowchart LR
 | Order | Section `name` | Wire `slot` | Header / shape |
 | --- | --- | --- | --- |
 | 1 | `definition` | `system` | Stripped table projection of `plurnk-contracts/plurnk.md` (read fresh per loop start and wake) |
-| 2 | `system-policy` | `system` | Concatenated contents of `PLURNK_SERVICE_POLICY` files (seeded on first boot from `@plurnk/plurnk-meta/POLICY.md` into `$XDG_CONFIG_HOME/plurnk/AGENTS.md`) |
+| 2 | `system-policy` | `system` | Concatenated contents of `PLURNK_SERVICE_POLICY` when explicitly set, or `$XDG_CONFIG_HOME/agents/AGENTS.md`, `~/.agents/AGENTS.md`, and `$XDG_CONFIG_HOME/plurnk/AGENTS.md` (seeded on first boot from `@plurnk/plurnk-meta/POLICY.md`) |
 | 3 | `inject` | `system` | `## Operator Notes` when `PLURNK_SERVICE_PACKET_INJECT` is non-empty |
 | 4–5 | `log`, `log/<coord>`, `emission-history/<coord>` | `user` / `assistant` | Initial retained log records (`## Log`) up to the first replayed turn's first surviving receipt, then alternating `assistant` (replayed turn's emitted operations) and `user` (`emission-history/<first-surviving-receipt-coordinate>` paired receipts plus following non-receipt log records), ending with remaining `log/<first-record-coordinate>` records |
 | 6 | `git` | `user` | `## Git Status` `> [!NOTE]` summary when workspace is a Git repository |
@@ -1349,7 +1349,7 @@ The workspace Functionality Coordinator materializes self-documentation, skills,
 | Surface | Contract |
 | --- | --- |
 | Card read per wake | `plurnk-contracts/plurnk.md` is read from disk at every loop start and wake so grammar/card edits take effect immediately without restarting the daemon. |
-| System policy & Turn 0 `AGENTS.md` | `PLURNK_SERVICE_POLICY` renders in the `system-policy` slot after `definition` (seeded once on first boot from `@plurnk/plurnk-meta/POLICY.md` into `$XDG_CONFIG_HOME/plurnk/AGENTS.md`); a workspace root `AGENTS.md` is foisted at Turn 0 as `workspace:///_plurnk/AGENTS.md`. |
+| System policy & Turn 0 `AGENTS.md` | `PLURNK_SERVICE_POLICY` (or when unset `$XDG_CONFIG_HOME/agents/AGENTS.md`, `~/.agents/AGENTS.md`, and `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, seeded once on first boot from `@plurnk/plurnk-meta/POLICY.md` into `$XDG_CONFIG_HOME/plurnk/AGENTS.md`) renders in the `system-policy` slot after `definition`; a workspace root `AGENTS.md` is foisted at Turn 0 as `workspace:///_plurnk/AGENTS.md`. |
 | Operator injection (`PLURNK_SERVICE_PACKET_INJECT`) | Renders as `## Operator Notes` in the `inject` system slot after `system-policy`. |
 | `## Git Status` (`PLURNK_SERVICE_GIT_STATUS_PATHS`) | Runs one `git status --porcelain=v2 -z` snapshot per turn to render a `> [!NOTE]` block summarizing branch, ahead/behind counts, staged, unstaged, `untracked members`, and `untracked (not members)` (bounded by `PLURNK_SERVICE_GIT_STATUS_PATHS`), and stamps two-character `XY` status flags onto `source=file` resource rows. |
 | `## Recap` (`PLURNK_SERVICE_RECAP_LINE_<alias>`, `PLURNK_SERVICE_RECAP`) | Renders every non-empty `PLURNK_SERVICE_RECAP_LINE_<alias>` in alias order ahead of `PLURNK_SERVICE_RECAP` / `recap.md`. Lines starting with `YOU MUST`, `YOU MUST NOT`, or `YOU MUST ONLY` render under `> [!IMPORTANT]`; lines starting with `YOU SHOULD`, `YOU SHOULD NOT`, or `YOU MAY` render under `> [!TIP]`; any other prefix fails configuration validation. |

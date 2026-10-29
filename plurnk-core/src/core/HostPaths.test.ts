@@ -39,15 +39,25 @@ test("{§host-path-layout} resolves the XDG defaults by artifact semantics", () 
     const paths = new HostPaths({ env: {}, home: "/home/ada" });
     assert.equal(paths.configFile, "/home/ada/.config/plurnk/.env");
     assert.equal(paths.policyFile, "/home/ada/.config/plurnk/AGENTS.md");
+    assert.equal(paths.xdgPolicyFile, "/home/ada/.config/agents/AGENTS.md");
+    assert.equal(paths.globalPolicyFile, "/home/ada/.agents/AGENTS.md");
+    assert.deepEqual(paths.policyFiles, [
+        "/home/ada/.config/agents/AGENTS.md",
+        "/home/ada/.agents/AGENTS.md",
+        "/home/ada/.config/plurnk/AGENTS.md",
+    ]);
     assert.equal(paths.databaseFile, "/home/ada/.local/share/plurnk/plurnk.db");
     assert.equal(paths.stateDir, "/home/ada/.local/state/plurnk");
     assert.equal(paths.cacheDir, "/home/ada/.cache/plurnk");
     assert.equal(paths.modelsCacheFile, "/home/ada/.cache/plurnk/models.json");
     assert.equal(paths.runtimeDir, null);
     assert.equal(paths.plurnkSkillsDir, "/home/ada/.config/plurnk/skills");
+    assert.equal(paths.xdgAgentsDir, "/home/ada/.config/agents");
+    assert.equal(paths.xdgSkillsDir, "/home/ada/.config/agents/skills");
     assert.equal(paths.globalSkillsDir, "/home/ada/.agents/skills");
     assert.equal(paths.projectSkillsDir("/work/repo"), "/work/repo/.agents/skills");
     assert.equal(paths.plurnkPluginsDir, "/home/ada/.config/plurnk/plugins");
+    assert.equal(paths.xdgPluginsDir, "/home/ada/.config/agents/plugins");
     assert.equal(paths.globalPluginsDir, "/home/ada/.agents/plugins");
     assert.equal(paths.projectPluginsDir("/work/repo"), "/work/repo/.agents/plugins");
     assert.match(paths.pluginDataDir("devtools", "/plugins/devtools"), /^\/home\/ada\/\.local\/share\/plurnk\/plugins\/devtools\/[a-f0-9]{64}$/);
@@ -68,6 +78,8 @@ test("{§host-path-layout} honors absolute XDG homes without moving the shared A
     assert.equal(paths.dataDir, "/data/plurnk");
     assert.equal(paths.stateDir, "/state/plurnk");
     assert.equal(paths.plurnkSkillsDir, "/cfg/plurnk/skills", "plurnk-only skills are configuration");
+    assert.equal(paths.xdgSkillsDir, "/cfg/agents/skills", "XDG global skills follow XDG_CONFIG_HOME");
+    assert.equal(paths.xdgPluginsDir, "/cfg/agents/plugins", "XDG global plugins follow XDG_CONFIG_HOME");
     assert.equal(paths.cacheDir, "/cache/plurnk");
     assert.equal(paths.runtimeDir, "/run/user/1000/plurnk");
     assert.equal(paths.globalSkillsDir, "/home/ada/.agents/skills");
