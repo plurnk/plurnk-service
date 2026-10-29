@@ -309,6 +309,7 @@ export interface ActiveGate {
     readonly proposal?: ProposalProjection;
     readonly interaction?: ClientInteractionProjection;
     readonly peerControllers: Map<AcpPeer, AbortController>;
+    settling: boolean;
     settled: boolean;
 }
 
@@ -334,6 +335,7 @@ export class GateTracker {
                 proposal,
                 interaction,
                 peerControllers: new Map(),
+                settling: false,
                 settled: false,
             };
             this.#activeGates.set(key, gate);
@@ -495,10 +497,12 @@ export class GateTracker {
             buildUpdates: (session: BoundSession) => readonly { readonly sessionId: string; readonly update: SessionUpdate }[],
         ) => void,
     ): Promise<void> {
-        if (gate.settled) return;
+        if (gate.settled || gate.settling) return;
+        gate.settling = true;
         try {
             await resolveInCore();
         } catch (err) {
+            gate.settling = false;
             gate.peerControllers.delete(winner);
             const problem =
                 Problems.fromError(err) ??
@@ -506,6 +510,20 @@ export class GateTracker {
                     ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion
                       (err.problem as unknown as ProblemDetails)
                     : null);
+            const isAlreadySettled =
+                problem !== null &&
+                (problem.status === 409 ||
+                    (typeof problem.code === "string" && problem.code.endsWith("not-pending")) ||
+                    (typeof problem.type === "string" && problem.type.endsWith("not-pending")));
+            if (isAlreadySettled) {
+                gate.settled = true;
+                this.#activeGates.delete(gate.key);
+                for (const ctrl of gate.peerControllers.values()) {
+                    ctrl.abort();
+                }
+                gate.peerControllers.clear();
+                return;
+            }
             if (problem !== null) {
                 notifyPeerSession(winner, session.acpSessionId, {
                     sessionUpdate: "notice",
@@ -521,6 +539,7 @@ export class GateTracker {
             }
             return;
         }
+        gate.settling = false;
         gate.settled = true;
         this.#activeGates.delete(gate.key);
 

@@ -64,6 +64,56 @@ export const parseSessionId = (raw: string): { readonly workspaceId: number; rea
     return { workspaceId: wsId, sessionName };
 };
 
+export const isDescendantSession = (
+    sessions: readonly { readonly id: number; readonly parentSessionId: number | null }[],
+    candidateSessionId: number,
+    ancestorSessionId: number,
+): boolean => {
+    if (candidateSessionId === ancestorSessionId) return false;
+    const parentById = new Map<number, number | null>();
+    for (const s of sessions) {
+        parentById.set(s.id, s.parentSessionId);
+    }
+    const visited = new Set<number>();
+    let current: number | null | undefined = parentById.get(candidateSessionId);
+    while (typeof current === "number" && !visited.has(current)) {
+        if (current === ancestorSessionId) return true;
+        visited.add(current);
+        current = parentById.get(current);
+    }
+    return false;
+};
+
+export const selectBoundSessionForTarget = (
+    peer: AcpPeer,
+    workspaceId: number,
+    targetSessionId: number,
+    sessions?: readonly { readonly id: number; readonly parentSessionId: number | null }[],
+): BoundSession | undefined => {
+    const boundById = new Map<number, BoundSession>();
+    for (const session of peer.sessions.values()) {
+        if (session.workspaceId !== workspaceId) continue;
+        if (session.sessionId === targetSessionId) return session;
+        if (!boundById.has(session.sessionId)) {
+            boundById.set(session.sessionId, session);
+        }
+    }
+    if (sessions === undefined || boundById.size === 0) return undefined;
+    const parentById = new Map<number, number | null>();
+    for (const s of sessions) {
+        parentById.set(s.id, s.parentSessionId);
+    }
+    const visited = new Set<number>();
+    let current: number | null | undefined = parentById.get(targetSessionId);
+    while (typeof current === "number" && !visited.has(current)) {
+        const ancestorBound = boundById.get(current);
+        if (ancestorBound !== undefined) return ancestorBound;
+        visited.add(current);
+        current = parentById.get(current);
+    }
+    return undefined;
+};
+
 export const assertSinglePortSecurity = (params: unknown): void => {
     if (!isRecord(params)) return;
     if (Array.isArray(params.mcpServers) && params.mcpServers.length > 0) {

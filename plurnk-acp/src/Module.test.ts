@@ -758,6 +758,177 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
         }
     });
 
+    test("{§acp-topology-scope} {§acp-proposal-resolve}: sibling sessions never leak subagent updates, session messages, or gates across actor boundaries, bodiless SEND omits session_message, and 409 gate settlements are idempotent", async () => {
+        const h = await createHarness();
+        try {
+            h.port.sessions.push(
+                {
+                    id: 2,
+                    workspaceId: 1,
+                    name: "helper",
+                    created_at: "2026-10-25T00:00:00.000Z",
+                    origin: "model",
+                    owner: "acp://operator",
+                    parentSessionId: 1,
+                    kind: "work",
+                    lifecycle: "running",
+                    hidden_at: null,
+                },
+                {
+                    id: 3,
+                    workspaceId: 1,
+                    name: "major",
+                    created_at: "2026-10-25T00:00:00.000Z",
+                    origin: "model",
+                    owner: "acp://operator",
+                    parentSessionId: null,
+                    kind: "root",
+                    lifecycle: "running",
+                    hidden_at: null,
+                },
+            );
+
+            const updates: SessionUpdate[] = [];
+            const permissionRequests: RequestPermissionRequest[] = [];
+            let resolvePermissionGate: (() => void) | null = null;
+            const permissionGateHeld = new Promise<void>((resolve) => {
+                resolvePermissionGate = resolve;
+            });
+
+            const stream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
+            const clientApp = createAcpClient()
+                .onNotification(methods.client.session.update, ({ params }) => {
+                    updates.push(params.update);
+                })
+                .onRequest(methods.client.session.requestPermission, async ({ params }) => {
+                    permissionRequests.push(params);
+                    if (params._meta && typeof params._meta === "object" && "plurnk" in params._meta) {
+                        const p = (params._meta as { plurnk?: { proposal?: { logEntryId?: number } } }).plurnk?.proposal;
+                        if (p?.logEntryId === 702) {
+                            await permissionGateHeld;
+                        }
+                    }
+                    return { outcome: { outcome: "selected", optionId: "allow_once" } };
+                });
+
+            await clientApp.connectWith(stream, async (ctx) => {
+                // Pending proposal on sibling session 3 ("major") before session/resume on "1#user"
+                const siblingProposal: ProposalProjection = {
+                    logEntryId: 701,
+                    sessionId: 3,
+                    session: "major",
+                    loopId: 3,
+                    turnId: 1,
+                    coordinate: "1/1/1",
+                    op: "sh",
+                    target: { scheme: "sh", authority: null, pathname: null },
+                    body: "echo sibling",
+                    disposition: { decision: "review" },
+                    owner: "acp://operator",
+                    attrs: { tag: "sh", body: "echo sibling", cwd: "/workspace/alpha" },
+                    subject: { type: "command", command: "echo sibling", cwd: "/workspace/alpha" },
+                };
+                h.port.proposals.push(siblingProposal);
+
+                await ctx.request(methods.agent.session.resume, {
+                    sessionId: "1#user",
+                    cwd: "/workspace/alpha",
+                });
+
+                // Live events on sibling session 3 ("major") must NOT leak to "1#user"
+                h.port.emitEvent(1, "log/entry", {
+                    entry: makeLogEntry({
+                        id: 710,
+                        session_id: 3,
+                        session_name: "major",
+                        loop_id: 3,
+                        turn_id: 1,
+                        op: "SEND",
+                        attrs: { kind: "message", to: "acp://operator", body: "Sibling reply" },
+                        rx: { status: 200, content: "Sibling reply", mimetype: "text/markdown" },
+                        mimetype_rx: "text/markdown",
+                    }),
+                });
+                h.port.emitEvent(1, "loop/proposal", siblingProposal);
+                h.port.emitEvent(1, "loop/terminated", makeTerminatedEvent({ sessionId: 3, loopId: 3 }));
+
+                // Bodiless SEND on descendant session 2 ("helper") emits subagent_update but NOT session_message("SEND")
+                h.port.emitEvent(1, "log/entry", {
+                    entry: makeLogEntry({
+                        id: 711,
+                        session_id: 2,
+                        session_name: "helper",
+                        loop_id: 2,
+                        turn_id: 1,
+                        op: "SEND",
+                        attrs: {},
+                        rx: { status: 200, content: "", mimetype: "text/plain" },
+                    }),
+                });
+
+                await waitFor(() =>
+                    updates.some(
+                        (u) => u.sessionUpdate === "subagent_update" && u.sessionId === "1#helper",
+                    ),
+                );
+
+                assert.equal(
+                    updates.some(
+                        (u) => u.sessionUpdate === "subagent_update" && u.sessionId === "1#major",
+                    ),
+                    false,
+                    "sibling session never leaks subagent_update to 1#user",
+                );
+                assert.equal(
+                    updates.some((u) => u.sessionUpdate === "session_message"),
+                    false,
+                    "neither sibling SEND nor bodiless descendant SEND emits session_message",
+                );
+                assert.equal(
+                    permissionRequests.length,
+                    0,
+                    "sibling session proposals never dispatch to 1#user on resume or live loop/proposal",
+                );
+
+                // Descendant proposal on session 2 ("helper") DOES dispatch to "1#user",
+                // and if already removed in Core (409 interrupt-not-pending), settles without error notice.
+                const childProposal: ProposalProjection = {
+                    logEntryId: 702,
+                    sessionId: 2,
+                    session: "helper",
+                    loopId: 2,
+                    turnId: 1,
+                    coordinate: "1/1/2",
+                    op: "sh",
+                    target: { scheme: "sh", authority: null, pathname: null },
+                    body: "echo child",
+                    disposition: { decision: "review" },
+                    owner: "acp://operator",
+                    attrs: { tag: "sh", body: "echo child", cwd: "/workspace/alpha" },
+                    subject: { type: "command", command: "echo child", cwd: "/workspace/alpha" },
+                };
+                h.port.proposals.push(childProposal);
+                h.port.emitEvent(1, "loop/proposal", childProposal);
+
+                await waitFor(() => permissionRequests.length === 1);
+                // Simulate proposal already settled in Core before client response arrives
+                h.port.proposals.length = 0;
+                resolvePermissionGate?.();
+
+                await new Promise((r) => setTimeout(r, 30));
+                assert.equal(
+                    updates.some(
+                        (u) => u.sessionUpdate === "notice" && u.severity === "error",
+                    ),
+                    false,
+                    "409 interrupt-not-pending settles idempotently without emitting an error notice",
+                );
+            });
+        } finally {
+            await h.close();
+        }
+    });
+
     test("{§acp-history-window}: session/resume replay window and HTTP history pagination", async () => {
         const h = await createHarness({
             env: {

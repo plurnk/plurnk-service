@@ -15,8 +15,15 @@ import {
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { GateTracker } from "./gates.ts";
+import { attrRecord, parseJsonOrValue, txBody } from "./log-entry-projection.ts";
 import type SessionTranslator from "./SessionTranslator.ts";
-import { formatSessionId, type AcpPeer, type BoundSession } from "./sessions.ts";
+import {
+    formatSessionId,
+    isDescendantSession,
+    selectBoundSessionForTarget,
+    type AcpPeer,
+    type BoundSession,
+} from "./sessions.ts";
 
 const isLogEntryPayload = (v: unknown): v is Parameters<SessionTranslator["logEntry"]>[0] => isRecord(v);
 const isReasoningEvent = (v: unknown): v is ReasoningEventNotification =>
@@ -67,55 +74,75 @@ export const dispatchDaemonEvent = (
             if (isLogEntryPayload(params)) {
                 broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.logEntry(params));
             }
-            for (const peer of peers) {
-                const visited = new Set<BoundSession>();
+            const hasOtherWorkspaceSession = [...peers].some((peer) => {
                 for (const session of peer.sessions.values()) {
-                    if (visited.has(session)) continue;
-                    visited.add(session);
-                    if (session.workspaceId !== workspaceId || session.sessionId === sessionId) continue;
-                    const summary = isRecord(entryRec.attrs) && typeof entryRec.attrs.body === "string"
-                        ? entryRec.attrs.body
-                        : typeof entryRec.op === "string"
-                          ? entryRec.op
-                          : "op";
-                    const sessionName = typeof entryRec.session_name === "string" ? entryRec.session_name : String(sessionId);
-                    const childSessionId = formatSessionId(workspaceId, sessionName);
-                    const loopSeq = isSafeInteger(entryRec.loop_seq) ? entryRec.loop_seq : 1;
-                    const coord =
-                        isSafeInteger(entryRec.loop_seq) &&
-                        isSafeInteger(entryRec.turn_seq) &&
-                        isSafeInteger(entryRec.sequence)
-                            ? `${entryRec.loop_seq}/${entryRec.turn_seq}/${entryRec.sequence}`
-                            : `${loopSeq}/1/1`;
-                    const childMeta = {
-                        plurnk: {
-                            id: sessionId,
-                            name: sessionName,
-                            coordinate: `session://${sessionName}#${coord}`,
-                            subagentRunId: `ops://${sessionName}/${loopSeq}`,
-                        },
-                    };
-                    notifyPeerSession(peer, session.acpSessionId, {
-                        sessionUpdate: "subagent_update",
-                        sessionId: childSessionId,
-                        title: sessionName,
-                        description: summary,
-                        capabilities: { cancel: {} },
-                        state: { state: "running" },
-                        _meta: childMeta,
-                    });
-                    if (entryRec.op === "SEND" && summary.length > 0) {
-                        const isChildToParent = entryRec.origin === "model";
-                        notifyPeerSession(peer, session.acpSessionId, {
-                            sessionUpdate: "session_message",
-                            messageId: `session://${sessionName}#${coord}`,
-                            senderSessionId: isChildToParent ? childSessionId : session.acpSessionId,
-                            recipientSessionId: isChildToParent ? session.acpSessionId : childSessionId,
-                            content: [{ type: "text", text: summary }],
-                            _meta: childMeta,
-                        });
+                    if (session.workspaceId === workspaceId && session.sessionId !== sessionId) {
+                        return true;
                     }
                 }
+                return false;
+            });
+            if (hasOtherWorkspaceSession) {
+                const attrs = attrRecord(entryRec.attrs);
+                const parsedRx = parseJsonOrValue(entryRec.rx);
+                const messageText = txBody(entryRec.tx, attrs, parsedRx);
+                const summary = messageText.length > 0
+                    ? messageText
+                    : typeof entryRec.op === "string"
+                      ? entryRec.op
+                      : "op";
+                const sessionName = typeof entryRec.session_name === "string" ? entryRec.session_name : String(sessionId);
+                const childSessionId = formatSessionId(workspaceId, sessionName);
+                const loopSeq = isSafeInteger(entryRec.loop_seq) ? entryRec.loop_seq : 1;
+                const coord =
+                    isSafeInteger(entryRec.loop_seq) &&
+                    isSafeInteger(entryRec.turn_seq) &&
+                    isSafeInteger(entryRec.sequence)
+                        ? `${entryRec.loop_seq}/${entryRec.turn_seq}/${entryRec.sequence}`
+                        : `${loopSeq}/1/1`;
+                const childMeta = {
+                    plurnk: {
+                        id: sessionId,
+                        name: sessionName,
+                        coordinate: `session://${sessionName}#${coord}`,
+                        subagentRunId: `ops://${sessionName}/${loopSeq}`,
+                    },
+                };
+                void seam
+                    .listSessions(workspaceId)
+                    .then((sessions) => {
+                        for (const peer of peers) {
+                            const visited = new Set<BoundSession>();
+                            for (const session of peer.sessions.values()) {
+                                if (visited.has(session)) continue;
+                                visited.add(session);
+                                if (session.workspaceId !== workspaceId || !isDescendantSession(sessions, sessionId, session.sessionId)) {
+                                    continue;
+                                }
+                                notifyPeerSession(peer, session.acpSessionId, {
+                                    sessionUpdate: "subagent_update",
+                                    sessionId: childSessionId,
+                                    title: sessionName,
+                                    description: summary,
+                                    capabilities: { cancel: {} },
+                                    state: { state: "running" },
+                                    _meta: childMeta,
+                                });
+                                if (entryRec.op === "SEND" && messageText.length > 0) {
+                                    const isChildToParent = entryRec.origin === "model";
+                                    notifyPeerSession(peer, session.acpSessionId, {
+                                        sessionUpdate: "session_message",
+                                        messageId: `session://${sessionName}#${coord}`,
+                                        senderSessionId: isChildToParent ? childSessionId : session.acpSessionId,
+                                        recipientSessionId: isChildToParent ? session.acpSessionId : childSessionId,
+                                        content: [{ type: "text", text: messageText }],
+                                        _meta: childMeta,
+                                    });
+                                }
+                            }
+                        }
+                    })
+                    .catch(() => undefined);
             }
             break;
         }
@@ -223,7 +250,9 @@ export const dispatchDaemonEvent = (
                         for (const session of peer.sessions.values()) {
                             if (visited.has(session)) continue;
                             visited.add(session);
-                            if (session.workspaceId !== workspaceId || session.sessionId === sessionId) continue;
+                            if (session.workspaceId !== workspaceId || !isDescendantSession(sessions, sessionId, session.sessionId)) {
+                                continue;
+                            }
                             notifyPeerSession(peer, session.acpSessionId, {
                                 sessionUpdate: "subagent_update",
                                 sessionId: formatSessionId(workspaceId, sessionName),
@@ -249,24 +278,32 @@ export const dispatchDaemonEvent = (
                     },
                 },
             ]);
+            const remainingPeers: AcpPeer[] = [];
             for (const peer of peers) {
-                const visited = new Set<BoundSession>();
-                let targetSession: BoundSession | undefined;
-                for (const session of peer.sessions.values()) {
-                    if (visited.has(session)) continue;
-                    visited.add(session);
-                    if (session.workspaceId !== workspaceId) continue;
-                    if (session.sessionId === proposal.sessionId) {
-                        targetSession = session;
-                        break;
-                    }
-                    if (targetSession === undefined) {
-                        targetSession = session;
+                const directSession = selectBoundSessionForTarget(peer, workspaceId, proposal.sessionId);
+                if (directSession !== undefined) {
+                    gates.dispatchToPeer(gate, peer, directSession, seam, peers, notifyPeerSession, broadcastSessionUpdate);
+                } else {
+                    for (const s of peer.sessions.values()) {
+                        if (s.workspaceId === workspaceId) {
+                            remainingPeers.push(peer);
+                            break;
+                        }
                     }
                 }
-                if (targetSession !== undefined) {
-                    gates.dispatchToPeer(gate, peer, targetSession, seam, peers, notifyPeerSession, broadcastSessionUpdate);
-                }
+            }
+            if (remainingPeers.length > 0) {
+                void seam
+                    .listSessions(workspaceId)
+                    .then((sessions) => {
+                        for (const peer of remainingPeers) {
+                            const ancestorSession = selectBoundSessionForTarget(peer, workspaceId, proposal.sessionId, sessions);
+                            if (ancestorSession !== undefined) {
+                                gates.dispatchToPeer(gate, peer, ancestorSession, seam, peers, notifyPeerSession, broadcastSessionUpdate);
+                            }
+                        }
+                    })
+                    .catch(() => undefined);
             }
             break;
         }
@@ -283,24 +320,32 @@ export const dispatchDaemonEvent = (
                     },
                 },
             ]);
+            const remainingPeers: AcpPeer[] = [];
             for (const peer of peers) {
-                const visited = new Set<BoundSession>();
-                let targetSession: BoundSession | undefined;
-                for (const session of peer.sessions.values()) {
-                    if (visited.has(session)) continue;
-                    visited.add(session);
-                    if (session.workspaceId !== workspaceId) continue;
-                    if (session.sessionId === interaction.sessionId) {
-                        targetSession = session;
-                        break;
-                    }
-                    if (targetSession === undefined) {
-                        targetSession = session;
+                const directSession = selectBoundSessionForTarget(peer, workspaceId, interaction.sessionId);
+                if (directSession !== undefined) {
+                    gates.dispatchToPeer(gate, peer, directSession, seam, peers, notifyPeerSession, broadcastSessionUpdate);
+                } else {
+                    for (const s of peer.sessions.values()) {
+                        if (s.workspaceId === workspaceId) {
+                            remainingPeers.push(peer);
+                            break;
+                        }
                     }
                 }
-                if (targetSession !== undefined) {
-                    gates.dispatchToPeer(gate, peer, targetSession, seam, peers, notifyPeerSession, broadcastSessionUpdate);
-                }
+            }
+            if (remainingPeers.length > 0) {
+                void seam
+                    .listSessions(workspaceId)
+                    .then((sessions) => {
+                        for (const peer of remainingPeers) {
+                            const ancestorSession = selectBoundSessionForTarget(peer, workspaceId, interaction.sessionId, sessions);
+                            if (ancestorSession !== undefined) {
+                                gates.dispatchToPeer(gate, peer, ancestorSession, seam, peers, notifyPeerSession, broadcastSessionUpdate);
+                            }
+                        }
+                    })
+                    .catch(() => undefined);
             }
             break;
         }

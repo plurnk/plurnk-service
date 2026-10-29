@@ -39,6 +39,7 @@ import {
     formatSessionId,
     listSessionsOverview,
     resolveSessionBinding,
+    selectBoundSessionForTarget,
     toRequestError,
     tryListProviders,
     type AcpPeer,
@@ -251,12 +252,13 @@ export const createConnectionAgent = (
             );
 
             const providerCatalog = tryListProviders(seam);
-            const [entries, inbox, loops, proposals, interactions, configOptions, modelInfo, spend, streams, budget] = await Promise.all([
+            const [entries, inbox, loops, proposals, interactions, workspaceSessions, configOptions, modelInfo, spend, streams, budget] = await Promise.all([
                 seam.readLog({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.readInbox({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.listSessionLoops({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.pendingProposals(bound.workspaceId),
                 seam.pendingClientInteractions(bound.workspaceId),
+                seam.listSessions(bound.workspaceId),
                 buildConfigOptions(seam, bound.workspaceId, bound.sessionId),
                 seam.readSessionModel({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.sessionAccounting({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
@@ -291,18 +293,13 @@ export const createConnectionAgent = (
                 });
             }
 
-            const peerBoundSessionIds = new Set(
-                [...peer.sessions.values()]
-                    .filter((s) => s.workspaceId === bound.workspaceId)
-                    .map((s) => s.sessionId),
-            );
             const sessionProposals = proposals.filter(
                 (p) =>
                     p.disposition.decision === "review" &&
-                    (p.sessionId === bound.sessionId || !peerBoundSessionIds.has(p.sessionId)),
+                    selectBoundSessionForTarget(peer, bound.workspaceId, p.sessionId, workspaceSessions) === bound,
             );
             const sessionInteractions = interactions.filter(
-                (i) => i.sessionId === bound.sessionId || !peerBoundSessionIds.has(i.sessionId),
+                (i) => selectBoundSessionForTarget(peer, bound.workspaceId, i.sessionId, workspaceSessions) === bound,
             );
 
             const activeLoop = selectSessionLoop(loops);
