@@ -2,8 +2,9 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
     methods,
+    PlanUpdateContent,
     PROTOCOL_VERSION,
-    type SessionUpdate,
+    SessionUpdate,
     type RequestPermissionRequest,
     type CreateElicitationRequest,
 } from "@agentclientprotocol/sdk/experimental/v2/unstable";
@@ -558,6 +559,31 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     }),
                 });
 
+                h.port.emitEvent(1, "log/entry", {
+                    entry: makeLogEntry({
+                        id: 15,
+                        session_id: 1,
+                        turn_seq: 2,
+                        sequence: 3,
+                        op: "NOTE",
+                        tx: { op: "NOTE", body: "- [x] Step 1\n- [/] Step 2\n- [ ] Step 3\n" },
+                        attrs: { path: "mem:///plan" },
+                        rx: { status: 200, content: "- [x] Step 1\n- [/] Step 2\n- [ ] Step 3\n", mimetype: "text/markdown" },
+                    }),
+                });
+
+                h.port.emitEvent(1, "log/entry", {
+                    entry: makeLogEntry({
+                        id: 16,
+                        session_id: 1,
+                        turn_seq: 2,
+                        sequence: 4,
+                        op: "KILL",
+                        attrs: { path: "log:///1/2/3" },
+                        rx: { status: 200, content: "", mimetype: "text/plain" },
+                    }),
+                });
+
                 const notice: Notice = {
                     source: "acp",
                     kind: "test-notice",
@@ -637,6 +663,23 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.ok(updates.some((u) => u.sessionUpdate === "terminal_update"));
                 assert.ok(updates.some((u) => u.sessionUpdate === "terminal_output_chunk"));
                 assert.ok(updates.some((u) => u.sessionUpdate === "notice"));
+                assert.ok(
+                    updates.some(
+                        (u) =>
+                            SessionUpdate.isPlanUpdate(u) &&
+                            PlanUpdateContent.isItems(u.plan) &&
+                            u.plan.planId === "mem:///plan" &&
+                            u.plan.entries.length === 3 &&
+                            u.plan.entries[0]?.status === "completed" &&
+                            u.plan.entries[1]?.status === "in_progress" &&
+                            u.plan.entries[2]?.status === "pending",
+                    ),
+                );
+                assert.ok(
+                    updates.some(
+                        (u) => SessionUpdate.isPlanRemoved(u) && u.planId === "mem:///plan",
+                    ),
+                );
                 assert.ok(
                     updates.some(
                         (u) =>

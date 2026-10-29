@@ -1,6 +1,8 @@
 // {§acp-plurnk-metadata} {§acp-history-window} Pure standard ACP v2 projection from daemon events onto ACP v2 SessionUpdate notifications.
 
 import type {
+    PlanEntry,
+    PlanEntryStatus,
     SessionUpdate,
     ToolCallContent,
     ToolCallStatus,
@@ -40,6 +42,31 @@ export interface AcpSessionUpdate {
 
 export const terminalIdForEntry = (logEntryId: number): string => `term:${logEntryId}`;
 
+const TASK_ITEM_RE = /^[ \t]*[-*+]\s+\[([ xX~/-])\]\s+(.+)$/gmu;
+
+const parsePlanTaskEntries = (body: string): PlanEntry[] => {
+    const entries: PlanEntry[] = [];
+    for (const match of body.matchAll(TASK_ITEM_RE)) {
+        const marker = match[1] ?? " ";
+        const rawText = (match[2] ?? "").trim();
+        if (rawText.length === 0) continue;
+        const status: PlanEntryStatus =
+            marker === "x" || marker === "X"
+                ? "completed"
+                : marker === "/" || marker === "~"
+                  ? "in_progress"
+                  : marker === "-"
+                    ? "cancelled"
+                    : "pending";
+        entries.push({
+            content: rawText,
+            priority: "medium",
+            status,
+        });
+    }
+    return entries;
+};
+
 export default class SessionTranslator {
     readonly #acpSessionId: string;
     readonly #workspaceId: number;
@@ -47,6 +74,8 @@ export default class SessionTranslator {
     readonly #origin: string | undefined;
     readonly #streamedReasoningTurns = new Set<string>();
     readonly #toolCallIdByEntryId = new Map<number, string>();
+    readonly #planIdByCoordinate = new Map<string, string>();
+    readonly #planIdByTarget = new Map<string, string>();
 
     constructor(args: {
         readonly acpSessionId: string;
@@ -338,6 +367,62 @@ export default class SessionTranslator {
                             : {}),
                     },
                 });
+            }
+
+            if (entry.op === "NOTE" && status === "completed") {
+                const taskEntries = parsePlanTaskEntries(text);
+                const isExplicitPlan =
+                    (address !== null && /(?:^|\/|:)plan(?:\.md)?$/iu.test(address)) ||
+                    (comment !== null && /\bplan\b/iu.test(comment));
+                if (taskEntries.length > 0 || (isExplicitPlan && text.trim().length > 0)) {
+                    const planId = address !== null && address.length > 0 ? address : "plan";
+                    this.#planIdByCoordinate.set(coordinate, planId);
+                    if (address !== null && address.length > 0) {
+                        this.#planIdByTarget.set(address, planId);
+                    }
+                    updates.push({
+                        sessionId: this.#acpSessionId,
+                        update: {
+                            sessionUpdate: "plan_update",
+                            plan:
+                                taskEntries.length > 0
+                                    ? { type: "items", planId, entries: taskEntries }
+                                    : { type: "markdown", planId, content: text },
+                            _meta: { plurnk: opMeta },
+                        },
+                    });
+                }
+            } else if (entry.op === "KILL" && status === "completed") {
+                const removedPlanIds = new Set<string>();
+                if (address !== null) {
+                    if (this.#planIdByTarget.has(address)) {
+                        const pid = this.#planIdByTarget.get(address)!;
+                        removedPlanIds.add(pid);
+                        this.#planIdByTarget.delete(address);
+                    }
+                    const logPrefix = "log:///";
+                    const rawCoord = address.startsWith(logPrefix)
+                        ? address.slice(logPrefix.length).replace(/\/[A-Za-z_][A-Za-z0-9_]*$/u, "")
+                        : null;
+                    if (rawCoord !== null) {
+                        for (const [noteCoord, pid] of [...this.#planIdByCoordinate.entries()]) {
+                            if (noteCoord === rawCoord || noteCoord.startsWith(`${rawCoord}/`)) {
+                                removedPlanIds.add(pid);
+                                this.#planIdByCoordinate.delete(noteCoord);
+                            }
+                        }
+                    }
+                }
+                for (const planId of removedPlanIds) {
+                    updates.push({
+                        sessionId: this.#acpSessionId,
+                        update: {
+                            sessionUpdate: "plan_removed",
+                            planId,
+                            _meta: { plurnk: opMeta },
+                        },
+                    });
+                }
             }
             return updates;
         }
