@@ -20,13 +20,13 @@
 // Git resolution uses native Git (subprocess + hermeticGitEnv,
 // AbortSignal-respecting).
 
-import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
+import { errnoCode, isRecord, PathSyntax } from "@plurnk/plurnk-contracts";
 import { execFile, spawn } from "node:child_process";
 import { declaredFilterProgram, gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
 import { promisify } from "node:util";
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { resolve, relative, isAbsolute } from "node:path";
+import { dirname, resolve, relative, isAbsolute } from "node:path";
 import PathGlob from "./PathGlob.ts";
 import type { Db } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
@@ -258,7 +258,9 @@ export default class GitMembership {
             settings.fileCreateScope,
         );
         const outsideRoot = key.startsWith("../");
-        if (!FileCreationPolicy.admits(scope, outsideRoot)) {
+        const includedByDefinition =
+            (await db.crud_constraint_including_by_definition.get({ workspace_id: workspaceId, key })) !== undefined;
+        if (!FileCreationPolicy.admits(scope, outsideRoot && !includedByDefinition)) {
             return {
                 ok: false,
                 code: scope === "none" ? "file-create-disabled" : "file-create-outside-scope",
@@ -293,7 +295,7 @@ export default class GitMembership {
             };
         }
 
-        if (await db.crud_constraint_including_by_definition.get({ workspace_id: workspaceId, key }) !== undefined) {
+        if (includedByDefinition) {
             return { ok: true, incorporation: "definition" };
         }
 
@@ -531,7 +533,12 @@ export default class GitMembership {
         }
         const constraints = await db.crud_list_workspace_constraints.all<OverlayRow>({ workspace_id: workspaceId });
         if (constraints.some((c) => c.effect === "exclude" && PathGlob.matches(key, c.glob))) return false;
-        const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);
+        const repository = await GitMembership.#activeAutomaticRepository(
+            db,
+            workspaceId,
+            key.startsWith("../") ? dirname(resolve(root, key)) : root,
+            signal,
+        );
         return repository === null || (await GitMembership.#isIgnoredByRepository(root, repository, key, signal)) !== true;
     }
 
@@ -662,7 +669,24 @@ export default class GitMembership {
         signal: AbortSignal | undefined,
     ): Promise<string[]> {
         const matches = new Set<string>();
+        const gitAuto =
+            process.env.PLURNK_SERVICE_GIT_ALLOWED === "1" && process.env.PLURNK_SERVICE_GIT_AUTO === "1";
         for (const pattern of patterns) {
+            if (gitAuto && pattern.startsWith("../") && pattern.endsWith("/**")) {
+                const dirKey = pattern.slice(0, -3);
+                if (dirKey.length > 0 && !PathSyntax.hasGlob(dirKey)) {
+                    const absDir = resolve(root, dirKey);
+                    const { repository } = await GitMembership.#automaticRepository(absDir, signal);
+                    if (repository !== null) {
+                        for (const tracked of await GitMembership.#projectMembers(root, repository, signal)) {
+                            if (PathGlob.matches(tracked, pattern)) {
+                                matches.add(tracked);
+                            }
+                        }
+                        continue;
+                    }
+                }
+            }
             for await (const rel of PathGlob.iterate(pattern, root)) {
                 if (signal?.aborted) return [...matches];
                 try {

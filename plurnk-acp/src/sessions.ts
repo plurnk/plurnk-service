@@ -1,5 +1,6 @@
 // {§acp-daemon-client} {§acp-session-owner} {§acp-overview} {§acp-action-binding} Session and workspace binding, configOptions, and overview projection.
 
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
     RequestError,
     type AgentContext,
@@ -754,6 +755,33 @@ export const applyConfigOption = async (
     return await buildConfigOptions(seam, bound.workspaceId, bound.sessionId);
 };
 
+export const applyAdditionalDirectories = async (
+    seam: ApplicationPort,
+    workspaceId: number,
+    projectRoot: string | null,
+    additionalDirectories: readonly string[] | null | undefined,
+): Promise<void> => {
+    if (!Array.isArray(additionalDirectories) || additionalDirectories.length === 0) return;
+    const files: string[] = [];
+    for (const rawDir of additionalDirectories) {
+        if (typeof rawDir !== "string" || rawDir.trim().length === 0) continue;
+        const normalized = rawDir.trim().replace(/\/+$/u, "");
+        if (normalized.length === 0) continue;
+        if (projectRoot !== null && projectRoot.length > 0 && isAbsolute(normalized)) {
+            const rel = relative(projectRoot, resolve(normalized)).split(sep).join("/");
+            files.push(rel.length === 0 ? "**" : `${rel}/**`);
+        } else {
+            files.push(`${normalized}/**`);
+        }
+    }
+    if (files.length === 0) return;
+    await seam.invokeModuleAction(
+        "workspace.members.add",
+        { files },
+        { scope: "workspace", workspaceId },
+    );
+};
+
 export const listSessionsOverview = async (
     seam: ApplicationPort,
     opts: ResolvedModuleOptions,
@@ -769,6 +797,40 @@ export const listSessionsOverview = async (
         wsById.set(ws.id, ws);
     }
 
+    const additionalDirsByWs = new Map<number, string[]>();
+    const hasMembersList = (seam.listModuleActions?.() ?? []).some((a) => a.name === "workspace.members.list");
+    if (hasMembersList) {
+        await Promise.all(
+            overview.workspaces.map(async (ws) => {
+                const listed = await seam
+                    .invokeModuleAction("workspace.members.list", {}, { scope: "workspace", workspaceId: ws.id })
+                    .catch(() => null);
+                if (!isRecord(listed) || !Array.isArray(listed.definitions)) return;
+                const dirs: string[] = [];
+                for (const item of listed.definitions) {
+                    if (!isRecord(item) || item.state === "disabled" || item.enabled === false) continue;
+                    const glob =
+                        typeof item.alias === "string"
+                            ? item.alias
+                            : isRecord(item.definition) && typeof item.definition.glob === "string"
+                              ? item.definition.glob
+                              : "";
+                    if (glob.startsWith("!") || !glob.endsWith("/**") || glob === "**") continue;
+                    const dirPart = glob.slice(0, -3);
+                    if (dirPart.length === 0) continue;
+                    const resolvedDir =
+                        ws.projectRoot !== null && ws.projectRoot.length > 0 && !isAbsolute(dirPart)
+                            ? resolve(ws.projectRoot, dirPart)
+                            : dirPart;
+                    dirs.push(resolvedDir);
+                }
+                if (dirs.length > 0) {
+                    additionalDirsByWs.set(ws.id, dirs);
+                }
+            }),
+        );
+    }
+
     return overview.sessions
         .filter((s) => {
             if (!cwd) return true;
@@ -779,6 +841,7 @@ export const listSessionsOverview = async (
             const ws = wsById.get(s.workspaceId);
             const wsName = ws?.name ?? String(s.workspaceId);
             const projectRoot = ws?.projectRoot ?? "/";
+            const additionalDirectories = additionalDirsByWs.get(s.workspaceId);
             const reply = s.reply;
             const replyAt = reply !== null ? new Date(reply.at).toISOString() : undefined;
             const replyMeta = reply !== null
@@ -794,6 +857,7 @@ export const listSessionsOverview = async (
             return {
                 sessionId: formatSessionId(s.workspaceId, s.name),
                 cwd: projectRoot,
+                ...(additionalDirectories !== undefined ? { additionalDirectories } : {}),
                 title: `${wsName}#${s.name}`,
                 updatedAt: replyAt,
                 _meta: {

@@ -533,4 +533,47 @@ test("{§tools-resource-materialization} {§fs-namespace} a glob spelled absolut
         }
     });
 });
+
+test("{§tools-resource-materialization} {§fs-write-surface}: outside-root Git directory glob ../repo/** resolves git ls-files, respects .gitignore for ambient candidates, and admits creation under root scope", { timeout: 60_000 }, async (t) => {
+    serverProposals(t, "accept");
+    const base = await mkdtemp(join(tmpdir(), "plurnk-members-gitdir-"));
+    t.after(() => rm(base, { recursive: true, force: true }));
+    const root = join(base, "alpha");
+    const beta = join(base, "beta");
+    await Promise.all([mkdir(root, { recursive: true }), mkdir(beta, { recursive: true })]);
+    for (const dir of [root, beta]) {
+        const git = (args: string[]) => execFileP("git", args, { cwd: dir, env: hermeticGitEnv() });
+        await git(["init", "-q"]);
+        await writeFile(join(dir, ".gitignore"), "ignored.log\n");
+        await writeFile(join(dir, "tracked.md"), `# ${dir}\n`);
+        await git(["add", ".gitignore", "tracked.md"]);
+        await git(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-q", "--no-verify", "-m", "chore: seed"]);
+        await writeFile(join(dir, "untracked.md"), "untracked\n");
+        await writeFile(join(dir, "ignored.log"), "secret\n");
+    }
+    await withEnv({ PLURNK_SERVICE_GIT_ALLOWED: "1", PLURNK_SERVICE_GIT_AUTO: "1", PLURNK_SERVICE_FILE_CREATE_SCOPE: "root", PLURNK_MEMBERS_ENABLED: "1" }, async () => {
+        const db = await openMigrated();
+        const workspaceId = await insertWorkspace(db, `members-gitdir-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, root);
+        const model = await insertSession(db, workspaceId, null, "model", "model");
+        await ownSession(db, workspaceId, model);
+        const daemon = new Daemon({ db, provider: null });
+        await daemon.start();
+        try {
+            await daemon.invokeModuleAction("workspace.members.add", { files: ["../beta/**"] }, workspaceContext(workspaceId));
+            await daemon.settleFunctionality(workspaceId);
+            assert.equal(await memberOf(db, workspaceId, "../beta/tracked.md"), true, "tracked file in attached Git repo is a member");
+            assert.equal(await memberOf(db, workspaceId, "../beta/untracked.md"), false, "untracked file in attached Git repo is not blindly walked");
+            assert.equal(await memberOf(db, workspaceId, "../beta/ignored.log"), false, "gitignored file in attached Git repo is excluded");
+
+            const operate = (program: string) => modelOperation(daemon, db, { workspaceId, sessionId: model, statement: parseOne(program) });
+            const created = await operate("````EDIT (../beta/created.md)\nhello beta\n````") as { status: number };
+            assert.equal(created.status, 200, "creating a file inside an attached ../beta/** directory succeeds under root scope");
+            assert.equal(await memberOf(db, workspaceId, "../beta/created.md"), true);
+        } finally {
+            await daemon.stop();
+            await db.close();
+        }
+    });
+});
 });

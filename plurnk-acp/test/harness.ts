@@ -170,6 +170,7 @@ export const createHarness = async (options?: {
     const logs: LogEntryWire[] = [];
     const entryContents = new Map<string, string>();
     const messageAddresses = new Map<string, string>();
+    const memberDefinitions = new Map<number, string[]>();
     let currentModel: ModelRoute = {
         alias: "fast",
         provider: "mocktest",
@@ -302,9 +303,49 @@ export const createHarness = async (options?: {
                     properties: { items: { type: "array", items: { type: "object" } } },
                 },
             },
+            {
+                name: "workspace.members.list",
+                scope: "workspace",
+                inputSchema: { type: "object", additionalProperties: false, properties: {} },
+                outputSchema: {
+                    type: "object",
+                    required: ["definitions"],
+                    additionalProperties: false,
+                    properties: { definitions: { type: "array", items: { type: "object" } } },
+                },
+            },
+            {
+                name: "workspace.members.add",
+                scope: "workspace",
+                inputSchema: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["files"],
+                    properties: { files: { type: "array", items: { type: "string" } } },
+                },
+                outputSchema: { type: "object" },
+            },
         ],
-        invokeModuleAction: async (name) => {
+        invokeModuleAction: async (name, input, context) => {
             if (name === "workspace.mcp.list") return { items: [] };
+            const wsId = context.scope === "workspace" ? context.workspaceId : 1;
+            if (name === "workspace.members.add") {
+                const { files } = input as { files: string[] };
+                const existing = memberDefinitions.get(wsId) ?? [];
+                for (const p of files) {
+                    if (!existing.includes(p)) existing.push(p);
+                }
+                memberDefinitions.set(wsId, existing);
+                return {
+                    definitions: existing.map((alias) => ({ alias, state: "active", enabled: true })),
+                };
+            }
+            if (name === "workspace.members.list") {
+                const existing = memberDefinitions.get(wsId) ?? [];
+                return {
+                    definitions: existing.map((alias) => ({ alias, state: "active", enabled: true })),
+                };
+            }
             throw new Error(`Unexpected module action ${name}`);
         },
         subscribeToEvents: (handler) => {

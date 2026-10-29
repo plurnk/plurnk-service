@@ -9,7 +9,7 @@ The module is the daemon's Standard ACP v2 (`@agentclientprotocol/sdk/experiment
 - **Standard ACP v2 authority:** `initialize` negotiates `protocolVersion: 2` (`PROTOCOL_VERSION`) and advertises `capabilities` (`session: { prompt: { image: {}, embeddedContext: {} }, delete: {}, fork: {} }`, `providers: {}`).
 - **Workspace & session binding:**
   - *Qualified address (`<workspaceId>#<sessionName>`):* Positive safe decimal integer + `#` + native model-session name (`400 session-address-invalid` on leading zeroes, out-of-range ID, or invalid name). Always selects the immutable workspace ID.
-  - *Workspace resolution:* `session/new` attaches or creates the workspace for `cwd` (`AbsolutePath`) or `_meta.plurnk.workspace`; `session/resume` and `session/list` attach an existing workspace (`404 workspace-not-found` when absent). Concurrent first workspace acquisitions are serialized without caching failures.
+  - *Workspace resolution:* `session/new` attaches or creates the workspace for `cwd` (`AbsolutePath`) or `_meta.plurnk.workspace`; `session/resume` and `session/list` attach an existing workspace (`404 workspace-not-found` when absent). Concurrent first workspace acquisitions are serialized without caching failures. `additionalDirectories` on `session/new` and `session/resume` are registered as `<dir>/**` definitions in `workspace.members.add`.
   - *Session resolution:* Resolves model-origin sessions only (`_plurnk` is never bound as a conversation session). `session/new` creates the session; `session/resume` attaches an existing session (unless `_meta.plurnk.create === true`, returning `404 session-not-found` when absent). Unqualified opaque `sessionId` values resolve through Core's `acp` external reference ({§machine-processes}) or as a session name in the `cwd` workspace. Process-local bindings key on `(workspaceId, sessionId)`.
 
 ## §acp-session-owner 2. Approval Ownership and Connection Lifetime
@@ -64,7 +64,7 @@ Every daemon log entry and runtime notification projects to standard ACP v2 `Ses
 
 ## §acp-overview 6. Session Directory and Client Conformance
 
-- **Side-effect-free `session/list`:** Calls `readSessionOverview` and `listSessions` without binding/creating a workspace or session, claiming ownership, or running inference (`400 overview-invalid` on invalid `_meta.plurnk.workspaceId`; `404 workspace-not-found` on unknown workspace). Returns `SessionInfo[]` (`{ sessionId: "<workspaceId>#<name>", cwd, title, updatedAt, _meta: { plurnk: { workspaceId, sessionId, kind, lifecycle, gates, reply } } }`) bounded by `PLURNK_ACP_OVERVIEW_SESSIONS` with `reply` excerpts bounded to `PLURNK_ACP_EXCERPT_CHARS` and linked to the entry route. Live changes emit `session_info_update`.
+- **Side-effect-free `session/list`:** Calls `readSessionOverview` and `listSessions` without binding/creating a workspace or session, claiming ownership, or running inference (`400 overview-invalid` on invalid `_meta.plurnk.workspaceId`; `404 workspace-not-found` on unknown workspace). Returns `SessionInfo[]` (`{ sessionId: "<workspaceId>#<name>", cwd, additionalDirectories, title, updatedAt, _meta: { plurnk: { workspaceId, sessionId, kind, lifecycle, gates, reply } } }`) bounded by `PLURNK_ACP_OVERVIEW_SESSIONS` with `reply` excerpts bounded to `PLURNK_ACP_EXCERPT_CHARS` and linked to the entry route. Live changes emit `session_info_update`.
 
 ### §acp-first-party-client-conformance 6.1 First-Party and Stock Client Conformance
 

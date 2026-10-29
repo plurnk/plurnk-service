@@ -171,6 +171,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             await app.connectWith(stream, async (ctx) => {
                 const created = await ctx.request(methods.agent.session.new, {
                     cwd: "/workspace/alpha",
+                    additionalDirectories: ["/workspace/beta"],
                     _meta: { plurnk: { name: "alice" } },
                 });
                 assert.equal(created.sessionId, "1#alice");
@@ -218,6 +219,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     cwd: "/workspace/alpha",
                 });
                 assert.ok(listedBefore.sessions.some((s) => s.sessionId === forked.sessionId));
+                const aliceEntry = listedBefore.sessions.find((s) => s.sessionId === "1#alice");
+                assert.deepEqual(aliceEntry?.additionalDirectories, ["/workspace/beta"]);
 
                 await ctx.request(methods.agent.session.delete, {
                     sessionId: forked.sessionId,

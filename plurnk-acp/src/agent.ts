@@ -35,6 +35,7 @@ import type { GateTracker } from "./gates.ts";
 import SessionTranslator from "./SessionTranslator.ts";
 import {
     AVAILABLE_COMMANDS,
+    applyAdditionalDirectories,
     applyConfigOption,
     assertSinglePortSecurity,
     buildConfigOptions,
@@ -196,6 +197,12 @@ export const createConnectionAgent = (
                 true,
                 ctx.params._meta,
             );
+            await applyAdditionalDirectories(
+                seam,
+                bound.workspaceId,
+                bound.projectRoot,
+                ctx.params.additionalDirectories,
+            );
             const providerCatalog = tryListProviders(seam);
             const [configOptions, modelInfo] = await Promise.all([
                 buildConfigOptions(seam, bound.workspaceId, bound.sessionId),
@@ -272,6 +279,12 @@ export const createConnectionAgent = (
                 ctx.params.cwd,
                 false,
                 ctx.params._meta,
+            );
+            await applyAdditionalDirectories(
+                seam,
+                bound.workspaceId,
+                bound.projectRoot,
+                ctx.params.additionalDirectories,
             );
 
             const providerCatalog = tryListProviders(seam);
