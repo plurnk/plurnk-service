@@ -39,12 +39,18 @@ test("{§host-path-layout} resolves the XDG defaults by artifact semantics", () 
     const paths = new HostPaths({ env: {}, home: "/home/ada" });
     assert.equal(paths.configFile, "/home/ada/.config/plurnk/.env");
     assert.equal(paths.policyFile, "/home/ada/.config/plurnk/AGENTS.md");
+    assert.equal(paths.localPolicyFile, "/home/ada/.config/plurnk/AGENTS.local.md");
     assert.equal(paths.xdgPolicyFile, "/home/ada/.config/agents/AGENTS.md");
+    assert.equal(paths.xdgLocalPolicyFile, "/home/ada/.config/agents/AGENTS.local.md");
     assert.equal(paths.globalPolicyFile, "/home/ada/.agents/AGENTS.md");
+    assert.equal(paths.globalLocalPolicyFile, "/home/ada/.agents/AGENTS.local.md");
     assert.deepEqual(paths.policyFiles, [
         "/home/ada/.config/agents/AGENTS.md",
+        "/home/ada/.config/agents/AGENTS.local.md",
         "/home/ada/.agents/AGENTS.md",
+        "/home/ada/.agents/AGENTS.local.md",
         "/home/ada/.config/plurnk/AGENTS.md",
+        "/home/ada/.config/plurnk/AGENTS.local.md",
     ]);
     assert.equal(paths.databaseFile, "/home/ada/.local/share/plurnk/plurnk.db");
     assert.equal(paths.stateDir, "/home/ada/.local/state/plurnk");

@@ -31,8 +31,11 @@ export default class HostPaths {
     readonly runtimeDir: string | null;
     readonly configFile: string;
     readonly policyFile: string;
+    readonly localPolicyFile: string;
     readonly xdgPolicyFile: string;
+    readonly xdgLocalPolicyFile: string;
     readonly globalPolicyFile: string;
+    readonly globalLocalPolicyFile: string;
     readonly policyFiles: readonly string[];
     readonly databaseFile: string;
     readonly modelsCacheFile: string;
@@ -101,6 +104,7 @@ export default class HostPaths {
         this.runtimeDir = this.runtimeHome === null ? null : join(this.runtimeHome, APP_DIRECTORY);
         this.configFile = join(this.configDir, ".env");
         this.policyFile = join(this.configDir, "AGENTS.md");
+        this.localPolicyFile = join(this.configDir, "AGENTS.local.md");
         this.databaseFile = join(this.dataDir, "plurnk.db");
         // {§model-catalog-cache} {§startup-admission} — cached models.dev snapshot under the cache home.
         this.modelsCacheFile = join(this.cacheDir, "models.json");
@@ -111,10 +115,21 @@ export default class HostPaths {
         this.xdgAgentsDir = join(this.configHome, "agents");
         this.xdgSkillsDir = join(this.xdgAgentsDir, "skills");
         this.xdgPolicyFile = join(this.xdgAgentsDir, "AGENTS.md");
+        this.xdgLocalPolicyFile = join(this.xdgAgentsDir, "AGENTS.local.md");
         this.globalAgentsDir = join(this.home, ".agents");
         this.globalSkillsDir = join(this.globalAgentsDir, "skills");
         this.globalPolicyFile = join(this.globalAgentsDir, "AGENTS.md");
-        this.policyFiles = Object.freeze([...new Set([this.xdgPolicyFile, this.globalPolicyFile, this.policyFile])]);
+        this.globalLocalPolicyFile = join(this.globalAgentsDir, "AGENTS.local.md");
+        this.policyFiles = Object.freeze([
+            ...new Set([
+                this.xdgPolicyFile,
+                this.xdgLocalPolicyFile,
+                this.globalPolicyFile,
+                this.globalLocalPolicyFile,
+                this.policyFile,
+                this.localPolicyFile,
+            ]),
+        ]);
         // {§functionality-inspection} — plugins are configuration, found like skills; their data is data.
         this.plurnkPluginsDir = join(this.configDir, "plugins");
         this.xdgPluginsDir = join(this.xdgAgentsDir, "plugins");

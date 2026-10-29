@@ -36,8 +36,9 @@ export default class LoopDocs {
         LoopDocs.#signatures.get(db)?.delete(workspaceId);
     }
 
-    // Nested AGENTS.md files below the project root (the root file has its own
-    // slot), skipping dot-directories and node_modules. Deterministic order.
+    // Nested AGENTS.md and AGENTS.local.md files below the project root (the root
+    // files have their own slots), skipping dot-directories and node_modules.
+    // Deterministic order.
     static async #nestedInstructions(root: string): Promise<Array<[string, string]>> {
         const out: Array<[string, string]> = [];
         const walk = async (relative: string): Promise<void> => {
@@ -47,7 +48,7 @@ export default class LoopDocs {
                 if (entry.isDirectory()) {
                     if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
                     await walk(childRelative);
-                } else if (entry.name === "AGENTS.md" && relative.length > 0) {
+                } else if ((entry.name === "AGENTS.md" || entry.name === "AGENTS.local.md") && relative.length > 0) {
                     const content = await readFile(join(root, childRelative), "utf8").catch(() => null);
                     if (content !== null) out.push([childRelative, content]);
                 }
@@ -109,15 +110,16 @@ export default class LoopDocs {
             ? null
             : await readFile(join(workspace.project_root, "AGENTS.local.md"), "utf8").catch(() => null);
         if (localContent !== null) desired.set(generatedPathname("/AGENTS.local.md"), localContent);
-        // #346 — nested AGENTS.md honor the standard's closest-file scope:
-        // each materializes at _plurnk/instructions/<subtree>/AGENTS.md with its
-        // path preserved. No foisted READ and no teaching (operator-ruled):
-        // the path convention is in the models' prior. This disk read is register
-        // entry (3) of {§membership}: the standard admits the
-        // instruction content; the file is a member only when tracked or picked.
+        // #346, #1350 — nested AGENTS.md and AGENTS.local.md honor closest-file scope:
+        // each materializes at _plurnk/instructions/<subtree>/AGENTS(.local)?.md with its
+        // path preserved. AGENTS.local.md is read whatever its git ignore status (hidden
+        // only by an explicit exclusion).
         if (workspace?.project_root !== null && workspace?.project_root !== undefined) {
             for (const [relative, content] of await LoopDocs.#nestedInstructions(workspace.project_root)) {
-                if (await GitMembership.excludesInstruction(db, workspaceId, relative)) continue;
+                const excluded = relative.endsWith("/AGENTS.local.md")
+                    ? await GitMembership.exclusionOf(db, workspaceId, relative) !== null
+                    : await GitMembership.excludesInstruction(db, workspaceId, relative);
+                if (excluded) continue;
                 desired.set(generatedPathname(`/instructions/${relative}`), content);
             }
         }

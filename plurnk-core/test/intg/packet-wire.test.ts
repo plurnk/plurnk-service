@@ -950,7 +950,7 @@ test("{§session-initialization-entry} assembled packet: PLURNK_SERVICE_POLICY r
     }
 });
 
-test("{§packet-inject} {§host-path-layout} unset PLURNK_SERVICE_POLICY composes $XDG_CONFIG_HOME/agents/AGENTS.md, ~/.agents/AGENTS.md, and $XDG_CONFIG_HOME/plurnk/AGENTS.md in order", async (t) => {
+test("{§packet-inject} {§host-path-layout} unset PLURNK_SERVICE_POLICY composes $XDG_CONFIG_HOME/agents/AGENTS(.local)?.md, ~/.agents/AGENTS(.local)?.md, and $XDG_CONFIG_HOME/plurnk/AGENTS(.local)?.md in order", async (t) => {
     const priorPolicy = process.env.PLURNK_SERVICE_POLICY;
     const dir = await mkdtemp(join(tmpdir(), "plurnk-policy-cascade-"));
     const db = await openMigrated();
@@ -967,8 +967,11 @@ test("{§packet-inject} {§host-path-layout} unset PLURNK_SERVICE_POLICY compose
     await mkdir(hostPaths.globalAgentsDir, { recursive: true });
     await mkdir(hostPaths.configDir, { recursive: true });
     await writeFile(hostPaths.xdgPolicyFile, "# XDG global rules");
+    await writeFile(hostPaths.xdgLocalPolicyFile, "# XDG local rules");
     await writeFile(hostPaths.globalPolicyFile, "# Home global rules");
+    await writeFile(hostPaths.globalLocalPolicyFile, "# Home local rules");
     await writeFile(hostPaths.policyFile, "# Plurnk rules");
+    await writeFile(hostPaths.localPolicyFile, "# Plurnk local rules");
     delete process.env.PLURNK_SERVICE_POLICY;
 
     const workspaceId = await insertWorkspace(db, `pkt-policy-cascade-${crypto.randomUUID()}`);
@@ -980,7 +983,7 @@ test("{§packet-inject} {§host-path-layout} unset PLURNK_SERVICE_POLICY compose
     const packet = await getPacket(db, result.turnId);
     assert.equal(
         packetSection(packet, "system-policy"),
-        "# XDG global rules\n\n# Home global rules\n\n# Plurnk rules",
+        "# XDG global rules\n\n# XDG local rules\n\n# Home global rules\n\n# Home local rules\n\n# Plurnk rules\n\n# Plurnk local rules",
     );
 });
 

@@ -502,7 +502,7 @@ for (const standing of ["absent", "ignored", "untracked", "tracked", "excluded"]
             process.env.PLURNK_SERVICE_GIT_AUTO = "1";
             process.env.PLURNK_MEMBERS_ENABLED = "1";
             // An operator exclusion ({§tools-resource-materialization}).
-            if (standing === "excluded") process.env.PLURNK_MEMBERS_no_local = "!AGENTS.local.md";
+            if (standing === "excluded") process.env.PLURNK_MEMBERS_no_local = "!**/AGENTS.local.md";
             const dir = await mkdtemp(join(tmpdir(), "plurnk-local-instructions-"));
             try {
                 await execFileP("git", ["init", "-q"], { cwd: dir, env: hermeticGitEnv() });
@@ -511,7 +511,9 @@ for (const standing of ["absent", "ignored", "untracked", "tracked", "excluded"]
                 if (standing !== "absent") await writeFile(join(dir, "AGENTS.local.md"), LOCAL, "utf8");
                 if (standing === "tracked") await execFileP("git", ["add", "AGENTS.local.md"], { cwd: dir, env: hermeticGitEnv() });
                 await mkdir(join(dir, "packages", "web"), { recursive: true });
-                await writeFile(join(dir, "packages", "web", "AGENTS.local.md"), "# Nested\n", "utf8");
+                if (standing !== "absent") {
+                    await writeFile(join(dir, "packages", "web", "AGENTS.local.md"), "# Nested\n", "utf8");
+                }
                 const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
                 await withDaemon(mock, async (db, _daemon, addr) => {
                     const ws = await connect(addr);
@@ -535,7 +537,7 @@ for (const standing of ["absent", "ignored", "untracked", "tracked", "excluded"]
                         const nested = await db.crud_find_workspace_entry.get<{ id: number }>({
                             workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/_plurnk/instructions/packages/web/AGENTS.local.md",
                         });
-                        assert.equal(nested, undefined, "a nested AGENTS.local.md is never projected");
+                        assert.equal(nested !== undefined, projected, "a nested AGENTS.local.md is projected under _plurnk/instructions/<subtree>/AGENTS.local.md unless absent or excluded");
                     } finally { ws.close(); }
                 });
             } finally {
