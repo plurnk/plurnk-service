@@ -49,6 +49,10 @@ The package's INSTALL.md describes the configuration cascade
 and resource scopes.
 .SH FILES
 .TP
+.I $XDG_CONFIG_HOME/plurnk/.env.local
+Machine-local operator configuration overrides;
+~/.config/plurnk/.env.local when XDG_CONFIG_HOME is unset.
+.TP
 .I $XDG_CONFIG_HOME/plurnk/.env
 Operator configuration; ~/.config/plurnk/.env when XDG_CONFIG_HOME is unset.
 .TP

@@ -30,6 +30,7 @@ export default class HostPaths {
     readonly cacheDir: string;
     readonly runtimeDir: string | null;
     readonly configFile: string;
+    readonly localConfigFile: string;
     readonly policyFile: string;
     readonly localPolicyFile: string;
     readonly xdgPolicyFile: string;
@@ -103,6 +104,7 @@ export default class HostPaths {
         this.cacheDir = join(this.cacheHome, APP_DIRECTORY);
         this.runtimeDir = this.runtimeHome === null ? null : join(this.runtimeHome, APP_DIRECTORY);
         this.configFile = join(this.configDir, ".env");
+        this.localConfigFile = join(this.configDir, ".env.local");
         this.policyFile = join(this.configDir, "AGENTS.md");
         this.localPolicyFile = join(this.configDir, "AGENTS.local.md");
         this.databaseFile = join(this.dataDir, "plurnk.db");

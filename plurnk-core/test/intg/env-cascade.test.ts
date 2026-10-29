@@ -192,11 +192,16 @@ test("{§operator-config-precedence} launcher cascade: the working directory's .
     const fx = await fixture();
     try {
         const homeDb = join(fx.root, "home.db");
+        const localDb = join(fx.root, "local.db");
         const cwdDb = join(fx.root, "cwd.db");
+        const homeLocalEnv = `${fx.homeEnv}.local`;
         await envFile(fx.homeEnv, homeDb);
         await envFile(fx.cwdEnv, cwdDb);
 
         assert.equal(migratedPath(await runService(fx, ["migrate"])), homeDb, "the working directory's .env configures nothing");
+        await envFile(homeLocalEnv, localDb);
+        assert.equal(migratedPath(await runService(fx, ["migrate"])), localDb, "the XDG .env.local overrides .env");
+        await rm(homeLocalEnv);
         await rm(fx.homeEnv);
         assert.equal(
             migratedPath(await runService(fx, ["migrate"])),

@@ -25,7 +25,12 @@ const stage = async (t, defined) => {
     t.after(() => rm(dir, { recursive: true, force: true }));
     await mkdir(path.join(dir, "plurnk-core"), { recursive: true });
     const operatorFile = path.join(dir, "operator.env");
-    const files = { defaults: path.join(dir, "plurnk-core", ".env.defaults"), operator: operatorFile, gate: path.join(dir, "plurnk-core", ".env.test") };
+    const files = {
+        defaults: path.join(dir, "plurnk-core", ".env.defaults"),
+        operator: operatorFile,
+        local: `${operatorFile}.local`,
+        gate: path.join(dir, "plurnk-core", ".env.test"),
+    };
     for (const [layer, file] of Object.entries(files)) {
         if (layer in defined) await writeFile(file, `${KEY}=${defined[layer]}\n`);
     }
@@ -247,7 +252,12 @@ test("{§environment-layers} candidate deadline snapshot photographs the project
 
 test("{§environment-layers} the layers run lowest to highest, and the flags say so", () => {
     const layers = realModelLayers("/repo", { operatorFile: "/home/op/.config/plurnk/.env" });
-    assert.deepEqual(layers, ["/repo/plurnk-core/.env.defaults", "/home/op/.config/plurnk/.env", "/repo/plurnk-core/.env.test"]);
+    assert.deepEqual(layers, [
+        "/repo/plurnk-core/.env.defaults",
+        "/home/op/.config/plurnk/.env",
+        "/home/op/.config/plurnk/.env.local",
+        "/repo/plurnk-core/.env.test",
+    ]);
     assert.equal(gateProfile("/repo"), "/repo/plurnk-core/.env.test");
     assert.deepEqual(realModelNodeFlags("/repo", { operatorFile: "/home/op/.config/plurnk/.env" }), [
         `--import=${floorModule("/repo")}`,
@@ -255,14 +265,16 @@ test("{§environment-layers} the layers run lowest to highest, and the flags say
     ]);
 });
 
-test("{§environment-layers} precedence: the gate profile over the operator file over the defaults, the shell over all", async (t) => {
+test("{§environment-layers} precedence: the gate profile over the local and base operator files over the defaults, the shell over all", async (t) => {
     const cases = [
         [{ defaults: "d" }, "d"],
         [{ operator: "o" }, "o"],
+        [{ local: "l" }, "l"],
         [{ gate: "g" }, "g"],
         [{ defaults: "d", operator: "o" }, "o"],
-        [{ operator: "o", gate: "g" }, "g"],
-        [{ defaults: "d", operator: "o", gate: "g" }, "g"],
+        [{ operator: "o", local: "l" }, "l"],
+        [{ local: "l", gate: "g" }, "g"],
+        [{ defaults: "d", operator: "o", local: "l", gate: "g" }, "g"],
         [{ defaults: "d", gate: "g" }, "g"],
     ];
     for (const [defined, expected] of cases) {

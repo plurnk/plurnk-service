@@ -34,7 +34,7 @@ and says which two settings the daemon needs behind it.
 
 | Resource | Default location |
 | --- | --- |
-| User configuration | `$XDG_CONFIG_HOME/plurnk/.env` (`~/.config/plurnk/.env`) |
+| User configuration | `$XDG_CONFIG_HOME/plurnk/.env` and `.env.local` (`~/.config/plurnk/.env`) |
 | Operating policy | `$XDG_CONFIG_HOME/plurnk/AGENTS.md` |
 | Database | `$XDG_DATA_HOME/plurnk/plurnk.db` (`~/.local/share/plurnk/plurnk.db`) |
 | Log of a service a client started | `$XDG_STATE_HOME/plurnk/service.log` (`~/.local/state/plurnk/service.log`) |
@@ -119,6 +119,7 @@ Highest priority first ({§operator-config-precedence}):
 | Initial shell environment | Preserved over files. |
 | `--env-file` / `--env-file-if-exists` | Repeatable; later files win. The optional form skips absent files. |
 | `--config=<path>` | One explicit service configuration file. |
+| `$XDG_CONFIG_HOME/plurnk/.env.local` | Machine-local user configuration overrides. |
 | `$XDG_CONFIG_HOME/plurnk/.env` | User configuration. |
 | Installed packages' `.env.defaults` | Set-if-unset floor; duplicate key ownership fails boot. |
 

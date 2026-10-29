@@ -38,6 +38,7 @@ test("{§host-path-layout} forensic defaults honor the daemon's explicit databas
 test("{§host-path-layout} resolves the XDG defaults by artifact semantics", () => {
     const paths = new HostPaths({ env: {}, home: "/home/ada" });
     assert.equal(paths.configFile, "/home/ada/.config/plurnk/.env");
+    assert.equal(paths.localConfigFile, "/home/ada/.config/plurnk/.env.local");
     assert.equal(paths.policyFile, "/home/ada/.config/plurnk/AGENTS.md");
     assert.equal(paths.localPolicyFile, "/home/ada/.config/plurnk/AGENTS.local.md");
     assert.equal(paths.xdgPolicyFile, "/home/ada/.config/agents/AGENTS.md");

@@ -794,7 +794,7 @@ On XDG-compatible hosts, artifact semantics select the default location. An unse
 
 | Class | Base | Plurnk member |
 |---|---|---|
-| Configuration | `$XDG_CONFIG_HOME` (default `~/.config`) | `plurnk/.env`, `plurnk/AGENTS.md`, `plurnk/AGENTS.local.md`, `plurnk/mcp.json`, `plurnk/skills/<name>/SKILL.md`, `plurnk/plugins/<plugin>/` |
+| Configuration | `$XDG_CONFIG_HOME` (default `~/.config`) | `plurnk/.env`, `plurnk/.env.local`, `plurnk/AGENTS.md`, `plurnk/AGENTS.local.md`, `plurnk/mcp.json`, `plurnk/skills/<name>/SKILL.md`, `plurnk/plugins/<plugin>/` |
 | Durable user data | `$XDG_DATA_HOME` (default `~/.local/share`) | `plurnk/plurnk.db` and SQLite sidecars; `plurnk/plugins/<plugin>/` (`PLUGIN_DATA`) |
 | Persistent operational state | `$XDG_STATE_HOME` (default `~/.local/state`) | On-demand workspace/module directories ({§module-seam-slices}) |
 | Reproducible cache | `$XDG_CACHE_HOME` (default `~/.cache`) | `plurnk/models.json` cached model catalog ({§model-catalog-cache}, {§startup-admission}); created on explicit update |
@@ -809,7 +809,7 @@ Higher-priority sources preserve or replace values supplied by lower sources:
 | Priority | Source | Ordering |
 |---:|---|---|
 | 1 | Assembled package `.env.defaults` | Set-if-unset floor; one owner per key (`@plurnk/*`, `package.json#plurnk`, or winning daemon-wide Agent Plugin `ai.plurnk/.env.defaults` under {§extension-discovery}). |
-| 2 | `$XDG_CONFIG_HOME/plurnk/.env` | User-level ambient configuration. |
+| 2 | `$XDG_CONFIG_HOME/plurnk/.env` and `$XDG_CONFIG_HOME/plurnk/.env.local` | User-level ambient configuration (`.env.local` overrides `.env`, #1351). |
 | 3 | `--config=<path>` | Singular service-owned explicit file. |
 | 4 | `--env-file*` | Repeatable explicit files; later selected files win; `--env-file-if-exists` skips absent files. |
 | 5 | Initial shell environment | Preserved over every file layer. |

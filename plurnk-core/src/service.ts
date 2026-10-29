@@ -328,6 +328,7 @@ export default class Service {
             "sources (low -> high):",
             "  package .env.defaults floor",
             `  ${Service.#hostPaths.configFile}${existsSync(Service.#hostPaths.configFile) ? "" : " (absent)"}`,
+            ...(existsSync(Service.#hostPaths.localConfigFile) ? [`  ${Service.#hostPaths.localConfigFile}`] : []),
             ...(configFile === null ? [] : [`  ${resolve(configFile)}${existsSync(configFile) ? "" : " (absent)"}`]),
             ...explicitFiles.map((path) => `  ${path}${existsSync(path) ? "" : " (absent)"}`),
             "  process environment",
@@ -400,6 +401,7 @@ export default class Service {
         const configFile = Service.#configFileArg();
 
         if (configFile !== null) Service.#loadEnv(configFile, true);
+        Service.#loadEnv(Service.#hostPaths.localConfigFile, false);
         Service.#loadEnv(Service.#hostPaths.configFile, false);
         // A flag is a knob's spelling for one invocation: the service's own panel, and the keys it
         // shares with every client ({§operator-config-precedence}), which contracts declares.
@@ -448,7 +450,11 @@ export default class Service {
         try { loadCatalogCache(Service.#hostPaths.modelsCacheFile); } catch { /* ignore unreadable cache on boot */ }
         // {§operator-config-precedence} — the operator's files, never the process environment.
         const declares = EnvCatalog.declares(defaultsFiles);
-        for (const file of new Set([...(configFile === null ? [] : [resolve(configFile)]), Service.#hostPaths.configFile])) {
+        for (const file of new Set([
+            ...(configFile === null ? [] : [resolve(configFile)]),
+            Service.#hostPaths.configFile,
+            Service.#hostPaths.localConfigFile,
+        ])) {
             if (!existsSync(file)) continue;
             for (const key of OperatorConfig.undeclared(await readFile(file, "utf8"), declares)) Service.#configuration.undeclared(key, file);
         }

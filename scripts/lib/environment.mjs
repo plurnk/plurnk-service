@@ -17,7 +17,7 @@ export const floorModule = (root = repository) => join(root, "plurnk-core", "tes
 
 export const realModelLayers = (root = repository, { operatorFile }) => {
     if (typeof operatorFile !== "string") throw new TypeError("realModelLayers: name the operator file (HostPaths().configFile)");
-    return [join(root, "plurnk-core", ".env.defaults"), operatorFile, gateProfile(root)];
+    return [join(root, "plurnk-core", ".env.defaults"), operatorFile, `${operatorFile}.local`, gateProfile(root)];
 };
 
 export const realModelNodeFlags = (root = repository, options) => [

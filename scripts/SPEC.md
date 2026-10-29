@@ -43,6 +43,7 @@ Real-model runs (`test:live`, `tier:live`, `tier:demo`, provider probes, `candid
 | --- | --- | --- |
 | Shell | Login shell via `scripts/operator-environment.sh` | Provider credentials and per-run `PLURNK_MODEL=<selector>` |
 | Gate profile | `plurnk-core/.env.test` | Deterministic gate posture (no authentication, no schedules, no personal policy) |
+| Local operator file | `$XDG_CONFIG_HOME/plurnk/.env.local` | Machine-local overrides above the shared operator file |
 | Operator file | `$XDG_CONFIG_HOME/plurnk/.env` | Reusable model aliases and standing model selection |
 | Package defaults | `plurnk-*/.env.defaults` | Every shipped knob and its default |
 | Floor | `plurnk-core/test/floor.ts` | Installed package defaults, set-if-unset |
