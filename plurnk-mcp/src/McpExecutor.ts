@@ -182,11 +182,14 @@ const progressNotice = (
 
 export default class McpExecutor extends BaseExecutor {
     // {§mcp-host-composition} — an HTML comment after the one JSON object is the writer's aside, not
-    // arguments: read the object, never teach the tolerance (#758).
+    // arguments: read the object, never teach the tolerance (#758). Trailing fence lines after a
+    // complete JSON object are stripped likewise (#1329).
     static #parseArguments(input: string): unknown {
         try { return JSON.parse(input); }
         catch (cause) {
-            const stripped = input.replace(/(?:\s*<!--[\s\S]*?-->)+\s*$/u, "");
+            const stripped = input
+                .replace(/(?:\r?\n {0,3}(?:`{3,}|~{3,})[^\r\n]*)+\s*$/u, "")
+                .replace(/(?:\s*<!--[\s\S]*?-->)+\s*$/u, "");
             if (stripped === input) throw cause;
             return JSON.parse(stripped);
         }

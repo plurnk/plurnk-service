@@ -344,17 +344,24 @@ test("{§fence-pairing} a bodied EDIT keeps exactly its body; a closer followed 
     assert.equal((statements("````EDIT (doc.md) <1,-1>\nbody\n```` then prose\n````")[0] as { body: string | null }).body, "body\n```` then prose");
 });
 
-test("{§fence-pairing} a closing fence with stray trailing text closes the operation as a repair and discards the trailing characters (#1329)", () => {
+test("{§fence-pairing} a closing fence with stray trailing text closes the operation as a repair and discards the trailing characters and retry closers (#1329)", () => {
     const executors = ["sh", "gitea", "plurnk"];
-    for (const closer of ["```!] Nail it.", "``` // end"]) {
+    for (const [openerFence, closer] of [
+        ["```", "```!] Nail it."],
+        ["```", "``` // end"],
+        ["````", "```!] Nail it.\n````"],
+        ["````", "````lier? No—clean close! :] Let's make sure the closing fence has NO trailing text! Wait—I just wrote `lier? No—clean close!` on the closing fence line in my draft! Let me fix that right now! :]\n````"],
+        ["```", "```=] No! Why did I write `=]` after the closing fence?! Let me close with a clean fence on its own line!\n``` Perform clean close:\n```"],
+    ] as const) {
         for (const [header, body, expectedOp] of [
             ["gitea (issue_read)", '{"owner":"plurnk","repo":"plurnk-service","issue_number":1}', "gitea"],
             ["plurnk (members)", '{"verb":"list"}', "plurnk"],
             ["sh", "echo hello", "sh"],
+            ["NOTE", "Thinking through the steps.", "NOTE"],
             ["EDIT (a.md) <1,1>", "replacement", "EDIT"],
             ["SEND [200]", "Final answer.", "SEND"],
         ] as const) {
-            const source = `\`\`\`${header}\n${body}\n${closer}`;
+            const source = `${openerFence}${header}\n${body}\n${closer}`;
             const pairing = FencePairing.pair(source, {
                 executors: new Set(executors),
                 reasoning: false,

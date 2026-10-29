@@ -604,11 +604,16 @@ test("{§mcp-model-projection} invalid tool arguments carry the one-object recov
     }
 });
 
-test("{§mcp-host-composition} an HTML comment after the one JSON object is an aside, not arguments", async () => {
+test("{§mcp-host-composition} an HTML comment or glitched closer fence after the one JSON object is an aside, not arguments (#758, #1329)", async () => {
     const { connection, executor } = configured();
     try {
         await executor.requireAvailable();
-        for (const body of ["{\"message\":\"a\"} <!-- echo it -->", "{\"message\":\"a\"}\n<!-- echo it --> <!-- twice -->"]) {
+        for (const body of [
+            "{\"message\":\"a\"} <!-- echo it -->",
+            "{\"message\":\"a\"}\n<!-- echo it --> <!-- twice -->",
+            "{\"message\":\"a\"}\n```!] Nail it.",
+            "{\"message\":\"a\"}\n````lier? No—clean close! :] Wait—I just wrote `lier? No—clean close!` on the closing fence line!\n````",
+        ]) {
             const result = await executor.run(harness({ target: "echo", body }).args);
             assert.equal(result.status, 200, body);
         }

@@ -15,7 +15,7 @@ type Split = { readonly selfClosed: boolean; readonly bodiless: boolean; readonl
 type Line =
     | { readonly kind: "text"; readonly blank?: boolean }
     | { readonly kind: "bare"; readonly character: FenceCharacter; readonly width: number; readonly underFence: boolean; readonly split?: Split }
-    | { readonly kind: "info"; readonly character: FenceCharacter; readonly width: number }
+    | { readonly kind: "info"; readonly character: FenceCharacter; readonly width: number; readonly glitched?: boolean; readonly hasBacktick?: boolean }
     | { readonly kind: "heading"; readonly width: number; readonly selfClosed: boolean; readonly bodiless: boolean; readonly prose: boolean; readonly mutation: boolean; readonly runtime: string | null }
     | { readonly kind: "closeThenHeading"; readonly width: number; readonly headingWidth: number; readonly selfClosed: boolean; readonly bodiless: boolean }
     | { readonly kind: "name"; readonly name: string; readonly alone: boolean };
@@ -152,9 +152,11 @@ export default class FencePairing {
             if (name !== undefined && HeadingReader.opens(name, tail.slice(name.length), options.executors, options.reasoning)) {
                 return { kind: "heading", width, ...options.heading(text.trimStart(), name), runtime: isNative(name) ? null : name };
             }
-            if (tail.includes("`")) return { kind: "text" };
+            if (tail.trimEnd().endsWith("`".repeat(width))) return { kind: "text" };
+            if (tail.includes("`")) return { kind: "info", character, width, glitched: true, hasBacktick: true };
         }
-        return { kind: "info", character, width };
+        const glitched = !/^[ \t]*[A-Za-z0-9_+-]+(?:[ \t]|$)/u.test(tail);
+        return glitched ? { kind: "info", character, width, glitched: true } : { kind: "info", character, width };
     }
 
 }
@@ -225,7 +227,7 @@ type Context = {
 // What the contents read so far say about their block: whether it holds any line, and whether it holds a
 // heading as an example ({§operation-fences}: such a block ends only at a real closer).
 // `written`: it holds a line other than a blank one.
-type Flags = { readonly empty: boolean; readonly holds: boolean; readonly written: boolean };
+type Flags = { readonly empty: boolean; readonly holds: boolean; readonly written: boolean; readonly afterRepair?: boolean };
 const FRESH: Flags = { empty: true, holds: false, written: false };
 
 // A position is a line and a phase; the heading phase reads the rest of a line whose fence run closed a block.
@@ -315,7 +317,7 @@ class Search {
     }
 
     #key(position: number, context: Context | null, flags: Flags): string {
-        return `${position}|${context === null ? "" : `${context.kind}${context.character}${context.width}${context.bareOpened ? "b" : ""}${context.top ? "t" : ""}${context.quoted ? "q" : ""}${context.bodiless ? "n" : ""}${context.prose ? "p" : ""}${context.mutation ? "m" : ""}${context.runtime === undefined ? "" : `r${context.opener}`}${context.name}`}|${flags.empty ? "e" : ""}${flags.holds ? "h" : ""}${flags.written ? "w" : ""}`;
+        return `${position}|${context === null ? "" : `${context.kind}${context.character}${context.width}${context.bareOpened ? "b" : ""}${context.top ? "t" : ""}${context.quoted ? "q" : ""}${context.bodiless ? "n" : ""}${context.prose ? "p" : ""}${context.mutation ? "m" : ""}${context.runtime === undefined ? "" : `r${context.opener}`}${context.name}`}|${flags.empty ? "e" : ""}${flags.holds ? "h" : ""}${flags.written ? "w" : ""}${flags.afterRepair ? "r" : ""}`;
     }
 
     // Summaries depend only on summaries at later positions. They are evaluated on an explicit work stack, so
@@ -404,7 +406,10 @@ class Search {
         return [...this.#moves(position, context, flags)]
             .map((move): Move => {
             if (context === null && move.kind === "child") return { kind: "stay", cost: move.cost, effects: move.effects, next: move.start ?? at(move.line + 1), flags: FRESH, into: move.child, opener: move.line };
-            if (context?.top && move.kind === "end") return { kind: "stay", cost: context.bodiless && flags.written || !this.#wellFormed(context, move.record) ? add(move.cost, REPAIR) : move.cost, effects: move.effects, next: move.end, flags: FRESH, into: null, record: move.record };
+            if (context?.top && move.kind === "end") {
+                const afterRepair = move.record.kind === "closer" && move.effects.some((effect) => effect.kind === "repair");
+                return { kind: "stay", cost: context.bodiless && flags.written || !this.#wellFormed(context, move.record) ? add(move.cost, REPAIR) : move.cost, effects: move.effects, next: move.end, flags: afterRepair ? { ...FRESH, afterRepair: true } : FRESH, into: null, record: move.record };
+            }
             return move;
         });
     }
@@ -454,7 +459,8 @@ class Search {
         if (i === this.#lines.length) { yield* this.#atEnd(context, flags); return; }
         const line = this.#lines[i];
         if (line.kind === "text") {
-            yield { kind: "stay", cost: ZERO, effects: [], next: at(this.#nextFence[i]), flags: { ...flags, empty: false, written: flags.written || this.#writtenRun[i] } };
+            const written = flags.written || this.#writtenRun[i];
+            yield { kind: "stay", cost: ZERO, effects: [], next: at(this.#nextFence[i]), flags: { empty: false, holds: flags.holds, written, ...(flags.afterRepair && !this.#writtenRun[i] ? { afterRepair: true } : {}) } };
             return;
         }
         if (heading) {
@@ -553,8 +559,9 @@ class Search {
             // {§fence-pairing}: the closer of a heading written mid-line in prose, which opened nothing, is an orphan
             // and quotes nothing.
             if (line.underFence && character === "`") { yield { kind: "stay", cost: ZERO, effects: [{ kind: "surplus", line: i }], next, flags }; return; }
-            yield { kind: "child", cost: ZERO, effects: [{ kind: "quotation", line: i }], child: { kind: "quotation", character, width, bareOpened: true, name: "", top: true, quoted: true }, line: i, flags };
-            yield { kind: "stay", cost: REPAIR, effects: [{ kind: "surplus", line: i }], next, flags };
+            if (flags.afterRepair) yield { kind: "stay", cost: ZERO, effects: [{ kind: "surplus", line: i }], next, flags };
+            yield { kind: "child", cost: ZERO, effects: [{ kind: "quotation", line: i }], child: { kind: "quotation", character, width, bareOpened: true, name: "", top: true, quoted: true }, line: i, flags: FRESH };
+            if (!flags.afterRepair) yield { kind: "stay", cost: REPAIR, effects: [{ kind: "surplus", line: i }], next, flags };
             return;
         }
         const nest: Move = { kind: "child", cost: ZERO, effects: [], child: { kind: "nested", character, width, bareOpened: true, name: "", top: false, quoted: context.quoted, prose: context.prose }, line: i, flags: marked };
@@ -584,21 +591,31 @@ class Search {
     *#info(i: number, line: Extract<Line, { kind: "info" }>, context: Context | null, flags: Flags): Generator<Move> {
         const next = at(i + 1);
         if (context === null) {
-            yield { kind: "child", cost: ZERO, effects: [{ kind: "quotation", line: i }], child: { kind: "quotation", character: line.character, width: line.width, bareOpened: false, name: "", top: true, quoted: true }, line: i, flags };
+            if (flags.afterRepair) yield { kind: "stay", cost: ZERO, effects: [{ kind: "surplus", line: i }], next, flags };
+            if (line.hasBacktick) {
+                if (!flags.afterRepair) yield { kind: "stay", cost: ZERO, effects: [], next, flags: { ...flags, empty: false, written: true } };
+                return;
+            }
+            yield { kind: "child", cost: ZERO, effects: [{ kind: "quotation", line: i }], child: { kind: "quotation", character: line.character, width: line.width, bareOpened: false, name: "", top: true, quoted: true }, line: i, flags: FRESH };
             return;
         }
-        const closable = context.top && context.kind === "operation" && this.#closable(context, flags, line.character, line.width);
+        const closable = context.top && context.kind === "operation" && context.character === line.character && !(context.bareOpened && flags.empty);
         const push: Move = { kind: "child", cost: ZERO, effects: [], child: { kind: "nested", character: line.character, width: line.width, bareOpened: false, name: "", top: false, quoted: context.quoted, prose: context.prose }, line: i, flags: { ...flags, empty: false, written: true } };
         // Outside a quotation a labeled fence is a code block the author declared; reading it as text ranks with a
-        // hidden operation, so no reading ends a body early by discarding one.
-        const text: Move = { kind: "stay", cost: context.quoted ? DEMOTE : DISCARDED, effects: [], next, flags: { ...flags, empty: false, holds: flags.holds || closable, written: true } };
+        // hidden operation, so no reading ends a body early by discarding one. A glitched closer read as body text
+        // costs a repair so closing on it wins over swallowing it into a retry closer below.
+        const text: Move = { kind: "stay", cost: context.quoted ? DEMOTE : line.glitched ? REPAIR : DISCARDED, effects: [], next, flags: { ...flags, empty: false, holds: flags.holds || closable, written: true } };
         // A labeled fence opens a literal nested block, or is text — a demotion (inside a quotation, text first
         // on a tie, as CommonMark reads it).
-        if (context.quoted) { yield text; yield push; return; }
+        if (context.quoted) {
+            yield text;
+            if (!line.hasBacktick) yield push;
+            return;
+        }
         if (closable) {
             yield { kind: "end", cost: REPAIR, effects: [{ kind: "repair", line: i }], end: next, record: { kind: "closer", line: i } };
         }
-        yield push;
+        if (!line.glitched) yield push;
         yield text;
     }
 

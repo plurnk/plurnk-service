@@ -348,12 +348,6 @@ private fenceOpens(): boolean {
     return true;
 }
 
-// The orphaned closer is a whole line: nothing but the fence follows it.
-private orphanAtLineEnd(): boolean {
-    const c = this.inputStream.LA(1);
-    return c <= 0 || c === 0x0A || c === 0x0D;
-}
-
 // {§operation-fences} - the name follows a newline directly, or begins the input.
 private atColumnZero(): boolean {
     const c = this.inputStream.LA(-1);
@@ -584,7 +578,7 @@ NAKED_OPEN : { this.nakedHeadingHere() }? [A-Z]+ { this.openNaked(); } -> mode(S
 // {§op-shapes} — an enclosing code fence is quotation, including unknown tags and tildes.
 // {§fence-pairing} - a bare fence directly under a fence line is that block's orphaned closer: it
 // closes nothing and quotes nothing (a malformed heading's block ends at its own line).
-ORPHAN_CLOSER : { this.atLineStart() && this.surplusHere() }? FENCE [ \t]* { this.orphanAtLineEnd() }? -> channel(HIDDEN) ;
+ORPHAN_CLOSER : { this.atLineStart() && this.surplusHere() }? (FENCE | '~~~' '~'*) ~[\r\n]* -> channel(HIDDEN) ;
 // {§fence-pairing} - every other fence at a line start quotes to its closer or the end of the input.
 // A line-start fence whose line carries more backticks is inline code: it quotes nothing.
 INLINE_TAG : { this.atLineStart() && !this.fenceOpens() }? FENCE NAME -> type(TEXT), channel(HIDDEN) ;
