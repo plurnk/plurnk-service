@@ -67,7 +67,7 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 
 - `catalogEfforts(providerInfo, modelInfo, env)` intersects the model's cataloged effort vocabulary (extended by `PLURNK_PROVIDERS_PROVIDER_<ID>_REASONING_EFFORTS` for reasoning models) with what the provider adapter can preserve on the wire.
 - On `adaptive`, routes with native adaptive reasoning (such as Anthropic adaptive thinking or Gemini thinking) request their native adaptive posture; graded effort routes use `PLURNK_PROVIDERS_EFFORT_FALLBACK` (default `high`) when supported by the model's effort set.
-- When `PLURNK_PROVIDERS_REASONING_BUDGET` is set alongside `adaptive`, budget-capable routes send the token budget (`thinkingBudgets` / `thinking.budget_tokens` / `thinkingConfig.thinkingBudget` / `reasoning.max_tokens`); setting a fixed effort alongside `PLURNK_PROVIDERS_REASONING_BUDGET` is rejected at construction.
+- When `PLURNK_PROVIDERS_REASONING_BUDGET` is set alongside `adaptive`, budget-capable routes send the token budget (`thinkingBudgets` / `thinking.budget_tokens` / `thinkingConfig.thinkingBudget` / `reasoning.max_tokens`); setting a fixed effort alongside `PLURNK_PROVIDERS_REASONING_BUDGET` is rejected at construction. On Google routes where `maxOutputTokens` is shared across `thoughtsTokenCount` and `candidatesTokenCount`, `thinkingConfig.thinkingBudget` is bounded by `maxOutputTokens - outputFloor` (or `maxOutputTokens - 1` when tightened below `outputFloor`) so visible output headroom is reserved.
 - On detected llama-server routes, `off` and `adaptive` send `chat_template_kwargs: { enable_thinking: false | true }`, and fixed efforts declared in `PLURNK_PROVIDERS_REASONING_EFFORTS` add `reasoning_effort`. When grammar constrains a template-reasoning turn, the adapter sends `reasoning_format: "none"` so the grammar governs the raw stream and projects the leading template block back into `assistant.reasoning`.
 
 ## §provider-configuration Environment configuration and envelope
@@ -123,7 +123,8 @@ All transport and response failures normalize into `ProviderError` carrying an R
 | `model_refused` | Upstream safety/content refusal finish reason | 422 | `false` | Adjust prompt content that triggered model refusal |
 
 - Outbound HTTP requests honor `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, and `NO_PROXY`.
-- Transient HTTP failures retry up to `PLURNK_PROVIDERS_RETRY_ATTEMPTS` inside the provider when `isRetryable` is true; if a stream fails after emitting partial output and a retry succeeds, a `provider_retry` notice is attached.
+- When an upstream stream terminates with an error or length finish reason (`MALFORMED_RESPONSE`, `MALFORMED_FUNCTION_CALL`, `MAX_TOKENS`) after delivering a complete, balanced fenced emission with no unclosed fence, no native tool calls, and no trailing unfenced text, `finishReason` normalizes to `"stop"` while preserving `rawFinishReason` in forensic evidence.
+- Transient HTTP failures, upstream malformed-decoder aborts (`MALFORMED_RESPONSE`, `MALFORMED_FUNCTION_CALL`, `UNEXPECTED_TOOL_CALL`) without a complete fenced emission, and reasoning-only `MAX_TOKENS` cutoffs with empty visible content retry up to `PLURNK_PROVIDERS_RETRY_ATTEMPTS` inside the provider (stepping down Google thinking posture on retry when reasoning starved visible output); if a stream fails after emitting partial visible output and a retry succeeds, a `provider_retry` notice is attached.
 - Problem `detail` and structured `cause.causeMessage` strings are bounded to `PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT` characters without leaking raw payloads or headers.
 
 ## §provider-inference-admission Inference admission

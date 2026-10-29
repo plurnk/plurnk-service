@@ -27,7 +27,7 @@ import type { ProviderCost } from "@plurnk/plurnk-contracts";
 import { EFFORTS, MAX_TIMER_MS, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import type { EffortSetting, ReasoningResponseStyle } from "./env.ts";
 import { UnsupportedEffortError } from "./types.ts";
-import { toProviderError, ProviderError, ProviderTimeoutError } from "./errors.ts";
+import { APICallError, toProviderError, ProviderError, ProviderTimeoutError } from "./errors.ts";
 import type { ProviderNotice } from "./notices.ts";
 import { assertPromptTokenMeasurement, estimatePromptTokens } from "./promptTokens.ts";
 import { emitWarningOnce } from "./warnings.ts";
@@ -42,7 +42,7 @@ import type InferenceAdmission from "./InferenceAdmission.ts";
 import RequestCapture from "./RequestCapture.ts";
 import { executePiTransportStream } from "./pi-transport.ts";
 import { executeWithRetry, raceAgainstDeadline } from "./retry-deadline.ts";
-import { readFailureEvidence } from "./stream-forensics.ts";
+import { RETRYABLE_MALFORMED_FINISH_REASONS, readFailureEvidence } from "./stream-forensics.ts";
 
 export type ProviderFetch = typeof globalThis.fetch;
 
@@ -693,6 +693,8 @@ export default class ModelProvider implements Provider {
             };
         let successfulReasoningStream = "";
         let recoveredAfterOutput = false;
+        let retryAttempt = 0;
+        let reasoningStepDown = 0;
         const executeAdmittedRequest = async () => {
             const capture = this.#rawBody ? new RequestCapture() : undefined;
             let requestReasoningStream = "";
@@ -796,6 +798,7 @@ export default class ModelProvider implements Provider {
                     resolvedControls: this.#resolvedControls,
                     rawBody: this.#rawBody,
                     capture,
+                    reasoningStepDown,
                     observers,
                 });
             } catch (error) {
@@ -818,6 +821,31 @@ export default class ModelProvider implements Provider {
                 response.chargeEvidence,
                 { ...response, ...(capture?.request === undefined ? {} : { request: capture.request }) },
             );
+            const malformedAbort = response.finishReason === "error"
+                && response.rawFinishReason !== undefined
+                && RETRYABLE_MALFORMED_FINISH_REASONS.has(response.rawFinishReason);
+            const reasoningStarvedVisibleOutput = response.finishReason === "length"
+                && response.content.trim().length === 0
+                && response.reasoning.length > 0;
+            if ((malformedAbort || reasoningStarvedVisibleOutput)
+                && retryAttempt < this.#retryAttempts
+                && !operationSignal?.aborted) {
+                retryAttempt += 1;
+                if (reasoningStarvedVisibleOutput) {
+                    reasoningStepDown += 1;
+                }
+                if (response.content.length > 0) {
+                    recoveredAfterOutput = true;
+                }
+                throw new APICallError({
+                    message: `Transient upstream finish reason (${response.rawFinishReason ?? response.finishReason})`,
+                    url: this.#url ?? this.#providerModel?.baseUrl ?? "",
+                    requestBodyValues: body,
+                    statusCode: 503,
+                    responseHeaders: { "retry-after-ms": "50" },
+                    isRetryable: true,
+                });
+            }
             return response;
         };
 

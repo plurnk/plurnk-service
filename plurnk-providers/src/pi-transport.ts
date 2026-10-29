@@ -211,6 +211,7 @@ export interface PiTransportOptions {
     readonly resolvedControls: { readonly serviceTier?: string; readonly topLogprobs?: number };
     readonly rawBody: boolean;
     readonly capture: RequestCapture | undefined;
+    readonly reasoningStepDown?: number;
     readonly observers: {
         readonly observeReasoning?: (delta: string) => void;
         readonly observeText?: (delta: string) => void;
@@ -266,6 +267,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         resolvedControls,
         rawBody,
         capture,
+        reasoningStepDown = 0,
         observers,
     } = opts;
 
@@ -552,17 +554,40 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             }
             case "google-generative-ai": {
                 syncAmbientHttp();
-                const googleLevel: "MINIMAL" | "LOW" | "MEDIUM" | "HIGH" = reasoning === "minimal"
+                const googleLevels = ["HIGH", "MEDIUM", "LOW", "MINIMAL"] as const;
+                const baseLevel: typeof googleLevels[number] = reasoning === "minimal"
                     ? "MINIMAL"
                     : reasoning === "low"
                         ? "LOW"
                         : reasoning === "medium"
                             ? "MEDIUM"
                             : "HIGH";
+                const steppedIndex = Math.min(
+                    googleLevels.length - 1,
+                    googleLevels.indexOf(baseLevel) + reasoningStepDown,
+                );
+                const googleLevel = googleLevels[steppedIndex];
+                const rawBudget = nativeReasoningBudget ?? capacity.reasoningBudget;
+                const reservedVisible = capacity.outputFloor !== null
+                    && maxTokens !== undefined
+                    && maxTokens > capacity.outputFloor
+                    ? capacity.outputFloor
+                    : 1;
+                const maxThinkingBudget = maxTokens !== undefined
+                    ? Math.max(1, maxTokens - reservedVisible)
+                    : null;
+                const boundedBudget = rawBudget === null
+                    ? null
+                    : maxThinkingBudget === null
+                        ? rawBudget
+                        : Math.min(rawBudget, maxThinkingBudget);
+                const steppedBudget = boundedBudget === null
+                    ? null
+                    : Math.max(1, Math.floor(boundedBudget / 2 ** reasoningStepDown));
                 const googleThinking = reasoning === "none"
                     ? { enabled: false }
-                    : nativeReasoningBudget !== null
-                        ? { enabled: true, budgetTokens: nativeReasoningBudget }
+                    : steppedBudget !== null
+                        ? { enabled: true, budgetTokens: steppedBudget }
                         : reasoning !== "provider-default"
                             ? {
                                 enabled: true,

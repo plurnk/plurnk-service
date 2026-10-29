@@ -569,6 +569,140 @@ test("{§provider-effort} Google adaptive reasoning requests and preserves reada
     );
 });
 
+test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudget reserves outputFloor headroom and complete fenced emissions survive trailing MALFORMED_RESPONSE or MAX_TOKENS", async () => {
+    const bodies: Array<{
+        generationConfig?: {
+            maxOutputTokens?: number;
+            thinkingConfig?: { includeThoughts?: boolean; thinkingLevel?: string; thinkingBudget?: number };
+        };
+    }> = [];
+    let callIndex = 0;
+    mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
+        bodies.push(JSON.parse(requestBody(init)) as typeof bodies[number]);
+        callIndex += 1;
+        if (callIndex === 1) {
+            return new Response(`data: ${JSON.stringify({
+                responseId: "resp-malformed-complete",
+                candidates: [{
+                    content: {
+                        role: "model",
+                        parts: [
+                            { text: "planning", thought: true },
+                            { text: "```NOTE\nPlan ready.\n```\n\n```SEND [200]\nCompleted.\n```" },
+                        ],
+                    },
+                    finishReason: "MALFORMED_RESPONSE",
+                }],
+                usageMetadata: {
+                    promptTokenCount: 10,
+                    candidatesTokenCount: 12,
+                    thoughtsTokenCount: 5,
+                    totalTokenCount: 27,
+                },
+            })}\n\n`, { headers: { "content-type": "text/event-stream" } });
+        }
+        if (callIndex === 2) {
+            return new Response(`data: ${JSON.stringify({
+                responseId: "resp-malformed-empty",
+                candidates: [{
+                    content: {
+                        role: "model",
+                        parts: [{ text: "thinking only", thought: true }],
+                    },
+                    finishReason: "MALFORMED_FUNCTION_CALL",
+                }],
+                usageMetadata: {
+                    promptTokenCount: 10,
+                    candidatesTokenCount: 0,
+                    thoughtsTokenCount: 8,
+                    totalTokenCount: 18,
+                },
+            })}\n\n`, { headers: { "content-type": "text/event-stream" } });
+        }
+        if (callIndex === 3) {
+            return new Response(`data: ${JSON.stringify({
+                responseId: "resp-starved",
+                candidates: [{
+                    content: {
+                        role: "model",
+                        parts: [{ text: "exhausted ceiling in thoughts", thought: true }],
+                    },
+                    finishReason: "MAX_TOKENS",
+                }],
+                usageMetadata: {
+                    promptTokenCount: 10,
+                    candidatesTokenCount: 0,
+                    thoughtsTokenCount: 100,
+                    totalTokenCount: 110,
+                },
+            })}\n\n`, { headers: { "content-type": "text/event-stream" } });
+        }
+        return new Response(`data: ${JSON.stringify({
+            responseId: "resp-recovered",
+            candidates: [{
+                content: {
+                    role: "model",
+                    parts: [
+                        { text: "recovered thought", thought: true },
+                        { text: "```SEND [200]\nRecovered.\n```" },
+                    ],
+                },
+                finishReason: "MAX_TOKENS",
+            }],
+            usageMetadata: {
+                promptTokenCount: 10,
+                candidatesTokenCount: 6,
+                thoughtsTokenCount: 20,
+                totalTokenCount: 36,
+            },
+        })}\n\n`, { headers: { "content-type": "text/event-stream" } });
+    });
+
+    const budgeted = catalogProviderFromEnv("google", {
+        ...env,
+        GEMINI_API_KEY: "test-key",
+        PLURNK_PROVIDERS_EFFORT: "adaptive",
+        PLURNK_PROVIDERS_REASONING_BUDGET: "30000",
+    }, "gemini-4-argon");
+    const first = await budgeted?.generate({
+        sessionId: "google-malformed-complete",
+        messages: [{ role: "user", content: "hello" }],
+    });
+    assert.deepEqual(bodies[0]?.generationConfig?.thinkingConfig, {
+        includeThoughts: true,
+        thinkingBudget: budgeted!.outputBudget! - budgeted!.outputFloor!,
+    }, "thinkingBudget is bounded by maxOutputTokens minus outputFloor");
+    assert.equal(first?.assistant.finishReason, "stop");
+    assert.equal((first?.assistantRaw as { rawFinishReason?: string } | undefined)?.rawFinishReason, "MALFORMED_RESPONSE");
+    assert.match(first?.assistant.content ?? "", /SEND \[200\]/);
+
+    const adaptive = catalogProviderFromEnv("google", {
+        ...env,
+        GEMINI_API_KEY: "test-key",
+        PLURNK_PROVIDERS_EFFORT: "adaptive",
+        PLURNK_PROVIDERS_RETRY_ATTEMPTS: "2",
+    }, "gemini-4-argon");
+    const second = await adaptive?.generate({
+        sessionId: "google-retry-starved",
+        messages: [{ role: "user", content: "hello" }],
+    });
+    assert.equal(second?.assistant.finishReason, "stop");
+    assert.equal((second?.assistantRaw as { rawFinishReason?: string } | undefined)?.rawFinishReason, "MAX_TOKENS");
+    assert.equal(second?.accounting.length, 3);
+    assert.deepEqual(bodies[1]?.generationConfig?.thinkingConfig, {
+        includeThoughts: true,
+        thinkingLevel: "HIGH",
+    });
+    assert.deepEqual(bodies[2]?.generationConfig?.thinkingConfig, {
+        includeThoughts: true,
+        thinkingLevel: "HIGH",
+    });
+    assert.deepEqual(bodies[3]?.generationConfig?.thinkingConfig, {
+        includeThoughts: true,
+        thinkingLevel: "MEDIUM",
+    }, "retry after reasoning-only MAX_TOKENS steps down thinkingLevel to leave visible output headroom");
+});
+
 test("{§provider-effort} native Anthropic adaptive policy uses adaptive thinking rather than a fixed high effort", async () => {
     let body: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
