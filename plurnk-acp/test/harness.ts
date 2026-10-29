@@ -462,8 +462,24 @@ export const createHarness = async (options?: {
         },
         cancelDrain: () => true,
         cancelSession: async () => {},
-        dispatchClientAction: async ({ statements }) =>
-            statements.map(() => ({ status: 200, message: "OK", content: "executed", mimetype: "text/plain" })),
+        dispatchClientAction: async ({ statements }) => {
+            for (const stmt of statements) {
+                if (
+                    stmt.op === "EDIT" &&
+                    stmt.target?.kind === "url" &&
+                    typeof stmt.body === "string"
+                ) {
+                    const ch = stmt.target.fragment ?? "body";
+                    entryContents.set(`${stmt.target.raw}#${ch}`, stmt.body);
+                }
+            }
+            return statements.map(() => ({
+                status: 200,
+                message: "OK",
+                content: "executed",
+                mimetype: "text/plain",
+            }));
+        },
         cancelLoop: async () => true,
         executorTags: () => ["sh", "js"],
         readLog: async ({ sessionId, loopSeq }) =>

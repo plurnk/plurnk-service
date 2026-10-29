@@ -40,6 +40,7 @@ import {
     applyAcpMcpServers,
     applyAdditionalDirectories,
     applyConfigOption,
+    applySystemPrompt,
     assertSinglePortSecurity,
     buildConfigOptions,
     extractPlurnkMeta,
@@ -150,6 +151,7 @@ export const createConnectionAgent = (
                     delete: {},
                     fork: {},
                     additionalDirectories: {},
+                    systemPrompt: {},
                 },
                 providers: {},
             },
@@ -223,6 +225,13 @@ export const createConnectionAgent = (
                 ctx.client,
                 bound.workspaceId,
                 ctx.params.mcpServers,
+            );
+            await applySystemPrompt(
+                seam,
+                bound.workspaceId,
+                bound.sessionId,
+                bound.sessionName,
+                ctx.params.systemPrompt,
             );
             const providerCatalog = tryListProviders(seam);
             const [configOptions, modelInfo] = await Promise.all([
@@ -313,6 +322,13 @@ export const createConnectionAgent = (
                 ctx.client,
                 bound.workspaceId,
                 ctx.params.mcpServers,
+            );
+            await applySystemPrompt(
+                seam,
+                bound.workspaceId,
+                bound.sessionId,
+                bound.sessionName,
+                ctx.params.systemPrompt,
             );
 
             const providerCatalog = tryListProviders(seam);
@@ -526,6 +542,13 @@ export const createConnectionAgent = (
                 ctx.client,
                 parent.workspaceId,
                 ctx.params.mcpServers,
+            );
+            await applySystemPrompt(
+                seam,
+                parent.workspaceId,
+                forked.sessionId,
+                sessionName,
+                ctx.params.systemPrompt,
             );
             const configOptions = await buildConfigOptions(seam, parent.workspaceId, forked.sessionId);
             return {

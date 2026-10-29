@@ -167,10 +167,105 @@ export const assertSinglePortSecurity = (params: unknown): void => {
         }
     }
     if (params.systemPrompt !== undefined && params.systemPrompt !== null) {
-        throw RequestError.invalidParams({
-            detail: "Client-supplied systemPrompt overrides are forbidden by the single-port security contract.",
-        });
+        if (
+            !isRecord(params.systemPrompt) ||
+            params.systemPrompt.mode !== "append" ||
+            !Array.isArray(params.systemPrompt.content)
+        ) {
+            throw RequestError.invalidParams({
+                detail: "Client-supplied systemPrompt overrides are forbidden by the single-port security contract; only mode 'append' is supported.",
+            });
+        }
+        for (const block of params.systemPrompt.content) {
+            if (!isRecord(block) || typeof block.type !== "string") {
+                throw RequestError.invalidParams({
+                    detail: "Client-supplied systemPrompt contains an invalid content block.",
+                });
+            }
+            if (block.type === "text") {
+                if (typeof block.text !== "string") {
+                    throw RequestError.invalidParams({
+                        detail: "Client-supplied systemPrompt text block requires a string 'text'.",
+                    });
+                }
+            } else if (block.type === "resource_link") {
+                if (typeof block.uri !== "string" || block.uri.length === 0) {
+                    throw RequestError.invalidParams({
+                        detail: "Client-supplied systemPrompt resource_link block requires a non-empty 'uri'.",
+                    });
+                }
+            } else if (block.type === "resource") {
+                if (!isRecord(block.resource) || typeof block.resource.text !== "string") {
+                    throw RequestError.invalidParams({
+                        detail: "Client-supplied systemPrompt resource block requires text content.",
+                    });
+                }
+            } else {
+                throw RequestError.invalidParams({
+                    detail: `Client-supplied systemPrompt content block type '${block.type}' is not supported; only 'text', text 'resource', and 'resource_link' blocks are admitted.`,
+                });
+            }
+        }
     }
+};
+
+export const applySystemPrompt = async (
+    seam: ApplicationPort,
+    workspaceId: number,
+    sessionId: number,
+    sessionName: string,
+    systemPrompt: unknown,
+): Promise<void> => {
+    if (!isRecord(systemPrompt) || systemPrompt.mode !== "append" || !Array.isArray(systemPrompt.content)) {
+        return;
+    }
+    const parts: string[] = [];
+    for (const block of systemPrompt.content) {
+        if (!isRecord(block)) continue;
+        if (block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
+            parts.push(block.text);
+        } else if (
+            block.type === "resource" &&
+            isRecord(block.resource) &&
+            typeof block.resource.text === "string" &&
+            block.resource.text.length > 0
+        ) {
+            parts.push(block.resource.text);
+        } else if (block.type === "resource_link" && typeof block.uri === "string" && block.uri.length > 0) {
+            parts.push(`<${block.uri}>`);
+        }
+    }
+    const body = parts.join("\n\n");
+    if (body.length === 0) return;
+    await seam.ensureRuntimeSession(workspaceId);
+    await seam.dispatchClientAction({
+        workspaceId,
+        actor: OWNER_ADDRESS,
+        contextSessionId: sessionId,
+        statements: [
+            {
+                op: "EDIT",
+                aside: null,
+                metadata: null,
+                target: {
+                    kind: "url",
+                    raw: `session://${sessionName}/AGENTS.md`,
+                    scheme: "session",
+                    username: null,
+                    password: null,
+                    hostname: sessionName,
+                    port: null,
+                    pathname: "/AGENTS.md",
+                    query: null,
+                    fragment: null,
+                },
+                lineMarker: { marks: [1, -1] },
+                matcher: null,
+                body,
+                position: { line: 0, column: 0 },
+            },
+        ],
+    });
 };
 
 export const applyAcpMcpServers = async (

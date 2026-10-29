@@ -72,9 +72,13 @@ test(
             await clientApp.connectWith(stream, async (ctx) => {
                 await ctx.initialized;
 
-                // 1. Create parent session and prompt it to spawn `spawned`
+                // 1. Create parent session with systemPrompt (mode: "append") and prompt it to spawn `spawned`
                 const parentSession = await ctx.request(methods.agent.session.new, {
                     cwd: "/tmp/owner-tabs",
+                    systemPrompt: {
+                        mode: "append",
+                        content: [{ type: "text", text: "Parent session instructions." }],
+                    },
                     _meta: { plurnk: { workspace: "tabs", sessionName: "parent" } },
                 });
                 await ctx.request(methods.agent.session.prompt, {
@@ -89,10 +93,36 @@ test(
                     identity: { name: "parent" },
                 });
                 assert.ok(parentRow);
+                const sessionAgentsMd = await daemon.readEntry({
+                    workspaceId: workspace.id,
+                    sessionId: parentRow.id,
+                    target: "session://parent/AGENTS.md",
+                });
+                assert.equal(sessionAgentsMd.status, 200);
+                assert.match(sessionAgentsMd.entry?.channels.body?.content ?? "", /Parent session instructions\./u);
                 await waitForDb(
                     () => daemon.listSessionLoops({ workspaceId: workspace.id, sessionId: parentRow.id }),
                     (loops: Array<{ terminalResult: { status: number } | null }>) =>
                         loops.some(({ terminalResult }) => terminalResult?.status === 200),
+                );
+                const parentLogs: Array<{
+                    op: string;
+                    scheme: string | null;
+                    hostname: string | null;
+                    pathname: string | null;
+                }> = await daemon.readLog({
+                    workspaceId: workspace.id,
+                    sessionId: parentRow.id,
+                });
+                assert.ok(
+                    parentLogs.some(
+                        (e) =>
+                            e.op === "READ" &&
+                            e.scheme === "session" &&
+                            e.hostname === "parent" &&
+                            e.pathname === "/AGENTS.md",
+                    ),
+                    "Turn 0 foists READ (session://parent/AGENTS.md) materialized from ACP systemPrompt",
                 );
 
                 // Also create an unowned session `helper` directly so `session/resume` claims it for `acp://operator`
