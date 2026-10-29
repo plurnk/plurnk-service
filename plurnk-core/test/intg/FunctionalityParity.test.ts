@@ -304,7 +304,7 @@ const matrix = async (family: Family): Promise<void> => {
     try {
         // 1. Registration: the common actions, nothing family-specific in the grammar.
         assert.deepEqual(
-            daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith(`workspace.${family.family}.`) && !name.includes(".oauth.") && !name.endsWith(".complete")).toSorted(),
+            daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith(`workspace.${family.family}.`) && !name.includes(".oauth.") && !name.endsWith(".complete") && !name.endsWith(".skills")).toSorted(),
             ["add", "disable", "discover", "enable", "list", "remove", "replace"].map((verb) => `workspace.${family.family}.${verb}`),
         );
         // 2. Inspection is passive; real use activates the service definition.

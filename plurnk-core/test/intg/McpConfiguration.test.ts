@@ -220,7 +220,7 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
 
     assert.deepEqual(
         daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.mcp.")).toSorted(),
-        ["add", "complete", "disable", "enable", "list", "oauth.begin", "oauth.complete", "remove", "replace"].map((verb) => `workspace.mcp.${verb}`),
+        ["add", "complete", "disable", "enable", "list", "oauth.begin", "oauth.complete", "remove", "replace", "skills"].map((verb) => `workspace.mcp.${verb}`),
         "with no registry the mcp family has every lifecycle verb but discover, beside its protocol continuations",
     );
     assert.deepEqual((await listed()).map(({ alias, origin, state }) => ({ alias, origin, state })), [{ alias: "fixture", origin: "service", state: "dormant" }]);

@@ -45,7 +45,8 @@ resources are read-only through `skill://`.
 
 `discover` lists the skills one source carries: `{"source": "..."}` returns one
 candidate per skill with the exact definition to add. A source is a git remote
-as a full https or ssh URL, a folder, a lone `SKILL.md`, or a zip or tar
+as a full https or ssh URL, an MCP server (`<server>:///`, `<server>:///skills`,
+or `<server>:///skills/<name>`), a folder, a lone `SKILL.md`, or a zip or tar
 archive. Discovery never installs anything.
 
 ## Adding
@@ -60,10 +61,10 @@ The alias must equal the skill's standard `name`, which selects it from a source
 carrying several. Local folders and their `SKILL.md` files stay live references:
 edits remain visible, with supporting files in place. Relative sources resolve
 from the project root; absolute sources also work in headless workspaces.
-Git/archive sources are materialized into workspace-owned storage, never a
+Git, MCP, and archive sources are materialized into workspace-owned storage, never a
 project or global configuration root. They remain stable across enable and
 restart until their source definition changes. A git addition may name a branch or tag
-as `ref`; the service records its commit and refuses to refetch a moved ref
+as `ref`; the service records its commit (or an MCP skill's manifest digest) and refuses to refetch a moved source
 silently. An addition is reviewed by the session's owner unless
 `PLURNK_SERVICE_PROPOSALS` accepts or rejects it.
 

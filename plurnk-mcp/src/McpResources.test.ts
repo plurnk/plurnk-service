@@ -7,6 +7,7 @@ import { ERROR_DETAIL_LIMIT } from "@plurnk/plurnk-execs";
 import type { GetPromptResult, SubscriptionFilter } from "@modelcontextprotocol/client";
 import { SUBSCRIPTION_ID_META_KEY } from "@modelcontextprotocol/client";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
+import { SkillsExtension, memorySkillFiles, type SkillSource } from "@modelcontextprotocol/server/ext/skills";
 import McpExecutor from "./McpExecutor.ts";
 import McpResources from "./McpResources.ts";
 import ResourceContent from "./ResourceContent.ts";
@@ -580,6 +581,91 @@ test("{§mcp-open-work} server /messages/<id> targets delegate to the workspace 
             payload: { kind: "inline", content: "ack" },
         } as never, ctx);
         assert.equal(sent.status, 200);
+    } finally {
+        await connection.close();
+    }
+});
+
+test("{§mcp-skills} SEP-2640 skills are exposed under <server>:///skills and verified via SkillsClient on read", async (t) => {
+    const files: Record<string, string> = {
+        "sql-helper/SKILL.md": "---\nname: sql-helper\ndescription: Format SQL queries.\n---\nUse SQL formatting.\n",
+        "sql-helper/references/GUIDE.md": "# SQL Guide\nSelect columns explicitly.\n",
+    };
+    const skillCatalog = await SkillsExtension.load(memorySkillFiles(files));
+    let tamperGuide = false;
+    const tamperedSource: SkillSource = {
+        async list() {
+            return { skills: [...skillCatalog.entries] };
+        },
+        async get(uri) {
+            return skillCatalog.entries.find((s) => s.uri === uri);
+        },
+        async read(uri) {
+            if (uri.endsWith("/SKILL.md")) {
+                return { text: files["sql-helper/SKILL.md"], mimeType: "text/markdown" };
+            }
+            if (uri.endsWith("/references/GUIDE.md")) {
+                return {
+                    text: tamperGuide ? "# Tampered content!\n" : files["sql-helper/references/GUIDE.md"],
+                    mimeType: "text/markdown",
+                };
+            }
+            return undefined;
+        },
+    };
+    const ext = new SkillsExtension({ source: tamperedSource });
+    const handler = createMcpHandler(() => {
+        const server = new McpServer({ name: "skills-srv", version: "1.0.0" });
+        ext.attach(server);
+        return server;
+    });
+    const served = await serveMcpHttp(t, handler);
+    const connection = new ServerConnection(httpServer("skills-srv", served.url), env);
+    const executor = new McpExecutor({ runtime: "skills-srv", glyph: "🔌" }, connection, retainWorkspace);
+    await executor.requireAvailable();
+    const resources = new McpResources("skills-srv", connection, executor.catalog);
+    try {
+        const { ctx, entries } = context();
+        assert.equal((await resources.prepareRepresentation(preparationRequest("/"), ctx)).status, 200);
+        const rootCatalog = JSON.parse(entries.get("/")?.channels.body?.content ?? "{}") as { skills?: unknown[] };
+        assert.equal(Array.isArray(rootCatalog.skills), true);
+        assert.equal(rootCatalog.skills?.length, 1);
+
+        assert.equal((await resources.prepareRepresentation(preparationRequest("/skills"), ctx)).status, 200);
+        assert.equal((await resources.prepareRepresentation(preparationRequest("/skills/sql-helper"), ctx)).status, 200);
+
+        const skillMdRes = await resources.prepareRepresentation(preparationRequest("/skills/sql-helper/SKILL.md"), ctx);
+        assert.equal(skillMdRes.status, 200);
+        assert.equal(entries.get("/skills/sql-helper/SKILL.md")?.channels.body?.content, files["sql-helper/SKILL.md"]);
+        assert.deepEqual(entries.get("/skills/sql-helper/SKILL.md")?.attributes, { kind: "mcp-skill" });
+
+        const guideRes = await resources.prepareRepresentation(
+            preparationRequest("/skills/sql-helper/references/GUIDE.md"),
+            ctx,
+        );
+        assert.equal(guideRes.status, 200);
+        assert.equal(
+            entries.get("/skills/sql-helper/references/GUIDE.md")?.channels.body?.content,
+            files["sql-helper/references/GUIDE.md"],
+        );
+
+        const missingRes = await resources.prepareRepresentation(
+            preparationRequest("/skills/missing-skill/SKILL.md"),
+            ctx,
+        );
+        assert.equal(missingRes.status, 404);
+        assert.equal(missingRes.problem?.type, "https://problems.plurnk.xyz/scheme/mcp/skill-not-found");
+
+        tamperGuide = true;
+        const tamperedRes = await resources.prepareRepresentation(
+            preparationRequest("/skills/sql-helper/references/GUIDE.md"),
+            ctx,
+        );
+        assert.equal(tamperedRes.status, 502);
+        assert.equal(
+            tamperedRes.problem?.type,
+            "https://problems.plurnk.xyz/scheme/mcp/skill-verification-failed",
+        );
     } finally {
         await connection.close();
     }

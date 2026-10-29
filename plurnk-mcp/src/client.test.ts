@@ -8,6 +8,7 @@ import ServerConnection from "./client.ts";
 import packageJson from "../package.json" with { type: "json" };
 import {
     MCP_PROTOCOL_VERSION,
+    MCP_SKILLS_EXTENSION_ID,
     MCP_TASKS_EXTENSION_ID,
     staticClientCapabilities,
 } from "./protocol.ts";
@@ -172,6 +173,9 @@ test("{§mcp-authority} protocol authority pins the MCP revision, SDK version, a
     assert.deepEqual(staticClientCapabilities(), {
         elicitation: { form: {}, url: {} },
         sampling: {},
-        extensions: { [MCP_TASKS_EXTENSION_ID]: {} },
+        extensions: {
+            [MCP_TASKS_EXTENSION_ID]: {},
+            [MCP_SKILLS_EXTENSION_ID]: {},
+        },
     });
 });

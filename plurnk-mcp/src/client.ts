@@ -33,7 +33,14 @@ import {
     StdioClientTransport,
     getDefaultEnvironment,
 } from "@modelcontextprotocol/client/stdio";
+import {
+    SkillsClient,
+    type DirectoryResource,
+    type Skill,
+    type SkillFile,
+} from "@modelcontextprotocol/client/ext/skills";
 import { CallToolRequestParamsSchema, GetPromptRequestParamsSchema, ReadResourceRequestParamsSchema } from "@modelcontextprotocol/core";
+import { skillsCapabilityOf } from "@modelcontextprotocol/core/ext/skills";
 import {
     isRecord,
     Validator,
@@ -95,6 +102,7 @@ export interface ServerCatalog {
     readonly resources: Awaited<ReturnType<Client["listResources"]>>["resources"];
     readonly resourceTemplates: Awaited<ReturnType<Client["listResourceTemplates"]>>["resourceTemplates"];
     readonly prompts: Awaited<ReturnType<Client["listPrompts"]>>["prompts"];
+    readonly skills?: readonly Skill[];
     readonly unsupportedLists: readonly string[];
 }
 
@@ -380,6 +388,7 @@ const LIST_COLLECTIONS = new Map([
     ["resources/list", "resources"],
     ["resources/templates/list", "resourceTemplates"],
     ["prompts/list", "prompts"],
+    ["skills/list", "skills"],
 ]);
 
 class CatalogNonConvergenceError extends Error {
@@ -473,6 +482,7 @@ export class AuthorizationRequiredError extends Error {
 
 interface OpenClient {
     readonly client: CatalogClient;
+    readonly skills: SkillsClient;
     readonly transport: StdioClientTransport | StreamableHTTPClientTransport;
     readonly extensions: ExtensionChannel | null;
     readonly protocolVersion: string;
@@ -617,6 +627,7 @@ const openClient = async (
     }
     return {
         client,
+        skills: new SkillsClient(client, { skipInvalid: true }),
         transport,
         extensions: modern ? client : null,
         protocolVersion: negotiated,
@@ -838,14 +849,17 @@ export default class ServerConnection {
         return new AuthorizationRequiredError(authorizationUrl.href, cause);
     }
 
-    async #list<T>(run: (client: CatalogClient, options: RequestOptions) => Promise<T>, owner?: AbortSignal): Promise<T> {
-        return this.#request(async ({ client }, signal) => {
+    async #list<T>(
+        run: (client: CatalogClient, options: RequestOptions, skills: SkillsClient) => Promise<T>,
+        owner?: AbortSignal,
+    ): Promise<T> {
+        return this.#request(async ({ client, skills }, signal) => {
             const timeout = connectTimeoutMs(this.#environ);
             const settled = new AbortController();
             // {§mcp-authority}: one bound across parallel lists and every SDK pagination leg.
             const deadline = AbortSignal.any([signal, AbortSignal.timeout(timeout), settled.signal]);
             try {
-                return await run(client, { signal: deadline, timeout, maxTotalTimeout: timeout });
+                return await run(client, { signal: deadline, timeout, maxTotalTimeout: timeout }, skills);
             } finally {
                 settled.abort();
             }
@@ -861,12 +875,13 @@ export default class ServerConnection {
     }
 
     async catalog(signal?: AbortSignal): Promise<ServerCatalog> {
-        return this.#list(async (client, options) => {
+        return this.#list(async (client, options, skillsClient) => {
             // {§mcp-authority} — the discover result is the modern identity and
             // capability source; a legacy server's initialize result supplies the
             // same facts at its negotiated revision.
             const capabilities = serverCapabilities(client) ?? {};
-            const [tools, resources, resourceTemplates, prompts] = await Promise.all([
+            const hasSkills = capabilities.resources !== undefined && skillsCapabilityOf(capabilities) !== undefined;
+            const [tools, resources, resourceTemplates, prompts, skills] = await Promise.all([
                 capabilities.tools === undefined
                     ? Promise.resolve([])
                     : client.listTools(undefined, options).then((result) => result.tools),
@@ -880,6 +895,9 @@ export default class ServerConnection {
                 capabilities.prompts === undefined
                     ? Promise.resolve([])
                     : client.listPrompts(undefined, options).then((result) => result.prompts),
+                !hasSkills
+                    ? Promise.resolve([])
+                    : skillsClient.list(undefined, options).then((result) => result.skills),
             ]);
             return {
                 protocolVersion: client.getNegotiatedProtocolVersion() ?? "",
@@ -890,6 +908,7 @@ export default class ServerConnection {
                 resources,
                 resourceTemplates,
                 prompts,
+                skills,
                 unsupportedLists: client.unsupportedLists,
             };
         }, signal);
@@ -917,6 +936,35 @@ export default class ServerConnection {
         return this.#list(async (client, options) => {
             if (serverCapabilities(client)?.prompts === undefined) return [];
             return (await client.listPrompts(undefined, options)).prompts;
+        }, signal);
+    }
+
+    async skills(signal?: AbortSignal): Promise<Skill[]> {
+        return this.#list(async (client, options, skillsClient) => {
+            const capabilities = serverCapabilities(client);
+            if (capabilities?.resources === undefined || skillsCapabilityOf(capabilities) === undefined) return [];
+            return (await skillsClient.list(undefined, options)).skills;
+        }, signal);
+    }
+
+    async getSkill(uri: string, signal?: AbortSignal): Promise<Skill> {
+        return this.#request(async ({ skills }, requestSignal) =>
+            (await skills.get(uri, this.#requestOptions(requestSignal))).skill, signal);
+    }
+
+    async readSkill(skill: Skill, ref?: string, signal?: AbortSignal): Promise<SkillFile> {
+        return this.#request(async ({ skills }, requestSignal) =>
+            skills.read(skill, ref, this.#requestOptions(requestSignal)), signal);
+    }
+
+    async readSkillDirectory(
+        uri: string,
+        signal?: AbortSignal,
+    ): Promise<{ readonly directoryRead: boolean; readonly resources: readonly DirectoryResource[] }> {
+        return this.#request(async ({ skills }, requestSignal) => {
+            if (!skills.directoryRead) return { directoryRead: false, resources: [] };
+            const { resources } = await skills.readDirectory(uri, this.#requestOptions(requestSignal));
+            return { directoryRead: true, resources };
         }, signal);
     }
 

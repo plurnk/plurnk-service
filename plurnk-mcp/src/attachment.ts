@@ -242,6 +242,7 @@ export const statusOf = (error: unknown): number | null => {
 // An active alias's detail: its server's catalog, and the summary of a grant its connection presents ({§oauth-continuation}).
 export const activeDetail = ({ executor: { catalog }, connection }: ActiveAttachment): object => {
     const grant = connection.oauthGrant?.summary;
+    const skills = catalog.skills ?? [];
     return {
         protocolVersion: catalog.protocolVersion,
         server: catalog.server ?? null,
@@ -250,6 +251,11 @@ export const activeDetail = ({ executor: { catalog }, connection }: ActiveAttach
         resources: catalog.resources.length,
         resourceTemplates: catalog.resourceTemplates.length,
         prompts: catalog.prompts.length,
+        ...(skills.length > 0
+            ? {
+                  skills: skills.map((s) => s.frontmatter.name).toSorted(),
+              }
+            : {}),
         ...(catalog.prompts.length > 0
             ? {
                   promptDefinitions: catalog.prompts.map((p) => ({

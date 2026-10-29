@@ -16,6 +16,13 @@ import {
     McpServer,
     createMcpHandler,
 } from "@modelcontextprotocol/server";
+import {
+    DIRECTORY_MIME_TYPE,
+    SkillsExtension,
+    memorySkillFiles,
+    type Skill,
+    type SkillSource,
+} from "@modelcontextprotocol/server/ext/skills";
 import type { McpServerDefinition, ProblemDetails } from "@plurnk/plurnk-contracts";
 import { z } from "zod/v4";
 import { SdkError, SdkErrorCode } from "@modelcontextprotocol/client";
@@ -184,7 +191,7 @@ test("{§mcp-configuration} configured servers are inspectable without installat
     await h.setup();
     try {
         assert.equal(h.adapter().family, "mcp");
-        assert.deepEqual([...h.actions.keys()].toSorted(), ["workspace.mcp.complete", "workspace.mcp.oauth.begin", "workspace.mcp.oauth.complete"]);
+        assert.deepEqual([...h.actions.keys()].toSorted(), ["workspace.mcp.complete", "workspace.mcp.oauth.begin", "workspace.mcp.oauth.complete", "workspace.mcp.skills"]);
         assert.deepEqual(await h.adapter().available(h.identity(1)), [
             { alias: "echo", definition: echo, enabled: true, provenance: { kind: "environment", source: "PLURNK_MCP_echo" } },
             { alias: "remote", definition: remote, enabled: false, provenance: { kind: "environment", source: "PLURNK_MCP_remote" } },
@@ -1100,5 +1107,140 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
         });
     } finally {
         coordinator.close();
+    }
+});
+
+test("{§mcp-skills} workspace.mcp.skills lists, verifies, and fetches static and dynamic SEP-2640 skills", async (t) => {
+    const staticFiles: Record<string, string> = {
+        "sql-helper/SKILL.md": "---\nname: sql-helper\ndescription: Format SQL queries.\n---\nUse SQL formatting.\n",
+        "sql-helper/references/GUIDE.md": "# SQL Guide\nSelect columns explicitly.\n",
+    };
+    const staticCatalog = await SkillsExtension.load(memorySkillFiles(staticFiles));
+    const dynamicSkillMd = "---\nname: dyn-helper\ndescription: Dynamic skill.\n---\nDynamic instructions.\n";
+    const dynamicSkill: Skill = {
+        uri: "skill://dyn-helper/SKILL.md",
+        frontmatter: { name: "dyn-helper", description: "Dynamic skill." },
+        resources: "dynamic",
+    };
+    let tamperDynamic = false;
+    const customSource: SkillSource = {
+        async list() {
+            return { skills: [...staticCatalog.entries, dynamicSkill] };
+        },
+        async get(uri) {
+            if (uri === dynamicSkill.uri) return dynamicSkill;
+            return staticCatalog.entries.find((s) => s.uri === uri);
+        },
+        async read(uri) {
+            if (uri === "skill://sql-helper/SKILL.md") {
+                return { text: staticFiles["sql-helper/SKILL.md"], mimeType: "text/markdown" };
+            }
+            if (uri === "skill://sql-helper/references/GUIDE.md") {
+                return { text: staticFiles["sql-helper/references/GUIDE.md"], mimeType: "text/markdown" };
+            }
+            if (uri === "skill://dyn-helper/SKILL.md") {
+                return {
+                    text: tamperDynamic
+                        ? "---\nname: wrong-name\ndescription: Tampered.\n---\n"
+                        : dynamicSkillMd,
+                    mimeType: "text/markdown",
+                };
+            }
+            if (uri === "skill://dyn-helper/scripts/run.sh") {
+                return { text: "#!/bin/sh\necho ok\n", mimeType: "text/x-shellscript" };
+            }
+            return undefined;
+        },
+        async readDirectory(uri) {
+            if (uri === "skill://dyn-helper") {
+                return {
+                    resources: [
+                        { uri: "skill://dyn-helper/SKILL.md", name: "SKILL.md", mimeType: "text/markdown" },
+                        { uri: "skill://dyn-helper/scripts", name: "scripts", mimeType: DIRECTORY_MIME_TYPE },
+                    ],
+                };
+            }
+            if (uri === "skill://dyn-helper/scripts") {
+                return {
+                    resources: [
+                        { uri: "skill://dyn-helper/scripts/run.sh", name: "run.sh", mimeType: "text/x-shellscript" },
+                    ],
+                };
+            }
+            return undefined;
+        },
+    };
+    const ext = new SkillsExtension({ source: customSource });
+    const handler = createMcpHandler(() => {
+        const server = new McpServer({ name: "skills-srv", version: "1.0.0" });
+        ext.attach(server);
+        return server;
+    });
+    const served = await serveMcpHttp(t, handler);
+    const def = httpServer("skills-srv", served.url);
+    const h = harness({ PLURNK_MCP_skills_srv: JSON.stringify(def) });
+    await h.setup();
+    try {
+        const skillsAction = h.actions.get("workspace.mcp.skills")!;
+        // 1. Cold invocation (before workspace preparation) connects, lists, and closes
+        const coldList = (await skillsAction.handler(
+            { server: "skills-srv", verify: true },
+            { scope: "workspace", workspaceId: 1 },
+        )) as { skills: Array<{ name: string; commit: string; dynamic: boolean }> };
+        assert.deepEqual(
+            coldList.skills.map((s) => ({ name: s.name, dynamic: s.dynamic })),
+            [
+                { name: "sql-helper", dynamic: false },
+                { name: "dyn-helper", dynamic: true },
+            ],
+        );
+
+        // 2. Prepare active attachment and verify activeDetail includes sorted skill names
+        const prepared = await h.lane(1, new Map([["skills-srv", def]]));
+        const outcome = prepared.outcomes.get("skills-srv");
+        assert.equal(outcome?.state, "active");
+        if (outcome?.state === "active") {
+            assert.deepEqual((outcome.detail as { skills?: string[] }).skills, ["dyn-helper", "sql-helper"]);
+        }
+
+        // 3. Fetch verified files for static skill
+        const staticFetched = (await skillsAction.handler(
+            { server: "skills-srv", skill: "sql-helper", includeFiles: true },
+            { scope: "workspace", workspaceId: 1 },
+        )) as { found: boolean; skill: { name: string; commit: string; files: Array<{ path: string; base64: string }> } };
+        assert.equal(staticFetched.found, true);
+        assert.equal(staticFetched.skill.commit.length, 64);
+        assert.deepEqual(staticFetched.skill.files.map((f) => f.path).toSorted(), ["SKILL.md", "references/GUIDE.md"]);
+
+        // 4. Fetch verified files for dynamic skill (walks directory via readDirectory)
+        const dynFetched = (await skillsAction.handler(
+            { server: "skills-srv", skill: "dyn-helper", includeFiles: true },
+            { scope: "workspace", workspaceId: 1 },
+        )) as { found: boolean; skill: { name: string; commit: string; files: Array<{ path: string; base64: string }> } };
+        assert.equal(dynFetched.found, true);
+        assert.equal(dynFetched.skill.commit.length, 64);
+        assert.deepEqual(dynFetched.skill.files.map((f) => f.path).toSorted(), ["SKILL.md", "scripts/run.sh"]);
+
+        // 5. Missing skill returns { found: false }
+        const missing = (await skillsAction.handler(
+            { server: "skills-srv", skill: "nonexistent" },
+            { scope: "workspace", workspaceId: 1 },
+        )) as { found: boolean };
+        assert.equal(missing.found, false);
+
+        // 6. Verification failure maps to 502 skill-verification-failed
+        tamperDynamic = true;
+        await rejectsManagementProblem(
+            async () =>
+                skillsAction.handler(
+                    { server: "skills-srv", skill: "dyn-helper" },
+                    { scope: "workspace", workspaceId: 1 },
+                ),
+            "skill-verification-failed",
+            502,
+        );
+    } finally {
+        await h.teardown(1);
+        await h.module.stop();
     }
 });

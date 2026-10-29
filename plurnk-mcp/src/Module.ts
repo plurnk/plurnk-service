@@ -26,6 +26,8 @@ import ServerConnection, {
     AuthorizationRequiredError,
     isClientCredentialsRejection,
 } from "./client.ts";
+import { SkillVerificationError } from "@modelcontextprotocol/client/ext/skills";
+import { computeSkillCommit, fetchVerifiedSkillFiles } from "./skills.ts";
 import {
     configuredDefinitions,
     connectTimeoutMs,
@@ -63,6 +65,7 @@ import {
     errorsOf,
     objectOf,
     preparationError,
+    requiredString,
     sameBinding,
     statusOf,
     unavailableRuntime,
@@ -220,6 +223,19 @@ export default class Module implements DaemonModule<SetupSeam> {
             }, ["server", "ref", "argument"]),
             outputSchema: OPEN_OBJECT,
             handler: (params, context) => completePromptOrResource(continuation, workspaceIdentityOf(context).workspaceId, params),
+        });
+        seam.registerModuleAction({
+            name: "workspace.mcp.skills",
+            scope: "workspace",
+            residency: "none",
+            inputSchema: actionInput({
+                server: NONEMPTY_STRING,
+                skill: NONEMPTY_STRING,
+                includeFiles: { type: "boolean" },
+                verify: { type: "boolean" },
+            }, ["server"]),
+            outputSchema: OPEN_OBJECT,
+            handler: (params, context) => this.#skillsAction(workspaceIdentityOf(context).workspaceId, params),
         });
     }
 
@@ -891,6 +907,134 @@ export default class Module implements DaemonModule<SetupSeam> {
                 this.#prepareAttachment(workspaceId, binding, connection, oauthRedirectUrl, signal),
             refreshCatalog: (workspaceId, name, attempt) => this.#refreshCatalog(workspaceId, name, attempt),
         };
+    }
+
+    async #withServerConnection<T>(
+        workspaceId: number,
+        server: string,
+        fn: (connection: ServerConnection) => Promise<T>,
+    ): Promise<T> {
+        this.#assertOpen();
+        const snapshot = this.#attachments.get(workspaceId);
+        if (snapshot !== undefined) {
+            const attachment = snapshot.get(server);
+            if (attachment === undefined) {
+                throw actionError(
+                    "server-not-connected",
+                    404,
+                    `MCP server '${server}' is not connected in workspace ${workspaceId}.`,
+                    { server, retryable: false },
+                );
+            }
+            if (attachment.kind === "authorization-required") {
+                throw actionError(
+                    "authorization-required",
+                    401,
+                    `MCP server '${server}' requires operator authorization.`,
+                    { server, retryable: false },
+                );
+            }
+            if (attachment.kind === "unavailable") {
+                throw new ModuleActionError(attachment.problem);
+            }
+            return await fn(attachment.connection);
+        }
+        const definitions = await this.#available({ workspaceId });
+        const entry = definitions.find((item) => item.alias === server && item.enabled);
+        if (entry === undefined) {
+            throw actionError(
+                "server-not-connected",
+                404,
+                `MCP server '${server}' is not connected in workspace ${workspaceId}.`,
+                { server, retryable: false },
+            );
+        }
+        const attachment = await this.#prepareAttachment(workspaceId, bindingOf(entry));
+        try {
+            if (attachment.kind === "authorization-required") {
+                throw actionError(
+                    "authorization-required",
+                    401,
+                    `MCP server '${server}' requires operator authorization.`,
+                    { server, retryable: false },
+                );
+            }
+            if (attachment.kind === "unavailable") {
+                throw new ModuleActionError(attachment.problem);
+            }
+            return await fn(attachment.connection);
+        } finally {
+            const conn = attachmentConnection(attachment);
+            if (conn !== undefined) await this.#closeOwned([conn]);
+        }
+    }
+
+    // {§mcp-skills} — SEP-2640 skill listing, verification, and file retrieval for `<server>:///skills`.
+    async #skillsAction(
+        workspaceId: number,
+        params: Readonly<Record<string, unknown>>,
+    ): Promise<unknown> {
+        const server = requiredString(params, "server");
+        const skillName = typeof params.skill === "string" && params.skill.length > 0 ? params.skill : undefined;
+        const includeFiles = params.includeFiles === true;
+        const verify = params.verify === true;
+        return await this.#withServerConnection(workspaceId, server, async (connection) => {
+            try {
+                const skills = await connection.skills();
+                if (skillName === undefined) {
+                    const out = [];
+                    for (const s of skills) {
+                        const main = verify ? await connection.readSkill(s) : undefined;
+                        out.push({
+                            name: s.frontmatter.name,
+                            description: s.frontmatter.description,
+                            uri: s.uri,
+                            commit: computeSkillCommit(s, main?.bytes),
+                            dynamic: s.resources === "dynamic",
+                        });
+                    }
+                    return { skills: out };
+                }
+                const matched = skills.find((s) => s.frontmatter.name === skillName);
+                if (matched === undefined) return { found: false };
+                if (includeFiles) {
+                    const verified = await fetchVerifiedSkillFiles(connection, matched);
+                    return {
+                        found: true,
+                        skill: {
+                            name: matched.frontmatter.name,
+                            description: matched.frontmatter.description,
+                            uri: matched.uri,
+                            commit: verified.commit,
+                            dynamic: matched.resources === "dynamic",
+                            files: verified.files,
+                        },
+                    };
+                }
+                const main = await connection.readSkill(matched);
+                return {
+                    found: true,
+                    skill: {
+                        name: matched.frontmatter.name,
+                        description: matched.frontmatter.description,
+                        uri: matched.uri,
+                        commit: computeSkillCommit(matched, main.bytes),
+                        dynamic: matched.resources === "dynamic",
+                    },
+                };
+            } catch (cause) {
+                if (cause instanceof SkillVerificationError) {
+                    throw actionError(
+                        "skill-verification-failed",
+                        502,
+                        cause.message,
+                        { server, ...(skillName === undefined ? {} : { skill: skillName }), retryable: false },
+                        cause,
+                    );
+                }
+                throw cause;
+            }
+        });
     }
 
     // {§oauth-continuation} The alias's grant, for a connection with the definition it was accepted for, while it holds tokens.

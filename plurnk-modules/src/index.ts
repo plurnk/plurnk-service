@@ -144,6 +144,11 @@ export interface ModuleSetupSeam {
     // {§module-seam-slices} The host owns placement; the module owns the contents.
     workspaceStateDirectory(workspaceId: number, namespaceOwner: string): Promise<string>;
     registerModuleAction(registration: ModuleActionRegistration): void;
+    invokeModuleAction?(
+        name: string,
+        params: Readonly<Record<string, unknown>>,
+        context: ModuleActionContext,
+    ): Promise<unknown>;
 }
 
 // {§module-seam-slices} — registers one family beneath the host's coordinator.

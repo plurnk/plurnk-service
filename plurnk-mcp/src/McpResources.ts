@@ -15,6 +15,8 @@ import {
     type SendStatement,
     type StreamSubscription,
 } from "@plurnk/plurnk-schemes";
+import { SkillVerificationError } from "@modelcontextprotocol/client/ext/skills";
+import { skillsCapabilityOf } from "@modelcontextprotocol/core/ext/skills";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import { ErrorDetail } from "@plurnk/plurnk-execs";
 import type ServerConnection from "./client.ts";
@@ -27,11 +29,14 @@ const RESOURCES = "/resources";
 const RESOURCE_PREFIX = `${RESOURCES}/`;
 const PROMPTS = "/prompts";
 const PROMPT_PREFIX = `${PROMPTS}/`;
+const SKILLS = "/skills";
+const SKILL_PREFIX = `${SKILLS}/`;
 const MESSAGES = "/messages";
 const MESSAGE_PREFIX = `${MESSAGES}/`;
 const RESOURCE_KIND = "mcp-resource";
 const CATALOG_KIND = "mcp-resource-catalog";
 const PROMPT_KIND = "mcp-prompt";
+const SKILL_KIND = "mcp-skill";
 
 const diagnostic = (error: unknown): string => ErrorDetail.preview(error);
 
@@ -61,6 +66,9 @@ export const resourcePath = (uri: string): string =>
 
 const promptPath = (name: string): string =>
     `${PROMPT_PREFIX}${encodeURIComponent(name)}`;
+
+const skillPath = (name: string): string =>
+    `${SKILL_PREFIX}${encodeURIComponent(name)}`;
 
 const preparationFailure = (
     server: string,
@@ -183,6 +191,8 @@ export default class McpResources {
             || pathname.startsWith(RESOURCE_PREFIX)
             || pathname === PROMPTS
             || pathname.startsWith(PROMPT_PREFIX)
+            || pathname === SKILLS
+            || pathname.startsWith(SKILL_PREFIX)
             || pathname === MESSAGES
             || pathname.startsWith(MESSAGE_PREFIX);
     }
@@ -232,12 +242,20 @@ export default class McpResources {
             ...prompt,
             address: await ctx.entries.address(promptPath(prompt.name)),
         })));
+        const catalogSkills = this.#catalog.skills ?? [];
+        const skills = await Promise.all(catalogSkills.map(async (skill) => ({
+            ...skill,
+            address: await ctx.entries.address(`${skillPath(skill.frontmatter.name)}/SKILL.md`),
+        })));
+        const includeSkillsInRoot =
+            skills.length > 0 || skillsCapabilityOf(this.#catalog.capabilities) !== undefined;
         requireEntrySuccess(await ctx.entries.write(
             ROOT,
             catalogEntry(JSON.stringify({
                 resources,
                 resourceTemplates: this.#catalog.resourceTemplates,
                 prompts,
+                ...(includeSkillsInRoot ? { skills } : {}),
             }, null, 2), "mcp-resource-index"),
         ));
         requireEntrySuccess(await ctx.entries.write(
@@ -250,6 +268,10 @@ export default class McpResources {
         requireEntrySuccess(await ctx.entries.write(
             PROMPTS,
             catalogEntry(JSON.stringify({ prompts }, null, 2), "mcp-prompt-index"),
+        ));
+        requireEntrySuccess(await ctx.entries.write(
+            SKILLS,
+            catalogEntry(JSON.stringify({ skills }, null, 2), "mcp-skill-index"),
         ));
         await Promise.all(this.#catalog.resources.map(async (resource) => {
             const pathname = resourcePath(resource.uri);
@@ -283,6 +305,110 @@ export default class McpResources {
                 ),
             ));
         }));
+        await Promise.all(catalogSkills.map(async (skill) => {
+            const pathname = skillPath(skill.frontmatter.name);
+            const existing = await ctx.entries.read(pathname);
+            if (existing.status !== 404) requireEntrySuccess(existing);
+            if (existing.entry?.attributes?.kind === SKILL_KIND) return;
+            requireEntrySuccess(await ctx.entries.write(
+                pathname,
+                catalogEntry(
+                    JSON.stringify({
+                        ...skill,
+                        address: await ctx.entries.address(`${pathname}/SKILL.md`),
+                    }, null, 2),
+                    "mcp-skill-catalog",
+                ),
+            ));
+        }));
+    }
+
+    async #materializeSkill(pathname: string, ctx: SchemeCtx): Promise<void> {
+        const rest = pathname.slice(SKILL_PREFIX.length);
+        const slashIdx = rest.indexOf("/");
+        if (slashIdx === -1) {
+            if (rest.length === 0) {
+                throw new ResourceAddressError(`Invalid MCP skill address '${pathname}'.`);
+            }
+            await this.#materializeCatalog(ctx);
+            requireEntrySuccess(await ctx.entries.read(pathname));
+            return;
+        }
+        const encodedName = rest.slice(0, slashIdx);
+        const rawRel = rest.slice(slashIdx + 1);
+        if (encodedName.length === 0 || rawRel.length === 0) {
+            throw new ResourceAddressError(`Invalid MCP skill address '${pathname}'.`);
+        }
+        let skillName: string;
+        let relPath: string;
+        try {
+            skillName = decodeURIComponent(encodedName);
+            const segments = rawRel.split("/").map((seg) => decodeURIComponent(seg));
+            if (segments.some((seg) => seg.length === 0 || seg === "." || seg === "..")) {
+                throw new Error("Invalid relative path segment");
+            }
+            relPath = segments.join("/");
+        } catch (cause) {
+            throw new ResourceAddressError(`Invalid encoded MCP skill address '${pathname}'.`, { cause });
+        }
+        const catalogSkills = this.#catalog.skills ?? [];
+        const skill =
+            catalogSkills.find((s) => s.frontmatter.name === skillName)
+            ?? (await this.#connection.skills(ctx.signal)).find((s) => s.frontmatter.name === skillName);
+        if (skill === undefined) {
+            throw new EntryOperationFailure(
+                Results.failure(
+                    "scheme:mcp",
+                    "skill-not-found",
+                    404,
+                    `MCP server '${this.#server}' carries no skill named '${skillName}'.`,
+                    {},
+                    {
+                        server: this.#server,
+                        skill: skillName,
+                        target: await ctx.entries.address(pathname),
+                    },
+                ),
+            );
+        }
+        const file = await this.#connection.readSkill(
+            skill,
+            relPath === "SKILL.md" ? undefined : relPath,
+            ctx.signal,
+        );
+        const bodyChannel =
+            file.text !== undefined
+                ? {
+                      content: file.text,
+                      mimetype: file.mimeType ?? (relPath.endsWith(".md") ? "text/markdown" : "text/plain"),
+                  }
+                : {
+                      content: Buffer.from(file.bytes).toString("base64"),
+                      mimetype: file.mimeType ?? "application/octet-stream",
+                      encoding: "base64" as const,
+                  };
+        requireEntrySuccess(
+            await ctx.entries.write(pathname, {
+                channels: {
+                    body: bodyChannel,
+                    json: {
+                        content: JSON.stringify(
+                            {
+                                uri: file.uri,
+                                ...(file.mimeType !== undefined ? { mimeType: file.mimeType } : {}),
+                                verified: file.verified,
+                                size: file.bytes.byteLength,
+                                ...(file.frontmatter !== undefined ? { frontmatter: file.frontmatter } : {}),
+                            },
+                            null,
+                            2,
+                        ),
+                        mimetype: "application/json",
+                    },
+                },
+                attributes: { kind: SKILL_KIND },
+            }),
+        );
     }
 
     async #materializePrompt(
@@ -459,6 +585,8 @@ export default class McpResources {
                 await this.#materializeResource(pathname, ctx);
             } else if (pathname.startsWith(PROMPT_PREFIX) && !/[*?[\]{}]/.test(pathname)) {
                 await this.#materializePrompt(request, ctx);
+            } else if (pathname.startsWith(SKILL_PREFIX) && !/[*?[\]{}]/.test(pathname)) {
+                await this.#materializeSkill(pathname, ctx);
             } else {
                 await this.#materializeCatalog(ctx);
             }
@@ -470,6 +598,20 @@ export default class McpResources {
             if (error instanceof AuthorizationRequiredError) {
                 // {§mcp-host-composition} — the alias now awaits a sign-in.
                 return preparationFailure(this.#server, "authorization-required", 401, awaitsSignIn(this.#server), { retryable: false });
+            }
+            if (error instanceof SkillVerificationError) {
+                return preparationFailure(
+                    this.#server,
+                    "skill-verification-failed",
+                    502,
+                    error.message,
+                    {
+                        reason: error.reason,
+                        uri: error.uri,
+                        ...(error.differences.length > 0 ? { differences: error.differences } : {}),
+                        retryable: false,
+                    },
+                );
             }
             const invalidAddress = error instanceof ResourceAddressError;
             return preparationFailure(

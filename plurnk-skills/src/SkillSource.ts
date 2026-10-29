@@ -3,7 +3,7 @@
 // fetched, and an installed skill holds nothing that points out of it.
 import { isRecord, errnoCode } from "@plurnk/plurnk-contracts";
 import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rename, rm, stat } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -20,14 +20,40 @@ const TOOL_OUTPUT_BYTES = 8 * 1024 * 1024;
 const ARCHIVE = /\.(?:zip|tar|tgz|tbz2|txz|tar\.(?:gz|bz2|xz|zst))$/iu;
 const SCP_REMOTE = /^[\w.~-]+@[\w.-]+:(?!\/\/)\S/u;
 const URL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//iu;
+const MCP_SERVER_SCHEME = /^([a-z][a-z0-9-]*):\/\/\/(.*)$/u;
+const RESERVED_SCHEMES = new Set([
+    "http",
+    "https",
+    "ssh",
+    "file",
+    "skill",
+    "workspace",
+    "session",
+    "ops",
+    "log",
+    "env",
+    "sh",
+    "js",
+    "ftp",
+    "git",
+]);
 
-type SkillSourceKind = "git" | "folder" | "skill-file" | "archive";
+type SkillSourceKind = "git" | "mcp" | "folder" | "skill-file" | "archive";
 
-export interface LocatedSource {
-    readonly kind: SkillSourceKind;
-    // A git remote exactly as given; a local source resolved to an absolute path.
+export interface McpSource {
+    readonly kind: "mcp";
     readonly location: string;
+    readonly server: string;
+    readonly skillName?: string;
 }
+
+export type LocatedSource =
+    | {
+          readonly kind: Exclude<SkillSourceKind, "mcp">;
+          // A git remote; a local source resolved to an absolute path.
+          readonly location: string;
+      }
+    | McpSource;
 
 export interface FoundSkill {
     readonly name: string;
@@ -80,6 +106,29 @@ export default class SkillSource {
         finally { await closed; }
     }
 
+    // MCP server skill origin: <server>:///, <server>:///skills, or <server>:///skills/<name> ({§skills-sources}, #654).
+    static mcp(source: string): McpSource | null {
+        const match = MCP_SERVER_SCHEME.exec(source);
+        if (match === null || RESERVED_SCHEMES.has(match[1].toLowerCase())) return null;
+        const server = match[1];
+        const rest = match[2].replace(/\/+$/u, "");
+        if (rest === "" || rest === "skills") {
+            return { kind: "mcp", server, location: `${server}:///skills` };
+        }
+        if (rest.startsWith("skills/")) {
+            const name = decodeURIComponent(rest.slice("skills/".length));
+            if (name.length > 0 && !name.includes("/") && name !== "." && name !== "..") {
+                return { kind: "mcp", server, skillName: name, location: `${server}:///skills/${name}` };
+            }
+        }
+        throw actionError(
+            "source-invalid",
+            400,
+            `'${source}' is not a valid MCP skill source: use '<server>:///', '<server>:///skills', or '<server>:///skills/<name>'.`,
+            { source, retryable: false },
+        );
+    }
+
     // URL admission is independent of filesystem and network availability.
     static remote(source: string): (LocatedSource & { readonly kind: "git" }) | null {
         if (/^(?:https|ssh):\/\//iu.test(source)) {
@@ -103,6 +152,8 @@ export default class SkillSource {
 
     // Reads a source's form without fetching it. A relative path is the project's.
     static async locate(source: string, context: { readonly projectRoot: string | null; readonly home: string }): Promise<LocatedSource> {
+        const mcp = SkillSource.mcp(source);
+        if (mcp !== null) return mcp;
         const remote = SkillSource.remote(source);
         if (remote !== null) return remote;
         const expanded = source === "~" || source.startsWith("~/") ? join(context.home, source.slice(1)) : source;
@@ -204,11 +255,53 @@ export default class SkillSource {
                     root = entries.length === 1 && entries[0].isDirectory() ? join(into, entries[0].name) : into;
                     break;
                 }
+                case "mcp":
+                    throw new Error("MCP sources open through SkillSource.openMcpFiles.");
             }
             signal?.throwIfAborted();
             await SkillSource.#assertSkillSource(root, located.location);
             const { skills, invalid } = await SkillSource.#find(root, true);
             return { skills, invalid, ...(commit === undefined ? {} : { commit }), close };
+        } catch (error) {
+            try { await close(); }
+            catch (cleanup) { throw new AggregateError([error, cleanup], "Skill source preparation and cleanup failed."); }
+            throw error;
+        }
+    }
+
+    static async openMcpFiles(
+        name: string,
+        source: string,
+        files: ReadonlyArray<{ readonly path: string; readonly base64: string }>,
+        commit: string,
+        signal?: AbortSignal,
+    ): Promise<OpenedSource> {
+        signal?.throwIfAborted();
+        const staging = await mkdtemp(join(tmpdir(), "plurnk-skill-mcp-"));
+        const close = (): Promise<void> => rm(staging, { recursive: true, force: true });
+        try {
+            const root = join(staging, name);
+            await mkdir(root, { recursive: true });
+            const canonicalRoot = await realpath(root);
+            for (const file of files) {
+                if (
+                    file.path.length === 0 ||
+                    file.path.startsWith("/") ||
+                    file.path.split("/").some((seg) => seg.length === 0 || seg === "." || seg === "..")
+                ) {
+                    throw actionError("source-unsafe", 422, `'${file.path}' links outside its skill.`, { path: file.path, retryable: false });
+                }
+                const target = resolve(canonicalRoot, file.path);
+                if (!AgentPluginFiles.inside(canonicalRoot, target)) {
+                    throw actionError("source-unsafe", 422, `'${file.path}' links outside its skill.`, { path: file.path, retryable: false });
+                }
+                await mkdir(dirname(target), { recursive: true });
+                await writeFile(target, Buffer.from(file.base64, "base64"));
+            }
+            signal?.throwIfAborted();
+            await SkillSource.#assertSkillSource(root, source);
+            const { skills, invalid } = await SkillSource.#find(root, true);
+            return { skills, invalid, commit, close };
         } catch (error) {
             try { await close(); }
             catch (cleanup) { throw new AggregateError([error, cleanup], "Skill source preparation and cleanup failed."); }
