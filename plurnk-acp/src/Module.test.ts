@@ -1,6 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
+    McpOverAcpProvider,
     methods,
     PlanUpdateContent,
     PROTOCOL_VERSION,
@@ -1591,6 +1592,110 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 );
                 assert.ok(subagentIdx0 >= 0 && msgIdx > subagentIdx0, "running subagent_update precedes session_message");
                 assert.ok(subagentIdx1 > msgIdx, "idle subagent_update follows child session_message");
+            });
+        } finally {
+            await h.close();
+        }
+    });
+
+    test("{§acp-daemon-client}: McpServerAcp (mcp/message) bridges client-hosted MCP servers via McpOverAcpHttpBridge while rejecting stdio/http mcpServers", async () => {
+        const h = await createHarness();
+        try {
+            const mcpProvider = new McpOverAcpProvider();
+            const app = createAcpClient().onRequest(
+                methods.client.mcp.message,
+                mcpProvider.handleRequest,
+            );
+            const stream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
+            await app.connectWith(stream, async (ctx) => {
+                const init = await ctx.initialized;
+                assert.ok(init.response.capabilities?.session?.mcp?.acp);
+                assert.equal(init.response.capabilities?.session?.mcp?.stdio, undefined);
+                assert.equal(init.response.capabilities?.session?.mcp?.http, undefined);
+                assert.ok(init.response.capabilities?.session?.additionalDirectories);
+
+                // Rejects client-supplied stdio mcpServers
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.new, {
+                            cwd: "/workspace/alpha",
+                            mcpServers: [{ type: "stdio", name: "forbidden", command: "sh", args: [], env: [] }],
+                        }),
+                    (err: unknown) =>
+                        typeof err === "object" &&
+                        err !== null &&
+                        "data" in err &&
+                        typeof (err as { data?: { detail?: unknown } }).data?.detail === "string" &&
+                        /single-port security contract/u.test((err as { data: { detail: string } }).data.detail),
+                );
+
+                // Admits type: "acp" McpServerAcp and bridges MCP 2026-07-28 requests over mcp/message
+                const reg = mcpProvider.registerServer(ctx, {
+                    name: "ide-tools",
+                    serverId: "srv-ide-1",
+                    handler: async (op) => {
+                        if (op.method === "tools/list") {
+                            return {
+                                result: {
+                                    resultType: "tools/list",
+                                    tools: [{ name: "open_buffer", inputSchema: { type: "object" } }],
+                                },
+                            };
+                        }
+                        return { result: { resultType: op.method } };
+                    },
+                });
+
+                await ctx.request(methods.agent.session.new, {
+                    cwd: "/workspace/alpha",
+                    mcpServers: [reg.declaration],
+                    _meta: { plurnk: { name: "ide" } },
+                });
+
+                const mcpList = (await h.port.invokeModuleAction(
+                    "workspace.mcp.list",
+                    {},
+                    { scope: "workspace", workspaceId: 1 },
+                )) as {
+                    items: Array<{
+                        alias: string;
+                        definition: { name: string; type: string; url: string; headers?: Record<string, string> };
+                    }>;
+                };
+                const bridged = mcpList.items.find((item) => item.alias === "ide-tools");
+                assert.ok(bridged, "ide-tools MCP server registered in workspace");
+                assert.equal(bridged.definition.type, "streamable-http");
+
+                const res = await fetch(bridged.definition.url, {
+                    method: "POST",
+                    headers: {
+                        "content-type": "application/json",
+                        accept: "application/json, text/event-stream",
+                        "mcp-protocol-version": "2026-07-28",
+                        "mcp-method": "tools/list",
+                        ...bridged.definition.headers,
+                    },
+                    body: JSON.stringify({
+                        jsonrpc: "2.0",
+                        id: "req-1",
+                        method: "tools/list",
+                        params: {
+                            _meta: {
+                                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                                "io.modelcontextprotocol/clientCapabilities": {},
+                            },
+                        },
+                    }),
+                });
+                assert.equal(res.status, 200);
+                const payload = (await res.json()) as {
+                    jsonrpc: string;
+                    id: string;
+                    result: { tools: Array<{ name: string }> };
+                };
+                assert.equal(payload.id, "req-1");
+                assert.equal(payload.result.tools[0]?.name, "open_buffer");
+                await reg.dispose();
             });
         } finally {
             await h.close();

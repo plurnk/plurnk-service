@@ -1,8 +1,10 @@
 // {§acp-daemon-client} {§acp-session-owner} {§acp-overview} {§acp-action-binding} Session and workspace binding, configOptions, and overview projection.
 
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import type { McpOverAcpHttpBridge } from "@agentclientprotocol/sdk/experimental/mcp-http";
 import {
     RequestError,
+    isMcpServerAcp,
     type AgentContext,
     type AvailableCommand,
     type SessionConfigOption,
@@ -158,14 +160,58 @@ export const selectBoundSessionForTarget = (
 export const assertSinglePortSecurity = (params: unknown): void => {
     if (!isRecord(params)) return;
     if (Array.isArray(params.mcpServers) && params.mcpServers.length > 0) {
-        throw RequestError.invalidParams({
-            detail: "Client-supplied mcpServers are forbidden by the single-port security contract.",
-        });
+        if (!params.mcpServers.every((srv) => isMcpServerAcp(srv))) {
+            throw RequestError.invalidParams({
+                detail: "Client-supplied stdio and http mcpServers are forbidden by the single-port security contract; only 'acp' (mcp/message) declarations are admitted.",
+            });
+        }
     }
     if (params.systemPrompt !== undefined && params.systemPrompt !== null) {
         throw RequestError.invalidParams({
             detail: "Client-supplied systemPrompt overrides are forbidden by the single-port security contract.",
         });
+    }
+};
+
+export const applyAcpMcpServers = async (
+    seam: ApplicationPort,
+    bridge: McpOverAcpHttpBridge,
+    client: NonNullable<AcpPeer["client"]>,
+    workspaceId: number,
+    mcpServers: readonly unknown[] | null | undefined,
+): Promise<void> => {
+    if (!Array.isArray(mcpServers) || mcpServers.length === 0) return;
+    const actions = seam.listModuleActions?.() ?? [];
+    const actionName = actions.some((a) => a.name === "workspace.mcp.replace")
+        ? "workspace.mcp.replace"
+        : actions.some((a) => a.name === "workspace.mcp.add")
+          ? "workspace.mcp.add"
+          : null;
+    for (const srv of mcpServers) {
+        if (!isMcpServerAcp(srv)) continue;
+        const httpDecl = await bridge.toHttp(client, srv);
+        if (actionName === null) continue;
+        const alias =
+            srv.name
+                .toLowerCase()
+                .replace(/[^a-z0-9-]+/gu, "-")
+                .replace(/^-+|-+$/gu, "")
+                .replace(/^([0-9])/u, "mcp-$1") || "acp-mcp";
+        const headers: Record<string, string> = {};
+        for (const h of httpDecl.headers) {
+            headers[h.name] = h.value;
+        }
+        const definition = {
+            name: alias,
+            type: "streamable-http" as const,
+            url: httpDecl.url,
+            ...(Object.keys(headers).length > 0 ? { headers } : {}),
+        };
+        await seam.invokeModuleAction(
+            actionName,
+            { alias, definition },
+            { scope: "workspace", workspaceId },
+        );
     }
 };
 

@@ -171,6 +171,7 @@ export const createHarness = async (options?: {
     const entryContents = new Map<string, string>();
     const messageAddresses = new Map<string, string>();
     const memberDefinitions = new Map<number, string[]>();
+    const mcpDefinitions = new Map<number, Array<{ alias: string; definition: unknown }>>();
     let currentModel: ModelRoute = {
         alias: "fast",
         provider: "mocktest",
@@ -304,6 +305,17 @@ export const createHarness = async (options?: {
                 },
             },
             {
+                name: "workspace.mcp.replace",
+                scope: "workspace",
+                inputSchema: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["alias", "definition"],
+                    properties: { alias: { type: "string" }, definition: { type: "object" } },
+                },
+                outputSchema: { type: "object" },
+            },
+            {
                 name: "workspace.members.list",
                 scope: "workspace",
                 inputSchema: { type: "object", additionalProperties: false, properties: {} },
@@ -327,8 +339,22 @@ export const createHarness = async (options?: {
             },
         ],
         invokeModuleAction: async (name, input, context) => {
-            if (name === "workspace.mcp.list") return { items: [] };
             const wsId = context.scope === "workspace" ? context.workspaceId : 1;
+            if (name === "workspace.mcp.list") {
+                const items = mcpDefinitions.get(wsId) ?? [];
+                return {
+                    items: items.map((d) => ({ alias: d.alias, definition: d.definition, state: "active", enabled: true })),
+                };
+            }
+            if (name === "workspace.mcp.replace") {
+                const { alias, definition } = input as { alias: string; definition: unknown };
+                const existing = mcpDefinitions.get(wsId) ?? [];
+                const idx = existing.findIndex((d) => d.alias === alias);
+                if (idx >= 0) existing[idx] = { alias, definition };
+                else existing.push({ alias, definition });
+                mcpDefinitions.set(wsId, existing);
+                return { alias, definition, state: "active", enabled: true };
+            }
             if (name === "workspace.members.add") {
                 const { files } = input as { files: string[] };
                 const existing = memberDefinitions.get(wsId) ?? [];

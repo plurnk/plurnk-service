@@ -2,7 +2,9 @@
 // Per-connection ACP v2 AgentApp factory and JSON-RPC request/notification handlers.
 
 import { fileURLToPath } from "node:url";
+import { McpOverAcpHttpBridge } from "@agentclientprotocol/sdk/experimental/mcp-http";
 import {
+    McpOverAcpCaller,
     PROTOCOL_VERSION,
     RequestError,
     agent,
@@ -35,6 +37,7 @@ import type { GateTracker } from "./gates.ts";
 import SessionTranslator from "./SessionTranslator.ts";
 import {
     AVAILABLE_COMMANDS,
+    applyAcpMcpServers,
     applyAdditionalDirectories,
     applyConfigOption,
     assertSinglePortSecurity,
@@ -105,9 +108,16 @@ export const createConnectionAgent = (
         },
     };
 
+    const mcpCaller = new McpOverAcpCaller({
+        clientInfo: { name: "@plurnk/plurnk-service", version: "1.0.0" },
+    });
+    const mcpBridge = new McpOverAcpHttpBridge(mcpCaller);
+
     const app = agent({
         name: "@plurnk/plurnk-service",
     });
+
+    app.onNotification(methods.agent.mcp.message, mcpCaller.handleNotification);
 
     app.onConnect((conn) => {
         peer.client = conn.client;
@@ -134,8 +144,12 @@ export const createConnectionAgent = (
                         image: {},
                         embeddedContext: {},
                     },
+                    mcp: {
+                        acp: {},
+                    },
                     delete: {},
                     fork: {},
+                    additionalDirectories: {},
                 },
                 providers: {},
             },
@@ -202,6 +216,13 @@ export const createConnectionAgent = (
                 bound.workspaceId,
                 bound.projectRoot,
                 ctx.params.additionalDirectories,
+            );
+            await applyAcpMcpServers(
+                seam,
+                mcpBridge,
+                ctx.client,
+                bound.workspaceId,
+                ctx.params.mcpServers,
             );
             const providerCatalog = tryListProviders(seam);
             const [configOptions, modelInfo] = await Promise.all([
@@ -285,6 +306,13 @@ export const createConnectionAgent = (
                 bound.workspaceId,
                 bound.projectRoot,
                 ctx.params.additionalDirectories,
+            );
+            await applyAcpMcpServers(
+                seam,
+                mcpBridge,
+                ctx.client,
+                bound.workspaceId,
+                ctx.params.mcpServers,
             );
 
             const providerCatalog = tryListProviders(seam);
@@ -491,6 +519,13 @@ export const createConnectionAgent = (
                 newSessionId,
                 ctx.params.cwd,
                 false,
+            );
+            await applyAcpMcpServers(
+                seam,
+                mcpBridge,
+                ctx.client,
+                parent.workspaceId,
+                ctx.params.mcpServers,
             );
             const configOptions = await buildConfigOptions(seam, parent.workspaceId, forked.sessionId);
             return {
