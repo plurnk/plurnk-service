@@ -20,7 +20,8 @@ export type StartSeam = Pick<
     | "runLoop"
     | "readInbox"
     | "subscribeToEvents"
->;
+> &
+    Partial<Pick<ApplicationPort, "listProviders" | "readSessionModel" | "setSessionModel">>;
 
 export interface ServerBinding {
     readonly operatorScoped: boolean;
@@ -203,8 +204,36 @@ const extractSamplingPrompt = (params: SamplingMessageParams): string => {
         const blocks = Array.isArray(message.content) ? message.content : [message.content];
         const textBlocks: string[] = [];
         for (const block of blocks) {
-            if (isRecord(block) && block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
+            if (!isRecord(block) || typeof block.type !== "string") continue;
+            if (block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
                 textBlocks.push(block.text);
+            } else if (block.type === "tool_use" && typeof block.name === "string") {
+                textBlocks.push(`[tool_use: ${block.name}] ${JSON.stringify(block.input ?? {})}`);
+            } else if (block.type === "tool_result" && typeof block.toolUseId === "string") {
+                const subTexts: string[] = [];
+                if (Array.isArray(block.content)) {
+                    for (const sub of block.content) {
+                        if (isRecord(sub) && sub.type === "text" && typeof sub.text === "string" && sub.text.length > 0) {
+                            subTexts.push(sub.text);
+                        }
+                    }
+                }
+                const rendered = subTexts.length > 0
+                    ? subTexts.join("\n")
+                    : block.structuredContent !== undefined
+                      ? JSON.stringify(block.structuredContent)
+                      : "";
+                textBlocks.push(
+                    rendered.length > 0
+                        ? `[tool_result: ${block.toolUseId}]\n${rendered}`
+                        : `[tool_result: ${block.toolUseId}]`,
+                );
+            } else if (
+                (block.type === "image" || block.type === "audio") &&
+                typeof block.mimeType === "string" &&
+                block.mimeType.length > 0
+            ) {
+                textBlocks.push(`[${block.type}: ${block.mimeType}]`);
             }
         }
         const text = textBlocks.join("\n\n");
@@ -223,6 +252,8 @@ interface PendingSample {
     readonly sessionId: number;
     readonly address: string;
     readonly prompt: string;
+    readonly resolvedModel: string;
+    readonly stopSequences: readonly string[];
     keyPath?: string;
     loopId: number;
     readonly chunks: string[];
@@ -336,6 +367,43 @@ export class OpenWorkCoordinator {
         await seam.activateWorkspace({ workspaceId: workspace.id });
         signal?.throwIfAborted();
 
+        const hints = isRecord(params.modelPreferences) && Array.isArray(params.modelPreferences.hints)
+            ? params.modelPreferences.hints
+            : [];
+        if (hints.length > 0 && seam.listProviders !== undefined && seam.setSessionModel !== undefined) {
+            const aliases = seam.listProviders().aliases;
+            for (const hint of hints) {
+                if (!isRecord(hint) || typeof hint.name !== "string" || hint.name.trim().length === 0) continue;
+                const needle = hint.name.trim().toLowerCase();
+                const matched = aliases.find(
+                    (a) =>
+                        a.alias.toLowerCase() === needle ||
+                        `${a.provider}/${a.model}`.toLowerCase() === needle ||
+                        a.model.toLowerCase().includes(needle) ||
+                        `${a.provider}/${a.model}`.toLowerCase().includes(needle),
+                );
+                if (matched !== undefined) {
+                    await seam
+                        .setSessionModel({
+                            workspaceId: workspace.id,
+                            sessionId: session.sessionId,
+                            selector: matched.alias,
+                        })
+                        .catch(() => null);
+                    break;
+                }
+            }
+        }
+        const modelInfo = seam.readSessionModel !== undefined
+            ? await seam.readSessionModel({ workspaceId: workspace.id, sessionId: session.sessionId }).catch(() => null)
+            : null;
+        const resolvedModel = modelInfo?.model
+            ? `${modelInfo.model.provider}/${modelInfo.model.model}`
+            : "plurnk";
+        const stopSequences = Array.isArray(params.stopSequences)
+            ? params.stopSequences.filter((s): s is string => typeof s === "string" && s.length > 0)
+            : [];
+
         const rawId = typeof meta.plurnkMessageId === "string" && meta.plurnkMessageId.length > 0
             ? meta.plurnkMessageId
             : randomUUID();
@@ -349,6 +417,8 @@ export class OpenWorkCoordinator {
             sessionId: session.sessionId,
             address,
             prompt,
+            resolvedModel,
+            stopSequences,
             loopId: 0,
             chunks: [],
             settled: false,
@@ -442,12 +512,21 @@ export class OpenWorkCoordinator {
                     || (waiter.keyPath !== undefined && targets.has(waiter.keyPath));
                 if (!matched) continue;
                 if (completion === 200) {
-                    const pieces = [...waiter.chunks, ...(txBody.length > 0 ? [txBody] : [])];
+                    const rawText = [...waiter.chunks, ...(txBody.length > 0 ? [txBody] : [])].join("\n\n");
+                    let text = rawText;
+                    let stopReason: "endTurn" | "stopSequence" = "endTurn";
+                    for (const seq of waiter.stopSequences) {
+                        const idx = text.indexOf(seq);
+                        if (idx >= 0) {
+                            text = text.slice(0, idx);
+                            stopReason = "stopSequence";
+                        }
+                    }
                     waiter.resolve({
                         role: "assistant",
-                        content: { type: "text", text: pieces.join("\n\n") },
-                        model: "plurnk",
-                        stopReason: "endTurn",
+                        content: { type: "text", text },
+                        model: waiter.resolvedModel,
+                        stopReason,
                     });
                 } else if (completion === 499) {
                     waiter.reject(new Error(

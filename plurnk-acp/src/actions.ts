@@ -920,6 +920,10 @@ export const executeSlashCommand = async (
     const parsed = parseFamilyCommand(cmd, tokens);
     const res = await invoke({ ...envelope, kind: parsed.actionName, params: parsed.params });
     if (isRecord(res)) {
+        if (isRecord(res.completion) && Array.isArray(res.completion.values)) {
+            const values = res.completion.values.filter((v): v is string => typeof v === "string");
+            return values.length === 0 ? `${cmd} complete: none` : values.join("\n");
+        }
         const definitions = Array.isArray(res.definitions)
             ? res.definitions
             : Array.isArray(res.items)

@@ -348,6 +348,53 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             params: { alias, definition },
         };
     }
+    if (sub === "complete" && family === "mcp") {
+        let server = "";
+        let ref: Record<string, string> = { type: "ref/prompt", name: "" };
+        let argTokens: readonly string[] = [];
+        const uriMatch = /^([a-z0-9-]+):\/\/\/(prompts|resources)\/(.+)$/iu.exec(rest[0] ?? "");
+        if (uriMatch) {
+            server = uriMatch[1] ?? "";
+            const kind = (uriMatch[2] ?? "").toLowerCase();
+            const target = decodeURIComponent(uriMatch[3] ?? "");
+            ref = kind === "resources"
+                ? { type: "ref/resource", uri: target }
+                : { type: "ref/prompt", name: target };
+            argTokens = rest.slice(1);
+        } else {
+            server = rest[0] ?? "";
+            const rawKind = (rest[1] ?? "prompt").toLowerCase();
+            const target = rest[2] ?? "";
+            ref = rawKind === "resource" || rawKind === "ref/resource"
+                ? { type: "ref/resource", uri: target }
+                : { type: "ref/prompt", name: target };
+            argTokens = rest.slice(3);
+        }
+        const firstArg = argTokens[0] ?? "";
+        const eqIdx = firstArg.indexOf("=");
+        const argument = eqIdx >= 0
+            ? { name: firstArg.slice(0, eqIdx), value: firstArg.slice(eqIdx + 1) }
+            : { name: firstArg, value: argTokens[1] ?? "" };
+        const contextArgs: Record<string, string> = {};
+        for (const extra of argTokens.slice(eqIdx >= 0 ? 1 : 2)) {
+            const cEq = extra.indexOf("=");
+            if (cEq > 0) {
+                contextArgs[extra.slice(0, cEq)] = extra.slice(cEq + 1);
+            }
+        }
+        return {
+            scopePrefix,
+            sub,
+            rest,
+            actionName: "workspace.mcp.complete",
+            params: {
+                server,
+                ref,
+                argument,
+                ...(Object.keys(contextArgs).length > 0 ? { context: { arguments: contextArgs } } : {}),
+            },
+        };
+    }
     if ((sub === "add" || sub === "replace") && family === "skills") {
         const alias = rest[0] ?? "";
         const source = rest[1] ?? "";

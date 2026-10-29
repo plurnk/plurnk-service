@@ -90,6 +90,21 @@ test("{§startup-admission} {§acp-action-binding} formatServiceUpdateReport and
         actionName: "workspace.members.remove",
         params: { file: "src/a.ts" },
     });
+    assert.deepEqual(
+        Contracts.parseFamilyCommand("mcp", ["complete", "github:///prompts/review", "repo=plurnk", "org=possum"]),
+        {
+            scopePrefix: "workspace",
+            sub: "complete",
+            rest: ["github:///prompts/review", "repo=plurnk", "org=possum"],
+            actionName: "workspace.mcp.complete",
+            params: {
+                server: "github",
+                ref: { type: "ref/prompt", name: "review" },
+                argument: { name: "repo", value: "plurnk" },
+                context: { arguments: { org: "possum" } },
+            },
+        },
+    );
 });
 
 test("{§operation-fences} isPlurnkOp admits the operation alphabet and nothing else", () => {

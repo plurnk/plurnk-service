@@ -1027,6 +1027,77 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
             result: { status: 500 },
         });
         await assert.rejects(unansweredPromise, /ended without a reply/u);
+
+        // 5. Matches modelPreferences.hints, reports active <provider>/<model>, formats tool_result blocks, and truncates at stopSequences
+        let selectedAlias: string | null = null;
+        Object.assign(seam, {
+            listProviders: () => ({
+                aliases: [
+                    {
+                        alias: "sonnet",
+                        provider: "anthropic",
+                        model: "claude-sonnet-4-5",
+                        effort: "medium",
+                        effortSource: "default",
+                        active: true,
+                        inputCapacity: 200000,
+                    },
+                ],
+            }),
+            setSessionModel: async ({ selector }: { readonly selector: string }) => {
+                selectedAlias = selector;
+                return { alias: selector, provider: "anthropic", model: "claude-sonnet-4-5", effortSource: "default" as const };
+            },
+            readSessionModel: async () => ({
+                model: { alias: selectedAlias ?? "sonnet", provider: "anthropic", model: "claude-sonnet-4-5", effortSource: "default" as const },
+                spawnModel: null,
+            }),
+        });
+        const richPromise = coordinator.sample({
+            server: "telegram",
+            binding: {
+                operatorScoped: false,
+                workspaceScope: new Set(["ops"]),
+                defaultWorkspace: "ops",
+                defaultSession: "inbox",
+                resident: true,
+            },
+            params: {
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            { type: "text", text: "Summarize:" },
+                            {
+                                type: "tool_result",
+                                toolUseId: "call-1",
+                                content: [{ type: "text", text: "Status: OK" }],
+                            },
+                        ],
+                    },
+                ],
+                modelPreferences: { hints: [{ name: "sonnet" }] },
+                stopSequences: ["<STOP>"],
+                maxTokens: 64,
+                _meta: { plurnkMessageId: "msg-4" },
+            },
+        });
+        await delay(10);
+        assert.equal(selectedAlias, "sonnet");
+        assert.equal(admittedMessages.at(-1)?.body, "Summarize:\n\n[tool_result: call-1]\nStatus: OK");
+        listener!(1, "log/entry", {
+            op: "SEND",
+            status_rx: 200,
+            rx: { completion: 200, repliedTo: ["telegram:///messages/msg-4"] },
+            tx: { body: "Summary complete.<STOP>Extra trailing text" },
+        });
+        const richResult = await richPromise;
+        assert.deepEqual(richResult, {
+            role: "assistant",
+            content: { type: "text", text: "Summary complete." },
+            model: "anthropic/claude-sonnet-4-5",
+            stopReason: "stopSequence",
+        });
     } finally {
         coordinator.close();
     }
