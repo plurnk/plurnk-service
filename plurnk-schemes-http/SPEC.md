@@ -10,21 +10,21 @@ Owns the `http(s)://` request/response scheme (`Http`), the `ws(s)://` full-dupl
 |---|---|---|
 | `body` (default) | `application/octet-stream` | Source text or original binary bytes; SSE `data` lines for a live response |
 | `header` | `text/plain` | Origin status/headers, acquisition stamps, cache variant, materializer, and projection evidence |
-| `readable` | `text/markdown` | Optional derived text/facts from an HTML materializer or installed mimetype projection (`{§channel-selection}`) |
+| `readable` | `text/markdown` | Optional derived text/facts from an HTML materializer or installed mimetype projection ({§channel-selection}) |
 
-Identity and transport URLs normalize through `NetworkAddress` (`{§network-address}`): authority is `<host>[:<non-default-port>]`, pathname is `<path>[?<serialized-query>]` (`%28`/`%29` in path canonicalize to literal `(` / `)`, query order/duplicates/empty `?` preserved), `#fragment` selects the Plurnk channel, and URL userinfo is rejected (`400`).
+Identity and transport URLs normalize through `NetworkAddress` ({§network-address}): authority is `<host>[:<non-default-port>]`, pathname is `<path>[?<serialized-query>]` (`%28`/`%29` in path canonicalize to literal `(` / `)`, query order/duplicates/empty `?` preserved), `#fragment` selects the Plurnk channel, and URL userinfo is rejected (`400`).
 
 | Operation | Remote action | Contract |
 |---|---|---|
 | Exact `READ (url) <scope?>` | `GET` (unless a fresh cached `GET` is usable) | Scope-blind `prepareRepresentation`, then Core selects channel and scope |
 | Exact `FIND (url)` | `GET` only when acquisition is required | Same preparation, then universal query, matcher, weighting, and pagination |
-| Pattern `FIND (pattern-url)` | None (`PathSyntax.hasGlob`, `{§path-syntax}`) | Query already-materialized web entries in the workspace without remote discovery |
+| Pattern `FIND (pattern-url)` | None (`PathSyntax.hasGlob`, {§path-syntax}) | Query already-materialized web entries in the workspace without remote discovery |
 | `SEND (url)` with body | `POST` | Proposes (`effect: "host"`, `202`); on apply, streams and persists response under `url` |
 | `EDIT (url)` with body | `PUT` | Proposes (`effect: "host"`, `202`); replaces whole remote resource (line markers fail `400`: `Remove the line range and submit the complete replacement body.`) |
 | `KILL (url)` | None | Cancels all live workspace acquisitions of `url` (owners settle `499`), else deletes local stored entry |
 | `KILL (url) [{"remote": true}]` | `DELETE` | Proposes (`effect: "host"`, `202`); remaining options in the metadata block become request headers |
 
-- **Headers and proposals (`http-outbound-proposes`):** Request headers are passed in one `[{"Key": "value"}]` metadata block (`{§slot-order}`). `POST`, `PUT`, remote `DELETE`, and WebSocket `EDIT`/`SEND` frames declare `effect: "host"` and return `202` (`{§proposal}`, `{§exec-lifetime}`), governed by `PLURNK_SERVICE_EFFECT_HOST`. `GET` and WebSocket `READ` connection opens are observational and ungated; a WebSocket frame checks for an open socket both before proposing and again at `applyResolution`, and the resolver may replace the proposed body before it is sent.
+- **Headers and proposals (`http-outbound-proposes`):** Request headers are passed in one `[{"Key": "value"}]` metadata block ({§slot-order}). `POST`, `PUT`, remote `DELETE`, and WebSocket `EDIT`/`SEND` frames declare `effect: "host"` and return `202` ({§proposal}, {§exec-lifetime}), governed by `PLURNK_SERVICE_EFFECT_HOST`. `GET` and WebSocket `READ` connection opens are observational and ungated; a WebSocket frame checks for an open socket both before proposing and again at `applyResolution`, and the resolver may replace the proposed body before it is sent.
 
 ## §http-lifecycle Acquisition, decoding, and materialization
 
@@ -48,8 +48,8 @@ flowchart TD
 | `text/event-stream` (SSE) | One joined `data` value + `\n` per `text/plain` chunk | Initial response metadata in `header` | `102`; origin close settles subscription |
 | Empty response body | Present empty text `""` | Response and package metadata in `header` | Static representation (`READ` of `body` returns `204`) |
 | Origin HTTP `4xx`/`5xx` | Available origin text or bytes preserved | Origin-backed channels carry durable `http-response-status` Problem | Selected channel's durable outcome |
-| Configured textual / JSON type | Fetch `Response.text()` UTF-8 (streamed mutations use incremental `TextDecoder`; finite JSON formats via `{§contract-representations}`) | Response and package metadata in `header` (`charset` preserved as evidence) | Static representation |
-| Configured binary type | Complete original bytes via `{§mimetype-binary-input}` (native attachment eligible on `READ` of `body`, `#bytes`, or `#readable`, `{§log-wire-format}`) | Derived Unicode in `readable` (when reader exists); `x-plurnk-projection-id` in `header` | Static representation, or `413 projection-input-limit` if over byte ceiling |
+| Configured textual / JSON type | Fetch `Response.text()` UTF-8 (streamed mutations use incremental `TextDecoder`; finite JSON formats via {§contract-representations}) | Response and package metadata in `header` (`charset` preserved as evidence) | Static representation |
+| Configured binary type | Complete original bytes via {§mimetype-binary-input} (native attachment eligible on `READ` of `body`, `#bytes`, or `#readable`, {§log-wire-format}) | Derived Unicode in `readable` (when reader exists); `x-plurnk-projection-id` in `header` | Static representation, or `413 projection-input-limit` if over byte ceiling |
 | Unreadable binary or unknown bytes | Complete original bytes (`application/octet-stream`) | No `readable` projection or native media claim | Static representation; ordinary hex `READ` |
 
 `WebFetcher.materialize` outcomes across input and materializer states:
@@ -66,7 +66,7 @@ flowchart TD
 | Materializer success after origin loss | Preserve provider text and origin failure | `readable` static; `body` errored with origin's own failure |
 | Projection implementation throws | Stop and preserve cause | `WebMaterializationError` with stage `projection` |
 
-- **Materializer extensions (`PLURNK_SCHEMES_HTTP_MATERIALIZER`):** `Http` publishes `WebFetcher` as `{§scheme-operation-dispatch}`. When no `Accept` header is authored, `GET` sends `Accept: text/markdown, text/html;q=0.9, */*;q=0.1`. For a credential-free, metadata-free generic public request, `PLURNK_SCHEMES_HTTP_MATERIALIZER` selects a discovered `http-materializer` package (`plurnk: { kind: "http-materializer", materializers: [{ id, module }] }` or `plugin.json#extensions.ai.plurnk`, `{§extension-discovery}`, `{§extension-discovery}`). If `eligible(url)` returns an identity string, `extract` returns `success`, `recoverable` (`502 materializer-recoverable`: `The materializer could not extract <url> (<reason>); the failure is retryable.`), or `hard`.
+- **Materializer extensions (`PLURNK_SCHEMES_HTTP_MATERIALIZER`):** `Http` publishes `WebFetcher` as `webMaterializer` ({§scheme-operation-dispatch}). When no `Accept` header is authored, `GET` sends `Accept: text/markdown, text/html;q=0.9, */*;q=0.1`. For a credential-free, metadata-free generic public request, `PLURNK_SCHEMES_HTTP_MATERIALIZER` selects a discovered `http-materializer` package (`plurnk: { kind: "http-materializer", materializers: [{ id, module }] }` or `plugin.json#extensions.ai.plurnk`, {§extension-discovery}). If `eligible(url)` returns an identity string, `extract` returns `success`, `recoverable` (`502 materializer-recoverable`: `The materializer could not extract <url> (<reason>); the failure is retryable.`), or `hard`.
 - **Origin `llms.txt` companions (`PLURNK_SCHEMES_HTTP_LLMS_TXT`):** When `PLURNK_SCHEMES_HTTP_LLMS_TXT=1` (default), a successful generic `GET` opportunistically probes `<origin>/llms.txt` once per origin TTL window and materializes `https://<host>/llms.txt` as a discoverable workspace entry; missing/non-`2xx`/binary/failed probes are remembered quietly and never fail the initiating `READ`.
 
 ## §http-status Status mapping and replay
@@ -92,8 +92,8 @@ flowchart TD
 
 | Surface | Contract |
 |---|---|
-| Configuration floor | `plurnk-schemes-http/.env.defaults` assembled via `{§operator-config-precedence}`; missing or invalid required values fail at readiness or owning read. |
-| `PLURNK_SCHEMES_HTTP_HOSTS` | Unset or empty admits all hosts. A JSON array admits exact hostnames (`"example.com"`), wildcard subdomains (`"*.example.com"`), or none (`[]`). Disallowed direct `HTTP`/`WS` targets and redirect hops fail `403 host-not-permitted` before I/O; disallowed automatic acquisitions return `null` (`{§capability-admission}`). |
+| Configuration floor | `plurnk-schemes-http/.env.defaults` assembled via {§operator-config-precedence}; missing or invalid required values fail at readiness or owning read. |
+| `PLURNK_SCHEMES_HTTP_HOSTS` | Unset or empty admits all hosts. A JSON array admits exact hostnames (`"example.com"`), wildcard subdomains (`"*.example.com"`), or none (`[]`). Disallowed direct `HTTP`/`WS` targets and redirect hops fail `403 host-not-permitted` before I/O; disallowed automatic acquisitions return `null` ({§capability-admission}). |
 | `Guard.fetch` (automatic acquisition) | Solely used by `WebFetcher` for automatic byte acquisition: requires credential-free `http(s):` targets whose resolved DNS addresses are all globally reachable unicast, re-checked on every redirect hop (`301`/`302` rewrite `POST` $\to$ `GET`; `303` rewrites non-`GET`/`HEAD` $\to$ `GET`; `307`/`308` preserve method/body; cross-origin hops strip `Authorization`). Direct `HTTP` and `WebSocket` operations do not run `Guard.fetch` and permit loopback/private/link-local targets. |
 
 ## §revalidation Revalidation, target rewrite, and SSE
@@ -121,7 +121,7 @@ flowchart TD
 
 ## §prefetch WebFetcher
 
-`WebFetcher` implements `{§scheme-operation-dispatch}` over `Guard.fetch`, `HostPolicy`, and `MaterializerRegistry`:
+`WebFetcher` implements `webMaterializer` ({§scheme-operation-dispatch}) over `Guard.fetch`, `HostPolicy`, and `MaterializerRegistry`:
 
 | Result | Meaning |
 |---|---|
@@ -153,4 +153,4 @@ stateDiagram-v2
 | `READ (ws(s)://...)` | Claims workspace/URL coordinate, seeds entry and `StreamSubscription`, opens native `WebSocket`, and returns `102` on `open`. Concurrent duplicate `READ`s join the pending open and return `200` with connection state without opening a second socket. |
 | `EDIT (ws(s)://...)` / `SEND (ws(s)://...)` | Single-statement markerless `EDIT` and `SEND` (`200`) propose (`202`, `effect: "host"`) and send one text frame when the owner is `open` (`readyState === OPEN`). Absent/non-open owner fails `409` (`READ the WebSocket URL before sending a message.`); send throw fails `502` (`The WebSocket message could not be sent.`); line ranges and multi-statement batches fail `400`/`409`. |
 | `KILL (ws(s)://...)` | Closes/cancels the claimed owner (`404` when no live owner exists; close throw fails `502`: `The WebSocket connection could not be closed.`). |
-| Inbound frames & settlement | Text frames chain sequentially onto `messages` after `open`. A binary frame retains the text prefix, prunes later frames, closes with WebSocket code `4003`, and settles `415 binary-frame-unsupported`. First persistence failure prunes later frames and settles `500 message-persistence-failed`. Pre-open close settles `502 connection-failed`; post-open close drains accepted frames and settles `200` (`{§execution-output-identity}`, `{§scheme-operation-dispatch}`). |
+| Inbound frames & settlement | Text frames chain sequentially onto `messages` after `open`. A binary frame retains the text prefix, prunes later frames, closes with WebSocket code `4003`, and settles `415 binary-frame-unsupported`. First persistence failure prunes later frames and settles `500 message-persistence-failed`. Pre-open close settles `502 connection-failed`; post-open close drains accepted frames and settles `200` ({§execution-output-identity}, {§scheme-operation-dispatch}). |

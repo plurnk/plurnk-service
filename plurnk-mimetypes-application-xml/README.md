@@ -11,7 +11,7 @@ npm i @plurnk/plurnk-mimetypes-application-xml
 ## what it does
 
 - `extractRaw(content)` emits the root element and its immediate children: enough shape to recognize RSS, SOAP or a Maven pom without every leaf ({§xml-shape}).
-- `deepJson(content)` is the DOM as nested objects ({§mimetype-channel-architecture}); `xpath` runs against the real DOM and every match selects its exact lexical source ({§xml-shape}, {§xml-shape}).
+- `deepJson(content)` is the DOM as nested objects ({§mimetype-channel-architecture}); `xpath` runs against the real DOM and every match selects its exact lexical source ({§xml-shape}).
 - A recoverable xmldom report is counted, not fatal; content that is not a document projects nothing and stays text-searchable ({§xml-shape}).
 
 ## license

@@ -32,7 +32,7 @@ router fee; incomplete billing evidence remains unknown ({§provider-monetary-ev
 
 Browser and edge Sessions import accounting and normalized failures through
 their dedicated runtime-neutral subpaths
-({§provider-interface}, {§provider-interface}):
+({§provider-interface}):
 
 ```js
 import {

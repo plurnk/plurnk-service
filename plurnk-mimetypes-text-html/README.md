@@ -10,7 +10,7 @@ npm i @plurnk/plurnk-mimetypes-text-html
 
 ## what it does
 
-- `content(content)` — the page's reading Markdown ({§html-readable-text}, {§html-readable-text}), wrapped at `PLURNK_MIMETYPES_HTML_WRAP_COLUMNS` ({§html-readable-text}); the service stores it as the entry's `readable` channel ({§mimetype-content}).
+- `content(content)` — the page's reading Markdown wrapped at `PLURNK_MIMETYPES_HTML_WRAP_COLUMNS` ({§html-readable-text}); the service stores it as the entry's `readable` channel ({§mimetype-content}).
 - `extractRaw(content)` — headings, the `<title>` fallback and code blocks as symbols ({§html-readable-text}).
 - `deepJson(content)` — the DOM as nested nodes ({§html-readable-text}).
 - `query(content, dialect, pattern)` — XPath and JSONPath over the parsed tree with source regions ({§html-readable-text}); regex and glob address the markup itself.

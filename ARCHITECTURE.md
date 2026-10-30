@@ -356,7 +356,7 @@ flowchart LR
 packages, modules included, run inside it; a package boundary is not a security boundary.
 ACP owns client transport, while clients own presentation and explicit user
 decisions. MCP is an optional in-process host/client under core's
-`{§module-lifecycle}` and `{§module-lifecycle}` seams. MCP server
+{§module-lifecycle} and {§module-seam-slices} seams. MCP server
 attachments are workspace Functionality; their tools and resources join
 the ordinary executor, scheme, proposal, entry, and client-action paths.
 
@@ -389,8 +389,8 @@ sequenceDiagram
     ACP-->>Client: protocol projection
 ```
 
-Core owns packet assembly at `{§packet-assembly}` and durable result handling at
-`{§operation-results}`. Provider, capability, and ACP details remain in their
+Core owns packet assembly at {§packet-assembly} and durable result handling at
+{§operation-results}. Provider, capability, and ACP details remain in their
 own specifications. Approval routes through the session's durable owner
 ({§session-ownership}), independently of messages and connections. Core's server
 policy may settle proposals automatically. Clarification goes to the same owner, but
@@ -433,7 +433,7 @@ the submitter the owner of the shared runtime.
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | Workspaces, sessions, loops, turns, logs | SQLite through core's tagged lifecycle and persistence contracts.                                     |
 | Project bytes and Git membership        | The project filesystem and repository; database entries are the agent-visible projection.             |
-| Active session drains, wakes, cancellation | Process-local `DrainSupervisor` state reconciled against durable state; see `{§session-loop-lifecycle}`. |
+| Active session drains, wakes, cancellation | Process-local `DrainSupervisor` state reconciled against durable state; see {§session-loop-lifecycle}. |
 | A session's model, effort and spawn model | `SessionModels` owns the durable selection and the loop's immutable route snapshot ({§session-model-selection}). |
 | Composed modules and their mounts | `DaemonModules` owns registration, discovery, mount claims and the setup/start/stop/close phases ({§module-lifecycle}, {§module-contract}). |
 | A person's client operations in flight | `ClientOperations` owns each operation's loop, cancellation scope and settlement, and the shutdown scope they all descend from ({§connection-lifecycle}, {§session-causal-admission}). |
@@ -458,7 +458,7 @@ of the surrounding filesystem or external services.
 | Packet compositions and call payloads | Retained according to count/age policy. Logical-response and physical-request payloads expire together; request identities and accounting remain, including failures and unknown costs ({§content-store}, {§provider-request-accounting}). |
 | Stored resource bodies and derived indexes | Current channels and their references retain content; unreferenced bodies and indexes may be collected. Deduplication supplies identity, not a promise of past versions ({§content-store}). |
 | Native attachment snapshots | READ, message and packet references retain bytes independently of curation or source deletion. Publication protects in-flight captures; only unreferenced snapshots are collected ({§content-store}). |
-| Project files | The filesystem is authoritative; captured revisions guard native mutations and complete-file publication avoids truncation ({§file-snapshot-revision}, {§file-snapshot-revision}). Internal commit serialization is not a session reservation or exclusion of external writers ({§file-snapshot-revision}, {§file-snapshot-revision}). SQLite commits and backups do not include project files. |
+| Project files | The filesystem is authoritative; captured revisions guard native mutations and complete-file publication avoids truncation ({§file-snapshot-revision}). Internal commit serialization is not a session reservation or exclusion of external writers ({§file-snapshot-revision}). SQLite commits and backups do not include project files. |
 | Configuration and credentials | Workspace/session overrides live in SQLite; service configuration and extension-owned files require separate backup. Schedules rearm from the present; interactive OAuth state is process-local and requires reauthorization ({§functionality-coordinator}, {§schedule-residency}, {§schedule-delivery}, {§oauth-continuation}). |
 | Drains, live producers and notices | Process-local owners disappear on restart; recovery settles interrupted work without claiming its unobserved outcome ({§session-causal-admission}, {§operation-results}). |
 | Diagnostic shares and backups | A share exports retained evidence; a SQLite snapshot preserves database state. Neither restores external effects ({§share}, {§share-packet-names}; [backup procedure](./plurnk-core/INSTALL.md#backup-and-restore)). |

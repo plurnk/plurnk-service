@@ -10,28 +10,28 @@ connections alongside HTTP entry and history resources under one OAuth 2.1 perim
 `/acp` serves ACP v2 JSON-RPC 2.0 over WebSocket (`Upgrade: websocket`) and Streamable HTTP
 (`POST /acp`, `GET /acp`, `DELETE /acp`), plus HTTP entry and history resources
 (`GET /acp/<workspaceId>/<sessionId>/entry`, `GET /acp/<workspaceId>/<sessionId>/messages`) under
-`{§acp-http-authorization}`.
+{§acp-http-authorization}.
 
 A stock `@agentclientprotocol/sdk` v2 client needs only the endpoint and, when enabled, a bearer
 token:
 
-- `session/new` creates or attaches a workspace (`cwd`) and session session, returning
+- `session/new` creates or attaches a workspace (`cwd`) and session, returning
   `configOptions` (`model`, `thought_level`, `spawn_model`, `mode`), `availableCommands` (`/mcp`,
   `/skills`, `/members`, `/env`, `/schedule`, `/rollback`, `/share`, `/script`), and
   `_meta.plurnk`.
 - `session/resume` reopens an existing conversation, replays its recent loop window as standard
-  `session/update` notifications ({§acp-history-window}, {§acp-history-window}), emits the current-state
+  `session/update` notifications ({§acp-history-window}), emits the current-state
   `state_update` snapshot and `usage_update`, and re-emits any pending `session/request_permission`
   or `elicitation/create` requests ({§acp-proposal-resolve}).
 - `session/fork`, `session/list`, `session/delete`, `session/close`, `session/set_config_option`,
   `session/prompt`, `session/cancel`, `providers/list`, `providers/set`, `providers/disable`,
   `auth/login`, and `auth/logout` operate directly on the daemon's `ApplicationPort`
-  ({§acp-daemon-client}, {§acp-daemon-client}).
+  ({§acp-daemon-client}).
 
 ## Event Projection
 
 Each attached session observes its bound session and, by default, its delegated subagent tree
-({§acp-topology-scope}, {§acp-topology-scope}) through standard ACP v2 `SessionUpdate` variants:
+({§acp-topology-scope}) through standard ACP v2 `SessionUpdate` variants:
 
 | Daemon evidence | Standard ACP v2 `SessionUpdate` |
 | --- | --- |

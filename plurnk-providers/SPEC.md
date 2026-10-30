@@ -107,20 +107,20 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 
 All transport and response failures normalize into `ProviderError` carrying an RFC 9457 Problem Details payload (`https://problems.plurnk.xyz/provider/<providerId>/<kind>`, {§diagnostic-observation}):
 
-| `ProviderErrorKind` | HTTP / trigger | Problem status | `retryable` | Recovery contract |
+| `ProviderErrorKind` | HTTP / trigger | Problem status | `retryable` | Extensions |
 |---|---|---|---|---|
-| `unauthorized` | 401, 403 | 401 / 403 | `false` | Check or rotate the provider's configured API key or OAuth credential |
-| `quota_exceeded` | 402 or billing/quota exhaustion | 402 | `false` | Replenish provider quota/credits or switch to another model route |
-| `rate_limit` | 429 | 429 | `true` | Wait for rate-limit window reset or retry with backoff |
-| `capacity_exceeded` | Preflight exact wall overflow, 413, or upstream context-length code | 413 | `false` | Reduce prompt context (`KILL` / `FOLD` / `SHUT`) or select a larger-context model |
-| `grammar_invalid` | 422 with `error.type === "grammar_invalid"` | 422 | `false` | Inspect grammar rule rejected by the serving backend |
-| `request_rejected` | Other 400, 404, 405, 422 | 400..422 | `false` | Inspect rejected request parameter or model selector |
-| `network_failure` | 408, 409, 5xx, socket/TLS/proxy error, or mid-stream disconnect | 502 / 503 | `true` | Retry request or verify upstream endpoint/proxy connectivity |
-| `deadline_exceeded` | `PLURNK_PROVIDERS_FETCH_TIMEOUT` or `PLURNK_PROVIDERS_OPERATION_TIMEOUT` | 504 | `true` | Retry request or raise the configured provider timeout |
-| `resource_interrupted` | `finishReason === "resource_interrupted"` (carries `attempt`) | 503 | `true` | Retry turn; partial attempt evidence is preserved |
-| `generation_failed` | `finishReason === "error"` (carries `attempt`) | 502 | `false` | Inspect upstream stream error and preserved partial attempt |
-| `invalid_response` | Malformed 2xx payload, missing finish reason, invalid usage, or output exceeding granted allowance | 502 | `false` | Verify endpoint protocol compatibility |
-| `model_refused` | Upstream safety/content refusal finish reason | 422 | `false` | Adjust prompt content that triggered model refusal |
+| `unauthorized` | 401, 403 | 401 / 403 | `false` | `cause` |
+| `quota_exceeded` | 402 or billing/quota exhaustion | 402 | `false` | `cause` |
+| `rate_limit` | 429 | 429 | `true` | `cause` |
+| `capacity_exceeded` | Preflight exact wall overflow, 413, or upstream context-length code | 413 | `false` | `cause` |
+| `grammar_invalid` | 422 with `error.type === "grammar_invalid"` | 422 | `false` | `cause` |
+| `request_rejected` | Other 400, 404, 405, 422 | 400..422 | `false` | `cause` |
+| `network_failure` | 408, 409, 5xx, socket/TLS/proxy error, or mid-stream disconnect | 502 / 503 | `true` | `cause`, optional `attempt` |
+| `deadline_exceeded` | `PLURNK_PROVIDERS_FETCH_TIMEOUT` or `PLURNK_PROVIDERS_OPERATION_TIMEOUT` | 504 | `true` | `cause`, optional `attempt` |
+| `resource_interrupted` | `finishReason === "resource_interrupted"` | 503 | `true` | `attempt` |
+| `generation_failed` | `finishReason === "error"` | 502 | `false` | `attempt` |
+| `invalid_response` | Malformed 2xx payload, missing finish reason, invalid usage, or output exceeding granted allowance | 502 | `false` | `cause`, optional `attempt` |
+| `model_refused` | Upstream safety/content refusal finish reason | 422 | `false` | `attempt` |
 
 - Outbound HTTP requests honor `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, and `NO_PROXY`.
 - When an upstream stream terminates with an error or length finish reason (`MALFORMED_RESPONSE`, `MALFORMED_FUNCTION_CALL`, `MAX_TOKENS`) after delivering a complete, balanced fenced emission with no unclosed fence, no native tool calls, and no trailing unfenced text, `finishReason` normalizes to `"stop"` while preserving `rawFinishReason` in forensic evidence.

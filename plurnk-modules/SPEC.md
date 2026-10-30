@@ -15,7 +15,7 @@ type names only what the module uses. The host passes one object implementing ev
 | Member | Receives | Contract |
 | --- | --- | --- |
 | `setup` | Its setup seam | Establishes every capability the host may demand during recovery (Functionality adapters, schemes, module actions). |
-| `start` | A `Pick` slice of {§application-session-observation} | Opens exterior ingress only after the host readies schemes, publishes capabilities, and recovers durable lifecycle; may return a distinct lifetime object. |
+| `start` | A `Pick` slice of `ApplicationPort` ({§application-session-observation}) | Opens exterior ingress only after the host readies schemes, publishes capabilities, and recovers durable lifecycle; may return a distinct lifetime object. |
 | `stop` | Nothing | Rejects new ingress and settles owned producers while observers stay subscribed. |
 | `close` | Nothing | Releases observers and remaining resources after producers settle, and returns once the work its routes admitted has settled. |
 | `mounts` | Declared, not called | Absolute HTTP pathname prefixes ({§http-host}) the module mounts at `start`. |

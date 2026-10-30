@@ -52,21 +52,21 @@ Skills over MCP, and multi-tier customization parity (`#654`, `#1332`–`#1351`)
 
 ### Operator Migration Guide (4.x to 5.0.0)
 
-- **SQLite Schema Baseline (`{§db-migrations}`):** 34 incremental chapters
+- **SQLite Schema Baseline ({§db-migrations}):** 34 incremental chapters
   (`user_version = 34` in `v4.3.3`) are folded into an 11-chapter baseline
   (`001`–`011`, `user_version = 11`) with a support-floor guard. Point
   `PLURNK_SERVICE_DB_PATH` at a new file or move the pre-5.0 database and its
   `-wal` and `-shm` sidecars aside once every daemon holding it has stopped.
-- **Session & Workspace Addressing (`{§session-scheme}`):** `worker://<name>` is
+- **Session & Workspace Addressing ({§session-scheme}):** `worker://<name>` is
   renamed to `session://<name>`, `workspace:///` holds shared workspace scratch
   entries, and `plurnk:///` and `mcp:///` serve generated daemon, tool, and MCP
   server reference documents. Update references from `worker://` to `session://`
   and `_plurnk/...` to `plurnk:///...` or `mcp:///...`.
-- **Client & External Protocols (`{§acp-endpoint}`):** A2A (`plurnk-a2a`) and
+- **Client & External Protocols ({§acp-daemon-client}):** A2A (`plurnk-a2a`) and
   AG-UI (`plurnk-agui`) are retired in favor of ACP v2 (`/acp` via
   `@plurnk/plurnk-acp`) and OAuth 2.1 (`@plurnk/plurnk-auth`). Upgrade
   `@plurnk/plurnk` to `5.0.0`.
-- **Built-in Executors (`{§executor-role}`) & Family Tools (`{§functionality-model-projection}`):**
+- **Built-in Executors ({§executor-role}) & Family Tools ({§functionality-model-projection}):**
   `@plurnk/plurnk-execs-jq` and `@plurnk/plurnk-execs-sqlite` are retired, the
   `node` runtime tag is renamed to `js` (`js:///`, `PLURNK_EXECS_JS*`), and the
   multiplexed `plurnk` tool is split into per-family runtimes (`plurnk_env`,

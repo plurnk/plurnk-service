@@ -39,7 +39,7 @@ The parser entry points deliberately accept different document tiers:
 | `PlurnkParser.parseStatements` | A sequence of protocol statements                     |
 | `parsePath`                    | One path or URI using parser-equivalent decomposition |
 
-See the contracts SPEC {§whitespace-contract} and {§whitespace-contract} for the tier
+See the contracts SPEC ({§whitespace-contract}) for the tier
 boundaries. The AST, parse-result, and wire types come from
 `@plurnk/plurnk-contracts`.
 

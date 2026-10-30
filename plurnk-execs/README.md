@@ -123,7 +123,7 @@ executor may additionally decide per provider attempt whether its synchronous
 | `Policy.enabledAcross(tag, layers)` | Every layer must admit the tag.               |
 
 Policy is subtractive; a downstream layer cannot restore a removed tag. See
-{§executor-discovery}, {§executor-policy}, and {§executor-policy}.
+{§executor-discovery} and {§executor-policy}.
 
 ## Exports
 
