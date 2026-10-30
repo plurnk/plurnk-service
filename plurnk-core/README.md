@@ -36,7 +36,7 @@ reports the choices shared by a session's selected model and spawn override.
 ## Start
 
 ```sh
-npm install -g @plurnk/plurnk-service
+npm install -g --ignore-scripts @plurnk/plurnk-service
 plurnk-service migrate    # apply pending database upgrades, preserving existing data
 plurnk-service start      # daemon
 plurnk-service stop       # stop the running daemon and wait for it to exit

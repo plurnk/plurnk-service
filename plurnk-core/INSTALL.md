@@ -9,7 +9,7 @@ environment values or creates another configuration file.
 ## Install and locate
 
 ```sh
-npm install -g @plurnk/plurnk-service
+npm install -g --ignore-scripts @plurnk/plurnk-service
 plurnk-service migrate
 plurnk-service start
 plurnk-service stop     # from another terminal: stop the running service and wait for it to exit

@@ -2,7 +2,7 @@
 # Install:  mkdir -p ~/.config/systemd/user
 #           cp "$(npm root -g)/@plurnk/plurnk-service/plurnk.service" ~/.config/systemd/user/
 #           systemctl --user daemon-reload && systemctl --user enable --now plurnk
-# Requires: npm install -g @plurnk/plurnk-service
+# Requires: npm install -g --ignore-scripts @plurnk/plurnk-service
 # If Node/npm are outside systemd's PATH (for example, nvm), replace ExecStart
 # with the absolute paths printed by `command -v node plurnk-service`:
 # ExecStart=/absolute/path/to/node /absolute/path/to/plurnk-service start

@@ -57,7 +57,7 @@ export function installSandbox() {
         resolve(sandbox, "package.json"),
         `${JSON.stringify({ name: "plurnk-sandbox", version: "1.0.0", private: true, overrides }, null, 2)}\n`,
     );
-    sh("npm", ["install", "--no-audit", "--no-fund", core], { cwd: sandbox });
+    sh("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", core], { cwd: sandbox });
     return { sandbox, tarball: core, tarballs };
 }
 
@@ -73,7 +73,7 @@ export function installPacked(tarballs, packageName) {
     delete manifest.overrides?.[packageName];
     manifest.dependencies = { ...manifest.dependencies, [packageName]: `file:${tarball}` };
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-    sh("npm", ["install", "--no-audit", "--no-fund"], { cwd: sandbox });
+    sh("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: sandbox });
 }
 
 export function uninstallSandbox() {

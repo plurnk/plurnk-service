@@ -77,7 +77,7 @@ test("{§startup-admission} updates cached model catalog and reports package upg
         assert.equal(lookup("openai", "gpt-update-test")?.name, "GPT Update Test");
         assert.match(ServiceUpdater.formatReport(sourceResult), /catalog: updated/);
         assert.match(ServiceUpdater.formatReport(sourceResult), /source checkout/);
-        assert.match(ServiceUpdater.formatReport(sourceResult), /npm install -g @plurnk\/plurnk-service@latest @plurnk\/plurnk@latest/);
+        assert.match(ServiceUpdater.formatReport(sourceResult), /npm install -g --ignore-scripts @plurnk\/plurnk-service@latest @plurnk\/plurnk@latest/);
 
         const distResult = await ServiceUpdater.run({
             env: { PLURNK_SERVICE_UPDATEABLE: "1" },
@@ -95,7 +95,7 @@ test("{§startup-admission} updates cached model catalog and reports package upg
         assert.equal(distResult.service.version, "4.4.0");
         assert.match(
             ServiceUpdater.formatReport(distResult),
-            /version: @plurnk\/plurnk-service@4\.4\.0 — to update packages, stop the daemon and run: npm install -g @plurnk\/plurnk-service@latest @plurnk\/plurnk@latest/,
+            /version: @plurnk\/plurnk-service@4\.4\.0 — to update packages, stop the daemon and run: npm install -g --ignore-scripts @plurnk\/plurnk-service@latest @plurnk\/plurnk@latest/,
         );
     } finally {
         resetCatalog();

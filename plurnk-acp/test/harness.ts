@@ -848,7 +848,7 @@ export const createHarness = async (options?: {
                 package: "@plurnk/plurnk-service",
                 version: "4.4.0",
                 artifact: "source",
-                upgradeCommand: "npm install -g @plurnk/plurnk-service@latest @plurnk/plurnk@latest",
+                upgradeCommand: "npm install -g --ignore-scripts @plurnk/plurnk-service@latest @plurnk/plurnk@latest",
             },
         }),
     };

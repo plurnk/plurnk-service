@@ -65,7 +65,7 @@
         "build:info": "node scripts/write-build-info.mjs",
         "build:posix": "node --conditions=plurnk-dev scripts/generate-posix.mjs",
         "build": "npm run build:clean && npm run types:sqlrite:write && npm run build:dist && npm run build:sql && npm run build:info && npm run build:posix",
-        "install:global": "npm run build && npm install -g .",
+        "install:global": "npm run build && npm install -g --ignore-scripts .",
         "uninstall:global": "npm uninstall -g @plurnk/plurnk-service",
         "install:sandbox": "node --conditions=plurnk-dev scripts/install-sandbox.mjs install",
         "uninstall:sandbox": "node --conditions=plurnk-dev scripts/install-sandbox.mjs uninstall",

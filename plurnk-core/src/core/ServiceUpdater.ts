@@ -13,7 +13,7 @@ export interface ServiceUpdaterOptions {
     readonly fetch?: typeof globalThis.fetch;
 }
 
-const PACKAGE_UPGRADE_COMMAND = "npm install -g @plurnk/plurnk-service@latest @plurnk/plurnk@latest";
+const PACKAGE_UPGRADE_COMMAND = "npm install -g --ignore-scripts @plurnk/plurnk-service@latest @plurnk/plurnk@latest";
 
 // {§startup-admission} Explicit operator-triggered model-catalog refresh.
 export default class ServiceUpdater {

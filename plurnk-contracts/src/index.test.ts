@@ -64,10 +64,10 @@ test("{§startup-admission} {§acp-action-binding} formatServiceUpdateReport and
                 package: "@plurnk/plurnk-service",
                 version: "4.4.0",
                 artifact: "source",
-                upgradeCommand: "npm install -g @plurnk/plurnk-service@latest @plurnk/plurnk@latest",
+                upgradeCommand: "npm install -g --ignore-scripts @plurnk/plurnk-service@latest @plurnk/plurnk@latest",
             },
         }),
-        "catalog: updated (450 models across 12 providers, +3 new)\nversion: @plurnk/plurnk-service@4.4.0 (source checkout) — to update packages, stop the daemon and run: npm install -g @plurnk/plurnk-service@latest @plurnk/plurnk@latest",
+        "catalog: updated (450 models across 12 providers, +3 new)\nversion: @plurnk/plurnk-service@4.4.0 (source checkout) — to update packages, stop the daemon and run: npm install -g --ignore-scripts @plurnk/plurnk-service@latest @plurnk/plurnk@latest",
     );
     assert.deepEqual(Contracts.parseFamilyCommand("env", ["add", "FOO", "bar"]), {
         scopePrefix: "session",
