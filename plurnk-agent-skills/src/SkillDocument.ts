@@ -28,8 +28,8 @@ const frontmatter = (file: string, source: string): { fields: Record<string, unk
 const nameOf = (file: string, fields: Record<string, unknown>): string => {
     const { name } = fields;
     if (typeof name !== "string" || name.length === 0) throw new Error(`${file}: Agent Skill frontmatter requires name`);
-    if (!SKILL_NAME.test(name)) throw new Error(`${file}: Agent Skill name ${JSON.stringify(name)} is invalid`);
     if (Array.from(name).length > 64) throw new Error(`${file}: Agent Skill name exceeds 64 characters`);
+    if (!SKILL_NAME.test(name)) throw new Error(`${file}: Agent Skill name ${JSON.stringify(name)} is invalid`);
     return name;
 };
 

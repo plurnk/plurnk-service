@@ -1074,16 +1074,16 @@ type Ending = "cancellation" | "timeout" | "shutdown" | "turn ceiling";
 type Holder = "turn" | "parked" | "stream";
 type Ends = { daemon: Daemon; workspaceId: number; sessionId: number; expire: () => void };
 
-const QUESTION = "````plurnk (question)\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n````";
+const QUESTION = "````plurnk_question (ask)\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n````";
 const WAIT = "````WAIT\nAwaiting an answer.\n````";
 
 // A parked loop neither executes nor ends at shutdown: cancellation is the way it ends. A loop that left its interaction
 // open works on, so its next call is held while it ends; the turn ceiling ends it before that call.
 const CASES: ReadonlyArray<{ gate: "proposal" | "interaction"; op: string; holder: Holder; emission: string; endings: readonly Ending[] }> = [
     { gate: "proposal", op: "sh", holder: "turn", emission: "````sh\necho held\n````", endings: ["cancellation", "timeout", "shutdown"] },
-    { gate: "interaction", op: "plurnk", holder: "turn", emission: `${QUESTION}\n${WAIT}`, endings: ["cancellation", "timeout", "shutdown"] },
-    { gate: "interaction", op: "plurnk", holder: "parked", emission: `${QUESTION}\n${WAIT}`, endings: ["cancellation"] },
-    { gate: "interaction", op: "plurnk", holder: "stream", emission: QUESTION, endings: ["cancellation", "timeout", "shutdown", "turn ceiling"] },
+    { gate: "interaction", op: "plurnk_question", holder: "turn", emission: `${QUESTION}\n${WAIT}`, endings: ["cancellation", "timeout", "shutdown"] },
+    { gate: "interaction", op: "plurnk_question", holder: "parked", emission: `${QUESTION}\n${WAIT}`, endings: ["cancellation"] },
+    { gate: "interaction", op: "plurnk_question", holder: "stream", emission: QUESTION, endings: ["cancellation", "timeout", "shutdown", "turn ceiling"] },
 ];
 
 const HOLDERS: Record<Holder, string> = { turn: "a running turn", parked: "a parked loop", stream: "a loop working on" };

@@ -1,7 +1,7 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import {
-    PathSyntax, UNKNOWN_POSITION,
-    type CapabilityPolicy, type FindStatement, type NoteStatement, type ReadStatement, type UrlPath,
+    UNKNOWN_POSITION, isExecution,
+    type CapabilityPolicy, type ExecStatement, type FindStatement, type NoteStatement, type ReadStatement, type UrlPath,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -13,27 +13,22 @@ import type { ContextFit } from "./ContextFit.ts";
 import Turn, { type TurnRow } from "./Turn.ts";
 import TurnOps from "./TurnOps.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
-import { generatedPathname } from "./plurnk-uri.ts";
+import FunctionalityManager from "../server/FunctionalityManager.ts";
+import { readExecConcurrency } from "../schemes/ExecScheduler.ts";
+import EffectPolicy from "../schemes/EffectPolicy.ts";
 
-const regexLiteral = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-
-const workspaceCatalogTarget = (
-    namespace: "plurnk" | "tools",
-): UrlPath => {
-    const pathname = generatedPathname(`/${namespace}/*.md`);
-    return {
-        kind: "url",
-        raw: `workspace://${pathname}`,
-        scheme: "workspace",
-        username: null,
-        password: null,
-        hostname: null,
-        port: null,
-        pathname,
-        query: null,
-        fragment: null,
-    };
-};
+const plurnkCatalogTarget = (): UrlPath => ({
+    kind: "url",
+    raw: "plurnk:///*.md",
+    scheme: "plurnk",
+    username: null,
+    password: null,
+    hostname: null,
+    port: null,
+    pathname: "/*.md",
+    query: null,
+    fragment: null,
+});
 
 // PLURNK_SERVICE_FILES_ITEMS — the turn-0 catalog preview. null = off;
 // -1 = the ordinary markerless page; positive N explicitly caps file rows. 0 / unset = off.
@@ -59,26 +54,35 @@ const INITIALIZATION_CLOSING_NOTE: NoteStatement = {
 export default class InitializationTurn {
     // {§session-initialization-entry} — the session's first turn is the worked
     // example itself: the actual orienting operations.
-    // {§session-initialization-entry} — the project AGENTS.md, its AGENTS.local.md (materialized
-    // by LoopDocs under workspace:///_plurnk/), and session://<session>/AGENTS.md when pre-populated
-    // in the session's scratch namespace, each get one foisted READ on the session's first loop.
-    // Global policy stays in the system prompt; nothing else is force-read.
+    // {§session-initialization-entry} — global AGENTS(.local).md (materialized on plurnk:///),
+    // project AGENTS(.local).md (at their real project paths), and session://<session>/AGENTS.md
+    // when pre-populated in the session's scratch namespace, each get one foisted <1,-1> READ on
+    // the session's first loop.
     static async guidanceStatements(db: Db, workspaceId: number, sessionName: string): Promise<Array<FindStatement | ReadStatement>> {
         const statements: Array<FindStatement | ReadStatement> = [];
-        for (const name of ["/AGENTS.md", "/AGENTS.local.md"]) {
-            const pathname = generatedPathname(name);
+        for (const pathname of ["/AGENTS.md", "/AGENTS.local.md"]) {
             const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
-                workspace_id: workspaceId, scheme: "workspace", authority: "", pathname,
+                workspace_id: workspaceId, scheme: "plurnk", authority: "", pathname,
             });
             if (entry === undefined) continue;
             const target: UrlPath = {
-                kind: "url", raw: `workspace://${pathname}`, scheme: "workspace",
+                kind: "url", raw: `plurnk://${pathname}`, scheme: "plurnk",
                 username: null, password: null, hostname: null, port: null,
                 pathname, query: null, fragment: null,
             };
             statements.push({
                 op: "READ", aside: null, target,
-                metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
+                metadata: null, lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: UNKNOWN_POSITION,
+            } satisfies ReadStatement);
+        }
+        for (const pathname of ["AGENTS.md", "AGENTS.local.md"]) {
+            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
+                workspace_id: workspaceId, scheme: "file", authority: "", pathname,
+            });
+            if (entry === undefined) continue;
+            statements.push({
+                op: "READ", aside: null, target: { kind: "local", raw: pathname },
+                metadata: null, lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: UNKNOWN_POSITION,
             } satisfies ReadStatement);
         }
         const sessionAgents = await db.crud_find_workspace_entry.get<{ id: number }>({
@@ -92,7 +96,7 @@ export default class InitializationTurn {
             };
             statements.push({
                 op: "READ", aside: null, target,
-                metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
+                metadata: null, lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: UNKNOWN_POSITION,
             } satisfies ReadStatement);
         }
         return statements;
@@ -112,7 +116,7 @@ export default class InitializationTurn {
         sessionName: string;
         initializationTurn: TurnRow;
         initializationPolicies: CapabilityPolicy[];
-        initializationStatements: Array<FindStatement | ReadStatement>;
+        initializationStatements: ReadonlyArray<FindStatement | ReadStatement | ExecStatement>;
         fit: ContextFit;
         signal: AbortSignal | undefined;
         onDispatch: ((logEntryId: number) => void) | undefined;
@@ -124,12 +128,13 @@ export default class InitializationTurn {
             initializationTurn, initializationPolicies, initializationStatements,
             fit, signal, onDispatch, onSettled,
         } = args;
+        const surveyStatements: Array<FindStatement | ReadStatement | ExecStatement> = [...initializationStatements];
         // {§session-initialization-entry}: `init` lets the model curate the opening surveys as one set.
         // {§operator-config-workspace-settings} — workspace filesItems replaces the env default.
         const { filesItems: workspaceMI } = await WorkspaceSettings.read(db, workspaceId);
         const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
         if (filesItems !== null) { // {§session-initialization-entry} — once per session
-            initializationStatements.push(...await InitializationTurn.#catalogSurveys({
+            surveyStatements.push(...await InitializationTurn.#catalogSurveys({
                 db, schemes, executors, capabilities, workspaceId, sessionName, initializationPolicies, filesItems,
             }));
         }
@@ -138,8 +143,8 @@ export default class InitializationTurn {
         // {§turn-source-resources} — a `_plurnk` turn has receipts, never a fabricated assistant emission.
         // {§message-arrival} — the message reaches the model as an inbound SEND in the first
         // model turn; initialization does not READ it a second time.
-        const admittedInitializationStatements: Array<FindStatement | ReadStatement> = [];
-        for (const statement of initializationStatements) {
+        const admittedInitializationStatements: Array<FindStatement | ReadStatement | ExecStatement> = [];
+        for (const statement of surveyStatements) {
             if (!capabilities.allowsAcross(statement, workspaceId, initializationPolicies)) continue;
             // {§session-initialization-entry} — a survey that would select nothing is left out of the program,
             // except the session's own scratch survey (`session://<session>/*`), which always runs so the model
@@ -160,12 +165,14 @@ export default class InitializationTurn {
         }
         // {§session-initialization-entry} — the example turn shows the NOTE practice the card teaches:
         // when the surveys run, one NOTE opens them and one closes them.
-        const programStatements: Array<NoteStatement | FindStatement | ReadStatement> =
-            admittedInitializationStatements.some((statement) => statement.op === "FIND")
+        const programStatements: Array<NoteStatement | FindStatement | ReadStatement | ExecStatement> =
+            admittedInitializationStatements.some((statement) => statement.op === "FIND" || isExecution(statement))
                 ? [INITIALIZATION_NOTE, ...admittedInitializationStatements, INITIALIZATION_CLOSING_NOTE]
                 : admittedInitializationStatements;
         const program = TurnOps.renderInternal(programStatements);
-        const admitted = PlurnkParser.parseStatements(program).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+        const admitted = PlurnkParser.parseStatements(program, {
+            executors: executors()?.availableRuntimes(workspaceId) ?? [],
+        }).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         if (admitted.length !== programStatements.length) {
             throw new Error("initialization program did not preserve every authored operation");
         }
@@ -203,12 +210,12 @@ export default class InitializationTurn {
         sessionName: string;
         initializationPolicies: CapabilityPolicy[];
         filesItems: number;
-    }): Promise<FindStatement[]> {
-        const { db, schemes, executors, capabilities, workspaceId, sessionName, initializationPolicies, filesItems } = args;
+    }): Promise<Array<FindStatement | ExecStatement>> {
+        const { db, schemes, executors, workspaceId, sessionName, filesItems } = args;
         const catalogSchemes = await db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
         const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
         const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
-        const surveys: FindStatement[] = [
+        const surveys: Array<FindStatement | ExecStatement> = [
             {
                 op: "FIND", aside: null,
                 target: { kind: "url", raw: "skill://*/SKILL.md", scheme: "skill", username: null, password: null, hostname: "*", port: null, pathname: "/SKILL.md", query: null, fragment: null },
@@ -223,30 +230,18 @@ export default class InitializationTurn {
             },
             {
                 op: "FIND", aside: null,
-                target: workspaceCatalogTarget("plurnk"),
+                target: plurnkCatalogTarget(),
                 metadata: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                // {§tools-resource-materialization} — enabled MCP runtimes
-                // survey one row per server; each row's summary is
-                // the server one-liner or its flagship invocation form, so the
-                // discovery row itself orients. Servers named in
-                // PLURNK_MCP_EXPANDED add a second survey of their complete
-                // tool tree.
-                op: "FIND", aside: null,
-                target: workspaceCatalogTarget("tools"),
+                runtime: "plurnk_mcp",
+                aside: null,
                 metadata: null,
-                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-            },
-            ...InitializationTurn.#toolExpansions(executors, capabilities, workspaceId, initializationPolicies),
-            {
-                // {§tools-resource-materialization} — enabled members definitions survey at alias
-                // level; each row's summary is what its glob resolved to.
-                op: "FIND", aside: null,
-                target: { kind: "url", raw: "workspace:///_plurnk/members/*.md", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/members/*.md"), query: null, fragment: null },
-                metadata: null,
-                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                target: { kind: "local", raw: "list" },
+                lineMarker: null,
+                body: null,
+                position: UNKNOWN_POSITION,
             },
             {
                 op: "FIND", aside: "project root member files",
@@ -270,40 +265,23 @@ export default class InitializationTurn {
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
         ];
-        return surveys.filter(({ target }) =>
-            schemes.get(target?.kind === "url" ? target.scheme : "file", workspaceId) !== undefined);
-    }
-
-    // {§tools-resource-materialization} — expanded runtimes project complete
-    // invocation blocks, paged through ordinary FIND result ranges: one pattern FIND
-    // per runtime, naming the admitted tools when the policy narrows them.
-    static #toolExpansions(
-        executors: () => ExecutorRegistry | undefined,
-        capabilities: CapabilityResolver,
-        workspaceId: number,
-        policies: CapabilityPolicy[],
-    ): FindStatement[] {
-        const registry = executors();
-        const expansions: FindStatement[] = [];
-        for (const tag of registry?.availableRuntimes(workspaceId) ?? []) {
-            const entry = registry?.entry(tag, workspaceId);
-            if (entry?.resourcesPath !== "/tools" || entry.expandTools !== true) continue;
-            const tools = registry?.toolRegistry(tag, workspaceId);
-            const admittedTools = tools?.tools.filter((tool) =>
-                capabilities.allowsRuntimeAcross(tag, tool.target, workspaceId, policies)) ?? [];
-            if (admittedTools.length === 0) continue;
-            const targetFilter = tools !== null && tools !== undefined && admittedTools.length !== tools.tools.length
-                ? " \\((?:" + admittedTools.map((tool) => regexLiteral(PathSyntax.escapeTarget(tool.target))).join("|") + ")\\)"
-                : " ";
-            const pattern = "^(\x60{3,})" + regexLiteral(tag) + targetFilter + "[^\\n]*?(?:\\1|\\n[\\s\\S]*?\\n\\1)$";
-            expansions.push({
-                op: "FIND", aside: null,
-                target: { kind: "url", raw: `workspace:///_plurnk/tools/${tag}.md`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
-                metadata: null,
-                matcher: { dialect: "regex", raw: `/${pattern.replaceAll("/", "\\/")}/m`, pattern, flags: "m" },
-                body: null, lineMarker: null, position: UNKNOWN_POSITION,
-            });
-        }
-        return expansions;
+        return surveys.filter((statement) => {
+            if (isExecution(statement)) {
+                const registry = executors();
+                if (registry?.availableRuntimes(workspaceId).includes(statement.runtime) !== true) return false;
+                try {
+                    readExecConcurrency();
+                    if (EffectPolicy.decide("read") !== "auto") return false;
+                } catch {
+                    return false;
+                }
+                const entry = registry.entry(statement.runtime, workspaceId);
+                if (entry?.executor instanceof FunctionalityManager && entry.executor.hasConfigurationFailure(workspaceId)) {
+                    return false;
+                }
+                return true;
+            }
+            return schemes.get(statement.target?.kind === "url" ? statement.target.scheme : "file", workspaceId) !== undefined;
+        });
     }
 }

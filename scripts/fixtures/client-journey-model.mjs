@@ -33,10 +33,10 @@ const journeys = Object.freeze({
             reasoning: "I will complete the request through the interactive terminal.",
             content: [
                 "````READ (log:///1/2/1/SEND)````",
-                "````READ (workspace:///_plurnk/plurnk/session.md) <1,-1>````",
-                "````READ (workspace:///_plurnk/plurnk/pattern.md) ~quotes````",
-                "````READ (workspace:///_plurnk/plurnk/delegation.md) <1,16>````",
-                "````READ (workspace:///_plurnk/plurnk/js.md) <1,-1>````",
+                "````READ (plurnk:///session.md) <1,-1>````",
+                "````READ (plurnk:///pattern.md) ~quotes````",
+                "````READ (plurnk:///delegation.md) <1,16>````",
+                "````READ (plurnk:///js.md) <1,-1>````",
                 "````READ (skill://plurnk/SKILL.md) <1,-1>````",
                 "````READ (skill://plurnk/.env.defaults) <1,16>````",
                 "````NOTE <!-- Confirm the packed interactive terminal path. -->\nThe shared protocol is available.\n````",
@@ -171,7 +171,7 @@ export const startClientJourneyModel = async () => {
                 assert.match(String(messageRead.body ?? ""), /^ *1(?:<@[0-9A-Za-z]{5}>|:)Exercise the installed interactive terminal\./u,
                     "the READ receipt contains the addressed message, not merely a final success claim");
                 // {§read} {§teaching-corpus}: packed references and indexed READ compose.
-                const patternRead = reads.find((row) => row.path === "workspace:///_plurnk/plurnk/pattern.md");
+                const patternRead = reads.find((row) => row.path === "plurnk:///pattern.md");
                 assert.ok(patternRead, "the installed runtime exposes the pattern reference");
                 assert.equal(patternRead.status ?? 200, 200);
                 assert.match(patternRead.request, / ~quotes$/u, "the pattern rides the replayed READ");
@@ -180,13 +180,13 @@ export const startClientJourneyModel = async () => {
                 assert.ok(Array.isArray(patternRead.matches) && patternRead.matches.length > 0);
                 assert.ok(patternRead.matches.every(({ region }) => typeof region === "string"),
                     "the installed packet retains precise match locations beside whole source lines");
-                const delegationRead = reads.find((row) => row.path === "workspace:///_plurnk/plurnk/delegation.md");
+                const delegationRead = reads.find((row) => row.path === "plurnk:///delegation.md");
                 assert.ok(delegationRead, "the installed runtime exposes the delegation reference");
                 assert.equal(delegationRead.status ?? 200, 200);
                 assert.match(String(delegationRead.body ?? ""), /WORK starts a fresh log/u);
                 for (const witness of [
-                    /(?:^|\n) *\d+<@[0-9A-Za-z]{5}>```BARE\n *\d+<@[0-9A-Za-z]{5}>A self-contained prompt, with everything it needs pasted in\./u,
-                    /(?:^|\n) *\d+<@[0-9A-Za-z]{5}>```js <!--/u,
+                    /(?:^|\n) *\d+:```BARE\n *\d+:A self-contained prompt, with everything it needs pasted in\./u,
+                    /(?:^|\n) *\d+:```js <!--/u,
                     /(?:^|\n) *\d+:.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u,
                 ]) {
                     if (!witness.test(text)) throw new Error(`installed reference READ omitted ${witness}`);

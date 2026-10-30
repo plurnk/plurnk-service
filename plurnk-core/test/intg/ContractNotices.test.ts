@@ -624,9 +624,9 @@ test("{§tokenomics} live fixtures obey resource publication and query contracts
 
 describe("loop-docs", () => {
 class FixtureEngine extends Engine {
-    documents: Array<{ pathname: string; content: string }> = [];
+    documents: Array<{ scheme: "plurnk" | "mcp"; pathname: string; content: string }> = [];
 
-    override async referenceEntries(): Promise<Array<{ pathname: string; content: string }>> {
+    override async referenceEntries(): Promise<Array<{ scheme: "plurnk" | "mcp"; pathname: string; content: string }>> {
         return this.documents;
     }
 }
@@ -651,7 +651,7 @@ test("{§application-session-observation} {§application-session-observation} ma
                         : status === 200 ? JSON.stringify({ status: 200 }) : null,
                 });
             }
-            engine.documents = [{ pathname: "/_plurnk/plurnk/tool.md", content: "# Tool\n\nReady." }];
+            engine.documents = [{ scheme: "plurnk", pathname: "/tool.md", content: "# Tool\n\nReady." }];
             await LoopDocs.materialize(engine, db, workspaceId);
             const session = await daemon.readSession({ workspaceId, identity: { id: sessionId } });
             assert.equal(session?.lifecycle, lifecycle, "housekeeping does not replace work status");
@@ -679,7 +679,7 @@ test("{§env-delta} generated child documentation is durable without publishing 
         const parentId = await insertSession(db, workspaceId, null, "parent");
         const childId = await insertSession(db, workspaceId, parentId, "child");
         const parentLoopId = await insertLoop(db, parentId, 1, "observe child");
-        engine.documents = [{ pathname: "/_plurnk/plurnk/tool.md", content: "# Tool\n\nReady to use." }];
+        engine.documents = [{ scheme: "plurnk", pathname: "/tool.md", content: "# Tool\n\nReady to use." }];
 
         await LoopDocs.materialize(engine, db, workspaceId);
         assert.equal(await db.test_get_loop_by_session.get({ session_id: childId }), undefined);
@@ -692,7 +692,7 @@ test("{§env-delta} generated child documentation is durable without publishing 
             { producer: "_plurnk", kind: "maintenance", status: 200 },
         ]);
         const doc = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-            pathname: "/_plurnk/plurnk/tool.md", scheme: "workspace", name: "body",
+            pathname: "/tool.md", scheme: "plurnk", name: "body",
         });
         assert.equal(doc?.content, engine.documents[0].content, "the program actually materialized its resource");
         const source = await db.test_log_sequencees_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turns[0].id });
@@ -724,28 +724,28 @@ test("{§tools-resource-materialization} session documentation materialization r
         await insertSession(db, workspaceId);
         const entry = (pathname: string) => db.crud_find_workspace_entry.get<{ id: number }>({
             workspace_id: workspaceId,
-            scheme: "workspace",
+            scheme: "plurnk",
             authority: "",
             pathname,
         });
 
         engine.documents = [
-            { pathname: "/_plurnk/plurnk/retired.md", content: "# Retired" },
-            { pathname: "/_plurnk/plurnk/tool-retired.md", content: "# Retired tool" },
+            { scheme: "plurnk", pathname: "/retired.md", content: "# Retired" },
+            { scheme: "plurnk", pathname: "/tool-retired.md", content: "# Retired tool" },
         ];
         await LoopDocs.materialize(engine, db, workspaceId);
-        assert.notEqual(await entry("/_plurnk/plurnk/retired.md"), undefined);
-        assert.notEqual(await entry("/_plurnk/plurnk/tool-retired.md"), undefined);
+        assert.notEqual(await entry("/retired.md"), undefined);
+        assert.notEqual(await entry("/tool-retired.md"), undefined);
 
         engine.documents = [
-            { pathname: "/_plurnk/plurnk/current.md", content: "# Current" },
-            { pathname: "/_plurnk/plurnk/tool-current.md", content: "# Current tool" },
+            { scheme: "plurnk", pathname: "/current.md", content: "# Current" },
+            { scheme: "plurnk", pathname: "/tool-current.md", content: "# Current tool" },
         ];
         await LoopDocs.materialize(engine, db, workspaceId);
-        assert.equal(await entry("/_plurnk/plurnk/retired.md"), undefined);
-        assert.equal(await entry("/_plurnk/plurnk/tool-retired.md"), undefined);
-        assert.notEqual(await entry("/_plurnk/plurnk/current.md"), undefined);
-        assert.notEqual(await entry("/_plurnk/plurnk/tool-current.md"), undefined);
+        assert.equal(await entry("/retired.md"), undefined);
+        assert.equal(await entry("/tool-retired.md"), undefined);
+        assert.notEqual(await entry("/current.md"), undefined);
+        assert.notEqual(await entry("/tool-current.md"), undefined);
     } finally {
         await db.close();
     }
@@ -762,7 +762,7 @@ for (const runtime of ["sh", "js", "python3"]) test(`{§op-shapes}: installed ${
         await insertSession(db, workspaceId);
         await LoopDocs.materialize(engine, db, workspaceId);
         const doc = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-            pathname: `/_plurnk/plurnk/${runtime}.md`, scheme: "workspace", name: "body",
+            pathname: `/${runtime}.md`, scheme: "plurnk", name: "body",
         });
         assert.ok(doc, "the installed executor's documentation reaches the session");
         const readme = await readFile(new URL("README.md", import.meta.resolve("@plurnk/plurnk-execs-common/package.json")), "utf8");
@@ -794,7 +794,7 @@ test("{§tools-resource-materialization} an unchanged generated surface dispatch
         const workspaceId = await insertWorkspace(db, `loop-docs-idem-${crypto.randomUUID()}`);
         await insertSession(db, workspaceId);
         engine.documents = [
-            { pathname: "/_plurnk/plurnk/stable.md", content: "# Stable" },
+            { scheme: "plurnk", pathname: "/stable.md", content: "# Stable" },
         ];
         await LoopDocs.materialize(engine, db, workspaceId);
         const runtime = await db.session_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
@@ -819,7 +819,7 @@ test("{§exec-stream}: materialized shell documentation demonstrates scoped READ
         await insertSession(db, workspaceId);
         await LoopDocs.materialize(engine, db, workspaceId);
         const doc = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-            pathname: "/_plurnk/plurnk/sh.md", scheme: "workspace", name: "body",
+            pathname: "/sh.md", scheme: "plurnk", name: "body",
         });
         assert.ok(doc, "the installed shell's documentation reaches the session");
         const examples = Lexer.lex(doc.content).flatMap((token) =>

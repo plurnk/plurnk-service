@@ -4,7 +4,7 @@ import Validator, { InvalidOperationResultError, InvalidProblemDetailsError } fr
 import Problems from "./Problems.ts";
 import CapabilityAdmission from "./CapabilityAdmission.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
-import { PROPOSAL_POLICIES, UNKNOWN_POSITION, SESSION_NAME } from "./types.ts";
+import { PROPOSAL_POLICIES, UNKNOWN_POSITION, SESSION_NAME, SKILL_NAME } from "./types.ts";
 import { type CapabilityPolicy, type ClientDisplayCapabilities, type McpOAuth, type McpServerDefinition, type ModelCatalogPage, type RangeExtent, type CapabilityDescriptor } from "./types.generated.ts";
 import { errnoCode, isRecord, isSafeInteger } from "./guards.ts";
 import applicationOperationEventSchema from "../schema/ApplicationOperationEvent.json" with { type: "json" };
@@ -30,13 +30,17 @@ test("{§configuration-repair-path} lifecycle and discovery share source identif
 
 test("{§agent-skills-directory}: wire definitions admit Unicode and digit-leading names with exact identity", () => {
     for (const name of ["3d-models", "café", "分析", "𐐨-demo", "ⅳ", "ｓｋｉｌｌ", "𐐨".repeat(64)]) {
-        const definition = { name, source: "example/skills" };
-        assert.deepEqual(Validator.assertSkillDefinition(definition), definition);
+        assert.equal(SKILL_NAME.test(name), true, name);
     }
     for (const name of ["", "CAFÉ", "ǅemo", "Ⅳ", "caf--é", "-café", "café-", "caf_e", "cafe\u0301", "hello world", "𐐨".repeat(65)]) {
-        assert.throws(() => Validator.assertSkillDefinition({ name }), TypeError, name);
+        assert.equal(SKILL_NAME.test(name), false, name);
     }
-    assert.throws(() => Validator.assertSkillDefinition({ name: "review", source: "/srv/review", scope: "project" }), TypeError,
+    for (const definition of [{}, { source: "example/skills" }, { source: "example/skills", ref: "main", commit: "a".repeat(40) }]) {
+        assert.deepEqual(Validator.assertSkillDefinition(definition), definition);
+    }
+    assert.throws(() => Validator.assertSkillDefinition({ name: "review", source: "/srv/review" }), TypeError,
+        "skill definitions do not repeat the map alias");
+    assert.throws(() => Validator.assertSkillDefinition({ source: "/srv/review", scope: "project" }), TypeError,
         "source locations do not introduce installation scopes");
 });
 
@@ -258,27 +262,27 @@ test("{§provider-request-accounting} client interactions carry one generic tool
 
 test("{§mcp-server-definition}: MCP definitions contain transport and authorization, not installation or runtime state", () => {
     const definitions: McpServerDefinition[] = [
-        { name: "local-validator", type: "stdio", command: "./bin/validator", args: ["--config", "${CONFIG}"], env: { TOKEN: "${VALIDATOR_TOKEN}" }, cwd: "/srv/validator" },
-        { name: "npx-server", type: "stdio", command: "npx", args: ["-y", "example-server@1.0.0"], plurnkWorkspace: "ops", plurnkSession: "inbox" },
-        { name: "deployment-api", type: "streamable-http", url: "https://deploy.example.com/mcp", headers: { "X-Tenant": "${TENANT}" }, plurnkWorkspace: ["ops", "prod"], plurnkSession: "${PLURNK_SESSION}" },
-        { name: "creds", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "${TOKEN}" }, plurnkWorkspace: "*" },
-        { name: "oauth", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "oauth", redirectUrl: "http://localhost/callback" } },
-        { name: "client", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "client-credentials", clientId: "session", clientSecret: "${SECRET}" } },
+        { type: "stdio", command: "./bin/validator", args: ["--config", "${CONFIG}"], env: { TOKEN: "${VALIDATOR_TOKEN}" }, cwd: "/srv/validator" },
+        { type: "stdio", command: "npx", args: ["-y", "example-server@1.0.0"], plurnkWorkspace: "ops", plurnkSession: "inbox" },
+        { type: "streamable-http", url: "https://deploy.example.com/mcp", headers: { "X-Tenant": "${TENANT}" }, plurnkWorkspace: ["ops", "prod"], plurnkSession: "${PLURNK_SESSION}" },
+        { type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "${TOKEN}" }, plurnkWorkspace: "*" },
+        { type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "oauth", redirectUrl: "http://localhost/callback" } },
+        { type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "client-credentials", clientId: "session", clientSecret: "${SECRET}" } },
     ];
     for (const definition of definitions) assert.equal(Validator.assertMcpServerDefinition(definition), definition);
     for (const invalid of [
-        { name: "legacy", type: "sse", url: "https://legacy.example.com/sse" },
-        { name: "untyped", command: "npx" },
-        { name: "extra", type: "stdio", command: "npx", undeclared: true },
-        { name: "mixed", type: "stdio", command: "npx", url: "https://example.com/mcp" },
-        { name: "local", type: "stdio", command: "npx", authorization: { type: "bearer", token: "${T}" } },
-        { name: "secret", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "literal-secret" } },
-        { name: "Upper", type: "stdio", command: "npx" },
-        { name: "scheme", type: "streamable-http", url: "ftp://example.com/mcp" },
-        { name: "empty-ws", type: "stdio", command: "npx", plurnkWorkspace: "" },
-        { name: "empty-ws-array", type: "stdio", command: "npx", plurnkWorkspace: [] },
-        { name: "empty-ws-item", type: "stdio", command: "npx", plurnkWorkspace: ["ops", ""] },
-        { name: "empty-session", type: "streamable-http", url: "https://example.com/mcp", plurnkSession: "" },
+        { type: "sse", url: "https://legacy.example.com/sse" },
+        { command: "npx" },
+        { name: "extra", type: "stdio", command: "npx" },
+        { type: "stdio", command: "npx", undeclared: true },
+        { type: "stdio", command: "npx", url: "https://example.com/mcp" },
+        { type: "stdio", command: "npx", authorization: { type: "bearer", token: "${T}" } },
+        { type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "literal-secret" } },
+        { type: "streamable-http", url: "ftp://example.com/mcp" },
+        { type: "stdio", command: "npx", plurnkWorkspace: "" },
+        { type: "stdio", command: "npx", plurnkWorkspace: [] },
+        { type: "stdio", command: "npx", plurnkWorkspace: ["ops", ""] },
+        { type: "streamable-http", url: "https://example.com/mcp", plurnkSession: "" },
     ]) {
         assert.throws(() => Validator.assertMcpServerDefinition(invalid), TypeError, JSON.stringify(invalid));
     }

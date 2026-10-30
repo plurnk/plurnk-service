@@ -7,13 +7,13 @@ CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);
 CREATE TEMP TRIGGER _support_floor_guard BEFORE INSERT ON _support_floor_probe
 WHEN (EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspaces')
   AND NOT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_references'))
-  OR (SELECT user_version FROM pragma_user_version) BETWEEN 11 AND 2147483646
+  OR (SELECT user_version FROM pragma_user_version) BETWEEN 12 AND 2147483646
 BEGIN
     SELECT CASE
         WHEN EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspaces')
          AND NOT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_references')
-        THEN RAISE(ABORT, 'database schema (version ' || (SELECT user_version FROM pragma_user_version) || ') precedes the 5.0.0 support floor (schema version 10); point PLURNK_SERVICE_DB_PATH at a new file or move the database and its -wal and -shm sidecars aside once every daemon holding it has stopped ({§db-migrations})')
-        ELSE RAISE(ABORT, 'database schema (version ' || (SELECT user_version FROM pragma_user_version) || ') is newer than this build (schema version 10); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file ({§db-migrations})')
+        THEN RAISE(ABORT, 'database schema (version ' || (SELECT user_version FROM pragma_user_version) || ') precedes the 5.0.0 support floor (schema version 11); point PLURNK_SERVICE_DB_PATH at a new file or move the database and its -wal and -shm sidecars aside once every daemon holding it has stopped ({§db-migrations})')
+        ELSE RAISE(ABORT, 'database schema (version ' || (SELECT user_version FROM pragma_user_version) || ') is newer than this build (schema version 11); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file ({§db-migrations})')
     END;
 END;
 INSERT INTO _support_floor_probe (id) VALUES (1);

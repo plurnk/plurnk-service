@@ -54,8 +54,8 @@ export type FunctionalityOutcome =
     | { readonly state: "authorization-required"; readonly authorization: { readonly url?: string } };
 
 export interface FunctionalityDocument {
-    // Relative to the Session's generated subtree root; the coordinator prefixes
-    // `workspace:///_plurnk/`.
+    // Relative to the Session's generated reference root; the coordinator prefixes
+    // `plurnk:///`.
     readonly pathname: string;
     readonly content: string;
 }
@@ -123,6 +123,7 @@ export interface FunctionalityFamilyHandle {
         verb: "list" | "discover" | "add" | "replace" | "enable" | "disable" | "remove",
         params: unknown,
         identity: FunctionalityIdentity,
+        caller?: FunctionalityCaller,
     ): Promise<{ readonly status: number; readonly body: unknown }>;
     // Republish the resident family; `ifChanged` only when its enabled definitions differ from the ones
     // the resident publication prepared ({§functionality-inspection}).

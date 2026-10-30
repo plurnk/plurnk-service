@@ -27,6 +27,7 @@ export default class TextMarkdown extends BaseHandler {
         if (headingIndex === -1) return undefined;
         for (const token of tokens.slice(headingIndex + 1)) {
             if (token.type === "space") continue;
+            if (token.type === "code") return token.raw.trimEnd().replaceAll(/\r?\n/gu, "\\n");
             if (token.type !== "paragraph") return undefined;
             // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- marked's Token union carries a generic member, so a paragraph's text is read through its typed member's shape
             return (token as Token & { text: string }).text;

@@ -11,7 +11,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
 import SessionOwners from "./SessionOwners.ts";
 import ToolResources from "./ToolResources.ts";
-import { isGeneratedPathname, schemeNameOf } from "./plurnk-uri.ts";
+import { schemeNameOf } from "./plurnk-uri.ts";
 import { execRouteOf } from "../schemes/exec-runtime.ts";
 import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
 import type { SchemeManifest, WriterTier } from "@plurnk/plurnk-schemes";
@@ -67,8 +67,10 @@ export default class CapabilityResolver {
             if (scheme === null || !this.#schemes.has(scheme, workspaceId)) return null;
             // {§session-scheme}: owned-state mutation is intrinsic;
             // observation and unrelated effects retain their independent demands.
-            if (writer === "_plurnk" && access !== "observe" && scheme === "workspace"
-                && target?.kind === "url" && isGeneratedPathname(target.pathname)) return [];
+            if (writer === "_plurnk" && access !== "observe" && (
+                scheme === "plurnk"
+                || scheme === "mcp"
+            )) return [];
             return [this.#schemeDescriptor(operation, access, scheme, workspaceId)];
         };
         const demands = (...items: readonly (CapabilityDescriptor[] | null)[]): CapabilityDescriptor[] =>
@@ -153,13 +155,14 @@ export default class CapabilityResolver {
         const executors = this.#executors();
         const candidates: Array<{ readonly runtime: string; readonly tool?: string; readonly name: string }> = [];
         for (const runtime of executors?.availableRuntimes(workspaceId) ?? []) {
+            const runtimeName = runtime === "plurnk_question" ? "question" : runtime;
             if (this.#runtimeDescriptor(runtime, null, workspaceId).access === "interact") {
-                candidates.push({ runtime, name: runtime });
+                candidates.push({ runtime, name: runtimeName });
                 continue;
             }
             for (const registered of executors?.toolRegistry(runtime, workspaceId)?.tools ?? []) {
                 if (this.#runtimeDescriptor(runtime, registered.target, workspaceId).access === "interact") {
-                    candidates.push({ runtime, tool: registered.target, name: registered.target });
+                    candidates.push({ runtime, tool: registered.target, name: runtime === "plurnk_question" ? "question" : registered.target });
                 }
             }
         }
@@ -193,7 +196,8 @@ export default class CapabilityResolver {
                 unreceived.some((denied) => denied.runtime === runtime && denied.tool === candidate.target));
             if (allToolsUnreceived) return ToolResources.documents(runtime, resourcesPath);
             const toolDoc = ToolResources.toolDocumentPath(runtime, tool, resourcesPath);
-            return (pathname: string) => pathname === toolDoc;
+            const toolMd = `${toolDoc.slice(0, -".json".length)}.md`;
+            return (pathname: string) => pathname === toolDoc || pathname === toolMd;
         });
         return (pathname) => !hidden.some((documents) => documents(pathname));
     }

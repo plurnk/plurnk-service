@@ -3,7 +3,7 @@ import RuntimeTag from "./RuntimeTag.ts";
 import { isRecord } from "@plurnk/plurnk-contracts";
 import type { RuntimeDecl } from "./types.ts";
 
-const FIELDS = new Set(["name", "glyph", "summary", "invocation", "details", "resourcesPath", "expandTools"]);
+const FIELDS = new Set(["name", "glyph", "summary", "invocation", "details", "resourcesPath"]);
 
 export default class RuntimeDeclaration {
     static assert(value: unknown, owner: string): RuntimeDecl {
@@ -32,7 +32,6 @@ export default class RuntimeDeclaration {
             (field): field is string => typeof field === "string" && field.length > 0 && field.startsWith("/"),
             "resourcesPath must be a non-empty absolute pathname like /tools",
         );
-        const expandTools = optional("expandTools", (field): field is boolean => typeof field === "boolean", "expandTools must be a boolean");
 
         return {
             name,
@@ -41,7 +40,6 @@ export default class RuntimeDeclaration {
             ...(glyph === undefined ? {} : { glyph }),
             ...(details === undefined ? {} : { details }),
             ...(resourcesPath === undefined ? {} : { resourcesPath }),
-            ...(expandTools === undefined ? {} : { expandTools }),
         };
     }
 }

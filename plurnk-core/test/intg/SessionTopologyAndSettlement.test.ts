@@ -508,11 +508,11 @@ test("{§schedule-residency} restart arms the coordinator's complete definitions
     const invoke = (workspaceId: number, verb: string, params = {}) => first.daemon.invokeModuleAction(
         `workspace.schedule.${verb}`, params, { scope: "workspace", workspaceId },
     );
-    await invoke(alice, "add", { alias: "beat", definition: replacement });
-    await invoke(alice, "add", { alias: "muted", definition: replacement });
+    await invoke(alice, "add", { alias: "beat", ...replacement });
+    await invoke(alice, "add", { alias: "muted", ...replacement });
     await invoke(alice, "disable", { alias: "muted" });
     await invoke(bob, "disable", { alias: "beat" });
-    await invoke(bob, "add", { alias: "private", definition: replacement });
+    await invoke(bob, "add", { alias: "private", ...replacement });
     await first.daemon.stop();
 
     const restored = await start();
@@ -551,7 +551,7 @@ test("{§schedule-delivery}: an occurrence after conclusion starts a successor l
         const { workspaceId } = await daemon.createWorkspace({ name: "scheduled-occurrence", projectRoot: null });
         const { sessionId, sessionName } = await daemon.createSession({ workspaceId, name: "recipient" });
         const added = await daemon.invokeModuleAction("workspace.schedule.add", {
-            alias: "reminder", definition: { rule: "FREQ=HOURLY;COUNT=2", target: `session://${sessionName}`, prompt: "scheduled-proof" },
+            alias: "reminder", rule: "FREQ=HOURLY;COUNT=2", target: `session://${sessionName}`, prompt: "scheduled-proof",
         }, { scope: "workspace", workspaceId }) as { status: number };
         assert.equal(added.status, 201);
 
@@ -610,7 +610,7 @@ test("{§schedule-delivery} {§session-wait-timing}: an occurrence wakes a genui
         const added = await waitForDb(async (): Promise<{ status: number } | null> => {
             try {
                 return await daemon.invokeModuleAction("workspace.schedule.add", {
-                    alias: "reminder", definition: { rule: "FREQ=HOURLY;COUNT=1", target: `session://${sessionName}`, prompt: "scheduled-proof" },
+                    alias: "reminder", rule: "FREQ=HOURLY;COUNT=1", target: `session://${sessionName}`, prompt: "scheduled-proof",
                 }, { scope: "workspace", workspaceId }) as { status: number };
             } catch (cause) {
                 const problem = cause instanceof OperationFailureError ? cause.result.problem : undefined;

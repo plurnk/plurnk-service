@@ -51,7 +51,7 @@ import ProviderAttemptRunner, {
     type ProviderEmission,
 } from "./ProviderAttemptRunner.ts";
 
-export { LOOP_TIMEOUT_REASON, resolveOperatorGrammarPath, turnResult };
+export { LOOP_TIMEOUT_REASON, resolveOperatorGrammarPath };
 
 export type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
 
@@ -413,7 +413,8 @@ export default class TurnRunner {
             const container = await this.#openTurnContainer(args, createdTurnIds);
             const gitStatus = await this.#deriveWorkspace(args, container.systemCtx);
             if (container.initializationTurn !== null) {
-                const { initializationTurn, initializationPolicies, initializationStatements, sessionName, transientOpenLogEntryId } = container;
+                const { initializationTurn, initializationPolicies, sessionName, transientOpenLogEntryId } = container;
+                const initializationStatements = await InitializationTurn.guidanceStatements(this.#db, workspaceId, sessionName);
                 await InitializationTurn.run({
                     db: this.#db,
                     schemes: this.#schemes,
@@ -516,12 +517,9 @@ export default class TurnRunner {
             throw new Error(`session ${sessionId} has no durable ambient observation boundary`);
         }
         const systemCtx = this.#schemeContext(args, initializationTurn?.id ?? modelTurn!.id);
-        const initializationStatements = initializationTurn === null
-            ? []
-            : await InitializationTurn.guidanceStatements(this.#db, workspaceId, sessionName);
         return {
             sessionName, transientOpenLogEntryId, loopSequence, createdTurnIds,
-            initializationTurn, initializationPolicies, initializationStatements,
+            initializationTurn, initializationPolicies, initializationStatements: [],
             modelTurn, systemCtx,
         };
     }
@@ -1012,7 +1010,7 @@ export default class TurnRunner {
     }
 
     // #note12 — extension reference docs are materialized beneath
-    // workspace:///_plurnk/plurnk/ by LoopDocs.
+    // plurnk:/// and mcp:/// by LoopDocs.
 
     // {§exec-lifetime} — a `"turn"` lifetime: abort the session's open turn-scoped streams via their
     // owning scheme (the same registry-routed abort the total reap uses). Called at each pre-turn

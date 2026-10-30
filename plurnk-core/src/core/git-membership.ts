@@ -24,9 +24,9 @@ import { errnoCode, isRecord, PathSyntax } from "@plurnk/plurnk-contracts";
 import { execFile, spawn } from "node:child_process";
 import { declaredFilterProgram, gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
 import { promisify } from "node:util";
-import { stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, resolve, relative, isAbsolute } from "node:path";
+import { dirname, join, resolve, relative, isAbsolute } from "node:path";
 import PathGlob from "./PathGlob.ts";
 import type { Db } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
@@ -413,8 +413,37 @@ export default class GitMembership {
                 else admitted.push(pathname);
             }
         }
+        // {§session-initialization-entry} — project AGENTS.md and AGENTS.local.md (root and nested)
+        // are admitted at their real project paths unless excluded (or gitignored for AGENTS.md).
+        for (const pathname of await GitMembership.#scanInstructionFiles(root, signal)) {
+            if (pathname === "AGENTS.local.md" || pathname.endsWith("/AGENTS.local.md")) {
+                admitted.push(pathname);
+            } else if ((await ignoredBy(pathname)) !== true) {
+                admitted.push(pathname);
+            }
+        }
         const included = [...new Set([...defined, ...admitted])]; // {§membership-auto-add}
         return { root, gitMembers, included, masked, excludeGlobs, scans, refusedFilter };
+    }
+
+    static async #scanInstructionFiles(root: string, signal: AbortSignal | undefined): Promise<string[]> {
+        const out: string[] = [];
+        const walk = async (relativeDir: string): Promise<void> => {
+            if (signal?.aborted) return;
+            const entries = await readdir(join(root, relativeDir), { withFileTypes: true }).catch(() => []);
+            for (const entry of entries) {
+                if (signal?.aborted) return;
+                const childRelative = relativeDir.length === 0 ? entry.name : `${relativeDir}/${entry.name}`;
+                if (entry.isDirectory()) {
+                    if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+                    await walk(childRelative);
+                } else if (entry.isFile() && (entry.name === "AGENTS.md" || entry.name === "AGENTS.local.md")) {
+                    out.push(childRelative);
+                }
+            }
+        };
+        await walk("");
+        return out.toSorted();
     }
 
     static async #removeMissingCreationRecords(

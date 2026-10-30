@@ -1,6 +1,7 @@
 import test, { describe, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import Workspace from "../../src/schemes/Workspace.ts";
+import Plurnk from "../../src/schemes/Plurnk.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
@@ -311,10 +312,17 @@ const runtime = async (t: TestContext) => {
         Results.assertReadResult(await run(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``, origin)) as AnchoredReadResult;
     const seed = async (ownerId: number, target: string) => {
         const parsed = parsePath(target);
-        const handler = target.startsWith("workspace:") ? new Workspace() : new Session();
-        const result = await handler.edit(editStmt(parsed, source), makeSchemeCtx({
+        const ctx = makeSchemeCtx({
             db, workspaceId: ids.workspaceId, sessionId: ownerId, writer: "_plurnk",
-        }));
+        });
+        if (target.startsWith("plurnk:") || target.startsWith("mcp:")) {
+            const handler = new Plurnk(target.startsWith("mcp:") ? "mcp" : "plurnk");
+            const result = await handler.editBatch([{ ...editStmt(parsed, source), lineMarker: null }], ctx);
+            assert.equal(result.status, 201);
+            return;
+        }
+        const handler = target.startsWith("workspace:") ? new Workspace() : new Session();
+        const result = await handler.edit(editStmt(parsed, source), ctx);
         assert.equal(result.status, 201);
     };
     return { db, ids, schemes, run, read, seed };
@@ -372,11 +380,10 @@ for (const mode of ["writable", "read-only", "unresolved", "unavailable"] as con
 }
 
 for (const { target, editable, problem } of [
-
     { target: "workspace:///note.md", editable: true, problem: null },
     { target: "session://peer/note.md", editable: true, problem: null },
-    { target: "workspace:///_plurnk/tools/example.md", editable: true, problem: null },
-    { target: "workspace:///_plurnk/tools/example.md", editable: true, problem: null },
+    { target: "plurnk:///example.md", editable: false, problem: "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden" },
+    { target: "mcp:///example.md", editable: false, problem: "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden" },
 ]) {
     test(`{§line-anchors}: ${target} publishes only its resource's model edit authority`, async (t) => {
         const { db, ids, run, read, seed } = await runtime(t);
@@ -391,26 +398,26 @@ for (const { target, editable, problem } of [
             for (const scope of ["<1>", "<@abcde>"]) {
                 const denied = await run(`\`\`\`\`EDIT (${target}) ${scope}\nchanged\n\`\`\`\``);
                 assert.equal(denied.status, 403);
-                assert.equal(denied.problem?.type, `https://problems.plurnk.xyz/scheme/session/${problem}`);
+                assert.equal(denied.problem?.type, problem);
             }
             assert.equal((await read(target)).content, source);
         }
     });
 }
 
-test("{§line-anchors}: harness edits retain internal coordinate validation and publish generated-document edit anchors", async (t) => {
+test("{§line-anchors}: harness edits retain internal coordinate validation on generated-document schemes without publishing model edit anchors", async (t) => {
     const { ids, seed, read, run } = await runtime(t);
-    const target = "workspace:///_plurnk/tools/example.md";
+    const target = "mcp:///example.md";
     await seed(ids.sessionId, target);
     const original = await read(target);
-    assertProjection(original, true);
+    assertProjection(original, false);
     assert.equal(typeof original.lineAnchorIdentity, "string");
     const anchor = LineAnchors.tokens(original.lineAnchorIdentity!, source)[1];
     const changed = await run(`\`\`\`\`EDIT (${target}) <${anchor}>\nupdated\n\`\`\`\``, "_plurnk");
     assert.equal(changed.status, 200);
     const current = await read(target);
     assert.equal(current.content, "first\nupdated\nthird");
-    assert.equal(Object.hasOwn(current, "lineAnchors"), true);
+    assert.equal(Object.hasOwn(current, "lineAnchors"), false);
 });
 
 test("{§line-anchors}: file READ and EDIT share root and mounted-member write authority", async (t) => {

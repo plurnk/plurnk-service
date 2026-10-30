@@ -1,5 +1,5 @@
 import { parsePath } from "@plurnk/plurnk-parser";
-import { errnoCode, isExecutionOp, PathSyntax } from "@plurnk/plurnk-contracts";
+import { errnoCode, isExecutionOp } from "@plurnk/plurnk-contracts";
 import { type ExecStatement, type FindStatement, type KillStatement } from "@plurnk/plurnk-contracts";
 import type { ChannelState, ExecResult as ExecutorResult, Executor, Effect, RuntimeInvocationDecl } from "@plurnk/plurnk-execs";
 import {
@@ -21,7 +21,7 @@ import LiveSubscription from "../core/LiveSubscription.ts";
 import EnvFunctionality, { type EnvRecord } from "../server/EnvFunctionality.ts";
 import ExecAbort from "./exec-abort.ts";
 import { LIFETIME_SYNTAX, formatLifetime, parseExecLifetime, type ExecLifetime } from "./exec-lifetime.ts";
-import { entryCoordinateOf, generatedPathname, isGeneratedPathname, renderAddress } from "../core/plurnk-uri.ts";
+import { entryCoordinateOf, renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink, stat } from "node:fs/promises";
 import { extname, isAbsolute, resolve } from "node:path";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
@@ -110,7 +110,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         channels: { stdout: "text/stream", stderr: "text/stream" },
         defaultChannel: "stdout",
         category: "data",
-        writableBy: ["model", "client"],
+        writableBy: ["model", "client", "_plurnk"],
         volatile: true,
         modelVisible: true,
         metadataModifier: true,
@@ -395,7 +395,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             // {§executor-discovery} No target: every enabled target's fence. An unknown one: the document listing them.
             const recovery = availableTargets.length === 0 ? {}
                 : exactTarget === null ? { recovery: registry.tools.map((tool) => ToolResources.fence(runtime, tool.invocation, tool.target)).join("\n\n") }
-                    : { recovery: `Select a target from workspace://${ToolResources.documentPath(runtime, resolved.resourcesPath)}.` };
+                    : { recovery: `Select a target from ${ToolResources.schemeOf(resolved.resourcesPath)}://${ToolResources.documentPath(runtime, resolved.resourcesPath)}.` };
             return Results.failure(
                 "scheme:exec",
                 exactTarget === null ? "target-required" : "target-not-registered",
@@ -508,11 +508,11 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             resourceSource = null;
         }
 
-        // {§exec-target-routing} — the generated reference under workspace:///_plurnk/ describes a
+        // {§exec-target-routing} — the generated reference under plurnk:/// or mcp:/// describes a
         // runtime; it is never a program. Realizing it as a temporary script fails where the runtime
         // cannot see the host's temporary directory, and runs markdown where it can.
-        if (resourceSource !== null && execTarget?.kind === "url" && execTarget.scheme === "workspace"
-            && isGeneratedPathname(PathSyntax.decodeParens(execTarget.pathname ?? ""))) {
+        if (resourceSource !== null && execTarget?.kind === "url"
+            && (execTarget.scheme === "plurnk" || execTarget.scheme === "mcp")) {
             return Exec.#refuse(
                 runtime,
                 "target-is-documentation",
@@ -697,7 +697,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
         // {§functionality-model-projection} Configuration is an ordered core operation,
         // not a background job competing for an external-execution slot.
-        if (resolved.executor instanceof FunctionalityManager && target !== "question") {
+        if (resolved.executor instanceof FunctionalityManager) {
             const tail = run();
             this.#activeSpawns.set(subscriptionId, tail);
             return await tail;
@@ -908,8 +908,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         if (owners.length === 0) return result;
         const owner = owners[0];
         // The tool's own document, where its family publishes it ({§tools-resource-materialization}).
-        const root = executors.entry(owner, core.workspaceId)?.resourcesPath ?? "/plurnk";
-        const contract = `workspace://${generatedPathname(`${root}/${owner}/${ToolResources.targetSegment(program)}.json`)}`;
+        const scheme = ToolResources.schemeOf(executors.entry(owner, core.workspaceId)?.resourcesPath);
+        const contract = `${scheme}:///${owner}/${ToolResources.targetSegment(program)}.json`;
         return Results.failure(
             "scheme:exec",
             "program-is-a-tool",

@@ -1,6 +1,7 @@
 import { TurnDisposition, isExecution, type CapabilityProjection, type ForkStatement, type ParsedPath, type PlurnkOp, type PlurnkStatement, type WorkStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeResult } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
+import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 import ResourceBindings from "./ResourceBindings.ts";
 import Results from "./results.ts";
@@ -63,7 +64,12 @@ export default class DispatchAdmission {
         // stored output. The workspace execution binding owns KILL and SEND.
         if (statement.op === "KILL" || statement.op === "SEND") {
             const target = schemeNameOf(statement.target);
-            if (target !== null && this.#schemes.isRuntimeScheme(target, workspaceId)) return null;
+            if (target !== null && this.#schemes.isRuntimeScheme(target, workspaceId)) {
+                const handler = this.#schemes.get(target, workspaceId);
+                if (statement.op === "SEND" || !(handler instanceof ExecOutputScheme) || handler.kills(statement.target)) {
+                    return null;
+                }
+            }
         }
 
         // Session control (FORK/WORK → session://<name>, spawn or fork) is gated by session://'s writableBy — its

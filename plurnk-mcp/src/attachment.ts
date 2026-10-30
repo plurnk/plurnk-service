@@ -22,12 +22,14 @@ import {
 } from "./client.ts";
 import type McpExecutor from "./McpExecutor.ts";
 import { UnavailableServerExecutor, runtimeDecl, runtimeServerSummary } from "./McpExecutor.ts";
+import { instructionsLead, summaryLine } from "./Summary.ts";
 import { OAuthSetupError } from "./oauth.ts";
 
 export const OWNER = "@plurnk/plurnk-mcp";
 export const FAMILY = "mcp";
 
 export interface McpBinding extends FunctionalityPreparedDefinition {
+    readonly alias: string;
     readonly definition: McpServerDefinition;
     readonly context?: PluginContext;
 }
@@ -62,13 +64,13 @@ export const attachmentConnection = (attachment: Attachment): ServerConnection |
 // {§mcp-configuration} An enabled server that cannot run still answers to its alias: a call to it is refused with
 // the state that keeps it from running, never as a name nothing registered.
 export const unavailableRuntime = (attachment: AuthorizationAttachment | UnavailableAttachment): RuntimeRegistration => {
-    const { name } = attachment.definition;
+    const name = attachment.alias;
     const detail = attachment.kind === "authorization-required"
         ? "it awaits the operator's sign-in"
         : typeof attachment.problem.diagnostic === "string" ? attachment.problem.diagnostic : attachment.problem.detail;
     return {
         namespaceOwner: OWNER,
-        decl: runtimeDecl(name, runtimeServerSummary(name, undefined), false),
+        decl: runtimeDecl(name, runtimeServerSummary(name, undefined)),
         executor: new UnavailableServerExecutor(name, detail),
         availability: { available: false, detail },
     };
@@ -113,6 +115,7 @@ export const errorsOf = (error: unknown): unknown[] =>
     error instanceof AggregateError ? [...error.errors] : [error];
 
 export const preparationError = (
+    alias: string,
     definition: McpServerDefinition,
     authorization: McpAuthorization | undefined,
     cause: unknown,
@@ -123,20 +126,20 @@ export const preparationError = (
         ? cause
         : new AggregateError(
             [cause, closeCause],
-            `MCP server '${definition.name}' preparation and cleanup failed.`,
+            `MCP server '${alias}' preparation and cleanup failed.`,
         );
     const setup = causeOf(cause, OAuthSetupError);
     if (setup !== undefined) return actionError(setup.code, 502, setup.message,
-        { server: definition.name, ...(setup.recovery === undefined ? {} : { recovery: setup.recovery }), retryable: false }, completeCause);
+        { server: alias, ...(setup.recovery === undefined ? {} : { recovery: setup.recovery }), retryable: false }, completeCause);
     // {§oauth-client-credentials} — a rejected grant is an authorization fact,
     // never a generic unavailability.
     if (authorization?.type === "client-credentials" && isClientCredentialsRejection(cause)) {
         return actionError(
             "oauth-client-credentials-failed",
             502,
-            `MCP server '${definition.name}' rejected the client-credentials grant.`,
+            `MCP server '${alias}' rejected the client-credentials grant.`,
             {
-                server: definition.name,
+                server: alias,
                 type: definition.type,
                 clientId: authorization.clientId,
                 ...(authorization.issuer === undefined
@@ -154,22 +157,22 @@ export const preparationError = (
             "server-redirected",
             502,
             redirect.message,
-            { server: definition.name, url: redirect.url, ...(redirect.location === null ? {} : { location: redirect.location }), retryable: false },
+            { server: alias, url: redirect.url, ...(redirect.location === null ? {} : { location: redirect.location }), retryable: false },
             completeCause,
         );
     }
     const http = causeOf(cause, SdkHttpError);
     if (http?.status === 401 || causeOf(cause, UnauthorizedError) !== undefined) {
         return actionError("server-authentication-failed", 502,
-            `MCP server '${definition.name}' rejected authentication (HTTP 401).`,
-            { server: definition.name, upstreamStatus: 401, retryable: false }, completeCause);
+            `MCP server '${alias}' rejected authentication (HTTP 401).`,
+            { server: alias, upstreamStatus: 401, retryable: false }, completeCause);
     }
     return actionError(
         "server-unavailable",
         502,
-        `Configured MCP server '${definition.name}' is unavailable.`,
+        `Configured MCP server '${alias}' is unavailable.`,
         {
-            server: definition.name,
+            server: alias,
             type: definition.type,
             retryable: true,
             ...observation,
@@ -227,7 +230,8 @@ const pluginContextOf = (value: object): PluginContext => {
     if (!isPluginContext(value)) throw new TypeError("An MCP binding's plugin context names its root and data paths.");
     return value;
 };
-export const bindingOf = (value: FunctionalityPreparedDefinition): McpBinding => ({
+export const bindingOf = (alias: string, value: FunctionalityPreparedDefinition): McpBinding => ({
+    alias,
     definition: Validator.assertMcpServerDefinition(value.definition),
     ...(value.context === undefined ? {} : { context: pluginContextOf(value.context) }),
 });
@@ -240,12 +244,26 @@ export const statusOf = (error: unknown): number | null => {
 };
 
 // An active alias's detail: its server's catalog, and the summary of a grant its connection presents ({§oauth-continuation}).
-export const activeDetail = ({ executor: { catalog }, connection }: ActiveAttachment): object => {
+export const activeDetail = ({ alias, executor: { catalog }, connection }: ActiveAttachment): object => {
     const grant = connection.oauthGrant?.summary;
     const skills = catalog.skills ?? [];
+    const server = catalog.server === undefined
+        ? null
+        : (() => {
+            const { icons: _icons, ...rest } = catalog.server;
+            return rest;
+        })();
+    const description = summaryLine(catalog.server?.description)
+        ?? instructionsLead(catalog.instructions)
+        ?? summaryLine(catalog.server?.title);
     return {
+        ...(description === undefined || description.length === 0 ? {} : { description }),
+        docs: `mcp:///${alias}.md`,
+        ...(catalog.instructions !== undefined && catalog.instructions.trim().length > 0
+            ? { instructions: catalog.instructions.trim() }
+            : {}),
         protocolVersion: catalog.protocolVersion,
-        server: catalog.server ?? null,
+        server,
         capabilities: catalog.capabilities,
         tools: catalog.tools.map(({ name }) => name).toSorted(),
         resources: catalog.resources.length,

@@ -123,7 +123,10 @@ export interface LiveRun {
 export const liveRun = async (name: string, opts: { database?: boolean } = {}): Promise<LiveRun> => {
     const runDir = await claimRunDir(name);
     const dbPath = join(runDir, "plurnk.db");
-    const hostPaths = new HostPaths({ home: join(runDir, "home"), env: {} });
+    if (process.env.PLURNK_LIVE_HOST_HOME === "1") {
+        delete process.env.PLURNK_SERVICE_POLICY;
+    }
+    const hostPaths = new HostPaths(process.env.PLURNK_LIVE_HOST_HOME === "1" ? undefined : { home: join(runDir, "home"), env: {} });
     const specimen = currentSpecimen();
     return {
         runDir, dbPath, hostPaths,

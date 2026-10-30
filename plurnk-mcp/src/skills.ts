@@ -36,7 +36,7 @@ export const computeSkillCommit = (skill: Skill, skillMdBytes?: Uint8Array): str
     return hash.digest("hex");
 };
 
-export const relativePathFromSkillUri = (skillUri: string, resourceUri: string): string => {
+const relativePathFromSkillUri = (skillUri: string, resourceUri: string): string => {
     const rootPrefix = skillUri.endsWith("/SKILL.md")
         ? skillUri.slice(0, skillUri.length - "SKILL.md".length)
         : skillUri;

@@ -55,11 +55,12 @@ const beginUnchallenged = async (host: ContinuationHost, connected: ActiveAttach
         } catch (error) {
             closeCause = error;
         }
-        const { definition } = connected;
-        throw preparationError(definition, definition.type === "streamable-http" ? definition.authorization : undefined, cause, closeCause);
+        const { alias, definition } = connected;
+        throw preparationError(alias, definition, definition.type === "streamable-http" ? definition.authorization : undefined, cause, closeCause);
     }
     if (authorizationUrl === undefined) return connected;
     return {
+        alias: connected.alias,
         definition: connected.definition,
         ...(connected.context === undefined ? {} : { context: connected.context }),
         kind: "authorization-required",
@@ -189,7 +190,7 @@ export const completeOAuth = async (
         // {§oauth-continuation} The accepted sign-in is the alias's grant, replacing any before it.
         const grant = pending.connection.oauthGrant;
         if (grant !== undefined) {
-            host.grants.set(key, { definition: pending.definition, ...(pending.context === undefined ? {} : { context: pending.context }), grant });
+            host.grants.set(key, { alias: pending.alias, definition: pending.definition, ...(pending.context === undefined ? {} : { context: pending.context }), grant });
         }
         host.dirty.set(key, Symbol());
         host.refreshCatalog(identity.workspaceId, alias);

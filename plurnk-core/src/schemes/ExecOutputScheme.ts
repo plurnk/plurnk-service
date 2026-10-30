@@ -2,7 +2,8 @@ import type { FindStatement, KillStatement, ParsedPath, SendStatement } from "@p
 import type { SchemeManifest } from "../core/scheme-types.ts";
 import type Exec from "./Exec.ts";
 import EntryFind from "./_entry-find.ts";
-import EntryCrud, { type ReadEntryResult } from "./_entry-crud.ts";
+import EntryOps from "./_entry-ops.ts";
+import EntryCrud, { type DeleteEntryResult, type EntryData, type ReadEntryResult, type WriteEntryResult } from "./_entry-crud.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResult, type SchemeResultBase } from "../core/results.ts";
@@ -39,7 +40,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
     // {§execution-output-identity} A claimed coordinate is governed by its facet's representation.
     manifestAt(target: ParsedPath | null): SchemeManifest {
         if (target === null || !this.claimsLiveResource(target)) return this.manifest;
-        return { ...this.manifest, ...this.#facet?.manifest };
+        return { ...this.manifest, textEditScopes: false, ...this.#facet?.manifest };
     }
 
     #claimedPath(statement: FindStatement): boolean {
@@ -98,7 +99,16 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
         const prepared = await this.#facet?.prepareFind?.(statement, await this.#facetContext(ctx, statement.target));
         if (prepared !== undefined && prepared.status >= 300) return prepared;
         const core = this.coreContext(ctx);
-        return EntryFind.findWorkspaceEntries(statement, core, this.manifestAt(statement.target), {});
+        const visible = await core.referenceVisibility?.();
+        return EntryFind.findWorkspaceEntries(statement, core, this.manifestAt(statement.target), {
+            ...(visible === undefined ? {} : { visible }),
+        });
+    }
+
+    #isDocumentResource(target: ParsedPath | null): boolean {
+        return target?.kind === "url"
+            && !this.claimsLiveResource(target)
+            && this.#manifest.writableBy.includes("_plurnk");
     }
 
     // {§execution-output-identity} A claimed resource's EDIT is its facet's; stored output has none.
@@ -107,6 +117,14 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
         const target = statements[0]?.target ?? null;
         if (facet?.editBatch !== undefined && target !== null && this.claimsLiveResource(target)) {
             return facet.editBatch(statements, await this.#facetContext(ctx, target));
+        }
+        if (this.#isDocumentResource(target)) {
+            return EntryOps.editWorkspaceEntryBatch(
+                statements,
+                this.coreContext(ctx),
+                this.manifest,
+                SchemeCtxImpl.editPreconditionOf(ctx),
+            );
         }
         return Results.failure("scheme:exec", "operation-not-implemented", 501,
             `Scheme '${this.#manifest.name}' does not implement EDIT.`, { entryId: null, channel: null },
@@ -142,10 +160,23 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
             : EntryCrud.readEntry({ authority: "", pathname }, core, this.#manifest.name);
     }
 
+    async writeEntry(pathname: string, entry: EntryData, ctx: CoreSchemeCallContext): Promise<WriteEntryResult> {
+        const core = this.coreContext(ctx);
+        return "entries" in ctx ? ctx.entries.write(pathname, entry)
+            : EntryCrud.writeEntry({ authority: "", pathname }, entry, core, this.#manifest.name);
+    }
+
+    async deleteEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<DeleteEntryResult> {
+        const core = this.coreContext(ctx);
+        return "entries" in ctx ? ctx.entries.delete(pathname)
+            : EntryCrud.deleteEntry({ authority: "", pathname }, core, this.#manifest.name);
+    }
+
     // {§stream-control} A stored execution's KILL reaches its process. A claimed resource's is its
     // facet's when the facet has one; otherwise it is the ordinary entry KILL, which cancels a live
     // subscription.
     kills(target: ParsedPath | null): boolean {
+        if (this.#isDocumentResource(target)) return false;
         return target === null || !this.claimsLiveResource(target) || this.#facet?.kill !== undefined;
     }
 

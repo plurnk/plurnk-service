@@ -4,7 +4,7 @@ import ToolResources from "./ToolResources.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Lexer } from "marked";
-import { plurnkRuntimeDecl } from "../server/FunctionalityManager.ts";
+import { plurnkFamilyRuntimeDecl } from "../server/FunctionalityManager.ts";
 import { isExecution, Validator, type JsonSchema } from "@plurnk/plurnk-contracts";
 
 describe("ToolResources", () => {
@@ -20,19 +20,19 @@ test("{§tools-resource-materialization} renders a general runtime as one self-d
         registry: null,
     });
 
-    assert.deepEqual(resources.map(({ pathname }) => pathname), ["/_plurnk/plurnk/example.md"]);
+    assert.deepEqual(resources.map(({ scheme, pathname }) => `${scheme}://${pathname}`), ["plurnk:///example.md"]);
     const content = resources[0]?.content ?? "";
     assert.match(content, /^# example$/m);
     assert.match(
         content,
-        /^## Summary\n\n```example <!-- Compute a thing\. -->\\nsomething\\n```$/m,
+        /^## Summary\n\n```example <!-- Compute a thing\. -->\nsomething\n```$/m,
     );
     assert.match(content, /^## Invocation$/m);
     assert.match(content, /^\| body \| required: query \|$/m);
     assert.match(content, /```example <!-- Compute a thing\. -->\nsomething\n```/);
     const summary = content.split("## Summary\n\n")[1].split("\n\n")[0];
-    assert.equal(Lexer.lex(summary)[0]?.type, "paragraph", "the generic Markdown Summary projection can discover the invocation");
-    const parsed = PlurnkParser.parseStatements(summary.replaceAll("\\n", "\n"), { executors: ["example", "fixture", "brave", "sh"] });
+    assert.equal(Lexer.lex(summary)[0]?.type, "code", "the generic Markdown Summary projection can discover the fenced invocation");
+    const parsed = PlurnkParser.parseStatements(summary, { executors: ["example", "fixture", "brave", "sh"] });
     assert.equal(parsed.items.length, 1);
     assert.equal(parsed.items[0]?.kind, "statement");
     if (parsed.items[0]?.kind === "statement") {
@@ -80,8 +80,8 @@ test("{§tools-resource-materialization} retains authored non-schema invocations
     });
 
     assert.deepEqual(
-        resources.map(({ pathname }) => pathname),
-        ["/_plurnk/plurnk/gitea.md"],
+        resources.map(({ scheme, pathname }) => `${scheme}://${pathname}`),
+        ["plurnk:///gitea.md"],
         "authored witnesses without input schemas need no schema document",
     );
     const runtimeDoc = resources[0]?.content ?? "";
@@ -130,7 +130,7 @@ test("{§capability-admission} derives an inventory summary from the effective e
     });
 
     const runtimeDoc = resources[0]?.content ?? "";
-    assert.match(runtimeDoc, /^## Summary\n\n```fixture \(echo\)\\n\{"message": string\}\\n```$/m);
+    assert.match(runtimeDoc, /^## Summary\n\n```fixture \(echo\)\n\{"message": string\}\n```$/m);
     assert.doesNotMatch(runtimeDoc, /fail/);
 });
 
@@ -177,7 +177,7 @@ test("{§find} a large runtime's inventory summary names every tool", () => {
     assert.match(small[0]?.content ?? "", /^## Summary\n\n```brave \(brave_web_search\|brave_news_search\) <!-- Brave Search MCP Server -->/m, "a runtime that fits lists every tool");
 });
 
-test("{§tools-resource-materialization} keeps a concrete invocation's multiline body on one summary line", () => {
+test("{§tools-resource-materialization} keeps a concrete invocation's multiline body inside the summary fence", () => {
     const summary = "```fixture (echo) <!-- Echo structured input -->```";
     const body = '{\n  "message": "hello"\n}';
     const resources = ToolResources.render({
@@ -194,7 +194,7 @@ test("{§tools-resource-materialization} keeps a concrete invocation's multiline
     });
     const document = resources[0].content;
     const renderedSummary = document.split("## Summary\n\n")[1].split("\n\n")[0];
-    assert.equal(renderedSummary, `${summary.slice(0, -3)}\\n${body.replaceAll("\n", "\\n")}\\n\`\`\``);
+    assert.equal(renderedSummary, `${summary.slice(0, -3)}\n${body}\n\`\`\``);
     assert.ok(document.includes(`\`\`\`fixture (echo) <!-- Echo structured input. -->
 ${body}
 \`\`\``), "the full invocation retains its physical newlines");
@@ -209,16 +209,21 @@ test("{§tools-resource-materialization} a registry-less runtime with no details
     assert.ok(taught.content.endsWith("Set `scale` first."), "the body closes the document");
 });
 
-test("{§functionality-model-projection} plurnk runtime summary advertises effective tools in registration order", () => {
-    for (const tools of [["env", "mcp", "members", "schedule", "skills", "question"], ["members", "question"]]) {
+test("{§functionality-model-projection} plurnk_<family> runtime summary advertises effective verbs in registration order", () => {
+    for (const verbs of [["list", "discover", "add", "replace", "enable", "disable", "remove"], ["list", "add", "remove"]] as const) {
+        const decl = plurnkFamilyRuntimeDecl({
+            family: "members",
+            summary: "Manage file membership.",
+            inputSchemas: Object.fromEntries(verbs.map((verb) => [verb, { type: "object" }])),
+        });
         const [resource] = ToolResources.render({
-            runtime: "plurnk", ...plurnkRuntimeDecl, details: "",
-            registry: { tools: tools.map((target) => ({
-                target, summary: target, invocation: plurnkRuntimeDecl.invocation,
+            runtime: decl.name, ...decl, details: "",
+            registry: { tools: verbs.map((target) => ({
+                target, summary: target, invocation: decl.invocation,
             })) },
         });
-        const summary = resource.content.split("## Summary\n\n")[1].split("\n")[0];
-        assert.equal(summary, `\`\`\`plurnk (${tools.join("|")}) <!-- Manage workspace capabilities and ask the user questions. -->\\n\`\`\``);
+        const summary = resource.content.split("## Summary\n\n")[1].split("\n\n")[0];
+        assert.equal(summary, `\`\`\`plurnk_members (${verbs.join("|")}) <!-- Manage file membership. -->\n\`\`\``);
     }
 });
 
@@ -282,9 +287,11 @@ const render = (runtime = "gitea", inputSchema: JsonSchema = schema) => ToolReso
 test("{§executor-discovery} catalogs required top-level fields in the skeleton, surfaces enums/options in the aside, and preserves the complete schema separately", () => {
     const before = structuredClone(schema);
     const [family, detail] = render();
-    assert.equal(family?.pathname, "/_plurnk/tools/gitea.md");
-    assert.equal(detail?.pathname, "/_plurnk/tools/gitea/issue%2Fread.json");
-    assert.match(family.content, /```gitea \(issue\/read\) <!-- List issues\. \(filter: \{state\?: "open"\|"closed"\}, mode: "open"\|"all"; page\?: integer\) Schema: workspace:\/\/\/_plurnk\/tools\/gitea\/issue%2Fread\.json -->\n\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\n```/);
+    assert.equal(family?.scheme, "mcp");
+    assert.equal(family?.pathname, "/gitea.md");
+    assert.equal(detail?.scheme, "mcp");
+    assert.equal(detail?.pathname, "/gitea/issue%2Fread.json");
+    assert.match(family.content, /```gitea \(issue\/read\) <!-- List issues\. \(filter: \{state\?: "open"\|"closed"\}, mode: "open"\|"all"; page\?: integer\) Schema: mcp:\/\/\/gitea\/issue%2Fread\.json -->\n\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\n```/);
     assert.doesNotMatch(family.content, /oneOf|Selection|minItems/);
     const parsed = JSON.parse(detail.content) as Record<string, unknown>;
     assert.equal(parsed.description, description, "complete multiline description is preserved");
@@ -293,17 +300,17 @@ test("{§executor-discovery} catalogs required top-level fields in the skeleton,
     assert.deepEqual(parsed.required, schema.required);
     assert.doesNotMatch(detail.content, /^## Summary$/m, "schema docs do not impersonate runtime summaries");
     assert.deepEqual(schema, before, "projection never mutates a server's schema");
-    assert.equal(render("other")[1]?.pathname, "/_plurnk/tools/other/issue%2Fread.json");
+    assert.equal(render("other")[1]?.pathname, "/other/issue%2Fread.json");
 });
 
-test("{§executor-discovery} complex conditional requirements stay in the raw schema", () => {
+test("{§executor-discovery} top-level object unions preview the first branch and summarize branches in the aside", () => {
     const conditional = { type: "object", oneOf: [
         { properties: { first: { type: "string" } }, required: ["first"] },
         { properties: { second: { type: "number" } }, required: ["second"] },
     ] };
     const [family, detail] = render("conditional", conditional);
-    assert.match(family.content, /-->\n\{\}\n/);
-    assert.doesNotMatch(family.content, /first|second|oneOf/);
+    assert.match(family.content, /\(\{first: string\}\|\{second: number\}\) Schema: mcp:\/\/\/conditional\/issue%2Fread\.json -->\n\{"first": ""\}\n/);
+    assert.doesNotMatch(family.content, /oneOf/);
     const parsed = JSON.parse(detail.content) as Record<string, unknown>;
     assert.deepEqual(parsed.oneOf, conditional.oneOf);
 });
@@ -326,14 +333,14 @@ test("{§executor-discovery} links an exact JSON catalog without changing the co
     const source = { runtime: "gitea", resourcesPath: "/tools", summary: { from: "tools" as const },
         details: "", invocation, registry: { tools } };
     const resources = ToolResources.render(source);
-    const catalog = resources.find(({ pathname }) => pathname === "/_plurnk/tools/gitea.json");
+    const catalog = resources.find(({ pathname }) => pathname === "/gitea.json");
     assert.ok(catalog, "the family has a sibling JSON catalog");
     assert.deepEqual(JSON.parse(catalog.content), { tools: definitions });
     assert.equal(catalog.content, JSON.stringify({ tools: definitions }, null, 2));
-    assert.match(resources[0].content, /workspace:\/\/\/_plurnk\/tools\/gitea\.json/);
+    assert.match(resources[0].content, /mcp:\/\/\/gitea\.json/);
     assert.doesNotMatch(resources[0].content, /outputSchema|vendor|revision/);
     assert.deepEqual(resources.slice(1, 3).map(({ pathname }) => pathname), [
-        "/_plurnk/tools/gitea/issue%2Fread.json", "/_plurnk/tools/gitea/issue_write.json",
+        "/gitea/issue%2Fread.json", "/gitea/issue_write.json",
     ], "individual input schemas remain separately readable");
     const withoutDefinitions = ToolResources.render({ ...source, registry: {
         tools: tools.map((tool) => ({ target: tool.target, summary: tool.summary, invocation: tool.invocation })),
@@ -360,19 +367,19 @@ test("{§tools-resource-materialization} a featured exact tool includes its requ
         registry: { tools: [tool, { ...tool, target: "news" }] },
     })[0].content.split("## Summary\n\n")[1].split("\n\n")[0];
     const heading = "```brave (search) <!-- Search documents -->";
-    assert.equal(family(`${heading}\`\`\``), `${heading}\\n{"query": ""}\\n\`\`\``);
+    assert.equal(family(`${heading}\`\`\``), `${heading}\n{"query": ""}\n\`\`\``);
     for (const authored of [
         "Search documents and news.",
         "```brave (search|news)```",
         "```brave (disabled)```",
         "```other (search)```",
-        `${heading}\\n{"query":"example"}\\n\`\`\``,
+        `${heading}\n{"query":"example"}\n\`\`\``,
     ]) assert.equal(family(authored), authored);
 });
 
 test("{§tools-resource-materialization} aside normalization cannot rewrite schema addresses", () => {
     const [family, detail] = render("gitea--private");
-    assert.ok(family.content.includes(`Schema: workspace://${detail.pathname} -->`));
+    assert.ok(family.content.includes(`Schema: mcp://${detail.pathname} -->`));
 });
 
 test("{§executor-discovery} general schema-backed runtimes also expose an on-demand schema", () => {
@@ -380,8 +387,9 @@ test("{§executor-discovery} general schema-backed runtimes also expose an on-de
         runtime: "query", summary: "Run a query.", details: description, registry: null,
         invocation: { body: { role: "JSON arguments", required: true }, inputSchema: schema },
     });
-    assert.equal(detail.pathname, "/_plurnk/plurnk/query/input.json");
-    assert.ok(family.content.includes(`Schema: workspace://${detail.pathname} -->`));
+    assert.equal(detail.scheme, "plurnk");
+    assert.equal(detail.pathname, "/query/input.json");
+    assert.ok(family.content.includes(`Schema: plurnk://${detail.pathname} -->`));
     assert.ok(family.content.includes('{"repo_id": 0, "filter": {}, "labels": [], "mode": "open", "selector": null}'));
     assert.deepEqual((JSON.parse(detail.content) as Record<string, unknown>).properties, schema.properties);
 });
@@ -420,7 +428,7 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
             },
         }] },
     })[0].content;
-    assert.match(withOptions, /```gitea \(search\) <!-- Search repos\. \(page\?: integer, sort\?: string, state\?: "open"\|"closed"\|"all", labels\?: string\[\]\) Schema: workspace:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
+    assert.match(withOptions, /```gitea \(search\) <!-- Search repos\. \(page\?: integer, sort\?: string, state\?: "open"\|"closed"\|"all", labels\?: string\[\]\) Schema: mcp:\/\/\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
 
     const fillForm = {
         type: "object",
@@ -466,6 +474,6 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
             },
         }] },
     })[0].content;
-    assert.match(noOptions, /```gitea \(search\) <!-- Search repos\. Schema: workspace:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
+    assert.match(noOptions, /```gitea \(search\) <!-- Search repos\. Schema: mcp:\/\/\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
 });
 });

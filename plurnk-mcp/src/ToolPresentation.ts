@@ -12,6 +12,7 @@ export const toolRegistry = (
     const tools = source.toSorted((left, right) => left.name.localeCompare(right.name));
     return {
         tools: tools.map((tool) => {
+            const { icons: _icons, ...definition } = tool;
             return {
                 target: tool.name,
                 summary: toolSummary(tool),
@@ -28,7 +29,7 @@ export const toolRegistry = (
                     inputSchema: tool.inputSchema,
                 },
                 ...(tool.description === undefined ? {} : { details: tool.description }),
-                definition: tool,
+                definition,
             };
         }),
     };

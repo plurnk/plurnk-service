@@ -82,7 +82,6 @@ export default class Discover {
                 details,
                 packageName,
                 ...(decl.resourcesPath === undefined ? {} : { resourcesPath: decl.resourcesPath }),
-                ...(decl.expandTools === undefined ? {} : { expandTools: decl.expandTools }),
             });
         }
 

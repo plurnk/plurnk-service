@@ -33,7 +33,7 @@ const OWNER = "scheme:env";
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 // {§execution-output-identity} — the manager's own output streams, which stay the executor's.
 const STREAM = /^[0-9a-f]{8}$/u;
-const ADDRESS = /^[a-z][a-z0-9+.-]*:\/\/[^/]*(\/.*)$/iu;
+const ADDRESS = /^[a-z][a-z0-9+._-]*:\/\/[^/]*(\/.*)$/iu;
 
 const nameOf = (pathname: string): string | null => {
     const name = pathname.replace(/^\//u, "");
@@ -146,7 +146,7 @@ export default class EnvScheme implements RuntimeSchemeFacet {
         if ("status" in named) return named;
         if (statement.lineMarker !== null || statement.matcher !== null) return EnvScheme.#whole(named.name, "EDIT");
         const layer = await this.#layer(ctx.workspaceId, ctx.sessionId);
-        const refused = await this.#write("replace", { alias: named.name, definition: { value: statement.body ?? "" } }, ctx, layer);
+        const refused = await this.#write("replace", { alias: named.name, value: statement.body ?? "" }, ctx, layer);
         if (refused !== null) return refused;
         await ctx.entries.delete(named.pathname);
         return { status: 200 };

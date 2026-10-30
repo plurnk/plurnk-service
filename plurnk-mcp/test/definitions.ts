@@ -8,11 +8,10 @@ export const FIXTURES = fileURLToPath(new URL("./fixtures", import.meta.url));
 export const fixture = (file: string): string => join(FIXTURES, file);
 
 export const stdioServer = (
-    name: string,
+    _name: string,
     args: readonly string[] = [fixture("echo-server.mjs")],
     extra: { readonly env?: Readonly<Record<string, string>>; readonly cwd?: string } = {},
 ): McpStdioServerDefinition => ({
-    name,
     type: "stdio",
     command: "node",
     args: [...args],
@@ -20,8 +19,7 @@ export const stdioServer = (
     cwd: extra.cwd ?? FIXTURES,
 });
 
-export const httpServer = (name: string, url: string, headers?: Readonly<Record<string, string>>): McpStreamableHttpServerDefinition => ({
-    name,
+export const httpServer = (_name: string, url: string, headers?: Readonly<Record<string, string>>): McpStreamableHttpServerDefinition => ({
     type: "streamable-http",
     url,
     ...(headers === undefined ? {} : { headers: { ...headers } }),

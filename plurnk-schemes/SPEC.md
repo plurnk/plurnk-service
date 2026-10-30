@@ -21,7 +21,7 @@ Every scheme package declares `plurnk: { "kind": "scheme", "name": "<scheme>" }`
 | `textEditScopes?` | `true` declares the shared textual `EDIT` coordinate and collision contract (`{§line-anchors}`). Handlers receive numeric coordinates only and route standard entry mutation through `ctx.entries.operations.editBatch`. |
 | `metadataModifier?` | `true` opts into `[metadata]` on resource operations (`{§slot-order}`). Absent/`false` rejects `[metadata]` at dispatch with non-retryable `400 scheme-metadata-unsupported`. |
 | `traits?` | Unique lowercase capability facts matching `^[a-z][a-z0-9-]*$` (e.g. `web`, `interaction`) consumed by `{§capability-admission}`. |
-| `documentation?` | Deep reference Markdown (loaded from `docs/<name>.md`) with an exact H2 `Summary`, materialized on demand at `workspace:///_plurnk/plurnk/<name>.md` (`FIND` projects H2 `Summary`; `READ` retrieves the body). |
+| `documentation?` | Deep reference Markdown (loaded from `docs/<name>.md`) with an exact H2 `Summary`, materialized on demand at `plurnk:///<name>.md` (`FIND` projects H2 `Summary`; `READ` retrieves the body). |
 | `glyph?` | Non-empty opaque client presentation glyph projected through `{§mcp-server-definition}`; never enters model teaching. |
 | `storedScheme?` | Non-null string persisted to `entries.scheme` when different from `name` (defaults to `name`). |
 

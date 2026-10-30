@@ -16,7 +16,7 @@ import { Problems,
     type FunctionalityServiceDefinition,
     type JsonSchema,
     type ProblemDetails,
-    type WorkspaceCapabilityIdentity, Validator, isRecord } from "@plurnk/plurnk-contracts";
+    type WorkspaceCapabilityIdentity, isRecord } from "@plurnk/plurnk-contracts";
 import { previewOccurrences, validateConfiguration } from "./config.ts";
 import { DEFINITION_SCHEMA, DefinitionError, readDefinition, type ScheduleDefinition } from "./definition.ts";
 import { describeRule, nextOccurrence, normalizeRule, parseRule, ScheduleRuleError, upcoming, type ParsedRule } from "./rules.ts";
@@ -78,16 +78,15 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
     readonly definitionSchema: JsonSchema = DEFINITION_SCHEMA;
     readonly example = {
         alias: "standup",
-        definition: {
-            rule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20",
-            target: "session://scribe",
-            prompt: "Summarize yesterday's log entries for the team.",
-        },
+        rule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20",
+        target: "session://scribe",
+        prompt: "Summarize yesterday's log entries for the team.",
     };
     readonly docsDir = fileURLToPath(new URL("..", import.meta.url));
     readonly discovery: FunctionalityDiscovery = {
-        inputs: ["source"],
-        details: "`source` is rule text: RFC 5545, an optional DTSTART line and one RRULE line, or bare `FREQ=…` parts. One inert candidate comes back. Its summary opens with the current time in the effective zone and previews the first occurrences; its definition carries the rule as it would be stored, to `add` with a `target` and a `prompt`. Nothing is persisted.",
+        inputs: ["rule"],
+        emptyListsAll: true,
+        details: "`{}` tells the current time in the effective zone. `rule` is rule text: RFC 5545, an optional DTSTART line and one RRULE line, or bare `FREQ=…` parts. One inert candidate comes back: its summary opens with the current time in the effective zone and previews the first occurrences; its definition carries the rule as it would be stored, to `add` with a `target` and a `prompt`. Nothing is persisted.",
     };
 
     readonly #env: NodeJS.ProcessEnv;
@@ -103,11 +102,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
         this.#env = env;
         this.#report = options.report ?? ((message, cause) => { console.error(`${message}:`, cause); });
         this.#scheduler = new Scheduler({ ...options, report: this.#report, settled: (workspaceId) => { this.#settled(workspaceId); } });
-        this.scheme = new ScheduleResources(async (workspaceId) => {
-            if (this.#handle === null) throw new Error("schedule family is not attached");
-            const listing = await this.#handle.invoke("list", {}, { workspaceId });
-            return Validator.assertFunctionalityListResult(listing.body).definitions;
-        });
+        this.scheme = new ScheduleResources(() => this.#handle);
         this.#readAt = this.#scheduler.now();
     }
 
@@ -125,12 +120,19 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
         return [...this.#service].map(([alias, entry]) => ({ alias, ...entry }));
     }
 
-    // {§schedule-rule} — the one place the time is told: on demand, beside the rule it reads.
+    // {§schedule-rule} — the one place the time is told: on demand, alone or beside the rule it reads.
     async discover(query: FunctionalityDiscoverQuery, identity: FunctionalityIdentity): Promise<readonly FunctionalityCandidate[]> {
-        const source = query.source!;
         const zone = await this.#zone(identity);
         const now = this.#scheduler.now();
-        const parsed = this.#read(source, zone, now);
+        if (query.rule === undefined) {
+            return [{
+                summary: `now ${isoString(zoned(now, zone))}`,
+                definition: {},
+                provenance: { kind: "rule", source: zone },
+            }];
+        }
+        const rule = query.rule;
+        const parsed = this.#read(rule, zone, now);
         const preview = upcoming(parsed, now, previewOccurrences(this.#env)).map(isoString);
         return [{
             alias: parsed.rule.options().freq.toLowerCase(),
@@ -141,16 +143,17 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
                 ...(parsed.bounded ? [] : ["unbounded: add needs COUNT or UNTIL"]),
             ].join("; "),
             definition: { rule: parsed.text },
-            provenance: { kind: "rule", source },
+            provenance: { kind: "rule", source: rule },
         }];
     }
 
     async admit(input: unknown, identity: FunctionalityIdentity): Promise<FunctionalityAdmission<ScheduleDefinition>> {
         const params = isRecord(input) ? input : {};
         if (typeof params.alias !== "string") throw failure("alias-required", 400, "schedule definition needs an alias.", { retryable: false });
+        const { alias, ...rest } = params;
         let definition: ScheduleDefinition;
         try {
-            definition = readDefinition(params.definition);
+            definition = readDefinition(rest);
         } catch (cause) {
             if (!(cause instanceof DefinitionError)) throw cause;
             throw failure("definition-invalid", 400, "The schedule definition is invalid.", { errors: cause.errors, retryable: false }, cause);
@@ -160,7 +163,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
         // {§schedule-rule}
         if (!parsed.bounded) throw failure("rule-unbounded", 400, "A workspace rule ends: give the RRULE a COUNT or an UNTIL.", { retryable: false });
         // {§schedule-delivery} — the rule was read now; its first arming is judged from now.
-        return { alias: params.alias, definition: { ...definition, rule: parsed.text }, preparation: now };
+        return { alias, definition: { ...definition, rule: parsed.text }, preparation: now };
     }
 
     async prepare(preparation: FunctionalityPreparation<ScheduleDefinition, Snapshot>): Promise<FunctionalityPrepared<never, Snapshot>> {

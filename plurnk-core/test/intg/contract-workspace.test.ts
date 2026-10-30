@@ -1641,14 +1641,14 @@ test("{§tools-resource-materialization} an ignored or excluded AGENTS.md is nev
                 assert.equal(finalStatus, 200);
                 const sessionId = (await db.test_get_session_id_by_loop.get<{ session_id: number }>({ loop_id: loopId }))!.session_id;
                 const entry = (pathname: string) => db.crud_find_workspace_entry.get<{ id: number }>({
-                    workspace_id: workspaceId, scheme: "workspace", authority: "", pathname,
+                    workspace_id: workspaceId, scheme: "file", authority: "", pathname,
                 });
-                assert.equal(await entry("/_plurnk/AGENTS.md"), undefined, "a gitignored root AGENTS.md is not projected");
-                assert.equal(await entry("/_plurnk/instructions/packages/secret/AGENTS.md"), undefined, "a gitignored nested AGENTS.md is not projected");
-                assert.equal(await entry("/_plurnk/instructions/packages/hidden/AGENTS.md"), undefined, "an excluded nested AGENTS.md is not projected");
-                assert.ok(await entry("/_plurnk/instructions/packages/web/AGENTS.md"), "an admitted nested AGENTS.md still is");
+                assert.equal(await entry("AGENTS.md"), undefined, "a gitignored root AGENTS.md is not admitted");
+                assert.equal(await entry("packages/secret/AGENTS.md"), undefined, "a gitignored nested AGENTS.md is not admitted");
+                assert.equal(await entry("packages/hidden/AGENTS.md"), undefined, "an excluded nested AGENTS.md is not admitted");
+                assert.ok(await entry("packages/web/AGENTS.md"), "an admitted nested AGENTS.md still is");
                 const rows = await db.test_log_entries_by_session.all<{ op: string | null; pathname: string; status_rx: number }>({ session_id: sessionId });
-                assert.equal(rows.some((r) => r.pathname === "/_plurnk/AGENTS.md" && r.status_rx >= 400), false, "no turn-0 stunt fires for an excluded root AGENTS.md — nothing 404s");
+                assert.equal(rows.some((r) => r.pathname === "AGENTS.md" && r.status_rx >= 400), false, "no turn-0 stunt fires for an excluded root AGENTS.md — nothing 404s");
             } finally { ws.close(); }
         });
     } finally {

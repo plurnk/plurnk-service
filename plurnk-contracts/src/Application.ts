@@ -315,7 +315,13 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             sub,
             rest,
             actionName,
-            params: query.length > 0 ? { query, source: query } : {},
+            params: query.length === 0
+                ? {}
+                : family === "skills"
+                  ? { source: query }
+                  : family === "schedule"
+                    ? { rule: query }
+                    : { query },
         };
     }
     if (sub === "enable" || sub === "disable" || sub === "remove") {
@@ -332,10 +338,10 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
         const alias = rest[0] ?? "";
         const target = rest[1] ?? "";
         const extraArgs = rest.slice(2);
-        const definition = /^https?:\/\//iu.test(target)
-            ? { name: alias, type: "streamable-http", url: target }
+        const params = /^https?:\/\//iu.test(target)
+            ? { alias, type: "streamable-http", url: target }
             : {
-                  name: alias,
+                  alias,
                   type: "stdio",
                   command: target,
                   ...(extraArgs.length > 0 ? { args: extraArgs } : {}),
@@ -345,14 +351,14 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             sub,
             rest,
             actionName: `workspace.mcp.${sub}`,
-            params: { alias, definition },
+            params,
         };
     }
     if (sub === "complete" && family === "mcp") {
         let server = "";
         let ref: Record<string, string> = { type: "ref/prompt", name: "" };
         let argTokens: readonly string[] = [];
-        const uriMatch = /^([a-z0-9-]+):\/\/\/(prompts|resources)\/(.+)$/iu.exec(rest[0] ?? "");
+        const uriMatch = /^([a-z0-9_-]+):\/\/\/(prompts|resources)\/(.+)$/iu.exec(rest[0] ?? "");
         if (uriMatch) {
             server = uriMatch[1] ?? "";
             const kind = (uriMatch[2] ?? "").toLowerCase();
@@ -400,17 +406,16 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
         const source = rest[1] ?? "";
         const refIdx = rest.indexOf("--ref");
         const ref = refIdx >= 0 ? rest[refIdx + 1] : undefined;
-        const definition = {
-            name: alias,
-            source,
-            ...(ref !== undefined ? { ref } : {}),
-        };
         return {
             scopePrefix,
             sub,
             rest,
             actionName: `workspace.skills.${sub}`,
-            params: { alias, definition },
+            params: {
+                alias,
+                source,
+                ...(ref !== undefined ? { ref } : {}),
+            },
         };
     }
     if (sub === "add" && family === "members") {
@@ -430,7 +435,7 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             sub,
             rest,
             actionName: `${scopePrefix}.env.${sub}`,
-            params: { alias, definition: { value } },
+            params: { alias, value },
         };
     }
     if ((sub === "add" || sub === "replace") && family === "schedule") {
@@ -444,7 +449,7 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             sub,
             rest,
             actionName: `workspace.schedule.${sub}`,
-            params: { alias, definition: { rule, target, prompt } },
+            params: { alias, rule, target, prompt },
         };
     }
     return {

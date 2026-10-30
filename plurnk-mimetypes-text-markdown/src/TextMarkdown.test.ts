@@ -204,7 +204,7 @@ describe("{§markdown-symbols} deepJson is the block-token tree", () => {
 });
 
 describe("{§mimetype-channel-selection} summary is frontmatter description, else the Summary paragraph", () => {
-    it("{§markdown-symbols} derives the first paragraph directly under the first exact Summary H2", () => {
+    it("{§markdown-symbols} derives the first paragraph or code block directly under the first exact Summary H2", () => {
         const h = new TextMarkdown(metadata);
         const source = [
             "# Tool",
@@ -221,6 +221,17 @@ describe("{§mimetype-channel-selection} summary is frontmatter description, els
             "Use JSON arguments.",
         ].join("\n");
         assert.equal(h.summary(source), "Read one issue and its\ndiscussion.");
+        const fenced = [
+            "# gitea",
+            "",
+            "## Summary",
+            "",
+            "```gitea (issue_read|list_issues) <!-- Manage Gitea -->",
+            "```",
+            "",
+            "## Tools",
+        ].join("\n");
+        assert.equal(h.summary(fenced), "```gitea (issue_read|list_issues) <!-- Manage Gitea -->\\n```");
     });
 
     it("{§markdown-symbols} ignores non-exact, nested, fenced, and paragraph-less Summary headings", () => {

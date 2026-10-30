@@ -3,10 +3,10 @@
 // entries; anything that needs a person's input first (a template variable, a required argument with
 // no value) has no entry. Nothing here installs, launches, or connects.
 import { isRecord } from "@plurnk/plurnk-contracts";
-import type { McpStdioServerDefinition, McpStreamableHttpServerDefinition } from "@plurnk/plurnk-contracts";
+import type { McpServerDefinition } from "@plurnk/plurnk-contracts";
 import { outboundFetch } from "@plurnk/plurnk-meta";
 
-type McpServerEntry = Omit<McpStdioServerDefinition, "name"> | Omit<McpStreamableHttpServerDefinition, "name">;
+type McpServerEntry = McpServerDefinition;
 
 interface Argument {
     readonly type?: unknown;

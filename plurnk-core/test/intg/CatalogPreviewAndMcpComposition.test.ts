@@ -82,7 +82,7 @@ test("{§actor-boundary} PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the
                 assert.equal(cf.status_rx, 200, "the catalog FIND returns the scheme's rows (200)");
                 const parsed = JSON.parse(cf.rx) as { content?: string; results?: unknown[] };
                 const items = parsed.results ?? (parsed.content !== undefined ? JSON.parse(parsed.content) as unknown[] : []);
-                assert.equal(items.length, 4, "the project-file cap does not govern the model's own memory map");
+                assert.equal(items.length, 3, "the project-file cap does not govern the model's own memory map");
             } finally { ws.close(); }
         });
 
@@ -225,13 +225,13 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                 const commons = rows.find((candidate) => candidate.op === "FIND" && candidate.scheme === "workspace" && candidate.hostname === null && candidate.pathname === "/*");
                 assert.ok(commons !== undefined);
                 const map = JSON.parse((JSON.parse(commons.rx) as { content: string }).content) as Array<Array<{ path: string; items?: number; tokens?: number }>>;
-                assert.deepEqual(map.map(([item]) => item.path), ["workspace:///_plurnk/**", "workspace:///a.md", "workspace:///nested/**"]);
+                assert.deepEqual(map.map(([item]) => item.path), ["workspace:///a.md", "workspace:///nested/**"]);
                 assert.equal(map.find(([item]) => item.path === "workspace:///nested/**")?.[0]?.items, 1,
                     "the automatic shallow map retains the nested subtree as a complete aggregate");
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 const ops = initializationRows.map(({ op }) => op);
                 assert.deepEqual([ops[0], ops.at(-1)], ["NOTE", "NOTE"], "initialization opens and closes with its NOTEs");
-                assert.ok(ops.length > 2 && ops.slice(1, -1).every((op) => op === "FIND"),
+                assert.ok(ops.length > 2 && ops.slice(1, -1).every((op) => op === "FIND" || op === "plurnk_mcp"),
                     "between them only the environment surveys: no READ of its own program, no reasoning demonstration");
                 for (const row of initializationRows.filter(({ op }) => op === "FIND")) {
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
@@ -257,7 +257,7 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                 assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), [],
                     "the program reaches the first request through its results, never assistant history");
                 assert.deepEqual(
-                    program.content.split("\n\n").flatMap((block) => /^```([A-Z]+)/.exec(block)?.[1] ?? []),
+                    program.content.split("\n\n").flatMap((block) => /^```([A-Za-z0-9_]+)/.exec(block)?.[1] ?? []),
                     initializationRows.map(({ op }) => op),
                     "{§fence-pairing}: every operation is separated by a blank line and has exactly one ordinary receipt",
                 );
@@ -281,18 +281,15 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 const sessionName = await SessionName.forId(db, modelSessionId);
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const finds = rows.filter((r) => r.op === "FIND");
-                // Nothing is in it: no project files, agents or members definitions, and the session is new.
+                // Nothing is in it: no project files, workspace entries, agents or members definitions, and the session is new.
                 assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
                     { scheme: "skill", hostname: "*", pathname: "/SKILL.md" },
-                    { scheme: "workspace", hostname: null, pathname: "/_plurnk/plurnk/*.md" },
-                    { scheme: "workspace", hostname: null, pathname: "/_plurnk/tools/*.md" },
-                    { scheme: "workspace", hostname: null, pathname: "/_plurnk/tools/plurnk.md" },
-                    { scheme: "workspace", hostname: null, pathname: "/*" },
+                    { scheme: "plurnk", hostname: null, pathname: "/*.md" },
                     { scheme: "session", hostname: sessionName, pathname: "/*" },
                 ], "the surveys that select something and the session scratch survey run, in their taught order; the other empty surfaces are left out ({§session-initialization-entry})");
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
-                    [null, null, null, null, "workspace knowledgebase entries", "session knowledgebase entries"],
+                    [null, null, "session knowledgebase entries"],
                     "asides name what each namespace is",
                 );
                 for (const row of finds) {
@@ -317,24 +314,24 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     ?? (skillsResult.content === undefined ? [] : JSON.parse(skillsResult.content) as unknown[])) as Array<Array<{ path: string; aside?: string }>>;
                 assert.deepEqual(skillItems.flat().map(({ path }) => path), ["skill://plurnk/SKILL.md"], "an empty project still has Plurnk's ordinary service skill");
                 assert.ok(skillItems[0]?.[0]?.aside, "the skill arrives with its standard description");
-                const toolSurvey = finds.find((r) => r.pathname === "/_plurnk/plurnk/*.md");
+                const toolSurvey = finds.find((r) => r.scheme === "plurnk" && r.pathname === "/*.md");
                 const toolResult = JSON.parse(toolSurvey!.rx) as { content?: string; results?: unknown[] };
                 const toolItems = (toolResult.results
                     ?? (toolResult.content === undefined ? [] : JSON.parse(toolResult.content) as unknown[])) as Array<Array<{ path: string; aside?: string }>>;
-                const shell = toolItems.flat().find(({ path }) => path === "workspace:///_plurnk/plurnk/sh.md");
+                const shell = toolItems.flat().find(({ path }) => path === "plurnk:///sh.md");
                 assert.equal(
                     shell?.aside,
                     `\`\`\`sh <!-- ${Shell.summary(Shell.current())} -->\ngit status --short\n\`\`\``,
                     "Turn 0 teaches a compact executable witness with its aside naming the shell that runs ({§executor-subprocess}), as plain text rather than a code span",
                 );
-                const python = toolItems.flat().find(({ path }) => path === "workspace:///_plurnk/plurnk/python3.md");
+                const python = toolItems.flat().find(({ path }) => path === "plurnk:///python3.md");
                 assert.equal(
                     python?.aside,
                     "```python3 <!-- Run Python 3 code or scripts. -->\nprint(42)\n```",
                     "the interpreter aside teaches an executable inline program without requiring a document READ",
                 );
                 for (const [index, name] of ["https", "session", "wss"].entries()) {
-                    const resource = toolItems.flat().find(({ path }) => path === `workspace:///_plurnk/plurnk/${name}.md`);
+                    const resource = toolItems.flat().find(({ path }) => path === `plurnk:///${name}.md`);
                     assert.ok(resource !== undefined && resource.aside !== undefined && resource.aside.trim() !== "",
                         `${name} reference depth is visible with an orienting aside`);
                     const response = await rpcCall(ws, 10 + index, "entry.read", { target: resource.path });
@@ -343,14 +340,14 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     assert.ok(reference.entry?.channels.body.content.replace(/\s+/g, " ").includes(resource.aside.replace(/\s+/g, " ")),
                         `${name} orientation comes from the readable reference, without pinning its prose`);
                 }
-                const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "workspace" && row.hostname === null && row.pathname === "/_plurnk/plurnk/sh.md");
+                const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "plurnk" && row.hostname === null && row.pathname === "/sh.md");
                 assert.equal(shellSample, undefined, "Turn 0 does not privilege the shell skill with an automatic READ");
                 const initializationTurnId = finds[0].turn_id;
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "NOTE"],
-                    "initialization contains its opening NOTE, the six surveys, its closing NOTE, and nothing else",
+                    ["NOTE", "FIND", "FIND", "plurnk_mcp", "FIND", "NOTE"],
+                    "initialization contains its opening NOTE, the surveys, its closing NOTE, and nothing else",
                 );
                 assert.equal(initializationRows.some(({ scheme }) => scheme === "ops"), false,
                     "turn 0 reads none of its own program, and it announces no emission ({§turn-source-resources})");
@@ -522,22 +519,22 @@ for (const standing of ["absent", "ignored", "untracked", "tracked", "excluded"]
                         const { loopId, finalStatus } = (await runLoopToTerminal(ws, 2, { prompt: "go" })) as { loopId: number; finalStatus: number };
                         assert.equal(finalStatus, 200);
                         const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
-                            workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/_plurnk/AGENTS.local.md",
+                            workspace_id: workspaceId, scheme: "file", authority: "", pathname: "AGENTS.local.md",
                         });
                         assert.equal(entry !== undefined, projected, projected ? "the local file is projected" : "nothing is projected");
                         if (entry !== undefined) {
                             const body = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "body" });
                             assert.equal(body?.content, LOCAL, "the projection mirrors the file");
                         }
-                        const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string; hostname: string | null; pathname: string; status_rx: number }>({ loop_id: loopId });
-                        const reads = rows.filter((row) => row.op === "READ" && row.scheme === "workspace" && row.hostname === null && /^\/_plurnk\/AGENTS(\.local)?\.md$/u.test(row.pathname));
+                        const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string | null; hostname: string | null; pathname: string; status_rx: number }>({ loop_id: loopId });
+                        const reads = rows.filter((row) => row.op === "READ" && row.scheme === null && row.hostname === null && /^AGENTS(\.local)?\.md$/u.test(row.pathname));
                         assert.deepEqual(reads.map(({ pathname, status_rx }) => [pathname, status_rx]),
-                            [...withAgents ? [["/_plurnk/AGENTS.md", 200]] : [], ...projected ? [["/_plurnk/AGENTS.local.md", 200]] : []],
+                            [...withAgents ? [["AGENTS.md", 200]] : [], ...projected ? [["AGENTS.local.md", 200]] : []],
                             "turn 0 reads AGENTS.md, then its local override, each found");
                         const nested = await db.crud_find_workspace_entry.get<{ id: number }>({
-                            workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/_plurnk/instructions/packages/web/AGENTS.local.md",
+                            workspace_id: workspaceId, scheme: "file", authority: "", pathname: "packages/web/AGENTS.local.md",
                         });
-                        assert.equal(nested !== undefined, projected, "a nested AGENTS.local.md is projected under _plurnk/instructions/<subtree>/AGENTS.local.md unless absent or excluded");
+                        assert.equal(nested !== undefined, projected, "a nested AGENTS.local.md is projected at packages/web/AGENTS.local.md unless absent or excluded");
                     } finally { ws.close(); }
                 });
             } finally {
@@ -675,7 +672,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
         return (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [item.statement] }))[0];
     };
     const toolsDocument = async (extension = "md"): Promise<string> => {
-        const document = await read(`workspace:///_plurnk/tools/fixture.${extension}`);
+        const document = await read(`mcp:///fixture.${extension}`);
         assert.equal(document.status, 200);
         assert.equal(typeof document.content, "string");
         return document.content as string;
@@ -728,7 +725,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     assert.match(document, /fixture \(third\)/);
     assert.doesNotMatch(document, /fixture \((?:first|second)\)/);
     assert.deepEqual(await names(), ["third"]);
-    assert.equal((await read("workspace:///_plurnk/tools/fixture/first.json")).status, 404,
+    assert.equal((await read("mcp:///fixture/first.json")).status, 404,
         "refresh removes the old per-tool schema as well as its catalog definition");
     assert.equal(provider.received.length, 0, "catalog updates do not invoke the model");
     const terminated = Promise.withResolvers<void>();
@@ -746,7 +743,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     assert.match(provider.received[1].map(chatMessageText).join("\n"), /Observed third from the server\./);
     await daemon.invokeModuleAction("workspace.mcp.disable", { alias: "fixture" }, { scope: "workspace", workspaceId });
     for (const path of ["fixture.md", "fixture.json", "fixture/third.json"]) {
-        assert.equal((await read(`workspace:///_plurnk/tools/${path}`)).status, 404,
+        assert.equal((await read(`mcp:///${path}`)).status, 404,
             `disabled tools leave no generated resource: ${path}`);
     }
 };

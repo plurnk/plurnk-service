@@ -9,7 +9,8 @@
 // workspace.
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { errnoCode, PathSyntax, isRecord, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type JsonSchema, type FunctionalityAdmission, type FunctionalityCaller, type FunctionalityOutcome, type FunctionalityPreparation, type FunctionalityPrepared, type FunctionalityServiceDefinition, type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
+import { errnoCode, PathSyntax, Problems, Validator, isRecord, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type FunctionalityFamilyHandle, type JsonSchema, type FunctionalityAdmission, type FunctionalityCaller, type FunctionalityOutcome, type FunctionalityPreparation, type FunctionalityPrepared, type FunctionalityServiceDefinition, type KillStatement, type ParsedPath, type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
+import { Results as SchemeResults, type EditBatchResult, type RepresentationPreparationRequest, type RepresentationPreparationResult, type ResolvedEditStatement, type RuntimeSchemeFacet, type SchemeCtx, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { Db } from "../core/Db.ts";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type Engine from "../core/Engine.ts";
@@ -182,8 +183,7 @@ export const documentName = (glob: string): string =>
     encodeURIComponent(glob).replace(/[!'*]/gu, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
 
 // {§tools-resource-materialization} — each enabled definition is one generated document under
-// `workspace:///_plurnk/members/`, surveyed at turn 0 like every family's enabled definitions:
-// what the glob is, whose it is, and what it resolved to.
+// `plurnk:///members/`: what the glob is, whose it is, and what it resolved to.
 const membersDocument = (definition: MembersDefinition, resolution: MembersResolution): { pathname: string; content: string } => {
     const noun = resolution.effect === "exclude" ? "member" : "file";
     const ignored = resolution.ignored > 0 ? ` (${count(resolution.ignored, "match")} ignored)` : "";
@@ -218,7 +218,105 @@ const isFile = async (path: string): Promise<boolean> => {
     }
 };
 
-export default class MembersFunctionality implements FunctionalityAdapter<never, never, MembersDefinition, MembersSnapshot> {
+const STREAM = /^[0-9a-f]{8}$/u;
+const SCHEME_OWNER = "members:resource";
+
+const globOfPathname = (pathname: string): string | null => {
+    const raw = pathname.replace(/^\//u, "");
+    if (raw.length === 0 || STREAM.test(raw)) return null;
+    try {
+        return decodeURIComponent(raw);
+    } catch {
+        return null;
+    }
+};
+
+class MembersResources implements RuntimeSchemeFacet {
+    readonly manifest: NonNullable<RuntimeSchemeFacet["manifest"]> = {
+        writableBy: ["model", "client"],
+    };
+    readonly #handle: () => FunctionalityFamilyHandle;
+
+    constructor(handle: () => FunctionalityFamilyHandle) {
+        this.#handle = handle;
+    }
+
+    claims(pathname: string): boolean {
+        return !STREAM.test(pathname.replace(/^\//u, ""));
+    }
+
+    static #named(target: ParsedPath | null): { file: string; pathname: string } | SchemeResult {
+        if (target === null || target.kind !== "url" || (target.hostname ?? "") !== "") {
+            return SchemeResults.failure(SCHEME_OWNER, "target-required", 400, "The operation needs a members:///<glob> target.", {}, { retryable: false });
+        }
+        const file = globOfPathname(target.pathname);
+        if (file === null) {
+            return SchemeResults.failure(SCHEME_OWNER, "not-found", 404, "The members resource does not exist.", {}, { target: target.raw, retryable: false });
+        }
+        return { file, pathname: target.pathname };
+    }
+
+    async prepareRepresentation(request: RepresentationPreparationRequest, ctx: SchemeCtx): Promise<RepresentationPreparationResult> {
+        if (request.authority !== "") return SchemeResults.failure(SCHEME_OWNER, "authority-invalid", 400, "Members resources use an empty authority.");
+        const file = globOfPathname(request.pathname);
+        if (file === null) return SchemeResults.failure(SCHEME_OWNER, "not-found", 404, "The members resource does not exist.");
+        const listing = await this.#handle().invoke("list", {}, { workspaceId: ctx.workspaceId });
+        const content = Validator.assertFunctionalityListResult(listing.body).definitions.find((entry) => entry.alias === file);
+        if (content === undefined) return SchemeResults.failure(SCHEME_OWNER, "not-found", 404, "The members resource does not exist.");
+        const result = await ctx.entries.write(request.pathname, {
+            channels: { results: { content: JSON.stringify(content, null, 2), mimetype: "application/json" } },
+        });
+        return result.status >= 400 ? { status: result.status, problem: result.problem } : { status: 200 };
+    }
+
+    async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult> {
+        const statement = statements[0];
+        if (statement === undefined || statements.length > 1 || statement.lineMarker !== null || statement.matcher !== null) {
+            return SchemeResults.failure(SCHEME_OWNER, "value-whole", 400, "One EDIT adds one members glob, whole.", {}, { retryable: false });
+        }
+        const named = MembersResources.#named(statement.target);
+        if ("status" in named) return named;
+        try {
+            await this.#handle().invoke(
+                "add",
+                { files: [named.file] },
+                { workspaceId: ctx.workspaceId, sessionId: ctx.sessionId },
+                "operation",
+            );
+        } catch (cause) {
+            const problem = Problems.fromError(cause);
+            if (problem === null) throw cause;
+            return { status: problem.status, problem };
+        }
+        await ctx.entries.delete(named.pathname);
+        return { status: 200 };
+    }
+
+    async kill(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult> {
+        if (statement.lineMarker !== null || statement.matcher !== null) {
+            return SchemeResults.failure(SCHEME_OWNER, "value-whole", 400, "KILL retires the whole members definition.", {}, { retryable: false });
+        }
+        const named = MembersResources.#named(statement.target);
+        if ("status" in named) return named;
+        try {
+            await this.#handle().invoke(
+                "remove",
+                { file: named.file },
+                { workspaceId: ctx.workspaceId, sessionId: ctx.sessionId },
+                "operation",
+            );
+        } catch (cause) {
+            const problem = Problems.fromError(cause);
+            if (problem === null) throw cause;
+            return { status: problem.status, problem };
+        }
+        await ctx.entries.delete(named.pathname);
+        return { status: 200 };
+    }
+}
+
+export default class MembersFunctionality implements FunctionalityAdapter<never, RuntimeSchemeFacet, MembersDefinition, MembersSnapshot> {
+    readonly scheme: RuntimeSchemeFacet | undefined;
     readonly family = MEMBERS_FAMILY;
     readonly namespaceOwner = MEMBERS_OWNER;
     readonly summary = "Manage file membership";
@@ -242,10 +340,11 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
     readonly #engine: () => Engine;
     readonly #env: NodeJS.ProcessEnv;
 
-    constructor({ db, engine, environ = process.env }: { db: Db; engine: () => Engine; environ?: NodeJS.ProcessEnv }) {
+    constructor({ db, engine, environ = process.env, handle }: { db: Db; engine: () => Engine; environ?: NodeJS.ProcessEnv; handle?: () => FunctionalityFamilyHandle }) {
         this.#db = db;
         this.#engine = engine;
         this.#env = environ;
+        this.scheme = handle === undefined ? undefined : new MembersResources(handle);
     }
 
     async available(): Promise<readonly FunctionalityServiceDefinition<MembersDefinition>[]> {

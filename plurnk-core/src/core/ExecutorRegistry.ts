@@ -31,10 +31,9 @@ export interface RegistryEntry {
     // {§tools-resource-materialization} — the generated-doc root for this
     // runtime; absent = the internal skills namespace.
     readonly resourcesPath?: string;
-    // Expand this runtime's tool tree into the turn-0 tools survey.
-    readonly expandTools?: boolean;
     readonly available: boolean;
     readonly detail: string | undefined;
+    readonly workspaceDecl?: (workspaceId: number) => { readonly summary: RuntimeSummaryDecl; readonly details: string };
     readonly configurationError?: never;
 }
 
@@ -225,7 +224,7 @@ export default class ExecutorRegistry {
         probeTimeoutMs?: number;
         cwd?: string;   // discovery root — the dir whose node_modules holds the exec extensions
         discoverFn?: () => Promise<{
-            registry: ReadonlyMap<string, { runtime: string; glyph: string; summary: RuntimeSummaryDecl; invocation: RuntimeInvocationDecl; details: string; resourcesPath?: string; expandTools?: boolean; packageName: string }>;
+            registry: ReadonlyMap<string, { runtime: string; glyph: string; summary: RuntimeSummaryDecl; invocation: RuntimeInvocationDecl; details: string; resourcesPath?: string; packageName: string }>;
             packageAttributions?: PackageAttributions;
             skipped?: string[];
         }>;
@@ -257,7 +256,6 @@ export default class ExecutorRegistry {
                 invocation: info.invocation,
                 details: info.details,
                 ...(info.resourcesPath === undefined ? {} : { resourcesPath: info.resourcesPath }),
-                ...(info.expandTools === undefined ? {} : { expandTools: info.expandTools }),
             };
             try {
                 const timeoutMs = probeTimeoutMs ?? ExecutorRegistry.validateConfiguration();
@@ -310,7 +308,12 @@ export default class ExecutorRegistry {
                 if (entry !== undefined) return entry;
             }
         }
-        return this.#byTag.get(tag);
+        const base = this.#byTag.get(tag);
+        if (base !== undefined && workspaceId !== undefined && base.workspaceDecl !== undefined) {
+            const decl = base.workspaceDecl(workspaceId);
+            return { ...base, summary: decl.summary, details: decl.details };
+        }
+        return base;
     }
 
     invalidateToolRegistries(workspaceId?: number): void {
@@ -363,5 +366,36 @@ export default class ExecutorRegistry {
             }
         }
         return [...tags].toSorted((left, right) => left.localeCompare(right));
+    }
+
+    inProcessToolServers(workspaceId?: number): ReadonlyArray<{
+        readonly alias: string;
+        readonly state: "active" | "unavailable";
+        readonly description?: string;
+        readonly docs: string;
+    }> {
+        const out: Array<{
+            readonly alias: string;
+            readonly state: "active" | "unavailable";
+            readonly description?: string;
+            readonly docs: string;
+        }> = [];
+        for (const tag of this.availableRuntimes(workspaceId)) {
+            const entry = this.entry(tag, workspaceId);
+            if (entry === undefined || entry.resourcesPath !== "/tools") continue;
+            if (entry.namespaceOwner.kind === "module" && entry.namespaceOwner.name === "@plurnk/plurnk-mcp") continue;
+            const registry = this.toolRegistry(tag, workspaceId);
+            if (registry === null || registry.tools.length === 0) continue;
+            const description = typeof entry.summary === "string"
+                ? entry.summary
+                : entry.summary.description;
+            out.push({
+                alias: tag,
+                state: entry.available ? "active" : "unavailable",
+                ...(description === undefined || description.length === 0 ? {} : { description }),
+                docs: `mcp:///${tag}.md`,
+            });
+        }
+        return out;
     }
 }

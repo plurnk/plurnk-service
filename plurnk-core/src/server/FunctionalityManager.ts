@@ -1,15 +1,29 @@
-// {§functionality-model-projection} — the model-facing `plurnk` runtime
-// executor: one tool per workspace Functionality family plus `question`,
-// published under `workspace:///_plurnk/tools/plurnk.md` and
-// `workspace:///_plurnk/tools/plurnk/<tool>.json` and expanded at turn 0.
-import { BaseExecutor } from "@plurnk/plurnk-execs";
-import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl, RuntimeRegisteredTool, RuntimeToolRegistry } from "@plurnk/plurnk-execs";
+// {§functionality-model-projection} — the model-facing `plurnk_<family>` runtime
+// executors: one runtime per workspace Functionality family (`plurnk_env`,
+// `plurnk_mcp`, `plurnk_skills`, `plurnk_schedule`, `plurnk_members`) whose
+// tools are its lifecycle verbs (`list`, `discover`, `add`, `replace`,
+// `enable`, `disable`, `remove`), alongside `plurnk_question (ask)`
+// ({§question-tool}), published under `mcp:///plurnk_*.md`.
+import { BaseExecutor, ToolInputSchema } from "@plurnk/plurnk-execs";
+import type {
+    ChannelDecl,
+    Effect,
+    ExecArgs,
+    ExecResult,
+    RuntimeAvailability,
+    RuntimeDecl,
+    RuntimeRegisteredTool,
+    RuntimeToolRegistry,
+} from "@plurnk/plurnk-execs";
 import type { FunctionalityDiscovery } from "@plurnk/plurnk-modules";
 import { Problems, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import ErrorDetail from "../core/ErrorDetail.ts";
+import type ExecutorRegistry from "../core/ExecutorRegistry.ts";
+import type { RegistryEntry, RuntimeRegistryRegistration } from "../core/ExecutorRegistry.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
-import QuestionTool, { questionRegisteredTool } from "../schemes/QuestionTool.ts";
+import QuestionTool, { plurnkQuestionRuntimeDecl } from "../schemes/QuestionTool.ts";
+export { plurnkQuestionRuntimeDecl };
 import type Functionality from "./Functionality.ts";
 import type { FunctionalityConfigurationFailure } from "./Functionality.ts";
 
@@ -69,50 +83,128 @@ export type FunctionalityManagerOptions =
         readonly coordinator: Functionality;
         readonly workspaceId?: number;
         readonly sessionId?: number;
-        readonly entries: readonly FunctionalityFamilyEntry[] | ((workspaceId?: number) => readonly FunctionalityFamilyEntry[]);
-        readonly includeQuestion?: boolean | ((workspaceId?: number) => boolean);
+        readonly executors?: () => ExecutorRegistry | undefined;
+        readonly entry: FunctionalityFamilyEntry | ((workspaceId?: number) => FunctionalityFamilyEntry);
     }
     | ({
         readonly coordinator: Functionality;
         readonly workspaceId?: number;
         readonly sessionId?: number;
-        readonly includeQuestion?: boolean | ((workspaceId?: number) => boolean);
+        readonly executors?: () => ExecutorRegistry | undefined;
     } & FunctionalityFamilyEntry);
 
 const isFunctionalityVerb = (value: unknown): value is FunctionalityVerb =>
     typeof value === "string" && (FUNCTIONALITY_VERBS as readonly string[]).includes(value);
 
-export const plurnkRuntimeDecl: RuntimeDecl & { readonly glyph: string } = {
-    name: "plurnk",
-    glyph: "🔌",
-    summary: { from: "tools", description: "Manage workspace capabilities and ask the user questions." },
-    resourcesPath: "/tools",
-    expandTools: true,
-    invocation: {
-        body: { role: "JSON arguments", required: false, mimetype: "application/json" },
-        target: { role: "Plurnk tool", required: true, kind: "literal" },
-        example: { target: "members", body: '{"verb": "list"}' },
-    },
-};
-
 const stripLeadingHeading = (markdown: string): string =>
     markdown.trim().replace(/^# [^\n]*\n+/u, "").trim();
+
+export const plurnkFamilyRuntimeDecl = (entry: FunctionalityFamilyEntry): RuntimeDecl & { readonly glyph: string } => {
+    const firstVerb = FUNCTIONALITY_VERBS.find((verb) => entry.inputSchemas[verb] !== undefined) ?? "list";
+    return {
+        name: `plurnk_${entry.family}`,
+        glyph: "🔌",
+        summary: {
+            from: "tools",
+            description: FunctionalityManager.familySummary(entry),
+        },
+        resourcesPath: "/tools",
+        invocation: {
+            body: { role: "JSON arguments", required: false, mimetype: "application/json" },
+            target: { role: `${entry.family} lifecycle verb`, required: true, kind: "literal" },
+            example: { target: firstVerb, body: "{}" },
+        },
+        details: FunctionalityManager.familyDetails(entry),
+    };
+};
+
+export const questionRuntimeEntry = (): RegistryEntry => ({
+    executor: new QuestionTool(),
+    namespaceOwner: { kind: "module", name: "core" },
+    glyph: plurnkQuestionRuntimeDecl.glyph,
+    summary: plurnkQuestionRuntimeDecl.summary,
+    invocation: plurnkQuestionRuntimeDecl.invocation,
+    details: plurnkQuestionRuntimeDecl.details ?? "",
+    ...(plurnkQuestionRuntimeDecl.resourcesPath === undefined ? {} : { resourcesPath: plurnkQuestionRuntimeDecl.resourcesPath }),
+    available: true,
+    detail: "in-process",
+});
 
 export default class FunctionalityManager extends BaseExecutor {
     readonly #coordinator: Functionality;
     readonly #workspaceId: number;
     readonly #sessionId: number | undefined;
-    readonly #entriesSource: readonly FunctionalityFamilyEntry[] | ((workspaceId?: number) => readonly FunctionalityFamilyEntry[]);
-    readonly #includeQuestionSource: boolean | ((workspaceId?: number) => boolean);
-    readonly #question = new QuestionTool({ runtime: "plurnk", glyph: "🔌" });
+    readonly #family: string;
+    readonly #entrySource: FunctionalityFamilyEntry | ((workspaceId?: number) => FunctionalityFamilyEntry);
+    readonly #executors: (() => ExecutorRegistry | undefined) | undefined;
 
     constructor(args: FunctionalityManagerOptions) {
-        super({ runtime: "plurnk", glyph: "🔌" });
+        const entrySource = "entry" in args ? args.entry : args;
+        const initial = typeof entrySource === "function" ? entrySource(args.workspaceId) : entrySource;
+        super({ runtime: `plurnk_${initial.family}`, glyph: "🔌" });
         this.#coordinator = args.coordinator;
         this.#workspaceId = args.workspaceId ?? 1;
         this.#sessionId = args.sessionId;
-        this.#entriesSource = "entries" in args ? args.entries : [args];
-        this.#includeQuestionSource = args.includeQuestion ?? false;
+        this.#family = initial.family;
+        this.#entrySource = entrySource;
+        this.#executors = args.executors;
+    }
+
+    get family(): string {
+        return this.#family;
+    }
+
+    runtimeDecl(workspaceId?: number): RuntimeDecl & { readonly glyph: string } {
+        return plurnkFamilyRuntimeDecl(this.#entry(workspaceId));
+    }
+
+    static forFamily(args: FunctionalityManagerOptions): FunctionalityManager {
+        return new FunctionalityManager(args);
+    }
+
+    static forQuestion(): QuestionTool {
+        return new QuestionTool();
+    }
+
+    static runtimeRegistrations(
+        coordinator: Functionality,
+        options: { readonly includeQuestion?: boolean; readonly executors?: () => ExecutorRegistry | undefined } = {},
+    ): RuntimeRegistryRegistration[] {
+        const entries = coordinator.familyEntries();
+        const families: RuntimeRegistryRegistration[] = entries.map((initial) => {
+            const decl = plurnkFamilyRuntimeDecl(initial);
+            return {
+                tag: decl.name,
+                entry: {
+                    executor: new FunctionalityManager({
+                        coordinator,
+                        ...(options.executors === undefined ? {} : { executors: options.executors }),
+                        entry: (workspaceId) =>
+                            coordinator.familyEntries(workspaceId).find((candidate) => candidate.family === initial.family) ?? initial,
+                    }),
+                    namespaceOwner: { kind: "module", name: "core" },
+                    glyph: decl.glyph,
+                    summary: decl.summary,
+                    invocation: decl.invocation,
+                    details: decl.details ?? "",
+                    ...(decl.resourcesPath === undefined ? {} : { resourcesPath: decl.resourcesPath }),
+                    available: true,
+                    detail: "in-process",
+                    workspaceDecl: (workspaceId) => {
+                        const current = coordinator.familyEntries(workspaceId).find((candidate) => candidate.family === initial.family) ?? initial;
+                        const currentDecl = plurnkFamilyRuntimeDecl(current);
+                        return { summary: currentDecl.summary, details: currentDecl.details ?? "" };
+                    },
+                },
+            };
+        });
+        if (options.includeQuestion !== false) {
+            families.push({
+                tag: plurnkQuestionRuntimeDecl.name,
+                entry: questionRuntimeEntry(),
+            });
+        }
+        return families;
     }
 
     // {§functionality-model-projection} — the published manager closes over the coordinator; Core binds
@@ -127,8 +219,8 @@ export default class FunctionalityManager extends BaseExecutor {
             coordinator: this.#coordinator,
             workspaceId,
             sessionId,
-            entries: this.#entriesSource,
-            includeQuestion: this.#includeQuestionSource,
+            entry: this.#entrySource,
+            ...(this.#executors === undefined ? {} : { executors: this.#executors }),
         });
     }
 
@@ -136,104 +228,62 @@ export default class FunctionalityManager extends BaseExecutor {
         return { [CHANNEL]: { mimetype: "application/json" } };
     }
 
+    override get publishedChannel(): string {
+        return CHANNEL;
+    }
+
     override async probe(): Promise<RuntimeAvailability> {
         return { available: true, detail: "workspace Functionality manager" };
     }
 
-    override effect(target: string | null): Effect {
-        return target === "question" ? "read" : "host";
-    }
-
-    // {§functionality-model-projection} — `list`, `discover`, and `question` are `read`;
+    // {§functionality-model-projection} — `list` and `discover` are `read`;
     // lifecycle mutations (`add`, `replace`, `enable`, `disable`, `remove`) are `host`.
-    effectForInvocation(target: string | null, body: string, workspaceId?: number): Effect {
-        if (target === "question") return "read";
-        if (target === null) return "host";
-        const entry = this.#entries(workspaceId).find((candidate) => candidate.family === target);
-        if (entry === undefined) return "host";
-        const trimmed = body.trim();
-        if (trimmed.length === 0) {
-            return entry.inputSchemas.list !== undefined ? "read" : "host";
-        }
-        try {
-            const parsed: unknown = JSON.parse(trimmed);
-            if (!isRecord(parsed)) return "host";
-            const verb = parsed.verb === undefined && Object.keys(parsed).length === 0 ? "list" : parsed.verb;
-            return isFunctionalityVerb(verb) && READ_VERBS.has(verb) && entry.inputSchemas[verb] !== undefined
-                ? "read"
-                : "host";
-        } catch {
-            return "host";
-        }
+    override effect(target: string | null): Effect {
+        return this.effectForInvocation(target, "", this.#workspaceId);
     }
 
-    #entries(workspaceId?: number): readonly FunctionalityFamilyEntry[] {
-        const targetWorkspace = workspaceId ?? this.#workspaceId;
-        return typeof this.#entriesSource === "function"
-            ? this.#entriesSource(targetWorkspace)
-            : this.#entriesSource;
+    effectForInvocation(target: string | null, _body = "", workspaceId?: number): Effect {
+        const entry = this.#entry(workspaceId);
+        const verb = target === null || target.length === 0 ? "list" : target;
+        return isFunctionalityVerb(verb) && READ_VERBS.has(verb) && entry.inputSchemas[verb] !== undefined
+            ? "read"
+            : "host";
     }
 
-    #includeQuestion(workspaceId?: number): boolean {
+    hasConfigurationFailure(workspaceId?: number): boolean {
+        const failure = this.#entry(workspaceId).configurationFailure;
+        return failure !== null && failure !== undefined;
+    }
+
+    #entry(workspaceId?: number): FunctionalityFamilyEntry {
         const targetWorkspace = workspaceId ?? this.#workspaceId;
-        return typeof this.#includeQuestionSource === "function"
-            ? this.#includeQuestionSource(targetWorkspace)
-            : this.#includeQuestionSource;
+        return typeof this.#entrySource === "function"
+            ? this.#entrySource(targetWorkspace)
+            : this.#entrySource;
     }
 
     static #verbsFor(entry: FunctionalityFamilyEntry): FunctionalityVerb[] {
         return FUNCTIONALITY_VERBS.filter((verb) => entry.inputSchemas[verb] !== undefined);
     }
 
-    static #familySummary(entry: FunctionalityFamilyEntry): string {
+    static familySummary(entry: FunctionalityFamilyEntry): string {
         const base = entry.summary ?? `Manage ${entry.family} definitions.`;
         return entry.configurationFailure !== null && entry.configurationFailure !== undefined
             ? `${base.replace(/\.$/u, "")} — configuration unavailable; inspect with list`
             : base;
     }
 
-    static #familyInputSchema(entry: FunctionalityFamilyEntry, verbs: readonly FunctionalityVerb[]): JsonSchema {
-        const properties: Record<string, JsonSchema> = {
-            verb: {
-                type: "string",
-                enum: [...verbs],
-                description: "The lifecycle verb to run (defaults to list when the body is empty).",
-            },
-        };
-        for (const verb of verbs) {
-            const schema = entry.inputSchemas[verb];
-            const verbProps = isRecord(schema?.properties) ? schema.properties : {};
-            for (const [key, prop] of Object.entries(verbProps)) {
-                if (!Object.hasOwn(properties, key) && isRecord(prop)) {
-                    properties[key] = prop;
-                }
-            }
-        }
-        return {
-            type: "object",
-            additionalProperties: false,
-            required: ["verb"],
-            properties,
-        };
-    }
-
-    static #familyDetails(entry: FunctionalityFamilyEntry, verbs: readonly FunctionalityVerb[]): string {
+    static familyDetails(entry: FunctionalityFamilyEntry): string {
+        const verbs = FunctionalityManager.#verbsFor(entry);
         const sections: string[] = [];
         if (entry.configurationFailure !== null && entry.configurationFailure !== undefined) {
             sections.push(`> [!WARNING]\n> ${entry.configurationFailure.error.message}`);
         }
-        const verbLines = verbs.map((verb) => {
-            const base = VERB_TEACHING[verb];
-            if (verb === "discover" && entry.discovery?.details !== undefined) {
-                return `- \`${verb}\`: ${base.summary} ${base.details}\n\n${entry.discovery.details}`;
-            }
-            return `- \`${verb}\`: ${base.summary} ${base.details}`;
-        });
-        if (verbLines.length > 0) {
-            sections.push(`## Verbs\n\n${verbLines.join("\n")}`);
+        if (verbs.includes("discover") && entry.discovery?.details !== undefined) {
+            sections.push(entry.discovery.details);
         }
         if (verbs.includes("add") && entry.example !== undefined) {
-            sections.push(PlurnkParser.frame(`plurnk (${entry.family})`, JSON.stringify({ verb: "add", ...entry.example })));
+            sections.push(PlurnkParser.frame(`plurnk_${entry.family} (add)`, JSON.stringify(entry.example)));
         }
         const docBody = entry.documentBody === undefined ? "" : stripLeadingHeading(entry.documentBody);
         if (docBody.length > 0) {
@@ -242,24 +292,42 @@ export default class FunctionalityManager extends BaseExecutor {
         return sections.join("\n\n");
     }
 
-    static #familyTool(entry: FunctionalityFamilyEntry): RuntimeRegisteredTool {
-        const verbs = FunctionalityManager.#verbsFor(entry);
-        const summary = FunctionalityManager.#familySummary(entry);
-        const inputSchema = FunctionalityManager.#familyInputSchema(entry, verbs);
-        const details = FunctionalityManager.#familyDetails(entry, verbs);
+    static #verbTool(entry: FunctionalityFamilyEntry, verb: FunctionalityVerb): RuntimeRegisteredTool {
+        const inputSchema = entry.inputSchemas[verb]!;
+        const base = VERB_TEACHING[verb];
+        const summary = verb === "list" && entry.configurationFailure !== null && entry.configurationFailure !== undefined
+            ? `${base.summary.replace(/\.$/u, "")} — configuration unavailable`
+            : base.summary;
+        const detailParts: string[] = [];
+        if (verb === "list" && entry.configurationFailure !== null && entry.configurationFailure !== undefined) {
+            detailParts.push(`> [!WARNING]\n> ${entry.configurationFailure.error.message}`);
+        }
+        detailParts.push(base.details);
+        if (verb === "discover" && entry.discovery?.details !== undefined) {
+            detailParts.push(entry.discovery.details);
+        }
+        if (verb === "add" && entry.example !== undefined) {
+            detailParts.push(PlurnkParser.frame(`plurnk_${entry.family} (add)`, JSON.stringify(entry.example)));
+        }
+        if (verb === "add" && entry.documentBody !== undefined) {
+            const docBody = stripLeadingHeading(entry.documentBody);
+            if (docBody.length > 0) detailParts.push(docBody);
+        }
+        const details = detailParts.join("\n\n");
         const description = [summary, details].filter((part) => part.length > 0).join("\n\n");
+        const bodyRequired = ToolInputSchema.requiredFields(inputSchema).length > 0;
         return {
-            target: entry.family,
+            target: verb,
             summary,
             ...(entry.traits === undefined ? {} : { traits: entry.traits }),
             invocation: {
-                body: { role: "JSON arguments", required: false, mimetype: "application/json" },
-                target: { role: "Plurnk tool", required: true, kind: "literal" },
+                body: { role: "JSON arguments", required: bodyRequired, mimetype: "application/json" },
+                target: { role: `${entry.family} lifecycle verb`, required: true, kind: "literal" },
                 inputSchema,
             },
             ...(details.length === 0 ? {} : { details }),
             definition: {
-                name: entry.family,
+                name: verb,
                 description,
                 inputSchema,
             },
@@ -267,66 +335,44 @@ export default class FunctionalityManager extends BaseExecutor {
     }
 
     toolRegistry(workspaceId?: number): RuntimeToolRegistry {
-        const familyTools = this.#entries(workspaceId)
-            .filter((entry) => FunctionalityManager.#verbsFor(entry).length > 0)
-            .map((entry) => FunctionalityManager.#familyTool(entry));
-        const tools = this.#includeQuestion(workspaceId)
-            ? [...familyTools, questionRegisteredTool]
-            : familyTools;
+        const entry = this.#entry(workspaceId);
+        const tools = FunctionalityManager.#verbsFor(entry)
+            .map((verb) => FunctionalityManager.#verbTool(entry, verb));
         return { tools };
     }
 
     override async run(args: ExecArgs): Promise<ExecResult> {
-        const target = args.target;
-        if (target === "question" && this.#includeQuestion(this.#workspaceId)) {
-            return this.#question.run(args);
-        }
-        const entry = this.#entries(this.#workspaceId).find((candidate) => candidate.family === target);
-        if (entry === undefined) {
-            const available = this.toolRegistry(this.#workspaceId).tools.map((tool) => tool.target);
-            return Results.failure("functionality", "verb-unknown", 400, `'${target ?? ""}' is not a plurnk tool.`, {}, {
-                recovery: `Select one of ${available.join(", ")}.`,
+        const entry = this.#entry(this.#workspaceId);
+        const verbs = FunctionalityManager.#verbsFor(entry);
+        const rawTarget = args.target === null || args.target.length === 0
+            ? (args.body.trim().length === 0 && verbs.includes("list") ? "list" : "")
+            : args.target;
+        if (!isFunctionalityVerb(rawTarget) || !verbs.includes(rawTarget)) {
+            return Results.failure("functionality", "verb-unknown", 400, `'${rawTarget}' is not a ${entry.family} lifecycle verb.`, {}, {
+                recovery: `Select one of ${verbs.join(", ")}.`,
                 retryable: false,
             });
         }
-        const verbs = FunctionalityManager.#verbsFor(entry);
-        let verb: FunctionalityVerb;
+        const verb: FunctionalityVerb = rawTarget;
         let params: unknown = {};
-        if (args.body.trim().length === 0) {
-            if (!verbs.includes("list")) {
-                return Results.failure("functionality", "verb-unknown", 400, `'' is not a ${entry.family} lifecycle verb.`, {}, {
-                    recovery: `Select one of ${verbs.join(", ")}.`,
-                    retryable: false,
-                });
-            }
-            verb = "list";
-        } else {
+        if (args.body.trim().length > 0) {
             let parsed: unknown;
             try {
                 parsed = JSON.parse(args.body);
             } catch (cause) {
-                return Results.failure("functionality", "arguments-not-json", 400, `The ${entry.family} body must be a JSON object.`, {}, {
+                return Results.failure("functionality", "arguments-not-json", 400, `The ${entry.family} ${verb} body must be a JSON object.`, {}, {
                     recovery: "Supply a JSON object body.",
                     retryable: false,
                     cause: ErrorDetail.preview(cause),
                 });
             }
             if (!isRecord(parsed)) {
-                return Results.failure("functionality", "arguments-invalid", 400, `The ${entry.family} body must be a JSON object.`, {}, {
-                    recovery: `Supply a JSON object with a "verb" field (${verbs.join(", ")}).`,
+                return Results.failure("functionality", "arguments-invalid", 400, `The ${entry.family} ${verb} body must be a JSON object.`, {}, {
+                    recovery: "Supply a JSON object body.",
                     retryable: false,
                 });
             }
-            const rawVerb = parsed.verb === undefined && Object.keys(parsed).length === 0 ? "list" : parsed.verb;
-            if (!isFunctionalityVerb(rawVerb) || !verbs.includes(rawVerb)) {
-                return Results.failure("functionality", "verb-unknown", 400, `'${typeof rawVerb === "string" ? rawVerb : ""}' is not a ${entry.family} lifecycle verb.`, {}, {
-                    recovery: `Select one of ${verbs.join(", ")}.`,
-                    retryable: false,
-                });
-            }
-            const { verb: _verb, ...rest } = parsed;
-            verb = rawVerb;
-            params = rest;
+            params = parsed;
         }
         const identity = { workspaceId: this.#workspaceId, ...(this.#sessionId === undefined ? {} : { sessionId: this.#sessionId }) };
         let result: { status: number; body: unknown };
@@ -364,9 +410,63 @@ export default class FunctionalityManager extends BaseExecutor {
             result = { status: refusal.status, body: refusal };
         }
         args.setState(CHANNEL, "active");
-        args.write(CHANNEL, JSON.stringify(result.body, null, 2), "application/json");
+        const formatted = verb === "list" && refusal === null
+            ? FunctionalityManager.#formatListBody(
+                entry.family,
+                result.body,
+                entry.family === "mcp" ? (this.#executors?.()?.inProcessToolServers(this.#workspaceId) ?? []) : [],
+            )
+            : JSON.stringify(result.body, null, 2);
+        args.write(CHANNEL, formatted, "application/json");
         // {§functionality-model-projection} Resource readiness is the body; this invocation has settled.
         args.setState(CHANNEL, result.status >= 400 ? "errored" : "closed");
         return refusal ?? { status: result.status };
+    }
+
+    static #formatListBody(
+        family: string,
+        body: unknown,
+        inProcessServers: ReadonlyArray<{
+            readonly alias: string;
+            readonly state: "active" | "unavailable";
+            readonly description?: string;
+            readonly docs: string;
+        }> = [],
+    ): string {
+        if (!isRecord(body) || !Array.isArray(body.definitions)) {
+            return JSON.stringify(body, null, 2);
+        }
+        const definitions = family === "mcp"
+            ? (() => {
+                const external = body.definitions.map((item): Record<string, unknown> => {
+                    if (!isRecord(item)) return { value: item };
+                    const detail = isRecord(item.detail) ? item.detail : null;
+                    return {
+                        alias: item.alias,
+                        state: item.state,
+                        ...(detail !== null && typeof detail.description === "string" ? { description: detail.description } : {}),
+                        ...(detail !== null ? { docs: typeof detail.docs === "string" ? detail.docs : `mcp:///${String(item.alias)}.md` } : {}),
+                        ...(detail !== null && typeof detail.resources === "number" && detail.resources > 0 ? { resources: detail.resources } : {}),
+                        ...(detail !== null && typeof detail.resourceTemplates === "number" && detail.resourceTemplates > 0 ? { resourceTemplates: detail.resourceTemplates } : {}),
+                        ...(detail !== null && typeof detail.prompts === "number" && detail.prompts > 0 ? { prompts: detail.prompts } : {}),
+                        ...(detail !== null && Array.isArray(detail.skills) && detail.skills.length > 0 ? { skills: detail.skills } : {}),
+                        ...(item.authorization === undefined ? {} : { authorization: item.authorization }),
+                        ...(item.problem === undefined ? {} : { problem: item.problem }),
+                    };
+                });
+                const seen = new Set(external.map((item) => typeof item.alias === "string" ? item.alias : ""));
+                const merged: Array<Record<string, unknown>> = [
+                    ...external,
+                    ...inProcessServers.filter(({ alias }) => !seen.has(alias)),
+                ];
+                return merged.toSorted((left, right) =>
+                    (typeof left.alias === "string" ? left.alias : "").localeCompare(typeof right.alias === "string" ? right.alias : ""));
+            })()
+            : body.definitions;
+        if (definitions.length === 0) {
+            return JSON.stringify({ ...body, definitions: [] });
+        }
+        const lines = definitions.map((def) => `  ${JSON.stringify(def)}`);
+        return `{\n  "family": ${JSON.stringify(body.family)},\n  "definitions": [\n${lines.join(",\n")}\n  ]\n}`;
     }
 }

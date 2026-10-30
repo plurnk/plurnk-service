@@ -13,12 +13,12 @@ description: Plurnk harness configurations, extensions, and definitions.
 | Every installed package's settings and defaults | [Complete .env.defaults](.env.defaults) |
 | Plugins, extensions, clients and hooks: what each reaches and how it loads | [Extending Plurnk](references/extensibility.md) |
 | Each installed package's contract and type declarations | `packages/<package name>/SPEC.md`, `dist/*.d.ts` |
-| Session hierarchy, messaging, and delegation | [Session reference](workspace:///_plurnk/plurnk/session.md) |
-| Which project files you can see, and why a file is missing | [Membership](workspace:///_plurnk/tools/plurnk/members.json) |
-| Agent Skills and MCP servers: what each is and how one is added | `workspace:///_plurnk/tools/plurnk/skills.json`, `mcp.json` |
-| Running code: the shell and each interpreter's body, stdin, arguments, exit status | `workspace:///_plurnk/plurnk/sh.md`, `js.md`, `python3.md`, … |
-| Enabled MCP server invocations and schemas | `workspace:///_plurnk/tools/` |
-| Built-in executors and scheme references | `workspace:///_plurnk/plurnk/` |
+| Session hierarchy, messaging, and delegation | [Session reference](plurnk:///session.md) |
+| Which project files you can see, and why a file is missing | [Membership](mcp:///plurnk_members.md) |
+| Agent Skills and MCP servers: what each is and how one is added | `mcp:///plurnk_skills.md`, `mcp:///plurnk_mcp.md` |
+| Running code: the shell and each interpreter's body, stdin, arguments, exit status | `plurnk:///sh.md`, `plurnk:///js.md`, `plurnk:///python3.md`, … |
+| Enabled MCP server invocations and schemas | `mcp:///` |
+| Built-in executors and scheme references | `plurnk:///` |
 
 READ the relevant reference; FIND can select paths and search their bodies.
 Defaults describe available settings, not the operator's effective configuration.

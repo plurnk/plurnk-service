@@ -1232,10 +1232,10 @@ test("{§executor-discovery} exact tools own admission and their invocation cont
     const ctx = await wire();
     try {
         const reference = await ctx.engine.referenceEntries(ctx.workspaceId);
-        const runtimeDoc = reference.find((doc) => doc.pathname === "/_plurnk/plurnk/registrytool.md");
+        const runtimeDoc = reference.find((doc) => doc.scheme === "plurnk" && doc.pathname === "/registrytool.md");
         assert.match(runtimeDoc?.content ?? "", /```registrytool \(enabled_tool\)/, "the runtime document carries every registered target");
         assert.equal(
-            reference.some((doc) => doc.pathname.startsWith("/_plurnk/plurnk/registrytool/")),
+            reference.some((doc) => doc.pathname.startsWith("/registrytool/")),
             false,
             "per-target child documents do not exist (#336)",
         );
@@ -1247,8 +1247,8 @@ test("{§executor-discovery} exact tools own admission and their invocation cont
         assert.equal(disabled.status, 404);
         assert.match(disabled.problem?.type ?? "", /target-not-registered$/);
         assert.equal(disabled.problem?.availableTargetCount, 1);
-        assert.equal(disabled.problem?.recovery, "Select a target from workspace:///_plurnk/plurnk/registrytool.md.");
-        assert.ok(reference.some(({ pathname }) => disabled.problem?.recovery === `Select a target from workspace://${pathname}.`),
+        assert.equal(disabled.problem?.recovery, "Select a target from plurnk:///registrytool.md.");
+        assert.ok(reference.some(({ scheme, pathname }) => disabled.problem?.recovery === `Select a target from ${scheme}://${pathname}.`),
             "recovery names a published runtime document, not an assumed schema directory");
         assert.equal("availableTargets" in (disabled.problem ?? {}), false);
 
@@ -1271,15 +1271,15 @@ test("{§executor-discovery} exact tools own admission and their invocation cont
 });
 
 test("{§tools-resource-materialization} target recovery follows a runtime's declared document root", async () => {
-    for (const resourcesPath of ["/tools", "/modules/custom"]) {
+    for (const [resourcesPath, expectedScheme] of [["/tools", "mcp"], ["/modules/custom", "plurnk"]] as const) {
         const ctx = await wire(resourcesPath);
         try {
             const result = await ctx.dispatch(statement("registrytool", "missing", "{}"));
             assert.equal(result.status, 404);
             const documents = await ctx.engine.referenceEntries(ctx.workspaceId);
-            const path = `/_plurnk${resourcesPath}/registrytool.md`;
-            assert.equal(result.problem?.recovery, `Select a target from workspace://${path}.`);
-            const document = documents.find(({ pathname }) => pathname === path);
+            const path = "/registrytool.md";
+            assert.equal(result.problem?.recovery, `Select a target from ${expectedScheme}://${path}.`);
+            const document = documents.find(({ scheme, pathname }) => scheme === expectedScheme && pathname === path);
             assert.ok(document, "the recovery document is actually published");
             assert.match(document.content, /enabled_tool/u);
         } finally { await ctx.close(); }

@@ -570,7 +570,7 @@ test("{§find} [catalog] a fenced invocation-form summary lists every tool while
         const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         const workspace = new Workspace();
         const targets = Array.from({ length: 30 }, (_, index) => `tool_number_${index + 1}_with_a_long_name`);
-        const menu = `\`\`\`\`gitea (${targets.join("|")})\\n\`\`\`\``;
+        const menu = `\`\`\`\`gitea (${targets.join("|")})\n\`\`\`\``;
         await workspace.edit(editStmt(url("workspace", "menu.md"), `# gitea\n\n## Summary\n\n${menu}\n\n## Tools\n`), ctx);
         const prose = "word ".repeat(120).trim();
         await workspace.edit(editStmt(url("workspace", "prose.md"), `# prose\n\n## Summary\n\n${prose}\n`), ctx);
@@ -582,7 +582,7 @@ test("{§find} [catalog] a fenced invocation-form summary lists every tool while
         assert.equal(listing.status, 200, JSON.stringify(listing));
         const rows = (listing.results as Array<Array<{ path: string; aside?: string }>>).flat();
         const menuRow = rows.find(({ path }) => path === "workspace:///menu.md");
-        assert.equal(menuRow?.aside, menu.replaceAll("\\n", "\n"), "the fenced witness is shown whole, every tool named, its newline restored");
+        assert.equal(menuRow?.aside, menu, "the fenced witness is shown whole, every tool named");
         const proseRow = rows.find(({ path }) => path === "workspace:///prose.md");
         assert.ok(proseRow?.aside !== undefined && Array.from(proseRow.aside).length === 256 && proseRow.aside.endsWith("…"), `prose clips at the bound: ${proseRow?.aside?.length}`);
     } finally { await db.close(); }

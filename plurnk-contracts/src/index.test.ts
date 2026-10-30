@@ -74,7 +74,28 @@ test("{§startup-admission} {§acp-action-binding} formatServiceUpdateReport and
         sub: "add",
         rest: ["FOO", "bar"],
         actionName: "session.env.add",
-        params: { alias: "FOO", definition: { value: "bar" } },
+        params: { alias: "FOO", value: "bar" },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("skills", ["discover", "https://example.com/skills"]), {
+        scopePrefix: "workspace",
+        sub: "discover",
+        rest: ["https://example.com/skills"],
+        actionName: "workspace.skills.discover",
+        params: { source: "https://example.com/skills" },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("schedule", ["discover", "FREQ=DAILY"]), {
+        scopePrefix: "workspace",
+        sub: "discover",
+        rest: ["FREQ=DAILY"],
+        actionName: "workspace.schedule.discover",
+        params: { rule: "FREQ=DAILY" },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("mcp", ["discover", "github"]), {
+        scopePrefix: "workspace",
+        sub: "discover",
+        rest: ["github"],
+        actionName: "workspace.mcp.discover",
+        params: { query: "github" },
     });
     assert.deepEqual(Contracts.parseFamilyCommand("env", ["--scope", "workspace", "list"]), {
         scopePrefix: "workspace",

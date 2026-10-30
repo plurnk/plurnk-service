@@ -9,7 +9,7 @@
     "properties": {
         "source": {
             "type": "string",
-            "pattern": "^[a-z]+(:[a-z][a-z0-9-]*)?$",
+            "pattern": "^[a-z]+(:[a-z][a-z0-9+._-]*)?$",
             "description": "Producer identifier. Top-level for self-contained subsystems; colon-namespaced for parameterized producers such as `provider:openai` or `exec:search`."
         },
         "kind": {

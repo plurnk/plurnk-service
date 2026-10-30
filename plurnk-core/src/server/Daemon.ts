@@ -18,7 +18,7 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
 import type { Provider, ProviderAccounting } from "@plurnk/plurnk-providers";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
-import FunctionalityManager, { plurnkRuntimeDecl } from "./FunctionalityManager.ts";
+import FunctionalityManager from "./FunctionalityManager.ts";
 // {§notifications}: "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
@@ -240,8 +240,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             },
         });
         // {§tools-resource-materialization} — Core's own family: file membership on the same surface.
-        this.#members = new MembersFunctionality({ db, engine: () => this.#engine });
-        this.#functionality.register(this.#members);
+        this.#members = new MembersFunctionality({ db, engine: () => this.#engine, handle: () => membersHandle });
+        const membersHandle = this.#functionality.register(this.#members);
         // {§env-functionality} — Core's own family: the environment a Session's commands run in.
         // {§env-functionality} — the family's face: reads project the dispatching Session's effective
         // environment, writes go through the family's own admission at the Session's layer. The runtime
@@ -751,7 +751,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 invocation: runtime.invocation,
                 details: runtime.details ?? "",
                 ...(runtime.resourcesPath === undefined ? {} : { resourcesPath: runtime.resourcesPath }),
-                ...(runtime.expandTools === undefined ? {} : { expandTools: runtime.expandTools }),
                 available: availability.available,
                 detail: availability.detail },
             scheme };
@@ -896,25 +895,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         }
         this.#engine.setExecutors(executors);
         this.#engine.setFunctionalityDocuments((workspaceId) => this.#functionality.documents(workspaceId));
-        // {§functionality-model-projection} {§question-tool} — the model-facing `plurnk`
-        // runtime exposes workspace Functionality families and `question` under `/tools/plurnk.md`.
-        this.#engine.registerRuntimes([{
-            tag: "plurnk",
-            entry: {
-                executor: new FunctionalityManager({
-                    coordinator: this.#functionality,
-                    entries: (workspaceId) => this.#functionality.familyEntries(workspaceId),
-                    includeQuestion: true,
-                }),
-                namespaceOwner: { kind: "module", name: "core" },
-                glyph: plurnkRuntimeDecl.glyph,
-                summary: plurnkRuntimeDecl.summary,
-                invocation: plurnkRuntimeDecl.invocation,
-                details: plurnkRuntimeDecl.details ?? "",
-                resourcesPath: plurnkRuntimeDecl.resourcesPath,
-                expandTools: plurnkRuntimeDecl.expandTools,
-                available: true,
-                detail: "in-process" } }]);
         // {§exec} — mint a scheme per runtime tag so exec output entries address by tag
         // authority (sh:///l/t/s). The "exec" scheme stays for execution dispatch.
         this.#schemes.registerRuntimeSchemes(executors);
@@ -925,6 +905,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // {§module-lifecycle} — discovery composes beside the service's explicit modules, then every module sets
         // up against this daemon as the seam ({§module-lifecycle}).
         await this.#modules.setup(this, { cwd: this.#discoveryCwd, hostPaths: this.#hostPaths });
+        // {§functionality-model-projection} {§question-tool} — the model-facing `plurnk_<family>`
+        // and `plurnk_question` runtimes expose workspace Functionality families and `ask` under `mcp:///plurnk_*.md`.
+        await this.#functionality.ready();
+        this.#engine.registerRuntimes(FunctionalityManager.runtimeRegistrations(this.#functionality, {
+            executors: () => this.#engine.executors,
+        }));
         // {§credential-authority} — the posture is never an inference: a listening daemon that
         // authenticates needs a module that issues, and it writes a minted secret where same-user
         // clients read it before any mount is admitted; a configured or absent secret leaves no file.

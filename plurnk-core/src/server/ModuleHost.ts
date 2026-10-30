@@ -6,7 +6,7 @@ import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
 import type { ProvidedSkillsSeam } from "@plurnk/plurnk-agent-skills";
 import type { WorkspaceCapabilityGate, WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
-import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
+import type { RuntimeRegistration, RuntimeRegistrationSeam } from "@plurnk/plurnk-execs";
 import type { FunctionalityAdapter, FunctionalitySeam, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import type { RuntimeSchemeFacet, SchemeRegistrationSeam, ResourceTreeRegistrationSeam } from "@plurnk/plurnk-schemes";
 import type { ConfigurationRootScope } from "./AgentRoots.ts";
@@ -48,7 +48,6 @@ export interface WorkspaceCapabilityPublication {
 
 // {§module-lifecycle} — the coordinator's host interface.
 interface CapabilityProviderSeam {
-    registerRuntimes(registrations: readonly RuntimeRegistration[]): Promise<void>;
     registerWorkspaceCapabilityProvider(namespaceOwner: string, provider: WorkspaceCapabilityProvider): void;
     readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown>;
     replaceWorkspaceCapabilities(replacement: WorkspaceCapabilityReplacement): Promise<void>;
@@ -60,6 +59,7 @@ export type HostSetupSeam = ModuleSetupSeam
     // there the address of the listener the host bound before any module set up ({§http-host}).
     & Pick<ApplicationPort, "credentials" | "httpAddress">
     & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet>
+    & RuntimeRegistrationSeam
     & SchemeRegistrationSeam
     & ResourceTreeRegistrationSeam
     & WorkspacePluginsSeam<ConfigurationRootScope>

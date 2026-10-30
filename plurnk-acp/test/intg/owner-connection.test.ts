@@ -38,7 +38,7 @@ test(
                     makeMockResponse("````SEND [200]\nReady.\n````"),
                     makeMockResponse("````SEND [200]\nSpawned child.\n````"),
                     makeMockResponse(
-                        '````plurnk (question)\n{"message":"Proceed?","requestedSchema":{"type":"object","properties":{"proceed":{"type":"boolean"}},"required":["proceed"]}}\n````',
+                        '````plurnk_question (ask)\n{"message":"Proceed?","requestedSchema":{"type":"object","properties":{"proceed":{"type":"boolean"}},"required":["proceed"]}}\n````',
                     ),
                     makeMockResponse("````SEND [200]\nChild answered.\n````"),
                     makeMockResponse("````sh\necho helper-ok\n````"),

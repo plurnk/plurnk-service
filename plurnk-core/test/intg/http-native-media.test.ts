@@ -385,7 +385,6 @@ test("{§ambient-http-transport}: WebFetcher, ModelProvider, and MCP streamable-
 
             const countBeforeMcp = proxyConnectCount;
             const mcpConn = new ServerConnection({
-                name: "remote",
                 type: "streamable-http",
                 url: `${originBase}/mcp`,
             });

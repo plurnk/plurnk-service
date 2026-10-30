@@ -1,4 +1,4 @@
-# mcp
+# plurnk_mcp
 
 An MCP server publishes tools, and an enabled server is a runtime here under
 its own name. A tool runs the way `sh` or `js` runs: a fenced call names the
@@ -9,19 +9,19 @@ server and the tool, and its body is the tool's JSON arguments.
 ```
 
 One fenced call runs one tool, and the result is that call's output.
-`workspace:///_plurnk/tools/<server>.md` lists a server's invocations and their
+`mcp:///<server>.md` lists a server's invocations and their
 required top-level inputs; each invocation links to the complete raw input
 schema. Its sibling `<server>.json` contains `{"tools":[...]}` with complete
 tool definitions, including input/output schemas, descriptions, and annotations.
 Both documents reflect the same enabled tools. JSONPath selects individual
 definitions without reading the whole catalog:
 
-```READ (workspace:///_plurnk/tools/files.json) $.tools[?(@.name=="list_directory")]
+```READ (mcp:///files.json) $.tools[?(@.name=="list_directory")]
 ```
 
-The turn-0 catalog lists every enabled server's Markdown document. `list`
-shows every server, including disabled ones and unavailable ones with their
-exact Problem; `enable` turns a server on. An unavailable server's Problem
+The turn-0 `plurnk_mcp (list)` receipt shows every server, including disabled
+ones and unavailable ones with their exact Problem; `enable` turns a server on,
+and `FIND (mcp:///*.md)` surveys active servers' Markdown documents. An unavailable server's Problem
 reports elapsed preparation time, its configured timeout, and any bounded,
 redacted connection diagnostic or session stderr available to the host.
 
@@ -31,26 +31,22 @@ redacted connection diagnostic or session stderr available to the host.
 `{"query": "<name>"}` and searches that registry; each candidate carries the
 exact definition to add. Discovery never persists or enables anything.
 
-```plurnk (mcp) <!-- search before adding -->
-{"verb": "discover", "query": "filesystem"}
-```
-
 `add` saves and enables a workspace definition, then reports its connection
 state. It is a host effect, subject to approval. Inspect that state:
 saved configuration does not imply a connected server.
 
-```plurnk (mcp)
-{"verb": "add", "alias": "files", "definition": {"name": "files", "type": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"]}}
+```plurnk_mcp (add)
+{"alias": "files", "type": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"]}
 ```
 
-A complete definition names one transport: `stdio` has `command` and optional
+A complete definition names `alias` and one transport: `stdio` has `command` and optional
 `args`, `env`, `cwd`; `streamable-http` has `url` and optional `headers`,
 `authorization`. Native definitions run local commands without a shell, in workspace-owned state
 unless `cwd` supplies an absolute directory. Use absolute project paths in
 arguments. This is file placement, not a sandbox or plugin installation.
 A tool marked `readOnlyHint` runs as a read; other tools retain the `host` effect.
 
-To change a definition, use `replace` with the same `{alias, definition}` shape.
+To change a definition, use `replace` with the same flat `{alias, ...}` shape.
 Supply the complete definition; omitted fields are not inherited. It retains
 enabledness and preserves the old server if the replacement is refused. A disabled
 definition is saved without connecting; a new alias is created enabled.
@@ -87,13 +83,13 @@ source. A complete workspace override replaces these plugin semantics too.
 
 A local server's inherited environment excludes Plurnk settings and model
 provider keys; explicit definition bindings are separate.
-Workspace variables set with the `env` family (`workspace:///_plurnk/tools/plurnk/env.json`) apply on top at
+Workspace variables set with `plurnk_env` (`mcp:///plurnk_env.md`) apply on top at
 every server launch; session-local overrides do not. A running server keeps its
 launch environment; `disable` then `enable` restarts it with the current
 workspace values, without a daemon restart.
 
-```plurnk (env)
-{"verb": "add", "scope": "workspace", "alias": "SERVICE_TOKEN", "definition": {"value": "<credential>"}}
+```plurnk_env (add)
+{"scope": "workspace", "alias": "SERVICE_TOKEN", "value": "<credential>"}
 ```
 
 Native definitions resolve `${NAME}` once against the operator's environment
@@ -109,8 +105,8 @@ Structured authorization secrets must be references, not literal credentials.
 
 For an OAuth server, start by adding its URL; the client supplies the callback.
 
-```plurnk (mcp)
-{"verb": "add", "alias": "remote", "definition": {"name": "remote", "type": "streamable-http", "url": "https://example.com/mcp"}}
+```plurnk_mcp (add)
+{"alias": "remote", "type": "streamable-http", "url": "https://example.com/mcp"}
 ```
 
 When a server requires OAuth sign-in, Plurnk notifies the user in the client and

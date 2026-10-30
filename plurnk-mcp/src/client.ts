@@ -129,6 +129,7 @@ interface ResolvedHttpDefinition {
 type ResolvedDefinition = ResolvedStdioDefinition | ResolvedHttpDefinition;
 
 export interface ServerConnectionOptions {
+    readonly alias?: string;
     // {§oauth-continuation} Callback supplied by the client, never persisted configuration; it begins a new grant.
     readonly oauthRedirectUrl?: string;
     // {§oauth-continuation} The alias's accepted sign-in, which a connection without a client's callback carries.
@@ -148,7 +149,7 @@ export interface ServerConnectionOptions {
     readonly onAuthorizationRequired?: () => void;
 }
 
-export type { ClientInteractionHandler, SamplingHandler } from "./inputRequired.ts";
+export type { ClientInteractionHandler };
 
 const message = (error: unknown): string =>
     error instanceof Error ? error.message : String(error);
@@ -192,10 +193,10 @@ const clientOwnedHeader = (name: string): boolean =>
 const resolveDefinition = (
     source: McpServerDefinition,
     environ: NodeJS.ProcessEnv,
-    { cwd: defaultCwd, plugin, oauthRedirectUrl, oauthGrant }: ServerConnectionOptions,
+    { alias = "mcp", cwd: defaultCwd, plugin, oauthRedirectUrl, oauthGrant }: ServerConnectionOptions,
 ): ResolvedDefinition => {
-    const definition = readDefinition(source);
-    const field = `MCP server '${definition.name}'`;
+    const definition = readDefinition(source, alias);
+    const field = `MCP server '${alias}'`;
     if (definition.type === "stdio") {
         if (plugin !== undefined) return PluginConfiguration.resolve(definition, plugin);
         const expand = (value: string): string => expandReferences(value, environ, field);
@@ -230,7 +231,7 @@ const resolveDefinition = (
         };
     }
     if (authorization?.type === "bearer") {
-        const tokenField = `MCP server '${definition.name}'.authorization.token`;
+        const tokenField = `${field}.authorization.token`;
         const token = expandReferences(authorization.token, environ, tokenField);
         if (token.length === 0) throw new Error(`${tokenField} resolved empty.`);
         return {
@@ -636,6 +637,7 @@ const openClient = async (
 };
 
 export default class ServerConnection {
+    readonly #alias: string;
     readonly #definition: McpServerDefinition;
     readonly #resolved: ResolvedDefinition;
     readonly #environ: NodeJS.ProcessEnv;
@@ -659,8 +661,9 @@ export default class ServerConnection {
         environ: NodeJS.ProcessEnv = process.env,
         options: ServerConnectionOptions = {},
     ) {
+        this.#alias = options.alias ?? "mcp";
         this.#definition = structuredClone(Validator.assertMcpServerDefinition(definition));
-        this.#resolved = resolveDefinition(this.#definition, environ, options);
+        this.#resolved = resolveDefinition(this.#definition, environ, { ...options, alias: this.#alias });
         this.#environ = environ;
         this.#options = options;
         const symbolic = JSON.stringify(definition);
@@ -670,6 +673,10 @@ export default class ServerConnection {
             ? [...Object.values(options.environment ?? getDefaultEnvironment()), ...Object.values(this.#resolved.env), ...this.#resolved.args]
             : [...Object.values(this.#resolved.headers ?? {}), new URL(this.#resolved.url).username, new URL(this.#resolved.url).password];
         this.#diagnostics = new PreparationDiagnostics([...references, ...values.filter((value): value is string => value !== undefined)], ErrorDetail.limit());
+    }
+
+    get alias(): string {
+        return this.#alias;
     }
 
     get definition(): McpServerDefinition {
@@ -694,7 +701,7 @@ export default class ServerConnection {
     }
 
     async #open(): Promise<OpenClient> {
-        if (this.#closed) throw new Error(`MCP server '${this.#definition.name}' connection is closed.`);
+        if (this.#closed) throw new Error(`MCP server '${this.#alias}' connection is closed.`);
         if (this.#pendingAuthorization !== undefined) {
             throw new AuthorizationRequiredError(this.#pendingAuthorization.authorizationUrl);
         }
@@ -703,16 +710,16 @@ export default class ServerConnection {
         const pending = (async () => {
             const definition = this.#resolved;
             if (this.#options.plugin !== undefined && this.#definition.type === "stdio") {
-                await PluginConfiguration.prepare(this.#definition, this.#options.plugin);
+                await PluginConfiguration.prepare(this.#definition, this.#options.plugin, this.#alias);
             }
-            if (this.#closed) throw new Error(`MCP server '${this.#definition.name}' connection is closed.`);
+            if (this.#closed) throw new Error(`MCP server '${this.#alias}' connection is closed.`);
             transport = openTransport(definition, this.#options.environment);
             if (transport instanceof StdioClientTransport && transport.stderr !== null) {
                 transport.stderr.on("data", (chunk: Buffer) => this.#diagnostics.write(chunk));
                 transport.stderr.pipe(process.stderr, { end: false });
             }
             this.#openingTransport = transport;
-            return openClient(this.#definition.name, definition, this.#environ, this.#options, transport);
+            return openClient(this.#alias, definition, this.#environ, this.#options, transport);
         })().catch((cause: unknown) => {
             if (
                 cause instanceof AuthorizationRequiredError
@@ -746,11 +753,11 @@ export default class ServerConnection {
     async beginAuthorization(): Promise<string | undefined> {
         const resolved = this.#resolved;
         if (resolved.type !== "streamable-http" || resolved.oauthProvider === undefined) {
-            throw new Error(`MCP server '${this.#definition.name}' has no interactive OAuth sign-in.`);
+            throw new Error(`MCP server '${this.#alias}' has no interactive OAuth sign-in.`);
         }
         const opened = await this.#open();
         if (!(opened.transport instanceof StreamableHTTPClientTransport)) {
-            throw new Error(`MCP server '${this.#definition.name}' is not connected over Streamable HTTP.`);
+            throw new Error(`MCP server '${this.#alias}' is not connected over Streamable HTTP.`);
         }
         const result = await auth(resolved.oauthProvider, {
             serverUrl: new URL(resolved.url),
@@ -771,7 +778,7 @@ export default class ServerConnection {
     async finishAuthorization(callbackUrl: string): Promise<void> {
         const pending = this.#pendingAuthorization;
         if (pending === undefined) {
-            throw new Error(`MCP server '${this.#definition.name}' has no pending OAuth authorization.`);
+            throw new Error(`MCP server '${this.#alias}' has no pending OAuth authorization.`);
         }
         const callback = new URL(callbackUrl);
         const expected = new URL(pending.provider.redirectUrl);
@@ -986,11 +993,11 @@ export default class ServerConnection {
             if (serverSupportsTasks(serverCapabilities(client))) {
                 const tool = toolDefinition ?? await listed();
                 if (tool === undefined) {
-                    throw new Error(`MCP server '${this.#definition.name}' did not list tool '${name}'.`);
+                    throw new Error(`MCP server '${this.#alias}' did not list tool '${name}'.`);
                 }
                 assertHeaderDeclarations(tool);
                 return callToolWithTasks({
-                    server: this.#definition.name,
+                    server: this.#alias,
                     name,
                     args,
                     tool,
@@ -1012,7 +1019,7 @@ export default class ServerConnection {
             });
             if (tool !== undefined) assertHeaderDeclarations(tool);
             return runInputRequiredRequest<CallToolResult>({
-                server: this.#definition.name,
+                server: this.#alias,
                 operation: "tools/call",
                 originalParams: {
                     name,
@@ -1042,7 +1049,7 @@ export default class ServerConnection {
         return this.#request(async ({ client, subscriptions }, requestSignal) => {
             await subscriptions.selectResource(uri, requestSignal);
             return runInputRequiredRequest<ReadResourceResult>({
-                server: this.#definition.name,
+                server: this.#alias,
                 operation: "resources/read",
                 originalParams: {
                     uri,
@@ -1069,7 +1076,7 @@ export default class ServerConnection {
         meta?: Readonly<Record<string, unknown>>,
     ): Promise<GetPromptResult> {
         return this.#request(async ({ client }, requestSignal) => runInputRequiredRequest<GetPromptResult>({
-            server: this.#definition.name,
+            server: this.#alias,
             operation: "prompts/get",
             originalParams: {
                 name,
@@ -1123,7 +1130,7 @@ export default class ServerConnection {
 
     async #close(): Promise<void> {
         this.#closed = true;
-        this.#abort.abort(new Error(`MCP server '${this.#definition.name}' connection is closed.`));
+        this.#abort.abort(new Error(`MCP server '${this.#alias}' connection is closed.`));
         const client = this.#client;
         this.#client = undefined;
         const openingTransport = this.#openingTransport;
@@ -1148,7 +1155,7 @@ export default class ServerConnection {
             result.status === "rejected" ? [result.reason] : []);
         if (failures.length === 1) throw failures[0];
         if (failures.length > 1) {
-            throw new AggregateError(failures, `MCP server '${this.#definition.name}' shutdown failed.`);
+            throw new AggregateError(failures, `MCP server '${this.#alias}' shutdown failed.`);
         }
     }
 

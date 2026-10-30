@@ -36,9 +36,9 @@ before it cannot do:
 | Plugin | a directory holding `plugin.json`, `skills/` and `mcp.json` | its skills and MCP servers | none, unless it declares an extension |
 | Extension | a package declaring one kind | a runtime, an address scheme, a media-type reader, a model provider, a page materializer, or what a module contributes | trusted, in the daemon |
 
-Skills and MCP servers are definitions. The `plurnk` runtime (`skills` and
-`mcp` tools) adds, replaces, enables, disables and removes them in the current workspace,
-and `workspace:///_plurnk/tools/plurnk/skills.json` and `mcp.json` show each
+Skills and MCP servers are definitions. The `plurnk_skills` and
+`plurnk_mcp` runtimes (`add`, `replace`, `enable`, `disable`, and `remove` tools) manage them in the current workspace,
+and `mcp:///plurnk_skills.md` and `mcp:///plurnk_mcp.md` show each
 definition's form. A definition needs no restart; an extension loads only when
 the daemon starts.
 

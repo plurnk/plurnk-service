@@ -1885,7 +1885,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 )) as {
                     items: Array<{
                         alias: string;
-                        definition: { name: string; type: string; url: string; headers?: Record<string, string> };
+                        definition: { type: string; url: string; headers?: Record<string, string> };
                     }>;
                 };
                 const bridged = mcpList.items.find((item) => item.alias === "ide-tools");

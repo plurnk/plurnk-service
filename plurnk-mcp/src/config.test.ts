@@ -10,7 +10,6 @@ import {
     serviceDefinitions,
     configuredDefinitions,
     connectTimeoutMs,
-    expandedServerNames,
     requestTimeoutMs,
     registrySettings,
     retryDelayMs,
@@ -46,7 +45,7 @@ test("{§mcp-configuration} plugin servers compose by scope, retain context, and
     const sources = { plugins: discovered.plugins.map((plugin) => ({ ...plugin, data })), roots: { project: join(project, "plugins") }, report: (notice: Notice) => notices.push(notice) };
     const definitions = await configuredDefinitions([project, global], floor, sources);
     assert.deepEqual(definitions, [{
-        alias: "example", enabled: true, definition: { ...source, name: "example" }, context: { root, data },
+        alias: "example", enabled: true, definition: source, context: { root, data },
         provenance: { kind: "plugin", source: join(root, "mcp.json"), reference: "/mcpServers/example" },
     }]);
     assert.equal(notices.length, 2);
@@ -55,23 +54,23 @@ test("{§mcp-configuration} plugin servers compose by scope, retain context, and
     await writeFile(join(project, "mcp.json"), JSON.stringify({ mcpServers: { example: { command: "standalone" } } }));
     const replaced = (await configuredDefinitions([project, global], floor, sources))[0];
     assert.equal(replaced.context, undefined);
-    assert.deepEqual(replaced.definition, { name: "example", type: "stdio", command: "standalone" });
+    assert.deepEqual(replaced.definition, { type: "stdio", command: "standalone" });
     const overridden = await configuredDefinitions([project, global], {
-        ...floor, PLURNK_MCP_example: JSON.stringify({ name: "example", type: "stdio", command: "environment" }), PLURNK_MCP_example_ENABLED: "0",
+        ...floor, PLURNK_MCP_example: JSON.stringify({ type: "stdio", command: "environment" }), PLURNK_MCP_example_ENABLED: "0",
     }, sources);
     assert.deepEqual(overridden[0], {
-        alias: "example", enabled: false, definition: { name: "example", type: "stdio", command: "environment" },
+        alias: "example", enabled: false, definition: { type: "stdio", command: "environment" },
         provenance: { kind: "environment", source: "PLURNK_MCP_example" },
     });
 });
 
 test("{§mcp-configuration} whole definitions and independent controls use the shared resource dialect", () => {
-    const definition = { name: "code-search", type: "stdio", command: "node", args: ["server.mjs"] };
+    const definition = { type: "stdio", command: "node", args: ["server.mjs"] };
     const env = { ...floor, PLURNK_MCP_code_search: JSON.stringify(definition), PLURNK_MCP_code_search_ENABLED: "0" };
     const provenance = { kind: "environment", source: "PLURNK_MCP_code_search" };
     assert.deepEqual(serviceDefinitions(env), [{ alias: "code-search", definition, enabled: false, provenance }]);
     assert.deepEqual(serviceDefinitions({ ...env, PLURNK_MCP_code_search_ENABLED: "1" }), [{ alias: "code-search", definition, enabled: true, provenance }]);
-    const replacement = { name: "code-search", type: "streamable-http", url: "https://example.com/mcp" };
+    const replacement = { type: "streamable-http", url: "https://example.com/mcp" };
     assert.deepEqual(serviceDefinitions({ ...env, PLURNK_MCP_code_search: JSON.stringify(replacement) }), [{ alias: "code-search", definition: replacement, enabled: false, provenance }]);
     assert.deepEqual(serviceDefinitions(floor), []);
 });
@@ -88,18 +87,18 @@ test("{§mcp-configuration} files compose whole entries beneath environment defi
     const env = { ...floor, PLURNK_MCP_ENABLED: "0", PLURNK_MCP_tool_ENABLED: "1", PLURNK_MCP_tool_TOOLS: '["inspect"]' };
     const definitions = await configuredDefinitions(directories, env);
     assert.deepEqual(definitions, [
-        { alias: "other", enabled: false, definition: { name: "other", type: "stdio", command: "other" }, provenance: { kind: "file", source: join(directories[2], "mcp.json"), reference: "/mcpServers/other" } },
-        { alias: "tool", enabled: true, definition: { name: "tool", type: "streamable-http", url: "http://project.internal/mcp" }, provenance: { kind: "file", source: join(directories[0], "mcp.json"), reference: "/mcpServers/tool" } },
+        { alias: "other", enabled: false, definition: { type: "stdio", command: "other" }, provenance: { kind: "file", source: join(directories[2], "mcp.json"), reference: "/mcpServers/other" } },
+        { alias: "tool", enabled: true, definition: { type: "streamable-http", url: "http://project.internal/mcp" }, provenance: { kind: "file", source: join(directories[0], "mcp.json"), reference: "/mcpServers/tool" } },
     ]);
     assert.deepEqual(serverSettings("tool", env), { tools: ["inspect"] });
-    const override = { name: "tool", type: "stdio", command: "environment" };
+    const override = { type: "stdio", command: "environment" };
     assert.deepEqual((await configuredDefinitions(directories, { ...env, PLURNK_MCP_tool: JSON.stringify(override) })).find(({ alias }) => alias === "tool"), {
         alias: "tool", enabled: true, definition: override, provenance: { kind: "environment", source: "PLURNK_MCP_tool" },
     });
     await rm(join(directories[0], "mcp.json"));
-    assert.deepEqual((await configuredDefinitions(directories, env))[1].definition, { name: "tool", type: "stdio", command: "plurnk" });
+    assert.deepEqual((await configuredDefinitions(directories, env))[1].definition, { type: "stdio", command: "plurnk" });
     await rm(join(directories[1], "mcp.json"));
-    assert.deepEqual((await configuredDefinitions(directories, env))[1].definition, { name: "tool", type: "stdio", command: "global", args: ["must-not-leak"], env: { SOURCE: "global" } });
+    assert.deepEqual((await configuredDefinitions(directories, env))[1].definition, { type: "stdio", command: "global", args: ["must-not-leak"], env: { SOURCE: "global" } });
     assert.deepEqual(await configuredDefinitions([], floor), [], "unselected roots are never read");
 });
 
@@ -116,8 +115,8 @@ test("{§mcp-configuration} invalid selected entries identify their file and poi
             assert.doesNotMatch(error.message, /private-value/u);
             return true;
         });
-        const env = { ...floor, PLURNK_MCP_tool: '{"name":"tool","type":"stdio","command":"valid"}' };
-        assert.equal((await configuredDefinitions([root], env))[0].definition.name, "tool", "a shadowed entry is not the effective definition");
+        const env = { ...floor, PLURNK_MCP_tool: '{"type":"stdio","command":"valid"}' };
+        assert.equal((await configuredDefinitions([root], env))[0].alias, "tool", "a shadowed entry is not the effective definition");
     }
     await writeFile(file, '{"mcpServers":{"UpperCase":{"command":"node"}}}');
     await assert.rejects(configuredDefinitions([root], floor), (error: unknown) => error instanceof ConfigurationError && error.key === `${file}#/mcpServers/UpperCase`);
@@ -149,8 +148,8 @@ test("{§mcp-configuration} invalid definitions and controls fail even when no s
         assert.throws(() => serviceDefinitions({ ...floor, [key]: "private-value" }), (error: Error) => error.message.startsWith(key) && !error.message.includes("private-value"));
     }
     assert.throws(() => serviceDefinitions({ ...floor, PLURNK_MCP_forge: "", PLURNK_MCP_forge_ENABLED: "0" }), /PLURNK_MCP_forge must contain a definition/u);
-    assert.throws(() => serviceDefinitions({ ...floor, PLURNK_MCP_forge: '{"name":"forge","type":"stdio"}', PLURNK_MCP_forge_ENABLED: "0" }), /PLURNK_MCP_forge must be an MCP server definition/u);
-    assert.throws(() => serviceDefinitions({ ...floor, PLURNK_MCP_forge: '{"name":"other","type":"stdio","command":"node"}' }), /PLURNK_MCP_forge must define name 'forge'/u);
+    assert.throws(() => serviceDefinitions({ ...floor, PLURNK_MCP_forge: '{"type":"stdio"}', PLURNK_MCP_forge_ENABLED: "0" }), /PLURNK_MCP_forge must be an MCP server definition/u);
+    assert.throws(() => serviceDefinitions({ ...floor, PLURNK_MCP_forge: '{"name":"other","type":"stdio","command":"node"}' }), /PLURNK_MCP_forge must be an MCP server definition/u);
     assert.throws(() => serviceDefinitions({}), /PLURNK_MCP_ENABLED is missing from the assembled environment floor/u);
     assert.throws(() => serviceDefinitions({ ...floor, PLURNK_MCP_future_ENABLED: "yes" }), /PLURNK_MCP_future_ENABLED must be 0 or 1/u);
 });
@@ -165,20 +164,13 @@ test("{§mcp-configuration} controls precede declarations without making resourc
     assert.throws(() => serviceDefinitions({ ...env, PLURNK_MCP_future_TOOLS: '["a","a"]' }), /PLURNK_MCP_future_TOOLS contains duplicate tool name 'a'/u);
     assert.throws(() => serviceDefinitions({ ...env, PLURNK_MCP_future_TOOLS: '"a"' }), /PLURNK_MCP_future_TOOLS must be a JSON array of strings/u);
     assert.throws(() => serviceDefinitions({ ...env, PLURNK_MCP_future_UNSUPPORTED: "anything" }), /PLURNK_MCP_future_UNSUPPORTED names unsupported resource setting/u);
-    const definition = { name: "future", type: "stdio", command: "node" };
+    const definition = { type: "stdio", command: "node" };
     assert.deepEqual(serviceDefinitions({ ...env, PLURNK_MCP_future: JSON.stringify(definition) }), [{ alias: "future", definition, enabled: false, provenance: { kind: "environment", source: "PLURNK_MCP_future" } }]);
-});
-
-test("{§mcp-configuration} EXPANDED names server aliases", () => {
-    assert.deepEqual(expandedServerNames(floor), []);
-    assert.deepEqual(expandedServerNames({ ...floor, PLURNK_MCP_EXPANDED: '["forge","brave"]' }), ["brave", "forge"]);
-    assert.throws(() => expandedServerNames({ ...floor, PLURNK_MCP_EXPANDED: '["Forge"]' }), /not an MCP server alias/u);
-    assert.throws(() => expandedServerNames({ ...floor, PLURNK_MCP_EXPANDED: '["a","a"]' }), /duplicate MCP server 'a'/u);
 });
 
 test("{§mcp-configuration} explicit HTTP endpoints and registries need not be loopback addresses", () => {
     for (const url of ["http://mcp.internal/mcp", "http://192.0.2.1:8080/mcp", "https://example.com/mcp"]) {
-        const definition = { name: "remote", type: "streamable-http", url };
+        const definition = { type: "streamable-http", url };
         assert.deepEqual(serviceDefinitions({ ...floor, PLURNK_MCP_remote: JSON.stringify(definition) }), [
             { alias: "remote", definition, enabled: true, provenance: { kind: "environment", source: "PLURNK_MCP_remote" } },
         ]);
@@ -207,7 +199,7 @@ test("{§operator-config-precedence} MCP validation checks every independent con
     for (const [key, value] of Object.entries({
         PLURNK_MCP_CONNECT_TIMEOUT: "0", PLURNK_MCP_REQUEST_TIMEOUT: "0", PLURNK_MCP_RETRY_FLOOR_MS: "0",
         PLURNK_MCP_RETRY_CEILING_MS: "1", PLURNK_MCP_REGISTRY_URL: "file:///registry", PLURNK_MCP_REGISTRY_LIMIT: "0",
-        PLURNK_MCP_EXPANDED: '["BAD"]', PLURNK_MCP_future_TOOLS: "[1]",
+        PLURNK_MCP_future_TOOLS: "[1]",
     })) {
         assert.throws(() => validateConfiguration({ ...env, [key]: value }), (error: Error) => error.message.includes(key));
     }
@@ -266,15 +258,14 @@ test("{§mcp-configuration} {§mcp-open-work} WORKSPACE and SESSION controls and
         /PLURNK_MCP_bot_SESSION must be a non-empty session name/u,
     );
     const bound = {
-        name: "bot",
         type: "stdio" as const,
         command: "node",
         plurnkWorkspace: ["ops", "triage"],
         plurnkSession: "inbox",
     };
-    assert.deepEqual(readDefinition(bound), bound);
-    assert.throws(() => readDefinition({ ...bound, plurnkWorkspace: [] }), /plurnkWorkspace/u);
-    assert.throws(() => readDefinition({ ...bound, plurnkSession: "" }), /plurnkSession/u);
+    assert.deepEqual(readDefinition(bound, "bot"), bound);
+    assert.throws(() => readDefinition({ ...bound, plurnkWorkspace: [] }, "bot"), /plurnkWorkspace/u);
+    assert.throws(() => readDefinition({ ...bound, plurnkSession: "" }, "bot"), /plurnkSession/u);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -283,9 +274,10 @@ test("{§mcp-configuration} {§mcp-open-work} WORKSPACE and SESSION controls and
 
 test("{§mcp-server-definition} direct commands, symbolic authentication and custom headers share one admission path", () => {
     for (const command of ["node", "/usr/bin/node", "./bin/server"]) {
-        assert.deepEqual(readDefinition({ name: "local", type: "stdio", command }), { name: "local", type: "stdio", command });
+        assert.deepEqual(readDefinition({ type: "stdio", command }), { type: "stdio", command });
+        assert.deepEqual(readDefinition({ command }), { type: "stdio", command });
     }
-    const definition = { name: "forge", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "${TOKEN}" }, headers: { "X-Tenant": "${TENANT}" } };
+    const definition = { type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "${TOKEN}" }, headers: { "X-Tenant": "${TENANT}" } };
     assert.deepEqual(readDefinition(definition), definition);
     assert.notEqual(readDefinition(definition), definition);
     assert.throws(() => readDefinition({ ...definition, headers: { aUtHoRiZaTiOn: "Bearer ${TOKEN}" } }), /cannot supply both authorization and an Authorization header/u);

@@ -246,7 +246,7 @@ try {
         PLURNK_SECRET: operatorSecret,
         PLURNK_SERVICE_DB_PATH: db,
         PLURNK_SERVICE_MAX_TURNS: "8",
-        PLURNK_MCP_sourcecheck: JSON.stringify({ name: "sourcecheck", type: "stdio", command: "node" }),
+        PLURNK_MCP_sourcecheck: JSON.stringify({ type: "stdio", command: "node" }),
         PLURNK_MCP_sourcecheck_ENABLED: "0",
         ...fixture.env,
     };
@@ -536,7 +536,7 @@ try {
         }
         if (family === "skills") {
             const skill = listed.definitions.find(({ alias }) => alias === "plurnk");
-            if (skill?.origin !== "service" || skill.definition?.name !== "plurnk" || "scope" in skill.definition) {
+            if (skill?.origin !== "service" || skill.definition === undefined || "scope" in skill.definition) {
                 throw new Error(`the provided skill lost its service origin or acquired an installation scope: ${JSON.stringify(skill)}`);
             }
         }
@@ -551,8 +551,8 @@ try {
     // Both connections observe the same workspace definition independently of their Session.
     const membersOf = (listed) => (listed.definitions ?? [])
         .filter((definition) => definition.alias === "cross/**")
-        .map(({ alias, origin, state, definition }) => ({ alias, origin, state, glob: definition?.glob }));
-    const expectedMembers = [{ alias: "cross/**", origin: "workspace", state: "active", glob: "cross/**" }];
+        .map(({ alias, origin, state }) => ({ alias, origin, state }));
+    const expectedMembers = [{ alias: "cross/**", origin: "workspace", state: "active" }];
     const members = await terminal.rpc("workspace.members.list");
     if (JSON.stringify(membersOf(members)) !== JSON.stringify(expectedMembers)) {
         throw new Error(`terminal did not observe the other connection's durable mutation: ${JSON.stringify(members)}`);

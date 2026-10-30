@@ -1200,7 +1200,7 @@ test("{§machine-processes} an empty waiting inventory stays runnable in the sam
     } finally { await db.close(); }
 });
 
-test("{§session-scheme}: generated documents are ordinary editable workspace scratch", async () => {
+test("{§session-scheme}: workspace documents are ordinary editable workspace scratch", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh });
@@ -1214,13 +1214,13 @@ test("{§session-scheme}: generated documents are ordinary editable workspace sc
                 : await insertOperationTurn(db, loopId, index + 1, writer);
             let sequence = 0;
             const dispatch = (statement: PlurnkStatement) => engine.dispatch({ statement, workspaceId, sessionId, loopId, turnId, sequence: ++sequence, origin: writer });
-            const target = sessionEntry("", "_plurnk/plurnk/example.md");
+            const target = sessionEntry("", "shared/example.md");
             assert.equal((await dispatch(editStmt(target, "# Example"))).status, 201);
             assert.equal((await dispatch(editStmt(target, "# Updated", fullReplace))).status, 200);
             assert.equal((await dispatch(readStmt(target))).content, "# Updated");
-            assert.equal((await dispatch(copyStmt(target, sessionEntry("", "_plurnk/copied.md")))).status, 201);
-            assert.equal((await dispatch(killEntry("", "_plurnk/plurnk/example.md"))).status, 200);
-            assert.equal((await dispatch(killEntry("", "_plurnk/copied.md"))).status, 200);
+            assert.equal((await dispatch(copyStmt(target, sessionEntry("", "shared/copied.md")))).status, 201);
+            assert.equal((await dispatch(killEntry("", "shared/example.md"))).status, 200);
+            assert.equal((await dispatch(killEntry("", "shared/copied.md"))).status, 200);
         }
     } finally { await db.close(); }
 });
@@ -1233,12 +1233,12 @@ test("{§session-scheme}: shared docs are not forked; every named scratch path i
         const ctx = makeSchemeCtx({ db, workspaceId, sessionId: parent });
         const scheme = new Session();
         const workspaceScheme = new Workspace();
-        assert.equal((await workspaceScheme.edit(editStmt(sessionEntry("", "_plurnk/example.md"), "# Shared"), ctx)).status, 201);
-        assert.equal((await scheme.edit(editStmt(sessionEntry("alpha", "_plurnk/note.md"), "ordinary scratch"), ctx)).status, 201);
+        assert.equal((await workspaceScheme.edit(editStmt(sessionEntry("", "shared/example.md"), "# Shared"), ctx)).status, 201);
+        assert.equal((await scheme.edit(editStmt(sessionEntry("alpha", "nested/note.md"), "ordinary scratch"), ctx)).status, 201);
         const forkId = await Fork.fork(db, parent, "alpha-fork");
         const forkCtx = makeSchemeCtx({ db, workspaceId, sessionId: forkId });
-        assert.deepEqual(resourcePaths(await scheme.find(findEntry("alpha-fork", "**"), forkCtx)), ["session://alpha-fork/_plurnk/note.md"]);
-        assert.equal((await readThroughScheme("workspace", null, readEntry("", "_plurnk/example.md"), forkCtx)).content, "# Shared");
+        assert.deepEqual(resourcePaths(await scheme.find(findEntry("alpha-fork", "**"), forkCtx)), ["session://alpha-fork/nested/note.md"]);
+        assert.equal((await readThroughScheme("workspace", null, readEntry("", "shared/example.md"), forkCtx)).content, "# Shared");
     } finally { await db.close(); }
 });
 });
@@ -1598,8 +1598,8 @@ for (const origin of ["model", "client", "_plurnk"] as const) {
         assert.equal((await run("READ (session://bob/copy.md)")).status, 404);
         assert.equal((await run("KILL (session://bob/notes.md)")).status, 200);
         assert.equal((await run("READ (session://bob/notes.md)")).status, 404);
-        assert.equal((await run("EDIT (session://bob/_plurnk/example.md)", "ordinary generated area")).status, 201);
-        assert.equal((await run("READ (session://bob/_plurnk/example.md) <1,-1>")).content, "ordinary generated area");
+        assert.equal((await run("EDIT (session://bob/nested/example.md)", "ordinary scratch area")).status, 201);
+        assert.equal((await run("READ (session://bob/nested/example.md) <1,-1>")).content, "ordinary scratch area");
         assert.equal((await run("READ (session://missing/notes.md)")).status, 404, "an absent namespace does not resolve through the calling session");
     });
 }

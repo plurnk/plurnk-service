@@ -4,7 +4,7 @@ import Functionality from "./Functionality.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
 import EnvFunctionality from "./EnvFunctionality.ts";
-import FunctionalityManager, { FUNCTIONALITY_VERBS, plurnkRuntimeDecl, type FunctionalityVerb } from "./FunctionalityManager.ts";
+import FunctionalityManager, { FUNCTIONALITY_VERBS, plurnkFamilyRuntimeDecl, type FunctionalityVerb } from "./FunctionalityManager.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { type FunctionalityAdmission, type JsonSchema, type WorkspaceCapabilityGate, Problems } from "@plurnk/plurnk-contracts";
 import { type ModuleActionRegistration } from "@plurnk/plurnk-modules";
@@ -219,7 +219,11 @@ for (const scope of ["workspace", "session"] as const) {
         });
         const handle = coordinator.register(family("fixture", {
             scopes: [scope],
-            admit: async (input) => ({ ...input as { alias: string; definition: object }, preparation: payload }),
+            definitionSchema: { type: "object", required: ["value"], properties: { value: { type: "string" } } },
+            admit: async (input) => {
+                const { alias, value } = input as { alias: string; value: string };
+                return { alias, definition: { value }, preparation: payload };
+            },
             prepare: async ({ enabled, admissions }) => {
                 seen.push(admissions[0]);
                 return {
@@ -234,14 +238,14 @@ for (const scope of ["workspace", "session"] as const) {
         }));
         if (scope === "workspace") await provider.activate({ workspaceId: 1, retain: () => () => {} });
         const identity = { workspaceId: 1, sessionId: 2, scope };
-        const input = { alias: "entry", definition: { value: "original" } };
+        const input = { alias: "entry", value: "original" };
         const added = await handle.invoke("replace", input, identity);
-        assert.deepEqual(seen.at(-1), { ...input, preparation: payload });
+        assert.deepEqual(seen.at(-1), { alias: "entry", definition: { value: "original" }, preparation: payload });
         assert.equal(seen.at(-1)?.preparation, payload, "opaque admission data is passed through, not cloned into the definition");
-        assert.deepEqual(state, { version: 1, definitions: { entry: { origin: scope, definition: input.definition, enabled: true } } });
+        assert.deepEqual(state, { version: 1, definitions: { entry: { origin: scope, definition: { value: "original" }, enabled: true } } });
         assert.equal(JSON.stringify(added.body).includes("readAt"), false, "admission data is not configuration output");
 
-        const changed = { alias: "entry", definition: { value: "changed" } };
+        const changed = { alias: "entry", value: "changed" };
         const count = seen.length;
         await assert.rejects(handle.invoke("add", changed, identity), (cause: unknown) => {
             assert.ok(cause instanceof OperationFailureError);
@@ -260,7 +264,7 @@ for (const scope of ["workspace", "session"] as const) {
         assert.equal(seen.at(-1), undefined, "a subsequent preparation has no stale admission data");
         assert.deepEqual(state, before);
         await handle.invoke("replace", changed, identity);
-        assert.deepEqual(state, { version: 1, definitions: { entry: { origin: scope, definition: changed.definition, enabled: true } } });
+        assert.deepEqual(state, { version: 1, definitions: { entry: { origin: scope, definition: { value: "changed" }, enabled: true } } });
     });
 }
 
@@ -419,13 +423,13 @@ test("{§functionality-adapter} env declares the shell's alias grammar: PATH is 
 });
 
 test("{§env-functionality} admit accepts a name a shell can export", async () => {
-    const admitted = await adapter.admit({ alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } }, identity);
+    const admitted = await adapter.admit({ alias: "CARGO_TARGET_DIR", value: "/tmp/shared" }, identity);
     assert.deepEqual(admitted, { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } });
 });
 
 test("{§env-functionality} admit refuses a name a shell could not export", async () => {
     await assert.rejects(
-        () => adapter.admit({ alias: "9NOPE", definition: { value: "x" } }, identity),
+        () => adapter.admit({ alias: "9NOPE", value: "x" }, identity),
         /is not a name a shell can export/u,
     );
 });
@@ -444,16 +448,16 @@ test("{§execution-output-identity} reserved names are refused at family admissi
             assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/env/functionality/name-reserved");
             assert.equal(cause.result.problem.alias, alias);
             assert.equal(cause.result.problem.detail, `'${alias}' is reserved in env entries.`);
-            assert.equal(cause.result.problem.recovery, "READ workspace:///_plurnk/tools/plurnk/env.json for supported configuration paths.");
+            assert.equal(cause.result.problem.recovery, "READ mcp:///plurnk_env.md for supported configuration paths.");
             return true;
         };
-        await assert.rejects(() => adapter.admit({ alias, definition: { value: "explicit-value" } }, identity), refused);
+        await assert.rejects(() => adapter.admit({ alias, value: "explicit-value" }, identity), refused);
     }
 });
 
 test("{§env-functionality} admit refuses a non-string value", async () => {
     await assert.rejects(
-        () => adapter.admit({ alias: "COUNT", definition: { value: 3 } }, identity),
+        () => adapter.admit({ alias: "COUNT", value: 3 }, identity),
         /needs a string value/u,
     );
 });
@@ -566,13 +570,13 @@ const coordinator = {
     },
 } as unknown as Functionality;
 
-const args = (target: string | null, body: string) => {
+const args = (target: string | null, body: string, runtime = "plurnk_fx") => {
     const written: string[] = [];
     const states: string[] = [];
     const emitted: unknown[] = [];
     return {
         args: {
-            runtime: "plurnk", body, cwd: null, target, signal: new AbortController().signal,
+            runtime, body, cwd: null, target, signal: new AbortController().signal,
             write: (_channel: string, chunk: string) => { written.push(chunk); },
             setState: (_channel: string, state: string) => { states.push(state); },
             emit: (notice: unknown) => { emitted.push(notice); },
@@ -584,45 +588,34 @@ const args = (target: string | null, body: string) => {
     };
 };
 
-test("{§functionality-model-projection} each family tool carries its verb union and coordinator properties without a second signature or field-table definition", () => {
-    const definitionSchema = {
-        type: "object", required: ["kind"],
+test("{§functionality-model-projection} each family runtime exposes verb tools with their exact coordinator input schemas", () => {
+    const addSchema = {
+        type: "object", additionalProperties: false, required: ["alias", "kind"],
         properties: {
+            alias: { type: "string" },
             kind: { enum: ["ok", "slow"], description: "The fixture kind." },
             options: { type: "object", properties: { retries: { type: "integer", description: "Attempts before giving up." } } },
         },
     };
-    const schemas = { ...inputSchemas, add: {
-        type: "object", required: ["definition"], properties: { alias: { type: "string" }, definition: definitionSchema },
-    } };
+    const schemas = { ...inputSchemas, add: addSchema };
     const manager = new FunctionalityManager({
         family: "fx", workspaceId: 1, coordinator,
         inputSchemas: schemas,
-        example: { alias: "a", definition: { kind: "ok" } },
+        example: { alias: "a", kind: "ok" },
         discovery: { inputs: ["source"], details: "`source` is one fixture locator." },
     });
-    const tool = manager.toolRegistry().tools.find((candidate) => candidate.target === "fx")!;
-    assert.deepEqual(tool.invocation.inputSchema, {
-        type: "object",
-        additionalProperties: false,
-        required: ["verb"],
-        properties: {
-            verb: {
-                type: "string",
-                enum: [...FUNCTIONALITY_VERBS],
-                description: "The lifecycle verb to run (defaults to list when the body is empty).",
-            },
-            alias: { type: "string" },
-            definition: definitionSchema,
-        },
-    });
-    assert.equal(tool.invocation.signature, undefined);
-    assert.match(tool.details ?? "", /\n```plurnk \(fx\)\n\{"verb":"add","alias":"a","definition":\{"kind":"ok"\}\}\n/u, "one exact example rides the family teaching");
-    assert.doesNotMatch(tool.details ?? "", /\| Field|options\.retries/u);
-    assert.match(tool.details ?? "", /fixture locator/u);
+    assert.equal(manager.manifest.name, "plurnk_fx");
+    assert.deepEqual(manager.toolRegistry().tools.map((candidate) => candidate.target), [...FUNCTIONALITY_VERBS]);
+    const addTool = manager.toolRegistry().tools.find((candidate) => candidate.target === "add")!;
+    const discoverTool = manager.toolRegistry().tools.find((candidate) => candidate.target === "discover")!;
+    assert.deepEqual(addTool.invocation.inputSchema, addSchema);
+    assert.equal(addTool.invocation.signature, undefined);
+    assert.match(addTool.details ?? "", /\n```plurnk_fx \(add\)\n\{"alias":"a","kind":"ok"\}\n/u, "one exact example rides the add verb teaching");
+    assert.doesNotMatch(addTool.details ?? "", /\| Field|options\.retries/u);
+    assert.match(discoverTool.details ?? "", /fixture locator/u);
 });
 
-test("{§functionality-replacement} an addressing family's tool teaches its own add input, selects by its operand, and offers no replace", () => {
+test("{§functionality-replacement} an addressing family's runtime teaches its own add input, selects by its operand, and offers no replace", () => {
     const { replace: _replace, ...addressed } = {
         ...inputSchemas,
         add: { type: "object", required: ["files"], properties: { files: { type: "array", items: { type: "string" } } } },
@@ -631,43 +624,36 @@ test("{§functionality-replacement} an addressing family's tool teaches its own 
         remove: { type: "object", required: ["file"], properties: { file: { type: "string" } } },
     };
     const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas: addressed, example: { files: ["docs/**"] } });
-    const [tool] = manager.toolRegistry().tools;
-    assert.equal(tool.target, "fx");
-    const verbProp = (tool.invocation.inputSchema?.properties as Record<string, { enum?: string[] }> | undefined)?.verb;
-    assert.deepEqual(verbProp?.enum, FUNCTIONALITY_VERBS.filter((verb) => verb !== "replace"));
-    assert.match(tool.details ?? "", /\n```plurnk \(fx\)\n\{"verb":"add","files":\["docs\/\*\*"\]\}\n/u, "the example is the family's add input, verbatim");
+    assert.deepEqual(manager.toolRegistry().tools.map(({ target }) => target), FUNCTIONALITY_VERBS.filter((verb) => verb !== "replace"));
+    const addTool = manager.toolRegistry().tools.find(({ target }) => target === "add")!;
+    assert.match(addTool.details ?? "", /\n```plurnk_fx \(add\)\n\{"files":\["docs\/\*\*"\]\}\n/u, "the example is the family's add input, verbatim");
 });
 
-test("{§functionality-model-projection} the plurnk manager exposes family tools and question with read/host effects", () => {
+test("{§functionality-model-projection} the family manager exposes verb tools with read/host effects", () => {
     const manager = new FunctionalityManager({
         family: "fx", workspaceId: 1, coordinator, inputSchemas,
         documentBody: "# fx\n\nAuthored body.",
-        includeQuestion: true,
     });
-    assert.deepEqual(manager.toolRegistry().tools.map(({ target }) => target), ["fx", "question"]);
+    assert.deepEqual(manager.toolRegistry().tools.map(({ target }) => target), [...FUNCTIONALITY_VERBS]);
     assert.deepEqual(
-        FUNCTIONALITY_VERBS.map((verb) => manager.effectForInvocation("fx", JSON.stringify({ verb }))),
+        FUNCTIONALITY_VERBS.map((verb) => manager.effectForInvocation(verb, "{}")),
         ["read", "read", "host", "host", "host", "host", "host"],
     );
-    assert.equal(manager.effectForInvocation("fx", ""), "read", "an empty body defaults to list (read)");
-    assert.equal(manager.effectForInvocation("fx", '{"verb":"destroy"}'), "host", "an unregistered verb can never run ungated");
-    assert.equal(manager.effectForInvocation("question", '{"message":"?"}'), "read", "question is always a read");
-    assert.equal(manager.manifest.name, "plurnk");
-    assert.equal(plurnkRuntimeDecl.invocation.target?.kind, "literal");
-    assert.equal(plurnkRuntimeDecl.resourcesPath, "/tools");
-    assert.equal(plurnkRuntimeDecl.expandTools, true);
-    const fxTool = manager.toolRegistry().tools.find(({ target }) => target === "fx")!;
-    assert.match(fxTool.details ?? "", /Authored body\./u, "the family's doc-file body rides the tool's details");
+    assert.equal(manager.effectForInvocation(null, ""), "read", "an empty target defaults to list (read)");
+    assert.equal(manager.effectForInvocation("destroy", "{}"), "host", "an unregistered verb can never run ungated");
+    assert.equal(manager.manifest.name, "plurnk_fx");
+    const decl = plurnkFamilyRuntimeDecl({ family: "fx", summary: "Fixture summary", inputSchemas, documentBody: "# fx\n\nAuthored body." });
+    assert.equal(decl.invocation.target?.kind, "literal");
+    assert.equal(decl.resourcesPath, "/tools");
+    assert.match(decl.details ?? "", /Authored body\./u, "the family's doc-file body rides the runtime's details");
 });
 
 test("{§functionality-replacement} a family without discovery has no discover verb, and its manager names the verbs it has", async () => {
     invocations.length = 0;
     const { discover: _discover, ...served } = inputSchemas;
     const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas: served });
-    const [tool] = manager.toolRegistry().tools;
-    const verbProp = (tool.invocation.inputSchema?.properties as Record<string, { enum?: string[] }> | undefined)?.verb;
-    assert.deepEqual(verbProp?.enum, ["list", "add", "replace", "enable", "disable", "remove"]);
-    const refused = await manager.run(args("fx", '{"verb": "discover", "query": "x"}').args);
+    assert.deepEqual(manager.toolRegistry().tools.map(({ target }) => target), ["list", "add", "replace", "enable", "disable", "remove"]);
+    const refused = await manager.run(args("discover", '{"query": "x"}').args);
     assert.equal(refused.status, 400);
     assert.equal(refused.problem?.type, "https://problems.plurnk.xyz/functionality/verb-unknown");
     assert.equal(refused.problem?.detail, "'discover' is not a fx lifecycle verb.");
@@ -678,12 +664,12 @@ test("{§functionality-replacement} a family without discovery has no discover v
 test("{§functionality-model-projection} a verb runs through the coordinator as an operation and streams its JSON result", async () => {
     invocations.length = 0;
     const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas });
-    const { args: runArgs, written, states } = args("fx", '{"verb":"add","alias":"a","definition":{"kind":"ok"}}');
+    const { args: runArgs, written, states } = args("add", '{"alias":"a","kind":"ok"}');
     const result = await manager.run(runArgs);
     assert.equal(result.status, 201);
-    assert.deepEqual(invocations, [{ family: "fx", verb: "add", params: { alias: "a", definition: { kind: "ok" } }, caller: "operation" }]);
+    assert.deepEqual(invocations, [{ family: "fx", verb: "add", params: { alias: "a", kind: "ok" }, caller: "operation" }]);
     assert.deepEqual(states, ["active", "closed"]);
-    assert.deepEqual(JSON.parse(written.join("")), { family: "fx", verb: "add", params: { alias: "a", definition: { kind: "ok" } } });
+    assert.deepEqual(JSON.parse(written.join("")), { family: "fx", verb: "add", params: { alias: "a", kind: "ok" } });
 });
 
 test("{§functionality-model-projection} every family's owned refusal survives its management executor", async () => {
@@ -696,7 +682,7 @@ test("{§functionality-model-projection} every family's owned refusal survives i
             family: "fx", workspaceId: 1, inputSchemas,
             coordinator: { invoke: async () => { throw cause; } } as unknown as Functionality,
         });
-        const { args: runArgs, written, states } = args("fx", '{"verb":"discover"}');
+        const { args: runArgs, written, states } = args("discover", "{}");
         assert.deepEqual(await manager.run(runArgs), result);
         assert.deepEqual(JSON.parse(written.join("")), result);
         assert.deepEqual(states, ["active", "errored"]);
@@ -714,7 +700,7 @@ test("{§functionality-model-projection} a pending resource sign-in emits an aut
             return { status: 201, body };
         } } as unknown as Functionality,
     });
-    const { args: runArgs, written, states, emitted } = args("mcp", '{"verb":"add"}');
+    const { args: runArgs, written, states, emitted } = args("add", "{}", "plurnk_mcp");
     assert.deepEqual(await manager.run(runArgs), { status: 201 });
     assert.deepEqual(emitted, [{
         source: "functionality:mcp",
@@ -732,22 +718,22 @@ test("{§functionality-model-projection} an unexpected exception is not reclassi
             family: "fx", workspaceId: 1, inputSchemas,
             coordinator: { invoke: async () => { throw cause; } } as unknown as Functionality,
         });
-        const { args: runArgs, written, states } = args("fx", '{"verb":"discover"}');
+        const { args: runArgs, written, states } = args("discover", "{}");
         await assert.rejects(() => manager.run(runArgs), (error) => error === cause);
         assert.deepEqual(written, []);
         assert.deepEqual(states, []);
     }
 });
 
-test("{§functionality-model-projection} an empty body defaults to list; a non-JSON body and an unknown verb are exact refusals", async () => {
+test("{§functionality-model-projection} an empty target or body defaults to list/{}; a non-JSON body and an unknown verb are exact refusals", async () => {
     invocations.length = 0;
     const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas });
-    assert.equal((await manager.run(args("fx", "   ").args)).status, 200);
+    assert.equal((await manager.run(args(null, "   ").args)).status, 200);
     assert.deepEqual(invocations.at(-1), { family: "fx", verb: "list", params: {}, caller: "operation" });
-    const refused = await manager.run(args("fx", "not json").args);
+    const refused = await manager.run(args("list", "not json").args);
     assert.equal(refused.status, 400);
     assert.equal(refused.problem?.type, "https://problems.plurnk.xyz/functionality/arguments-not-json");
-    const unknown = await manager.run(args("fx", '{"verb":"destroy"}').args);
+    const unknown = await manager.run(args("destroy", "{}").args);
     assert.equal(unknown.status, 400);
     assert.equal(unknown.problem?.type, "https://problems.plurnk.xyz/functionality/verb-unknown");
     assert.equal(invocations.length, 1, "refusals never reach the coordinator");
@@ -759,11 +745,11 @@ test("{§functionality-model-projection} Core binds the invoking session at the 
     invocations.length = 0;
     identities.length = 0;
     const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas });
-    assert.equal((await manager.run(args("fx", "").args)).status, 200);
-    assert.equal((await manager.forSession(7).run(args("fx", "").args)).status, 200);
-    assert.equal((await manager.run(args("fx", "").args)).status, 200);
+    assert.equal((await manager.run(args("list", "").args)).status, 200);
+    assert.equal((await manager.forSession(7).run(args("list", "").args)).status, 200);
+    assert.equal((await manager.run(args("list", "").args)).status, 200);
     assert.deepEqual(identities, [{ workspaceId: 1 }, { workspaceId: 1, sessionId: 7 }, { workspaceId: 1 }],
         "the bound instance names its session; the published instance never does");
-    assert.deepEqual(manager.forSession(7).toolRegistry().tools.map(({ target }) => target), ["fx"], "binding changes the identity, not the teaching");
+    assert.deepEqual(manager.forSession(7).toolRegistry().tools.map(({ target }) => target), [...FUNCTIONALITY_VERBS], "binding changes the identity, not the teaching");
 });
 });

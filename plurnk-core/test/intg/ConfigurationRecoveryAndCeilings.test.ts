@@ -160,7 +160,7 @@ for (const key of [
         const workspaceId = await insertWorkspace(db, `policy-repair-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
-            makeMockResponse("````plurnk (env)\n````"),
+            makeMockResponse("````plurnk_env (list)\n````"),
             makeMockResponse("````SEND [200]\nConfiguration is inspectable.\n````"),
         ] });
         const daemon = new Daemon({ db, provider });
@@ -187,7 +187,7 @@ test("{§configuration-repair-path} startup diagnostics reach the model and clie
     const key = "PLURNK_HOOKS_ARGS";
     await configuration.capture("hooks", () => { throw new ConfigurationError(key, `${key} must be a JSON array of strings.`); });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse("````plurnk (env)\n````"),
+        makeMockResponse("````plurnk_env (list)\n````"),
         makeMockResponse("````SEND [200]\nThe hook configuration needs repair; ordinary operations remain available.\n````"),
     ] });
     const daemon = new Daemon({ db, provider, configuration });
@@ -235,7 +235,7 @@ for (const [family, key, value] of [
         const workspaceId = await insertWorkspace(db, `repair-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
-            makeMockResponse(`\`\`\`\`plurnk (${family})\n\`\`\`\`\n\n\`\`\`\`plurnk (env)\n\`\`\`\``),
+            makeMockResponse(`\`\`\`\`plurnk_${family} (list)\n\`\`\`\`\n\n\`\`\`\`plurnk_env (list)\n\`\`\`\``),
             makeMockResponse("````SEND [200]\nThe configuration error is visible; this agent is still usable.\n````"),
         ] });
         const daemon = new Daemon({ db, provider });
@@ -268,7 +268,7 @@ for (const [family, key, value] of [
         assert.match(firstPacket, /configuration_unavailable/u, "the unavailable family is reported before invocation, independently of turn0 catalog limits");
         assert.ok(firstPacket.includes(key), "the model is told which setting is invalid before it calls the family");
         const references = await daemon.engine.referenceEntries(workspaceId);
-        const documentation = references.find(({ pathname }) => pathname === `/_plurnk/tools/plurnk/${family}.json`);
+        const documentation = references.find(({ scheme, pathname }) => scheme === "mcp" && pathname === `/plurnk_${family}.md`);
         assert.ok(documentation?.content.includes(key), "the manager's on-demand documentation also includes the diagnostic");
         assert.equal(notices.filter((notice) => notice.source === "engine:configuration" && notice.key === key && notice.owner === family).length, 1,
             "the client receives the diagnostic without repeated warnings on unchanged turns");

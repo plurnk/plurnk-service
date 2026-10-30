@@ -176,7 +176,7 @@ hooks, HTTP, and content handling. Search the catalog for that subsystem instead
 of relying on a second list of knobs here.
 
 For file-access questions, inspect the generated
-[members tool contract](workspace:///_plurnk/tools/plurnk/members.json) alongside the file
+[members tool contract](mcp:///plurnk_members.md) alongside the file
 creation/membership defaults. Client controls inspect effective capabilities;
 a model cannot widen their ceiling by changing its policy prose.
 
@@ -188,12 +188,12 @@ skills; npm bundles follow user-global roots. These are read-only configuration 
 external edits appear at the next turn. Plurnk's own skill uses the same READ,
 discovery, and workspace enablement as other skills.
 
-`plurnk (skills)` with `"verb": "add"` binds a source to this workspace, never installs into those roots.
+`plurnk_skills (add)` binds a source to this workspace, never installs into those roots.
 Local folders and `SKILL.md` files stay live references, with supporting files in
 place. Git/archive sources become workspace-owned copies retained across enable
 and restart until the source definition changes. `remove` forgets the workspace
 binding without deleting its source. READ is not execution; running a skill's
-script follows ordinary proposal policy. The [skills tool contract](workspace:///_plurnk/tools/plurnk/skills.json)
+script follows ordinary proposal policy. The [skills tool contract](mcp:///plurnk_skills.md)
 covers discovery, source forms, and Git refs.
 
 ## Resource definitions
@@ -204,7 +204,7 @@ never inherit. Workspace overrides win over environment declarations, which win
 over discovered sources. Independent behavior controls cascade separately.
 
 ```dotenv
-PLURNK_MCP_docs={"name":"docs","type":"streamable-http","url":"https://docs.example/mcp"}
+PLURNK_MCP_docs={"type":"streamable-http","url":"https://docs.example/mcp"}
 PLURNK_MCP_ENABLED=1
 PLURNK_MCP_docs_ENABLED=0
 ```

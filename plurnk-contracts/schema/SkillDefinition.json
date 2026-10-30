@@ -5,14 +5,7 @@
     "description": "One standard Agent Skill and its source. Source locations are inputs, not installation scopes.",
     "type": "object",
     "additionalProperties": false,
-    "required": ["name"],
     "properties": {
-        "name": {
-            "description": "The standard Agent Skills name: Unicode lowercase or uncased letters and numbers joined by single hyphens, equal to the skill's directory name.",
-            "type": "string",
-            "pattern": "^(?!.*[\\p{Uppercase}\\p{Lt}])[\\p{L}\\p{N}]+(?:-[\\p{L}\\p{N}]+)*$",
-            "maxLength": 64
-        },
         "source": {
             "description": "A local skill folder or its SKILL.md (read in place), a Git remote, or an archive (materialized into workspace storage). Required for configured and added skills; omitted only for a host-provided tree.",
             "type": "string",
@@ -27,6 +20,14 @@
             "description": "The commit a git source's ref named when the skill was added. The service records it; a client never supplies it.",
             "type": "string",
             "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$"
+        }
+    },
+    "$defs": {
+        "name": {
+            "description": "The standard Agent Skills name: Unicode lowercase or uncased letters and numbers joined by single hyphens, equal to the skill's directory name.",
+            "type": "string",
+            "pattern": "^(?!.{65}|.*[\\p{Uppercase}\\p{Lt}])[\\p{L}\\p{N}]+(?:-[\\p{L}\\p{N}]+)*$",
+            "maxLength": 64
         }
     }
 }

@@ -10,7 +10,7 @@ import { attrRecord, extractMessageId, statusOf } from "./log-entry-projection.t
 import type SessionTranslator from "./SessionTranslator.ts";
 import type { AcpSessionUpdate } from "./SessionTranslator.ts";
 
-export interface ReplayHistoryLinks {
+interface ReplayHistoryLinks {
     readonly older?: string;
     readonly newer?: string;
 }

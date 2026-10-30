@@ -18,7 +18,7 @@ const statement = (source: string): PlurnkStatement => {
 };
 
 const schemes = {
-    has: (name: string) => name === "file" || name === "session" || name === "workspace",
+    has: (name: string) => name === "file" || name === "session" || name === "workspace" || name === "plurnk" || name === "mcp",
     manifestFor: () => undefined,
 } as unknown as SchemeRegistry;
 const executors = {
@@ -148,7 +148,7 @@ test("{§capability-admission} leaves every partially unresolved composed route 
 });
 
 test("{§session-scheme} intrinsic mutations preserve each external transfer demand", () => {
-    const own = "workspace:///_plurnk/reference.md";
+    const own = "plurnk:///reference.md";
     const external = "session://alice/notes.md";
     assert.deepEqual(resolver.descriptors(statement(`\`\`\`\`EDIT (${own})
 reference
@@ -161,10 +161,10 @@ reference
         { operation: "MOVE", scheme: "session", access: "mutate", traits: [] },
     ]);
     assert.deepEqual(resolver.descriptors(statement(`\`\`\`\`MOVE (${own}) (${external})\`\`\`\``), 1, "_plurnk"), [
-        { operation: "MOVE", scheme: "workspace", access: "observe", traits: [] },
+        { operation: "MOVE", scheme: "plurnk", access: "observe", traits: [] },
         { operation: "MOVE", scheme: "session", access: "mutate", traits: [] },
     ]);
-    for (const path of [external, "workspace:///_plurnk-other/file", "file:///_plurnk/file"]) {
+    for (const path of [external, "workspace:///notes.md", "file:///notes.md"]) {
         assert.equal(resolver.descriptors(statement(`\`\`\`\`EDIT (${path})
 content
 \`\`\`\``), 1, "_plurnk").length, 1, path);

@@ -475,7 +475,7 @@ test("{§digest-forensic-fidelity}: a session's EDITs are counted by form, refus
         const base = { sessionId, loopId };
         ids.hash = await insertEdit(db, { ...base, turnId: turns[0], sequence: 1, pathname: "src/a.py", marker: '{"marks":["@abcde"]}', status: 200 });
         ids.whole = await insertEdit(db, { ...base, turnId: turns[0], sequence: 2, pathname: "src/b.py", marker: null, status: 201 });
-        ids.harness = await insertEdit(db, { ...base, turnId: turns[0], sequence: 3, pathname: "workspace:///_plurnk/x.md", marker: null, status: 201, origin: "_plurnk" });
+        ids.harness = await insertEdit(db, { ...base, turnId: turns[0], sequence: 3, pathname: "plurnk:///x.md", marker: null, status: 201, origin: "_plurnk" });
         // Turn 2 returns to a.py one turn later: a revisit.
         ids.insert = await insertEdit(db, { ...base, turnId: turns[1], sequence: 1, pathname: "src/a.py", marker: '{"marks":["@abcde",1,"@abcde",1]}', status: 200 });
         ids.pattern = await insertEdit(db, { ...base, turnId: turns[2], sequence: 1, pathname: "src/c.py", marker: null, pattern: "/foo/", status: 200 });
@@ -514,7 +514,7 @@ test("{§digest-forensic-fidelity}: a session's EDITs are counted by form, refus
 describe("SchemeRegistry", () => {
 test("{§core-extension-composition} SchemeRegistry: constructor registers the engine-owned scheme roster", () => {
     const r = new SchemeRegistry();
-    assert.deepEqual(r.list().toSorted(), ["exec", "file", "log", "message", "note", "ops", "reasoning", "session", "workspace"], "the engine roster is exact; skill belongs to the daemon's skills lifecycle");
+    assert.deepEqual(r.list().toSorted(), ["exec", "file", "log", "mcp", "message", "note", "ops", "plurnk", "reasoning", "session", "workspace"], "the engine roster is exact; skill belongs to the daemon's skills lifecycle");
 });
 
 test("{§core-extension-composition} SchemeRegistry: register(name) on already-registered name fails hard", () => {
@@ -719,8 +719,8 @@ test("{§db-migrations}: opening a database whose shape disagrees with its versi
         const mismatched = join(dir, "mismatched-baseline");
         await mkdir(mismatched);
         await writeFile(
-            join(mismatched, "010_other.sql"),
-            "-- MIGRATE: 10 other\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\nCREATE TABLE session_references (id INTEGER NOT NULL PRIMARY KEY);\nCREATE TABLE entry_channels (entry_id INTEGER, name TEXT, content TEXT);\n",
+            join(mismatched, "011_other.sql"),
+            "-- MIGRATE: 11 other\nCREATE TABLE workspaces (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);\nCREATE TABLE session_references (id INTEGER NOT NULL PRIMARY KEY);\nCREATE TABLE entry_channels (entry_id INTEGER, name TEXT, content TEXT);\n",
         );
         new SqlRiteSync({ path: dbPath, dir: mismatched }).close();
     });
@@ -741,7 +741,7 @@ test("{§db-migrations}: opening a database newer than the build names both vers
         new SqlRiteSync({ path: dbPath, dir: newer }).close();
     });
     assert.equal(result.code, 1, `the launcher fails closed (stderr: ${result.stderr})`);
-    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 10\)/, "both schema versions read are named");
+    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 11\)/, "both schema versions read are named");
 });
 
 test("{§db-migrations}: opening a pre-floor database names both versions read and non-destructive remediation", async () => {
@@ -752,7 +752,7 @@ test("{§db-migrations}: opening a pre-floor database names both versions read a
         new SqlRiteSync({ path: dbPath, dir: legacy }).close();
     });
     assert.equal(result.code, 1, `the launcher fails closed (stderr: ${result.stderr})`);
-    assert.match(result.stderr, /database schema \(version 34\) precedes the 5\.0\.0 support floor \(schema version 10\); point PLURNK_SERVICE_DB_PATH at a new file or move the database/, "both versions and non-destructive remediation are named");
+    assert.match(result.stderr, /database schema \(version 34\) precedes the 5\.0\.0 support floor \(schema version 11\); point PLURNK_SERVICE_DB_PATH at a new file or move the database/, "both versions and non-destructive remediation are named");
 });
 });
 

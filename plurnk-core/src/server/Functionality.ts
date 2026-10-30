@@ -42,7 +42,6 @@ import {
     type FunctionalityVerb,
 } from "./FunctionalityManager.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
-import { generatedPathname } from "../core/plurnk-uri.ts";
 import FunctionalityState, {
     STATE_VERSION,
     failure,
@@ -133,6 +132,61 @@ const discoverInput = ({ inputs, emptyListsAll }: FunctionalityDiscovery): JsonS
             : { anyOf: inputs.map((input) => ({ required: [input] })) }),
 });
 
+const flatDefinitionInput = (
+    definitionSchema: JsonSchema,
+    scopeProperties: Readonly<Record<string, JsonSchema>>,
+): JsonSchema => {
+    const deref = typeof definitionSchema.$ref === "string"
+        ? Validator.schemaByRef(definitionSchema.$ref)
+        : undefined;
+    const resolved: JsonSchema = isRecord(deref) ? deref : definitionSchema;
+    const defs = isRecord(resolved.$defs) ? resolved.$defs : undefined;
+    if (Array.isArray(resolved.oneOf)) {
+        const branches = resolved.oneOf.map((rawBranch: unknown): JsonSchema => {
+            const branch = isRecord(rawBranch) ? rawBranch : {};
+            const ref = typeof branch.$ref === "string" && branch.$ref.startsWith("#/$defs/")
+                ? defs?.[branch.$ref.slice("#/$defs/".length)]
+                : undefined;
+            const target = isRecord(ref) ? ref : branch;
+            const branchProps = isRecord(target.properties) ? target.properties : {};
+            const branchRequired = Array.isArray(target.required)
+                ? target.required.filter((field: unknown): field is string => typeof field === "string" && field !== "type" && field !== "alias")
+                : [];
+            return {
+                ...(typeof target.title === "string" ? { title: target.title } : {}),
+                type: "object",
+                additionalProperties: target.additionalProperties ?? false,
+                required: ["alias", ...branchRequired],
+                properties: {
+                    ...scopeProperties,
+                    alias: { type: "string", minLength: 1 },
+                    ...branchProps,
+                },
+            };
+        });
+        return Object.freeze({
+            oneOf: branches,
+            ...(defs === undefined ? {} : { $defs: defs }),
+        });
+    }
+    const defProps = isRecord(resolved.properties) ? resolved.properties : {};
+    const hasProps = isRecord(resolved.properties);
+    const defRequired = Array.isArray(resolved.required)
+        ? resolved.required.filter((field: unknown): field is string => typeof field === "string" && field !== "alias")
+        : [];
+    return Object.freeze({
+        type: "object",
+        additionalProperties: resolved.additionalProperties ?? !hasProps,
+        required: ["alias", ...defRequired],
+        properties: {
+            ...scopeProperties,
+            alias: { type: "string", minLength: 1 },
+            ...defProps,
+        },
+        ...(defs === undefined ? {} : { $defs: defs }),
+    });
+};
+
 export default class Functionality {
     readonly #host: FunctionalityHost;
     readonly #adapters = new Map<string, HostFunctionalityAdapter>();
@@ -171,7 +225,7 @@ export default class Functionality {
             || discovery.inputs.some((input) => !Object.hasOwn(DISCOVER_INPUTS, input)))) {
             throw new Error(`Functionality family '${family}' declares invalid discovery inputs.`);
         }
-        const scopeProperties = scopes.length > 1
+        const scopeProperties: Readonly<Record<string, JsonSchema>> = scopes.length > 1
             ? { scope: { enum: [...scopes], description: `Definition scope; model calls default to ${scopes[0]}.` } }
             : {};
         const scopedInput = (schema: JsonSchema): JsonSchema => {
@@ -187,16 +241,7 @@ export default class Functionality {
             throw new Error(`Functionality family '${family}' declares addressing without object input schemas.`);
         }
         const addInput: JsonSchema = addressing === undefined
-            ? Object.freeze({
-                type: "object",
-                additionalProperties: false,
-                required: ["definition"],
-                properties: {
-                    ...scopeProperties,
-                    alias: { type: "string", minLength: 1 },
-                    definition: adapter.definitionSchema,
-                },
-            })
+            ? flatDefinitionInput(adapter.definitionSchema, scopeProperties)
             : scopedInput(addressing.add);
         const selectInput = scopedInput(addressing?.select ?? ALIAS_INPUT);
         // {§functionality-replacement} A family without discovery has no discover verb.
@@ -204,7 +249,7 @@ export default class Functionality {
             list: scopedInput(EMPTY_INPUT),
             ...(discovery === undefined ? {} : { discover: scopedInput(discoverInput(discovery)) }),
             add: addInput,
-            ...(addressing === undefined ? { replace: { ...addInput, required: ["alias", "definition"] } } : {}),
+            ...(addressing === undefined ? { replace: addInput } : {}),
             enable: selectInput,
             disable: selectInput,
             remove: selectInput,
@@ -246,9 +291,13 @@ export default class Functionality {
             }
         }
         return {
-            invoke: (verb, params, identity) => this.invoke(family, verb, params, identity, "action"),
+            invoke: (verb, params, identity, caller = "action") => this.invoke(family, verb, params, identity, caller),
             refresh: (identity, options) => this.refresh(family, identity, options),
         };
+    }
+
+    async ready(): Promise<void> {
+        await Promise.all(this.#documentBodies.values());
     }
 
     // Republish a family's unchanged state for one workspace — a live catalog
@@ -378,7 +427,8 @@ export default class Functionality {
             if (!key.startsWith(prefix) || entry.prepared === null) continue;
             const family = key.slice(prefix.length);
             for (const document of entry.prepared.documents) {
-                out.push({ family, pathname: generatedPathname(document.pathname), content: document.content });
+                const pathname = document.pathname.startsWith("/") ? document.pathname : `/${document.pathname}`;
+                out.push({ family, pathname, content: document.content });
             }
         }
         return out;

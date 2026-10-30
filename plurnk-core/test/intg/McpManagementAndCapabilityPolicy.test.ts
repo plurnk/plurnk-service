@@ -26,11 +26,11 @@ import { z } from "zod/v4";
 import { bindListener } from "./_http.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { taskHandler } from "../../../plurnk-mcp/test/task-fixture.ts";
-import { httpEntry, mcpFixture, stdioEntry, MCP_CONTROLS } from "./_mcp-config.ts";
+import { httpEntry, mcpFixture, stdioEntry } from "./_mcp-config.ts";
 import { waitForDb, connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import { modelOperation, namedModelSession } from "./_sessions.ts";
-import { packetSection, logEntries } from "./_packet.ts";
+import { logEntries } from "./_packet.ts";
 import { testExecutors } from "./_execs.ts";
 
 
@@ -419,7 +419,7 @@ test("{§oauth-client-credentials}: ACP application credentials and SDK refresh 
     const definitions = listed.result?.definitions as { definition: unknown }[] | undefined;
     assert.ok(definitions);
     assert.deepEqual(definitions[0]?.definition, {
-        name: "fixture", type: "streamable-http", url: served.url, authorization,
+        type: "streamable-http", url: served.url, authorization,
     }, "the complete definition retains symbolic authorization, never the resolved credential");
     assert.doesNotMatch(JSON.stringify([enabled, events, listed]), /fixture-app-secret|fixture-app-access-/);
     const request = served.requests.findLast(({ body }) => (body as { method?: string })?.method === "tools/call");
@@ -719,7 +719,7 @@ test("{§tools-resource-materialization} turn 0 exposes executable inline-progra
         const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the available tools." });
         assert.equal(finalStatus, 200);
         const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![1] });
-        const survey = logEntries(JSON.parse(row!.packet)).find((entry) => entry.path === "workspace:///_plurnk/plurnk/*.md");
+        const survey = logEntries(JSON.parse(row!.packet)).find((entry) => entry.path === "plurnk:///*.md");
         assert.ok(survey && typeof survey.body === "string", "turn 0 carries the generated tool catalog");
         const body = survey.body.replace(/^ *\d+:/gm, "");
         const groups = JSON.parse(body) as Array<Array<{ path: string; aside?: string }>>;
@@ -738,45 +738,6 @@ test("{§tools-resource-materialization} turn 0 exposes executable inline-progra
         ws.close();
         await daemon.stop();
         await db.close();
-    }
-});
-
-test("{§tools-resource-materialization} turn 0 surveys an expanded server's tools without narrating its self-describing target", { timeout: 30_000 }, async (t) => {
-    serverProposals(t, "accept");
-    const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
-    process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
-    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("````SEND [200]\nsurveyed\n````")] });
-    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });
-    const db = await openMigrated();
-    const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules"), hostPaths });
-    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS, PLURNK_MCP_EXPANDED: JSON.stringify(["fixture"]) } }), "@plurnk/plurnk-mcp");
-    await daemon.start();
-    try {
-        const ws = await connect({ daemon });
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "tools-expanded-survey" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "look around" });
-            assert.equal(finalStatus, 200);
-            const first = turnIds![1];
-            const row = await db.test_get_packet.get<{ packet: string }>({ id: first });
-            const packet = JSON.parse(row!.packet);
-            const entries = logEntries(packet);
-            const survey = entries.find((e) => e.path === "workspace:///_plurnk/tools/fixture.md");
-            assert.ok(survey, `the expanded server is surveyed; got ${JSON.stringify(entries.map((e) => [e.logPath, e.path]))}`);
-            assert.match(survey.logPath, /\/FIND$/, "the survey is a FIND, not a document READ");
-            assert.equal(survey.aside, undefined, "the target and +tools classification already orient the survey");
-            const log = packetSection(packet, "log");
-            assert.match(log, /"matched":"```fixture \(echo\) <!-- Echo one message\. Schema: workspace:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->\\n\{\\"message\\": \\"\\"\}\\n```"/, "one row per tool: opening fence, aside, preview, schema link, closing fence");
-            assert.match(log, /"matched":"```fixture \(fail\) /, "every tool is a row");
-            assert.doesNotMatch(log, /^### log:\/\/\/\S+\/READ \(workspace:\/\/\/_plurnk\/tools\/fixture\/echo\.json\)/m, "schema documents are not individual Turn0 discovery rows");
-        } finally {
-            ws.close();
-        }
-    } finally {
-        await daemon.stop();
-        await db.close();
-        if (previousFilesItems === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS;
-        else process.env.PLURNK_SERVICE_FILES_ITEMS = previousFilesItems;
     }
 });
 });
@@ -840,15 +801,15 @@ test("{§capability-policy-cascade}: one effective workspace policy filters exec
         const workspaceId = await insertWorkspace(db, `workspace-policy-render-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
         const before = await engine.referenceEntries(workspaceId);
-        assert.ok(before.some((doc) => doc.pathname === "/_plurnk/plurnk/js.md"));
+        assert.ok(before.some((doc) => doc.scheme === "plurnk" && doc.pathname === "/js.md"));
 
         await db.test_set_workspace_settings.run({
             id: workspaceId,
             settings: JSON.stringify({ capabilities: { deny: [{ runtime: "js" }] } }),
         });
         const after = await engine.referenceEntries(workspaceId);
-        assert.ok(!after.some((doc) => doc.pathname === "/_plurnk/plurnk/js.md"));
-        assert.ok(after.some((doc) => doc.pathname === "/_plurnk/plurnk/sh.md"));
+        assert.ok(!after.some((doc) => doc.scheme === "plurnk" && doc.pathname === "/js.md"));
+        assert.ok(after.some((doc) => doc.scheme === "plurnk" && doc.pathname === "/sh.md"));
 
         const loopId = await insertLoop(db, sessionId, 1, "policy teaching");
         const provider = new Mock({
@@ -949,25 +910,25 @@ for (const layer of ["service", "workspace"] as const) test(`{§tools-resource-m
         const loopId = await insertLoop(db, sessionId, 2, "Read the session reference.");
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "", reasoning: null, ops: [
-                readStmt({ ...urlPath("workspace", "/_plurnk/plurnk/session.md"), hostname: null, raw: "workspace:///_plurnk/plurnk/session.md" }, { marks: [1, -1] }),
-                readStmt({ ...urlPath("workspace", "/_plurnk/plurnk/delegation.md"), hostname: null, raw: "workspace:///_plurnk/plurnk/delegation.md" }, { marks: [1, -1] }),
+                readStmt({ ...urlPath("plurnk", "/session.md"), hostname: null, raw: "plurnk:///session.md" }, { marks: [1, -1] }),
+                readStmt({ ...urlPath("plurnk", "/delegation.md"), hostname: null, raw: "plurnk:///delegation.md" }, { marks: [1, -1] }),
                 noteStmt("Continue."),
             ] } },
         ] });
         await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const rows = await db.test_log_entries_by_loop.all<{
-            op: string; pathname: string; rx: string; status_rx: number;
+            op: string; scheme: string; pathname: string; rx: string; status_rx: number;
         }>({ loop_id: loopId });
-        const survey = rows.find(({ op, pathname }) => op === "FIND" && pathname.startsWith("/_plurnk/plurnk/"));
+        const survey = rows.find(({ op, scheme, pathname }) => op === "FIND" && scheme === "plurnk" && pathname === "/*.md");
         assert.ok(survey, "read-only policy retains the native reference survey");
         const result = JSON.parse(survey.rx) as { content: string };
         const items = JSON.parse(result.content) as Array<Array<{ path: string; aside?: string }>>;
         const reference = items.flat().find(({ path }) => path.endsWith("/session.md"));
         assert.ok(reference?.aside, `session orientation is not hidden by its mutation examples: ${JSON.stringify(items)}`);
-        const read = rows.find(({ op, pathname }) => op === "READ" && pathname === "/_plurnk/plurnk/session.md");
+        const read = rows.find(({ op, scheme, pathname }) => op === "READ" && scheme === "plurnk" && pathname === "/session.md");
         assert.equal(read?.status_rx, 200, "the model can read the advertised reference through normal dispatch");
-        assert.ok(JSON.parse(read.rx).content.includes("workspace:///_plurnk/plurnk/delegation.md"));
-        const delegation = rows.find(({ op, pathname }) => op === "READ" && pathname === "/_plurnk/plurnk/delegation.md");
+        assert.ok(JSON.parse(read.rx).content.includes("plurnk:///delegation.md"));
+        const delegation = rows.find(({ op, scheme, pathname }) => op === "READ" && scheme === "plurnk" && pathname === "/delegation.md");
         assert.equal(delegation?.status_rx, 200, "the cross-reference follows the same admission as its session owner");
         assert.ok(JSON.parse(delegation.rx).content.includes("## Lifecycle"));
     } finally { await db.close(); }
@@ -980,9 +941,9 @@ test("{§session-scheme}: runtime maintenance preserves external policy and writ
         const workspaceId = await insertWorkspace(db, "generated-state-policy");
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "inspect references");
-        const target = (path: string) => ({ ...urlPath("workspace", path), hostname: null, raw: `workspace://${path}` });
-        const generated = target("/_plurnk/test.md");
-        const external = target("/notes.md");
+        const target = (scheme: "plurnk" | "workspace", path: string) => ({ ...urlPath(scheme, path), hostname: null, raw: `${scheme}://${path}` });
+        const generated = target("plurnk", "/test.md");
+        const external = target("workspace", "/notes.md");
         let sequence = 0;
         const dispatch = async (statement: Parameters<Engine["dispatch"]>[0]["statement"], origin: Parameters<Engine["dispatch"]>[0]["origin"] = "_plurnk") => {
             const turnSequence = ++sequence;
@@ -1006,7 +967,7 @@ test("{§session-scheme}: runtime maintenance preserves external policy and writ
             assert.equal(result.status, 403);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
         }
-        const copy = target("/_plurnk/copied.md");
+        const copy = target("plurnk", "/copied.md");
         assert.equal((await dispatch(copyStmt(generated, copy))).status, 201, "only the admitted source observation remains an external demand");
         assert.equal((await dispatch(killStmt(copy))).status, 200);
         assert.equal((await dispatch(killStmt(generated))).status, 200);
@@ -1014,14 +975,14 @@ test("{§session-scheme}: runtime maintenance preserves external policy and writ
         assert.equal((await dispatch(editStmt(external, "source"))).status, 201);
         for (const origin of ["model", "client"] as const) {
             const result = await dispatch(editStmt(generated, `${origin} content`, { marks: [1, -1] }), origin);
-            assert.equal(result.status, origin === "model" ? 201 : 200, JSON.stringify(result));
+            assert.equal(result.status, 403, JSON.stringify(result));
         }
         await policy({ only: [{ access: "mutate" }] });
         const deniedCopy = await dispatch(copyStmt(external, generated));
         assert.equal(deniedCopy.status, 403, "an intrinsic destination does not authorize its source read");
         assert.equal(deniedCopy.problem?.access, "observe");
         await policy({ only: [] });
-        assert.equal((await dispatch(editStmt(generated, "reference state", { marks: [1, -1] }))).status, 200);
+        assert.equal((await dispatch(editStmt(generated, "reference state", { marks: [1, -1] }))).status, 201);
         assert.equal((await dispatch(readStmt(generated))).status, 403, "runtime reads still use the workspace policy");
     } finally { await db.close(); }
 });
@@ -1047,9 +1008,9 @@ test("{§tools-resource-materialization}: read-only reconciliation records creat
             id: workspaceId, settings: JSON.stringify({ capabilities: { only: [{ access: "observe" }], deny } }),
         });
         await policy();
-        const current = async () => (await db.loop_docs_materialized.all<{ pathname: string; content: string }>({
+        const current = async () => (await db.loop_docs_materialized.all<{ scheme: string; pathname: string; content: string }>({
             workspace_id: workspaceId,
-        })).find(({ pathname }) => pathname === "/_plurnk/plurnk/readable.md");
+        })).find(({ scheme, pathname }) => scheme === "plurnk" && pathname === "/readable.md");
         await LoopDocs.materialize(engine, db, workspaceId);
         assert.equal((await current())?.content, documentation);
         documentation = "# Reference\n\n## Summary\n\nSecond revision.";
@@ -1061,7 +1022,7 @@ test("{§tools-resource-materialization}: read-only reconciliation records creat
         const rows = await db.test_log_entries_by_session.all<{
             op: string; pathname: string; origin: string; status_rx: number; turn_id: number;
         }>({ session_id: await RuntimeSession.ensure(db, workspaceId) });
-        const changes = rows.filter(({ pathname, op }) => pathname === "/_plurnk/plurnk/readable.md" && ["EDIT", "KILL"].includes(op));
+        const changes = rows.filter(({ pathname, op }) => pathname === "/readable.md" && ["EDIT", "KILL"].includes(op));
         assert.deepEqual(changes.map(({ op, origin, status_rx }) => [op, origin, status_rx]), [
             ["EDIT", "_plurnk", 201], ["EDIT", "_plurnk", 200], ["KILL", "_plurnk", 200],
         ]);

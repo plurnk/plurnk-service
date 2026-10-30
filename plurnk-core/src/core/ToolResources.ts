@@ -1,6 +1,5 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { isExecution, type JsonSchema } from "@plurnk/plurnk-contracts";
-import { generatedPathname } from "./plurnk-uri.ts";
+import { isExecution, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
 import {
     ToolInputSchema,
     type RuntimeInvocationDecl,
@@ -9,6 +8,7 @@ import {
 } from "@plurnk/plurnk-execs";
 
 export interface ToolResource {
+    readonly scheme: "plurnk" | "mcp";
     readonly pathname: string;
     readonly content: string;
 }
@@ -80,11 +80,11 @@ const summaryWitness = (
     const input = exactTarget === undefined && invocation.inputSchema === undefined
         ? invocation.example?.body
         : invocationInput(invocation);
-    return PlurnkParser.frame(header, input ?? null).replaceAll("\n", "\\n");
+    return PlurnkParser.frame(header, input ?? null);
 };
 
 const authoredSummary = (source: ToolSource, summary: string): string => {
-    if (!summary.startsWith("```") || summary.includes("\\n")) return summary;
+    if (!summary.startsWith("```")) return summary;
     // {§operation-fences} — the source's own runtime is the known executor for its summary.
     const { items } = PlurnkParser.parseStatements(summary, { executors: [source.runtime] });
     const item = items[0];
@@ -95,7 +95,7 @@ const authoredSummary = (source: ToolSource, summary: string): string => {
     const input = invocation === undefined ? undefined : invocationInput(invocation);
     if (input === undefined) return summary;
     const header = invocationHeader(source.runtime, invocation!, statement.target.raw, statement.aside ?? undefined);
-    return PlurnkParser.frame(header, input).replaceAll("\n", "\\n");
+    return PlurnkParser.frame(header, input);
 };
 
 const renderInvocation = (
@@ -131,14 +131,27 @@ const renderDocument = (
     ...(details.length === 0 ? [] : ["", details.trimEnd()]),
 ].join("\n");
 
-const schemaDocument = (pathname: string, title: string, schema: JsonSchema, details: string): ToolResource => {
+const schemaDocument = (
+    scheme: "plurnk" | "mcp",
+    pathname: string,
+    title: string,
+    schema: JsonSchema,
+    details: string,
+    definition?: unknown,
+): ToolResource => {
     const refs = ToolInputSchema.references(schema);
+    const meta = isRecord(definition) ? definition : null;
     const doc: Record<string, unknown> = {
-        title: typeof (schema as { title?: unknown }).title === "string" ? (schema as { title?: unknown }).title : title,
+        title: typeof (schema as { title?: unknown }).title === "string"
+            ? (schema as { title?: unknown }).title
+            : typeof meta?.title === "string" ? `${title} (${meta.title})` : title,
         ...(details.trim().length === 0 || typeof (schema as { description?: unknown }).description === "string"
             ? {}
             : { description: details }),
         ...schema,
+        ...(meta !== null && isRecord(meta.outputSchema) ? { outputSchema: meta.outputSchema } : {}),
+        ...(meta !== null && isRecord(meta.annotations) && Object.keys(meta.annotations).length > 0 ? { annotations: meta.annotations } : {}),
+        ...(meta !== null && isRecord(meta.execution) && Object.keys(meta.execution).length > 0 ? { execution: meta.execution } : {}),
     };
     if (refs.length > 0) {
         const existingDefs = (schema as { $defs?: Record<string, unknown> }).$defs ?? {};
@@ -151,6 +164,7 @@ const schemaDocument = (pathname: string, title: string, schema: JsonSchema, det
         doc.$defs = defs;
     }
     return {
+        scheme,
         pathname,
         content: JSON.stringify(doc, null, 2),
     };
@@ -162,8 +176,12 @@ export default class ToolResources {
         return ToolInputSchema.fence(runtime, invocation, { exactTarget });
     }
 
-    static documentPath(runtime: string, resourcesPath?: string): string {
-        return `${generatedPathname(resourcesPath ?? "/plurnk")}/${runtime}.md`;
+    static schemeOf(resourcesPath?: string): "plurnk" | "mcp" {
+        return resourcesPath === "/tools" ? "mcp" : "plurnk";
+    }
+
+    static documentPath(runtime: string, _resourcesPath?: string): string {
+        return `/${runtime}.md`;
     }
 
     static toolDocumentPath(runtime: string, target: string, resourcesPath?: string): string {
@@ -182,6 +200,7 @@ export default class ToolResources {
     }
 
     static render(source: ToolSource): ToolResource[] {
+        const scheme = ToolResources.schemeOf(source.resourcesPath);
         const pathname = ToolResources.documentPath(source.runtime, source.resourcesPath);
         const childrenRoot = pathname.slice(0, -3);
         if (source.registry === null) {
@@ -193,14 +212,21 @@ export default class ToolResources {
             const headerOnly = schema === undefined && source.details.trim().length === 0;
             const summary = headerOnly ? `${source.summary} (invocation only)` : source.summary;
             const child = schema === undefined ? [] : [schemaDocument(
-                `${childrenRoot}/input.json`, source.runtime, schema, source.details,
+                scheme, `${childrenRoot}/input.json`, source.runtime, schema, source.details,
             )];
             return [{
+                scheme,
                 pathname,
                 content: renderDocument(
                     source.runtime,
                     summaryWitness(source.runtime, source.invocation, undefined, summary),
-                    renderInvocation(source.runtime, source.invocation, undefined, summary, child[0]?.pathname),
+                    renderInvocation(
+                        source.runtime,
+                        source.invocation,
+                        undefined,
+                        summary,
+                        child[0] === undefined ? undefined : `${scheme}://${child[0].pathname}`,
+                    ),
                     schema === undefined ? source.details : "",
                 ),
             }, ...child];
@@ -210,11 +236,13 @@ export default class ToolResources {
         // Declaration order is the taught order (a family's lifecycle verbs, a server's tools).
         const tools = source.registry.tools;
         // {§executor-discovery} — registry validation guarantees all definitions or none.
-        const catalog = tools[0].definition === undefined ? [] : [{
+        const catalog: ToolResource[] = tools[0].definition === undefined ? [] : [{
+            scheme,
             pathname: `${childrenRoot}.json`,
             content: JSON.stringify({ tools: tools.map(({ definition }) => definition) }, null, 2),
         }];
         const schemaPath = (target: string): string => `${childrenRoot}/${ToolResources.targetSegment(target)}.json`;
+        const schemaUri = (target: string): string => `${scheme}://${schemaPath(target)}`;
         // {§find} — the runtime's summary is its complete menu: every tool inside
         // the invocation form, shown whole by the catalog, so the discovery row invokes without a READ.
         const summary = typeof source.summary === "string" ? authoredSummary(source, source.summary) : summaryWitness(
@@ -226,7 +254,7 @@ export default class ToolResources {
         const toolInvocations = tools.map((tool) => PlurnkParser.frame(
             invocationHeader(
                 source.runtime, tool.invocation, tool.target, tool.summary,
-                tool.invocation.inputSchema === undefined ? undefined : schemaPath(tool.target),
+                tool.invocation.inputSchema === undefined ? undefined : schemaUri(tool.target),
             ),
             invocationInput(tool.invocation) ?? null,
         ));
@@ -244,22 +272,25 @@ export default class ToolResources {
         const sections = tools
             .filter((tool) => tool.invocation.inputSchema === undefined && (tool.details ?? "").length > 0)
             .map((tool) => `## ${inlineCode(tool.target)}\n\n${demote((tool.details ?? "").trimEnd())}`);
-        const detailsBlock = [source.details.trimEnd(), ...sections]
-            .filter((part) => part.length > 0)
-            .join("\n\n");
+        const runtimeDetails = source.details.trimEnd();
         const runtimeDocument = renderDocument(
             source.runtime,
             summary,
             [
+                ...(runtimeDetails.length === 0 ? [] : [runtimeDetails, ""]),
                 "## Tools", "",
-                ...catalog.map((tool) => `Complete tool definitions: ${inlineCode(`workspace://${tool.pathname}`)}.\n`),
+                ...catalog.map((tool) => `Complete tool definitions: ${inlineCode(`${scheme}://${tool.pathname}`)}.\n`),
                 toolInvocations.join("\n\n"),
             ],
-            detailsBlock,
+            sections.join("\n\n"),
         );
-        return [{ pathname, content: runtimeDocument }, ...tools.flatMap((tool) =>
-            tool.invocation.inputSchema === undefined ? [] : [schemaDocument(
-                schemaPath(tool.target), `${source.runtime}: ${tool.target}`, tool.invocation.inputSchema, tool.details ?? "",
-            )]), ...catalog];
+        return [
+            { scheme, pathname, content: runtimeDocument },
+            ...tools.flatMap((tool) =>
+                tool.invocation.inputSchema === undefined ? [] : [schemaDocument(
+                    scheme, schemaPath(tool.target), `${source.runtime}: ${tool.target}`, tool.invocation.inputSchema, tool.details ?? "", tool.definition,
+                )]),
+            ...catalog,
+        ];
     }
 }

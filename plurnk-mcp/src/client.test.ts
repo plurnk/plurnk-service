@@ -31,12 +31,12 @@ test("{§mcp-configuration} a plugin process receives reserved variables and lit
     await writeFile(executable, `#!${process.execPath}\nimport ${JSON.stringify(new URL("../test/fixtures/echo-server.mjs", import.meta.url).href)};\n`);
     await chmod(executable, 0o755);
     const definition = {
-        name: "plugin", type: "stdio" as const, command: "./run", cwd: "${PLUGIN_DATA}",
+        type: "stdio" as const, command: "./run", cwd: "${PLUGIN_DATA}",
         args: ["${PLUGIN_ROOT}", "${PLUGIN_DATA}", "${SAMPLE}"],
         env: { PLURNK_MCP_TEST_LAUNCH: "1", SAMPLE: "${PLUGIN_ROOT}", LITERAL: "${SAMPLE}" },
     };
     const connection = new ServerConnection(definition, { ...env, SAMPLE: "must-not-expand" }, {
-        plugin: context, cwd: "/unused-native-cwd", environment: { ...process.env, PLUGIN_ROOT: "wrong", PLUGIN_DATA: "wrong" },
+        alias: "plugin", plugin: context, cwd: "/unused-native-cwd", environment: { ...process.env, PLUGIN_ROOT: "wrong", PLUGIN_DATA: "wrong" },
     });
     try {
         const result = await connection.callTool("launch", {}) as { content: Array<{ text: string }> };
@@ -53,9 +53,9 @@ test("{§mcp-configuration} a plugin process receives reserved variables and lit
 test("{§mcp-configuration} remote plugin headers stay literal and protocol headers remain client-owned", async (t) => {
     const handler = createMcpHandler(() => new McpServer({ name: "literal", version: "1.0.0" }));
     const { url, requests } = await serveMcpHttp(t, handler);
-    const connection = new ServerConnection({ name: "literal", type: "streamable-http", url, headers: {
+    const connection = new ServerConnection({ type: "streamable-http", url, headers: {
         "x-literal": "${SECRET}/${PLUGIN_ROOT}", "MCP-Protocol-Version": "invalid",
-    } }, { ...env, SECRET: "must-not-expand" }, { plugin: { root: "/plugin", data: "/data" } });
+    } }, { ...env, SECRET: "must-not-expand" }, { alias: "literal", plugin: { root: "/plugin", data: "/data" } });
     try {
         await connection.connect();
         assert.ok(requests.length > 0);

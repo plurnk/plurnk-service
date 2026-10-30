@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Validator } from "@plurnk/plurnk-contracts";
+import { Validator, type JsonSchema } from "@plurnk/plurnk-contracts";
 import ToolInputSchema from "./ToolInputSchema.ts";
 
 test("{§executor-discovery} a required closed set of strings previews its first value and lists bounded choices in the aside (#762, #1228)", () => {
@@ -73,8 +73,8 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
             body: { role: "JSON arguments", required: true },
             target: { role: "MCP tool", required: true, kind: "literal" },
             inputSchema: fillForm,
-        }, { exactTarget: "browser_fill_form", aside: "-> Fill form --", schemaPath: "/_plurnk/tools/browser/browser_fill_form.json" }),
-        '```browser (browser_fill_form) <!-- Description: -> Fill form — (fields: {target: string, name: string, type: "textbox"|"checkbox"|"radio"|"combobox"|"slider", value: string, element?: string}[]) Schema: workspace:///_plurnk/tools/browser/browser_fill_form.json -->\n{"fields": []}\n```',
+        }, { exactTarget: "browser_fill_form", aside: "-> Fill form --", schemaPath: "mcp:///browser/browser_fill_form.json" }),
+        '```browser (browser_fill_form) <!-- Description: -> Fill form — (fields: {target: string, name: string, type: "textbox"|"checkbox"|"radio"|"combobox"|"slider", value: string, element?: string}[]) Schema: mcp:///browser/browser_fill_form.json -->\n{"fields": []}\n```',
     );
 
     const manyOptionalProps = Object.fromEntries(Array.from({ length: 14 }, (_, i) => [`opt${i}`, { type: "string" }]));
@@ -84,16 +84,23 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
     assert.equal(
         ToolInputSchema.asideNote({
             type: "object",
-            required: ["verb"],
+            required: ["mode"],
             properties: {
-                verb: { type: "string", enum: ["list", "add"] },
+                mode: { type: "string", enum: ["list", "add"] },
                 alias: { type: "string" },
                 definition: { $ref: "https://schemas.plurnk.xyz/v0/McpServerDefinition.json" },
                 selector: { $ref: "#/$defs/selector" },
             },
             $defs: { selector: { oneOf: [{ type: "string" }, { type: "integer" }] } },
         }),
-        '(verb: "list"|"add"; alias?: string, definition?: {name: string, type: "stdio", command: string, args?: string[], env?: object, cwd?: string, … +2 opt}|{name: string, type: "streamable-http", url: string, headers?: object, authorization?: object, plurnkWorkspace?: string|string[], … +1 opt}, selector?: any)',
+        '(mode: "list"|"add"; alias?: string, definition?: {type: "stdio", command: string, args?: string[], env?: object, cwd?: string, plurnkWorkspace?: string|string[], … +1 opt}|{type: "streamable-http", url: string, headers?: object, authorization?: object, plurnkWorkspace?: string|string[], plurnkSession?: string}, selector?: any)',
+    );
+
+    const topLevelUnion = Validator.schemaByRef("https://schemas.plurnk.xyz/v0/McpServerDefinition.json") as JsonSchema;
+    assert.equal(ToolInputSchema.preview(topLevelUnion), '{"type": "stdio", "command": ""}');
+    assert.equal(
+        ToolInputSchema.asideNote(topLevelUnion),
+        '({type: "stdio", command: string, args?: string[], env?: object, cwd?: string, plurnkWorkspace?: string|string[], … +1 opt}|{type: "streamable-http", url: string, headers?: object, authorization?: object, plurnkWorkspace?: string|string[], plurnkSession?: string})',
     );
 });
 

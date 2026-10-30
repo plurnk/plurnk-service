@@ -443,7 +443,7 @@ test("{§turn-source-resources} orientation verdict counts only the model's own 
     harnessOnly.turns = [
         { turn: 1, ops: [
             { op: "READ", target: "ops://meta/1/1", status: 200, origin: "_plurnk" },
-            ...Array.from({ length: 8 }, () => ({ op: "FIND", target: "workspace:///_plurnk/plurnk/*.md", status: 200, origin: "_plurnk" })),
+            ...Array.from({ length: 8 }, () => ({ op: "FIND", target: "plurnk:///*.md", status: 200, origin: "_plurnk" })),
             { op: "READ", target: "reasoning://meta/1/1", status: 200, origin: "_plurnk" },
         ] },
         { turn: 2, ops: [
@@ -503,13 +503,13 @@ test("{§operator-config-precedence} personal resources stay inspectable but do 
     t.after(() => rm(directory, { recursive: true, force: true }));
     const envPath = join(directory, ".env");
     const source = [
-        'PLURNK_MCP_web_search={"name":"web-search","type":"stdio","command":"node"}',
+        'PLURNK_MCP_web_search={"type":"stdio","command":"node"}',
         "PLURNK_MCP_web_search_ENABLED=1",
         'PLURNK_MCP_future_TOOLS=["search"]',
         'PLURNK_SCHEDULE_check={"unused":"fixture"}',
         "PLURNK_MEMBERS_docs=docs/**",
-        'PLURNK_SKILLS_3d_tools={"name":"3d-tools","source":"/srv/3d-tools"}',
-        'PLURNK_SKILLS_分析={"name":"分析","source":"/srv/分析"}',
+        'PLURNK_SKILLS_3d_tools={"source":"/srv/3d-tools"}',
+        'PLURNK_SKILLS_分析={"source":"/srv/分析"}',
         "PLURNK_SKILLS_分析_ENABLED=1",
         "PLURNK_SKILLS_ENABLED=1",
         "PLURNK_MODEL=selected",
@@ -531,7 +531,7 @@ test("{§operator-config-precedence} personal resources stay inspectable but do 
     const disabled = await gateResourceEnvironment(envPath, {});
     assert.deepEqual(serviceDefinitions({ ...personal, PLURNK_MCP_ENABLED: "0", ...disabled }), [{
         alias: "web-search", enabled: false,
-        definition: { name: "web-search", type: "stdio", command: "node" },
+        definition: { type: "stdio", command: "node" },
         provenance: { kind: "environment", source: "PLURNK_MCP_web_search" },
     }]);
     assert.equal(serviceDefinitions({ ...personal, PLURNK_MCP_ENABLED: "0", ...disabled, ...environment })[0].enabled, true);

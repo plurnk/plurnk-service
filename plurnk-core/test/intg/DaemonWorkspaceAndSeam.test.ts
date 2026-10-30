@@ -544,7 +544,7 @@ test("{§tokenomics} the client-interface seam — runLoop drives a loop end to 
             daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });
 
             assert.deepEqual(
-                await db.test_entries_by_scheme_prefix.all({ workspace_id: created.id, scheme: "workspace", prefix: "/_plurnk/plurnk/%" }),
+                await db.test_entries_by_scheme_prefix.all({ workspace_id: created.id, scheme: "plurnk", prefix: "/%" }),
                 [],
                 "workspace creation remains passive until real work arrives",
             );
@@ -592,7 +592,7 @@ test("{§tokenomics} the client-interface seam — runLoop drives a loop end to 
 
             // The first-turn feature holds on the seam path: Functionality activation materialized
             // the teaching skills into the model session before packet assembly.
-            const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: created.id, scheme: "workspace", prefix: "/_plurnk/plurnk/%" });
+            const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: created.id, scheme: "plurnk", prefix: "/%" });
             assert.ok(docs.length > 0);
             const docEdits = (await db.test_log_entries_by_session_op_full.all<{
                 tx: string;
@@ -608,12 +608,12 @@ test("{§tokenomics} the client-interface seam — runLoop drives a loop end to 
             }
             const publicationRows = async () => (await db.test_log_entries_by_session.all<{
                 op: string;
+                scheme: string | null;
                 pathname: string | null;
                 status_rx: number;
                 origin: string;
-            }>({ session_id: runtimeSessionId })).filter(({ origin, pathname }) =>
-                origin === "_plurnk"
-                && (pathname === "/_plurnk/AGENTS.md" || pathname?.startsWith("/_plurnk/skills/") === true));
+            }>({ session_id: runtimeSessionId })).filter(({ origin, scheme }) =>
+                origin === "_plurnk" && (scheme === "plurnk" || scheme === "mcp"));
             const publishedCount = (await publicationRows()).length;
 
             const second = await daemon.runLoop({ workspaceId: created.id, sessionId: modelSessionId, prompt: "go again" });

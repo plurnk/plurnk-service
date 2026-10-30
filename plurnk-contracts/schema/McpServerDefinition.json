@@ -16,7 +16,7 @@
             "title": "McpServerName",
             "description": "The server's alias: the runtime tag whose fence invokes it and its resource scheme.",
             "type": "string",
-            "pattern": "^[a-z][a-z0-9-]*$"
+            "pattern": "^[a-z][a-z0-9_-]*$"
         },
         "plurnkWorkspace": {
             "description": "Target workspace name(s) or '*' for operator-scoped multi-workspace routing; ${NAME} references expand against the operator environment.",
@@ -45,14 +45,10 @@
             "type": "object",
             "additionalProperties": false,
             "required": [
-                "name",
                 "type",
                 "command"
             ],
             "properties": {
-                "name": {
-                    "$ref": "#/$defs/name"
-                },
                 "type": {
                     "description": "A local server: a subprocess speaking MCP over its standard input and output.",
                     "const": "stdio"
@@ -94,14 +90,10 @@
             "type": "object",
             "additionalProperties": false,
             "required": [
-                "name",
                 "type",
                 "url"
             ],
             "properties": {
-                "name": {
-                    "$ref": "#/$defs/name"
-                },
                 "type": {
                     "description": "A remote server: an MCP endpoint over Streamable HTTP.",
                     "const": "streamable-http"

@@ -7,11 +7,11 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { GitStatus } from "./git-state.ts";
 import SessionName from "./SessionName.ts";
-import { generatedPathname, renderAddress } from "./plurnk-uri.ts";
+import { renderAddress } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
-import { readPacketInject, readSystemPolicy } from "./packet-inject.ts";
+import { readGlobalAgents, readGlobalLocalAgents, readPacketInject } from "./packet-inject.ts";
 import { readFile } from "node:fs/promises";
 import Paths from "../Paths.ts";
 import { readTeachingSource } from "./teaching-corpus.ts";
@@ -228,9 +228,8 @@ export default class PacketBuilder {
         // specified at {§packet-assembly}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
         const inject = await readPacketInject(this.#hostPaths); // {§packet-inject} — per-turn; a broken configured path fails hard
-        const systemPolicy = await readSystemPolicy(this.#hostPaths); // XDG config AGENTS.md (or PLURNK_SERVICE_POLICY)
-        // {§session-initialization-entry} — the PROJECT AGENTS.md rides turn 0 as a foisted
-        // READ (LoopDocs → workspace:///_plurnk/AGENTS.md), not the system prompt.
+        // {§session-initialization-entry} — global AGENTS(.local).md and project AGENTS(.local).md ride
+        // turn 0 as foisted <1,-1> READs (plurnk:///AGENTS(.local).md and AGENTS(.local).md).
         // Child-orientation ({§child-orientation}): the live things this session holds — open streams +
         // unconcluded child sessions — surfaced every turn as `{status, path}` JSON pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of
@@ -317,8 +316,9 @@ export default class PacketBuilder {
         flush();
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
-            // Stable privileged policy follows the definition for prefix-cache locality.
-            { name: "system-policy", slot: "system", header: null, content: systemPolicy ?? "" },
+            // Stable privileged policy slot retained for extension transforms; global AGENTS(.local).md
+            // materializes at plurnk:///AGENTS(.local).md and is read whole at turn 0.
+            { name: "system-policy", slot: "system", header: null, content: "" },
 
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads the user slot; nothing volatile precedes it
@@ -391,16 +391,27 @@ export default class PacketBuilder {
     }
 
     // {§tools-resource-materialization} {§tools-resource-materialization} —
-    // one reserved reference set, materialized by LoopDocs.
-    async referenceEntries(workspaceId: number): Promise<Array<{ pathname: string; content: string }>> {
+    // one reserved reference set on plurnk:/// and mcp:///, materialized by LoopDocs.
+    async referenceEntries(workspaceId: number): Promise<Array<{ scheme: "plurnk" | "mcp"; pathname: string; content: string }>> {
         const layers = await CapabilityPolicies.layers(this.#db, workspaceId);
         const policies = layers.map((layer) => layer.policy);
-        const out = (await this.#schemes.docs(workspaceId))
+        const out: Array<{ scheme: "plurnk" | "mcp"; pathname: string; content: string }> = (await this.#schemes.docs(workspaceId))
             .filter(({ scheme }) => scheme === null || this.#capabilities.allowsSchemeAcross(scheme, workspaceId, policies))
             .map(({ name, content }) => ({
-                pathname: generatedPathname(`/plurnk/${name}.md`),
+                scheme: "plurnk" as const,
+                pathname: `/${name}.md`,
                 content,
             }));
+        const [globalAgents, globalLocalAgents] = await Promise.all([
+            readGlobalAgents(this.#hostPaths),
+            readGlobalLocalAgents(this.#hostPaths),
+        ]);
+        if (globalAgents !== null) {
+            out.push({ scheme: "plurnk", pathname: "/AGENTS.md", content: globalAgents });
+        }
+        if (globalLocalAgents !== null) {
+            out.push({ scheme: "plurnk", pathname: "/AGENTS.local.md", content: globalLocalAgents });
+        }
         const executors = this.#executors();
         if (executors !== undefined) {
             for (const tag of executors.availableRuntimes(workspaceId)) {
@@ -427,9 +438,16 @@ export default class PacketBuilder {
         // {§tools-resource-materialization} — a family's generated documents follow its tool's admission:
         // a denied family is a door the model is never shown.
         out.push(...this.#functionalityDocuments(workspaceId)
-            .filter(({ family }) => this.#capabilities.allowsRuntimeAcross("plurnk", family, workspaceId, policies))
-            .map(({ pathname, content }) => ({ pathname, content })));
-        return out.toSorted((left, right) => left.pathname.localeCompare(right.pathname));
+            .filter(({ family }) => {
+                const runtime = `plurnk_${family}`;
+                const tools = executors?.toolRegistry(runtime, workspaceId)?.tools;
+                return tools !== undefined && tools.length > 0
+                    ? tools.some((tool) => this.#capabilities.allowsRuntimeAcross(runtime, tool.target, workspaceId, policies))
+                    : this.#capabilities.allowsRuntimeAcross(runtime, null, workspaceId, policies);
+            })
+            .map(({ pathname, content }) => ({ scheme: "plurnk" as const, pathname, content })));
+        return out.toSorted((left, right) =>
+            left.scheme.localeCompare(right.scheme) || left.pathname.localeCompare(right.pathname));
     }
 
     // {§tokenomics} — measurement never mutates visibility; an over-budget packet is a row

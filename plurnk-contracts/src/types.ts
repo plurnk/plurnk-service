@@ -35,7 +35,7 @@ export const isPlurnkOp = (value: unknown): value is PlurnkOp => PLURNK_OPS.some
 // by {§executor-discovery}, which is why it can never collide with an operation keyword.
 // The engine's own lowercase row ops (`extension`, `error`) are reserved runtime names.
 export type RuntimeTag = Lowercase<string>;
-export const RUNTIME_TAG = /^[a-z][a-z0-9+.-]*$/;
+export const RUNTIME_TAG = /^[a-z][a-z0-9+._-]*$/;
 export const INTERNAL_ROW_OPS: ReadonlySet<string> = new Set(["extension", "error"]);
 export const isExecutionOp = (op: string | null | undefined): op is RuntimeTag => typeof op === "string" && !INTERNAL_ROW_OPS.has(op) && RUNTIME_TAG.test(op);
 export const isExecution = <T extends { readonly op?: string | undefined }>(statement: T): statement is Extract<T, { runtime: RuntimeTag }> =>
@@ -81,7 +81,7 @@ export const PROPOSAL_POLICIES = Object.freeze(
 export const SESSION_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/;
 
 // {§agent-skills-directory} Discovery and registration share the wire schema's grammar.
-export const SKILL_NAME = new RegExp(skillDefinitionSchema.properties.name.pattern, "u");
+export const SKILL_NAME = new RegExp(skillDefinitionSchema.$defs.name.pattern, "u");
 
 // Structurally synthesized statements have no parsed source point. {§parse-recovery}
 export const UNKNOWN_POSITION: Readonly<Position> = Object.freeze({ line: 0, column: 0 });

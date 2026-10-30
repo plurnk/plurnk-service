@@ -107,7 +107,7 @@ Every available runtime receives one derived read-only scheme face from its tag,
 | Installed | Tag admitted; probe unavailable | Registered as unavailable; not advertised or dispatchable. |
 | Installed | Tag admitted; probe available | Registered, advertised through `availableRuntimes()`, dispatchable. |
 
-- **Runtime declaration (`RuntimeDecl`):** Closed to `name` (`[a-z][a-z0-9+.-]*`, excluding reserved `only`), `glyph` (optional), `summary` (required one-line description or `{ from: "tools", description?: string }`), `invocation` (required), `details` (optional supplemental Markdown; `docs/<tag>.md` wins over inline and strips leading `# <tag>`), and `packageName`.
+- **Runtime declaration (`RuntimeDecl`):** Closed to `name` (`[a-z][a-z0-9+._-]*`, excluding reserved `only`), `glyph` (optional), `summary` (required one-line description or `{ from: "tools", description?: string }`), `invocation` (required), `details` (optional supplemental Markdown; `docs/<tag>.md` wins over inline and strips leading `# <tag>`), and `packageName`.
 - **Dynamic declarations (`plurnk.runtimesModule`):** Exported subpath whose `runtimes` or default export returns `RuntimeDecl[] | Promise<RuntimeDecl[]>`. Static `runtimes[]` wins when both are present. Imported only after the extension trust gate (`PLURNK_EXTENSIONS_TRUSTED_ONLY`); untrusted packages execute no code and land in `Discovery.skipped`.
 - **Invocation contract (`RuntimeInvocation`):**
   - `body`: `{ role: string, required: boolean, mimetype?: string }` (malformed body media type counts as a fence-pairing repair under {§fence-pairing}).

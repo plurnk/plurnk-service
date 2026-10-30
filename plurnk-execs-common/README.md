@@ -63,8 +63,8 @@ without adding any PLURNK-specific knob or altering default behavior.
 
 **Scope choices** ({§execution-output-identity}):
 
-- **Workspace scope** (`plurnk (env)` with `scope: "workspace"`): `NODE_OPTIONS` reaches both `js` execution children and Node-based MCP server subprocesses in the workspace.
-- **Session scope** (`plurnk (env)` with `scope: "session"`): `NODE_OPTIONS` reaches `js` execution children of that session only.
+- **Workspace scope** (`plurnk_env (add)` with `scope: "workspace"`): `NODE_OPTIONS` reaches both `js` execution children and Node-based MCP server subprocesses in the workspace.
+- **Session scope** (`plurnk_env (add)` with `scope: "session"`): `NODE_OPTIONS` reaches `js` execution children of that session only.
 
 **Honest ledger:** Node's permission model provides same-UID accident containment, not adversarial security boundaries. PLURNK owns authority, consent, and audit, and never claims containment; for OS-account separation, combine with `PLURNK_EXECS_SPAWN_USER` ({§executor-policy}) or an external container/VM sandbox.
 

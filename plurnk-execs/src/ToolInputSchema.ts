@@ -5,6 +5,7 @@ import type { RuntimeInvocation as RuntimeInvocationDecl } from "./types.ts";
 const objectOf = (value: unknown): JsonSchema => isRecord(value) ? value : {};
 
 const defaultValue = (property: JsonSchema): unknown => {
+    if (typeof property.const === "string") return property.const;
     const choices = property.enum;
     if (Array.isArray(choices) && choices.length > 0) {
         return choices[0];
@@ -125,18 +126,23 @@ const propertySignature = (raw: JsonSchema, depth = 0, root?: JsonSchema): strin
 };
 
 export default class ToolInputSchema {
-    // {§executor-discovery} — the top-level required fields, with the first `anyOf`
+    // {§executor-discovery} — the top-level required fields, with the first `anyOf` or `oneOf`
     // branch's when the schema requires one of several alternatives.
     static requiredFields(schema: JsonSchema): string[] {
-        const branches = Array.isArray(schema.anyOf) ? schema.anyOf : [];
-        return [...new Set([...names(schema.required), ...names(objectOf(branches[0]).required)])];
+        const resolved = dereference(schema);
+        const branches = Array.isArray(resolved.anyOf) ? resolved.anyOf : Array.isArray(resolved.oneOf) ? resolved.oneOf : [];
+        const firstBranch = branches.length > 0 ? dereference(objectOf(branches[0]), resolved) : {};
+        return [...new Set([...names(resolved.required), ...names(firstBranch.required)])];
     }
 
     // {§executor-discovery} — a compact valid JSON skeleton of required fields.
     static preview(schema: JsonSchema): string {
-        const properties = objectOf(schema.properties);
-        const entries = ToolInputSchema.requiredFields(schema).map((name) => {
-            const prop = objectOf(properties[name]);
+        const resolved = dereference(schema);
+        const branches = Array.isArray(resolved.anyOf) ? resolved.anyOf : Array.isArray(resolved.oneOf) ? resolved.oneOf : [];
+        const firstBranch = branches.length > 0 ? dereference(objectOf(branches[0]), resolved) : {};
+        const properties = isRecord(resolved.properties) ? resolved.properties : objectOf(firstBranch.properties);
+        const entries = ToolInputSchema.requiredFields(resolved).map((name) => {
+            const prop = dereference(objectOf(properties[name]), resolved);
             return `${JSON.stringify(name)}: ${JSON.stringify(defaultValue(prop))}`;
         });
         return `{${entries.join(", ")}}`;
@@ -146,8 +152,15 @@ export default class ToolInputSchema {
     // required one-level structured objects/arrays, and optional top-level properties (#1228).
     static asideNote(schema?: JsonSchema): string | undefined {
         if (!isRecord(schema)) return undefined;
-        const properties = isRecord(schema.properties) ? schema.properties : {};
-        const required = ToolInputSchema.requiredFields(schema);
+        const resolved = dereference(schema);
+        if (!isRecord(resolved.properties)) {
+            const branches = structuredUnionBranches(resolved);
+            if (branches.length === 0) return undefined;
+            const unionNote = `(${branches.map((branch) => propertySignature(branch, 0, resolved)).join("|")})`;
+            return unionNote.replaceAll(/\s+/gu, " ").trim().replaceAll("--", "—");
+        }
+        const properties = resolved.properties;
+        const required = ToolInputSchema.requiredFields(resolved);
         const requiredSet = new Set(required);
         const requiredNotes: string[] = [];
         for (const name of required) {
@@ -201,7 +214,7 @@ export default class ToolInputSchema {
         const note = [
             ...(options.aside === undefined ? [] : [ToolInputSchema.asideText(options.aside)]),
             ...(schemaNote === undefined ? [] : [schemaNote]),
-            ...(options.schemaPath === undefined ? [] : [`Schema: workspace://${options.schemaPath}`]),
+            ...(options.schemaPath === undefined ? [] : [`Schema: ${options.schemaPath.includes("://") ? options.schemaPath : `plurnk://${options.schemaPath}`}`]),
         ].join(" ");
         return `${runtime}${path}` + (note === "" ? "" : ` <!-- ${note} -->`);
     }

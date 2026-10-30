@@ -49,10 +49,10 @@ runtime declarations, and a default-exported `BaseExecutor` subclass.
 
 One package may claim several tags; the consumer instantiates and probes each
 tag independently. A name uses lowercase URI-scheme syntax
-`[a-z][a-z0-9+.-]*`; `only` is reserved by runtime policy. `summary` is the
+`[a-z][a-z0-9+._-]*`; `only` is reserved by runtime policy. `summary` is the
 one-line capability description. `invocation` defines the body and optional
 target buckets used for dispatch enforcement and a canonical example for its
-generated `workspace:///_plurnk/plurnk/<tag>.md` document. A `docs/<tag>.md` file supplies
+generated `plurnk:///<tag>.md` document. A `docs/<tag>.md` file supplies
 supplemental detail. See {§executor-discovery}.
 
 For JSON inputs, supply `invocation.inputSchema` instead of an authored example

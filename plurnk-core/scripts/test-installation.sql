@@ -24,13 +24,8 @@ INSERT INTO turn_sources (turn_id, kind, content)
 VALUES ($turn_id, 'ops', $content);
 
 -- PREP: installation_select_capability_docs
-SELECT entries.workspace_id, entries.pathname, entry_channels.content
+SELECT entries.workspace_id, entries.scheme, entries.pathname, entry_channels.content
 FROM entries
 JOIN entry_channels ON entry_channels.entry_id = entries.id
-WHERE entries.scheme = 'workspace'
-  AND (
-    entries.pathname LIKE '/_plurnk/skills/%'
-    OR entries.pathname LIKE '/_plurnk/plurnk/%'
-    OR entries.pathname LIKE '/_plurnk/tools/%'
-  )
+WHERE entries.scheme IN ('plurnk', 'mcp')
   AND entry_channels.name = 'body';

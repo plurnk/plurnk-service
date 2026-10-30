@@ -816,7 +816,7 @@ const headerDeclServer = (tasks: boolean) => createMcpHandler(() => {
 for (const [leg, tasks] of [["direct", false], ["tasks", true]] as const) {
     test(`{§mcp-transports} on the ${leg} leg an invalid x-mcp-header declaration is refused before any request is sent`, async (t) => {
         const { url, requests } = await serveMcpHttp(t, headerDeclServer(tasks));
-        const connection = new ServerConnection({ name: `${leg}-leg`, type: "streamable-http", url }, floor);
+        const connection = new ServerConnection({ type: "streamable-http", url }, floor, { alias: `${leg}-leg` });
         try {
             const tools = await connection.tools();
             const invalid = tools.find((tool) => tool.name === "invalid_number_header");

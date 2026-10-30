@@ -639,16 +639,16 @@ test("{§operator-config-precedence} config check accepts future controls withou
     assert.ok(address !== null && typeof address !== "string");
     const url = `http://127.0.0.1:${address.port}`;
     const result = await runService(fx, ["config", "check"], { env: {
-        PLURNK_MCP_probe: JSON.stringify({ name: "probe", type: "stdio", command: process.execPath, args, env: { TOKEN: "${UNSET_AT_CHECK}" } }),
+        PLURNK_MCP_probe: JSON.stringify({ type: "stdio", command: process.execPath, args, env: { TOKEN: "${UNSET_AT_CHECK}" } }),
         PLURNK_MCP_probe_ENABLED: "1",
-        PLURNK_MCP_remote: JSON.stringify({ name: "remote", type: "streamable-http", url }),
+        PLURNK_MCP_remote: JSON.stringify({ type: "streamable-http", url }),
         PLURNK_MCP_remote_ENABLED: "1",
         PLURNK_MCP_future_TOOLS: '["search"]',
         PLURNK_SCHEDULE_future_ENABLED: "1",
         PLURNK_MEMBERS_future_ENABLED: "0",
         PLURNK_SKILLS_future_ENABLED: "0",
-        PLURNK_SKILLS_分析: '{"name":"分析","source":"/nonexistent/分析"}',
-        PLURNK_SKILLS_3d_tools: '{"name":"3d-tools","source":"https://unreachable.invalid/skills.git"}',
+        PLURNK_SKILLS_分析: '{"source":"/nonexistent/分析"}',
+        PLURNK_SKILLS_3d_tools: '{"source":"https://unreachable.invalid/skills.git"}',
         PLURNK_HOOKS_COMMAND: process.execPath,
         PLURNK_HOOKS_ARGS: JSON.stringify(args),
         PLURNK_HOOKS_EVENTS: "Stop",

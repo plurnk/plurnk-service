@@ -148,8 +148,8 @@ test("{§session-initialization-entry} runtime-owned entry work is an ordinary a
     // history belong to the same Session that receives the resulting Turn-0 READ.
     const dir = await mkdtemp(join(tmpdir(), "plurnk-selfhost-"));
     await writeFile(join(dir, "AGENTS.md"), "# Self-hosting\nThe runtime is an actor.\n", "utf8");
-    // #346 — a nested AGENTS.md materializes under _plurnk/instructions with
-    // its subtree path preserved; noise dirs contribute nothing.
+    // #346 — a nested AGENTS.md is admitted at its project path; noise dirs
+    // contribute nothing.
     await mkdir(join(dir, "packages", "web"), { recursive: true });
     await writeFile(join(dir, "packages", "web", "AGENTS.md"), "# Web subtree\nPrefer vanilla CSS.\n", "utf8");
     await mkdir(join(dir, "node_modules", "dep"), { recursive: true });
@@ -164,24 +164,24 @@ test("{§session-initialization-entry} runtime-owned entry work is an ordinary a
 
                 const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
                     workspace_id: workspaceId,
-                    scheme: "workspace",
+                    scheme: "file",
                     authority: "",
-                    pathname: "/_plurnk/AGENTS.md",
+                    pathname: "AGENTS.md",
                 });
-                assert.ok(entry !== undefined, "the generated document is structurally owned by the addressed Session");
+                assert.ok(entry !== undefined, "the project AGENTS.md is admitted at its project path");
 
                 const nested = await db.crud_find_workspace_entry.get<{ id: number }>({
                     workspace_id: workspaceId,
-                    scheme: "workspace",
+                    scheme: "file",
                     authority: "",
-                    pathname: "/_plurnk/instructions/packages/web/AGENTS.md",
+                    pathname: "packages/web/AGENTS.md",
                 });
                 assert.ok(nested !== undefined, "a nested AGENTS.md materializes with its subtree path preserved (#346)");
                 const noise = await db.crud_find_workspace_entry.get<{ id: number }>({
                     workspace_id: workspaceId,
-                    scheme: "workspace",
+                    scheme: "file",
                     authority: "",
-                    pathname: "/_plurnk/instructions/node_modules/dep/AGENTS.md",
+                    pathname: "node_modules/dep/AGENTS.md",
                 });
                 assert.equal(noise, undefined, "noise directories contribute no instructions");
 
@@ -189,7 +189,7 @@ test("{§session-initialization-entry} runtime-owned entry work is an ordinary a
                     op: string | null; scheme: string | null; pathname: string; origin: string;
                     turn_id: number; status_rx: number;
                 }>({ session_id: await RuntimeSession.ensure(db, workspaceId) });
-                const matEdit = sessionLog.find((row) => row.op === "EDIT" && row.scheme === "workspace" && row.pathname === "/_plurnk/AGENTS.md");
+                const matEdit = sessionLog.find((row) => row.op === "EDIT" && row.scheme === "plurnk" && row.pathname === "/session.md");
                 assert.ok(matEdit !== undefined, "the materialization is durable operation evidence, not a privileged write");
                 assert.equal(matEdit.origin, "_plurnk", "the runtime producer remains explicit");
 
@@ -216,8 +216,8 @@ test("{§session-initialization-entry} runtime-owned entry work is an ordinary a
                 const modelLoopLog = await db.test_log_entries_by_loop.all<{
                     op: string | null; scheme: string | null; hostname: string | null; pathname: string; status_rx: number;
                 }>({ loop_id: loopId });
-                const docRead = modelLoopLog.find((row) => row.op === "READ" && row.scheme === "workspace"
-                    && row.hostname === null && row.pathname === "/_plurnk/AGENTS.md");
+                const docRead = modelLoopLog.find((row) => row.op === "READ" && (row.scheme === null || row.scheme === "file")
+                    && row.hostname === null && row.pathname === "AGENTS.md");
                 assert.ok(docRead !== undefined && docRead.status_rx === 200, "Turn 0 reads the addressed Session's generated policy entry");
             } finally { ws.close(); }
         });

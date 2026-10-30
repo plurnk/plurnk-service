@@ -123,7 +123,7 @@ Producers write `(target) <scope> [metadata] <!-- aside -->` separated by single
 
 | Construct | Contract |
 | --- | --- |
-| Target groups (`READ` / `KILL`) | A `READ` or `KILL` heading may carry multiple `(path)` slots (or a comma/whitespace-separated list of explicit `scheme://` URIs inside one slot), compiling into one statement per target in authored order. |
+| Target groups and multi-target slots | A `READ` or `KILL` heading may carry multiple `(path)` slots, and a `FIND`, `READ`, or `KILL` `(path)` slot may carry a comma/pipe/whitespace-separated list of explicit `scheme://` URIs or a comma/pipe-separated list of local paths/globs outside brackets/braces, compiling into one statement per target in authored order. |
 | Scope on scopeless OPs | A `<scope>` written on `WORK`, `FORK`, `BARE`, `NOTE`, or targetless `SEND` is dropped with a warning advisory while the operation still runs. |
 | Heading inline body & bare options | Trailing text on the heading line is read as the matcher on `FIND`/`READ`/`KILL` (and sigil-led `EDIT`), as `[{...}]` metadata when a bare JSON object appears on `SEND`/`WORK`/`FORK`/`BARE`, or as the first body line with a warning advisory. |
 | Scheme metadata modifier | `[metadata]` preserves balanced brackets and quoted strings as raw inner text for the target scheme or executor (`MetadataOptions` parses first-party arrays of option objects and reserves `env`). |
@@ -156,7 +156,7 @@ Producers write `(target) <scope> [metadata] <!-- aside -->` separated by single
 
 ## §path-syntax 4. Target and path grammar
 
-- **URL vs. local path decomposition**: Targets matching `[a-z][a-z0-9+.-]*://` decompose via WHATWG `URL` into `UrlPath` (preserving lossless serialized `query` and `fragment`); all other targets become `LocalPath { kind: "local", raw, fragment? }`.
+- **URL vs. local path decomposition**: Targets matching `[a-z][a-z0-9+._-]*://` decompose via WHATWG `URL` into `UrlPath` (preserving lossless serialized `query` and `fragment`); all other targets become `LocalPath { kind: "local", raw, fragment? }`.
 - **Parenthesis escaping**: An unescaped depth-zero `)` closes `(path)`; balanced parentheses are tolerated and `\\`, `\(`, `\)` provide lossless escaping via `PathSyntax`.
 - **Glob classification and session names**: `PathSyntax.hasGlob` and `globMagicIndex` classify glob metacharacters vs. exact paths. `SESSION_NAME` (`[A-Za-z0-9][A-Za-z0-9_-]{0,62}`) validates minted session authority names (excluding `_plurnk`).
 
@@ -213,7 +213,7 @@ Producers write `(target) <scope> [metadata] <!-- aside -->` separated by single
 
 - **`ClientDisplayCapabilities`**: Ordered array of closed discriminated objects (`{ kind: "scheme", scheme, display }` or `{ kind: "mimetype", mimetype, display }`), where `display.glyph` is an optional non-empty opaque string.
 - **`McpServerDefinition` and `McpOAuth`**: Closed union of `stdio` (`command`, optional `args`, `env`, `cwd`, `plurnkWorkspace`, `plurnkSession`) and `streamable-http` (`url`, optional `headers`, `authorization`, `plurnkWorkspace`, `plurnkSession`) definitions. `McpOAuth` (`Validator.assertMcpOAuth`) validates interactive OAuth (`callbackUrl`, mutually exclusive HTTPS Client ID Metadata Document URL / pre-registered client ID + `${NAME}` secret / Dynamic Client Registration, optional `issuer` and `authorizationParams`) and `client_credentials` grants.
-- **`SkillDefinition`**: Workspace skill definition (`name` matching `SKILL_NAME`, optional `source`, `ref`, `commit`) validated by `Validator.assertSkillDefinition`.
+- **`SkillDefinition`**: Workspace skill definition (optional `source`, `ref`, `commit`; skill alias validated against `SKILL_NAME`) validated by `Validator.assertSkillDefinition`.
 
 ### §application-session-observation Exterior application port and session/loop observation
 
@@ -241,6 +241,6 @@ Producers write `(target) <scope> [metadata] <!-- aside -->` separated by single
 | Mechanism | Contract |
 | --- | --- |
 | Working-form recovery & attempt | Every hard error (`severity: "error"`) populates `recovery` with the canonical syntax of the refused construct and `attempt` (`{ text, verb }`) with the refused statement's source text; `operationOmitted` marks unexecuted unfenced or native-call fragments. Each malformed statement produces at most one hard error. |
-| Regex and matcher tolerances | Lifts leading PCRE inline flags `(?ims)` with a warning; diagnoses trailing text after `/pattern/flags` and sed ranges (`/a/,/b/`, `/a/,+N`); recovers unclosed `/pattern` at EOL; flags unused non-log `KILL` body lines (`This KILL takes no body; line 2 was not used.`). |
+| Regex and matcher tolerances | Lifts leading PCRE inline flags `(?ims)` with a warning; folds comma-separated `/pattern/` lists on `FIND` and `READ` into alternation with a warning while refusing numeric/open sed ranges (`/a/,+N`, `/a/,-1`, `/a/,`) and mutating `/a/,/b/` ranges; diagnoses trailing text after `/pattern/flags`; recovers unclosed `/pattern` at EOL; flags unused non-log `KILL` body lines (`This KILL takes no body; line 2 was not used.`). |
 | Heading & slot tolerances | Reads bare heading patterns (`naked-pattern`, treating bare `#channel` after a channelless target as its channel fragment), peels trailing `<scope>`/`[metadata]`/`<!-- aside -->` slots from the right of a matcher when the heading has a single target, refuses unparenthesized bare targets (`READ a.py <1,4>`), recovers bare `EDIT` anchors (`@abcde` -> `<@abcde>`) and combined `42<@abcde>` scopes, and sets `unparsedTail` when an unclosed `(target` or `[metadata` destroys statement boundaries. |
 | Log-heading notation recovery | Recovers copied log-heading forms with a warning advisory: `OP → path <scope>` is read as `(path)`; `· 900` / `· 320 tokens` token charges are dropped; `· note text` at the end of a heading is read as `<!-- note text -->` (or dropped when an explicit `<!-- aside -->` follows). |

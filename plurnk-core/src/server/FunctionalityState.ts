@@ -20,9 +20,9 @@ import Results, { OperationFailureError } from "../core/results.ts";
 // Who OWNS a definition, not where it is scoped. A family declares the scope its definitions
 // belong to ({§functionality-coordinator}); the locally-owned origin follows from it, so a session-scoped
 // family's own entries say "session" rather than claiming the workspace set them.
-export type Origin = "service" | "workspace" | "session";
+type Origin = "service" | "workspace" | "session";
 
-export interface DefinitionRecord {
+interface DefinitionRecord {
     readonly origin: Origin;
     readonly definition?: object;
     readonly enabled: boolean;
@@ -65,9 +65,9 @@ export const STATE_VERSION = 1;
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
 // A family may declare its own alias grammar ({§functionality-adapter}); the coordinator enforces it
 // wherever an alias enters: admission, the service projection, and persisted state.
-export const aliasPattern = (adapter: HostFunctionalityAdapter): RegExp => adapter.aliasPattern ?? ALIAS;
+const aliasPattern = (adapter: HostFunctionalityAdapter): RegExp => adapter.aliasPattern ?? ALIAS;
 export const scopesOf = (adapter: HostFunctionalityAdapter): readonly ("workspace" | "session")[] => adapter.scopes ?? ["workspace"];
-export const EMPTY_STATE: FamilyState = Object.freeze({ version: STATE_VERSION, definitions: Object.freeze({}) });
+const EMPTY_STATE: FamilyState = Object.freeze({ version: STATE_VERSION, definitions: Object.freeze({}) });
 
 export const failure = (
     family: string,

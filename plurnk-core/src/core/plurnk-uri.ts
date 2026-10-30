@@ -49,18 +49,6 @@ export function authorityParts(authority: string): { hostname: string | null; po
     };
 }
 
-// {§session-scheme}: workspace-generated reference paths.
-const GENERATED_ROOT = "/_plurnk";
-
-export function generatedPathname(relative: string): string {
-    return `${GENERATED_ROOT}${relative.startsWith("/") ? relative : `/${relative}`}`;
-}
-
-export function isGeneratedPathname(pathname: string): boolean {
-    return pathname === GENERATED_ROOT || pathname.startsWith(`${GENERATED_ROOT}/`);
-}
-
-// {§message-arrival}: opaque identity is independent of arrival order.
 export function renderAddress(address: EntryCoordinate & { readonly scheme: string }): string {
     if (NetworkAddress.supports(address.scheme)) return NetworkAddress.render(address);
     const { scheme, authority, pathname } = address;
@@ -77,7 +65,7 @@ export function missDetail(scheme: string | null, target: string): string {
 
 // {§fs-namespace} {§diagnostic-observation} — every file miss carries this recovery: listing,
 // creation and admission stand as alternatives, each valid whatever the address was for.
-export const FILE_MISS_RECOVERY = "FIND lists paths. EDIT creates files; `plurnk (members)` admits existing files with a `{\"verb\": \"add\", \"files\": [\"<path>\"]}` body.";
+export const FILE_MISS_RECOVERY = "FIND lists paths. EDIT creates files; `plurnk_members (add)` admits existing files with a `{\"files\": [\"<path>\"]}` body.";
 
 // {§fs-namespace} — a file member renders its literal key as a reusable path;
 // every other scheme renders its URI.

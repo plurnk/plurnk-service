@@ -55,7 +55,6 @@ export const serviceSkills = (env: NodeJS.ProcessEnv = process.env): ReadonlyMap
         } catch (cause) {
             throw new ConfigurationError(key, `${key} must contain a complete SkillDefinition.`, { cause });
         }
-        if (definition.name !== alias) throw new ConfigurationError(key, `${key}: the definition name must equal '${alias}'.`);
         if (definition.source === undefined) throw new ConfigurationError(key, `${key}: a configured skill requires a source.`);
         if (definition.commit !== undefined) throw new ConfigurationError(key, `${key}: commit is service-recorded; configure a Git ref instead.`);
         try {
@@ -74,9 +73,9 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
     readonly family = SKILLS_FAMILY;
     readonly aliasPattern = SKILL_NAME;
     readonly namespaceOwner = SKILLS_OWNER;
-    readonly summary = "Manage Agent Skills";
+    readonly summary = "Manage skills";
     readonly definitionSchema: JsonSchema = DEFINITION;
-    readonly example = { alias: "sql-formatter", definition: { name: "sql-formatter", source: "https://git.example/acme/skills.git" } };
+    readonly example = { alias: "sql-formatter", source: "https://git.example/acme/skills.git" };
     readonly docsDir = resolve(import.meta.dirname, "..");
     readonly discovery: FunctionalityDiscovery = {
         inputs: ["source"],
@@ -202,11 +201,11 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
         const settings = environment();
         const definitions = new Map<string, FunctionalityServiceDefinition<SkillDefinition>>();
         for (const name of (await this.#seam.readProvidedSkills()).keys()) {
-            definitions.set(name, { alias: name, definition: { name }, enabled: settings.enabled(name) });
+            definitions.set(name, { alias: name, definition: {}, enabled: settings.enabled(name) });
         }
         for (const { name, dir, file, kind } of installedSkills.values()) {
             definitions.set(name, {
-                alias: name, definition: { name, source: dir }, enabled: settings.enabled(name),
+                alias: name, definition: { source: dir }, enabled: settings.enabled(name),
                 provenance: { kind: kind ?? "file", source: file },
             });
         }
@@ -291,7 +290,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                 return [{
                     alias: name,
                     summary: description,
-                    definition: { name, source: itemSource } satisfies SkillDefinition,
+                    definition: { source: itemSource } satisfies SkillDefinition,
                     provenance: { kind: "source", source: itemSource },
                 }];
             }
@@ -304,7 +303,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                 return {
                     alias: name,
                     summary: description,
-                    definition: { name, source: itemSource } satisfies SkillDefinition,
+                    definition: { source: itemSource } satisfies SkillDefinition,
                     provenance: { kind: "source", source: itemSource },
                 };
             });
@@ -314,7 +313,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
             return opened.skills.map((skill): FunctionalityCandidate => ({
                 alias: skill.name,
                 summary: skill.description,
-                definition: { name: skill.name, source } satisfies SkillDefinition,
+                definition: { source } satisfies SkillDefinition,
                 provenance: { kind: "source", source },
             }));
         } finally {
@@ -324,15 +323,16 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
 
     async admit(input: unknown, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource<SkillDefinition>> {
         const params = isRecord(input) ? input : {};
+        const alias = typeof params.alias === "string" ? params.alias : "";
+        if (alias.length === 0 || !SKILL_NAME.test(alias)) {
+            throw actionError("definition-invalid", 400, "The Agent Skill definition is invalid.", { retryable: false });
+        }
+        const { alias: _alias, ...rest } = params;
         let definition: SkillDefinition;
         try {
-            definition = structuredClone(Validator.assertSkillDefinition(structuredClone(params.definition)));
+            definition = structuredClone(Validator.assertSkillDefinition(structuredClone(rest)));
         } catch (cause) {
             throw actionError("definition-invalid", 400, "The Agent Skill definition is invalid.", { retryable: false }, cause);
-        }
-        const alias = typeof params.alias === "string" ? params.alias : definition.name;
-        if (alias !== definition.name) {
-            throw actionError("alias-mismatch", 400, `Alias '${alias}' must equal the skill name '${definition.name}'.`, { alias, name: definition.name, retryable: false });
         }
         if (definition.commit !== undefined) {
             throw actionError("definition-invalid", 400, "The service records the commit a skill was added at; name a ref instead.", { alias, retryable: false });
@@ -371,25 +371,25 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
     }
 
     // {§skills-sources} — complete source identity owns a reusable materialization within one workspace.
-    async #loadSource(definition: SkillDefinition, workspaceId: number, paths: WorkspacePaths, signal: AbortSignal): Promise<SkillDirectory> {
+    async #loadSource(alias: string, definition: SkillDefinition, workspaceId: number, paths: WorkspacePaths, signal: AbortSignal): Promise<SkillDirectory> {
         signal.throwIfAborted();
         const key = createHash("sha256").update(JSON.stringify([
-            definition.name, definition.source, definition.ref ?? null, definition.commit ?? null,
+            alias, definition.source, definition.ref ?? null, definition.commit ?? null,
         ])).digest("hex");
         const root = join(await this.#seam.workspaceStateDirectory(workspaceId, SKILLS_OWNER), key);
-        const cached = join(root, definition.name);
+        const cached = join(root, alias);
         const hasCached = await isFile(join(cached, "SKILL.md"));
         const mcp = SkillSource.mcp(definition.source!);
         if (mcp !== null) {
             const res = await this.#invokeMcpSkills(
                 workspaceId,
-                { server: mcp.server, skill: definition.name, includeFiles: !hasCached },
+                { server: mcp.server, skill: alias, includeFiles: !hasCached },
                 definition.source!,
             );
             signal.throwIfAborted();
             if (res.found !== true || !isRecord(res.skill) || typeof res.skill.commit !== "string") {
-                throw actionError("skill-not-found", 404, `'${definition.source}' carries no Agent Skill named '${definition.name}'.`, {
-                    name: definition.name, source: definition.source, retryable: false,
+                throw actionError("skill-not-found", 404, `'${definition.source}' carries no Agent Skill named '${alias}'.`, {
+                    name: alias, source: definition.source, retryable: false,
                 });
             }
             if (definition.commit !== undefined && res.skill.commit !== definition.commit) {
@@ -397,29 +397,29 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                     source: definition.source,
                     commit: definition.commit,
                     current: res.skill.commit,
-                    recovery: "Use plurnk (skills) replace with the complete source definition to take the current commit.",
+                    recovery: "Use plurnk_skills (replace) with the complete source definition to take the current commit.",
                     retryable: false,
                 });
             }
-            if (hasCached) return this.#loadDirectory(definition.name, cached);
+            if (hasCached) return this.#loadDirectory(alias, cached);
             const rawFiles = Array.isArray(res.skill.files) ? res.skill.files : [];
             const files = rawFiles.filter((f): f is { readonly path: string; readonly base64: string } =>
                 isRecord(f) && typeof f.path === "string" && typeof f.base64 === "string"
             );
-            const opened = await SkillSource.openMcpFiles(definition.name, definition.source!, files, res.skill.commit, signal);
+            const opened = await SkillSource.openMcpFiles(alias, definition.source!, files, res.skill.commit, signal);
             await using cleanup = new AsyncDisposableStack();
             cleanup.defer(() => opened.close());
             signal.throwIfAborted();
-            const match = opened.skills.find(({ name }) => name === definition.name);
+            const match = opened.skills.find(({ name }) => name === alias);
             if (match === undefined) {
                 const broken = opened.invalid[0];
                 if (broken !== undefined) {
-                    throw actionError("skill-invalid", 422, `Agent Skill '${definition.name}' in '${definition.source}' is not a valid standard skill: ${broken.reason}`, {
-                        name: definition.name, source: definition.source, retryable: false,
+                    throw actionError("skill-invalid", 422, `Agent Skill '${alias}' in '${definition.source}' is not a valid standard skill: ${broken.reason}`, {
+                        name: alias, source: definition.source, retryable: false,
                     });
                 }
-                throw actionError("skill-not-found", 404, `'${definition.source}' carries no Agent Skill named '${definition.name}'.`, {
-                    name: definition.name, source: definition.source, retryable: false,
+                throw actionError("skill-not-found", 404, `'${definition.source}' carries no Agent Skill named '${alias}'.`, {
+                    name: alias, source: definition.source, retryable: false,
                 });
             }
             let dir: string;
@@ -427,13 +427,13 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                 dir = await SkillSource.install(match, root);
             } catch (cause) {
                 if (cause instanceof SkillsActionError) throw cause;
-                throw actionError("install-failed", 500, `Agent Skill '${definition.name}' could not be placed under ${root}: ${messageOf(cause)}`, {
-                    name: definition.name, retryable: false,
+                throw actionError("install-failed", 500, `Agent Skill '${alias}' could not be placed under ${root}: ${messageOf(cause)}`, {
+                    name: alias, retryable: false,
                 }, cause);
             }
-            return await this.#loadDirectory(definition.name, dir);
+            return await this.#loadDirectory(alias, dir);
         }
-        if (hasCached) return this.#loadDirectory(definition.name, cached);
+        if (hasCached) return this.#loadDirectory(alias, cached);
         const located = await SkillSource.locate(definition.source!, paths);
         const opened = await this.#source.open(located, {
             signal,
@@ -444,38 +444,38 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
         await using cleanup = new AsyncDisposableStack();
         cleanup.defer(() => opened.close());
         signal.throwIfAborted();
-        const matches = opened.skills.filter(({ name }) => name === definition.name);
+        const matches = opened.skills.filter(({ name }) => name === alias);
         if (matches.length > 1) {
-            throw actionError("skill-ambiguous", 409, `'${definition.source}' carries ${matches.length} skills named '${definition.name}'.`, {
-                name: definition.name, source: definition.source, retryable: false,
+            throw actionError("skill-ambiguous", 409, `'${definition.source}' carries ${matches.length} skills named '${alias}'.`, {
+                name: alias, source: definition.source, retryable: false,
             });
         }
         const match = matches[0];
         if (match === undefined) {
-            const broken = opened.invalid.find(({ dir }) => dir.endsWith(`/${definition.name}`));
+            const broken = opened.invalid.find(({ dir }) => dir.endsWith(`/${alias}`));
             if (broken !== undefined) {
-                throw actionError("skill-invalid", 422, `Agent Skill '${definition.name}' in '${definition.source}' is not a valid standard skill: ${broken.reason}`, {
-                    name: definition.name, source: definition.source, retryable: false,
+                throw actionError("skill-invalid", 422, `Agent Skill '${alias}' in '${definition.source}' is not a valid standard skill: ${broken.reason}`, {
+                    name: alias, source: definition.source, retryable: false,
                 });
             }
-            throw actionError("skill-not-found", 404, `'${definition.source}' carries no Agent Skill named '${definition.name}'.`, {
-                name: definition.name, source: definition.source, retryable: false,
+            throw actionError("skill-not-found", 404, `'${definition.source}' carries no Agent Skill named '${alias}'.`, {
+                name: alias, source: definition.source, retryable: false,
             });
         }
         if (located.kind === "folder" || located.kind === "skill-file") {
             await SkillSource.assertInward(match.dir);
-            return await this.#loadDirectory(definition.name, match.dir);
+            return await this.#loadDirectory(alias, match.dir);
         }
         let dir: string;
         try {
             dir = await SkillSource.install(match, root);
         } catch (cause) {
             if (cause instanceof SkillsActionError) throw cause;
-            throw actionError("install-failed", 500, `Agent Skill '${definition.name}' could not be placed under ${root}: ${messageOf(cause)}`, {
-                name: definition.name, retryable: false,
+            throw actionError("install-failed", 500, `Agent Skill '${alias}' could not be placed under ${root}: ${messageOf(cause)}`, {
+                name: alias, retryable: false,
             }, cause);
         }
-        return await this.#loadDirectory(definition.name, dir);
+        return await this.#loadDirectory(alias, dir);
     }
 
     async #loadDirectory(alias: string, dir: string): Promise<SkillDirectory> {
@@ -505,7 +505,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
             preparation.progress([alias]);
             try {
                 const tree = definition.source === undefined ? provided.get(alias)
-                    : await this.#loadSource(definition, preparation.workspaceId, paths, preparation.signal);
+                    : await this.#loadSource(alias, definition, preparation.workspaceId, paths, preparation.signal);
                 if (tree === undefined) throw actionError("skill-missing", 404, `Agent Skill '${alias}' is not provided by this service.`, { name: alias, retryable: false });
                 trees.set(new URL(`skill://${alias}/`).hostname, tree);
                 outcomes.set(alias, { state: "active", detail: {

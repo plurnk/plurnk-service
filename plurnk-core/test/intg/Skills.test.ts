@@ -128,7 +128,7 @@ test("{§agent-skills-directory} {§skills-sources}: discovery, installation and
     const discovered = await action("discover", { source }) as { candidates: Array<{ alias: string; definition: unknown }> };
     assert.deepEqual(new Set(discovered.candidates.map(({ alias }) => alias)), new Set(names));
     for (const candidate of discovered.candidates) {
-        const result = await action("add", { alias: candidate.alias, definition: candidate.definition }) as { status: number };
+        const result = await action("add", { alias: candidate.alias, ...(candidate.definition as object) }) as { status: number };
         assert.equal(result.status, 201);
     }
     const catalog = await operate({ ...findStmt(parsePath("skill://*/SKILL.md")), lineMarker: { marks: [1, -1] } });
@@ -178,7 +178,7 @@ test("{§module-workspace-residency}: a busy workspace refuses skill binding cha
     const action = (verb: string, params: Record<string, unknown>) => daemon.invokeModuleAction(`workspace.skills.${verb}`, params, {
         scope: "workspace", workspaceId: workspace.workspaceId,
     });
-    await action("add", { alias: "alpha", definition: { name: "alpha", source } });
+    await action("add", { alias: "alpha", source });
     const proposal = Promise.withResolvers<number>();
     const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
         if (method === "loop/proposal") proposal.resolve((params as { logEntryId: number }).logEntryId);
@@ -200,7 +200,7 @@ test("{§module-workspace-residency}: a busy workspace refuses skill binding cha
         const current = await action("list", {}) as { definitions: Array<{ alias: string; origin: string }> };
         assert.ok(current.definitions.some(({ alias, origin }) => alias === "alpha" && origin === "workspace"),
             "refused removal preserves the workspace binding");
-        const added = await rejectedProblem(() => action("add", { alias: "beta", definition: { name: "beta", source } }));
+        const added = await rejectedProblem(() => action("add", { alias: "beta", source }));
         assert.equal(added.type, removed.type);
         assert.equal(await exists(join(hostPaths.projectSkillsDir(project), "beta")), false,
             "refused addition does not install a skill");
@@ -285,8 +285,8 @@ test("{§skills-module} {§skills-hotload} discovered roots are inputs, add bind
         // Discovery is inert: a source lists its skills; `source` is the one input discovery serves.
         const bySource = await invoke<{ candidates: Array<{ alias: string; summary?: string; definition: object; provenance: { kind: string; source: string } }> }>("discover", { source });
         assert.deepEqual(bySource.candidates.map(({ alias, summary, definition, provenance }) => ({ alias, summary, definition, provenance })), [
-            { alias: "alpha", summary: "Alpha from the source", definition: { name: "alpha", source }, provenance: { kind: "source", source } },
-            { alias: "review", summary: "Review, project edition", definition: { name: "review", source }, provenance: { kind: "source", source } },
+            { alias: "alpha", summary: "Alpha from the source", definition: { source }, provenance: { kind: "source", source } },
+            { alias: "review", summary: "Review, project edition", definition: { source }, provenance: { kind: "source", source } },
         ]);
         // {§functionality-replacement} An input the family does not serve is refused by the shared schema check, by name.
         for (const [params, field] of [[{ query: "alpha" }, '"query"'], [{ configuration: { X: "y" } }, '"configuration"']] as const) {
@@ -298,28 +298,28 @@ test("{§skills-module} {§skills-hotload} discovered roots are inputs, add bind
         assert.equal((await rejectedProblem(() => invoke("discover", { source: join(base, "nowhere") }))).type, "https://problems.plurnk.xyz/skills/functionality/source-missing");
 
         // Admission is exact.
-        assert.equal((await rejectedProblem(() => invoke("add", { alias: "beta", definition: { name: "alpha", source } }))).type, "https://problems.plurnk.xyz/skills/functionality/alias-mismatch");
-        assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { name: "alpha" } }))).type, "https://problems.plurnk.xyz/skills/functionality/source-required");
-        assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { name: "alpha", scope: "nowhere", source } }))).type, "https://problems.plurnk.xyz/functionality/arguments-invalid", "the coordinator validates the definition schema before admission");
+        assert.equal((await rejectedProblem(() => invoke("add", { alias: "beta", source: "fixture:///skills/alpha" }))).type, "https://problems.plurnk.xyz/skills/functionality/alias-mismatch");
+        assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha" }))).type, "https://problems.plurnk.xyz/skills/functionality/source-required");
+        assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", scope: "nowhere", source }))).type, "https://problems.plurnk.xyz/functionality/arguments-invalid", "the coordinator validates the definition schema before admission");
         // A source without the named skill rejects the client mutation and persists nothing.
-        const failed = await rejectedProblem(() => invoke("add", { alias: "ghost", definition: { name: "ghost", source } }));
+        const failed = await rejectedProblem(() => invoke("add", { alias: "ghost", source }));
         assert.equal(failed.type, "https://problems.plurnk.xyz/skills/functionality/skill-not-found");
         assert.ok(!(await states()).some((state) => state.startsWith("ghost:")), "a failed install leaves no definition");
 
-        const added = await invoke<{ status: number; definition: { origin: string; state: string; definition: { source: string }; detail: { path: string } } }>("add", { alias: "alpha", definition: { name: "alpha", source } });
+        const added = await invoke<{ status: number; definition: { origin: string; state: string; definition: { source: string }; detail: { path: string } } }>("add", { alias: "alpha", source });
         assert.equal(added.status, 201);
         assert.equal(added.definition.state, "active");
         assert.equal(added.definition.detail.path, join(source, "alpha"));
         assert.equal(await exists(join(projectRoot, "alpha", "SKILL.md")), false, "local add does not copy into a configuration root");
         assert.match(await document("alpha") ?? "", /Alpha from the source/);
         assert.match(await catalog() ?? "", /skill:\/\/alpha\/SKILL\.md/);
-        const repeated = await invoke<{ status: number; definition: { state: string } }>("add", { alias: "alpha", definition: { name: "alpha", source } });
+        const repeated = await invoke<{ status: number; definition: { state: string } }>("add", { alias: "alpha", source });
         assert.equal(repeated.status, 200, "reapplying the same workspace definition is idempotent");
         assert.equal(repeated.definition.state, "active");
-        assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { name: "alpha", source: join(source, "alpha") } }))).type, "https://problems.plurnk.xyz/functionality/alias-exists");
+        assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", source: join(source, "alpha") }))).type, "https://problems.plurnk.xyz/functionality/alias-exists");
 
         // {§skills-hotload}
-        const shadow = await invoke<{ definition: { origin: string; detail: { description: string } } }>("add", { alias: "review", definition: { name: "review", source } });
+        const shadow = await invoke<{ definition: { origin: string; detail: { description: string } } }>("add", { alias: "review", source });
         assert.equal(shadow.definition.origin, "workspace");
         assert.equal(shadow.definition.detail.description, "Review, project edition");
         assert.equal(await exists(join(projectRoot, "review", "SKILL.md")), false);
@@ -380,10 +380,10 @@ test("{§skills-module} a headless workspace accepts absolute local references; 
         assert.ok(catalog !== undefined);
         assert.equal(catalog.status, 200);
         assert.deepEqual((catalog.results as Array<Array<{ path: string }>>).flat().map(({ path }) => path), ["skill://plurnk/SKILL.md"]);
-        const refused = await rejectedProblem(() => daemon.invokeModuleAction("workspace.skills.add", { alias: "alpha", definition: { name: "alpha", source: "acme/kit" } }, context));
+        const refused = await rejectedProblem(() => daemon.invokeModuleAction("workspace.skills.add", { alias: "alpha", source: "acme/kit" }, context));
         assert.equal(refused.type, "https://problems.plurnk.xyz/skills/functionality/source-invalid");
         const added = await daemon.invokeModuleAction("workspace.skills.add", {
-            alias: "alpha", definition: { name: "alpha", source: join(base, "alpha") },
+            alias: "alpha", source: join(base, "alpha"),
         }, context) as { status: number };
         assert.equal(added.status, 201);
         const [read] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [readStmt(parsePath("skill://alpha/SKILL.md"))] });
@@ -419,7 +419,7 @@ test("{§functionality-inspection} root selection controls discovery, not explic
     const list = await daemon.invokeModuleAction("workspace.skills.list", {}, context) as { definitions: Array<{ alias: string }> };
     assert.deepEqual(list.definitions.map(({ alias }) => alias), ["plurnk"], "the plurnk root's skill is not read");
     const added = await daemon.invokeModuleAction("workspace.skills.add", {
-        definition: { name: "beta", source: join(hostPaths.plurnkSkillsDir, "beta") },
+        alias: "beta", source: join(hostPaths.plurnkSkillsDir, "beta"),
     }, context) as { status: number; definition: { state: string; detail: { path: string } } };
     assert.equal(added.status, 201);
     assert.equal(added.definition.state, "active");
@@ -469,7 +469,7 @@ test("{§skills-module} nearer roots shadow farther roots; adding a reference wr
     assert.deepEqual(await states(), ["grep:service:active", "plurnk:service:active", "review:service:active"],
         "the plurnk root shadows the global root by name");
     assert.equal((await s.listed()).find(({ alias }) => alias === "grep")?.definition.source, join(s.hostPaths.plurnkSkillsDir, "grep"));
-    const added = await s.action<{ status: number; definition: { detail: { path: string } } }>("add", { alias: "lint", definition: { name: "lint", source: join(s.base, "source") } });
+    const added = await s.action<{ status: number; definition: { detail: { path: string } } }>("add", { alias: "lint", source: join(s.base, "source") });
     assert.equal(added.status, 201);
     assert.equal(added.definition.detail.path, join(s.base, "source", "lint"));
     assert.ok((await states()).includes("lint:workspace:active"));
@@ -500,10 +500,10 @@ test("{§skills-sources} a git source is fetched at its ref, its commit is recor
         { alias: "beta", summary: "Beta, second edition" },
     ], "discovery reads the default branch");
     type Added = { status: number; definition: { definition: { commit?: string }; detail: { path: string } } };
-    const alpha = await s.action<Added>("add", { alias: "alpha", definition: { name: "alpha", source: remote } });
+    const alpha = await s.action<Added>("add", { alias: "alpha", source: remote });
     assert.equal(alpha.status, 201);
     assert.equal(alpha.definition.definition.commit, second, "the default branch's commit is recorded");
-    const beta = await s.action<Added>("add", { alias: "beta", definition: { name: "beta", source: remote, ref: "v1" } });
+    const beta = await s.action<Added>("add", { alias: "beta", source: remote, ref: "v1" });
     assert.equal(beta.definition.definition.commit, first, "an annotated tag records the commit it names");
     const alphaPath = alpha.definition.detail.path;
     const betaPath = beta.definition.detail.path;
@@ -511,9 +511,9 @@ test("{§skills-sources} a git source is fetched at its ref, its commit is recor
     assert.equal(await exists(s.projectSkills), false, "fetch does not create a project installation");
     assert.match(await readFile(join(betaPath, "SKILL.md"), "utf8"), /Beta, first edition/u);
     assert.equal(await exists(join(alphaPath, ".git")), false, "a checkout's .git never enters a skill");
-    const again = await s.action<Added>("add", { alias: "alpha", definition: { name: "alpha", source: remote } });
+    const again = await s.action<Added>("add", { alias: "alpha", source: remote });
     assert.equal(again.status, 200, "re-adding at an unmoved ref is idempotent");
-    assert.equal((await rejectedProblem(() => s.action("add", { alias: "gamma", definition: { name: "gamma", source: remote, ref: "nope" } }))).type, `${PROBLEM}ref-missing`);
+    assert.equal((await rejectedProblem(() => s.action("add", { alias: "gamma", source: remote, ref: "nope" }))).type, `${PROBLEM}ref-missing`);
 
     // The branch moves on and the copy disappears: nothing the definition never named is installed.
     await rm(alphaPath, { recursive: true });
@@ -525,10 +525,10 @@ test("{§skills-sources} a git source is fetched at its ref, its commit is recor
     const moved = listed.find(({ alias }) => alias === "alpha")!;
     assert.equal(moved.state, "unavailable");
     assert.equal(moved.problem?.type, `${PROBLEM}source-moved`);
-    assert.equal(moved.problem?.recovery, "Use plurnk (skills) replace with the complete source definition to take the current commit.");
+    assert.equal(moved.problem?.recovery, "Use plurnk_skills (replace) with the complete source definition to take the current commit.");
     assert.equal(await exists(alphaPath), false, "nothing was installed from the moved branch");
     assert.equal(listed.find(({ alias }) => alias === "beta")?.state, "active", "a tag that did not move stays put");
-    const refreshed = await s.action<Added>("replace", { alias: "alpha", definition: { name: "alpha", source: remote } });
+    const refreshed = await s.action<Added>("replace", { alias: "alpha", source: remote });
     assert.equal(refreshed.status, 200);
     assert.equal(refreshed.definition.definition.commit, await git(repository, "rev-parse", "HEAD"));
     assert.match(await readFile(join(refreshed.definition.detail.path, "SKILL.md"), "utf8"), /Alpha, third edition/u,
@@ -549,7 +549,7 @@ test("{§skills-module} a configured Git snapshot survives enable and restart; c
         if (previous === undefined) delete process.env.PLURNK_SKILLS_alpha;
         else process.env.PLURNK_SKILLS_alpha = previous;
     });
-    const definition = { name: "alpha", source: remote };
+    const definition = { source: remote };
     process.env.PLURNK_SKILLS_alpha = JSON.stringify(definition);
     assert.equal((await s.listed()).find(({ alias }) => alias === "alpha")?.state, "dormant");
     await s.prepare();
@@ -587,7 +587,7 @@ test("{§skills-module} an archive snapshot survives source changes and removal;
         if (previous === undefined) delete process.env.PLURNK_SKILLS_alpha;
         else process.env.PLURNK_SKILLS_alpha = previous;
     });
-    const definition = { name: "alpha", source };
+    const definition = { source };
     process.env.PLURNK_SKILLS_alpha = JSON.stringify(definition);
     await s.prepare();
     const original = (await s.listed()).find(({ alias }) => alias === "alpha")!.detail!.path!;
@@ -628,7 +628,7 @@ test("{§skills-sources} a lone SKILL.md, a tar archive and a zip archive each a
     ] as const) {
         const discovered = await s.action<{ candidates: Array<{ alias: string }> }>("discover", { source });
         assert.deepEqual(discovered.candidates.map(({ alias: name }) => name), [alias], source);
-        const added = await s.action<{ status: number; definition: { detail: { path: string } } }>("add", { alias, definition: { name: alias, source } });
+        const added = await s.action<{ status: number; definition: { detail: { path: string } } }>("add", { alias, source });
         assert.equal(added.status, 201, source);
         const path = added.definition.detail.path;
         paths.set(alias, path);
@@ -648,16 +648,16 @@ test("{§skills-sources} add refuses a plugin, a link out of its skill, shorthan
     await writeSkill(join(sources, "leaky-kit"), "leaky", "Leaks");
     await symlink("../../../home", join(sources, "leaky-kit", "leaky", "home"));
     await writeSkill(join(sources, "kit"), "plain", "Plain");
-    const refused = (definition: Readonly<Record<string, unknown>>) => rejectedProblem(() => s.action("add", { alias: definition.name, definition }));
-    assert.equal((await refused({ name: "helper", source: join(sources, "plugin") })).type, `${PROBLEM}source-is-plugin`);
-    assert.equal((await refused({ name: "leaky", source: join(sources, "leaky-kit") })).type, `${PROBLEM}source-unsafe`);
+    const refused = (alias: string, definition: Readonly<Record<string, unknown>>) => rejectedProblem(() => s.action("add", { alias, ...definition }));
+    assert.equal((await refused("helper", { source: join(sources, "plugin") })).type, `${PROBLEM}source-is-plugin`);
+    assert.equal((await refused("leaky", { source: join(sources, "leaky-kit") })).type, `${PROBLEM}source-unsafe`);
     assert.equal(await exists(join(s.projectSkills, "leaky")), false, "a refused install leaves nothing behind");
-    const shorthand = await refused({ name: "plain", source: "acme/kit" });
+    const shorthand = await refused("plain", { source: "acme/kit" });
     assert.equal(shorthand.type, `${PROBLEM}source-missing`);
     assert.equal(shorthand.detail, "No folder or file is at 'acme/kit'.");
-    assert.equal((await refused({ name: "plain", source: "http://forge.test/acme/kit.git" })).type, `${PROBLEM}source-invalid`);
-    assert.equal((await refused({ name: "plain", source: join(sources, "kit"), ref: "main" })).type, `${PROBLEM}definition-invalid`);
-    assert.equal((await refused({ name: "plain", source: "https://forge.test/acme/kit.git", commit: "0".repeat(40) })).type, `${PROBLEM}definition-invalid`);
+    assert.equal((await refused("plain", { source: "http://forge.test/acme/kit.git" })).type, `${PROBLEM}source-invalid`);
+    assert.equal((await refused("plain", { source: join(sources, "kit"), ref: "main" })).type, `${PROBLEM}definition-invalid`);
+    assert.equal((await refused("plain", { source: "https://forge.test/acme/kit.git", commit: "0".repeat(40) })).type, `${PROBLEM}definition-invalid`);
     assert.deepEqual((await s.listed()).map(({ alias }) => alias), ["plurnk"], "no refused addition persisted");
 });
 });
@@ -702,7 +702,7 @@ test("{§functionality-inspection} plugin skills follow source precedence and wo
     assert.equal((await read(a)).status, 404);
     await action(a.workspaceId, "enable", { alias: "review" });
     assert.match(String((await read(a)).content), /Project plugin/);
-    await action(a.workspaceId, "add", { alias: "review", definition: { name: "review", source: override } });
+    await action(a.workspaceId, "add", { alias: "review", source: override });
     assert.match(String((await read(a)).content), /Workspace override/);
     await action(a.workspaceId, "remove", { alias: "review" });
     assert.match(String((await read(a)).content), /Project plugin/);
@@ -734,12 +734,12 @@ test("{§skills-module} local additions are live, workspace-owned references; re
     }))[0];
     for (const [index, workspace] of [alice, bob].entries()) {
         const added = await action(workspace.workspaceId, "add", {
-            alias: "review", definition: { name: "review", source: sources[index + 1] },
+            alias: "review", source: sources[index + 1],
         }) as FunctionalityMutationResult;
         assert.equal(added.status, 201);
         assert.equal(added.definition?.origin, "workspace");
         assert.equal(added.definition?.provenance, undefined, "a local definition does not borrow its baseline's source");
-        assert.deepEqual(added.definition?.definition, { name: "review", source: sources[index + 1] });
+        assert.deepEqual(added.definition?.definition, { source: sources[index + 1] });
         assert.equal((await read(workspace)).content, `SOURCE_${index + 1}`);
     }
     await assert.rejects(() => stat(hostPaths.projectSkillsDir(project)), { code: "ENOENT" }, "add does not create a project installation");
@@ -775,7 +775,7 @@ test("{§skills-module} environment definitions replace standard roots; independ
     }
     const overrides: Record<string, string> = {
         PLURNK_SKILLS_ENABLED: "0",
-        PLURNK_SKILLS_review: JSON.stringify({ name: "review", source: join(sources[2], "review") }),
+        PLURNK_SKILLS_review: JSON.stringify({ source: join(sources[2], "review") }),
         PLURNK_SKILLS_review_ENABLED: "1",
         PLURNK_SKILLS_absent_ENABLED: "0",
     };
@@ -784,7 +784,7 @@ test("{§skills-module} environment definitions replace standard roots; independ
         await mkdir(directory);
         await writeFile(join(directory, "SKILL.md"), `---\nname: ${name}\ndescription: ${name} guide\n---\nORIGINAL_${name}\n`);
         const key = `PLURNK_SKILLS_${name.replaceAll("-", "_")}`;
-        overrides[key] = JSON.stringify({ name, source: directory });
+        overrides[key] = JSON.stringify({ source: directory });
         overrides[`${key}_ENABLED`] = "1";
     }
     const previous = new Map(Object.keys(overrides).map((key) => [key, process.env[key]]));
@@ -808,7 +808,7 @@ test("{§skills-module} environment definitions replace standard roots; independ
         workspaceId: workspace.workspaceId, actor: TEST_OWNER, statements: [readStmt(parsePath(`skill://${alias}/SKILL.md`), { marks: [1, -1] })],
     }))[0];
     const before = await list();
-    assert.deepEqual(before.find(({ alias }) => alias === "review")?.definition, { name: "review", source: join(sources[2], "review") });
+    assert.deepEqual(before.find(({ alias }) => alias === "review")?.definition, { source: join(sources[2], "review") });
     assert.deepEqual(before.find(({ alias }) => alias === "review")?.provenance,
         { kind: "environment", source: "PLURNK_SKILLS_review" });
     assert.equal(before.find(({ alias }) => alias === "plurnk")?.state, "disabled", "family default applies independently to host-provided trees");
@@ -817,13 +817,13 @@ test("{§skills-module} environment definitions replace standard roots; independ
     for (const alias of ["3d-tools", "分析"]) {
         assert.match(String((await read(alias)).content), new RegExp(`ORIGINAL_${alias}`, "u"));
     }
-    await action("add", { alias: "review", definition: { name: "review", source: join(sources[3], "review") } });
+    await action("add", { alias: "review", source: join(sources[3], "review") });
     assert.match(String((await read("review")).content), /Layer 3/u);
     await action("remove", { alias: "review" });
     assert.match(String((await read("review")).content), /Layer 2/u);
     assert.equal((await list()).find(({ alias }) => alias === "review")?.origin, "service");
     process.env.PLURNK_SKILLS_review_ENABLED = "0";
-    await action("add", { alias: "review", definition: { name: "review", source: join(sources[3], "review") } });
+    await action("add", { alias: "review", source: join(sources[3], "review") });
     assert.match(String((await read("review")).content), /Layer 3/u);
     await action("remove", { alias: "review" });
     assert.equal((await list()).find(({ alias }) => alias === "review")?.state, "disabled", "remove restores inherited disabledness too");

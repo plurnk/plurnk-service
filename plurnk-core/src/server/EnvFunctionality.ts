@@ -36,7 +36,7 @@ const actionError = (code: string, status: number, detail: string, extensions: R
 const reservedNameError = (alias: string): OperationFailureError => actionError("name-reserved", 400,
     `'${alias}' is reserved in env entries.`, {
         alias,
-        recovery: "READ workspace:///_plurnk/tools/plurnk/env.json for supported configuration paths.",
+        recovery: "READ mcp:///plurnk_env.md for supported configuration paths.",
     });
 
 // POSIX-ish, and deliberately narrow: a name the shell can actually export. This is the family's
@@ -61,12 +61,12 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     readonly scheme: RuntimeSchemeFacet | undefined;
     readonly family = ENV_FAMILY;
     readonly namespaceOwner = ENV_OWNER;
-    readonly summary = "Read and shape the environment your commands run in";
+    readonly summary = "Manage environment variables";
     readonly definitionSchema = DEFINITION;
     readonly scopes = ["session", "workspace"] as const;
     readonly aliasPattern = NAME;
     readonly docsDir = Paths.packageRoot;
-    readonly example = { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } };
+    readonly example = { alias: "CARGO_TARGET_DIR", value: "/tmp/shared" };
     // {§env-functionality} A client's own environment is no input: it would bypass the operator's ceiling.
     readonly discovery: FunctionalityDiscovery = {
         inputs: ["query", "source"],
@@ -131,11 +131,10 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
                 `'${alias}' is not a name a shell can export.`, { retryable: false });
         }
         if (ExecEnv.ownSecretTest()(alias)) throw reservedNameError(alias);
-        const { definition } = record;
-        if (!isRecord(definition) || typeof definition.value !== "string") {
+        if (typeof record.value !== "string") {
             throw actionError("value-invalid", 400, `'${alias}' needs a string value.`, { retryable: false });
         }
-        return { alias, definition: { value: definition.value } };
+        return { alias, definition: { value: record.value } };
     }
 
     // Nothing is launched, so nothing can fail to launch: every enabled definition is active and

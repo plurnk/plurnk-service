@@ -705,7 +705,7 @@ export default class Dispatcher {
                     throw new InvalidOperationResultError("Execution proposal omitted its canonical effect fact.");
                 }
                 // {§proposal-disposition}: the runtime cannot grant itself effect authority.
-                try { autoAccept = origin !== "_plurnk" && EffectPolicy.decide(effect) === "auto"; }
+                try { autoAccept = (origin !== "_plurnk" || effect !== "host") && EffectPolicy.decide(effect) === "auto"; }
                 catch (cause) {
                     if (!(cause instanceof ConfigurationError)) throw cause;
                     result = Results.configurationFailure(cause);

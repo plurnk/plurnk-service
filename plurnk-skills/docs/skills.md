@@ -19,11 +19,11 @@ A `project` skill shadows a `plurnk` one of the same name, which shadows a
 `global` one, which shadows a `service` one. Plugin skills join their installation's
 scope after standalone skills; npm bundles follow global roots. These are read-only inputs.
 The cascading environment can replace a whole definition above them;
-`plurnk (skills)` (`"verb": "add"`) creates a workspace override above that. Declared skills are
+`plurnk_skills (add)` creates a workspace override above that. Declared skills are
 enabled by default. A disabled skill remains listed but has no resource tree.
 
 ```sh
-PLURNK_SKILLS_code_review='{"name":"code-review","source":"/srv/skills/code-review"}'
+PLURNK_SKILLS_code_review='{"source":"/srv/skills/code-review"}'
 PLURNK_SKILLS_ENABLED=1
 PLURNK_SKILLS_code_review_ENABLED=0
 ```
@@ -53,8 +53,8 @@ archive. Discovery never installs anything.
 
 `add` binds one skill from its source to this workspace and enables it:
 
-```plurnk (skills) <!-- from a discover candidate -->
-{"verb": "add", "alias": "sql-formatter", "definition": {"name": "sql-formatter", "source": "https://git.example/acme/skills.git"}}
+```plurnk_skills (add) <!-- from a discover candidate -->
+{"alias": "sql-formatter", "source": "https://git.example/acme/skills.git"}
 ```
 
 The alias must equal the skill's standard `name`, which selects it from a source

@@ -57,13 +57,13 @@ a final deliverable response
 > [!TIP]
 > YOU SHOULD NOT deliberate while discovering. Submit necessary NOTE, FIND and READ operations, then deliberate on the next turn.
 
-## Delegation (workspace:///_plurnk/plurnk/delegation.md)
+## Delegation (plurnk:///delegation.md)
 
 ```WORK (session://exampleSessionName) <!-- the child's result lands in your log -->
 Describe the child's complete task in the body.
 ```
 
-## `pattern` (workspace:///_plurnk/plurnk/pattern.md)
+## `pattern` (plurnk:///pattern.md)
 
 | prefix | dialect                     | example                         |
 |--------|-----------------------------|---------------------------------|
@@ -108,10 +108,10 @@ Describe the child's complete task in the body.
 * FIND results hold one inner array per path: its channels, default first; append `#channel` to the path to select another: `(sh:///ab3d5678#stderr)`.
 * Percent-encode in paths `(` as `%28` and `)` as `%29`.
 
-## Membership (workspace:///_plurnk/tools/plurnk/members.json)
+## Membership (mcp:///plurnk_members.md)
 
-```plurnk (members) <!-- adding membership tracking for files outside of the project folder -->
-{"verb": "add", "files": ["../exampleSisterProject/*.md", "../exampleSisterProject/example.json"]}
+```plurnk_members (add) <!-- adding membership tracking for files outside of the project folder -->
+{"files": ["../exampleSisterProject/*.md", "../exampleSisterProject/example.json"]}
 ```
 
 ## Editing
@@ -152,13 +152,13 @@ bar
 ```
 
 ```KILL (log:///1/[1-7]/*/{READ,emission}) <!-- old results and your own old programs, in bulk; the body survives as a NOTE -->
-example distillation or summarization
+optional distillation or summarization
 ```
 
-## Environment (workspace:///_plurnk/tools/plurnk/env.json)
+## Environment (mcp:///plurnk_env.md)
 
-```plurnk (env) <!-- persists for this session's commands -->
-{"verb":"add","alias":"PLANET","definition":{"value":"world"}}
+```plurnk_env (add) <!-- persists for this session's commands -->
+{"alias":"PLANET","value":"world"}
 ```
 
 ```sh

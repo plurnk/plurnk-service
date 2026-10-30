@@ -29,7 +29,7 @@ test("{§functionality-adapter} skill staging cleanup preserves the cancellation
     });
     await assert.rejects(family.prepare({
         signal: lifetime.signal, workspaceId: 1,
-        enabled: new Map([["review", { definition: { name: "review", source: "https://forge.example/skills.git" } }]]),
+        enabled: new Map([["review", { definition: { source: "https://forge.example/skills.git" } }]]),
         previous: null, failure: "publish-unavailable", admissions: [], progress: () => {}, retain: () => () => {},
     }), (cause) => {
         assert.ok(cause instanceof SuppressedError, String(cause));
@@ -56,23 +56,22 @@ test("{§module-seam-slices} skills use the host's opaque source scopes and prec
         operatorEnvironment: () => { throw new Error("Discovery does not launch a subprocess."); },
     });
     assert.deepEqual((await family.available({ workspaceId: 1 })).map(({ definition, provenance }) => ({ definition, provenance })), [{
-        definition: { name: "review", source: join(root, "near/skills/review") },
+        definition: { source: join(root, "near/skills/review") },
         provenance: { kind: "file", source: join(root, "near/skills/review/SKILL.md") },
     }]);
 });
 
 test("{§skills-module} native env parsing retains exact standard skill names without opening their sources", () => {
     const names = ["3d-tools", "分析", "café", "ｓｋｉｌｌ", "skill"];
-    const definitions = names.map((name) => ({ name, source: `/unavailable/${name}` }));
     const env = parseEnv([
         "PLURNK_SKILLS_ENABLED=1",
-        ...definitions.map((definition) => `PLURNK_SKILLS_${definition.name.replaceAll("-", "_")}='${JSON.stringify(definition)}'`),
+        ...names.map((name) => `PLURNK_SKILLS_${name.replaceAll("-", "_")}='${JSON.stringify({ source: `/unavailable/${name}` })}'`),
         "PLURNK_SKILLS_分析_ENABLED=0",
         "PLURNK_SKILLS_future_ENABLED=0",
     ].join("\n"));
     const actual = serviceSkills(env);
     assert.equal(actual.size, names.length, "controls do not manufacture resource definitions");
-    for (const definition of definitions) assert.deepEqual(actual.get(definition.name), definition);
+    for (const name of names) assert.deepEqual(actual.get(name), { source: `/unavailable/${name}` });
 });
 
 test("{§functionality-replacement} a changed unavailable skill is a new preparation failure, not its alias's carried outcome", async (t) => {
@@ -88,7 +87,7 @@ test("{§functionality-replacement} a changed unavailable skill is a new prepara
     });
     const prepare = (source: string, previous: Parameters<typeof family.prepare>[0]["previous"], failure: "reject" | "publish-unavailable") => family.prepare({
         signal: new AbortController().signal,
-        workspaceId: 1, enabled: new Map([["review", { definition: { name: "review", source } }]]),
+        workspaceId: 1, enabled: new Map([["review", { definition: { source } }]]),
         previous, failure, admissions: [], progress: () => {}, retain: () => () => {},
     });
     const prior = await prepare(join(root, "before"), null, "publish-unavailable");
@@ -109,29 +108,26 @@ test("{§functionality-replacement} a changed unavailable skill is a new prepara
 test("{§skills-module} invalid disabled definitions still fail validation; absent definitions inherit", () => {
     const base = { PLURNK_SKILLS_ENABLED: "0", PLURNK_SKILLS_review_ENABLED: "0" };
     assert.equal(serviceSkills(base).size, 0);
-    for (const definition of ["null", "{}", '{"name":"review","scope":"project","source":"/srv/review"}', "invalid-json"]) {
+    for (const definition of ["null", '{"scope":"project","source":"/srv/review"}', "invalid-json"]) {
         assert.throws(() => serviceSkills({ ...base, PLURNK_SKILLS_review: definition }), {
             message: "PLURNK_SKILLS_review must contain a complete SkillDefinition.",
         });
     }
-    assert.throws(() => serviceSkills({ ...base, PLURNK_SKILLS_review: '{"name":"other","source":"/srv/other"}' }), {
-        message: "PLURNK_SKILLS_review: the definition name must equal 'review'.",
-    });
-    assert.throws(() => serviceSkills({ ...base, PLURNK_SKILLS_review: '{"name":"review"}' }), {
+    assert.throws(() => serviceSkills({ ...base, PLURNK_SKILLS_review: "{}" }), {
         message: "PLURNK_SKILLS_review: a configured skill requires a source.",
     });
     assert.throws(() => serviceSkills({ ...base, PLURNK_SKILLS_review: "" }), {
         message: "PLURNK_SKILLS_review must contain a definition; use PLURNK_SKILLS_review_ENABLED=0 to disable a defined resource.",
     });
-    assert.throws(() => serviceSkills({ ...base, PLURNK_SKILLS_review: JSON.stringify({ name: "review", source: "https://forge.example/skills.git", commit: "a".repeat(40) }) }), {
+    assert.throws(() => serviceSkills({ ...base, PLURNK_SKILLS_review: JSON.stringify({ source: "https://forge.example/skills.git", commit: "a".repeat(40) }) }), {
         message: "PLURNK_SKILLS_review: commit is service-recorded; configure a Git ref instead.",
     });
     for (const definition of [
-        { name: "review", source: "/srv/review", ref: "main" },
-        { name: "review", source: "http://forge.example/skills.git" },
-        { name: "review", source: "https://secret@forge.example/skills.git" },
-        { name: "review", source: "docs:///skills/review", ref: "main" },
-        { name: "review", source: "docs:///resources/review" },
+        { source: "/srv/review", ref: "main" },
+        { source: "http://forge.example/skills.git" },
+        { source: "https://secret@forge.example/skills.git" },
+        { source: "docs:///skills/review", ref: "main" },
+        { source: "docs:///resources/review" },
     ]) {
         assert.throws(() => serviceSkills({ ...base, PLURNK_SKILLS_review: JSON.stringify(definition) }), {
             message: "PLURNK_SKILLS_review: invalid skill source or ref.",
@@ -215,7 +211,7 @@ test("{§skills-sources} MCP skill sources discover, admit with pinned manifest 
         {
             alias: "sql-helper",
             summary: "Format SQL queries.",
-            definition: { name: "sql-helper", source: "docs:///skills/sql-helper" },
+            definition: { source: "docs:///skills/sql-helper" },
             provenance: { kind: "source", source: "docs:///skills/sql-helper" },
         },
     ]);
@@ -224,13 +220,12 @@ test("{§skills-sources} MCP skill sources discover, admit with pinned manifest 
 
     // 2. Admit records the 64-hex SHA-256 manifest digest in commit and canonicalizes source
     const admitted = await family.admit(
-        { alias: "sql-helper", definition: { name: "sql-helper", source: "docs:///skills" } },
+        { alias: "sql-helper", source: "docs:///skills" },
         { workspaceId: 1 },
     );
     assert.deepEqual(admitted, {
         alias: "sql-helper",
         definition: {
-            name: "sql-helper",
             source: "docs:///skills/sql-helper",
             commit: commitV1,
         },
@@ -285,7 +280,7 @@ test("{§skills-sources} MCP skill sources discover, admit with pinned manifest 
     failVerify = true;
     await assert.rejects(
         family.admit(
-            { alias: "sql-helper", definition: { name: "sql-helper", source: "docs:///skills/sql-helper" } },
+            { alias: "sql-helper", source: "docs:///skills/sql-helper" },
             { workspaceId: 1 },
         ),
         (cause: unknown) => {

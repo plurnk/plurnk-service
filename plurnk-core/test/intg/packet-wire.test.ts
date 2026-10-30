@@ -7,6 +7,7 @@ import Turn from "../../src/core/Turn.ts";
 import StoredPacket, { type StoredPacketSection, type DurablePacket } from "../../src/core/StoredPacket.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
+import LoopDocs from "../../src/server/loopDocs.ts";
 import Paths from "../../src/Paths.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
@@ -843,7 +844,7 @@ test("{§tools-resource-materialization} assembled packet: the skills foist surf
         const loopId = await insertLoop(db, sessionId, 1, "go");
         // A materialized scheme doc is an ordinary entry owned by the Session
         // whose effective Functionality it describes.
-        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/_plurnk/plurnk/session.md", channel: "body", content: "# session\n\n## Summary\n\nManage shared session entries.\n\n## Invocation\n\n````EDIT (workspace:///notes.md)\nNotes.\n````", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "plurnk", pathname: "/session.md", channel: "body", content: "# session\n\n## Summary\n\nManage shared session entries.\n\n## Invocation\n\n````EDIT (workspace:///notes.md)\nNotes.\n````", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
@@ -851,8 +852,8 @@ test("{§tools-resource-materialization} assembled packet: the skills foist surf
 
         // The materialized doc reaches the model through its private FIND, not
         // an inline packet link ({§tools-resource-materialization}).
-        assert.match(log, /^### log:\/\/\/\S+\/FIND \(workspace:\/\/\/_plurnk\/plurnk\/\*\.md\) · \d+$/m, "the foist scopes discovery to the Session's skills tree");
-        assert.match(log, /workspace:\/\/\/_plurnk\/plurnk\/session\.md/, "the materialized skill surfaces in the foist's rendered result");
+        assert.match(log, /^### log:\/\/\/\S+\/FIND \(plurnk:\/\/\/\*\.md\) · \d+$/m, "the foist scopes discovery to the Session's plurnk reference tree");
+        assert.match(log, /plurnk:\/\/\/session\.md/, "the materialized skill surfaces in the foist's rendered result");
         assert.match(log, /"aside":"Manage shared session entries\."/, "the catalog projects the document's Summary without opening its body");
     } finally {
         await db.close();
@@ -873,7 +874,7 @@ test("{§session-initialization-entry} assembled packet: a reference catalog wit
         await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
 
         const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; scheme: string | null; pathname: string }>({ loop_id: loopId });
-        assert.equal(rows.some((row) => row.op === "FIND" && row.scheme === "workspace" && row.pathname === "/_plurnk/plurnk/*.md"), false,
+        assert.equal(rows.some((row) => row.op === "FIND" && row.scheme === "plurnk" && row.pathname === "/*.md"), false,
             "the reference survey that would select nothing is left out");
         assert.ok(rows.some((row) => row.origin === "model" && row.op === "SEND"), "and the model's turn still runs and completes");
     } finally {
@@ -916,7 +917,7 @@ test("{§operator-config-precedence}: the provider packet excludes personal XDG 
     assert.equal(await readFile(path, "utf8"), personal, "daily-driving policy remains untouched");
 });
 
-test("{§session-initialization-entry} assembled packet: PLURNK_SERVICE_POLICY renders the single privileged system-slot policy section", async () => {
+test("{§session-initialization-entry} assembled packet: PLURNK_SERVICE_POLICY materializes plurnk:///AGENTS.md for Turn 0 READ while keeping system-policy empty", async () => {
     const priorPolicy = process.env.PLURNK_SERVICE_POLICY;
     const dir = await mkdtemp(join(tmpdir(), "plurnk-policy-"));
     const db = await openMigrated();
@@ -929,20 +930,15 @@ test("{§session-initialization-entry} assembled packet: PLURNK_SERVICE_POLICY r
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        await LoopDocs.materialize(engine, db, workspaceId);
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
-        // Policy is the client's foot in the privileged zone — the system slot
-        // carries the operator's authoritative rules. Project guidance
-        // rides turn 0 as the foisted AGENTS.md entry ({§session-initialization-entry}).
-        const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
-        assert.deepEqual(slot("system"), ["definition", "system-policy"], "PLURNK_SERVICE_POLICY rides the system slot — privileged, not a READable entry");
-        assert.equal(packetSection(packet, "system-policy"), "# House rules\nNEVER guess a file path.", "the authored policy content is preserved");
-        assert.equal(packet.sections.find(({ name }) => name === "system-policy")?.header, null, "the policy owns its heading");
-        const systemMessage = provider.received[0].filter(({ role }) => role === "system").map((message) => chatMessageText(message)).join("\n");
-        assert.match(systemMessage, /# House rules\nNEVER guess a file path\./, "the authored heading reaches the provider");
-        assert.doesNotMatch(systemMessage, /^## Policy$/m, "the engine adds no enclosing policy heading");
+        assert.equal(packetSection(packet, "system-policy"), "", "system-policy stays empty; global policy is materialized at plurnk:///AGENTS.md");
+        const log = packetSection(packet, "log");
+        assert.match(log, /^### log:\/\/\/\S+\/READ \(plurnk:\/\/\/AGENTS\.md\) · \d+$/m, "Turn 0 reads plurnk:///AGENTS.md");
+        assert.match(log, /1:# House rules\n2:NEVER guess a file path\./, "the authored policy content rides Turn 0");
     } finally {
         await db.close();
         if (priorPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = priorPolicy;
@@ -950,7 +946,7 @@ test("{§session-initialization-entry} assembled packet: PLURNK_SERVICE_POLICY r
     }
 });
 
-test("{§packet-inject} {§host-path-layout} unset PLURNK_SERVICE_POLICY composes $XDG_CONFIG_HOME/agents/AGENTS(.local)?.md, ~/.agents/AGENTS(.local)?.md, and $XDG_CONFIG_HOME/plurnk/AGENTS(.local)?.md in order", async (t) => {
+test("{§packet-inject} {§host-path-layout} unset PLURNK_SERVICE_POLICY composes $XDG_CONFIG_HOME/agents/AGENTS(.local)?.md, ~/.agents/AGENTS(.local)?.md, and $XDG_CONFIG_HOME/plurnk/AGENTS(.local)?.md into plurnk:///AGENTS(.local).md", async (t) => {
     const priorPolicy = process.env.PLURNK_SERVICE_POLICY;
     const dir = await mkdtemp(join(tmpdir(), "plurnk-policy-cascade-"));
     const db = await openMigrated();
@@ -978,13 +974,14 @@ test("{§packet-inject} {§host-path-layout} unset PLURNK_SERVICE_POLICY compose
     const sessionId = await insertSession(db, workspaceId);
     const loopId = await insertLoop(db, sessionId, 1, "go");
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, hostPaths });
+    await LoopDocs.materialize(engine, db, workspaceId);
     const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
     const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
     const packet = await getPacket(db, result.turnId);
-    assert.equal(
-        packetSection(packet, "system-policy"),
-        "# XDG global rules\n\n# XDG local rules\n\n# Home global rules\n\n# Home local rules\n\n# Plurnk rules\n\n# Plurnk local rules",
-    );
+    assert.equal(packetSection(packet, "system-policy"), "");
+    const log = packetSection(packet, "log");
+    assert.match(log, /1:# XDG global rules\n2:\n3:# Home global rules\n4:\n5:# Plurnk rules/);
+    assert.match(log, /1:# XDG local rules\n2:\n3:# Home local rules\n4:\n5:# Plurnk local rules/);
 });
 
 test("{§child-orientation} the live things a session holds — child sessions — surface as terse pointers in the status clump", async () => {

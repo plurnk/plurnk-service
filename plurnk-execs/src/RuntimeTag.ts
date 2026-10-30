@@ -1,10 +1,12 @@
 import { INTERNAL_ROW_OPS, RUNTIME_TAG } from "@plurnk/plurnk-contracts";
 
 const SHAPE = RUNTIME_TAG;
-const SHAPE_TEXT = "[a-z][a-z0-9+.-]*";
+const SHAPE_TEXT = "[a-z][a-z0-9+._-]*";
 // A runtime tag is also an execution's op on the wire; internal row names cannot collide.
 const RESERVED = new Map([
     ["only", "PLURNK_EXECS_ONLY"],
+    ["error_detail_limit", "PLURNK_EXECS_ERROR_DETAIL_LIMIT"],
+    ["spawn_user", "PLURNK_EXECS_SPAWN_USER"],
     ["exec", "the execution scheme"],
     ...[...INTERNAL_ROW_OPS].map((op) => [op, `${op} rows`] as const),
 ]);

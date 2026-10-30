@@ -1059,13 +1059,13 @@ test("{§mcp-module} {§schedule-family} a bare daemon discovers the MCP and sch
 // advertises them. The test floor configures the MCP Registry, so the mcp family serves discovery.
 const DISCOVERY: Readonly<Record<string, { readonly inputs: readonly string[]; readonly emptyListsAll?: true }>> = {
     "workspace.skills.discover": { inputs: ["source"] },
-    "workspace.schedule.discover": { inputs: ["source"] },
+    "workspace.schedule.discover": { inputs: ["rule"], emptyListsAll: true },
     "workspace.mcp.discover": { inputs: ["query"] },
     "workspace.env.discover": { inputs: ["query", "source"], emptyListsAll: true },
     "session.env.discover": { inputs: ["query", "source"], emptyListsAll: true },
     "workspace.members.discover": { inputs: ["query"] },
 };
-const INPUTS = ["query", "source", "configuration"];
+const INPUTS = ["query", "source", "rule", "configuration"];
 
 test("{§functionality-replacement} each family's discover advertises exactly the inputs it serves, and any other is refused by name", async (t) => {
     const db = await openMigrated();
@@ -1410,7 +1410,7 @@ for (const decision of ["accept", "reject"] as const) {
                 operations.push(event);
                 if (event.phase === "settled") dispatched.resolve(event);
             }
-            if (method === "stream/concluded") concluded = true;
+            if (method === "stream/concluded" && (params as { target?: string }).target?.startsWith("sh://")) concluded = true;
             if (method === "loop/terminated") done.resolve();
         });
         await daemon.start();

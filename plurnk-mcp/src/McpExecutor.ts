@@ -26,14 +26,14 @@ import { HeaderDeclarationError } from "./protocolHeaders.ts";
 import ContentProjection from "./ContentProjection.ts";
 import type { ToolPolicy } from "./config.ts";
 import { toolRegistry as presentTools } from "./ToolPresentation.ts";
-import { summaryLine } from "./Summary.ts";
+import { instructionsLead, summaryLine } from "./Summary.ts";
 
 const CHANNEL = "body";
 
 // {§mcp-configuration}: the server's own purpose precedes a display label.
 const authoredServerSummary = (catalog: ServerCatalog | undefined): string | undefined =>
     summaryLine(catalog?.server?.description)
-        ?? summaryLine(catalog?.instructions)
+        ?? instructionsLead(catalog?.instructions)
         ?? summaryLine(catalog?.server?.title);
 
 export const serverSummary = (
@@ -142,16 +142,34 @@ export class UnavailableServerExecutor extends BaseExecutor {
     }
 }
 
-export const runtimeDecl = (name: string, summary: RuntimeSummaryDecl, expandTools: boolean, instructions?: string): RuntimeDecl => ({
+export const runtimeDetails = (name: string, catalog: ServerCatalog | undefined): string | undefined => {
+    if (catalog === undefined) return undefined;
+    const surfaces: string[] = [];
+    if (catalog.resources.length > 0 || catalog.resourceTemplates.length > 0) {
+        surfaces.push(`\`${name}:///resources\``);
+    }
+    if (catalog.prompts.length > 0) {
+        surfaces.push(`\`${name}:///prompts\``);
+    }
+    if ((catalog.skills?.length ?? 0) > 0) {
+        surfaces.push(`\`${name}:///skills\``);
+    }
+    const parts: string[] = [];
+    if (surfaces.length > 0) {
+        parts.push(`Server catalog: \`${name}:///\` (${surfaces.join(", ")}).`);
+    }
+    if (catalog.instructions !== undefined && catalog.instructions.trim() !== "") {
+        parts.push(catalog.instructions.trim());
+    }
+    return parts.length === 0 ? undefined : parts.join("\n\n");
+};
+
+export const runtimeDecl = (name: string, summary: RuntimeSummaryDecl, instructions?: string): RuntimeDecl => ({
     name,
     glyph: "🔌",
     summary,
     ...(instructions === undefined || instructions.trim() === "" ? {} : { details: instructions }),
-    // {§tools-resource-materialization} — MCP runtimes live in the tools
-    // namespace; the turn-0 survey lists the runtime document, and expandTools
-    // (PLURNK_MCP_EXPANDED) adds the complete tool tree.
     resourcesPath: "/tools",
-    ...(expandTools ? { expandTools: true } : {}),
     invocation: {
         body: { role: "JSON arguments", required: false, mimetype: "application/json" },
         target: { role: "MCP tool", required: true, kind: "literal" },
@@ -368,7 +386,7 @@ export default class McpExecutor extends BaseExecutor {
                 400,
                 "An MCP tool target is required.",
                 {
-                    recovery: `Select a target documented under workspace:///_plurnk/tools/${runtime}/.`,
+                    recovery: `Select a target documented in mcp:///${runtime}.md.`,
                     retryable: false,
                 },
             );
@@ -380,7 +398,7 @@ export default class McpExecutor extends BaseExecutor {
                 "The MCP tool is not enabled.",
                 {
                     tool: target,
-                    recovery: `Select a target documented under workspace:///_plurnk/tools/${runtime}/.`,
+                    recovery: `Select a target documented in mcp:///${runtime}.md.`,
                     retryable: false,
                 },
             );
@@ -391,7 +409,7 @@ export default class McpExecutor extends BaseExecutor {
             ? "One JSON object per MCP tool call."
             : ToolInputSchema.fence(runtime, registered.invocation, {
                 exactTarget: target,
-                schemaPath: `/_plurnk/tools/${runtime}/${ToolInputSchema.targetSegment(target)}.json`,
+                schemaPath: `mcp:///${runtime}/${ToolInputSchema.targetSegment(target)}.json`,
             });
 
         let args: Record<string, unknown> = {};

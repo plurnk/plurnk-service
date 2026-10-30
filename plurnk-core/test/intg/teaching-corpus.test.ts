@@ -34,7 +34,7 @@ test("{§teaching-corpus} language and delegation references named by plurnk.md 
         await LoopDocs.materialize(engine, db, workspaceId);
         for (const name of ["pattern", "delegation"] as const) {
             const body = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-                pathname: `/_plurnk/plurnk/${name}.md`, scheme: "workspace", name: "body",
+                pathname: `/${name}.md`, scheme: "plurnk", name: "body",
             });
             assert.equal(body?.content, await readFile(Paths.teachingSource(TEACHING_CORPUS.docs[name].source), "utf8"));
         }

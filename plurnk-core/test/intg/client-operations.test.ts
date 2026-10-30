@@ -8,7 +8,7 @@ import DbNotifyCaps from "../../src/core/caps/DbNotifyCaps.ts";
 import Engine from "../../src/core/Engine.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import CapabilityResolver from "../../src/core/CapabilityResolver.ts";
-import FunctionalityManager, { plurnkRuntimeDecl } from "../../src/server/FunctionalityManager.ts";
+import FunctionalityManager, { plurnkFamilyRuntimeDecl, plurnkQuestionRuntimeDecl } from "../../src/server/FunctionalityManager.ts";
 import type Functionality from "../../src/server/Functionality.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
@@ -534,7 +534,7 @@ test("{§capability-admission}: existing sessions reconcile their tool catalog a
         const model = await namedModelSession(daemon, workspace.workspaceId, "main");
         const sibling = await daemon.createSession({ workspaceId: workspace.workspaceId, name: "sibling" });
         const reference = (sessionId: number, runtime: string) => modelOperation(daemon, db, { workspaceId: workspace.workspaceId, sessionId,
-            statement: readStmt({ ...urlPath("workspace", `/_plurnk/plurnk/${runtime}.md`), hostname: null }) });
+            statement: readStmt({ ...urlPath("plurnk", `/${runtime}.md`), hostname: null }) });
         for (const sessionId of [model, sibling.sessionId]) assert.equal((await reference(sessionId, "js")).status, 200);
         await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: { deny: [{ runtime: "js" }] } });
         for (const sessionId of [model, sibling.sessionId]) {
@@ -746,18 +746,18 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
     const provider = new PacketCapturingMock({
         contextWindow: 1_000_000,
         responses: [
-            makeMockResponse("\n````READ (workspace:///_plurnk/tools/fixture.md) <1,-1>````\n````NOTE\nSelect and inspect the echo contract linked from the runtime document.\n````"),
+            makeMockResponse("\n````READ (mcp:///fixture.md) <1,-1>````\n````NOTE\nSelect and inspect the echo contract linked from the runtime document.\n````"),
             makeMockResponse([
-                PlurnkParser.frame("READ (workspace:///_plurnk/tools/fixture/echo.json) <1,-1>", null),
-                PlurnkParser.frame('FIND (workspace:///_plurnk/tools/fixture.json) $.tools[?(@.name=="echo")].name <1,-1>', null),
-                PlurnkParser.frame('READ (workspace:///_plurnk/tools/fixture.json) $.tools[?(@.name=="echo")] <1,-1>', null),
+                PlurnkParser.frame("READ (mcp:///fixture/echo.json) <1,-1>", null),
+                PlurnkParser.frame('FIND (mcp:///fixture.json) $.tools[?(@.name=="echo")].name <1,-1>', null),
+                PlurnkParser.frame('READ (mcp:///fixture.json) $.tools[?(@.name=="echo")] <1,-1>', null),
                 PlurnkParser.frame("NOTE", "Invoke the documented observation tool."),
             ].join("\n\n")),
             makeMockResponse("\n````fixture (echo)\nhello from MCP\n````\n\n````NOTE\nInspect the attributable tool failure.\n````"),
             makeMockResponse("\n````KILL (log:///**/READ)````\n````fixture (echo)\n{\"message\":\"hello from MCP\"}\n````\n\n````NOTE\nInspect the corrected tool result.\n````"),
             makeMockResponse("\n````FIND (fixture:///**) <1,-1> invalid-tool-arguments````\n\n````NOTE\nInspect the source's durable terminal result.\n````"),
             makeMockResponse("````SEND [200]\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\n````"),
-            makeMockResponse("\n````READ (workspace:///_plurnk/tools/fixture.md) <1,-1>````\n````NOTE\nInvoke the documented host tool.\n````"),
+            makeMockResponse("\n````READ (mcp:///fixture.md) <1,-1>````\n````NOTE\nInvoke the documented host tool.\n````"),
             makeMockResponse("\n````fixture (fail)````\n````NOTE\nInspect the failure.\n````"),
             makeMockResponse("````SEND [200]\nThe MCP server reported its expected tool error; recovery is complete.\n````"),
         ],
@@ -860,23 +860,22 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         assert.ok(streamEvents.some((event) => event.result === undefined), "MCP output streams through ACP before its conclusion");
         assert.ok(streamEvents.every((event) => event.sessionId === producer.id), "stream provenance identifies the producing session, not a storage owner");
         assert.ok(streamEvents.every((event) => !Object.hasOwn(event, "producerSessionId")), "the wire carries one causal actor identity");
-        assert.ok(streamEvents.every((event) => /^fixture:\/\/\/[a-f0-9]{8}$/u.test(event.target)));
+        assert.ok(streamEvents.every((event) => /^(?:fixture|plurnk_mcp):\/\/\/[a-f0-9]{8}$/u.test(event.target)));
+        assert.ok(streamEvents.some((event) => /^fixture:\/\/\/[a-f0-9]{8}$/u.test(event.target)));
         const firstPacket = packet(provider.requests, 0);
-        assert.ok(firstPacket.includes('```plurnk (mcp) <!-- Manage MCP servers; active servers run as <alias> (<tool>) and publish workspace:///_plurnk/tools/<alias>.md (verb: \\"list\\"|\\"add\\"|\\"replace\\"|\\"enable\\"|\\"disable\\"|\\"remove\\"; alias?: string, definition?: {name: string, type: \\"stdio\\", command: string, args?: string[], env?: object, cwd?: string, … +2 opt}|{name: string, type: \\"streamable-http\\", url: string, headers?: object, authorization?: object, plurnkWorkspace?: string|string[], … +1 opt}) Schema: workspace:///_plurnk/tools/plurnk/mcp.json -->\\n{\\"verb\\": \\"list\\"}\\n```'),
-            "the initial survey teaches the manager's lifecycle; with no registry it has no discover");
+        assert.match(firstPacket, /"alias":\s*"plurnk_mcp"/,
+            "the initial survey lists the MCP manager alongside active servers");
         assert.match(firstPacket, /Echo tools for transport testing\./);
         assert.doesNotMatch(firstPacket, /Pass the message field unchanged/, "full server instructions are not pushed into turn0");
-        assert.match(firstPacket, /"path":"workspace:\/\/\/_plurnk\/tools\/fixture\.md"/);
-        assert.match(firstPacket, /```fixture \(echo\)/);
-        assert.doesNotMatch(firstPacket, /```fixture \([^)]*fail/);
-        assert.doesNotMatch(firstPacket, /"path":"workspace:\/\/\/_plurnk\/tools\/fixture\/echo\.json"/, "without PLURNK_MCP_EXPANDED, turn 0 surveys runtime documents only");
+        assert.match(firstPacket, /"docs":\s*"mcp:\/\/\/fixture\.md"/);
+        assert.doesNotMatch(firstPacket, /mcp:\/\/\/fixture\/echo\.json/, "turn 0 surveys server summaries only, not tool schemas");
         assert.doesNotMatch(firstPacket, /fixture\.json|inputSchema|readOnlyHint/,
             "the catalog and its full definitions are not injected into turn0");
         const runtimeContract = packet(provider.requests, 1);
         assert.match(runtimeContract, /Pass the message field unchanged\./, "READ of the runtime document retrieves the full authored instructions");
-        assert.match(runtimeContract, /```fixture \(echo\) <!-- Echo one message\. Schema: workspace:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->/);
+        assert.match(runtimeContract, /```fixture \(echo\) <!-- Echo one message\. Schema: mcp:\/\/\/fixture\/echo\.json -->/);
         assert.doesNotMatch(runtimeContract, /```fixture \(fail\)/);
-        assert.match(runtimeContract, /workspace:\/\/\/_plurnk\/tools\/fixture\.json/);
+        assert.match(runtimeContract, /mcp:\/\/\/fixture\.json/);
         const echoContract = packet(provider.requests, 2);
         assert.match(echoContract, /"title": "fixture: echo"/);
         assert.match(echoContract, /"additionalProperties": false/, "the linked document preserves constraints omitted from the preview");
@@ -888,7 +887,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             "an ordinary JSONPath READ materializes the selected complete tool record in the log");
         assert.doesNotMatch(echoContract, /pattern-(?:invalid|unsupported)|entry-not-found/);
         const toolsCatalog = async () => {
-            const parsed = PlurnkParser.parseStatements(PlurnkParser.frame("READ (workspace:///_plurnk/tools/fixture.json) <1,-1>", null));
+            const parsed = PlurnkParser.parseStatements(PlurnkParser.frame("READ (mcp:///fixture.json) <1,-1>", null));
             const item = parsed.items[0];
             assert.equal(item?.kind, "statement");
             if (item?.kind !== "statement") throw new Error("Expected one READ");
@@ -904,7 +903,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         const found = actionResult(await post(port, runInput(workspace, "find-tool-definition", {
             action: {
                 kind: "op.parse",
-                text: PlurnkParser.frame('FIND (workspace:///_plurnk/tools/fixture.json) $.tools[?(@.name=="echo")].name <1,-1>', null),
+                text: PlurnkParser.frame('FIND (mcp:///fixture.json) $.tools[?(@.name=="echo")].name <1,-1>', null),
             },
         })));
         assert.equal(found.ok, true, JSON.stringify(found.problem));
@@ -1040,7 +1039,7 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
         const { workspaceId } = await daemon.createWorkspace({ name });
         const action = (family: string, verb: string, params: Record<string, unknown> = {}) =>
             daemon.invokeModuleAction(`workspace.${family}.${verb}`, params, { scope: "workspace", workspaceId });
-        await action("env", "add", { alias: "ENV_AUTH", definition: { value: `fixture-${name}` } });
+        await action("env", "add", { alias: "ENV_AUTH", value: `fixture-${name}` });
         // The workspace became resident before it held its token; enabling the unavailable server
         // reconnects it ({§mcp-configuration}).
         await action("mcp", "enable", { alias: "fixture" });
@@ -1061,7 +1060,7 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
     const [alpha, beta] = workspaces;
     assert.ok(alpha && beta);
     await alpha.action("env", "remove", { alias: "ENV_AUTH" });
-    await alpha.action("env", "add", { alias: "ENV_AUTH", definition: { value: "fixture-rotated" } });
+    await alpha.action("env", "add", { alias: "ENV_AUTH", value: "fixture-rotated" });
     assert.equal((await alpha.read()).content, "Document for Bearer fixture-alpha.",
         "changing the environment does not silently replace a running attachment");
     await alpha.action("mcp", "disable", { alias: "fixture" });
@@ -1075,7 +1074,7 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
         const [listedFixture] = listed.definitions;
         assert.ok(listedFixture !== undefined, "the configured server is listed");
         assert.deepEqual(listedFixture.definition, {
-            name: "fixture", type: "streamable-http", url: served.url,
+            type: "streamable-http", url: served.url,
             authorization: { type: "bearer", token: "${ENV_AUTH}" },
         }, "the definition retains its symbolic reference, never the resolved credential");
     }
@@ -1083,13 +1082,13 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
 });
 
 describe("question-tool-admission", () => {
-const findStatement = (): FindStatement => ({
+const findStatement = (scheme: "plurnk" | "mcp"): FindStatement => ({
     metadata: null,
     op: "FIND", aside: null,
     target: {
-        kind: "url", raw: "workspace:///_plurnk/**", scheme: "workspace",
+        kind: "url", raw: `${scheme}:///**`, scheme,
         username: null, password: null, hostname: null, port: null,
-        pathname: "/_plurnk/**", query: null, fragment: null,
+        pathname: "/**", query: null, fragment: null,
     },
     matcher: null, body: null,
     lineMarker: { marks: [1, -1] }, position: { line: 1, column: 1 },
@@ -1097,7 +1096,7 @@ const findStatement = (): FindStatement => ({
 
 const execStatement = (): ExecStatement => ({
     metadata: null,
-    runtime: "plurnk", aside: null, target: localPath("question"), lineMarker: null,
+    runtime: "plurnk_question", aside: null, target: localPath("ask"), lineMarker: null,
     body: JSON.stringify({ message: "Which branch?", requestedSchema: { type: "object" } }),
     position: { line: 1, column: 1 },
 });
@@ -1107,29 +1106,46 @@ const boot = async (capabilities: CapabilityPolicy = {}) => {
     const schemes = new SchemeRegistry();
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     engine.setExecutors(await ExecutorRegistry.build({ cwd: process.cwd() }));
-    engine.registerRuntimes([{
-        tag: "plurnk",
-        entry: {
-            executor: new FunctionalityManager({
-                coordinator: {} as unknown as Functionality,
-                entries: [{
-                    family: "members",
-                    summary: "Manage workspace members.",
-                    inputSchemas: { list: { type: "object", properties: {} } },
-                }],
-                includeQuestion: true,
-            }),
-            namespaceOwner: { kind: "module", name: "core" },
-            glyph: plurnkRuntimeDecl.glyph,
-            summary: plurnkRuntimeDecl.summary,
-            invocation: plurnkRuntimeDecl.invocation,
-            details: plurnkRuntimeDecl.details ?? "",
-            ...(plurnkRuntimeDecl.resourcesPath === undefined ? {} : { resourcesPath: plurnkRuntimeDecl.resourcesPath }),
-            ...(plurnkRuntimeDecl.expandTools === undefined ? {} : { expandTools: plurnkRuntimeDecl.expandTools }),
-            available: true,
-            detail: "in-process",
+    const membersEntry = {
+        family: "members",
+        summary: "Manage workspace members.",
+        inputSchemas: { list: { type: "object", properties: {} } },
+    };
+    const membersDecl = plurnkFamilyRuntimeDecl(membersEntry);
+    const questionDecl = plurnkQuestionRuntimeDecl;
+    engine.registerRuntimes([
+        {
+            tag: "plurnk_members",
+            entry: {
+                executor: FunctionalityManager.forFamily({
+                    coordinator: {} as unknown as Functionality,
+                    entry: membersEntry,
+                }),
+                namespaceOwner: { kind: "module", name: "core" },
+                glyph: membersDecl.glyph,
+                summary: membersDecl.summary,
+                invocation: membersDecl.invocation,
+                details: membersDecl.details ?? "",
+                ...(membersDecl.resourcesPath === undefined ? {} : { resourcesPath: membersDecl.resourcesPath }),
+                available: true,
+                detail: "in-process",
+            },
         },
-    }]);
+        {
+            tag: "plurnk_question",
+            entry: {
+                executor: FunctionalityManager.forQuestion(),
+                namespaceOwner: { kind: "module", name: "core" },
+                glyph: questionDecl.glyph,
+                summary: questionDecl.summary,
+                invocation: questionDecl.invocation,
+                details: questionDecl.details ?? "",
+                ...(questionDecl.resourcesPath === undefined ? {} : { resourcesPath: questionDecl.resourcesPath }),
+                available: true,
+                detail: "in-process",
+            },
+        },
+    ]);
     const workspaceId = await insertWorkspace(db, `tool-admission-${crypto.randomUUID()}`);
     const sessionId = await insertSession(db, workspaceId);
     await db.test_set_workspace_settings.run({
@@ -1142,10 +1158,18 @@ const boot = async (capabilities: CapabilityPolicy = {}) => {
     const dispatch = { workspaceId, sessionId, loopId, turnId, origin: "model" as const };
     // What the session's FIND of the reserved reference set shows: its paths and its rendered catalog.
     const catalog = async () => {
-        const found = await engine.dispatch({ ...dispatch, sequence: 1, statement: findStatement() });
-        assert.equal(found.status, 200);
-        const paths = (found.results as Array<Array<{ path: string }>>).map((group) => group[0]?.path ?? "");
-        return { paths, content: (typeof found.content === "string" ? found.content : "") };
+        const plurnkFound = await engine.dispatch({ ...dispatch, sequence: 101, statement: findStatement("plurnk") });
+        const mcpFound = await engine.dispatch({ ...dispatch, sequence: 102, statement: findStatement("mcp") });
+        assert.equal(plurnkFound.status, 200);
+        assert.equal(mcpFound.status, 200);
+        const paths = [
+            ...(plurnkFound.results as Array<Array<{ path: string }>>).map((group) => group[0]?.path ?? ""),
+            ...(mcpFound.results as Array<Array<{ path: string }>>).map((group) => group[0]?.path ?? ""),
+        ];
+        const content = [plurnkFound.content, mcpFound.content]
+            .filter((part): part is string => typeof part === "string" && part.length > 0)
+            .join("\n");
+        return { paths, content };
     };
     return { db, schemes, engine, workspaceId, sessionId, dispatch, catalog };
 };
@@ -1155,9 +1179,9 @@ test("{§question-tool}: an interaction-denied workspace omits the question tool
     try {
         await ownSession(db, workspaceId, sessionId);
         const { paths, content } = await catalog();
-        assert.ok(paths.some((path) => path.endsWith("/plurnk/members.json")), "noninteractive plurnk tools remain discoverable");
-        assert.ok(!paths.some((path) => path.endsWith("/plurnk/question.json")), "the question tool schema does not exist for the workspace");
-        assert.ok(!content.includes("question.json"), "the rendered catalog agrees with the location list");
+        assert.ok(paths.some((path) => path.endsWith("/plurnk_members.md")), "noninteractive plurnk tools remain discoverable");
+        assert.ok(!paths.some((path) => path.endsWith("/plurnk_question.md") || path.endsWith("/plurnk_question/ask.json")), "the question tool schema does not exist for the workspace");
+        assert.ok(!content.includes("plurnk_question"), "the rendered catalog agrees with the location list");
     } finally {
         await db.close();
     }
@@ -1168,7 +1192,7 @@ test("{§question-tool}: a session whose interactive owner declares question see
     try {
         await ownSession(db, workspaceId, sessionId);
         const { paths } = await catalog();
-        assert.ok(paths.some((path) => path.endsWith("/plurnk/question.json")), "the interactive session sees the question tool");
+        assert.ok(paths.some((path) => path.endsWith("/plurnk_question/ask.json")), "the interactive session sees the question tool");
     } finally {
         await db.close();
     }
@@ -1184,14 +1208,14 @@ for (const [label, owner] of [
         if (owner !== null) await ownSession(db, workspaceId, sessionId, [...owner.tools], owner.interactive);
         const { paths, content } = await catalog();
         assert.ok(paths.some((path) => path.endsWith("/sh.md")), "noninteractive tools remain discoverable");
-        assert.ok(paths.some((path) => path.endsWith("/plurnk/members.json")), "noninteractive plurnk tools remain discoverable");
-        assert.ok(!paths.some((path) => path.endsWith("/plurnk/question.json")), "the shared reference set hides the tool from this session");
-        assert.ok(!content.includes("question.json"), "the rendered catalog agrees with the location list");
+        assert.ok(paths.some((path) => path.endsWith("/plurnk_members.md")), "noninteractive plurnk tools remain discoverable");
+        assert.ok(!paths.some((path) => path.endsWith("/plurnk_question.md") || path.endsWith("/plurnk_question/ask.json")), "the shared reference set hides the tool from this session");
+        assert.ok(!content.includes("plurnk_question"), "the rendered catalog agrees with the location list");
         const result = await engine.dispatch({ ...dispatch, sequence: 2, statement: execStatement() });
         assert.equal(result.status, 403);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
-        assert.equal(result.problem?.runtime, "plurnk");
-        assert.equal(result.problem?.tool, "question");
+        assert.equal(result.problem?.runtime, "plurnk_question");
+        assert.equal(result.problem?.tool, "ask");
         assert.equal(result.problem?.access, "interact");
         assert.equal(result.problem?.policyScope, "owner");
         assert.equal(result.problem?.recovery, CapabilityResolver.UNATTENDED_RECOVERY);
@@ -1212,8 +1236,8 @@ test("{§question-tool}: execution dispatch refuses an interaction-denied questi
         const result = await engine.dispatch({ ...dispatch, sequence: 1, statement: execStatement() });
         assert.equal(result.status, 403);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
-        assert.equal(result.problem?.runtime, "plurnk");
-        assert.equal(result.problem?.tool, "question");
+        assert.equal(result.problem?.runtime, "plurnk_question");
+        assert.equal(result.problem?.tool, "ask");
         assert.deepEqual(result.problem?.traits, ["interaction"]);
         assert.equal(result.problem?.policyScope, "workspace");
         assert.equal(result.problem?.recovery, undefined, "operator configuration speaks for itself");
@@ -1229,42 +1253,42 @@ test("{§question-tool}: the interaction access class gates known interactive to
         const result = await engine.dispatch({ ...dispatch, sequence: 1, statement: execStatement() });
         assert.equal(result.status, 403);
         assert.equal(result.problem?.access, "interact");
-        assert.equal(result.problem?.runtime, "plurnk");
-        assert.equal(result.problem?.tool, "question");
+        assert.equal(result.problem?.runtime, "plurnk_question");
+        assert.equal(result.problem?.tool, "ask");
         assert.equal(result.problem?.policyScope, "workspace");
     } finally {
         await db.close();
     }
 });
 
-test("{§question-tool}: neither the shipped defaults nor the real-model profile switch plurnk off", () => {
+test("{§question-tool}: neither the shipped defaults nor the real-model profile switch plurnk_question off", () => {
     for (const path of ["../../../plurnk-execs/.env.defaults", "../../.env.test"]) {
         const profile = parseEnv(readFileSync(new URL(path, import.meta.url), "utf8"));
-        assert.equal(profile.PLURNK_EXECS_PLURNK, undefined, `${path} leaves the tool to the owner ring`);
+        assert.equal(profile.PLURNK_EXECS_PLURNK_QUESTION, undefined, `${path} leaves the tool to the owner ring`);
     }
 });
 
-test("{§question-tool}: the executor switch removes plurnk and its teaching", async () => {
-    const previous = process.env.PLURNK_EXECS_PLURNK;
-    process.env.PLURNK_EXECS_PLURNK = "0";
+test("{§question-tool}: the executor switch removes plurnk_question and its teaching", async () => {
+    const previous = process.env.PLURNK_EXECS_PLURNK_QUESTION;
+    process.env.PLURNK_EXECS_PLURNK_QUESTION = "0";
     try {
         const { db, engine, schemes, workspaceId, sessionId, dispatch, catalog } = await boot();
         try {
             await ownSession(db, workspaceId, sessionId);
-            assert.equal(schemes.has("plurnk", sessionId), false);
+            assert.equal(schemes.has("plurnk_question", sessionId), false);
             const { paths } = await catalog();
             assert.ok(paths.some((path) => path.endsWith("/sh.md")), "noninteractive tools remain discoverable");
-            assert.ok(!paths.some((path) => path.endsWith("/plurnk/question.json")));
+            assert.ok(!paths.some((path) => path.endsWith("/plurnk_question/ask.json")));
             const result = await engine.dispatch({ ...dispatch, sequence: 2, statement: execStatement() });
             assert.equal(result.status, 400);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/executor-not-registered");
-            assert.equal(result.problem?.requestedRuntime, "plurnk");
+            assert.equal(result.problem?.requestedRuntime, "plurnk_question");
         } finally {
             await db.close();
         }
     } finally {
-        if (previous === undefined) delete process.env.PLURNK_EXECS_PLURNK;
-        else process.env.PLURNK_EXECS_PLURNK = previous;
+        if (previous === undefined) delete process.env.PLURNK_EXECS_PLURNK_QUESTION;
+        else process.env.PLURNK_EXECS_PLURNK_QUESTION = previous;
     }
 });
 });

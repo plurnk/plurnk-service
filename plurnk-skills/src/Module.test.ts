@@ -47,10 +47,10 @@ test("{§skills-module} public seams connect ordinary family publication to orig
     assert.equal(family.family, "skills");
     const identity = { workspaceId: 1 };
     const available = await family.available(identity);
-    assert.deepEqual(available, [{ alias: "guide", definition: { name: "guide" }, enabled: true }]);
+    assert.deepEqual(available, [{ alias: "guide", definition: {}, enabled: true }]);
     const prepared = await family.prepare({
         signal: new AbortController().signal,
-        ...identity, enabled: new Map([["guide", { definition: { name: "guide" } }]]), previous: null,
+        ...identity, enabled: new Map([["guide", { definition: {} }]]), previous: null,
         failure: "reject", admissions: [], progress: () => {}, retain: () => () => {},
     });
     assert.equal(source.trees(1).size, 0, "preparation alone publishes nothing");

@@ -44,7 +44,7 @@ export const evaluateOrientation = (record, digest) => {
     // {§turn-source-resources}: harness rows, turn zero's survey and every emission's announcement, are not inspection.
     const ops = flattenOps(record).filter((op) => op?.origin === "model");
     const inspectionOps = ops.filter((op) =>
-        (["READ", "FIND"].includes(op?.op) || /^[a-z][a-z0-9+.-]*$/.test(op?.op ?? "")) && Number(op?.status) < 400);
+        (["READ", "FIND"].includes(op?.op) || /^[a-z][a-z0-9+._-]*$/.test(op?.op ?? "")) && Number(op?.status) < 400);
     const evidence = evidenceNames(response);
     const verifiedEvidence = inspectedEvidence(ops, evidence);
     const publicationErrors = setupErrors(digest);

@@ -3,7 +3,7 @@ import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 import type { WorkspacePaths } from "@plurnk/plurnk-modules";
 import type HostPaths from "../core/HostPaths.ts";
 
-export const AGENT_ROOT_SCOPES = ["project", "plurnk", "global"] as const;
+const AGENT_ROOT_SCOPES = ["project", "plurnk", "global"] as const;
 export type AgentRootScope = typeof AGENT_ROOT_SCOPES[number];
 
 export const CONFIGURATION_ROOT_SCOPES = ["project", "plurnk", "xdg-global", "global"] as const;

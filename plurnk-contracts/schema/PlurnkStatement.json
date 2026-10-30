@@ -353,7 +353,7 @@
                 "runtime": {
                     "description": "The runtime tag the fence names, in its registered lowercase spelling. An execution has no operation keyword: the fence name is the runtime, and the log row's op shows it as written.",
                     "type": "string",
-                    "pattern": "^[a-z][a-z0-9+.-]*$",
+                    "pattern": "^[a-z][a-z0-9+._-]*$",
                     "tsType": "Lowercase<string>"
                 },
                 "op": {

@@ -1,17 +1,8 @@
 // Session documentation projections of the shared workspace environment.
-// Reconcile on reader demand and after workspace Functionality changes. Two private sets run through
-// an ordinary `_plurnk` turn in the addressed session ({§session-initialization-entry}):
-//   1. the project AGENTS.md at workspace:///_plurnk/AGENTS.md and AGENTS.local.md at
-//      workspace:///_plurnk/AGENTS.local.md — Engine.runTurn foists their READs at turn 0
-//      ({§session-initialization-entry}, {§session-initialization-entry});
-//   2. the exact current scheme and executable-tool reference set under
-//      workspace:///_plurnk/plurnk/ and workspace:///_plurnk/tools/ — discovered by the
-//      turn-0 FIND surveys ({§tools-resource-materialization},
-//      {§tools-resource-materialization}).
+// Reconcile on reader demand and after workspace Functionality changes. Reference entries and
+// consolidated global AGENTS(.local).md run through an ordinary `_plurnk` turn in the addressed
+// session ({§session-initialization-entry}) onto `plurnk:///` and `mcp:///`.
 import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { generatedPathname } from "../core/plurnk-uri.ts";
 import type Engine from "../core/Engine.ts";
 import type { Db } from "../core/Db.ts";
 import RuntimeSession from "../core/RuntimeSession.ts";
@@ -22,7 +13,6 @@ import {
     type KillStatement,
 } from "@plurnk/plurnk-contracts";
 import DispatchAsPlurnk from "./dispatch-as-plurnk.ts";
-import GitMembership from "../core/git-membership.ts";
 
 export default class LoopDocs {
     // {§tools-resource-materialization} {§tools-resource-materialization} —
@@ -36,33 +26,11 @@ export default class LoopDocs {
         LoopDocs.#signatures.get(db)?.delete(workspaceId);
     }
 
-    // Nested AGENTS.md and AGENTS.local.md files below the project root (the root
-    // files have their own slots), skipping dot-directories and node_modules.
-    // Deterministic order.
-    static async #nestedInstructions(root: string): Promise<Array<[string, string]>> {
-        const out: Array<[string, string]> = [];
-        const walk = async (relative: string): Promise<void> => {
-            const entries = await readdir(join(root, relative), { withFileTypes: true }).catch(() => []);
-            for (const entry of entries) {
-                const childRelative = relative.length === 0 ? entry.name : `${relative}/${entry.name}`;
-                if (entry.isDirectory()) {
-                    if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
-                    await walk(childRelative);
-                } else if ((entry.name === "AGENTS.md" || entry.name === "AGENTS.local.md") && relative.length > 0) {
-                    const content = await readFile(join(root, childRelative), "utf8").catch(() => null);
-                    if (content !== null) out.push([childRelative, content]);
-                }
-            }
-        };
-        await walk("");
-        return out.toSorted((left, right) => left[0].localeCompare(right[0]));
-    }
-
-    static #target(pathname: string): ParsedPath {
+    static #target(scheme: "plurnk" | "mcp", pathname: string): ParsedPath {
         return {
             kind: "url",
-            raw: `workspace://${pathname}`,
-            scheme: "workspace",
+            raw: `${scheme}://${pathname}`,
+            scheme,
             username: null,
             password: null,
             hostname: null,
@@ -88,69 +56,38 @@ export default class LoopDocs {
     }
 
     static async #materialize(engine: Engine, db: Db, workspaceId: number): Promise<void> {
-        // {§session-initialization-entry} — the project's AGENTS.md becomes one
-        // shared workspace:///_plurnk/AGENTS.md entry, read at turn 0.
-        const workspace = await db.envelope_get_workspace.get<{ project_root: string | null }>({
-            id: workspaceId,
-        });
-        // {§membership} entry (3): the standard admits the content; it never overrides
-        // `.gitignore` or a `hide` constraint (#400).
-        const agentsContent = workspace?.project_root === null || workspace?.project_root === undefined
-            || await GitMembership.excludesInstruction(db, workspaceId, "AGENTS.md")
-            ? null
-            : await readFile(join(workspace.project_root, "AGENTS.md"), "utf8").catch(() => null);
-        const desired = new Map(
-            (await engine.referenceEntries(workspaceId)).map(({ pathname, content }) => [pathname, content]),
+        const desired = new Map<string, { scheme: "plurnk" | "mcp"; pathname: string; content: string }>(
+            (await engine.referenceEntries(workspaceId)).map((entry) => [`${entry.scheme}:${entry.pathname}`, entry]),
         );
-        if (agentsContent !== null) desired.set(generatedPathname("/AGENTS.md"), agentsContent);
-        // {§session-initialization-entry} — the root AGENTS.local.md, read whatever its git status (the convention ignores
-        // it); only an exclusion hides it.
-        const localContent = workspace?.project_root === null || workspace?.project_root === undefined
-            || await GitMembership.exclusionOf(db, workspaceId, "AGENTS.local.md") !== null
-            ? null
-            : await readFile(join(workspace.project_root, "AGENTS.local.md"), "utf8").catch(() => null);
-        if (localContent !== null) desired.set(generatedPathname("/AGENTS.local.md"), localContent);
-        // #346, #1350 — nested AGENTS.md and AGENTS.local.md honor closest-file scope:
-        // each materializes at _plurnk/instructions/<subtree>/AGENTS(.local)?.md with its
-        // path preserved. AGENTS.local.md is read whatever its git ignore status (hidden
-        // only by an explicit exclusion).
-        if (workspace?.project_root !== null && workspace?.project_root !== undefined) {
-            for (const [relative, content] of await LoopDocs.#nestedInstructions(workspace.project_root)) {
-                const excluded = relative.endsWith("/AGENTS.local.md")
-                    ? await GitMembership.exclusionOf(db, workspaceId, relative) !== null
-                    : await GitMembership.excludesInstruction(db, workspaceId, relative);
-                if (excluded) continue;
-                desired.set(generatedPathname(`/instructions/${relative}`), content);
-            }
-        }
 
         const signature = createHash("sha256")
-            .update([...desired].map(([pathname, content]) => `${pathname}\u0000${content}`).join("\u0001"))
+            .update([...desired.entries()].map(([key, { content }]) => `${key}\u0000${content}`).join("\u0001"))
             .digest("hex");
         const byWorkspace = LoopDocs.#signatures.get(db) ?? new Map<number, string>();
         if (byWorkspace.get(workspaceId) === signature) return;
 
         const materialized = await db.loop_docs_materialized.all<{
+            scheme: "plurnk" | "mcp";
             pathname: string;
             content: string | null;
         }>({
             workspace_id: workspaceId,
         });
-        const current = new Map(materialized.map(({ pathname, content }) => [pathname, content]));
+        const current = new Map(materialized.map(({ scheme, pathname, content }) => [`${scheme}:${pathname}`, { scheme, pathname, content }]));
         const statements: PlurnkStatement[] = [];
-        for (const pathname of current.keys()) {
-            if (desired.has(pathname)) continue;
+        for (const [key, { scheme, pathname }] of current) {
+            if (desired.has(key)) continue;
             statements.push({
                 op: "KILL", aside: null,
-                target: LoopDocs.#target(pathname),
+                target: LoopDocs.#target(scheme, pathname),
                 metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
             } satisfies KillStatement);
         }
-        for (const [pathname, content] of desired) {
-            if (current.get(pathname) === content) continue;
+        for (const [key, { scheme, pathname, content }] of desired) {
+            if (current.get(key)?.content === content) continue;
             statements.push({
                 op: "EDIT", aside: null,
-                target: LoopDocs.#target(pathname),
+                target: LoopDocs.#target(scheme, pathname),
                 metadata: null, lineMarker: { marks: [1, -1] }, matcher: null, body: content, position: UNKNOWN_POSITION,
             });
         }

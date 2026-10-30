@@ -89,7 +89,7 @@ static manifest: SchemeManifest = {
 };
 ```
 
-- **`documentation`** — the **deep doc** (ops, channels, edge cases) with an exact H2 `Summary`. The consumer materializes it as a pull-able `workspace:///_plurnk/plurnk/<name>.md` entry: FIND catalogs the summary and the model READs the body on demand, off the hot path. It is analogous to executor supplemental `details`. **Convention:** keep it in a **`docs/<name>.md`** file (root) and load it at module init with the snippet above — `../` resolves the same from `src/` (test) and `dist/` (built); add `docs/**/*` to `files`. A missing file fails-hard at import.
+- **`documentation`** — the **deep doc** (ops, channels, edge cases) with an exact H2 `Summary`. The consumer materializes it as a pull-able `plurnk:///<name>.md` entry: FIND catalogs the summary and the model READs the body on demand, off the hot path. It is analogous to executor supplemental `details`. **Convention:** keep it in a **`docs/<name>.md`** file (root) and load it at module init with the snippet above — `../` resolves the same from `src/` (test) and `dist/` (built); add `docs/**/*` to `files`. A missing file fails-hard at import.
 - **`glyph`** — optional opaque client display metadata. It is discoverable through the client capability wire and never rendered into model teaching; clients choose fallback, fonts, and theme.
 
 Declare `lineAnchors: true` when stable textual representations should publish

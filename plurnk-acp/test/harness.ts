@@ -309,9 +309,9 @@ export const createHarness = async (options?: {
                 scope: "workspace",
                 inputSchema: {
                     type: "object",
-                    additionalProperties: false,
-                    required: ["alias", "definition"],
-                    properties: { alias: { type: "string" }, definition: { type: "object" } },
+                    additionalProperties: true,
+                    required: ["alias"],
+                    properties: { alias: { type: "string" } },
                 },
                 outputSchema: { type: "object" },
             },
@@ -347,7 +347,7 @@ export const createHarness = async (options?: {
                 };
             }
             if (name === "workspace.mcp.replace") {
-                const { alias, definition } = input as { alias: string; definition: unknown };
+                const { alias, ...definition } = input as { alias: string; [key: string]: unknown };
                 const existing = mcpDefinitions.get(wsId) ?? [];
                 const idx = existing.findIndex((d) => d.alias === alias);
                 if (idx >= 0) existing[idx] = { alias, definition };

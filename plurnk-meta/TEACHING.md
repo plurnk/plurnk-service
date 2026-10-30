@@ -2,7 +2,7 @@
 
 The model-facing reference pages are one surface with one voice: every
 `docs/*.md` a package ships for a scheme or family (materialized as
-`workspace:///_plurnk/plurnk/<name>.md` and surveyed at turn 0), the hot path in
+`plurnk:///<name>.md` and surveyed at turn 0), the hot path in
 `plurnk-contracts/plurnk.md`, and the `plurnk` skill's references. This note is
 the rule for writing them. The owning `SPEC.md` is the authority for every
 claim ({§teaching-corpus}); a page teaches the contract, it never restates it

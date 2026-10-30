@@ -4,6 +4,7 @@ import TurnSource from "../schemes/TurnSource.ts";
 import File from "../schemes/File.ts";
 import Session from "../schemes/Session.ts";
 import Workspace from "../schemes/Workspace.ts";
+import Plurnk from "../schemes/Plurnk.ts";
 import {
     Manifest,
     MessageScheme,
@@ -38,6 +39,7 @@ interface NamespaceClaim {
     readonly key: string;
     readonly label: string;
     readonly reserved: boolean;
+    readonly fallback?: boolean;
 }
 
 interface RuntimeSchemeRegistration {
@@ -94,6 +96,13 @@ export default class SchemeRegistry {
         this.#registerBuiltIn("file", new File());
         this.#registerBuiltIn("session", new Session());
         this.#registerBuiltIn("workspace", new Workspace());
+        this.#registerBuiltIn("plurnk", new Plurnk("plurnk"));
+        this.#registerClaimed("mcp", new Plurnk("mcp"), {
+            key: "core-fallback:mcp",
+            label: "core fallback scheme 'mcp'",
+            reserved: false,
+            fallback: true,
+        });
         this.#registerBuiltIn("message", new MessageScheme("message"));
     }
 
@@ -138,6 +147,7 @@ export default class SchemeRegistry {
         const existing = this.#claims.get(name);
         if (existing === undefined) return "new";
         if (sameOwnerRescan && existing.key === incoming.key) return "same";
+        if (existing.fallback === true) return "new";
         if (existing.reserved) {
             throw new Error(`scheme name '${name}' is reserved by ${existing.label}; ${incoming.label} cannot claim it`);
         }
@@ -281,7 +291,7 @@ export default class SchemeRegistry {
             }
             const incoming = SchemeRegistry.#runtimeClaim(owner);
             const base = this.#claims.get(tag);
-            if (base !== undefined) this.#throwClaimCollision(tag, base, incoming);
+            if (base !== undefined && base.fallback !== true) this.#throwClaimCollision(tag, base, incoming);
             for (const [peerOwner, snapshot] of workspaceOwners ?? []) {
                 if (peerOwner === namespaceOwner) continue;
                 const peer = snapshot.claims.get(tag);
@@ -413,7 +423,8 @@ export default class SchemeRegistry {
 
     // {§scheme-address} Whether core itself registered `name`: a core scheme, whose acquisition is core's own.
     coreOwns(name: string): boolean {
-        return this.#claims.get(name)?.key === SchemeRegistry.#CORE_CLAIM.key;
+        const claim = this.#claims.get(name);
+        return claim?.key === SchemeRegistry.#CORE_CLAIM.key || claim?.fallback === true;
     }
 
     async #requiredDocs(): Promise<readonly { name: string; scheme: string | null; content: string }[]> {

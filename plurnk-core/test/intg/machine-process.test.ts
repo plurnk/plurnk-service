@@ -821,7 +821,8 @@ type BaselineChapter = { readonly version: number; readonly label: string; reado
 const V4_3_3: TaggedRelease = Object.freeze({ version: 34, release: "4.3.3", tag: "v4.3.3", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_3_0: TaggedRelease = Object.freeze({ version: 33, release: "4.3.0", tag: "v4.3.0", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_0_0: TaggedRelease = Object.freeze({ version: 32, release: "4.0.0", tag: "v4.0.0", shape: "76b1dff2af95661a15e32ebea23fddaf4b07cfdc0c06af58e6ca2640e2034263" });
-const V5_0_0: BaselineChapter = Object.freeze({ version: 10, label: "5.0.0", shape: "a623ef441160b5b730cf0ee1cdfff83780173d12e5324855ede1bb461403bec5" });
+const V5_0_0: BaselineChapter = Object.freeze({ version: 11, label: "5.0.0", shape: "a623ef441160b5b730cf0ee1cdfff83780173d12e5324855ede1bb461403bec5" });
+const V5_0_0_CHAPTER_10: BaselineChapter = Object.freeze({ version: 10, label: "5.0.0 chapter 10", shape: "a623ef441160b5b730cf0ee1cdfff83780173d12e5324855ede1bb461403bec5" });
 const V5_0_0_CHAPTER_9: BaselineChapter = Object.freeze({ version: 9, label: "5.0.0 chapter 9", shape: "a623ef441160b5b730cf0ee1cdfff83780173d12e5324855ede1bb461403bec5" });
 const V5_0_0_CHAPTER_8: BaselineChapter = Object.freeze({ version: 8, label: "5.0.0 chapter 8", shape: "576daf92c748c92b5f3992a9e8acfa3788301cee5c128e87e1485caecb937ae3" });
 
@@ -932,6 +933,30 @@ test(`{§db-migrations} {§session-ownership}: a ${V5_0_0_CHAPTER_9.label} datab
     } finally { after.close(); }
 });
 
+test(`{§db-migrations} {§functionality-coordinator}: a ${V5_0_0_CHAPTER_10.label} database strips redundant definition.name fields from mcp and skills workspace state`, async (t) => {
+    const path = await baseline(t, V5_0_0_CHAPTER_10);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name) VALUES (1, 'defs');
+            INSERT INTO workspace_module_state (workspace_id, namespace_owner, state) VALUES
+                (1, '@plurnk/plurnk-mcp', '{"version":1,"definitions":{"brave":{"origin":"workspace","enabled":true,"definition":{"name":"brave","type":"stdio","command":"npx"}}}}'),
+                (1, '@plurnk/plurnk-skills', '{"version":1,"definitions":{"review":{"origin":"workspace","enabled":true,"definition":{"name":"review","source":"/srv/review"}}}}');
+        `);
+    } finally { before.close(); }
+    const upgraded = await openMigrated(path);
+    await upgraded.close();
+    const after = new DatabaseSync(path);
+    try {
+        const rows = after.prepare("SELECT namespace_owner, state FROM workspace_module_state WHERE workspace_id = 1 ORDER BY namespace_owner").all() as Array<{ namespace_owner: string; state: string }>;
+        assert.deepEqual(rows.map(({ namespace_owner, state }) => [namespace_owner, JSON.parse(state)]), [
+            ["@plurnk/plurnk-mcp", { version: 1, definitions: { brave: { origin: "workspace", enabled: true, definition: { type: "stdio", command: "npx" } } } }],
+            ["@plurnk/plurnk-skills", { version: 1, definitions: { review: { origin: "workspace", enabled: true, definition: { source: "/srv/review" } } } }],
+        ]);
+    } finally { after.close(); }
+});
+
 test("{§db-migrations}: a database from before the 5.0.0 support floor or from a newer release is refused naming both versions read", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-pre-floor-"));
     t.after(() => rm(root, { recursive: true, force: true }));
@@ -943,7 +968,7 @@ test("{§db-migrations}: a database from before the 5.0.0 support floor or from 
         new SqlRiteSync({ path: dbPath, dir }).close();
         await assert.rejects(
             () => openMigrated(dbPath),
-            new RegExp(`database schema \\(version ${version}\\) precedes the 5\\.0\\.0 support floor \\(schema version 10\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
+            new RegExp(`database schema \\(version ${version}\\) precedes the 5\\.0\\.0 support floor \\(schema version 11\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
         );
     }
     const newerPath = await baseline(t, V5_0_0);
@@ -952,7 +977,7 @@ test("{§db-migrations}: a database from before the 5.0.0 support floor or from 
     finally { raw.close(); }
     await assert.rejects(
         () => openMigrated(newerPath),
-        /database schema \(version 99\) is newer than this build \(schema version 10\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
+        /database schema \(version 99\) is newer than this build \(schema version 11\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
     );
 });
 
@@ -973,12 +998,12 @@ for (const release of [V4_3_3, V4_3_0, V4_0_0]) {
         assert.equal(shape(path), release.shape, `tagged ${release.tag} shape matches its frozen fingerprint`);
         await assert.rejects(
             () => openMigrated(path),
-            new RegExp(`database schema \\(version ${release.version}\\) precedes the 5\\.0\\.0 support floor \\(schema version 10\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
+            new RegExp(`database schema \\(version ${release.version}\\) precedes the 5\\.0\\.0 support floor \\(schema version 11\\); point PLURNK_SERVICE_DB_PATH at a new file or move the database`),
         );
     });
 }
 
-for (const chapter of [V5_0_0, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
+for (const chapter of [V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
     test(`{§db-migrations}: versions 1-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
         assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 1-${chapter.version}`);
     });

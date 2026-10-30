@@ -707,16 +707,16 @@ test("{§tools-resource-materialization} the module example loads from its expor
 
 test("{§tools-resource-materialization} the definition pages' add examples conform to their families' definition schemas", async () => {
     for (const [packageName, docName, fence, schema] of [
-        ["@plurnk/plurnk-mcp", "mcp.md", "plurnk (mcp)", "https://schemas.plurnk.xyz/v0/McpServerDefinition.json"],
+        ["@plurnk/plurnk-mcp", "mcp.md", "plurnk_mcp (add)", "https://schemas.plurnk.xyz/v0/McpServerDefinition.json"],
     ] as const) {
         const examples = fences(await page(packageName, docName)).filter(({ info }) => info === fence);
         assert.ok(examples.length > 0, `${docName} shows an add example`);
         for (const { body } of examples) {
-            const { verb, alias, definition } = JSON.parse(body) as { verb: string; alias: string; definition: { name: string } };
-            assert.equal(verb, "add");
-            const validation = Validator.validateJsonSchemaInstance({ $ref: schema }, definition);
+            const { alias, ...definition } = JSON.parse(body) as { alias: string } & Record<string, unknown>;
+            assert.equal(typeof alias, "string");
+            assert.ok(alias.length > 0);
+            const validation = Validator.validateJsonSchemaInstance({ $ref: schema }, { type: "url" in definition ? "streamable-http" : "stdio", ...definition });
             assert.equal(validation.valid, true, `${docName}: ${body} — ${JSON.stringify(validation.errors)}`);
-            assert.equal(definition.name, alias, `${docName}: the definition names its alias`);
         }
     }
 });
@@ -759,7 +759,7 @@ test("{§manifest} {§tools-resource-materialization}: stored packets carry lang
         assert.deepEqual(system.map((section: { name: string }) => section.name), ["definition", "system-policy"]);
         assert.doesNotMatch(JSON.stringify(system), /glyph-test|GLYPH_MUST_STAY_CLIENT_SIDE/, "neither references nor client glyphs are injected");
         const reference = (await engine.referenceEntries(workspaceId))
-            .find(({ pathname }) => pathname === "/_plurnk/plurnk/glyph-test.md");
+            .find(({ scheme, pathname }) => scheme === "plurnk" && pathname === "/glyph-test.md");
         assert.match(reference?.content ?? "", /````READ \(glyph-test:\/\/\/example\)/, "the example remains available in its pull reference without a separate manifest example");
     } finally {
         await db.close();

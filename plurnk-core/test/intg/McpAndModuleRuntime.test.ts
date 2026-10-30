@@ -54,7 +54,7 @@ test("{§functionality-model-projection} MCP replacement precedes a tool invocat
     const { hostPaths, env } = await mcpFixture(t, { fixture: environmentEntry({ ENV_WITNESS: "original" }) });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeRawMockResponse([
-            PlurnkParser.frame("plurnk (mcp)", JSON.stringify({ verb: "replace", alias: "fixture", definition: { name: "fixture", ...environmentEntry({ ENV_WITNESS: "replacement" }) } })),
+            PlurnkParser.frame("plurnk_mcp (replace)", JSON.stringify({ alias: "fixture", ...environmentEntry({ ENV_WITNESS: "replacement" }) })),
             PlurnkParser.frame("fixture (environment)", "{}"),
             PlurnkParser.frame("NOTE", "Observe the new server's reply."),
         ].join("\n\n")),
@@ -71,7 +71,7 @@ test("{§functionality-model-projection} MCP replacement precedes a tool invocat
     const lifecycle = new LoopLifecycle(db);
     await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
     const rows = await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER });
-    assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk")?.status_rx, 201, "replacement creates the workspace override before invoking its tool");
+    assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk_mcp")?.status_rx, 201, "replacement creates the workspace override before invoking its tool");
     assert.equal(rows.find((row) => row.origin === "model" && row.op === "fixture")?.status_rx, 200);
     const output = await awaitExecOutcome(db, { workspaceId, scheme: "fixture", channel: "body" });
     assert.equal(output.witness, "replacement", "the tool runs on the new attachment, not the old server");
@@ -107,7 +107,7 @@ test("{§mcp-module} a configured stdio server starts with the operator's enviro
         const sessionId = await insertSession(db, workspaceId, null, "alice", "model");
         await ownSession(db, workspaceId, sessionId);
         const invoke = (family: string, verb: string, params: Record<string, unknown> = {}) => daemon.invokeModuleAction(`workspace.${family}.${verb}`, params, { scope: "workspace", workspaceId });
-        const set = (alias: string, value: string) => invoke("env", "add", { alias, definition: { value } });
+        const set = (alias: string, value: string) => invoke("env", "add", { alias, value });
         const starts = async (server: string): Promise<Start[]> => (await readFile(marker(server), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as Start);
         // The first action that needs the workspace activates it, launching its enabled servers.
         await set("ENV_WITNESS", "workspace");
@@ -117,8 +117,8 @@ test("{§mcp-module} a configured stdio server starts with the operator's enviro
         assert.equal(launched?.plurnk, null, "nor does any of plurnk's own settings");
         assert.equal(launched?.home, hostPaths.home);
         assert.equal(launched?.witness, null, "the server launched before the workspace defined its value");
-        await daemon.invokeModuleAction("session.env.add", { alias: "ENV_WITNESS", definition: { value: "private" } }, { scope: "session", workspaceId, sessionId });
-        await daemon.invokeModuleAction("session.env.add", { alias: "SESSION_ONLY", definition: { value: "private" } }, { scope: "session", workspaceId, sessionId });
+        await daemon.invokeModuleAction("session.env.add", { alias: "ENV_WITNESS", value: "private" }, { scope: "session", workspaceId, sessionId });
+        await daemon.invokeModuleAction("session.env.add", { alias: "SESSION_ONLY", value: "private" }, { scope: "session", workspaceId, sessionId });
         const before = await starts("fixture");
         await invoke("mcp", "list");
         assert.deepEqual(await starts("fixture"), before, "env edits and listing do not restart a live MCP");
@@ -150,7 +150,7 @@ test("{§mcp-module} a configured stdio server starts with the operator's enviro
             return awaitExecOutcome(db, { workspaceId, scheme: runtime, after, channel, timeoutMs: 10000 });
         };
         try {
-            const changed = await run("plurnk", "plurnk (env)", { verb: "add", scope: "workspace", alias: "REF_VALUE", definition: { value: "workspace-reference" } }, true, 201);
+            const changed = await run("plurnk_env", "plurnk_env (add)", { scope: "workspace", alias: "REF_VALUE", value: "workspace-reference" }, true, 201);
             assert.equal((changed.definition as { origin: string }).origin, "workspace", "the accepted model verb uses the same workspace layer as client actions");
             await invoke("mcp", "disable", { alias: "explicit" });
             await invoke("mcp", "enable", { alias: "explicit" });
@@ -231,9 +231,9 @@ test("{§mcp-module} native definitions bind credentials explicitly, retain refe
             assert.equal(JSON.stringify(list).includes(credential), false, "resolution never copies a host credential into its definition");
         }
 
-        await assert.rejects(invoke("add", { alias: "missing", definition: { name: "missing", ...environmentEntry({
+        await assert.rejects(invoke("add", { alias: "missing", ...environmentEntry({
             MCP_ENV_MARKER: marker("missing"), BOUND_VALUE: "${ABSENT_CREDENTIAL}",
-        }) } }), (cause: unknown) => {
+        }) }), (cause: unknown) => {
             assert.ok(cause instanceof Error && "problem" in cause);
             const problem = Validator.assertProblemDetails(cause.problem);
             assert.equal(problem.type, "https://problems.plurnk.xyz/mcp/management/server-unavailable");
@@ -273,8 +273,8 @@ for (const { policy, decision } of [
             const sessionId = await insertSession(db, workspaceId, null, "alice", "model");
             await ownSession(db, workspaceId, sessionId);
             const list = () => daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as Promise<FunctionalityListResult>;
-            const definition = { name: "credential", ...environmentEntry({ MCP_ENV_MARKER: marker, BOUND_VALUE: "${BOUND_VALUE}" }) };
-            const source = PlurnkParser.frame("plurnk (mcp)", JSON.stringify({ verb: "add", alias: "credential", definition }));
+            const definition = environmentEntry({ MCP_ENV_MARKER: marker, BOUND_VALUE: "${BOUND_VALUE}" });
+            const source = PlurnkParser.frame("plurnk_mcp (add)", JSON.stringify({ alias: "credential", ...definition }));
             const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
             const op = parsed.items[0];
             assert.ok(op?.kind === "statement");
@@ -300,7 +300,7 @@ for (const { policy, decision } of [
                 return;
             }
             assert.equal(result.status, 201);
-            const added = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", timeoutMs: 10000 });
+            const added = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk_mcp", timeoutMs: 10000 });
             assert.equal((added.definition as { state: string }).state, "active");
             const starts = (await readFile(marker, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as Start);
             assert.ok(starts.length > 0);
@@ -337,7 +337,7 @@ test("{§mcp-module} {§mcp-configuration} a bearer setting resolves against the
         const workspaceId = await insertWorkspace(db, `http-env-${crypto.randomUUID()}`);
         const invoke = (family: string, verb: string, params: Record<string, unknown> = {}) => daemon.invokeModuleAction(`workspace.${family}.${verb}`, params, { scope: "workspace", workspaceId });
         // Activation connects before the workspace defines ENV_AUTH, so the fixture refuses that attempt.
-        await invoke("env", "add", { alias: "ENV_AUTH", definition: { value: "workspace-token" } });
+        await invoke("env", "add", { alias: "ENV_AUTH", value: "workspace-token" });
         assert.deepEqual([...new Set(received)], ["Bearer operator-token"], "the reference resolves against the operator environment");
         const activated = received.length;
         const enabled = await invoke("mcp", "enable", { alias: "authorized" }) as { definition: { state: string } };
@@ -765,7 +765,7 @@ test("{§core-extension-composition} module runtime registration preserves one-n
 
         assert.throws(
             () => engine.registerRuntime("Alias_Tool", fakeEntry("Alias_Tool")),
-            /runtime declaration invalid: module runtime name 'Alias_Tool' must match \[a-z\]\[a-z0-9\+\.-\]\*/,
+            /runtime declaration invalid: module runtime name 'Alias_Tool' must match \[a-z\]\[a-z0-9\+._-\]\*/,
             "module-owned declarations use the same canonical tag admission as installed declarations",
         );
         assert.equal(executors.entry("Alias_Tool"), undefined, "invalid admission leaves the executor registry untouched");
@@ -1050,11 +1050,11 @@ test("{§execution-output-identity} workspace defaults, session overrides and ma
         const local = (sessionId: number, verb: string, params: Record<string, unknown> = {}) =>
             daemon.invokeModuleAction(`session.env.${verb}`, params, { scope: "session", workspaceId, sessionId });
         const get = async (sessionId: number) => ((await local(sessionId, "list")) as FunctionalityListResult).definitions.find(({ alias }) => alias === "ENV_WITNESS");
-        await shared("add", { alias: "ENV_WITNESS", definition: { value: "workspace" } });
+        await shared("add", { alias: "ENV_WITNESS", value: "workspace" });
         assert.deepEqual((await get(alice))?.definition, { value: "workspace" });
         assert.equal((await get(alice))?.origin, "workspace");
         assert.equal(((await shared("list", {}, other)) as FunctionalityListResult).definitions.some(({ alias }) => alias === "ENV_WITNESS"), false);
-        await local(alice, "add", { alias: "ENV_WITNESS", definition: { value: "alice" } });
+        await local(alice, "add", { alias: "ENV_WITNESS", value: "alice" });
         assert.deepEqual((await get(alice))?.definition, { value: "alice" });
         assert.deepEqual((await get(bob))?.definition, { value: "workspace" });
         await local(alice, "remove", { alias: "ENV_WITNESS" });
@@ -1073,14 +1073,14 @@ test("{§execution-output-identity} workspace defaults, session overrides and ma
         assert.equal((await EnvFunctionality.resolve(db, workspaceId, alice)).env.ENV_WITNESS, "workspace");
         const child = await insertSession(db, workspaceId, bob, "child", "model");
         await shared("remove", { alias: "ENV_WITNESS" });
-        await shared("add", { alias: "ENV_WITNESS", definition: { value: "updated" } });
+        await shared("add", { alias: "ENV_WITNESS", value: "updated" });
         assert.deepEqual((await get(child))?.definition, { value: "updated" }, "workspace values stay live through parentage");
-        await assert.rejects(shared("add", { alias: "PLURNK_BAD", definition: { value: "x" } }), (cause: unknown) => {
+        await assert.rejects(shared("add", { alias: "PLURNK_BAD", value: "x" }), (cause: unknown) => {
             assert.ok(cause instanceof OperationFailureError);
             assert.equal(cause.result.status, 400);
             assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/env/functionality/name-reserved");
             assert.equal(cause.result.problem.detail, "'PLURNK_BAD' is reserved in env entries.");
-            assert.equal(cause.result.problem.recovery, "READ workspace:///_plurnk/tools/plurnk/env.json for supported configuration paths.");
+            assert.equal(cause.result.problem.recovery, "READ mcp:///plurnk_env.md for supported configuration paths.");
             return true;
         });
         await assert.rejects(shared("list", { scope: "session" }), /scope does not match/u);

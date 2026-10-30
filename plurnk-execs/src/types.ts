@@ -200,7 +200,6 @@ export interface ExecInfo {
     // Invocation remain declaration-owned and are projected by the consumer.
     details: string;
     resourcesPath?: string;
-    expandTools?: boolean;
     packageName: string;
 }
 
@@ -219,9 +218,6 @@ export interface RuntimeDecl {
     // internal skills namespace. Present (MCP servers): the tools namespace
     // whose survey exposes every child tool.
     resourcesPath?: string;
-    // Expand this runtime's complete tool tree into the turn-0 tools survey;
-    // absent, turn 0 lists the runtime document alone.
-    expandTools?: boolean;
 }
 
 // Dynamic runtime declaration function ({§executor-discovery}). Discovery
@@ -301,4 +297,10 @@ export interface RuntimeRegistration {
     readonly executor: Executor;
     readonly availability: RuntimeAvailability;
     readonly scheme?: RuntimeSchemeFacet;
+}
+
+// {§executor-role} — the seam slice for modules that register in-process runtimes or MCP tool servers at setup.
+export interface RuntimeRegistrationSeam {
+    registerRuntime(registration: RuntimeRegistration): void | Promise<void>;
+    registerRuntimes(registrations: readonly RuntimeRegistration[]): void | Promise<void>;
 }

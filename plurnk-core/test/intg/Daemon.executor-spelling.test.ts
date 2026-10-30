@@ -41,7 +41,7 @@ for (const alias of ["ts", "javascript", "typescript", "node"] as const) {
                 const [workspace] = await daemon.listWorkspaces();
                 const sessionId = await namedModelSession(daemon, workspace.id, "main");
                 const reference = async (runtime: string) => (await daemon.dispatchClientAction({ workspaceId: workspace.id, actor: TEST_OWNER,
-                    statements: [readStmt(urlPath("workspace", `/_plurnk/plurnk/${runtime}.md`))] }))[0];
+                    statements: [readStmt(urlPath("plurnk", `/${runtime}.md`))] }))[0];
                 assert.equal((await reference("js")).status, 200, "js remains discoverable");
                 assert.equal((await reference(alias)).status, 404, "the accepted spelling adds no reference document");
                 const { finalStatus, turnIds } = await runLoopToTerminal(client, 2, {
@@ -116,7 +116,7 @@ for (const disablePython of [false, true]) {
                 const survey = packetSection(JSON.parse(row.packet), "log");
                 for (const tag of DEFAULT_TAGS) {
                     assert.equal(
-                        survey.includes(`/_plurnk/plurnk/${tag}.md`),
+                        survey.includes(`plurnk:///${tag}.md`),
                         registry.availableRuntimes().includes(tag),
                         `${tag} teaching is present exactly when the executor is admitted and available`,
                     );

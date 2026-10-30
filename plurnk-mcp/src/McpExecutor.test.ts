@@ -92,7 +92,7 @@ const waitForFile = async (pathname: string): Promise<void> => {
 };
 
 test("{§mcp-configuration} runtime declaration derives the server summary from the chain", async () => {
-    const declaration = runtimeDecl("echo", serverSummary("echo", undefined), false);
+    const declaration = runtimeDecl("echo", serverSummary("echo", undefined));
     assert.equal(declaration.summary, "MCP server echo.");
     assert.deepEqual(declaration.invocation, {
         body: { role: "JSON arguments", required: false, mimetype: "application/json" },
@@ -308,7 +308,7 @@ test("{§mcp-host-composition} tool-reported errors retain bounded text explanat
             if (specimen.result.isError) {
                 assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/tool-reported-error", specimen.name);
                 assert.equal(result.problem?.retryable, false, specimen.name);
-                assert.equal(result.problem?.recovery, "```fixture (inspect) <!-- Schema: workspace:///_plurnk/tools/fixture/inspect.json -->\n{}\n```", specimen.name);
+                assert.equal(result.problem?.recovery, "```fixture (inspect) <!-- Schema: mcp:///fixture/inspect.json -->\n{}\n```", specimen.name);
             }
         }
     } finally {
@@ -577,11 +577,10 @@ test("{§mcp-configuration} every server-summary tier has one deterministic prec
     const instructions = "Search **the Web** for current information.\n\n## Results\nPreserve links and attribution.";
     const described = catalog({ title: "Search MCP" }, instructions);
     assert.deepEqual(runtimeServerSummary("search", described), { from: "tools", description: "Search **the Web** for current information." });
-    assert.equal(runtimeDecl("search", runtimeServerSummary("search", described), false, instructions).details, instructions);
-    assert.equal(runtimeDecl("search", "Search the Web.", false, " \n ").details, undefined);
-    const verbose = catalog({ description: "Search ".repeat(100), title: "Search MCP" });
-    assert.ok(serverSummary("search", verbose).length <= 81, "derived descriptions are bounded like tool summaries");
-    assert.match(serverSummary("search", verbose), /…$/u);
+    assert.equal(runtimeDecl("search", runtimeServerSummary("search", described), instructions).details, instructions);
+    assert.equal(runtimeDecl("search", "Search the Web.", " \n ").details, undefined);
+    const verbose = catalog({ description: "Search \n  the   Web.", title: "Search MCP" });
+    assert.equal(serverSummary("search", verbose), "Search the Web.", "derived descriptions normalize whitespace onto one line");
 });
 
 // The invalid-arguments failure names the form that works, whatever the body was
@@ -596,7 +595,7 @@ test("{§mcp-model-projection} invalid tool arguments carry the one-object recov
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/invalid-tool-arguments");
             assert.equal(
                 result.problem?.recovery,
-                "One JSON object per MCP tool call.\n```echo (echo) <!-- Schema: workspace:///_plurnk/tools/echo/echo.json -->\n{\"message\": \"\"}\n```",
+                "One JSON object per MCP tool call.\n```echo (echo) <!-- Schema: mcp:///echo/echo.json -->\n{\"message\": \"\"}\n```",
             ); // {§mcp-model-projection}
         }
     } finally {
@@ -677,7 +676,7 @@ test("{§mcp-model-projection} derives exact summaries and invocations from the 
 test("{§mcp-configuration} tool purpose precedes titles; blank values fall through in protocol title order", () => {
     const tool = { name: "web_search", inputSchema: { type: "object" as const } };
     const summary = (fields: Partial<Tool>) => toolRegistry([{ ...tool, ...fields }]).tools[0].summary;
-    assert.equal(summary({ description: "Search the Web. Return matching pages.", title: "Search", annotations: { title: "Old title" } }), "Search the Web.");
+    assert.equal(summary({ description: "Search the Web. Return matching pages.", title: "Search", annotations: { title: "Old title" } }), "Search the Web. Return matching pages.");
     assert.equal(summary({ description: " \n ", title: "Search", annotations: { title: "Old title" } }), "Search");
     assert.equal(summary({ title: " \t ", annotations: { title: "Search title" } }), "Search title");
     assert.equal(summary({ description: " ", title: "", annotations: { title: " " } }), "web_search");
@@ -696,18 +695,18 @@ test("{§mcp-model-projection} missing remote prose falls back to the tool name"
     }]).tools[0]?.summary, "issue_read");
 });
 
-test("{§mcp-model-projection} a long description trims to its first sentence", () => {
+test("{§mcp-model-projection} multiline descriptions normalize onto a single line while preserving the full description on the input document", () => {
     const tools: Tool[] = [{
         name: "web_search",
-        description: "Performs web searches using the API and returns results. Extra detail beyond the first sentence.",
+        description: "Performs web searches using the API and returns results.\nExtra detail on the second line.",
         inputSchema: { type: "object" },
     }];
     assert.equal(
         toolRegistry(tools).tools[0]?.summary,
-        "Performs web searches using the API and returns results.",
+        "Performs web searches using the API and returns results. Extra detail on the second line.",
     );
     assert.equal(toolRegistry(tools).tools[0]?.details, tools[0].description,
-        "summary shortening does not discard the full description from the input document");
+        "whitespace normalization does not discard the full description from the input document");
 });
 
 test("{§mcp-result-content} Apps metadata remains inert catalog data, absent from compact invocations", () => {
@@ -748,7 +747,8 @@ test("{§mcp-model-projection} catalogs preserve complete original tool records 
     }];
     const before = structuredClone(tools);
     const registry = toolRegistry(tools);
-    assert.deepEqual(registry.tools.map(({ definition }) => definition), [tools[1], tools[0]]);
+    const { icons: _icons, ...expectedSearch } = tools[0];
+    assert.deepEqual(registry.tools.map(({ definition }) => definition), [tools[1], expectedSearch]);
     assert.deepEqual(tools, before, "presentation does not mutate the received catalog");
 });
 

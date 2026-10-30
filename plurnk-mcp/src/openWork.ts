@@ -67,34 +67,37 @@ const expandWorkspaceSpec = (
 };
 
 export const rawWorkspaceBinding = (
+    alias: string,
     definition: McpServerDefinition,
     environ: NodeJS.ProcessEnv,
 ): string | readonly string[] | undefined => {
-    const settings = serverSettings(definition.name, environ);
+    const settings = serverSettings(alias, environ);
     return settings.workspace ?? definition.plurnkWorkspace;
 };
 
 export const rawSessionBinding = (
+    alias: string,
     definition: McpServerDefinition,
     environ: NodeJS.ProcessEnv,
 ): string | undefined => {
-    const settings = serverSettings(definition.name, environ);
+    const settings = serverSettings(alias, environ);
     return settings.session ?? definition.plurnkSession;
 };
 
 export const matchesWorkspaceBinding = (
+    alias: string,
     definition: McpServerDefinition,
     environ: NodeJS.ProcessEnv,
     workspaceName: string | undefined,
 ): boolean => {
     if (workspaceName === undefined) return true;
-    const raw = rawWorkspaceBinding(definition, environ);
+    const raw = rawWorkspaceBinding(alias, definition, environ);
     if (raw === undefined) return true;
     try {
         const expanded = expandWorkspaceSpec(
             raw,
             withSyntheticEnv(environ, { workspaceName }),
-            `${definition.name}.plurnkWorkspace`,
+            `${alias}.plurnkWorkspace`,
         );
         return expanded === "*" || expanded.includes(workspaceName);
     } catch {
@@ -103,6 +106,7 @@ export const matchesWorkspaceBinding = (
 };
 
 export const assertWorkspaceDefinitionScope = (
+    alias: string,
     definition: McpServerDefinition,
     workspaceName: string | undefined,
     environ: NodeJS.ProcessEnv,
@@ -113,14 +117,14 @@ export const assertWorkspaceDefinitionScope = (
         expanded = expandWorkspaceSpec(
             definition.plurnkWorkspace,
             withSyntheticEnv(environ, { workspaceName }),
-            `${definition.name}.plurnkWorkspace`,
+            `${alias}.plurnkWorkspace`,
         );
     } catch (cause) {
         throw actionError(
             "definition-invalid",
             400,
             cause instanceof Error ? cause.message : String(cause),
-            { server: definition.name, retryable: false },
+            { server: alias, retryable: false },
             cause,
         );
     }
@@ -131,13 +135,14 @@ export const assertWorkspaceDefinitionScope = (
         throw actionError(
             "workspace-scope-forbidden",
             403,
-            `Workspace-scoped MCP server '${definition.name}' cannot bind workspace '${forbidden}'; only operator-scoped definitions may bind other workspaces or '*'.`,
-            { server: definition.name, workspace: workspaceName, target: forbidden, retryable: false },
+            `Workspace-scoped MCP server '${alias}' cannot bind workspace '${forbidden}'; only operator-scoped definitions may bind other workspaces or '*'.`,
+            { server: alias, workspace: workspaceName, target: forbidden, retryable: false },
         );
     }
 };
 
 export const resolveServerBinding = ({
+    alias,
     definition,
     workspaceSettings,
     operatorSettings,
@@ -145,6 +150,7 @@ export const resolveServerBinding = ({
     workspaceName,
     expansionEnv,
 }: {
+    readonly alias: string;
     readonly definition: McpServerDefinition;
     readonly workspaceSettings: ToolPolicy;
     readonly operatorSettings: ToolPolicy;
@@ -161,7 +167,7 @@ export const resolveServerBinding = ({
     if (rawWorkspace === undefined) {
         workspaceScope = new Set([workspaceName]);
     } else {
-        const expanded = expandWorkspaceSpec(rawWorkspace, envWithWorkspace, `${definition.name}.plurnkWorkspace`);
+        const expanded = expandWorkspaceSpec(rawWorkspace, envWithWorkspace, `${alias}.plurnkWorkspace`);
         if (!effectiveOperatorScope) {
             const forbidden = expanded === "*"
                 ? "*"
@@ -170,8 +176,8 @@ export const resolveServerBinding = ({
                 throw actionError(
                     "workspace-scope-forbidden",
                     403,
-                    `Workspace-scoped MCP server '${definition.name}' cannot bind workspace '${forbidden}'; only operator-scoped definitions may bind other workspaces or '*'.`,
-                    { server: definition.name, workspace: workspaceName, target: forbidden, retryable: false },
+                    `Workspace-scoped MCP server '${alias}' cannot bind workspace '${forbidden}'; only operator-scoped definitions may bind other workspaces or '*'.`,
+                    { server: alias, workspace: workspaceName, target: forbidden, retryable: false },
                 );
             }
         }
@@ -180,9 +186,9 @@ export const resolveServerBinding = ({
 
     const defaultSession = rawSession === undefined
         ? undefined
-        : expandReferences(rawSession, envWithWorkspace, `${definition.name}.plurnkSession`);
+        : expandReferences(rawSession, envWithWorkspace, `${alias}.plurnkSession`);
     if (defaultSession !== undefined && defaultSession.length === 0) {
-        throw new Error(`${definition.name}.plurnkSession must be a non-empty string.`);
+        throw new Error(`${alias}.plurnkSession must be a non-empty string.`);
     }
 
     return {

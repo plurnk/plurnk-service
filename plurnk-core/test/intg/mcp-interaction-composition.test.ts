@@ -782,7 +782,7 @@ test("{§mcp-configuration} workspace management preserves plugin interpretation
     assert.equal((await list(a.workspaceId))[0]?.state, "disabled");
     await action(a.workspaceId, "enable", { alias: "example" });
     assert.equal((await call()).data, first.data);
-    await action(a.workspaceId, "add", { alias: "example", definition: { name: "example", ...entry } });
+    await action(a.workspaceId, "add", { alias: "example", ...entry });
     const local = await call();
     assert.notEqual(local.cwd, root);
     assert.equal(local.root, undefined, "replacing the definition drops plugin-only environment injection");

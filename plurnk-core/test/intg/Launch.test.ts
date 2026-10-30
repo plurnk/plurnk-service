@@ -308,16 +308,17 @@ test("{§observability-boundary} live workspaces expose a model session's refere
         const skill = await read("skill://plurnk/SKILL.md");
         assert.equal(skill.status, 200);
         for (const reference of ["session", "sh"]) {
-            const result = await read(`workspace:///_plurnk/plurnk/${reference}.md`);
+            const result = await read(`plurnk:///${reference}.md`);
             assert.equal(result.status, 200, `${reference}.md is READ-able in the session's actual generated tree`);
             assert.match(String(result.content), /\S/, `${reference}.md contains its contract`);
         }
-        const plurnkDoc = await read("workspace:///_plurnk/tools/plurnk.md");
-        assert.equal(plurnkDoc.status, 200, "plurnk.md is READ-able in the session's actual generated tree");
         for (const family of ["members", "skills", "mcp", "schedule"]) {
-            const result = await read(`workspace:///_plurnk/tools/plurnk/${family}.json`);
-            assert.equal(result.status, 200, `${family}.json is READ-able in the session's actual generated tree`);
-            assert.match(String(result.content), /\S/, `${family}.json contains its contract`);
+            const doc = await read(`mcp:///plurnk_${family}.md`);
+            assert.equal(doc.status, 200, `plurnk_${family}.md is READ-able in the session's actual generated tree`);
+            assert.match(String(doc.content), /\S/, `plurnk_${family}.md contains its contract`);
+            const result = await read(`mcp:///plurnk_${family}/add.json`);
+            assert.equal(result.status, 200, `plurnk_${family}/add.json is READ-able in the session's actual generated tree`);
+            assert.match(String(result.content), /\S/, `plurnk_${family}/add.json contains its contract`);
         }
         for (const family of ["skills", "mcp", "members", "schedule"]) {
             const result = Validator.assertFunctionalityListResult(
@@ -377,7 +378,7 @@ test("{§observability-boundary} specimen schedules deliver and shut down withou
         assert.equal((await list()).definitions.find(({ alias }) => alias === "fixture")?.state, "disabled");
         assert.equal(armed.size, 0, "operator rules remain disabled under the real-model gate profile");
         const discovered = Validator.assertFunctionalityDiscoverResult(await workspace.invokeWorkspaceAction("workspace.schedule.discover", {
-            source: "FREQ=HOURLY;COUNT=1",
+            rule: "FREQ=HOURLY;COUNT=1",
         }));
         assert.equal(discovered.candidates.length, 1);
         assert.match(discovered.candidates[0].summary ?? "", /now .+next/u);
@@ -394,7 +395,7 @@ test("{§observability-boundary} specimen schedules deliver and shut down withou
             }
         });
         t.after(unsubscribe);
-        assert.equal((await mutate("add", { alias: "beat", definition })).status, 201);
+        assert.equal((await mutate("add", { alias: "beat", ...definition })).status, 201);
         assert.equal(armed.size, 1);
         now += 1000;
         const due = [...armed.values()];
@@ -415,7 +416,7 @@ test("{§observability-boundary} specimen schedules deliver and shut down withou
         assert.equal((await list()).definitions.find(({ alias }) => alias === "fixture")?.state, "disabled");
         assert.equal((await mutate("remove", { alias: "beat" })).status, 200);
         assert.ok(!(await list()).definitions.some(({ alias }) => alias === "beat"));
-        assert.equal((await mutate("add", { alias: "later", definition: { ...definition, rule: "FREQ=HOURLY;COUNT=2" } })).status, 201);
+        assert.equal((await mutate("add", { alias: "later", ...definition, rule: "FREQ=HOURLY;COUNT=2" })).status, 201);
         assert.equal(armed.size, 1, "shutdown has an armed rule to dispose");
     } finally {
         await workspace.cleanup();
@@ -996,8 +997,8 @@ test("{§observability-boundary} observe: a real loop emits the loop → turn �
             assert.ok(ops.includes("FIND"), "initialization's surveys use ordinary dispatch");
             assert.equal(ops.filter((op) => op === "SEND").length, 1, "the model's completion has its own dispatch span");
             assert.ok(
-                ops.filter((op) => op !== "SEND" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "NOTE" || op === "FIND" || op === "READ"),
-                `initialization dispatches only reasoning operations; got ${ops.join(", ")}`,
+                ops.filter((op) => op !== "SEND" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "NOTE" || op === "FIND" || op === "READ" || op === "plurnk_mcp"),
+                `initialization dispatches only orientation operations; got ${ops.join(", ")}`,
             );
             for (const d of dispatches) {
                 assert.ok(Number.isInteger(d.attributes.status), "every dispatched op records its result status");

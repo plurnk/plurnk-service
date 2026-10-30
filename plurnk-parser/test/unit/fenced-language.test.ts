@@ -345,7 +345,7 @@ test("{§fence-pairing} a bodied EDIT keeps exactly its body; a closer followed 
 });
 
 test("{§fence-pairing} a closing fence with stray trailing text closes the operation as a repair and discards the trailing characters and retry closers (#1329)", () => {
-    const executors = ["sh", "gitea", "plurnk"];
+    const executors = ["sh", "gitea", "plurnk_members"];
     for (const [openerFence, closer] of [
         ["```", "```!] Nail it."],
         ["```", "``` // end"],
@@ -355,7 +355,7 @@ test("{§fence-pairing} a closing fence with stray trailing text closes the oper
     ] as const) {
         for (const [header, body, expectedOp] of [
             ["gitea (issue_read)", '{"owner":"plurnk","repo":"plurnk-service","issue_number":1}', "gitea"],
-            ["plurnk (members)", '{"verb":"list"}', "plurnk"],
+            ["plurnk_members (list)", "{}", "plurnk_members"],
             ["sh", "echo hello", "sh"],
             ["NOTE", "Thinking through the steps.", "NOTE"],
             ["EDIT (a.md) <1,1>", "replacement", "EDIT"],

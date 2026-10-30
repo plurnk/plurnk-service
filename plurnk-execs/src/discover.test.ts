@@ -221,7 +221,7 @@ test("{§executor-discovery} #105: dynamic runtime tags use canonical scheme nam
     );
     await assert.rejects(
         Discover.scan({ packageDirs: [invalid] }),
-        /runtime declaration invalid: @plurnk\/plurnk-execs-dynamic-fixture name 'Alias_Tool' must match \[a-z\]\[a-z0-9\+\.-\]\*/,
+        /runtime declaration invalid: @plurnk\/plurnk-execs-dynamic-fixture name 'Alias_Tool' must match \[a-z\]\[a-z0-9\+\._-\]\*/,
     );
 
     const reserved = await makeDynamicPkg(
@@ -315,21 +315,21 @@ test("{§executor-policy} discover: tag collision across packages is fail-hard",
 test("{§executor-discovery} #105: static runtime tags are canonical, path-safe scheme names", async () => {
     const valid = await makePkg({
         name: "@acme/acme-execs-tools",
-        plurnk: { kind: "exec", runtimes: [runtime("alias.tool"), runtime("tool-v2"), runtime("c++"), runtime("prompt")] },
+        plurnk: { kind: "exec", runtimes: [runtime("alias.tool"), runtime("alias_tool"), runtime("tool-v2"), runtime("c++"), runtime("prompt")] },
     });
     assert.deepEqual(
         [...(await Discover.scan({ packageDirs: [valid] })).registry.keys()],
-        ["alias.tool", "tool-v2", "c++", "prompt"],
+        ["alias.tool", "alias_tool", "tool-v2", "c++", "prompt"],
     );
 
-    for (const name of ["Alias", "_private", "alias_tool", "../escape", "two words"]) {
+    for (const name of ["Alias", "_private", "../escape", "two words"]) {
         const invalid = await makePkg({
             name: "@acme/acme-execs-invalid",
             plurnk: { kind: "exec", runtimes: [{ name }] },
         });
         await assert.rejects(
             Discover.scan({ packageDirs: [invalid] }),
-            /runtime declaration invalid: @acme\/acme-execs-invalid .*must match \[a-z\]\[a-z0-9\+\.-\]\*/,
+            /runtime declaration invalid: @acme\/acme-execs-invalid .*must match \[a-z\]\[a-z0-9\+\._-\]\*/,
             `invalid runtime name ${JSON.stringify(name)} must fail at discovery`,
         );
     }

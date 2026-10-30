@@ -32,7 +32,7 @@ for (const scope of ["session", "workspace"] as const) {
         const db = await openMigrated();
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeRawMockResponse([
-                PlurnkParser.frame("plurnk (env)", JSON.stringify({ verb: "add", scope, alias: "SETTLEMENT_WITNESS", definition: { value: "settled" } })),
+                PlurnkParser.frame("plurnk_env (add)", JSON.stringify({ scope, alias: "SETTLEMENT_WITNESS", value: "settled" })),
                 PlurnkParser.frame("sh", 'printf "%s" "$SETTLEMENT_WITNESS"'),
                 PlurnkParser.frame("NOTE", "Review the shell output."),
             ].join("\n\n")),
@@ -47,7 +47,7 @@ for (const scope of ["session", "workspace"] as const) {
         const lifecycle = new LoopLifecycle(db);
         await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
         const rows = await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER });
-        assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk")?.status_rx, 201);
+        assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk_env")?.status_rx, 201);
         assert.ok(rows.some((row) => row.op === "READ" && row.scheme === "sh" && row.status_rx === 200 && JSON.stringify(row.rx).includes("settled")), "the command receives the just-published environment value");
     });
 }
@@ -120,7 +120,7 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
             { kind: "environment", source: "ENV_WITNESS" });
 
         // add → session origin, active, for alice alone.
-        const added = await invoke<FunctionalityMutationResult>(alice, "add", { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } });
+        const added = await invoke<FunctionalityMutationResult>(alice, "add", { alias: "CARGO_TARGET_DIR", value: "/tmp/shared" });
         assert.equal(added.status, 201);
         assert.equal(added.definition?.origin, "session", "origin names ownership: alice set it, not the workspace");
         assert.equal(added.definition?.state, "active");
@@ -133,13 +133,13 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
         assert.equal((await invoke<FunctionalityMutationResult>(alice, "disable", { alias: "ENV_WITNESS" })).definition?.state, "disabled");
 
         // Admission refusals are the verb's own outcome: a name a shell cannot export, and plurnk's own.
-        assert.equal(await refusal(() => invoke(alice, "add", { alias: "9NOPE", definition: { value: "x" } })), "https://problems.plurnk.xyz/env/functionality/name-invalid");
-        assert.equal(await refusal(() => invoke(alice, "add", { alias: "PLURNK_SERVICE_DB_PATH", definition: { value: "/tmp/steal.db" } })), "https://problems.plurnk.xyz/env/functionality/name-reserved");
+        assert.equal(await refusal(() => invoke(alice, "add", { alias: "9NOPE", value: "x" })), "https://problems.plurnk.xyz/env/functionality/name-invalid");
+        assert.equal(await refusal(() => invoke(alice, "add", { alias: "PLURNK_SERVICE_DB_PATH", value: "/tmp/steal.db" })), "https://problems.plurnk.xyz/env/functionality/name-reserved");
         assert.equal(await refusal(() => invoke(alice, "enable", { alias: "GHOST" })), "https://problems.plurnk.xyz/functionality/alias-unknown");
 
         // {§configuration-repair-path}
         assert.equal(await refusal(() => invoke(alice, "remove", { alias: "ENV_WITNESS" })), "https://problems.plurnk.xyz/functionality/alias-service-owned");
-        const shadow = await invoke<FunctionalityMutationResult>(alice, "add", { alias: "ENV_WITNESS", definition: { value: "mine" } });
+        const shadow = await invoke<FunctionalityMutationResult>(alice, "add", { alias: "ENV_WITNESS", value: "mine" });
         assert.equal(shadow.definition?.origin, "session");
         assert.equal(shadow.definition?.provenance, undefined, "a session's override is not the ambient configuration");
         assert.equal(valueOf(shadow.definition?.definition), "mine");
@@ -168,7 +168,7 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
         })).candidates, []);
 
         // Persistence: alice's shaping survives a restart; bob's is untouched.
-        await invoke(alice, "add", { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } });
+        await invoke(alice, "add", { alias: "CARGO_TARGET_DIR", value: "/tmp/shared" });
         await daemon.stop();
         daemon = await boot(db);
         assert.equal(await stateOf(alice, "CARGO_TARGET_DIR"), "session:active");
@@ -184,28 +184,28 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
         assert.equal(await inheritedOf(carol, "CARGO_TARGET_DIR"), "alice", "list names the Session that set an inherited value");
         assert.equal(await stateOf(carol, "ENV_WITNESS"), "service:disabled", "a parent's masking of an ambient name travels too");
         assert.equal(await inheritedOf(carol, "ENV_WITNESS"), "alice");
-        await invoke(carol, "add", { alias: "CAROL_ONLY", definition: { value: "c" } });
+        await invoke(carol, "add", { alias: "CAROL_ONLY", value: "c" });
         assert.equal(await inheritedOf(carol, "CAROL_ONLY"), undefined, "an entry the child set itself names no source");
         await invoke(carol, "enable", { alias: "ENV_WITNESS" });
         assert.equal(await inheritedOf(carol, "ENV_WITNESS"), undefined, "a changed entry is the child's own");
         assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:disabled", "the child's change never reaches the parent");
         assert.equal(await stateOf(alice, "CAROL_ONLY"), undefined);
 
-        // The model's projection: `plurnk (env)` is published on the `plurnk` manager, and Core binds it to the invoking
+        // The model's projection: `plurnk_env` is published on the `plurnk_env` manager, and Core binds it to the invoking
         // session at the operation, so alice's `list` is alice's and bob's is bob's.
         const outputs = async (): Promise<number> =>
-            (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "plurnk", prefix: "/%" })).length;
+            (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "plurnk_env", prefix: "/%" })).length;
         const exec = async (sessionId: number, program: string) => {
             const after = await outputs();
             const { status } = await modelOperation(daemon, db, { workspaceId, sessionId, statement: parseOne(program) });
-            return { status, result: () => awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after, timeoutMs: 10_000 }) };
+            return { status, result: () => awaitExecOutcome(db, { workspaceId, scheme: "plurnk_env", after, timeoutMs: 10_000 }) };
         };
-        const aliceList = await exec(alice, "````plurnk (env)````");
+        const aliceList = await exec(alice, "````plurnk_env (list)````");
         assert.equal(aliceList.status, 200);
         const aliceView = await aliceList.result() as unknown as FunctionalityListResult;
         assert.equal(aliceView.definitions.find(({ alias }) => alias === "CARGO_TARGET_DIR")?.origin, "session");
         assert.equal(aliceView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "disabled");
-        const bobView = await (await exec(bob, "````plurnk (env)````")).result() as unknown as FunctionalityListResult;
+        const bobView = await (await exec(bob, "````plurnk_env (list)````")).result() as unknown as FunctionalityListResult;
         assert.equal(bobView.definitions.some(({ alias }) => alias === "CARGO_TARGET_DIR"), false, "the binding is per operation: bob's list is bob's");
         assert.equal(bobView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "active");
 
@@ -238,9 +238,9 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
         };
         try {
             const before = await outputs();
-            const bobAdded = await accepted(bob, `\`\`\`\`plurnk (env)\n${JSON.stringify({ verb: "add", alias: "BOB_ONLY", definition: { value: "1" } })}\n\`\`\`\``);
+            const bobAdded = await accepted(bob, `\`\`\`\`plurnk_env (add)\n${JSON.stringify({ alias: "BOB_ONLY", value: "1" })}\n\`\`\`\``);
             assert.equal(bobAdded.status, 201, "the accepted add settled inside the operation");
-            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after: before, timeoutMs: 10_000 }) as unknown as FunctionalityMutationResult;
+            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk_env", after: before, timeoutMs: 10_000 }) as unknown as FunctionalityMutationResult;
             assert.equal(outcome.definition?.origin, "session");
             assert.equal(await stateOf(bob, "BOB_ONLY"), "session:active", "an accepted model add persisted for the invoking session");
             assert.equal(await stateOf(alice, "BOB_ONLY"), undefined);
@@ -272,14 +272,14 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
                 "carol's command receives the value she inherited and the name she re-enabled");
             assert.deepEqual((await recorded(carolRun.logEntryId)).CARGO_TARGET_DIR, { source: "session", from: "alice", value: "/tmp/shared" },
                 "the record names the Session that set an inherited value");
-            await daemon.invokeModuleAction("workspace.env.add", { alias: "ENV_WITNESS", definition: { value: "workspace" } }, { scope: "workspace", workspaceId });
+            await daemon.invokeModuleAction("workspace.env.add", { alias: "ENV_WITNESS", value: "workspace" }, { scope: "workspace", workspaceId });
             const sharedRun = await accepted(bob, command);
             assert.match(await stdoutOf(sharedRun.logEntryId), /witness=\[workspace\]/u);
             assert.deepEqual((await recorded(sharedRun.logEntryId)).ENV_WITNESS, { source: "workspace", value: "workspace" });
             assert.equal(await stateOf(alice, "ENV_WITNESS"), "workspace:disabled", "the session's mask follows the name when its lower origin changes");
             const maskedRun = await accepted(alice, command);
             assert.match(await stdoutOf(maskedRun.logEntryId), /witness=\[\]/u);
-            await invoke(bob, "add", { alias: "ENV_WITNESS", definition: { value: "session" } });
+            await invoke(bob, "add", { alias: "ENV_WITNESS", value: "session" });
             const localRun = await accepted(bob, command);
             assert.match(await stdoutOf(localRun.logEntryId), /witness=\[session\]/u);
         } finally {
@@ -321,8 +321,8 @@ test("{§functionality-coordinator} readSessionEnvironment layers the Session's 
         await ownSession(db, workspaceId, alice);
         const bob = await insertSession(db, workspaceId, null, "bob", "model");
         await ownSession(db, workspaceId, bob);
-        await daemon.invokeModuleAction("workspace.env.add", { alias: "TZ", definition: { value: "Europe/Paris" } }, { scope: "workspace", workspaceId });
-        await daemon.invokeModuleAction("session.env.add", { alias: "TZ", definition: { value: "Asia/Tokyo" } }, { scope: "session", workspaceId, sessionId: alice });
+        await daemon.invokeModuleAction("workspace.env.add", { alias: "TZ", value: "Europe/Paris" }, { scope: "workspace", workspaceId });
+        await daemon.invokeModuleAction("session.env.add", { alias: "TZ", value: "Asia/Tokyo" }, { scope: "session", workspaceId, sessionId: alice });
         const ambient = { TZ: "UTC", PATH: process.env.PATH ?? "" };
         assert.equal((await daemon.readWorkspaceEnvironment(workspaceId))(ambient).TZ, "Europe/Paris", "the workspace layer over the ambient value");
         assert.equal((await daemon.readSessionEnvironment(workspaceId, alice))(ambient).TZ, "Asia/Tokyo", "alice's own override wins for alice");
@@ -331,7 +331,7 @@ test("{§functionality-coordinator} readSessionEnvironment layers the Session's 
         const removed = await daemon.invokeModuleAction("session.env.remove", { alias: "TZ" }, sessionContext) as FunctionalityMutationResult;
         assert.deepEqual(removed.definition, { alias: "TZ", origin: "workspace", state: "active", definition: { value: "Europe/Paris" } });
         assert.equal((await daemon.readSessionEnvironment(workspaceId, alice))(ambient).TZ, "Europe/Paris", "removal restores the shared value for subsequent commands");
-        await daemon.invokeModuleAction("session.env.add", { alias: "TZ", definition: { value: "Asia/Tokyo" } }, sessionContext);
+        await daemon.invokeModuleAction("session.env.add", { alias: "TZ", value: "Asia/Tokyo" }, sessionContext);
         await daemon.invokeModuleAction("workspace.env.disable", { alias: "TZ" }, { scope: "workspace", workspaceId });
         const disabled = await daemon.invokeModuleAction("session.env.remove", { alias: "TZ" }, sessionContext) as FunctionalityMutationResult;
         assert.deepEqual(disabled.definition, { alias: "TZ", origin: "workspace", state: "disabled", definition: { value: "Europe/Paris" } });
@@ -370,7 +370,7 @@ test("{§env-functionality} every effective name reads at env:///NAME; EDIT and 
     await ownSession(db, workspaceId, alice);
     const bob = await insertSession(db, workspaceId, null, "bob", "model");
     await ownSession(db, workspaceId, bob);
-    await daemon.invokeModuleAction("workspace.env.add", { alias: "TEAM_DEFAULT", definition: { value: "shared" } }, { scope: "workspace", workspaceId });
+    await daemon.invokeModuleAction("workspace.env.add", { alias: "TEAM_DEFAULT", value: "shared" }, { scope: "workspace", workspaceId });
 
     // Each session's own operation: an env:/// address is the dispatching Session's registry ({§env-functionality}).
     const as = (sessionId: number) => (statement: PlurnkStatement) => modelOperation(daemon, db, { workspaceId, sessionId, statement });

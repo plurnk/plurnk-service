@@ -97,15 +97,15 @@ export default class EditMutations {
             return rows.length > 0 && rows.every((row) => LineAnchors.isAnchoredLine(row));
         };
         const rendered = looksRendered(authored)
-            && manifest.textEditScopes === true && manifest.writableBy.includes("model");
-        const track = sequence !== undefined && manifest.textEditScopes === true && manifest.writableBy.includes("model");
+            && manifest.textEditScopes === true && manifest.writableBy.includes(ctx.writer);
+        const track = sequence !== undefined && manifest.textEditScopes === true && manifest.writableBy.includes(ctx.writer);
         const marks = authored.lineMarker?.marks;
         const lineInsertion = authored.matcher === null && marks?.length === 4
             && marks[0] === marks[2] && marks[1] === 1 && marks[3] === 1;
         if (!anchored && !rendered && !track && !lineInsertion) {
             return { statement: LineAnchors.resolved(authored), precondition: null };
         }
-        if (manifest.textEditScopes !== true || !manifest.writableBy.includes("model")) {
+        if (manifest.textEditScopes !== true || !manifest.writableBy.includes(ctx.writer)) {
             return {
                 result: MutationEffects.failure(
                     "line-anchor-unsupported",
@@ -298,7 +298,7 @@ export default class EditMutations {
             return MutationEffects.failure("target-required", 400, "EDIT requires a target scheme.", {}, { retryable: false });
         }
         const handler = this.#schemes.get(schemeName, ctx.workspaceId);
-        const manifest = this.#schemes.manifestFor(schemeName, ctx.workspaceId);
+        const manifest = this.#schemes.manifestAt(schemeName, statement.target, ctx.workspaceId);
         if (handler === undefined || manifest === undefined) {
             return MutationEffects.failure("operation-not-implemented", 501,
                 `Scheme '${schemeName}' does not implement EDIT.`, {},

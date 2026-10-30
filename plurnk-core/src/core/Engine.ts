@@ -246,6 +246,10 @@ export default class Engine {
         return this.#executors?.availableRuntimes(workspaceId) ?? [];
     }
 
+    get executors(): ExecutorRegistry | undefined {
+        return this.#executors;
+    }
+
     setExecutors(executors: ExecutorRegistry): void {
         this.#executors = executors;
     }
@@ -317,13 +321,18 @@ export default class Engine {
                     facet: scheme })),
                 ...schemes.map(({ name, facet, traits }) => ({
                     tag: name,
-                    manifest: OutputScheme.manifestFromRuntime({
-                        name,
-                        glyph: "🧩",
-                        channels: { results: "application/json" },
-                        defaultChannel: "results",
-                        traits,
-                    }),
+                    manifest: {
+                        ...OutputScheme.manifestFromRuntime({
+                            name,
+                            glyph: "🧩",
+                            channels: { readable: "text/markdown", results: "application/json" },
+                            defaultChannel: "body",
+                            traits,
+                        }),
+                        writableBy: ["_plurnk" as const],
+                        folderScopes: true,
+                        textEditScopes: true,
+                    },
                     owner,
                     facet,
                 })),
@@ -422,7 +431,7 @@ export default class Engine {
     ): ReturnType<TurnRunner["executeAdmittedTurn"]> {
         return this.#turnRunner.executeAdmittedTurn(args);
     }
-    referenceEntries(workspaceId: number): Promise<Array<{ pathname: string; content: string }>> {
+    referenceEntries(workspaceId: number): Promise<Array<{ scheme: "plurnk" | "mcp"; pathname: string; content: string }>> {
         return this.#packets.referenceEntries(workspaceId);
     }
 

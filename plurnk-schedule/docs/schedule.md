@@ -9,13 +9,14 @@ the loop without a rule.
 
 ## discover: read the time, preview a rule
 
-`discover` takes `{"source": "<rule text>"}` and returns one inert candidate.
-Its summary opens with the current time in the effective zone and previews
-the first occurrences; its definition carries the rule as it would be stored.
-Nothing is persisted.
+`discover` with `{}` tells the current time in the effective zone. With
+`{"rule": "<rule text>"}` it returns one inert candidate whose summary opens
+with the current time in the effective zone and previews the first occurrences,
+and whose definition carries the rule as it would be stored. Nothing is
+persisted.
 
-```plurnk (schedule) <!-- what time is it, and when would this fire -->
-{"verb": "discover", "source": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20"}
+```plurnk_schedule (discover) <!-- what time is it, and when would this fire -->
+{"rule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20"}
 ```
 
 ## add
@@ -23,8 +24,8 @@ Nothing is persisted.
 `add` persists the rule for this workspace and arms its next occurrence, if any.
 It is a host effect and requires approval.
 
-```plurnk (schedule)
-{"verb": "add", "alias": "daily", "definition": {"rule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20", "target": "session://exampleSessionName", "prompt": "Text delivered at each occurrence."}}
+```plurnk_schedule (add)
+{"alias": "daily", "rule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20", "target": "session://exampleSessionName", "prompt": "Text delivered at each occurrence."}
 ```
 
 - `rule`: bare `FREQ=…` parts, or a `DTSTART` line and an `RRULE` line. A

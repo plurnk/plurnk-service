@@ -84,7 +84,7 @@ for (const decision of ["auto", "accept", "reject"] as const) test(`{§op-method
         const db = await openMigrated();
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeRawMockResponse([
-                PlurnkParser.frame("plurnk (members)", JSON.stringify({ verb: "add", files: ["loose.md"] })),
+                PlurnkParser.frame("plurnk_members (add)", JSON.stringify({ files: ["loose.md"] })),
                 PlurnkParser.frame("READ (loose.md)", ""),
                 PlurnkParser.frame("NOTE", "Review the admitted file."),
             ].join("\n\n")),
@@ -248,7 +248,7 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
             if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
         });
         // The dispatched result and the completed JSON output report the same settlement.
-        const outputs = async () => (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "plurnk", prefix: "/%" })).length;
+        const outputs = async () => (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "plurnk_members", prefix: "/%" })).length;
         const accepted = async (program: string) => {
             const seen = proposals.length;
             const before = await outputs();
@@ -256,10 +256,10 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
             while (proposals.length === seen) await new Promise((resolve) => setTimeout(resolve, 5));
             await daemon.resolveProposal(proposals[seen], { decision: "accept" }, { workspaceId, address: TEST_OWNER });
             const result = await pending;
-            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after: before, timeoutMs: 60_000 }) as Receipt & { problem?: { type?: string; recovery?: string } };
+            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk_members", after: before, timeoutMs: 60_000 }) as Receipt & { problem?: { type?: string; recovery?: string } };
             return { result, outcome };
         };
-        const modelAdd = (...files: string[]) => accepted(`\`\`\`\`plurnk (members)\n${JSON.stringify({ verb: "add", files })}\n\`\`\`\``);
+        const modelAdd = (...files: string[]) => accepted(`\`\`\`\`plurnk_members (add)\n${JSON.stringify({ files })}\n\`\`\`\``);
         try {
             // {§functionality-replacement} — the surface: no replace, and the add and select inputs are the family's own.
             assert.deepEqual(
@@ -282,27 +282,30 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
             assert.deepEqual((await definitions())[0]?.definition, { glob: "docs/**", provenance: { kind: "service-configuration" } });
             assert.deepEqual((await definitions() as Array<{ provenance?: object }>)[0]?.provenance, { kind: "environment", source: "PLURNK_MEMBERS_docs" });
             await daemon.settleFunctionality(workspaceId);
-            // {§functionality-model-projection} — the tool schema teaches tracked-or-picked and the scope
-            // lattice beneath its generated verb list, from plurnk-core/docs/members.md.
-            const membersDoc = (await daemon.engine.referenceEntries(workspaceId)).find(({ pathname }) => pathname === "/_plurnk/tools/plurnk/members.json");
-            assert.ok(membersDoc, "the members tool schema is a reference entry");
-            const membersSchema = JSON.parse(membersDoc.content) as { description: string; properties: Record<string, unknown> };
-            assert.match(membersSchema.description, /## When a file you need is not a member/u, "the body teaches the recovery when a file is not a member");
-            assert.match(membersSchema.description, /PLURNK_SERVICE_MEMBERS_MODEL_SCOPE/u, "the body names the scope ceiling");
-            assert.doesNotMatch(membersSchema.description, /git add/u, "no recovery asks the model to change the repository");
-            assert.ok(Object.hasOwn(membersSchema.properties, "files"), "the schema teaches the family's own add input");
-            assert.ok(Object.hasOwn(membersSchema.properties, "file"), "and its select input");
-            assert.doesNotMatch(membersDoc.content, /replace/u, "the family serves no replace, so nothing teaches one");
-            assert.ok(membersSchema.description.indexOf("## Verbs") < membersSchema.description.indexOf("## What makes a file visible"), "the generated verb list precedes the authored body");
+            // {§functionality-model-projection} — the tool doc and schema teach tracked-or-picked and the scope
+            // lattice alongside the generated verb tools, from plurnk-core/docs/members.md.
+            const refs = await daemon.engine.referenceEntries(workspaceId);
+            const membersDoc = refs.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk_members.md");
+            const membersAddDoc = refs.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk_members/add.json");
+            const membersEnableDoc = refs.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk_members/enable.json");
+            assert.ok(membersDoc && membersAddDoc && membersEnableDoc, "the members tool doc and verb schemas are reference entries");
+            assert.match(membersDoc.content, /## When a file you need is not a member/u, "the body teaches the recovery when a file is not a member");
+            assert.match(membersDoc.content, /PLURNK_SERVICE_MEMBERS_MODEL_SCOPE/u, "the body names the scope ceiling");
+            assert.doesNotMatch(membersDoc.content, /git add/u, "no recovery asks the model to change the repository");
+            const membersAddSchema = JSON.parse(membersAddDoc.content) as { properties: Record<string, unknown> };
+            const membersEnableSchema = JSON.parse(membersEnableDoc.content) as { properties: Record<string, unknown> };
+            assert.ok(Object.hasOwn(membersAddSchema.properties, "files"), "the add schema teaches the family's own add input");
+            assert.ok(Object.hasOwn(membersEnableSchema.properties, "file"), "and its select input");
+            assert.doesNotMatch(membersDoc.content, /plurnk_members \(replace\)/u, "the family serves no replace, so nothing teaches one");
 
             assert.equal(await memberOf(db, workspaceId, "docs/guide.md"), true, "an enabled service definition projects onto the overlay");
             assert.ok((await rows(db, workspaceId)).includes("include docs/** members"), "a human-authored definition projects with source members");
             assert.deepEqual((await definitions())[0]?.detail, { effect: "include", pattern: "docs/**", matched: 1, files: ["docs/guide.md"], ignored: 0 });
             // {§tools-resource-materialization} — the document is named by the glob, percent-encoded as one segment.
-            await operate("````READ (workspace:///_plurnk/members/docs%2F%2A%2A.md) <1,-1>````");
+            await operate("````READ (plurnk:///members/docs%2F%2A%2A.md) <1,-1>````");
             const doc = (await db.engine_list_workspace_entries.all<{ scheme: string; pathname: string; channel: string; content: string }>({ workspace_id: workspaceId }))
-                .find((row) => row.scheme === "workspace" && row.pathname === "/_plurnk/members/docs%2F%2A%2A.md" && row.channel === "body");
-            assert.ok(doc !== undefined, "an enabled definition is one generated document under workspace:///_plurnk/members/");
+                .find((row) => row.scheme === "plurnk" && row.pathname === "/members/docs%2F%2A%2A.md" && row.channel === "body");
+            assert.ok(doc !== undefined, "an enabled definition is one generated document under plurnk:///members/");
             assert.match(doc.content, /^# `docs\/\*\*`\n\n## Summary\n\ninclude `docs\/\*\*` → 1 file\n/u, "the document summary is what the glob resolved to");
             assert.match(doc.content, /\| origin \| service \|/u);
 
@@ -509,8 +512,8 @@ test("{§tools-resource-materialization} {§fs-namespace} a glob spelled absolut
         try {
             const operate = (program: string) => modelOperation(daemon, db, { workspaceId, sessionId: model, statement: parseOne(program) });
             const files = places.flatMap(({ dir, key }) => [`${key}/relative.md`, join(dir, "absolute.md"), `${key}/excluded.md`, `!${join(dir, "excluded.md")}`]);
-            await operate(`\`\`\`\`plurnk (members)\n${JSON.stringify({ verb: "add", files })}\n\`\`\`\``);
-            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after: 0, timeoutMs: 30_000 }) as Receipt;
+            await operate(`\`\`\`\`plurnk_members (add)\n${JSON.stringify({ files })}\n\`\`\`\``);
+            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk_members", after: 0, timeoutMs: 30_000 }) as Receipt;
             assert.equal(outcome.status, 201);
             await daemon.settleFunctionality(workspaceId);
             for (const { dir, key } of places) {

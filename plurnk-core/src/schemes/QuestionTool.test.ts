@@ -21,7 +21,7 @@ const args = (overrides: Partial<ExecArgs>): ExecArgs => ({
 });
 
 test("{§question-tool}: the registered tool declaration shapes the auto-generated doc", () => {
-    assert.equal(questionRegisteredTool.target, "question");
+    assert.equal(questionRegisteredTool.target, "ask");
     assert.match(questionRegisteredTool.summary, /Ask the user/);
     assert.ok(questionRegisteredTool.invocation.inputSchema !== undefined, "the invocation carries its input schema");
     assert.match(questionRegisteredTool.details ?? "", /message|requestedSchema/, "the doc teaches the standard field vocabulary");

@@ -53,7 +53,7 @@ export default class FileAddress {
         const beyond = projectRoot !== null && (key === ".." || key.startsWith("../"));
         const bare = beyond ? FileAddress.#absolute(key, projectRoot) : Namespace.literalSpelling(key);
         const ambiguous = /[#<\p{Cc}]|%2[89]/iu.test(bare) || bare.trim() !== bare
-            || /^[a-z][a-z0-9+.-]*:\/\//iu.test(bare)
+            || /^[a-z][a-z0-9+._-]*:\/\//iu.test(bare)
             || PathSyntax.hasGlob(bare);
         if (!ambiguous) return PathSyntax.escapeTarget(PathSyntax.encodeParens(bare));
         if (projectRoot === null) throw new TypeError("Rendering this file address requires its project root.");

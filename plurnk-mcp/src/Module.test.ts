@@ -156,8 +156,8 @@ for (const cleanupFails of [false, true]) {
         const close = ServerConnection.prototype.close;
         t.mock.method(ServerConnection.prototype, "close", async function (this: ServerConnection) {
             await close.call(this);
-            if (this.definition.name === "c") { closing.resolve(); await finish.promise; }
-            if (this.definition.name === "b" && cleanupFails && !cleanupFailed) {
+            if (this.alias === "c") { closing.resolve(); await finish.promise; }
+            if (this.alias === "b" && cleanupFails && !cleanupFailed) {
                 cleanupFailed = true;
                 throw cleanup;
             }
@@ -494,7 +494,8 @@ test("{§mcp-setup} a catalog change rebuilds the executor on the connection the
         const first = await h.lane(1, new Map([["a", definition]]));
         assert.deepEqual(h.inService(1), ["a"]);
         assert.deepEqual(first.runtimes[0]?.decl.summary, { from: "tools", description: "Echo tools for transport testing." });
-        assert.equal(first.runtimes[0]?.decl.details, instructions);
+        const expectedDetails = `Server catalog: \`a:///\` (\`a:///resources\`, \`a:///prompts\`).\n\n${instructions}`;
+        assert.equal(first.runtimes[0]?.decl.details, expectedDetails);
         const connectStarts = (await readFile(started, "utf8")).trim().split("\n").filter((line) => line.length > 0).length;
         assert.ok(connectStarts >= 1 && connectStarts <= 2, `connect starts the real server and at most the SDK's probe sibling; got ${connectStarts}`);
         // The notification arrives ~150ms after connect; the scheduled refresh re-prepares the session.
@@ -504,7 +505,7 @@ test("{§mcp-setup} a catalog change rebuilds the executor on the connection the
         }
         assert.notEqual(h.snapshots.get(1)?.prepared, first, "the catalog change drove a refresh");
         assert.deepEqual(h.inService(1), ["a"], "the alias stays in service");
-        assert.equal(h.snapshots.get(1)?.prepared?.runtimes[0]?.decl.details, instructions, "catalog refresh retains the complete on-demand instructions");
+        assert.equal(h.snapshots.get(1)?.prepared?.runtimes[0]?.decl.details, expectedDetails, "catalog refresh retains the complete on-demand instructions");
         // Connect starts the SDK's disposable probe sibling and then the real server; a refresh
         // on the held connection starts nothing more, and never closes the committed server.
         const pids = (await readFile(started, "utf8")).trim().split("\n").filter((line) => line.length > 0).map((line) => line.split(" ")[0]);
@@ -555,8 +556,8 @@ test("{§mcp-configuration} direct servers use workspace-owned state and retain 
     const h = harness();
     await h.setup();
     try {
-        const definition = { name: "added", type: "stdio", command: process.execPath, args: [fixture] };
-        const admitted = await h.adapter().admit({ definition }, h.identity(1));
+        const definition = { type: "stdio", command: process.execPath, args: [fixture] };
+        const admitted = await h.adapter().admit({ alias: "added", ...definition }, h.identity(1));
         assert.deepEqual(admitted, { alias: "added", definition });
         for (const workspaceId of [1, 2]) {
             const prepared = await h.lane(workspaceId, new Map([["added", admitted.definition]]));
@@ -574,18 +575,19 @@ test("{§mcp-server-definition} add admits a complete connection without install
     const h = harness();
     await h.setup();
     try {
-        const admit = (definition: object, alias?: string) => h.adapter().admit({ definition, ...(alias === undefined ? {} : { alias }) }, h.identity(1));
-        const refused = (definition: object, code: string, alias?: string) => rejectsManagementProblem(() => admit(definition, alias), code, 400);
-        await refused({ name: "echo", type: "stdio", command: "node" }, "alias-mismatch", "other");
-        await refused({ name: "echo", scope: "project", type: "stdio", command: "node" }, "definition-invalid");
-        await refused({ name: "echo", plugin: {}, type: "stdio", command: "node" }, "definition-invalid");
-        await refused({ name: "echo", transport: "stdio", command: "node" }, "definition-invalid");
+        const admit = (definition: object, alias = "echo") => h.adapter().admit({ alias, ...definition }, h.identity(1));
+        const refused = (definition: object, code: string, alias = "echo") => rejectsManagementProblem(() => admit(definition, alias), code, 400);
+        await refused({ type: "stdio", command: "node" }, "alias-required", "");
+        await refused({ name: "echo", type: "stdio", command: "node" }, "definition-invalid");
+        await refused({ plugin: {}, type: "stdio", command: "node" }, "definition-invalid");
+        await refused({ transport: "stdio", command: "node" }, "definition-invalid");
         for (const command of ["node", "./bin/server", "/usr/bin/node"]) {
-            const definition = { name: "echo", type: "stdio", command };
+            const definition = { type: "stdio", command };
             assert.deepEqual(await admit(definition), { alias: "echo", definition });
+            assert.deepEqual(await admit({ command }), { alias: "echo", definition });
         }
         const remote = httpServer("remote", "https://mcp.example.test/mcp");
-        assert.deepEqual(await admit(remote), { alias: "remote", definition: remote });
+        assert.deepEqual(await admit(remote, "remote"), { alias: "remote", definition: remote });
     } finally { await h.module.stop(); }
 });
 
@@ -614,7 +616,7 @@ test("{§mcp-module} discover searches the registry by query and offers each ser
         assert.deepEqual(await h.adapter().discover!({ query: "example" }, h.identity(1)), [{
             alias: "example-server",
             summary: "Search the example index. — npx -y @example/server@1.2.3",
-            definition: { name: "example-server", type: "stdio", command: "npx", args: ["-y", "@example/server@1.2.3"] },
+            definition: { type: "stdio", command: "npx", args: ["-y", "@example/server@1.2.3"] },
             provenance: { kind: "registry", source: url, reference: "io.github.example/example-server@1.2.3" },
         }]);
         assert.deepEqual(requests, ["/v0.1/servers?search=example&version=latest&limit=5"]);
@@ -666,7 +668,7 @@ test("{§mcp-configuration} plugin stdio interpretation is literal except for th
     const ctx = { root: join(directory, "plugin"), data: join(directory, "data") };
     await mkdir(ctx.root);
     const source = {
-        name: "tool", type: "stdio" as const, command: "./bin/tool", cwd: "${PLUGIN_DATA}",
+        type: "stdio" as const, command: "./bin/tool", cwd: "${PLUGIN_DATA}",
         args: ["${PLUGIN_ROOT}", "${PLUGIN_DATA}", "${SECRET}", "${PLUGIN_ROOT}/${PLUGIN_ROOT}"],
         env: { SAMPLE: "${PLUGIN_DATA}", LITERAL: "${SECRET}" },
     };
@@ -678,8 +680,8 @@ test("{§mcp-configuration} plugin stdio interpretation is literal except for th
     });
     await PluginConfiguration.prepare(source, ctx);
     await access(ctx.data);
-    assert.equal(PluginConfiguration.resolve({ name: "tool", type: "stdio", command: "node" }, ctx).cwd, ctx.root);
-    assert.equal(PluginConfiguration.resolve({ name: "tool", type: "stdio", command: "${COMMAND}" }, ctx).command, "${COMMAND}");
+    assert.equal(PluginConfiguration.resolve({ type: "stdio", command: "node" }, ctx).cwd, ctx.root);
+    assert.equal(PluginConfiguration.resolve({ type: "stdio", command: "${COMMAND}" }, ctx).command, "${COMMAND}");
 });
 
 test("{§mcp-configuration} plugin paths are checked at launch without interpreting opaque arguments", async (t) => {
@@ -688,7 +690,7 @@ test("{§mcp-configuration} plugin paths are checked at launch without interpret
     const ctx = { root: join(directory, "plugin"), data: join(directory, "data") };
     await mkdir(ctx.root);
     await mkdir(ctx.data);
-    const source = { name: "tool", type: "stdio" as const, command: "node", args: ["../../opaque"], env: { OPAQUE: "../../opaque" } };
+    const source = { type: "stdio" as const, command: "node", args: ["../../opaque"], env: { OPAQUE: "../../opaque" } };
     await PluginConfiguration.prepare(source, ctx);
     for (const cwd of ["./../outside", "${PLUGIN_ROOT}/../outside", "${PLUGIN_DATA}/../outside"]) {
         await assert.rejects(PluginConfiguration.prepare({ ...source, cwd }, ctx), /cwd resolves outside/u);
@@ -779,7 +781,7 @@ test("{§mcp-open-work} workspace-scoped definitions cannot bind another workspa
     try {
         await rejectsManagementProblem(
             () => h.adapter().admit(
-                { definition: { ...stdio("escape"), plurnkWorkspace: "workspace-2" } },
+                { alias: "escape", ...stdio("escape"), plurnkWorkspace: "workspace-2" },
                 h.identity(1),
             ),
             "workspace-scope-forbidden",
@@ -787,7 +789,7 @@ test("{§mcp-open-work} workspace-scoped definitions cannot bind another workspa
         );
         await rejectsManagementProblem(
             () => h.adapter().admit(
-                { definition: { ...stdio("wildcard"), plurnkWorkspace: "*" } },
+                { alias: "wildcard", ...stdio("wildcard"), plurnkWorkspace: "*" },
                 h.identity(1),
             ),
             "workspace-scope-forbidden",
@@ -795,7 +797,7 @@ test("{§mcp-open-work} workspace-scoped definitions cannot bind another workspa
         );
         const sameWorkspace = { ...stdio("local"), plurnkWorkspace: "workspace-1", plurnkSession: "chat" };
         assert.deepEqual(
-            await h.adapter().admit({ definition: sameWorkspace }, h.identity(1)),
+            await h.adapter().admit({ alias: "local", ...sameWorkspace }, h.identity(1)),
             { alias: "local", definition: sameWorkspace },
         );
 

@@ -26,7 +26,6 @@ const expectedProfile = {
     PLURNK_SERVICE_ROOTS: "project",
     // {§credential-authority} — a gate daemon authenticates nothing; the operator's secret never reaches it.
     PLURNK_AUTH: "0",
-    PLURNK_MCP_EXPANDED: "[]",
     PLURNK_MCP_ENABLED: "0",
     PLURNK_SCHEDULE_ENABLED: "0",
 };

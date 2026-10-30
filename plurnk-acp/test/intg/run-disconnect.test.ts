@@ -47,6 +47,8 @@ test(
         const streamWriting = Promise.withResolvers<void>();
         const streamConcluded = Promise.withResolvers<{ sessionId: number; result: OperationResult }>();
         const off = application.subscribeToEvents((_workspace, method, params) => {
+            const target = (params as { target?: unknown }).target;
+            if (typeof target !== "string" || !target.startsWith("sh://")) return;
             if (method === "stream/event" && (params as { contentLength: number }).contentLength > 0) {
                 streamWriting.resolve();
             }

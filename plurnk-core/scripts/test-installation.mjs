@@ -603,7 +603,7 @@ const readPackedCapabilityDocs = async () => {
         return new Map(
             skillDb.installation_select_capability_docs.all()
                 .filter(({ workspace_id }) => workspace_id === dormantWorkspaceId)
-                .map(({ pathname, content }) => [pathname, content]),
+                .map(({ scheme, pathname, content }) => [`${scheme}://${pathname}`, content]),
         );
     } finally {
         skillDb.close();
@@ -620,8 +620,8 @@ const mcpFixture = resolve(import.meta.dirname, "../../plurnk-mcp/test/fixtures/
 const dormantMcpEnv = {
     PLURNK_SERVICE_DB_PATH: packedSkillDb,
     PLURNK_MCP_ENABLED: "1",
-    PLURNK_MCP_broken: JSON.stringify({ name: "broken", type: "stdio", command: "./missing-mcp-server" }),
-    PLURNK_MCP_echo: JSON.stringify({ name: "echo", type: "stdio", command: "node", args: [mcpFixture], env: { PLURNK_MCP_TEST_START_MARKER: mcpStartMarker } }),
+    PLURNK_MCP_broken: JSON.stringify({ type: "stdio", command: "./missing-mcp-server" }),
+    PLURNK_MCP_echo: JSON.stringify({ type: "stdio", command: "node", args: [mcpFixture], env: { PLURNK_MCP_TEST_START_MARKER: mcpStartMarker } }),
 };
 const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
     const before = markerCount(mcpStartMarker);
@@ -750,7 +750,7 @@ ok(
     "the packed daemon reads the unchanged installed SKILL.md through its skill authority",
 );
 ok(
-    packedSkills.get("/_plurnk/skills/find-skills.md") === undefined,
+    packedSkills.get("plurnk:///skills/find-skills.md") === undefined,
     "no bundled discovery skill is materialized into the packed Session",
 );
 ok(
@@ -760,7 +760,7 @@ ok(
     "the packed daemon discovers the skill and description through ordinary FIND",
 );
 ok(
-    packedSkills.get("/_plurnk/tools/plurnk/skills.json")?.includes("plurnk (skills)") === true,
+    packedSkills.get("mcp:///plurnk_skills.md")?.includes("plurnk_skills (add)") === true,
     "the packed Session learns Skills management from the generated family tool, not a bundled skill",
 );
 const startsAfterActivation = markerCount(mcpStartMarker);

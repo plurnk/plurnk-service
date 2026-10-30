@@ -9,8 +9,8 @@ session's overrides. `list` shows the effective values and their origins.
 reach every session's commands and newly started MCP servers, without depending
 on which session starts them:
 
-```plurnk (env)
-{"verb":"add","scope":"workspace","alias":"NODE_ENV","definition":{"value":"production"}}
+```plurnk_env (add)
+{"scope":"workspace","alias":"NODE_ENV","value":"production"}
 ```
 
 Omitting `scope` selects your session. Its overrides do not configure shared MCPs.
@@ -20,12 +20,12 @@ existing environment.
 ## Your entries
 
 `add` declares and enables one variable for every command you run from now on. The name is the
-alias, `{ "value": "…" }` the definition, used verbatim: no interpolation, no
+alias, `value` the exact string, used verbatim: no interpolation, no
 escapes. It persists until you `remove` it. This is a registry, not a prefix —
 `CARGO_TARGET_DIR=/tmp/x cargo build` sets a value for one command; `add` sets
 it for all of them.
 
-`replace` takes the same `{alias, definition}` to change a value, retaining its
+`replace` takes the same `{alias, value}` to change a value, retaining its
 enabledness. A new name is created enabled. Both verbs accept workspace scope.
 
 `disable` withdraws a name from your commands while keeping the entry listed;
@@ -62,7 +62,7 @@ not the command's lifetime.
 Plurnk configuration belongs in the environment cascade;
 READ `skill://plurnk/.env.defaults` for its reference. An MCP definition can
 explicitly bind an operator credential without adding it to every command's
-environment; READ `workspace:///_plurnk/tools/plurnk/mcp.json` for that setup.
+environment; READ `mcp:///plurnk_mcp.md` for that setup.
 
 ## Finding a name
 

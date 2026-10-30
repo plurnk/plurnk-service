@@ -18,6 +18,7 @@ import { type Notice,
     type JsonSchema,
     type WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
+import type { RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
 import type { ContainedConfiguration, DaemonModule, FunctionalitySeam, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
@@ -29,9 +30,9 @@ import ServerConnection, {
 import { SkillVerificationError } from "@modelcontextprotocol/client/ext/skills";
 import { computeSkillCommit, fetchVerifiedSkillFiles } from "./skills.ts";
 import {
+    SERVER_NAME,
     configuredDefinitions,
     connectTimeoutMs,
-    expandedServerNames,
     retryDelayMs,
     retryPacing,
     registrySettings,
@@ -51,7 +52,8 @@ import {
     type StartSeam,
 } from "./openWork.ts";
 import { RegistryError, registryEntries, searchRegistry, type RegistryServer } from "./registry.ts";
-import McpExecutor, { runtimeDecl, runtimeServerSummary } from "./McpExecutor.ts";
+import McpExecutor, { runtimeDecl, runtimeDetails, runtimeServerSummary } from "./McpExecutor.ts";
+import McpFamilyResources from "./McpFamilyResources.ts";
 import McpResources from "./McpResources.ts";
 import type { OAuthGrant } from "./oauth.ts";
 import {
@@ -109,7 +111,7 @@ interface Registry {
 // {§module-seam-slices} — the slices this module uses.
 type SetupSeam = Pick<ModuleSetupSeam,
     "workspacePaths" | "operatorEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "registerModuleAction">
-    & FunctionalitySeam<RuntimeRegistration> & WorkspacePluginsSeam;
+    & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet> & WorkspacePluginsSeam;
 
 export default class Module implements DaemonModule<SetupSeam> {
     readonly #env: NodeJS.ProcessEnv;
@@ -175,10 +177,12 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#handle = seam.registerFunctionalityAdapter<McpServerDefinition, Snapshot>({
             family: FAMILY,
             namespaceOwner: OWNER,
-            summary: "Manage MCP servers; active servers run as <alias> (<tool>) and publish workspace:///_plurnk/tools/<alias>.md",
+            summary: "Manage MCP servers",
+            aliasPattern: SERVER_NAME,
             definitionSchema: MCP_DEFINITION,
-            example: { alias: "example-server", definition: { name: "example-server", type: "stdio", command: "npx", args: ["-y", "example-mcp-server@1.0.0"] } },
+            example: { alias: "example-server", type: "stdio", command: "npx", args: ["-y", "example-mcp-server@1.0.0"] },
             docsDir: fileURLToPath(new URL("..", import.meta.url)),
+            scheme: new McpFamilyResources(() => this.#handleOrThrow()),
             ...(registry === null ? {} : {
                 discovery: {
                     inputs: ["query"],
@@ -254,8 +258,8 @@ export default class Module implements DaemonModule<SetupSeam> {
         let workspaces = await seam.listWorkspaces({ hidden: false });
         const needsBootstrapWorkspace = envDefs.some((entry) => {
             try {
-                return rawWorkspaceBinding(entry.definition, this.#env) !== undefined
-                    || rawSessionBinding(entry.definition, this.#env) !== undefined;
+                return rawWorkspaceBinding(entry.alias, entry.definition, this.#env) !== undefined
+                    || rawSessionBinding(entry.alias, entry.definition, this.#env) !== undefined;
             } catch {
                 return false;
             }
@@ -289,8 +293,8 @@ export default class Module implements DaemonModule<SetupSeam> {
             let rawWs: string | readonly string[] | undefined;
             let rawSess: string | undefined;
             try {
-                rawWs = rawWorkspaceBinding(entry.definition, this.#env);
-                rawSess = rawSessionBinding(entry.definition, this.#env);
+                rawWs = rawWorkspaceBinding(entry.alias, entry.definition, this.#env);
+                rawSess = rawSessionBinding(entry.alias, entry.definition, this.#env);
             } catch {
                 continue;
             }
@@ -323,7 +327,6 @@ export default class Module implements DaemonModule<SetupSeam> {
     }
 
     async #available(identity: WorkspaceCapabilityIdentity): ReturnType<typeof configuredDefinitions> {
-        expandedServerNames(this.#env);
         const { workspaceId } = identity;
         const notices: Notice[] = [];
         this.#configurationNotices.set(workspaceId, notices);
@@ -343,7 +346,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         );
         this.#operatorAliases.set(workspaceId, operatorAliases);
         return definitions.map((entry) => {
-            if (operatorAliases.has(entry.alias) && !matchesWorkspaceBinding(entry.definition, this.#env, workspaceName)) {
+            if (operatorAliases.has(entry.alias) && !matchesWorkspaceBinding(entry.alias, entry.definition, this.#env, workspaceName)) {
                 return { ...entry, enabled: false };
             }
             return entry;
@@ -370,7 +373,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         return servers.flatMap(registryEntries).map((found): FunctionalityCandidate => ({
             alias: found.alias,
             summary: found.summary,
-            definition: readDefinition({ name: found.alias, ...structuredClone(found.entry) }),
+            definition: readDefinition(structuredClone(found.entry), found.alias),
             provenance: { kind: "registry", source: url, reference: found.reference },
         }));
     }
@@ -378,22 +381,22 @@ export default class Module implements DaemonModule<SetupSeam> {
     // {§mcp-server-definition} Live additions use the same schema as configured definitions.
     async #admit(input: unknown, identity?: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource<McpServerDefinition>> {
         const params = objectOf(input) ?? {};
+        if (typeof params.alias !== "string" || params.alias.length === 0) {
+            throw actionError("alias-required", 400, "MCP server definition needs an alias.", { retryable: false });
+        }
+        const { alias, scope: _scope, ...rawDefinition } = params;
         let definition: McpServerDefinition;
         try {
-            definition = readDefinition(params.definition);
+            definition = readDefinition(rawDefinition, alias);
         } catch (cause) {
             throw actionError("definition-invalid", 400, "The MCP server definition is invalid.", { retryable: false }, cause);
-        }
-        const alias = typeof params.alias === "string" ? params.alias : definition.name;
-        if (alias !== definition.name) {
-            throw actionError("alias-mismatch", 400, `Alias '${alias}' must equal the definition's name '${definition.name}'.`, { alias, name: definition.name, retryable: false });
         }
         if (identity !== undefined && definition.plurnkWorkspace !== undefined) {
             const [{ workspaceName }, environment] = await Promise.all([
                 this.#paths(identity.workspaceId),
                 this.#workspaceEnvironment(identity.workspaceId),
             ]);
-            assertWorkspaceDefinitionScope(definition, workspaceName, environment(this.#env));
+            assertWorkspaceDefinitionScope(alias, definition, workspaceName, environment(this.#env));
         }
         return { alias, definition };
     }
@@ -443,16 +446,16 @@ export default class Module implements DaemonModule<SetupSeam> {
         oauthRedirectUrl?: string,
         signal?: AbortSignal,
     ): Promise<Attachment> {
-        const { definition, context } = binding;
+        const { alias, definition, context } = binding;
         signal?.throwIfAborted();
         this.#assertOpen();
         // {§mcp-configuration} — the operator's settings for this alias; a bad one isolates this server.
         let settings: ToolPolicy;
         try {
-            settings = serverSettings(definition.name, this.#env);
+            settings = serverSettings(alias, this.#env);
         } catch (cause) {
-            throw actionError("server-settings-invalid", 422, `MCP server '${definition.name}' has invalid operator settings: ${cause instanceof Error ? cause.message : String(cause)}`, {
-                server: definition.name, retryable: false,
+            throw actionError("server-settings-invalid", 422, `MCP server '${alias}' has invalid operator settings: ${cause instanceof Error ? cause.message : String(cause)}`, {
+                server: alias, retryable: false,
             }, cause);
         }
         let candidate = connection;
@@ -465,7 +468,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             // workspace layer, as every MCP client launches one; the model's command ceiling is not its base.
             const needsDefaultCwd = candidate === undefined && definition.type === "stdio" && definition.cwd === undefined && context === undefined;
             const needsStateDir = needsDefaultCwd || (candidate === undefined && JSON.stringify(definition).includes("${PLURNK_STATE_DIR}"));
-            const stateDir = needsStateDir ? await this.#stateDirectory(workspaceId, `${OWNER}/${definition.name}`) : undefined;
+            const stateDir = needsStateDir ? await this.#stateDirectory(workspaceId, `${OWNER}/${alias}`) : undefined;
             const cwd = needsDefaultCwd ? stateDir : undefined;
             signal?.throwIfAborted();
             this.#assertOpen();
@@ -475,26 +478,27 @@ export default class Module implements DaemonModule<SetupSeam> {
             const workspaceEnv = environment(this.#env);
             let workspaceSettings: ToolPolicy;
             try {
-                workspaceSettings = serverSettings(definition.name, workspaceEnv);
+                workspaceSettings = serverSettings(alias, workspaceEnv);
             } catch (cause) {
-                throw actionError("server-settings-invalid", 422, `MCP server '${definition.name}' has invalid settings: ${cause instanceof Error ? cause.message : String(cause)}`, {
-                    server: definition.name, retryable: false,
+                throw actionError("server-settings-invalid", 422, `MCP server '${alias}' has invalid settings: ${cause instanceof Error ? cause.message : String(cause)}`, {
+                    server: alias, retryable: false,
                 }, cause);
             }
             let serverBinding: ServerBinding;
             try {
                 serverBinding = resolveServerBinding({
+                    alias,
                     definition,
                     workspaceSettings,
                     operatorSettings: settings,
-                    operatorScoped: this.#operatorAliases.get(workspaceId)?.has(definition.name) ?? false,
+                    operatorScoped: this.#operatorAliases.get(workspaceId)?.has(alias) ?? false,
                     workspaceName,
                     expansionEnv: workspaceEnv,
                 });
             } catch (cause) {
                 if (cause instanceof ModuleActionError) throw cause;
-                throw actionError("server-settings-invalid", 422, `MCP server '${definition.name}' has invalid binding settings: ${cause instanceof Error ? cause.message : String(cause)}`, {
-                    server: definition.name, retryable: false,
+                throw actionError("server-settings-invalid", 422, `MCP server '${alias}' has invalid binding settings: ${cause instanceof Error ? cause.message : String(cause)}`, {
+                    server: alias, retryable: false,
                 }, cause);
             }
             const syntheticContext = {
@@ -506,13 +510,14 @@ export default class Module implements DaemonModule<SetupSeam> {
             let schemeRef: McpResources | undefined;
             const grant = oauthRedirectUrl === undefined ? this.#grantFor(workspaceId, binding) : undefined;
             candidate ??= new ServerConnection(definition, withSyntheticEnv(workspaceEnv, syntheticContext), {
+                alias,
                 ...(oauthRedirectUrl === undefined ? {} : { oauthRedirectUrl }),
                 ...(grant === undefined ? {} : { oauthGrant: grant }),
                 ...(cwd === undefined ? {} : { cwd }),
                 ...(context === undefined ? {} : { plugin: context }),
                 resident: serverBinding.resident,
                 sample: (params, reqSignal) => this.#openWork.sample({
-                    server: definition.name,
+                    server: alias,
                     binding: serverBinding,
                     params,
                     signal: reqSignal,
@@ -523,29 +528,29 @@ export default class Module implements DaemonModule<SetupSeam> {
                 environment: withSyntheticEnv(environment(this.#operatorEnvironment()), syntheticContext),
                 onCatalogChanged: (error) => {
                     if (error !== null) {
-                        console.error(`MCP server '${definition.name}' catalog refresh failed:`, error);
+                        console.error(`MCP server '${alias}' catalog refresh failed:`, error);
                         return;
                     }
                     if (this.#closed) return;
-                    this.#dirty.set(this.#pendingKey(workspaceId, definition.name), Symbol());
-                    this.#scheduleCatalogRefresh(workspaceId, definition.name);
+                    this.#dirty.set(this.#pendingKey(workspaceId, alias), Symbol());
+                    this.#scheduleCatalogRefresh(workspaceId, alias);
                 },
                 onInfrastructureError: (error) => {
-                    console.error(`MCP server '${definition.name}' infrastructure failure:`, error);
+                    console.error(`MCP server '${alias}' infrastructure failure:`, error);
                 },
                 onAuthorizationRequired: () => {
-                    const key = this.#pendingKey(workspaceId, definition.name);
+                    const key = this.#pendingKey(workspaceId, alias);
                     if (this.#closed || this.#challenged.has(key)) return;
                     this.#challenged.add(key);
                     this.#dirty.set(key, Symbol());
-                    this.#scheduleCatalogRefresh(workspaceId, definition.name);
+                    this.#scheduleCatalogRefresh(workspaceId, alias);
                 },
             });
             this.#connections.add(candidate);
             const callerMeta = (wsId: number, sessId: number) =>
                 this.#openWork.resolveCallerMeta(wsId, sessId, workspaceName);
             const executor = new McpExecutor(
-                { runtime: definition.name, glyph: "🔌" },
+                { runtime: alias, glyph: "🔌" },
                 candidate,
                 () => this.#retain(workspaceId),
                 { tools: workspaceSettings.tools ?? settings.tools },
@@ -554,7 +559,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             const availability = await executor.requireAvailable(signal);
             signal?.throwIfAborted();
             const scheme = new McpResources(
-                definition.name,
+                alias,
                 candidate,
                 executor.catalog,
                 callerMeta,
@@ -562,6 +567,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             );
             schemeRef = scheme;
             return {
+                alias,
                 ...(context === undefined ? {} : { context }),
                 kind: "active",
                 definition,
@@ -571,10 +577,9 @@ export default class Module implements DaemonModule<SetupSeam> {
                 runtime: {
                     namespaceOwner: OWNER,
                     decl: runtimeDecl(
-                        definition.name,
-                        runtimeServerSummary(definition.name, executor.catalog),
-                        expandedServerNames(this.#env).includes(definition.name),
-                        executor.catalog.instructions,
+                        alias,
+                        runtimeServerSummary(alias, executor.catalog),
+                        runtimeDetails(alias, executor.catalog),
                     ),
                     executor,
                     availability,
@@ -585,6 +590,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             const elapsedMs = Math.round(performance.now() - started);
             if (!signal?.aborted && cause instanceof AuthorizationRequiredError && candidate !== undefined) {
                 return {
+                    alias,
                     ...(context === undefined ? {} : { context }),
                     kind: "authorization-required",
                     definition,
@@ -605,7 +611,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 throw signal.reason;
             }
             if (cause instanceof ModuleActionError && closeCause === undefined) throw cause;
-            throw preparationError(definition, definition.type === "streamable-http" ? definition.authorization : undefined, cause, closeCause, {
+            throw preparationError(alias, definition, definition.type === "streamable-http" ? definition.authorization : undefined, cause, closeCause, {
                 elapsedMs,
                 timeoutMs: connectTimeoutMs(this.#env),
                 ...(isClientCredentialsRejection(cause) ? {} : candidate?.preparationDiagnostic(cause)),
@@ -626,7 +632,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         const previous = preparation.previous ?? new Map<string, Attachment>();
         for (const [name, attachment] of previous) {
             const next = enabled.get(name);
-            const nextDefinition = next === undefined ? undefined : bindingOf(next);
+            const nextDefinition = next === undefined ? undefined : bindingOf(name, next);
             if (nextDefinition === undefined || force === name || !sameBinding(attachment, nextDefinition)) {
                 const activeRequests = attachmentConnection(attachment)?.activeRequests ?? 0;
                 if (activeRequests > 0) throw actionError(
@@ -648,7 +654,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             // workspace waits for its slowest server, not for the sum of them.
             const plans = [...enabled].map(([name, value]) => {
                 const key = this.#pendingKey(workspaceId, name);
-                const binding = bindingOf(value);
+                const binding = bindingOf(name, value);
                 const existing = previous.get(name);
                 const pending = this.#pending.get(key);
                 const heldConnection = existing === undefined ? undefined : attachmentConnection(existing);
@@ -696,7 +702,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                         if (signal.aborted) throw cause;
                         this.#assertOpen();
                         if (failure === "reject") throw cause;
-                        const refusal = cause instanceof ModuleActionError ? cause : preparationError(plan.binding.definition, undefined, cause);
+                        const refusal = cause instanceof ModuleActionError ? cause : preparationError(plan.name, plan.binding.definition, undefined, cause);
                         console.error(`MCP server '${plan.name}' unavailable: ${refusal.problem.detail}`, refusal.cause ?? refusal);
                         return { ...plan.binding, kind: "unavailable", problem: structuredClone(refusal.problem) };
                     }
@@ -777,6 +783,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                     const key = this.#pendingKey(workspaceId, name);
                     if (this.#pending.has(key)) continue;
                     const pending: PendingAuthorization = {
+                        alias: attachment.alias,
                         definition: attachment.definition,
                         ...(attachment.context === undefined ? {} : { context: attachment.context }),
                         connection: attachment.connection,
@@ -949,7 +956,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 { server, retryable: false },
             );
         }
-        const attachment = await this.#prepareAttachment(workspaceId, bindingOf(entry));
+        const attachment = await this.#prepareAttachment(workspaceId, bindingOf(server, entry));
         try {
             if (attachment.kind === "authorization-required") {
                 throw actionError(
@@ -1039,7 +1046,7 @@ export default class Module implements DaemonModule<SetupSeam> {
 
     // {§oauth-continuation} The alias's grant, for a connection with the definition it was accepted for, while it holds tokens.
     #grantFor(workspaceId: number, binding: McpBinding): OAuthGrant | undefined {
-        const held = this.#grants.get(this.#pendingKey(workspaceId, binding.definition.name));
+        const held = this.#grants.get(this.#pendingKey(workspaceId, binding.alias));
         return held !== undefined && held.grant.signedIn && sameBinding(held, binding) ? held.grant : undefined;
     }
 

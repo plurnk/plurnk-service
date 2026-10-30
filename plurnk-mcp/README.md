@@ -40,11 +40,11 @@ Environment-only configuration remains available and overrides file definitions
 ({§mcp-configuration}); live additions persist in the workspace and override both.
 
 ```dotenv
-PLURNK_MCP_brave={"name":"brave","type":"stdio","command":"npx","args":["-y","@brave/brave-search-mcp-server@2.1.0"]}
-PLURNK_MCP_forge={"name":"forge","type":"streamable-http","url":"https://forge.example/mcp","authorization":{"type":"bearer","token":"${FORGE_TOKEN}"}}
+PLURNK_MCP_brave={"type":"stdio","command":"npx","args":["-y","@brave/brave-search-mcp-server@2.1.0"]}
+PLURNK_MCP_forge={"type":"streamable-http","url":"https://forge.example/mcp","authorization":{"type":"bearer","token":"${FORGE_TOKEN}"}}
 ```
 
-Aliases match `[a-z][a-z0-9-]*`; environment suffixes use lowercase and
+Aliases match `[a-z][a-z0-9_-]*`; environment suffixes use lowercase and
 encode hyphens as underscores. The alias names both the model's executor
 and the server's resource scheme. A higher-precedence definition replaces
 the whole connection, including authentication; it does not patch fields.
@@ -79,7 +79,7 @@ MCP is one family of workspace Functionality, managed with the verbs every famil
 |---|---|
 | `workspace.mcp.list` | — |
 | `workspace.mcp.discover` | `query`: searches the MCP Registry; present while `PLURNK_MCP_REGISTRY_URL` names one ({§mcp-module}) |
-| `workspace.mcp.add` | optional `alias` (the definition's `name`), `definition`: a complete connection definition |
+| `workspace.mcp.add` / `replace` | `alias`, plus a complete connection definition (`command` / `url`, etc.) |
 | `workspace.mcp.enable` / `disable` / `remove` | `alias` |
 | `workspace.mcp.oauth.complete` | `alias`, complete `callbackUrl` |
 | `workspace.mcp.complete` | `server`, completion `ref` and `argument`; optional `context` |
@@ -100,21 +100,24 @@ JSON-RPC 2.0 method, receiving the action result or exact RFC 9457 Problem Detai
     "workspace": "example",
     "kind": "workspace.mcp.add",
     "params": {
-      "definition": { "name": "brave", "type": "stdio", "command": "npx", "args": ["-y", "@brave/brave-search-mcp-server@2.1.0"] }
+      "alias": "brave",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@brave/brave-search-mcp-server@2.1.0"]
     }
   }
 }
 ```
 
-The model manages the same family through ````` ````plurnk (mcp) ````` with `"verb": "list" | "discover" | "add" | "replace" | "enable" | "disable" | "remove"`
-(`discover` while a registry is configured), each change a proposal reviewed by the session's owner unless `PLURNK_SERVICE_PROPOSALS` accepts or
+The model manages the same family through ````` ````plurnk_mcp (<verb>) ````` (`list`, `discover`, `add`, `replace`, `enable`, `disable`, `remove`, with
+`discover` while a registry is configured), each change a proposal reviewed by the session's owner unless `PLURNK_SERVICE_PROPOSALS` accepts or
 rejects it. Disabling is durable and workspace-shared; enabling an unavailable server retries its
 connection.
 
-Tool discovery uses ordinary `FIND (workspace:///_plurnk/tools/*.md)` and READ.
+Tool discovery uses `plurnk_mcp (list)` and `READ (mcp:///<server>.md)`.
 Each server's document lists enabled tool calls with required-field previews
-and links to full input schemas under `tools/<server>/<encoded-tool>.json`.
-The manager uses the same layout under `tools/plurnk.md` and `tools/plurnk/mcp.json`;
+and links to full input schemas under `mcp:///<server>/<encoded-tool>.json`.
+The manager uses the same layout under `plurnk:///plurnk_mcp.md` and `plurnk:///plurnk_mcp/<verb>.json`;
 schema documents preserve descriptions and constraints without adding them to
 the initial survey ({§tools-resource-materialization}).
 
@@ -129,7 +132,6 @@ without creating one.
 | `PLURNK_MCP_ENABLED` | Family enabledness default |
 | `PLURNK_MCP_<alias>_ENABLED` | Per-server override |
 | `PLURNK_MCP_<alias>_TOOLS` | JSON array of exact tool names; absent or empty enables all, `[]` none |
-| `PLURNK_MCP_EXPANDED` | JSON array of servers whose complete tool menu is surveyed at turn 0 |
 | `PLURNK_MCP_REGISTRY_URL`, `PLURNK_MCP_REGISTRY_LIMIT` | Discovery endpoint (empty disables search) and result bound |
 
 ```dotenv
@@ -151,7 +153,7 @@ story that researches through it adds Brave Search to its fixture workspace, and
 runs only when `BRAVE_API_KEY` is in the environment:
 
 ```json
-{ "name": "brave", "type": "stdio", "command": "npx", "args": ["-y", "@brave/brave-search-mcp-server@2.1.0"] }
+{ "alias": "brave", "type": "stdio", "command": "npx", "args": ["-y", "@brave/brave-search-mcp-server@2.1.0"] }
 ```
 
 `@brave/brave-search-mcp-server@2.1.0` pins `@modelcontextprotocol/sdk@1.29.0`,
@@ -164,9 +166,9 @@ so each search runs under the proposal policy.
 
 | MCP surface | Plurnk surface |
 |---|---|
-| Server tools | `workspace:///_plurnk/tools/<server>.md` runtime summary |
-| Complete tool definitions | `workspace:///_plurnk/tools/<server>.json`: `{"tools":[...]}`, readable on demand with ordinary patterns |
-| Enabled tool | `server (tool)` invocation in the runtime document; full input schema at `workspace:///_plurnk/tools/<server>/<encoded-tool>.json` |
+| Server tools | `mcp:///<server>.md` runtime summary |
+| Complete tool definitions | `mcp:///<server>.json`: `{"tools":[...]}`, readable on demand with ordinary patterns |
+| Enabled tool | `server (tool)` invocation in the runtime document; full input schema at `mcp:///<server>/<encoded-tool>.json` |
 | Resource catalog | `server:///` or `server:///resources` |
 | Resource | `server:///resources/<encoded-uri>` through ordinary `FIND` and `READ` |
 | Prompt catalog | `server:///prompts` |

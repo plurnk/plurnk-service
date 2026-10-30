@@ -19,8 +19,8 @@ const { isFile } = AgentPluginFiles;
 const TOOL_OUTPUT_BYTES = 8 * 1024 * 1024;
 const ARCHIVE = /\.(?:zip|tar|tgz|tbz2|txz|tar\.(?:gz|bz2|xz|zst))$/iu;
 const SCP_REMOTE = /^[\w.~-]+@[\w.-]+:(?!\/\/)\S/u;
-const URL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//iu;
-const MCP_SERVER_SCHEME = /^([a-z][a-z0-9-]*):\/\/\/(.*)$/u;
+const URL_SCHEME = /^[a-z][a-z0-9+._-]*:\/\//iu;
+const MCP_SERVER_SCHEME = /^([a-z][a-z0-9_-]*):\/\/\/(.*)$/u;
 const RESERVED_SCHEMES = new Set([
     "http",
     "https",
@@ -32,6 +32,9 @@ const RESERVED_SCHEMES = new Set([
     "ops",
     "log",
     "env",
+    "schedule",
+    "mcp",
+    "members",
     "sh",
     "js",
     "ftp",
@@ -234,7 +237,7 @@ export default class SkillSource {
                     if (pin.commit !== undefined && commit !== pin.commit) {
                         throw actionError("source-moved", 409, `'${located.location}' ${pin.ref ?? "HEAD"} now names ${commit}; this skill was added at ${pin.commit}.`, {
                             source: located.location, ...(pin.ref === undefined ? {} : { ref: pin.ref }), commit: pin.commit, current: commit,
-                            recovery: "Use plurnk (skills) replace with the complete source definition to take the current commit.", retryable: false,
+                            recovery: "Use plurnk_skills (replace) with the complete source definition to take the current commit.", retryable: false,
                         });
                     }
                     break;

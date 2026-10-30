@@ -60,6 +60,7 @@ export type {
     SpawnArgs,
     Executor,
     RuntimeRegistration,
+    RuntimeRegistrationSeam,
     Notice,
     NoticeLevel,
     ContentOffset,

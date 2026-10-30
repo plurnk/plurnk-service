@@ -36,7 +36,7 @@ export default class PluginConfiguration {
         };
     }
 
-    static async prepare(source: StdioDefinition, context: PluginContext): Promise<void> {
+    static async prepare(source: StdioDefinition, context: PluginContext, alias = "mcp"): Promise<void> {
         await mkdir(context.data, { recursive: true });
         const definition = PluginConfiguration.resolve(source, context);
         const root = source.cwd?.startsWith("${PLUGIN_DATA}") ? context.data : context.root;
@@ -44,7 +44,7 @@ export default class PluginConfiguration {
         if (source.command.startsWith("./")) contained.push(["command", context.root, definition.command]);
         for (const [field, base, path] of contained) {
             if (!await AgentPluginFiles.contained(await realpath(base), path)) {
-                throw new TypeError(`MCP server '${source.name}' ${field} resolves outside its plugin ${field === "cwd" && root === context.data ? "data directory" : "root"}.`);
+                throw new TypeError(`MCP server '${alias}' ${field} resolves outside its plugin ${field === "cwd" && root === context.data ? "data directory" : "root"}.`);
             }
         }
     }

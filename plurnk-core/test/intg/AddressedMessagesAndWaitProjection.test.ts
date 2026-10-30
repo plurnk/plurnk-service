@@ -109,7 +109,7 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
         assert.ok(request);
         const address = request.path;
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeRawMockResponse(frame("SEND (workspace:///_plurnk)", "Answer.")),
+            makeRawMockResponse(frame("SEND (workspace:///notes.md)", "Answer.")),
             makeRawMockResponse(frame(addressed ? `SEND (${address})` : "SEND", "Recovered answer.")),
             makeRawMockResponse(frame("SEND [200]", null)),
         ] });

@@ -6,6 +6,7 @@ test("{§executor-policy} #105: policy keys address canonical runtime tags and t
     for (const key of [
         "PLURNK_EXECS_SH",
         "PLURNK_EXECS_alias.tool",
+        "PLURNK_EXECS_ALIAS_TOOL",
         "plurnk_execs_TOOL-V2",
         "PLURNK_EXECS_C++",
         "PLURNK_EXECS_ONLY",
@@ -16,7 +17,7 @@ test("{§executor-policy} #105: policy keys address canonical runtime tags and t
     for (const key of [
         "PLURNK_EXECS_",
         "PLURNK_EXECS_2FAST",
-        "PLURNK_EXECS_ALIAS_TOOL",
+        "PLURNK_EXECS__PRIVATE",
         "PLURNK_EXECS_ERROR_DETAIL_LIMIT",
         "PLURNK_PROVIDERS_SH",
     ]) {

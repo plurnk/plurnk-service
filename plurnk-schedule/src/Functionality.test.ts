@@ -131,7 +131,7 @@ for (const settlement of ["commit", "abort"] as const) {
         const original = await adapter.prepare(preparation(1, { beat: BEAT }));
         original.publish(); await original.commit();
         time.now += 100;
-        const admission = await adapter.admit({ alias: "beat", definition: BEAT }, { workspaceId: 1 });
+        const admission = await adapter.admit({ alias: "beat", ...BEAT }, { workspaceId: 1 });
         const candidate = await adapter.prepare(preparation(1, { beat: admission.definition }, { previous: original.snapshot, admissions: [admission] }));
         await candidate[settlement]();
         await time.advance(FIRST);
@@ -201,7 +201,7 @@ test("{§schedule-delivery} identical replacement cannot replay an occurrence de
     const once = { ...BEAT, rule: BEAT.rule.replace("COUNT=2", "COUNT=1") };
     const original = await adapter.prepare(preparation(1, { once }));
     original.publish(); await original.commit();
-    const admission = await adapter.admit({ alias: "once", definition: once }, { workspaceId: 1 });
+    const admission = await adapter.admit({ alias: "once", ...once }, { workspaceId: 1 });
     const candidate = await adapter.prepare(preparation(1, { once: admission.definition }, { previous: original.snapshot, admissions: [admission] }));
     await time.advance(FIRST);
     assert.equal(port.deliveries.length, 1);
@@ -222,7 +222,7 @@ test("{§functionality-replacement} schedule replacement publishes the new targe
     original.publish(); await original.commit();
     const replacement = { rule: "DTSTART;TZID=UTC:20260916T123017\nRRULE:FREQ=HOURLY;COUNT=2", target: "session://other", prompt: "Changed." };
     const prepare = async () => {
-        const admission = await adapter.admit({ alias: "beat", definition: replacement }, { workspaceId: 1 });
+        const admission = await adapter.admit({ alias: "beat", ...replacement }, { workspaceId: 1 });
         return adapter.prepare(preparation(1, { beat: admission.definition }, { previous: original.snapshot, admissions: [admission] }));
     };
     const aborted = await prepare();
@@ -258,7 +258,7 @@ test("{§schedule-residency} environment definitions are the service baseline wi
 
 test("{§schedule-rule} the panel says how many occurrences a reading previews, and it is never a rule", async () => {
     const one = family(new FakeTime(), { PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "1" });
-    const [daily] = await one.discover({ source: "FREQ=DAILY" }, { workspaceId: 1 });
+    const [daily] = await one.discover({ rule: "FREQ=DAILY" }, { workspaceId: 1 });
     assert.match(String(daily.summary), /; next 2026-09-16T12:30:16\+00:00\[UTC\]; unbounded/u, "one occurrence, not three");
     assert.deepEqual(await one.available(), [], "the control key declares no rule");
     const time = new FakeTime();
@@ -271,39 +271,44 @@ test("{§schedule-rule} the panel says how many occurrences a reading previews, 
 
 test("{§schedule-rule} discovery tells the time beside the rule it reads, in the effective zone, and persists nothing", async () => {
     const adapter = family(new FakeTime());
-    assert.deepEqual(await adapter.discover({ source: "FREQ=HOURLY;COUNT=2" }, { workspaceId: 1 }), [{
+    assert.deepEqual(await adapter.discover({}, { workspaceId: 1 }), [{
+        summary: "now 2026-09-16T12:30:15+00:00[UTC]",
+        definition: {},
+        provenance: { kind: "rule", source: "UTC" },
+    }]);
+    assert.deepEqual(await adapter.discover({ rule: "FREQ=HOURLY;COUNT=2" }, { workspaceId: 1 }), [{
         alias: "hourly",
         summary: "now 2026-09-16T12:30:15+00:00[UTC]; every hour for 2 times; next 2026-09-16T12:30:16+00:00[UTC], 2026-09-16T13:30:16+00:00[UTC]",
         definition: { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY;COUNT=2" },
         provenance: { kind: "rule", source: "FREQ=HOURLY;COUNT=2" },
     }]);
-    const [tokyo] = await family(new FakeTime(), { TZ: "Asia/Tokyo" }).discover({ source: "FREQ=DAILY" }, { workspaceId: 1 });
+    const [tokyo] = await family(new FakeTime(), { TZ: "Asia/Tokyo" }).discover({ rule: "FREQ=DAILY" }, { workspaceId: 1 });
     assert.equal(
         tokyo.summary,
         "now 2026-09-16T21:30:15+09:00[Asia/Tokyo]; every day at 9:30:16 PM; next 2026-09-16T21:30:16+09:00[Asia/Tokyo], 2026-09-17T21:30:16+09:00[Asia/Tokyo], 2026-09-18T21:30:16+09:00[Asia/Tokyo]; unbounded: add needs COUNT or UNTIL",
     );
-    assert.equal((await problemOf(() => family(new FakeTime(), { TZ: "Mars/Olympus" }).discover({ source: "FREQ=DAILY" }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/zone-unknown");
-    assert.equal((await problemOf(() => adapter.discover({ source: "FREQ=DAILY;BOGUS=1" }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/rule-invalid");
+    assert.equal((await problemOf(() => family(new FakeTime(), { TZ: "Mars/Olympus" }).discover({ rule: "FREQ=DAILY" }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/zone-unknown");
+    assert.equal((await problemOf(() => adapter.discover({ rule: "FREQ=DAILY;BOGUS=1" }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/rule-invalid");
 });
 
 test("{§schedule-rule} admission canonicalizes the rule in the workspace's zone and refuses an unbounded one", async () => {
     const adapter = family(new FakeTime());
     attached(adapter, "Europe/Paris");
-    assert.deepEqual(await adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=2", target: "session://bot", prompt: "Beat." } }, { workspaceId: 1 }), {
+    assert.deepEqual(await adapter.admit({ alias: "beat", rule: "FREQ=HOURLY;COUNT=2", target: "session://bot", prompt: "Beat." }, { workspaceId: 1 }), {
         alias: "beat",
         definition: { rule: "DTSTART;TZID=Europe/Paris:20260916T143016\nRRULE:FREQ=HOURLY;COUNT=2", target: "session://bot", prompt: "Beat." },
         preparation: NOW,
     });
-    const bySession = await adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=2", target: "session://bot", prompt: "Beat." } }, { workspaceId: 1, sessionId: 7 });
+    const bySession = await adapter.admit({ alias: "beat", rule: "FREQ=HOURLY;COUNT=2", target: "session://bot", prompt: "Beat." }, { workspaceId: 1, sessionId: 7 });
     assert.equal((bySession.definition as { rule: string }).rule, "DTSTART;TZID=Asia/Tokyo:20260916T213016\nRRULE:FREQ=HOURLY;COUNT=2", "the invoking Session's own TZ override wins over the workspace layer");
-    const [preview] = await adapter.discover({ source: "FREQ=DAILY;COUNT=1" }, { workspaceId: 1, sessionId: 7 });
+    const [preview] = await adapter.discover({ rule: "FREQ=DAILY;COUNT=1" }, { workspaceId: 1, sessionId: 7 });
     assert.match(preview.summary ?? "", /^now 2026-09-16T21:30:15\+09:00\[Asia\/Tokyo\]/u, "the Session reads the time in its own zone");
-    assert.equal((await problemOf(() => adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY", target: "session://bot", prompt: "Beat." } }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/rule-unbounded");
-    assert.equal((await problemOf(() => adapter.admit({ definition: HEARTBEAT }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/alias-required");
-    const invalid = await problemOf(() => adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=1", target: "agent://bot", prompt: "Beat." } }, { workspaceId: 1 }));
+    assert.equal((await problemOf(() => adapter.admit({ alias: "beat", rule: "FREQ=HOURLY", target: "session://bot", prompt: "Beat." }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/rule-unbounded");
+    assert.equal((await problemOf(() => adapter.admit(HEARTBEAT, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/alias-required");
+    const invalid = await problemOf(() => adapter.admit({ alias: "beat", rule: "FREQ=HOURLY;COUNT=1", target: "agent://bot", prompt: "Beat." }, { workspaceId: 1 }));
     assert.equal(invalid.type, "https://problems.plurnk.xyz/schedule/functionality/definition-invalid");
     assert.ok(Array.isArray(invalid.errors) && invalid.errors.length > 0, "the schema errors ride along");
-    assert.equal((await problemOf(() => adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=1", target: "session://bot", prompt: "Beat.", extra: true } }, { workspaceId: 1 }))).status, 400);
+    assert.equal((await problemOf(() => adapter.admit({ alias: "beat", rule: "FREQ=HOURLY;COUNT=1", target: "session://bot", prompt: "Beat.", extra: true }, { workspaceId: 1 }))).status, 400);
 });
 
 test("{§schedule-residency} preparation publishes one outcome per rule, commit arms, teardown leaves the timers armed", async () => {
@@ -396,15 +401,15 @@ test("{§schedule-rule} {§schedule-delivery} an occurrence past before add is e
     adapter.scheduler.start(port);
     try {
         const identity = { workspaceId: 5 };
-        const [candidate] = await adapter.discover({ source: "FREQ=SECONDLY;COUNT=1" }, identity);
+        const [candidate] = await adapter.discover({ rule: "FREQ=SECONDLY;COUNT=1" }, identity);
         assert.ok(candidate);
         time.now = NOW + 5 * SECOND;
-        const { definition: expired } = await adapter.admit({ alias: "expired", definition: {
-            ...candidate.definition, target: "session://bot", prompt: "Expired.",
-        } }, identity);
-        const { definition: fresh } = await adapter.admit({ alias: "fresh", definition: {
-            rule: "FREQ=SECONDLY;COUNT=1", target: "session://bot", prompt: "Fresh.",
-        } }, identity);
+        const { definition: expired } = await adapter.admit({
+            alias: "expired", ...candidate.definition, target: "session://bot", prompt: "Expired.",
+        }, identity);
+        const { definition: fresh } = await adapter.admit({
+            alias: "fresh", rule: "FREQ=SECONDLY;COUNT=1", target: "session://bot", prompt: "Fresh.",
+        }, identity);
         const prepared = await adapter.prepare(preparation(5, { expired, fresh }));
         const expiredOutcome = prepared.outcomes.get("expired");
         assert.ok(expiredOutcome?.state === "active");
@@ -429,7 +434,7 @@ test("{§schedule-delivery} a single occurrence that passes between add and its 
     adapter.scheduler.start(port);
     // The model asks for a reminder four seconds ahead; preparation and arming run five seconds later.
     const soon = { rule: "DTSTART;TZID=UTC:20260916T123019\nRRULE:FREQ=MINUTELY;COUNT=1", target: "session://bot", prompt: "Soon." };
-    const admission = await adapter.admit({ alias: "soon", definition: soon }, { workspaceId: 5 });
+    const admission = await adapter.admit({ alias: "soon", ...soon }, { workspaceId: 5 });
     const { definition } = admission;
     time.now = NOW + 5 * SECOND;
     const prepared = await adapter.prepare(preparation(5, { soon: definition }, { admissions: [admission] }));

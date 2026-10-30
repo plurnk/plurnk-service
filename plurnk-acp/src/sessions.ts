@@ -23,7 +23,7 @@ import SessionTranslator from "./SessionTranslator.ts";
 
 export const OWNER_ADDRESS = "acp://operator";
 
-export const AVAILABLE_COMMANDS: readonly AvailableCommand[] = Object.freeze([
+const AVAILABLE_COMMANDS: readonly AvailableCommand[] = Object.freeze([
     {
         type: "command",
         name: "mcp",
@@ -342,22 +342,21 @@ export const applyAcpMcpServers = async (
         const alias =
             srv.name
                 .toLowerCase()
-                .replace(/[^a-z0-9-]+/gu, "-")
-                .replace(/^-+|-+$/gu, "")
+                .replace(/[^a-z0-9_-]+/gu, "-")
+                .replace(/^[-_]+|[-_]+$/gu, "")
                 .replace(/^([0-9])/u, "mcp-$1") || "acp-mcp";
         const headers: Record<string, string> = {};
         for (const h of httpDecl.headers) {
             headers[h.name] = h.value;
         }
-        const definition = {
-            name: alias,
-            type: "streamable-http" as const,
-            url: httpDecl.url,
-            ...(Object.keys(headers).length > 0 ? { headers } : {}),
-        };
         await seam.invokeModuleAction(
             actionName,
-            { alias, definition },
+            {
+                alias,
+                type: "streamable-http",
+                url: httpDecl.url,
+                ...(Object.keys(headers).length > 0 ? { headers } : {}),
+            },
             { scope: "workspace", workspaceId },
         );
     }

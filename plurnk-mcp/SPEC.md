@@ -57,11 +57,11 @@
 
 ## §mcp-configuration Configuration, files, plugins, isolation, and summaries
 
-MCP servers are complete connection definitions ({§operation-results}, {§operator-config-workspace-settings}, {§functionality-coordinator}). Definitions resolve by alias (`[a-z][a-z0-9-]*`), highest precedence first:
+MCP servers are complete connection definitions ({§operation-results}, {§operator-config-workspace-settings}, {§functionality-coordinator}). Definitions resolve by alias (`[a-z][a-z0-9_-]*`), highest precedence first:
 
 | Precedence | Source | Location / Key |
 | --- | --- | --- |
-| 1 | Workspace overlay | `plurnk (mcp)` `add` / `replace` state (never writes/deletes host `mcp.json` files) |
+| 1 | Workspace overlay | `plurnk_mcp` `add` / `replace` state (never writes/deletes host `mcp.json` files) |
 | 2 | Environment | `PLURNK_MCP_<alias>` (complete `McpServerDefinition` JSON; transport and auth replace together) |
 | 3 | Project | `<project>/.agents/mcp.json`, then selected project plugins |
 | 4 | Plurnk-only | `$XDG_CONFIG_HOME/plurnk/mcp.json`, then selected Plurnk plugins |
@@ -78,19 +78,18 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
   - `PLURNK_MCP_ENABLED` (default `1`), `PLURNK_MCP_<alias>_ENABLED` (`0` or `1`).
   - `PLURNK_MCP_<alias>_TOOLS`: optional JSON array of enabled tool names; absent/`""` enables all, `[]` enables none.
   - `PLURNK_MCP_<alias>_WORKSPACE` and `PLURNK_MCP_<alias>_SESSION`: optional workspace scope (`"<name>"`, `"*"`, or JSON array of workspace names) and default session binding for Open Work ({§mcp-open-work}), overriding `plurnkWorkspace` and `plurnkSession` on the definition.
-  - `PLURNK_MCP_EXPANDED`: JSON array of aliases whose tool invocations are surveyed at turn 0 ({§functionality-coordinator}); default `[]`.
   - `PLURNK_MCP_REGISTRY_URL` (default `""`), `PLURNK_MCP_REGISTRY_LIMIT` (default `5`).
   - Native `stdio` definitions expand `${NAME}` once in `args`, `env`, `cwd`, `plurnkWorkspace`, and `plurnkSession` against the workspace-composed operator environment plus synthetic read-only host variables (`PLURNK_WORKSPACE`, `PLURNK_SESSION` when bound, `PLURNK_PROJECT_ROOT` when present, and `PLURNK_STATE_DIR`); implicit `cwd` uses Core's workspace-and-alias state directory ({§module-seam-slices}). `streamable-http` definitions expand `${NAME}` in `headers`, `authorization` (`bearer.token`, `client-credentials.clientSecret`, `oauth.clientSecret`), `plurnkWorkspace`, and `plurnkSession` only at connection preparation; supplying both `authorization` and an `Authorization` header is invalid.
 - **Cold endpoint isolation & unavailable runtimes:** Cold failure during workspace activation leaves the server enabled and client-visible as `unavailable` (or `authorization-required`). Preparation still registers the alias as an unavailable runtime ({§exec-lifetime}) whose availability detail names `it awaits the operator's sign-in` (for `authorization-required`) or its Problem's bounded diagnostic/detail (for `unavailable`).
-- **Summary derivation:** Whitespace-normalized, first sentence, clipped within 80 chars + `…`:
-  - **Server:** `serverInfo.description` $\to$ `instructions` $\to$ `serverInfo.title` $\to$ effective admitted tool-name list (`Tools: ...`) $\to$ `MCP server <alias>.` With tools, `runtimeDecl` uses `{ from: "tools", description? }` and full `instructions` as `details` ({§resource-tree-scheme}, {§functionality-coordinator}).
-  - **Tool:** `description` $\to$ `title` $\to$ `annotations.title` $\to$ tool `name`.
+- **Summary derivation:** Whitespace-normalized into a single line (`instructions` fallback takes the first sentence of the opening paragraph):
+  - **Server:** `serverInfo.description` $\to$ `instructions` lead $\to$ `serverInfo.title` $\to$ effective admitted tool-name list (`Tools: ...`) $\to$ `MCP server <alias>.` With tools, `runtimeDecl` uses `{ from: "tools", description? }` and places `Server catalog: <alias>:///` plus full `instructions` as `details` above `## Tools` in `mcp:///<alias>.md` ({§resource-tree-scheme}, {§functionality-coordinator}).
+  - **Tool:** `description` $\to$ `title` $\to$ `annotations.title` $\to$ tool `name`. `mcp:///<alias>.json` preserves complete tool records sorted by name with `icons` stripped.
 
 ## §mcp-module Module adapter, launch environment, management, registry, and diagnostics
 
 - **Setup-only module (`@plurnk/plurnk-mcp`):** Registers the `mcp` family adapter ({§module-lifecycle}, {§functionality-coordinator}) and workspace actions `workspace.mcp.oauth.begin`, `workspace.mcp.oauth.complete`, `workspace.mcp.complete`, and `workspace.mcp.skills`. Invalid `PLURNK_MCP_REGISTRY_URL` or `PLURNK_MCP_REGISTRY_LIMIT` is contained in `module.contained` ({§module-contract}), withholding `discover` while keeping the family operational.
 - **Stdio launch environment:** Receives (1) operator ambient base excluding `PLURNK_*` and provider credential names ({§exec-stream}), (2) workspace shared `env` values and masks, and (3) definition `env` values with `${NAME}` resolved once against the workspace-composed operator environment ({§functionality-model-projection}, {§capability-admission}).
-- **Registry discovery (`discover`):** Active when `PLURNK_MCP_REGISTRY_URL` is non-empty; queries `<url>/v0.1/servers?search=<query>&version=latest&limit=<limit>`. Converts launchable `npm` (`npx -y`), `pypi` (`uvx`), `nuget` (`dnx`), and `oci` (`docker run -i --rm`) stdio packages and `streamable-http` remotes into self-contained definitions (`aliasOf` takes the last name segment, lowercased, `[a-z][a-z0-9-]*`), omitting entries requiring user template variables or missing required positional arguments. Failures reject with `502 discover-failed` (retryable); invalid definitions reject with `400 definition-invalid` or `400 alias-mismatch`.
+- **Registry discovery (`discover`):** Active when `PLURNK_MCP_REGISTRY_URL` is non-empty; queries `<url>/v0.1/servers?search=<query>&version=latest&limit=<limit>`. Converts launchable `npm` (`npx -y`), `pypi` (`uvx`), `nuget` (`dnx`), and `oci` (`docker run -i --rm`) stdio packages and `streamable-http` remotes into self-contained definitions (`aliasOf` takes the last name segment, lowercased, `[a-z][a-z0-9-]*`), omitting entries requiring user template variables or missing required positional arguments. Failures reject with `502 discover-failed` (retryable); invalid definitions reject with `400 alias-required` or `400 definition-invalid`.
 - **Preparation diagnostics (`PreparationDiagnostics`):** `502 server-unavailable` carries `elapsedMs`, `timeoutMs`, bounded `diagnostic` (innermost cause chain first, excluding OAuth error text), and bounded `stderr` tail, each capped at `PLURNK_EXECS_ERROR_DETAIL_LIMIT` (`0` omits text). Redacts known launch-environment values, configured args/headers, referenced env values, and URL userinfo with `__redacted__` across chunk and truncation boundaries before slicing.
 
 ## §oauth-continuation Interactive OAuth continuation, issuer, lifetime, and grants
@@ -129,7 +128,7 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
 
 - **Workspace & session bindings (`plurnkWorkspace`, `plurnkSession`):** Optional fields on `McpServerDefinition` ({§mcp-server-definition}) and `PLURNK_MCP_<alias>_WORKSPACE` / `PLURNK_MCP_<alias>_SESSION` settings ({§mcp-configuration}).
   - **Operator-scoped definitions** (`PLURNK_MCP_<alias>`, `$XDG_CONFIG_HOME/plurnk/mcp.json`, `~/.agents/mcp.json`, non-project plugins, or an operator `PLURNK_MCP_<alias>_WORKSPACE` setting) may bind a single workspace name, an array of unique workspace names, or `"*"` (multi-workspace router); when pinned to specific workspace name(s), the server is enabled only in matching workspace(s).
-  - **Workspace-scoped definitions** (`plurnk (mcp)` `add` / `replace`, `<project>/.agents/mcp.json`, project plugins) are confined to their own workspace; binding `"*"` or another workspace name fails with `403 workspace-scope-forbidden`.
+  - **Workspace-scoped definitions** (`plurnk_mcp` `add` / `replace`, `<project>/.agents/mcp.json`, project plugins) are confined to their own workspace; binding `"*"` or another workspace name fails with `403 workspace-scope-forbidden`.
 - **Daemon-start residency (`Module.start(seam)`):** Enabled operator-scoped servers declaring a workspace or session binding ensure their target workspace(s) and static session(s) exist at `start(seam)`, activate those workspaces, keep `subscriptions/listen` open (`resident: true`), and hold a workspace residency lease while active.
 - **Bidirectional `_meta` & auto-creation:**
   - **Outbound (`Plurnk` $\to$ `MCP`):** `tools/call`, `resources/read`, and `prompts/get` stamp unforgeable `params._meta: { plurnkWorkspace, plurnkSession }` identifying the calling workspace and session.
@@ -153,8 +152,8 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
 
 | MCP surface | Plurnk surface |
 | --- | --- |
-| Server | Runtime `<server>`, `workspace:///_plurnk/tools/<server>.md`, and resource scheme `<server>:///` ({§exec-stream}) |
-| Enabled tool & raw catalog | Compact invocation in `<server>.md`, schema doc `workspace:///_plurnk/tools/<server>/<encoded-tool>.json`, and full catalog `workspace:///_plurnk/tools/<server>.json` (`{"tools":[...]}` sorted by name) ({§executor-discovery}) |
+| Server | Runtime `<server>`, `mcp:///<server>.md`, and resource scheme `<server>:///` ({§exec-stream}) |
+| Enabled tool & raw catalog | Compact invocation in `<server>.md`, schema doc `mcp:///<server>/<encoded-tool>.json`, and full catalog `mcp:///<server>.json` (`{"tools":[...]}` sorted by name) ({§executor-discovery}) |
 | Resources, Prompts & Skills | `<server>:///`, `<server>:///resources[/<encoded-uri>]`, `<server>:///prompts[/<encoded-name>]`, `<server>:///skills[/<name>[/<path>]]` (never lists tools) |
 | Tool effect | `annotations.readOnlyHint === true` $\to$ `read`; all other enabled tools $\to$ `host` (unregistered target throws) |
 
@@ -162,8 +161,8 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
 
 | Problem code | Status | Contract (`detail` and `recovery`) |
 | --- | --- | --- |
-| `tool-required` | 400 | An MCP tool target is required. Recovery: `Select a target documented under workspace:///_plurnk/tools/<runtime>/.` |
-| `tool-not-enabled` | 404 | The MCP tool is not enabled. Recovery: `Select a target documented under workspace:///_plurnk/tools/<runtime>/.` |
+| `tool-required` | 400 | An MCP tool target is required. Recovery: `Select a target documented under mcp:///<runtime>/.` |
+| `tool-not-enabled` | 404 | The MCP tool is not enabled. Recovery: `Select a target documented under mcp:///<runtime>/.` |
 | `tool-reported-error` | 502 | The MCP tool reported an error. Recovery: the tool's working invocation fence with its schema note and schema link (#1228). |
 | `tool-call-failed` | 502 | The MCP tool call failed (`retryable: false`, with `runtime`, `tool`, and bounded `diagnostic`). |
 | `invalid-tool-arguments` | 400 | MCP tool arguments must be one JSON object. Recovery: `One JSON object per MCP tool call.` followed by the tool's working invocation fence (#1228). |
@@ -191,4 +190,4 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
 | `obsolete-connection-close-failed` | 500 | `The MCP capability change committed, but an obsolete connection did not close cleanly.` |
 | `server-unavailable` | 502 | `Configured MCP server '<name>' is unavailable.` |
 | `server-redirected` | 502 | `MCP endpoint <url> redirected to <location>; plurnk follows no redirect, so the server's url must be the endpoint itself.` |
-| `discover-failed` / `definition-invalid` / `alias-mismatch` | 502 / 400 | Registry discovery failed (`retryable: true`) / definition invalid / alias differs from definition name. |
+| `discover-failed` / `alias-required` / `definition-invalid` | 502 / 400 | Registry discovery failed (`retryable: true`) / alias missing / definition invalid. |

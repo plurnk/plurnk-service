@@ -127,7 +127,7 @@ test("{§share-packet-names}: restore preserves history, decisions and attachmen
         ({ workspaceId } = await daemon.createWorkspace({ name: "restore-witness", projectRoot }));
         sessionId = await namedModelSession(daemon, workspaceId, "main");
         await daemon.invokeModuleAction("workspace.env.add", {
-            alias: "RESTORE_DURABLE", definition: { value: "workspace-owned" },
+            alias: "RESTORE_DURABLE", value: "workspace-owned",
         }, { scope: "workspace", workspaceId });
         ({ loopId } = await daemon.runLoop({ workspaceId, sessionId, prompt: "Update the document.",
             attachments: [{ name: "input.bin", mediaType: "application/octet-stream", bytes: new Uint8Array([4, 3, 2, 1]) }] }));
@@ -301,7 +301,7 @@ test("{§env-knob} disabled definitions stay inspectable through workspace listi
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     const definitions = {
-        mcp: { name: "other", type: "streamable-http", url: "https://mcp.example", headers: { "X-Tenant": "${TENANT}" } },
+        mcp: { type: "streamable-http", url: "https://mcp.example", headers: { "X-Tenant": "${TENANT}" } },
         schedule: { rule: "DTSTART;TZID=UTC:20260917T120001\nRRULE:FREQ=HOURLY", target: "session://bot", prompt: "Check in." },
     };
     try {
@@ -344,7 +344,7 @@ test("{§env-knob} disabled definitions stay inspectable through workspace listi
                 return true;
             });
         }
-        const discovered = await invoke("schedule", "discover", { source: "DTSTART;TZID=UTC:20260917T120001\nRRULE:FREQ=HOURLY" }) as { candidates: Array<{ alias: string; definition: unknown }> };
+        const discovered = await invoke("schedule", "discover", { rule: "DTSTART;TZID=UTC:20260917T120001\nRRULE:FREQ=HOURLY" }) as { candidates: Array<{ alias: string; definition: unknown }> };
         assert.equal(discovered.candidates.length, 1);
         const listed = await invoke("schedule", "list") as FunctionalityListResult;
         assert.deepEqual(listed.definitions.map(({ alias, state, definition }) => ({ alias, state, definition })), [
@@ -404,7 +404,7 @@ test("{§schedule-family} a discovered schedule arms a persisted rule at restart
     const stamp = due.toISOString().replaceAll(/[-:]/gu, "").replace(/\.\d{3}Z$/u, "");
     const added = await first.invokeModuleAction("workspace.schedule.add", {
         alias: "once",
-        definition: { rule: `DTSTART;TZID=UTC:${stamp}\nRRULE:FREQ=HOURLY;COUNT=1`, target: `session://${sessionName}`, prompt: "discovered-proof" },
+        rule: `DTSTART;TZID=UTC:${stamp}\nRRULE:FREQ=HOURLY;COUNT=1`, target: `session://${sessionName}`, prompt: "discovered-proof",
     }, { scope: "workspace", workspaceId }) as { status: number };
     assert.equal(added.status, 201);
     await first.stop();

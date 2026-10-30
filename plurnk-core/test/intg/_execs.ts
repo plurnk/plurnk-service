@@ -27,7 +27,7 @@ export const executionAddress = async (db: Db, turnId: number, sequence = 1): Pr
     const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string; attrs: string }>({ turn_id: turnId });
     const row = rows.find((item) => item.sequence === sequence && isExecutionOp(item.op));
     const stream: unknown = row === undefined ? undefined : JSON.parse(row.attrs).stream;
-    if (typeof stream !== "string" || !/^[a-z][a-z0-9+.-]*:\/\/\/[a-f0-9]{8}$/u.test(stream)) {
+    if (typeof stream !== "string" || !/^[a-z][a-z0-9+._-]*:\/\/\/[a-f0-9]{8}$/u.test(stream)) {
         throw new Error(`Execution ${turnId}/${sequence} did not publish a workspace output address.`);
     }
     return stream;

@@ -46,8 +46,8 @@ for (const modalities of [["audio"], []] as InputModality[][]) {
         const provider = new Mock({ contextWindow: viableWindow(), inputModalities: modalities, responses: [
             turn(`\`\`\`\`READ (clip.wav#bytes) <1,4>\`\`\`\`\n${next}`),
             turn(`\`\`\`\`KILL (clip.wav)\`\`\`\`\n${next}`),
-            turn(`\`\`\`\`READ (log:///1/2/3/READ)\`\`\`\`\n${next}`),
-            turn(`\`\`\`\`KILL (log:///1/2/3/READ) <42>\`\`\`\`\n${next}`),
+            turn(`\`\`\`\`READ (log:///1/2/4/READ)\`\`\`\`\n${next}`),
+            turn(`\`\`\`\`KILL (log:///1/2/4/READ) <42>\`\`\`\`\n${next}`),
             turn("````SEND [200]\nAudio inspection complete.\n````"),
         ] });
         try {
@@ -62,7 +62,7 @@ for (const modalities of [["audio"], []] as InputModality[][]) {
                     const loop = await db.drain_message_source.get<{ session_id: number }>({ loop_id: loopId });
                     const fork = await Fork.fork(db, loop!.session_id, "audio-fork");
                     const rows = await db.engine_render_log.all<{ op: string; pathname: string; status_rx: number; rx: string }>({ session_id: fork });
-                    const observation = rows.find((row) => row.op === "READ" && row.pathname === "/1/2/3/READ");
+                    const observation = rows.find((row) => row.op === "READ" && row.pathname === "/1/2/4/READ");
                     assert.ok(observation, "the fork inherits the explicit log READ");
                     assert.equal(typeof JSON.parse(observation.rx).nativeContentHash, "string", observation.rx);
                     assert.ok(Buffer.from(await NativeContent.read(db, JSON.parse(observation.rx).nativeContentHash)).equals(bytes), "the fork retains the exact audio bytes");
@@ -513,8 +513,8 @@ test("{§log-wire-format} explicit log READ preserves its own observation after 
     const next = "````NOTE\nInspect history.\n````";
     const requests = await runLoop(["image"], undefined, false, [
         mockTurn(`\`\`\`\`READ (logo.png)\`\`\`\`\n${next}`),
-        mockTurn(`\`\`\`\`KILL (logo.png)\`\`\`\`\n\`\`\`\`READ (log:///1/2/3/READ)\`\`\`\`\n${next}`),
-        mockTurn(`\`\`\`\`KILL (log:///1/2/3/READ) <42>\`\`\`\`\n${next}`),
+        mockTurn(`\`\`\`\`KILL (logo.png)\`\`\`\`\n\`\`\`\`READ (log:///1/2/4/READ)\`\`\`\`\n${next}`),
+        mockTurn(`\`\`\`\`KILL (log:///1/2/4/READ) <42>\`\`\`\`\n${next}`),
         mockTurn("````SEND [200]\nImage inspection complete.\n````"),
     ]);
     const copied = nativeParts(requests[2]);
@@ -529,12 +529,12 @@ test("{§log-kill-scope} a text-only route preserves ordinary scoped trimming of
     const next = "````NOTE\nInspect bytes.\n````";
     const requests = await runLoop([], undefined, false, [
         mockTurn(`\`\`\`\`READ (logo.png#bytes) <1,16>\`\`\`\`\n${next}`),
-        mockTurn(`\`\`\`\`KILL (log:///1/2/3/READ) <1>\`\`\`\`\n${next}`),
+        mockTurn(`\`\`\`\`KILL (log:///1/2/4/READ) <1>\`\`\`\`\n${next}`),
         mockTurn("````SEND [200]\nImage inspection complete.\n````"),
     ]);
     assert.ok(requests[2].every((message) => typeof message.content === "string"));
     const content = userText(requests[2]);
-    assert.match(content, /### log:\/\/\/1\/2\/3\/READ \(logo\.png#bytes\) · \d+\n/, "the trimmed READ's receipt stays, naming its operand");
+    assert.match(content, /### log:\/\/\/1\/2\/4\/READ \(logo\.png#bytes\) · \d+\n/, "the trimmed READ's receipt stays, naming its operand");
     assert.ok(requests[2].some((message) => message.role === "assistant" && message.content === "```READ (logo.png#bytes) <1,16>\n```\n\n```NOTE\nInspect bytes.\n```"), "trimming the result leaves the READ's replay whole");
     assert.doesNotMatch(content, /\n\s*1:89\n/u);
     assert.match(content, /\n\s*2:50\n/u);
@@ -741,9 +741,9 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             if (modalities.length) assert.ok(Buffer.from(parts[delivered + 1][0]!.data).equals(media.bytes), "later turns retain the exact original media");
             if (form === "inline" || form === "link") assert.match(texts[delivered], media.hex, "byte scope still returns exactly the selected octets");
             assert.equal(resourceReads, form === "inline" || form === "embedded" ? 0 : 1, "embedded content needs no refetch; resource reads use the standard MCP cache");
-            const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; status_rx: number }>({ loop_id: run.loopId });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string | null; pathname: string; status_rx: number }>({ loop_id: run.loopId });
             assert.ok(rows.some((row) => row.op === "READ" && row.pathname.includes("/resources/") && row.status_rx === 200), "resource READ succeeded through the dispatcher");
-            const output = rows.find((row) => row.op === "READ" && /^\/[a-f0-9]{8}$/.test(row.pathname));
+            const output = rows.find((row) => row.op === "READ" && row.scheme === "fixture" && /^\/[a-f0-9]{8}$/.test(row.pathname));
             assert.ok(output, "the default channel has a terminal stream observation");
             const evidence = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: output.pathname, scheme: "fixture", name: "json" });
             assert.ok(evidence, "the original protocol result has an independently addressable #json channel");

@@ -21,15 +21,45 @@ const readPolicy = async (path: string, explicit: boolean): Promise<string | nul
 
 // {§packet-inject}: the panel's PLURNK_SERVICE_POLICY (~-expanded), or when unset the policy members
 // of {§host-path-layout}; an explicitly empty value is off.
-export const readSystemPolicy = async (hostPaths: HostPaths = new HostPaths()): Promise<string | null> => {
+export const readGlobalAgents = async (hostPaths: HostPaths = new HostPaths()): Promise<string | null> => {
     const raw = process.env.PLURNK_SERVICE_POLICY;
     if (raw !== undefined && raw.trim() === "") return null; // explicit empty → off (test isolation)
     const env = raw?.trim();
     if (env) return readPolicy(resolveInjectPath(env, hostPaths), true);
+    const candidates = [...new Set([
+        hostPaths.xdgPolicyFile,
+        hostPaths.globalPolicyFile,
+        hostPaths.policyFile,
+    ])];
     const sections: string[] = [];
-    for (const candidate of hostPaths.policyFiles) {
+    for (const candidate of candidates) {
         const text = await readPolicy(candidate, false);
         if (text !== null) sections.push(text);
     }
     return sections.length > 0 ? sections.join("\n\n") : null;
+};
+
+export const readGlobalLocalAgents = async (hostPaths: HostPaths = new HostPaths()): Promise<string | null> => {
+    const raw = process.env.PLURNK_SERVICE_POLICY;
+    if (raw !== undefined) return null; // explicit policy override or test isolation
+    const candidates = [...new Set([
+        hostPaths.xdgLocalPolicyFile,
+        hostPaths.globalLocalPolicyFile,
+        hostPaths.localPolicyFile,
+    ])];
+    const sections: string[] = [];
+    for (const candidate of candidates) {
+        const text = await readPolicy(candidate, false);
+        if (text !== null) sections.push(text);
+    }
+    return sections.length > 0 ? sections.join("\n\n") : null;
+};
+
+export const readSystemPolicy = async (hostPaths: HostPaths = new HostPaths()): Promise<string | null> => {
+    const [globalAgents, globalLocalAgents] = await Promise.all([
+        readGlobalAgents(hostPaths),
+        readGlobalLocalAgents(hostPaths),
+    ]);
+    const parts = [globalAgents, globalLocalAgents].filter((part): part is string => part !== null);
+    return parts.length > 0 ? parts.join("\n\n") : null;
 };

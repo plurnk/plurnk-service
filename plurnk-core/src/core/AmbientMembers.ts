@@ -14,7 +14,7 @@ export const AUTO_ADD_KEY = "PLURNK_MEMBERS_AUTO_ADD";
 const TEXT_BYTES_MAX = 1 << 20;
 
 // {§membership-auto-add} — what the model can reach beyond membership while the knob is on, and the
-// admission a read of it proposes: the Session's own `plurnk (members)` add of that exact path, under the model's
+// admission a read of it proposes: the Session's own `plurnk_members (add)` of that exact path, under the model's
 // scope, a host effect the proposal lifecycle settles — by policy where nobody reviews, by the reviewer
 // otherwise — announced by one `member_added` notice per file admitted.
 export default class AmbientMembers {
@@ -51,7 +51,7 @@ export default class AmbientMembers {
         const refused = new Set<string>();
         return {
             candidates: (prefix) => GitMembership.ambientCandidates(db, workspaceId, prefix, signal),
-            // The review material is the definition the acceptance admits, as a `plurnk (members)` add body reads.
+            // The review material is the definition the acceptance admits, as a `plurnk_members (add)` body reads.
             propose: async (keys) => {
                 const files = (await eligible(keys)).filter((key) => !refused.has(key));
                 if (files.length === 0) return null;

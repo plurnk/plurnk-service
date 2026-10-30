@@ -8,8 +8,8 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 const PREFIX = "PLURNK_MCP_";
-const CONTROLS = ["CONNECT_TIMEOUT", "REQUEST_TIMEOUT", "RETRY_FLOOR_MS", "RETRY_CEILING_MS", "EXPANDED", "REGISTRY_URL", "REGISTRY_LIMIT"];
-const SERVER_NAME = /^[a-z][a-z0-9-]*$/;
+const CONTROLS = ["CONNECT_TIMEOUT", "REQUEST_TIMEOUT", "RETRY_FLOOR_MS", "RETRY_CEILING_MS", "REGISTRY_URL", "REGISTRY_LIMIT"];
+export const SERVER_NAME = /^[a-z][a-z0-9_-]*$/;
 const ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/gu;
 
 export interface ToolPolicy {
@@ -92,10 +92,11 @@ const configuration = (environ: NodeJS.ProcessEnv) => {
 // Settings are validated even before their resource exists ({§env-knob}).
 export const serverSettings = (alias: string, environ: NodeJS.ProcessEnv = process.env): ToolPolicy => {
     const config = configuration(environ);
-    const workspace = config.workspaces.get(alias);
-    const session = config.sessions.get(alias);
+    const envAlias = alias.replaceAll("_", "-");
+    const workspace = config.workspaces.get(envAlias);
+    const session = config.sessions.get(envAlias);
     return {
-        tools: config.tools.get(alias) ?? null,
+        tools: config.tools.get(envAlias) ?? null,
         ...(workspace === undefined ? {} : { workspace }),
         ...(session === undefined ? {} : { session }),
     };
@@ -106,11 +107,10 @@ export const serviceDefinitions = (environ: NodeJS.ProcessEnv = process.env): Ar
     return [...resources.definitions].map(([alias, { key, value }]) => {
         let definition: McpServerDefinition;
         try {
-            definition = readDefinition(JSON.parse(value));
+            definition = readDefinition(JSON.parse(value), alias);
         } catch (cause) {
             throw new ConfigurationError(key, `${key} must be an MCP server definition.`, { cause });
         }
-        if (definition.name !== alias) throw new ConfigurationError(key, `${key} must define name '${alias}'.`);
         return { alias, definition, enabled: resources.enabled(alias), provenance: { kind: "environment", source: key } };
     });
 };
@@ -134,13 +134,13 @@ export const configuredDefinitions = async (
                 if (!isServerName(alias) || entry.type === "sse") {
                     plugins!.report({
                         source: "engine:configuration", kind: "plugin_configuration", level: "warn", owner: "mcp",
-                        message: `${file}#${reference}: ${entry.type === "sse" ? "legacy SSE transport is unsupported" : "server name must match [a-z][a-z0-9-]*"}; this entry was skipped.`,
+                        message: `${file}#${reference}: ${entry.type === "sse" ? "legacy SSE transport is unsupported" : "server name must match [a-z][a-z0-9_-]*"}; this entry was skipped.`,
                     });
                     continue;
                 }
-                const definition = readDefinition({ ...entry, name: alias });
+                const definition = readDefinition(entry, alias);
                 selected.set(alias, {
-                    alias, definition, enabled: resources.enabled(alias),
+                    alias, definition, enabled: resources.enabled(alias.replaceAll("_", "-")),
                     context: { root: plugin.root, data: plugin.data },
                     provenance: { kind: "plugin", source: file, reference },
                 });
@@ -171,14 +171,15 @@ export const configuredDefinitions = async (
             const key = `${file}#${reference}`;
             let definition: McpServerDefinition;
             try {
+                if (!isServerName(alias)) throw new TypeError("Server alias must match [a-z][a-z0-9_-]*.");
                 if (!isObject(entry)) throw new TypeError("A server entry must be an object.");
                 if (Object.hasOwn(entry, "name")) throw new TypeError("The map key supplies the server name; omit name from the entry.");
                 const type = Object.hasOwn(entry, "type") ? entry.type : (Object.hasOwn(entry, "command") ? "stdio" : "streamable-http");
-                definition = readDefinition({ ...entry, name: alias, type });
+                definition = readDefinition({ ...entry, type }, alias);
             } catch (cause) {
                 throw new ConfigurationError(key, `${key} must be a complete MCP server definition without name.`, { cause });
             }
-            selected.set(alias, { alias, definition, enabled: resources.enabled(alias), provenance: { kind: "file", source: file, reference } });
+            selected.set(alias, { alias, definition, enabled: resources.enabled(alias.replaceAll("_", "-")), provenance: { kind: "file", source: file, reference } });
         }
     };
     for (const directory of directories) {
@@ -187,18 +188,6 @@ export const configuredDefinitions = async (
     }
     addPlugins(null);
     return [...selected.values()].toSorted((left, right) => left.alias.localeCompare(right.alias));
-};
-
-// {§mcp-configuration} — the servers whose every tool turn zero surveys.
-export const expandedServerNames = (environ: NodeJS.ProcessEnv = process.env): string[] => {
-    const field = `${PREFIX}EXPANDED`;
-    const raw = environ[field];
-    if (raw === undefined || raw.length === 0) return [];
-    const names = uniqueNames(jsonStrings(raw, field), field, "MCP server");
-    for (const name of names) {
-        if (!SERVER_NAME.test(name)) throw new ConfigurationError(field, `${field} names '${name}', which is not an MCP server alias ([a-z][a-z0-9-]*).`);
-    }
-    return names.toSorted();
 };
 
 const isServerName = (name: string): boolean => SERVER_NAME.test(name);
@@ -252,7 +241,6 @@ export const requestTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): numb
 
 export const validateConfiguration = (environ: NodeJS.ProcessEnv = process.env): void => {
     serviceDefinitions(environ);
-    expandedServerNames(environ);
     connectTimeoutMs(environ);
     requestTimeoutMs(environ);
     retryPacing(environ);

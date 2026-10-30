@@ -32,7 +32,7 @@ export const mcpFixture = async (t: TestContext, servers: Readonly<Record<string
 export const mcpEnvironment = (servers: Readonly<Record<string, object>>): Record<string, string> => ({
     ...MCP_CONTROLS,
     ...Object.fromEntries(Object.entries(servers).map(([name, definition]) => [
-        `PLURNK_MCP_${name.replaceAll("-", "_")}`, JSON.stringify({ name, ...definition }),
+        `PLURNK_MCP_${name}`, JSON.stringify(definition),
     ])),
 });
 

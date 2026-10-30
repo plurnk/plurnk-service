@@ -92,13 +92,13 @@ test("{§op-shapes}: directed SEND carries a numeric scope to its owner without 
 
 test("{§operation-fences} trailing operation asides are durable, single-line, and follow every modifier", () => {
     const statement = oneStatement([
-        "````gitea (list_issues) <!-- Lists issues (details: workspace:///_plurnk/tools/gitea/list_issues.json) -->",
+        "````gitea (list_issues) <!-- Lists issues (details: mcp:///gitea/list_issues.json) -->",
         "{\"owner\":\"plurnk\",\"repo\":\"plurnk-service\"}",
         "````",
     ].join("\n"));
     assert.equal(
         statement.aside,
-        "Lists issues (details: workspace:///_plurnk/tools/gitea/list_issues.json)",
+        "Lists issues (details: mcp:///gitea/list_issues.json)",
     );
     assert.equal(oneStatement("````READ (README.md)````").aside, null);
     assert.equal(oneStatement("````READ (README.md) <!-- -->````").aside, "");

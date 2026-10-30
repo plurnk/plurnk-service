@@ -28,7 +28,7 @@ type ValidatedValue<S> = S extends { readonly "~standard": { validate(input: unk
     ? R extends { readonly issues?: undefined; readonly value: infer V } ? V : never
     : never;
 
-export type SamplingMessageRequest = ValidatedValue<typeof specTypeSchemas.CreateMessageRequest>;
+type SamplingMessageRequest = ValidatedValue<typeof specTypeSchemas.CreateMessageRequest>;
 export type SamplingMessageParams = SamplingMessageRequest["params"];
 export type SamplingMessageResult = ValidatedValue<typeof specTypeSchemas.CreateMessageResult>;
 

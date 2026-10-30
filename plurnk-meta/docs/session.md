@@ -21,7 +21,7 @@ The packet's `## Session` block, below the log, names your session, its parent
 literal and keep the same meaning when passed to another session. Scratch
 belongs to the workspace; a namespace does not require a namesake session, and if
 `session://exampleSessionName/AGENTS.md` exists when that session starts (or is written later), its next turn reads the unread revision.
-Generated references live under `workspace:///_plurnk/`, and reference refreshes
+Generated references live under `plurnk:///` and `mcp:///`, and reference refreshes
 may replace them. EDIT creates or changes an entry, never a session; KILL with
 an entry path deletes that entry, not its session. A control address is scheme
 and authority only: no trailing slash, userinfo, port, query, or fragment.
@@ -42,7 +42,7 @@ new arrival.
 
 ## Delegation
 
-[Delegation and messages](workspace:///_plurnk/plurnk/delegation.md) covers session
+[Delegation and messages](plurnk:///delegation.md) covers session
 creation, child observations, waiting, completion, and reply routing.
 
 ## BARE inference
