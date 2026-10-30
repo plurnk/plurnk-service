@@ -141,7 +141,7 @@ It may use any npm scope. Its package manifest declares the PLURNK name:
     "name": "acme"
   },
   "peerDependencies": {
-    "@plurnk/plurnk-providers": "^5.0.0"
+    "@plurnk/plurnk-providers": "^6.0.0"
   }
 }
 ```

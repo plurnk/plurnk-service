@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-auth",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "OAuth 2.1 authorization server module for the Plurnk daemon.",
     "keywords": [
         "plurnk",
@@ -24,7 +24,7 @@
     "author": "@wikitopian",
     "type": "module",
     "dependencies": {
-        "@plurnk/plurnk-contracts": "^6.0.0",
+        "@plurnk/plurnk-contracts": "^7.0.0",
         "@plurnk/plurnk-meta": "^2.1.0"
     },
     "peerDependencies": {

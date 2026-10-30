@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-plain",
-    "version": "2.0.2",
+    "version": "2.0.3",
     "description": "text/plain (head-oriented prose) and text/stream (tail-oriented live data) mimetype handler for plurnk-service.",
     "keywords": [
         "plurnk",

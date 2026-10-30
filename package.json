@@ -90,7 +90,7 @@
     },
     "devDependencies": {
         "@arethetypeswrong/cli": "0.18.5",
-        "@plurnk/plurnk-spec-check": "^0.1.0",
+        "@plurnk/plurnk-spec-check": "^0.2.0",
         "@changesets/cli": "3.0.3",
         "@possumtech/sqlrite": "^6.6.1",
         "@types/node": "^26.6.6",

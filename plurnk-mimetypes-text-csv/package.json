@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-csv",
-    "version": "2.0.2",
+    "version": "2.0.3",
     "description": "text/csv mimetype handler for plurnk-service. Homebrew RFC 4180 tokenizer; no parser dependency.",
     "keywords": [
         "plurnk",

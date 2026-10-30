@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-markdown",
-    "version": "2.0.3",
+    "version": "2.0.4",
     "description": "text/markdown mimetype handler for plurnk-service.",
     "keywords": [
         "plurnk",

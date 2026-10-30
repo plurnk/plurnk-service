@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-common",
-    "version": "3.0.1",
+    "version": "3.0.2",
     "description": "Subprocess executor for plurnk-service's exec scheme — exposing the shell, Node.js, and Python 3.",
     "keywords": [
         "plurnk",
@@ -64,7 +64,7 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-contracts": "^6.0.0",
+        "@plurnk/plurnk-contracts": "^7.0.0",
         "@plurnk/plurnk-execs": "^4.0.0"
     }
 }
