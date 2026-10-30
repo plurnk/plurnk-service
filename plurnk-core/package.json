@@ -141,7 +141,7 @@
         "@possumtech/sqlrite": "^6.6.1",
         "diff": "^9.0.0",
         "glob": "^14.0.3",
-        "minimatch": "^11.0.2",
+        "minimatch": "^11.0.3",
         "@plurnk/plurnk-digest": "3.2.3",
         "@plurnk/plurnk-otel": "1.0.0"
     },
