@@ -47,8 +47,11 @@ const entries = (lines) => {
         const m = SUBJECT.exec(line);
         if (m === null) continue;
         const [, type, scope, bang, rest] = m;
-        // A subject may name a SPEC tag with its sign; the changelog is prose, so the sign goes.
-        const text = (scope === undefined ? rest : `${scope}: ${rest}`).replaceAll("§", "");
+        // A subject may name a SPEC tag with its sign or an angle-bracket placeholder;
+        // the changelog is prose, so the sign goes and HTML-like placeholders are escaped.
+        const text = (scope === undefined ? rest : `${scope}: ${rest}`)
+            .replaceAll("§", "")
+            .replace(/<(?=[A-Za-z])/gu, "\\<");
         if (bang === "!") breaking.push(text);
         else if (groups.has(type)) groups.get(type).push(text);
     }
