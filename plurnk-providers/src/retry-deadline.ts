@@ -15,7 +15,7 @@ const headerValue = (headers: Readonly<Record<string, string>> | undefined, name
     return Object.entries(headers).find(([key]) => key.toLowerCase() === target)?.[1];
 };
 
-export const retryDelayMs = (error: APICallError, attempt: number): number => {
+const retryDelayMs = (error: APICallError, attempt: number): number => {
     const retryAfterMs = headerValue(error.responseHeaders, "retry-after-ms");
     if (retryAfterMs !== undefined) {
         const timeoutMs = Number.parseFloat(retryAfterMs);
@@ -31,7 +31,7 @@ export const retryDelayMs = (error: APICallError, attempt: number): number => {
     return Math.min(1000 * 2 ** (attempt - 1), 10_000);
 };
 
-export const waitForRetry = (delayMs: number, signal?: AbortSignal): Promise<void> => new Promise<void>((resolve, reject) => {
+const waitForRetry = (delayMs: number, signal?: AbortSignal): Promise<void> => new Promise<void>((resolve, reject) => {
     if (signal?.aborted) {
         reject(signal.reason);
         return;

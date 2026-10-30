@@ -103,7 +103,7 @@ const CLOSE_FENCE = /^[ \t]*(`{3,}|~{3,})[^\w\s`~]?[ \t]*$/;
 // {§provider-failure-normalization} A response whose visible content consists entirely of one or more
 // balanced, closed operation fences (with no unclosed fence and no trailing unfenced text) has already
 // delivered its complete operational emission before any trailing vendor finish reason.
-export const hasCompleteFencedContent = (rawContent: string): boolean => {
+const hasCompleteFencedContent = (rawContent: string): boolean => {
     const content = rawContent.replace(LEADING_THINK_ENVELOPE, "");
     if (content.trim().length === 0) return false;
     const lines = content.split(/\r?\n/);
@@ -133,7 +133,7 @@ export const hasCompleteFencedContent = (rawContent: string): boolean => {
     return openFence === null && closedBlocks > 0;
 };
 
-export const normalizeStopReason = (
+const normalizeStopReason = (
     stopReason: AssistantMessage["stopReason"] | undefined,
     rawStopReason: string | undefined,
 ): { finishReason: ProviderAttemptFinishReason; rawFinishReason?: string } => {

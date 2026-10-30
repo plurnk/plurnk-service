@@ -50,7 +50,7 @@ const headersToRecord = (headers: Headers): Record<string, string> => {
     return out;
 };
 
-export const toPiContext = (messages: readonly ChatMessage[]): TranscriptContext => {
+const toPiContext = (messages: readonly ChatMessage[]): TranscriptContext => {
     const systemParts: string[] = [];
     const contextMessages: Context["messages"] = [];
     let leadingSystem = true;

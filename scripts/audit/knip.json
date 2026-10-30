@@ -11,6 +11,11 @@
             "entry": ["src/**/*.test.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
             "project": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"]
         },
+        "plurnk-acp": {
+            "entry": ["src/**/*.test.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
+            "project": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
+            "ignoreDependencies": ["@plurnk/plurnk-providers"]
+        },
         "plurnk-core": {
             "entry": ["src/core/content_weight.ts", "src/core/sha256.ts", "src/**/*.test.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
             "project": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
@@ -20,6 +25,11 @@
             "entry": ["src/**/*.test.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
             "project": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
             "ignoreDependencies": ["@plurnk/plurnk-mimetypes-grammar-*"]
+        },
+        "plurnk-providers": {
+            "entry": ["src/**/*.test.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
+            "project": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
+            "ignoreDependencies": ["@aws-sdk/client-bedrock-runtime"]
         },
         "plurnk-parser": {
             "entry": ["src/FencePairing.ts", "src/**/*.test.ts", "test/**/*.ts", "scriptify/**/*.ts"],
