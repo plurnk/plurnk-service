@@ -1,5 +1,13 @@
 # @plurnk/plurnk-service
 
+## 5.0.1
+
+### Patch Changes
+
+- Pass `--ignore-scripts` in global install documentation and `service.update` upgrade commands (#1331).
+- Updated dependencies
+  - @plurnk/plurnk-contracts@7.0.1
+
 ## 5.0.0
 
 ### Major Changes
