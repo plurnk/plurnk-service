@@ -18,6 +18,7 @@ const GRAPH_MATCHER = /^&[<>]?[^\s<>]\S*$/u;
 const REGEX_FORM = "A pattern is a regex written `/pattern/flags`, such as `/timeout/i`.";
 
 export type BareMatcher = {
+    op: string;
     text: string;
     aside: string | null;
     scope: string | null;
@@ -180,11 +181,11 @@ export const bareMatcher = (
     // {§fence-pairing} — a sigil pattern quoted in single backticks is that pattern (#758).
     const ticked = /^`([^`]+)`$/u.exec(text);
     if (ticked !== null && SIGIL.test(ticked[1])) text = ticked[1]!;
-    if (SIGIL.test(text)) return { text, aside, scope, metadata };
+    if (SIGIL.test(text)) return { op, text, aside, scope, metadata };
     if (op !== "FIND" && op !== "READ" && op !== "KILL") return null;
     // {§slot-order} — here the same text is the matcher, and one advisory says so.
     if (metadataFree && text.startsWith("{") && isJsonObject(text)) advise?.(position, "`{…}` was read as the matcher.");
-    return { text, aside, scope, metadata };
+    return { op, text, aside, scope, metadata };
 };
 
 // {§matcher-prefix-claims} — a matcher the parser cannot read is the operation's own refusal, never a parse
@@ -242,13 +243,15 @@ const liftInlineFlags = (pattern: string, flags: string, pos: Position, advise?:
 
 // {§parse-recovery}
 const isSedRange = (raw: string): boolean =>
-    /^\/(?:\\.|[^\\/])+\/\s*,\s*(?:\/(?:\\.|[^\\/])+\/|\+\d+)?\s*$/u.test(raw);
+    /^\/(?:\\.|[^\\/])+\/[a-z]*(?:\s*,\s*(?:\/(?:\\.|[^\\/])+\/[a-z]*|[+-]?\d+)?)+$/iu.test(raw);
 
 const tryParseSlashRegex = (raw: string, pos: Position, advise?: Advise):
     { ok: true; pattern: string; flags: string }
     | { ok: false; reason: "empty" }
     | { ok: false; reason: "trailing" }
     | { ok: false; reason: "invalid"; detail: string; flags: string; pattern: string } => {
+    const staged: [Position | undefined, string][] = [];
+    const stage: Advise = (p, m) => { staged.push([p, m]); };
     let i = 1;
     let inClass = false;
     while (i < raw.length) {
@@ -269,10 +272,11 @@ const tryParseSlashRegex = (raw: string, pos: Position, advise?: Advise):
     if (i >= raw.length) {
         // {§parse-recovery} — the heading's own boundaries make the rest the whole pattern.
         if (raw.length === 1) return { ok: false, reason: "empty" };
-        const inline = liftInlineFlags(readAlternation(raw.slice(1), pos, advise), "", pos, advise);
+        const inline = liftInlineFlags(readAlternation(raw.slice(1), pos, stage), "", pos, stage);
         try { new RegExp(inline.pattern, inline.flags); }
         catch (e) { return { ok: false, reason: "invalid", detail: detail(e), flags: inline.flags, pattern: inline.pattern }; }
         const excerpt = raw.length > 80 ? `${raw.slice(0, 80)}…` : raw;
+        for (const [p, m] of staged) advise?.(p, m);
         advise?.(pos, `\`${excerpt}\` has no closing \`/\`; it was read as the whole pattern with no flags. A regex closes with \`/\` and takes its flags after it.`);
         return { ok: true, pattern: inline.pattern, flags: inline.flags };
     }
@@ -280,18 +284,52 @@ const tryParseSlashRegex = (raw: string, pos: Position, advise?: Advise):
     // {§matcher-prefix-claims} — `-i` after the closing slash is the flag `i`, as a shell would take it.
     const shell = /^[\t ]*-([A-Za-z]+)[\t ]*$/u.exec(authored);
     if (shell !== null) {
-        advise?.(pos, `\`-${shell[1]}\` after the pattern was read as the flags \`${shell[1]}\`; flags go right after the closing \`/\`.`);
+        stage(pos, `\`-${shell[1]}\` after the pattern was read as the flags \`${shell[1]}\`; flags go right after the closing \`/\`.`);
     }
     const trailing = shell === null ? /^([A-Za-z]*)[\t ]/u.exec(authored) : null;
-    const inline = liftInlineFlags(readAlternation(raw.slice(1, i), pos, advise), shell?.[1] ?? trailing?.[1] ?? authored, pos, advise);
+    const inline = liftInlineFlags(readAlternation(raw.slice(1, i), pos, stage), shell?.[1] ?? trailing?.[1] ?? authored, pos, stage);
     const { pattern, flags } = inline;
     try { new RegExp(pattern, flags); }
     catch (e) { return { ok: false, reason: "invalid", detail: detail(e), flags, pattern }; }
     if (trailing !== null) return { ok: false, reason: "trailing" };
+    for (const [p, m] of staged) advise?.(p, m);
     return { ok: true, pattern, flags };
 };
 
-const parseMatcherBody = (body: string, pos: Position, advise?: Advise): MatcherBody => {
+// {§parse-recovery} — on FIND and READ, comma-separated `/pattern/flags` literals fold into alternation.
+const readRegexList = (raw: string, pos: Position, advise?: Advise): { pattern: string; flags: string } | null => {
+    const items: string[] = [];
+    let rest = raw;
+    while (rest.length > 0) {
+        if (!rest.startsWith("/") || rest.startsWith("//")) return null;
+        const close = regexClose(rest);
+        if (close <= 1) return null;
+        const after = /^([A-Za-z]*)(.*)$/su.exec(rest.slice(close + 1));
+        if (after === null) return null;
+        items.push(rest.slice(0, close + 1 + after[1].length));
+        const tail = after[2];
+        if (tail === "") break;
+        const sep = /^\s*,\s*(?=\/)/u.exec(tail);
+        if (sep === null) return null;
+        rest = tail.slice(sep[0].length);
+    }
+    if (items.length < 2) return null;
+    const staged: [Position | undefined, string][] = [];
+    const parsed: { pattern: string; flags: string }[] = [];
+    for (const item of items) {
+        const result = tryParseSlashRegex(item, pos, (p, m) => { staged.push([p, m]); });
+        if (!result.ok) return null;
+        parsed.push({ pattern: result.pattern, flags: result.flags });
+    }
+    const pattern = parsed.map((item) => `(?:${item.pattern})`).join("|");
+    const flags = Array.from(new Set(parsed.map((item) => item.flags).join(""))).join("");
+    try { new RegExp(pattern, flags); } catch { return null; }
+    for (const [p, m] of staged) advise?.(p, m);
+    advise?.(pos, `\`${raw}\` was read as the alternation \`/${pattern}/${flags}\`; a regex matcher is one \`/pattern/flags\` and selects matching lines, not the span between them.`);
+    return { pattern, flags };
+};
+
+const parseMatcherBody = (body: string, op: string, pos: Position, advise?: Advise): MatcherBody => {
     // At statement EOF ANTLR retains one ordinary terminating line ending in
     // BODY_TEXT; before a following heading the lexer consumes that same EOL as
     // SECTION_END. Normalize the equivalent surfaces before enforcing one line.
@@ -323,6 +361,10 @@ const parseMatcherBody = (body: string, pos: Position, advise?: Advise): Matcher
     if (raw.startsWith("/")) {
         const regex = tryParseSlashRegex(raw, pos, advise);
         if (regex.ok) return { dialect: "regex", raw, pattern: regex.pattern, flags: regex.flags };
+        if (op === "FIND" || op === "READ") {
+            const list = readRegexList(raw, pos, advise);
+            if (list !== null) return { dialect: "regex", raw, pattern: list.pattern, flags: list.flags };
+        }
         if (isSedRange(raw)) return unreadable(raw,
             "Regex matcher contains a range suffix after its closing `/`.", REGEX_FORM);
         if (regex.reason === "trailing") {
@@ -383,7 +425,7 @@ export const liftBareMatcher = (
         if (target!.kind === "url") target!.raw = `${target!.raw}#${channel[1]}`;
     }
     return {
-        matcher: attaches ? null : parseMatcherBody(bare.text, position, advise),
+        matcher: attaches ? null : parseMatcherBody(bare.text, bare.op, position, advise),
         metadata: metadata ?? (bare.metadata === null ? null : [bare.metadata]),
         aside: bare.aside, scope: bare.scope, consumed: true,
     };

@@ -63,6 +63,8 @@ test("{§slot-order} {§log-kill-scope}: distillation lands once; other operatio
 test("{§slot-order}: explicit URI lists compile in member order at the parser boundary", () => {
     for (const [heading, expected] of [
         ["READ (workspace:///a workspace:///b)", ["workspace:///a", "workspace:///b"]],
+        ["FIND (workspace:///a workspace:///b) /needle/", ["workspace:///a", "workspace:///b"]],
+        ["FIND (workspace:///a | workspace:///b) /needle/", ["workspace:///a", "workspace:///b"]],
         ["KILL (log:///1/1/1/READ, log:///1/1/2/READ)", ["log:///1/1/1/READ", "log:///1/1/2/READ"]],
         ["READ (log:///1/1/1/READ, workspace:///notes.md https://example.com)", ["log:///1/1/1/READ", "workspace:///notes.md", "https://example.com"]],
         ["KILL (log:///1/1/1/READ,log:///1/1/2/READ)", ["log:///1/1/1/READ", "log:///1/1/2/READ"]],
@@ -80,19 +82,38 @@ test("{§slot-order}: explicit URI lists compile in member order at the parser b
     assert.equal(selections[0]?.aside, "inspect both");
 });
 
+test("{§slot-order}: comma and pipe-separated local path lists compile in member order on FIND, READ and KILL", () => {
+    for (const [heading, expected] of [
+        ["FIND (django/db/models/fields/related.py, django/db/models/sql/query.py) /reverse/", ["django/db/models/fields/related.py", "django/db/models/sql/query.py"]],
+        ["FIND (astropy/modeling/separable.py | astropy/modeling/tests/test_separable.py) /cstack/", ["astropy/modeling/separable.py", "astropy/modeling/tests/test_separable.py"]],
+        ["FIND (src/a.py,src/b.py) /needle/", ["src/a.py", "src/b.py"]],
+        ["FIND (django/**/*.py, tests/**/*.py) /needle/", ["django/**/*.py", "tests/**/*.py"]],
+        ["READ (a.py, b.py)", ["a.py", "b.py"]],
+        ["READ (a.py | b.py)", ["a.py", "b.py"]],
+        ["READ (a.py|b.py)", ["a.py", "b.py"]],
+        ["KILL (a.md, b.md)", ["a.md", "b.md"]],
+    ] as const) {
+        const parsed = operations(PlurnkParser.frame(heading, null));
+        assert.deepEqual(parsed.map((op) => "target" in op ? op.target?.raw : null), expected, heading);
+    }
+});
+
 test("{§slot-order}: ambiguous, invalid and ineligible targets stay singular and exact", () => {
     for (const [op, raw] of [
-        ["READ", "notes and plans.md"], ["READ", "alpha,beta.md"],
-        ["READ", "workspace:///a local.md"], ["READ", "https://example.com/a,b"],
+        ["READ", "notes and plans.md"], ["READ", "alpha,beta.md"], ["READ", "v1.0,v2.0.md"],
+        ["READ", "Chapter 1, Part 2.md"], ["FIND", "**/*.{py,html,txt}"],
+        ["FIND", "src/[a,b].py"], ["FIND", "src/[a|b].py"], ["FIND", "src/+\\(a|b\\).ts"],
+        ["READ", "workspace:///a local.md"], ["READ", "https://example.com/a,b"], ["READ", "data:text/plain,test"],
         ["READ", "workspace:///notes%20and%20plans.md"], ["KILL", "log:///1/1/*/{NEXT,READ}"],
         ["KILL", "workspace:///a local.md"], ["READ", "workspace:///valid https://%"],
-        ["FIND", "workspace:///a workspace:///b"], ["EDIT", "workspace:///a workspace:///b"],
+        ["EDIT", "workspace:///a workspace:///b"], ["EDIT", "a.py, b.py"],
         ["COPY", "workspace:///a workspace:///b"], ["MOVE", "workspace:///a workspace:///b"],
     ]) {
         const parsed = operations(PlurnkParser.frame(`${op} (${raw})${op === "COPY" || op === "MOVE" ? " (workspace:///destination)" : ""}`, op === "EDIT" ? "replacement" : null));
-        assert.equal(parsed.length, 1);
+        assert.equal(parsed.length, 1, `${op} (${raw})`);
         const statement = parsed[0];
-        assert.equal(statement.op === "COPY" || statement.op === "MOVE" ? statement.source.target.raw : statement.target?.raw, raw);
+        const expected = raw.replace(/\\([\\()])/gu, "$1");
+        assert.equal(statement.op === "COPY" || statement.op === "MOVE" ? statement.source.target.raw : statement.target?.raw, expected);
     }
 });
 

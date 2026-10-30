@@ -460,6 +460,11 @@ test("{§fence-pairing} a DSML WAIT naming a session and a DSML sh with a verbat
     const wait = ["<｜｜DSML｜｜ calls>", "<｜｜DSML｜｜ invoke name=\"WAIT\">", "<parameter name=\"path\">session://codename-lookup</｜｜DSML｜｜ parameter>", "</｜｜DSML｜｜ invoke>", "</｜｜DSML｜｜ calls>"].join("\n");
     assert.deepEqual(withoutPosition(ops(wait)), canonical("````WAIT (session://codename-lookup)\n````"));
 
+    const waitStreams = "<｜｜DSML｜｜function_calls>\n<｜｜DSML｜｜invoke name=\"WAIT\">\n<｜｜DSML｜｜parameter name=\"streams\" string=\"true\">[\"sh:///632b3961\"]</｜｜DSML｜｜parameter>\n<｜｜DSML｜｜parameter name=\"timeout\" string=\"false\">60</｜｜DSML｜｜parameter>\n</｜｜DSML｜｜invoke>\n</｜｜DSML｜｜function_calls>";
+    assert.deepEqual(withoutPosition(ops(waitStreams)), canonical("````WAIT (sh:///632b3961) [60]\n````"));
+    assert.deepEqual(withoutPosition(ops("<plurnk_op>\nWAIT (sh:///fd92f336) [20]\n</plurnk_op>")), canonical("````WAIT (sh:///fd92f336) [20]\n````"));
+    assert.deepEqual(withoutPosition(ops("<wait [30]>")), canonical("````WAIT [30]\n````"));
+
     const sh = [
         "<｜｜DSML｜｜ calls>",
         "<｜｜DSML｜｜ invoke name=\"sh\" [{\"cwd\":\".\"}] <!-- rebuild and re-run -->",
@@ -792,7 +797,7 @@ test("{§parse-recovery} every grammar-level refusal names its working form", ()
         assert.ok(errors.length > 0, `${input} is refused`);
         assert.equal(errors[0].recovery, recovery, input);
     }
-    assert.equal(refusedMatcher("```FIND (a) /x/ ,/y/\n```").recovery,
+    assert.equal(refusedMatcher("```FIND (a) /x/,+5\n```").recovery,
         "A pattern is a regex written `/pattern/flags`, such as `/timeout/i`.", "{§parse-recovery} gives the dialect's working form without synthesizing a query");
 });
 
@@ -1061,9 +1066,37 @@ const errorOf = (source: string): string => {
     return matcher.dialect === "unreadable" ? matcher.message : "";
 };
 
-for (const matcher of ["/^def start/,/^def end/", "/start/, /end/", "/start/,+45", "/start/,"]) {
+for (const [matcher, pattern, flags] of [
+    ["/^def start/,/^def end/", "(?:^def start)|(?:^def end)", ""],
+    ["/start/, /end/", "(?:start)|(?:end)", ""],
+    ["/x/ ,/y/", "(?:x)|(?:y)", ""],
+    ["/a/,/b/,/c/,/d/", "(?:a)|(?:b)|(?:c)|(?:d)", ""],
+    ["/a/i, /b/m", "(?:a)|(?:b)", "im"],
+] as const) {
+    for (const op of ["READ", "FIND"] as const) {
+        test(`{§parse-recovery} {§diagnostic-observation} ${op} ${matcher} folds into alternation with an advisory`, () => {
+            const parsed = PlurnkParser.parse(`\`\`\`\`${op} (example.py) ${matcher}\`\`\`\``);
+            const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+            const warnings = parsed.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
+            const built = statements[0] !== undefined && "matcher" in statements[0] ? statements[0].matcher : null;
+            assert.deepEqual(built, { dialect: "regex", raw: matcher, pattern, flags });
+            assert.deepEqual(warnings, [
+                `\`${matcher}\` was read as the alternation \`/${pattern}/${flags}\`; a regex matcher is one \`/pattern/flags\` and selects matching lines, not the span between them.`,
+            ]);
+        });
+    }
+}
+
+for (const matcher of ["/start/,+45", "/^class JSONField/,-1", "/start/,"]) {
     test(`{§parse-recovery} {§diagnostic-observation} ${matcher} reports its range suffix without rewriting it`, () => {
         assert.equal(errorOf(`\`\`\`\`READ (example.py) ${matcher}\`\`\`\``),
+            "Regex matcher contains a range suffix after its closing `/`.");
+    });
+}
+
+for (const op of ["EDIT", "KILL"] as const) {
+    test(`{§parse-recovery} {§diagnostic-observation} ${op} refuses comma-separated regex range suffixes`, () => {
+        assert.equal(errorOf(`\`\`\`\`${op} (example.py) /^def start/,/^def end/\n\`\`\`\``),
             "Regex matcher contains a range suffix after its closing `/`.");
     });
 }

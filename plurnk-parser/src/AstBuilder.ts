@@ -221,7 +221,12 @@ export default class AstBuilder {
     #buildFind(ctx: FindStatementContext): PlurnkStatement[] {
         const position = AstBuilder.#positionOf(ctx);
         const split = AstBuilder.#splitInlineBody(ctx, position);
-        return [...AstBuilder.#annotation(split.below, position), this.#buildFindFrom(ctx, AstBuilder.#asideOf(ctx), split.inline)];
+        const statement = this.#buildFindFrom(ctx, AstBuilder.#asideOf(ctx), split.inline);
+        const targets = statement.target === null ? [null] : targetMembers(statement.target);
+        return [
+            ...AstBuilder.#annotation(split.below, position),
+            ...targets.map((target): FindStatement => ({ ...statement, target })),
+        ];
     }
 
     #buildFindFrom(ctx: FindStatementContext, aside: string | null, inline: string | null): FindStatement {
@@ -294,8 +299,8 @@ export default class AstBuilder {
                 `${bare.scope != null ? `The scope \`${bare.scope}\`` : `The option block \`[${bare.metadata}]\``} follows the shared pattern of a target group.`, "error",
                 "In a target group each `(path)` carries its own scope and option block, and the one shared pattern comes last.");
         }
-        const selections = slots.map((selection) => {
-            const lifted = liftBareMatcher(bare, selection.metadata, position, selection.target, this.#advise);
+        const selections = slots.map((selection, index) => {
+            const lifted = liftBareMatcher(bare, selection.metadata, position, selection.target, index === 0 ? this.#advise : undefined);
             return { ...selection, metadata: lifted.metadata, matcher: lifted.matcher };
         });
         return { selections, aside: bare?.aside ?? null, consumed: bare !== null };

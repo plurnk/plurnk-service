@@ -76,7 +76,7 @@ const idnaVariances = new Set([
     "http://10.0.0.XN--pokxncvks", "http://10.0.0.xN--pokxncvks",
     "file://xn--/p", "https://xn--/",
 ]);
-const category = ({ input }: UrlCase) => !/^[a-z][a-z0-9+.-]*:\/\//iu.test(input)
+const category = ({ input }: UrlCase) => !/^[a-z][a-z0-9+._-]*:\/\//iu.test(input)
     ? "local"
     : /[\r\n<]/u.test(input) ? "outside-heading" : "uri";
 
