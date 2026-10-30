@@ -8,7 +8,7 @@ usage(import.meta, `
 usage: npm run build:posix   (a step of npm run build, from plurnk-core)
 Build step: generates the shell completions from the executable's own --help.
 Reads: the built executable's usage.
-Writes: dist/posix/*.
+Writes: dist/man/plurnk-service.1 and dist/completions/*.
 `);
 
 const root = resolve(import.meta.dirname, "..");

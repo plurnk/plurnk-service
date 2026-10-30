@@ -1,7 +1,7 @@
 # @plurnk/plurnk-execs-common
 
 The **subprocess executor** for
-[plurnk-service](https://github.com/plurnk/plurnk-service)'s `exec` scheme. One
+[plurnk-service](https://github.com/plurnk/plurnk-service)'s runtime-tag execution (`sh`, `js`, `python3`). One
 package offers the shell, Node.js, and Python 3. Node is guaranteed; the rest
 are detected.
 

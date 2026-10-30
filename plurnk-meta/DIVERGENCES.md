@@ -26,9 +26,9 @@ advantage over conventional tool calling.
 
 ## Internal resource addressing
 
-Agent-visible state uses URI schemes such as `session://` and
-`log://`. The URI authority identifies the relevant session namespace where the
-scheme supports one.
+Agent-visible state uses URI schemes such as `workspace:///`, `session://`,
+`ops://`, `reasoning://`, `mcp:///`, `skill://`, and `plurnk:///`. The URI
+authority identifies the relevant session namespace where the scheme supports one.
 
 This provides one address form for project content, session state, execution
 results, and external resources. The internal representation does not alter
@@ -36,8 +36,9 @@ MCP, ACP, or provider wire protocols.
 
 ## ACP management extensions
 
-ACP defines agent Runs and JSON-RPC sessions, and management actions use ACP's
-extension fields and custom events on the same authenticated endpoint.
+ACP v2 defines JSON-RPC 2.0 sessions, notifications, and client-bound gates, and
+PLURNK management actions use `_plurnk/action` and `_meta.plurnk` extension fields
+on the same authenticated endpoint.
 
 These extensions must remain optional to generic ACP consumers. If ACP
 standardizes equivalent management operations, PLURNK should adopt them.

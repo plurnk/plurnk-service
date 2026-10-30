@@ -71,13 +71,10 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     readonly discovery: FunctionalityDiscovery = {
         inputs: ["query", "source"],
         emptyListsAll: true,
-        details: "`discover` is this installation's configuration catalog: every name an installed "
-            + "package declares that you may set, with the declaring package as provenance and its own "
-            + "comment as the summary; plurnk's own names never appear. `query` matches a name or the "
-            + "comment that documents it; `source` selects one owning package; an empty body is the "
-            + "whole catalog, which is short — start there. It is how you learn which names have a "
-            + "consumer, and how you learn the name of a value only the operator can supply. "
-            + "READ a dotenv file; set its variables with `add`.",
+        details: "`discover` lists the configuration variables installed packages declare, with the "
+            + "declaring package as provenance and its comment as the summary; `PLURNK_*` names "
+            + "never appear. `query` matches a name or comment, `source` selects one owning package, "
+            + "and `{}` returns the full catalog.",
     };
 
     readonly #defaults: () => Promise<readonly EnvDefaultsFile[]>;

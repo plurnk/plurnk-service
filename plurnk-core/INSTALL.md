@@ -35,13 +35,14 @@ and says which two settings the daemon needs behind it.
 | Resource | Default location |
 | --- | --- |
 | User configuration | `$XDG_CONFIG_HOME/plurnk/.env` and `.env.local` (`~/.config/plurnk/.env`) |
-| Operating policy | `$XDG_CONFIG_HOME/plurnk/AGENTS.md` |
+| Operating policy | `$XDG_CONFIG_HOME/plurnk/AGENTS.md` (`.local.md`), `$XDG_CONFIG_HOME/agents/AGENTS.md` (`.local.md`), `~/.agents/AGENTS.md` (`.local.md`) |
 | Database | `$XDG_DATA_HOME/plurnk/plurnk.db` (`~/.local/share/plurnk/plurnk.db`) |
 | Log of a service a client started | `$XDG_STATE_HOME/plurnk/service.log` (`~/.local/state/plurnk/service.log`) |
-| Project / global Agent Skills | `.agents/skills/` / `~/.agents/skills/` |
+| Project / global Agent Skills | `.agents/skills/` / `$XDG_CONFIG_HOME/agents/skills/` / `~/.agents/skills/` |
 | Plurnk-only Agent Skills | `$XDG_CONFIG_HOME/plurnk/skills/` |
-| Project / global MCP servers | `.agents/mcp.json` / `~/.agents/mcp.json` |
+| Project / global MCP servers | `.agents/mcp.json` / `$XDG_CONFIG_HOME/agents/mcp.json` / `~/.agents/mcp.json` |
 | Plurnk-only MCP servers | `$XDG_CONFIG_HOME/plurnk/mcp.json` |
+| Personas | `.plurnk/personas/`, `.agents/personas/`, `$XDG_CONFIG_HOME/plurnk/personas/`, `$XDG_CONFIG_HOME/agents/personas/`, `~/.agents/personas/` |
 
 Use `plurnk-service config` for paths and precedence, `config edit` to edit the
 user file, and `config check` to validate it. A `PLURNK_*` key that file sets and
@@ -61,8 +62,7 @@ the table above; `PLURNK_SERVICE_DB_PATH` overrides it, and
 `PLURNK_SERVICE_STATE_ROOT` relocates the default. Back up the actual daemon's
 database, not a different client's default.
 
-Use SQLite's consistent-copy operation while the daemon is running **or** stopped
-({§share-packet-names}). Copying only a live `.db` can omit committed data still in
+Use SQLite's consistent-copy operation while the daemon is running **or** stopped. Copying only a live `.db` can omit committed data still in
 its `-wal` file; copying those files separately is not a consistent snapshot.
 This example uses Node, already required by Plurnk, and the default XDG path.
 Choose a new destination for each backup:
@@ -92,26 +92,26 @@ Do not overwrite a live database or pair a restored file with old sidecars.
 
 | Restored input | Startup behaviour |
 | --- | --- |
-| Database | Retained history, approval decisions, attachments and workspace/session configuration return. Interrupted work is settled without replaying uncertain effects ({§session-causal-admission}). |
+| Database | Retained history, approval decisions, attachments and workspace/session configuration return. Interrupted work is settled without replaying uncertain effects. |
 | Project files and service configuration | Restore separately. Current files remain authoritative; startup reads the current configuration, not an earlier ambient environment captured in history. |
-| Schedules | Enabled definitions rearm from the present; missed occurrences are not replayed ({§schedule-residency}, {§schedule-delivery}). |
-| Interactive MCP authorization | Reauthorize. Tokens and pending sign-ins are process-local, not part of the database backup ({§oauth-continuation}). |
+| Schedules | Enabled definitions rearm from the present; missed occurrences are not replayed. |
+| Interactive MCP authorization | Reauthorize. Tokens and pending sign-ins are process-local, not part of the database backup. |
 
 Retention controls expire packet compositions and call payloads, including physical-request
 captures. Messages, turn sources, operation receipts, approval decisions and request accounting
-remain with their containing history ({§content-store}); referenced attachment bytes remain
-too ({§content-store}). This is not content erasure. A share contains only what remains
+remain with their containing history; referenced attachment bytes remain
+too. This is not content erasure. A share contains only what remains
 when it is taken.
 
 `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` selects the database's WAL durability before migrations
 or startup writes. Its shipped setting is in `.env.defaults`. `FULL` synchronizes every commit
 to storage; selecting `NORMAL` explicitly trades power-loss durability for fewer synchronizations.
-The guarantees and storage assumptions are defined in {§db-durability}. Neither setting makes
+See `skill://plurnk/packages/@plurnk/plurnk-core/SPEC.md` for the storage guarantees. Neither setting makes
 project-file writes transactional or replaces backups.
 
 ## Precedence
 
-Highest priority first ({§operator-config-precedence}):
+Highest priority first:
 
 | Source | Rule |
 | --- | --- |
@@ -134,7 +134,7 @@ the owning declaration specifies its meaning. Standard host outbound transport
 variables (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, both cases, and
 `NODE_EXTRA_CA_CERTS`) apply across every outbound HTTP seam (providers, web
 reads/requests, remote MCP servers, and OTLP telemetry) whether set in the shell
-or `$XDG_CONFIG_HOME/plurnk/.env` ({§ambient-http-transport}).
+or `$XDG_CONFIG_HOME/plurnk/.env`.
 
 ## Manual and shell completions
 
@@ -220,7 +220,7 @@ instruction. A control may precede the resource it will govern.
 | Declare in configuration | Supply an inherited definition, enabled by default unless a control disables it. No workspace writes. |
 | `list` | Inspect the effective definition, ownership (`origin`), winning configuration input (`provenance`), enabledness, and runtime readiness without starting it. |
 | `discover` | Return inert candidates; nothing is added or enabled. |
-| `add` | Persist a workspace override and prepare it through the ordinary authorization policy. |
+| `add` / `replace` | Persist a workspace override (`add` creates; `replace` updates an existing override for families that support it) and prepare it through the ordinary authorization policy. |
 | `disable` / `enable` | Change availability without forgetting the definition or updating fetched skill copies. |
 | `remove` | Forget the local override and restore the inherited definition and enabledness. Use `disable` to suppress an inherited entry. |
 

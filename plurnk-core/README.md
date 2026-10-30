@@ -1,7 +1,7 @@
 # plurnk-service
 
 The PLURNK daemon: persistent agent state, model loops, packet assembly, and
-operation dispatch. Its client surface is ACP over HTTP/SSE and WebSocket through
+operation dispatch. Its client surface is ACP v2 over Streamable HTTP and WebSocket through
 `@plurnk/plurnk-acp`. The user-facing CLI lives in
 [plurnk](https://github.com/plurnk/plurnk).
 
@@ -25,7 +25,7 @@ Workspace = shared resources, configuration, and an optional project folder. Ses
 
 ## Integration
 
-Clients use ACP management actions and ACP Run streams exposed by
+Clients use ACP v2 session methods, notifications, and `_plurnk/action` management actions exposed by
 `@plurnk/plurnk-acp`. Core supplies an in-process daemon seam; it does not open
 a second client transport.
 

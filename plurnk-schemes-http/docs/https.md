@@ -90,4 +90,4 @@ acquisition, otherwise it forgets the stored response so the next READ must
 acquire it again. With `[{"remote": true}]`, the other options in that block
 are the DELETE request's headers.
 
-For a persistent bidirectional connection, `wss://` (`wss.md`).
+For a persistent bidirectional connection, `wss://` (`plurnk:///wss.md`).

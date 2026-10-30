@@ -17,7 +17,8 @@ an entry rather than controlling that session.
 | `workspace:///example.md` | Shared commons entry | Read and write. |
 
 The packet's `## Session` block, below the log, names your session, its parent
-(`null` at a root), and the loop and turn you are producing. Addresses are
+(`null` at a root), the loop and turn you are producing, and its `owner`
+(`address` and `interactive`). Addresses are
 literal and keep the same meaning when passed to another session. Scratch
 belongs to the workspace; a namespace does not require a namesake session, and if
 `session://exampleSessionName/AGENTS.md` exists when that session starts (or is written later), its next turn reads the unread revision.

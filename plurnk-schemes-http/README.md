@@ -80,7 +80,7 @@ Requires Node.js 26 or newer.
 
 ```sh
 npm i @plurnk/plurnk-schemes-http
-plurnk start
+plurnk-service start
 ```
 
 The shipped `.env.defaults` is the canonical operator configuration registry.

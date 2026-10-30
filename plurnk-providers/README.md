@@ -117,7 +117,7 @@ flowchart TD
 - **Output** accepts positive tokens or a percentage of context; known model
   limits cap it. An explicit reasoning budget must be smaller than total output.
   Leaving the reasoning budget unset does not disable reasoning.
-- **Output floor** (`PLURNK_PROVIDERS_OUTPUT_FLOOR`, shipped `10%`) is the least
+- **Output floor** (`PLURNK_PROVIDERS_OUTPUT_FLOOR`, shipped `25%`) is the least
   response room any request keeps, never above the output budget. The window less
   the floor is the input wall: a packet past the budget is still sent with its
   grant flexed down to the remainder; only a packet past the wall cannot be sent
@@ -141,7 +141,7 @@ It may use any npm scope. Its package manifest declares the PLURNK name:
     "name": "acme"
   },
   "peerDependencies": {
-    "@plurnk/plurnk-providers": "^1.2.0"
+    "@plurnk/plurnk-providers": "^5.0.0"
   }
 }
 ```

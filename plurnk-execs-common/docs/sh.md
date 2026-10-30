@@ -63,4 +63,4 @@ npm test
 
 Expiry closes the stream with status 504. By contrast, `WAIT [30]` limits one
 wait to 30 seconds without stopping the command. Without `lifetime`,
-the command is loop-bound; see `env.md` for other lifetime values.
+the command is loop-bound; see `mcp:///plurnk_env.md` for other `lifetime` values (`detached`, `turn`).

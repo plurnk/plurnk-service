@@ -16,17 +16,16 @@ A stock `@agentclientprotocol/sdk` v2 client needs only the endpoint and, when e
 token:
 
 - `session/new` creates or attaches a workspace (`cwd`) and session, returning
-  `configOptions` (`model`, `thought_level`, `spawn_model`, `mode`), `availableCommands` (`/mcp`,
-  `/skills`, `/members`, `/env`, `/schedule`, `/rollback`, `/share`, `/script`), and
+  `configOptions` (`model`, `thought_level`, `spawn_model`, `persona`, `mode`, plus any `<family>:<alias>` Functionality selectors), `availableCommands` (`/mcp`,
+  `/skills`, `/members`, `/env`, `/schedule`, `/rollback`, `/share`, `/script`, `/update`), and
   `_meta.plurnk`.
 - `session/resume` reopens an existing conversation, replays its recent loop window as standard
   `session/update` notifications ({§acp-history-window}), emits the current-state
   `state_update` snapshot and `usage_update`, and re-emits any pending `session/request_permission`
   or `elicitation/create` requests ({§acp-proposal-resolve}).
 - `session/fork`, `session/list`, `session/delete`, `session/close`, `session/set_config_option`,
-  `session/prompt`, `session/cancel`, `providers/list`, `providers/set`, `providers/disable`,
-  `auth/login`, and `auth/logout` operate directly on the daemon's `ApplicationPort`
-  ({§acp-daemon-client}).
+  `session/prompt`, `session/cancel`, `providers/list`, `mcp/message`, and `_plurnk/action`
+  operate directly on the daemon's `ApplicationPort` ({§acp-daemon-client}).
 
 ## Event Projection
 
@@ -38,7 +37,7 @@ Each attached session observes its bound session and, by default, its delegated 
 | User message arrival | `user_message_chunk` |
 | Model reasoning (`thinking`) | `agent_thought_chunk` ({§acp-plurnk-metadata}) |
 | Model reply (`SEND`, body-bearing `WAIT`, `outside/event`) | `agent_message_chunk` ({§acp-plurnk-metadata}) |
-| Model operations (`READ`, `WRITE`, `EDIT`, `EXEC`, `NOTE`, etc.) | `tool_call_update` (`NOTE` is `kind: "think"`, file edits carry `Diff` content, obligation discharges update the opening `toolCallId` per {§acp-plurnk-metadata}) |
+| Model operations (`READ`, `EDIT`, `COPY`, `MOVE`, `KILL`, `FIND`, `NOTE`, runtime tags, etc.) | `tool_call_update` (`NOTE` is `kind: "think"`, file edits carry `Diff` content, obligation discharges update the opening `toolCallId` per {§acp-plurnk-metadata}) |
 | Live `sh://` execution streams | `terminal_update` and `terminal_output_chunk`, linked from `tool_call_update` via `{ type: "terminal", terminalId }` ({§acp-status-descendants}) |
 | Delegated child sessions | `subagent_update` and `session_message` / `session_message_chunk` ({§acp-status-descendants}) |
 | Context window and spend | `usage_update` (`used`, `size`, `cost: { amount, currency: "USD" }`, {§acp-status-descendants}) |

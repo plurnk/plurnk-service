@@ -81,6 +81,7 @@ MCP is one family of workspace Functionality, managed with the verbs every famil
 | `workspace.mcp.discover` | `query`: searches the MCP Registry; present while `PLURNK_MCP_REGISTRY_URL` names one ({§mcp-module}) |
 | `workspace.mcp.add` / `replace` | `alias`, plus a complete connection definition (`command` / `url`, etc.) |
 | `workspace.mcp.enable` / `disable` / `remove` | `alias` |
+| `workspace.mcp.oauth.begin` | `alias`, `redirectUri` |
 | `workspace.mcp.oauth.complete` | `alias`, complete `callbackUrl` |
 | `workspace.mcp.complete` | `server`, completion `ref` and `argument`; optional `context` |
 
@@ -117,7 +118,7 @@ connection.
 Tool discovery uses `plurnk_mcp (list)` and `READ (mcp:///<server>.md)`.
 Each server's document lists enabled tool calls with required-field previews
 and links to full input schemas under `mcp:///<server>/<encoded-tool>.json`.
-The manager uses the same layout under `plurnk:///plurnk_mcp.md` and `plurnk:///plurnk_mcp/<verb>.json`;
+The manager uses the same layout under `mcp:///plurnk_mcp.md` and `mcp:///plurnk_mcp/<verb>.json`;
 schema documents preserve descriptions and constraints without adding them to
 the initial survey ({§tools-resource-materialization}).
 
@@ -144,7 +145,7 @@ OAuth client secrets are symbolic `${NAME}` environment references, resolved
 only when preparing a connection; an interactive sign-in stays in memory until
 the daemon stops.
 See [`.env.defaults`](./.env.defaults) for all controls and
-[`SPEC.md`](./SPEC.md#mcp-configuration-configuration) for the contract.
+[`SPEC.md`](./SPEC.md#mcp-configuration-configuration-and-plugin-discovery) for the contract.
 
 ## Demo fixture
 

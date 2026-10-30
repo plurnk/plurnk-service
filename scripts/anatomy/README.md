@@ -1,6 +1,6 @@
 # Anatomy tools
 
-Deterministic helpers for reading and reshaping large classes. They were written for the 2.0 decomposition (#484) and stay here so the same procedure runs again instead of being reconstructed by hand. Every tool fails hard on a shape it does not understand; that is the signal to look, not to guess.
+Deterministic helpers for reading and reshaping large classes. Every tool fails hard on a shape it does not understand; that is the signal to look, not to guess.
 
 | Tool | Reads | Prints or writes |
 | --- | --- | --- |

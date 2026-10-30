@@ -13,10 +13,10 @@ Add `plurnk-spec-check` to the repository's lint script. It checks source files
 selected by Git, including untracked files that are not ignored. The default
 directory is the current directory; pass another directory as the sole operand.
 
-Named contracts are declared once at the start of a SPEC.md block as
+Named contracts are declared once at the start of a `SPEC.md` Markdown heading (`## §tag`, `### §tag`, or `#### §tag`) as
 `§lowercase-kebab` and cited as `{§lowercase-kebab}`. Markdown code examples are
-inert. Each contract needs a citation from implementation, configuration, or
-coverage; citations do not prove that a test actually enforces the contract.
+inert. Each contract needs a citation from both implementation/panel and
+coverage, and every deterministic `test()` title cites at least one `{§tag}`; citations do not prove that a test actually enforces the contract.
 
 Repositories with existing unwitnessed contracts may explicitly name a JSON
 allowance mapping specification paths to tag-name arrays:

@@ -1052,7 +1052,7 @@ flowchart LR
 | Order | Section `name` | Wire `slot` | Header / shape |
 | --- | --- | --- | --- |
 | 1 | `definition` | `system` | Stripped table projection of `plurnk-contracts/plurnk.md` (read fresh per loop start and wake) |
-| 2 | `system-policy` | `system` | Concatenated contents of `PLURNK_SERVICE_POLICY` when explicitly set, or `$XDG_CONFIG_HOME/agents/AGENTS(.local)?.md`, `~/.agents/AGENTS(.local)?.md`, and `$XDG_CONFIG_HOME/plurnk/AGENTS(.local)?.md` (`AGENTS.md` seeded on first boot from `@plurnk/plurnk-meta/POLICY.md`) |
+| 2 | `system-policy` | `system` | Concatenated contents of `PLURNK_SERVICE_POLICY` when explicitly set, or `$XDG_CONFIG_HOME/agents/AGENTS(.local)?.md`, `~/.agents/AGENTS(.local)?.md`, and `$XDG_CONFIG_HOME/plurnk/AGENTS(.local)?.md` (`AGENTS.md` seeded on first boot from `@plurnk/plurnk-meta/POLICY.md`), followed by any project-tier `<projectRoot>/AGENTS(.local)?.md` and session-tier `session://<session>/AGENTS.md` |
 | 3 | `inject` | `system` | `## Operator Notes` when `PLURNK_SERVICE_PACKET_INJECT` is non-empty |
 | 4–5 | `log`, `log/<coord>`, `emission-history/<coord>` | `user` / `assistant` | Initial retained log records (`## Log`) up to the first replayed turn's first surviving receipt, then alternating `assistant` (replayed turn's emitted operations) and `user` (`emission-history/<first-surviving-receipt-coordinate>` paired receipts plus following non-receipt log records), ending with remaining `log/<first-record-coordinate>` records |
 | 6 | `git` | `user` | `## Git Status` `> [!NOTE]` summary when workspace is a Git repository |
@@ -1071,7 +1071,7 @@ Wire message grouping: Message 1 is `system` (`1–3`); Message 2 is `user` (ini
 
 | Value | Contract |
 | --- | --- |
-| `all` (default) | Replays every eligible prior turn in the session (including across loops and inherited fork history) that still has at least one surviving non-killed log receipt |
+| `all` (default) | Replays every eligible prior turn in the session (including across loops) that still has at least one surviving non-killed log receipt |
 | `latest` | Replays only the immediately preceding completed model inference turn in the session (never falling back to an earlier turn if that turn has no surviving receipts) |
 | `none` | Renders all retained log records in a single `user` `log` section without `assistant` turn replay |
 

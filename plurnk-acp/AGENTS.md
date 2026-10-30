@@ -4,7 +4,7 @@
 
 It owns:
 
-- ACP v2 WebSocket JSON-RPC 2.0 and HTTP/SSE Run transport;
+- ACP v2 WebSocket and Streamable HTTP JSON-RPC 2.0 transport, plus HTTP entry and history routes;
 - translation between daemon events and ACP events;
 - client-facing management actions;
 - proposal delivery and resolution over the client protocol;

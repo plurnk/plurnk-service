@@ -374,8 +374,8 @@ called `handle_request`.
 Each turn, the model receives a packet with four parts:
 
 - the card, as its system message;
-- the journal of everything it has observed;
-- the notes it wrote on earlier turns, in its own voice, each turn's behind the row that announced it;
+- the journal of everything it has observed and noted;
+- when emission history is enabled, the operations it emitted on earlier turns, in its own voice, each turn's ahead of its surviving receipts;
 - a short status that includes the size of its room and its heaviest rows.
 
 It answers with a program:

@@ -77,10 +77,10 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
     readonly summary = "Manage scheduled activity";
     readonly definitionSchema: JsonSchema = DEFINITION_SCHEMA;
     readonly example = {
-        alias: "standup",
+        alias: "daily",
         rule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20",
-        target: "session://scribe",
-        prompt: "Summarize yesterday's log entries for the team.",
+        target: "session://exampleSessionName",
+        prompt: "Text delivered at each occurrence.",
     };
     readonly docsDir = fileURLToPath(new URL("..", import.meta.url));
     readonly discovery: FunctionalityDiscovery = {

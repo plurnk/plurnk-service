@@ -36,7 +36,6 @@ export const toolKindOf = (op: string | null, scheme: string | null): ProposalTo
             return "other";
         case "WORK":
         case "FORK":
-        case "EXEC":
             return "execute";
         default:
             return op === null ? "other" : "execute";

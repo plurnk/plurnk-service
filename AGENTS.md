@@ -73,6 +73,15 @@ extensions included in the default installation. The terminal client is a separa
 - `plurnk-modules` owns the daemon module contract: the lifecycle a module
   implements and the base setup seam. Each framework owns the slice for what
   modules contribute to its kind.
+- `plurnk-mcp` owns MCP server configuration, connections, OAuth continuation,
+  tool and resource projection (`mcp://`), and MCP runtime execution.
+- `plurnk-skills` and `plurnk-agent-skills` own the skill contract, `skill://`
+  and `plurnk:///skills/` projection, and conventional `SKILL.md` discovery.
+- `plurnk-agent-plugins` owns `plugin.json` discovery and
+  containment across operator plugin roots.
+- `plurnk-schedule` owns durable cron and one-shot `schedule` Functionality.
+- `plurnk-aliases` and `plurnk-models` own `PLURNK_MODEL_<alias>` parsing and
+  the provider/model catalog.
 - `plurnk-hooks` owns exact-command delivery of selected core lifecycle events.
 - `plurnk-otel` owns the OpenTelemetry SDK: the trace and metric providers `OTEL_*` selects,
   registered as a module; the daemon instruments itself on the API alone.

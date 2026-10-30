@@ -32,7 +32,7 @@
     "bin": {
         "plurnk-service": "dist/service.js"
     },
-    "man": "./dist/posix/man/plurnk-service.1",
+    "man": "./dist/man/plurnk-service.1",
     "files": [
         ".env.defaults",
         "dist/**/*",

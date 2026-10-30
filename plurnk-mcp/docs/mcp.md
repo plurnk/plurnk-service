@@ -53,8 +53,9 @@ definition is saved without connecting; a new alias is created enabled.
 
 ## Environment
 
-Shared definitions may come from `~/.agents/mcp.json`,
-`$XDG_CONFIG_HOME/plurnk/mcp.json`, or the project's `.agents/mcp.json`, each
+Shared definitions may come from the project's `.agents/mcp.json`,
+`$XDG_CONFIG_HOME/plurnk/mcp.json`, `$XDG_CONFIG_HOME/agents/mcp.json`, or
+`~/.agents/mcp.json`, each
 containing a `mcpServers` map. Nearer files override farther ones; environment
 definitions override files. `list` reports the winning file and entry.
 Live management changes the workspace, never those files. File edits are

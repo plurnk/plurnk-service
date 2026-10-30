@@ -65,8 +65,8 @@ An extension is one package of one kind, declared once: under `plurnk` in its
 | `module` | lifecycle membership: a definition family behind the shared management verbs, a protocol server, or an event observer | `module` | `skill://plurnk/packages/@plurnk/plurnk-modules/SPEC.md` |
 
 - An extension loads when the daemon starts, from the service's installed npm
-  packages. A module also loads from a plugin in `$XDG_CONFIG_HOME/plurnk/plugins/`
-  or `~/.agents/plugins/`. A plugin in a project's `.agents/plugins/` contributes
+  packages. A module also loads from a plugin in `$XDG_CONFIG_HOME/plurnk/plugins/`,
+  `$XDG_CONFIG_HOME/agents/plugins/`, or `~/.agents/plugins/`. A plugin in a project's `.agents/plugins/` contributes
   its skills and MCP servers, never code, and a package written into the project
   loads nothing until it is installed among the service's npm packages.
 - `PLURNK_EXTENSIONS_TRUSTED_ONLY` gates loading: `@plurnk/*` packages always
@@ -78,8 +78,7 @@ An extension is one package of one kind, declared once: under `plurnk` in its
 
 A module exposing read-only resource folders can use `registerResourceTreeScheme`
 from `@plurnk/plurnk-schemes`: it supplies names and original bytes; the host owns
-MIME handling, entry projections and ordinary selection. See {§resource-tree-scheme}
-in that package's contract. `@plurnk/plurnk-skills` is the built-in example; its
+MIME handling, entry projections and ordinary selection (`skill://plurnk/packages/@plurnk/plurnk-schemes/SPEC.md`). `@plurnk/plurnk-skills` is the built-in example; its
 contract is `skill://plurnk/packages/@plurnk/plurnk-skills/SPEC.md`.
 
 ## Examples

@@ -13,7 +13,7 @@ The generated snapshot retains only the facts PLURNK consumes:
 | Lookup             | Snapshot facts                                                         |
 | ------------------ | ---------------------------------------------------------------------- |
 | `lookupProvider()` | Provider id, protocol adapter (`ProviderAdapter`), credential names, and optional API URL. |
-| `lookup()`         | Context window, optional output limit, reasoning flag, and USD prices. |
+| `lookup()`         | Context window, optional input/output limits, reasoning flag and optional efforts, optional input modalities, and USD prices. |
 
 Model entries without a positive context window are omitted. `reasoning: true`
 means the source asserted that capability; absence does not activate or disable

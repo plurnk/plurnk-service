@@ -8,7 +8,7 @@ Model aliases and active selectors are declared in the environment (`Record<stri
 
 | Variable | Form | Contract |
 |---|---|---|
-| `PLURNK_MODEL_<alias>` | `<provider>/<model>` | Declares a reusable route under `<alias>`. `<provider>` matches `/^[a-z0-9][a-z0-9_-]*$/`; `<model>` is the remainder after the first `/` and may contain `/` (`openrouter/openai/gpt-5`). |
+| `PLURNK_MODEL_<alias>` | `<provider>/<model>` | Declares a reusable route under `<alias>`. `<provider>` is any non-empty segment before the first `/`; `<model>` is the non-empty remainder after the first `/` and may contain `/` (`openrouter/openai/gpt-5`). |
 | `PLURNK_BASEURL_<alias>` | Absolute HTTP(S) URL | Optional per-alias endpoint override paired with `PLURNK_MODEL_<alias>`. |
 | `PLURNK_MODEL` | `<alias>` or `<provider>/<model>` | Selects the active root route. Empty or whitespace-only values mean unset. |
 | `PLURNK_CHILD_MODEL` | Reserved | Rejected by `parseAliasesFromEnv` so child routing flows through explicit invocation or parent inheritance. |

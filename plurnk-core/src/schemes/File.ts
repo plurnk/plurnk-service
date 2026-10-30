@@ -91,10 +91,12 @@ export default class File extends CoreSchemeAdapterBase {
         folderScopes: true,
         textEditScopes: true,
         documentation: [
-            "The project's workspace files (shown as bare paths) — THE TASK'S FILES: when asked to change the project, EDIT these, not your notes or scratch. READ and FIND them like any entry; EDIT proposes a diff for review and only writes to disk once accepted — the review is normal, not a refusal, so propose the edit rather than working around it. Existing non-members are invisible and cannot be clobbered; admitted absent paths may be created.",
-            "The EDIT body is the file text itself:",
+            "# file",
+            "## Summary",
+            "Project workspace files, addressed as bare paths relative to the project root.",
+            "READ and FIND inspect member files; EDIT proposes a diff for review and writes to disk once accepted. Existing non-members are invisible (`mcp:///plurnk_members.md`); admitted absent paths are created by EDIT, COPY, or MOVE.",
             PlurnkParser.frame("EDIT (src/greet.mjs) <!-- create the file from the body -->", "export const greet = (name) => `hello ${name}`;\n\nconsole.log(greet(\"world\"));"),
-            "A scoped EDIT replaces the addressed lines; put the replacement text in its body.",
+            "A scoped EDIT replaces the addressed lines with the replacement text in its body.",
         ].join("\n\n"),
     };
 

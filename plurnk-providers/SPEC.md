@@ -78,8 +78,8 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 | `PLURNK_PROVIDERS_OUTPUT_FLOOR` | `25%` (`<pct>%` of effective output ceiling or integer tokens) | Hard minimum output allowance subtracted from `contextWindow` to form `inputWall` |
 | `PLURNK_PROVIDERS_REASONING_BUDGET` | empty (`<pct>%` or integer tokens, `< outputBudget`) | Explicit thinking token budget under `adaptive` effort |
 | `PLURNK_PROVIDERS_EFFORT` / `EFFORT_FALLBACK` | `adaptive` / `high` | Portable reasoning effort selector and graded-route fallback |
-| `PLURNK_PROVIDERS_FETCH_TIMEOUT` / `OPERATION_TIMEOUT` | `60000` / `300000` ms | Per-attempt fetch/idle timeout and total operation wall-clock timeout |
-| `PLURNK_PROVIDERS_RETRY_ATTEMPTS` | `2` | Maximum automatic retry attempts for retryable transport failures |
+| `PLURNK_PROVIDERS_FETCH_TIMEOUT` / `OPERATION_TIMEOUT` | `30000` / `600000` ms | Per-attempt fetch/idle timeout and total operation wall-clock timeout |
+| `PLURNK_PROVIDERS_RETRY_ATTEMPTS` | `3` | Maximum automatic retry attempts for retryable transport failures |
 | `PLURNK_PROVIDERS_MAX_CONCURRENCY` | `-1` (unbounded or positive integer) | Per-endpoint FIFO concurrency gate ({§provider-inference-admission}) |
 | `PLURNK_PROVIDERS_RAWBODY` | `0` (`0 \| 1`) | Retains redacted raw request/response forensic bodies in `forensicEvidence` |
 

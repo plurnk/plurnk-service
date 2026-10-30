@@ -22,11 +22,21 @@ Node ≥26, ESM.
 ## API
 
 ```ts
-import { parseAliasesFromEnv, resolveActiveRoute, resolveModelSelector, type ProviderAlias, type ProviderSpec } from "@plurnk/plurnk-aliases";
+import {
+    parseAliasesFromEnv,
+    resolveActiveRoute,
+    resolveChildRoute,
+    resolveModelSelector,
+    type ActiveRouteResolution,
+    type ModelRoute,
+    type ProviderAlias,
+    type ProviderSpec,
+} from "@plurnk/plurnk-aliases";
 
-parseAliasesFromEnv(env = process.env): ProviderAlias[]   // every declared alias
-resolveModelSelector(selector, aliases): ProviderSpec | null // alias or exact route
-resolveActiveRoute(env = process.env): ProviderSpec | null  // the PLURNK_MODEL-selected route, or null
+parseAliasesFromEnv(env = process.env): ProviderAlias[]                         // every declared alias
+resolveModelSelector(selector, aliases): ProviderSpec                           // alias or exact route (throws on unknown alias)
+resolveActiveRoute(env = process.env): ActiveRouteResolution | null             // { route, spec, aliases }, or null when PLURNK_MODEL is unset
+resolveChildRoute(childSelector, parentSpec, aliases): ProviderSpec             // explicit child selector, or parentSpec when omitted
 ```
 
 ```ts

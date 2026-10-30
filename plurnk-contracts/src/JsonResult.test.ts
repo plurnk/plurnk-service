@@ -94,7 +94,6 @@ test("{§acp-plurnk-metadata} {§capability-policy-cascade} toolKindOf maps verb
     assert.equal(toolKindOf("SEND", null), "other");
     assert.equal(toolKindOf("WORK", null), "execute");
     assert.equal(toolKindOf("FORK", null), "execute");
-    assert.equal(toolKindOf("EXEC", null), "execute");
     assert.equal(toolKindOf("sh", "sh"), "execute");
     assert.equal(toolKindOf(null, null), "other");
 });

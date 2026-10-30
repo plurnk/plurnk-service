@@ -27,7 +27,7 @@ COPY leaves its source unchanged. MOVE removes the selected source region or
 channel after the destination succeeds; a failed destination leaves it intact.
 A changed file source is preserved. If removal fails after the destination was
 written, the result reports that destination; MOVE is not a transaction across
-both resources ({§file-snapshot-revision}, {§move}).
+both resources.
 Paths can address files, workspace entries, or readable streams. Stream content
 can be copied; MOVE cannot remove a stream's output. A log source contributes
 only its untrimmed content, and MOVE curates that source as KILL would.
