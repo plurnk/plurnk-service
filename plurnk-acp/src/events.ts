@@ -42,17 +42,56 @@ const isClientInteractionProjection = (v: unknown): v is ClientInteractionProjec
 const isNoticePayload = (v: unknown): v is { readonly notice: Notice } =>
     isRecord(v) && isRecord(v.notice);
 
-const workspaceTaskQueues = new WeakMap<DaemonEventDispatchContext, Map<number, Promise<void>>>();
+const workspaceTaskQueues = new WeakMap<Map<string, number>, Map<number, Promise<void>>>();
+const sessionStreamQueues = new WeakMap<Map<string, number>, Map<string, Promise<void>>>();
+
+const enqueueOrRunSessionEvent = (
+    ctx: DaemonEventDispatchContext,
+    workspaceId: number,
+    sessionId: number,
+    fn: () => void | Promise<void>,
+): void => {
+    let bySession = sessionStreamQueues.get(ctx.streamOffsets);
+    const key = `${workspaceId}:${sessionId}`;
+    const pending = bySession?.get(key);
+    if (pending === undefined) {
+        const res = fn();
+        if (res instanceof Promise) {
+            if (bySession === undefined) {
+                bySession = new Map();
+                sessionStreamQueues.set(ctx.streamOffsets, bySession);
+            }
+            const tracked = res
+                .catch(() => undefined)
+                .finally(() => {
+                    if (bySession?.get(key) === tracked) {
+                        bySession.delete(key);
+                    }
+                });
+            bySession.set(key, tracked);
+        }
+        return;
+    }
+    const tracked = pending
+        .then(() => fn())
+        .catch(() => undefined)
+        .finally(() => {
+            if (bySession?.get(key) === tracked) {
+                bySession.delete(key);
+            }
+        });
+    bySession!.set(key, tracked);
+};
 
 const enqueueWorkspaceSessionsTask = (
     ctx: DaemonEventDispatchContext,
     workspaceId: number,
     fn: (sessions: Awaited<ReturnType<ApplicationPort["listSessions"]>>) => void,
 ): void => {
-    let byWs = workspaceTaskQueues.get(ctx);
+    let byWs = workspaceTaskQueues.get(ctx.streamOffsets);
     if (byWs === undefined) {
         byWs = new Map();
-        workspaceTaskQueues.set(ctx, byWs);
+        workspaceTaskQueues.set(ctx.streamOffsets, byWs);
     }
     const prev = byWs.get(workspaceId) ?? Promise.resolve();
     const next = prev
@@ -95,7 +134,9 @@ export const dispatchDaemonEvent = (
                 gates.cancelProposalIfSettled(workspaceId, entryId, entryRec.state);
             }
             if (isLogEntryPayload(params)) {
-                broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.logEntry(params));
+                enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, () => {
+                    broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.logEntry(params));
+                });
             }
             const hasOtherWorkspaceSession = [...peers].some((peer) => {
                 for (const session of peer.sessions.values()) {
@@ -201,19 +242,23 @@ export const dispatchDaemonEvent = (
             const prevOffset = streamOffsets.get(offsetKey) ?? 0;
             if (contentLength > prevOffset) {
                 streamOffsets.set(offsetKey, contentLength);
-                void seam
-                    .readEntry({ workspaceId, sessionId, target, channel, offset: prevOffset })
-                    .then((readResult) => {
-                        const chunk = readResult.entry !== null
-                            ? (readResult.entry.channels[channel]?.content ?? "")
-                            : "";
-                        if (chunk.length > 0) {
-                            broadcastSessionUpdate(workspaceId, sessionId, (s) =>
-                                s.translator.terminalChunk(entryId, chunk, { sessionId, target, channel }),
-                            );
-                        }
-                    })
-                    .catch(() => undefined);
+                enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
+                    const readResult = await seam.readEntry({
+                        workspaceId,
+                        sessionId,
+                        target,
+                        channel,
+                        offset: prevOffset,
+                    });
+                    const chunk = readResult.entry !== null
+                        ? (readResult.entry.channels[channel]?.content ?? "")
+                        : "";
+                    if (chunk.length > 0) {
+                        broadcastSessionUpdate(workspaceId, sessionId, (s) =>
+                            s.translator.terminalChunk(entryId, chunk, { sessionId, target, channel }),
+                        );
+                    }
+                });
             }
             break;
         }
@@ -232,9 +277,11 @@ export const dispatchDaemonEvent = (
                 ...(isRecord(params.result) ? { result: params.result } : {}),
                 ...(isRecord(params.summary) ? { summary: params.summary } : {}),
             };
-            broadcastSessionUpdate(workspaceId, sessionId, (s) =>
-                s.translator.terminalConcluded(entryId, status, concludedMeta),
-            );
+            enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, () => {
+                broadcastSessionUpdate(workspaceId, sessionId, (s) =>
+                    s.translator.terminalConcluded(entryId, status, concludedMeta),
+                );
+            });
             break;
         }
         case "outside/event": {
@@ -251,7 +298,9 @@ export const dispatchDaemonEvent = (
             if (!isTerminatedEvent(params)) break;
             const sessionId = params.sessionId;
             gates.cancelSessionGates(workspaceId, sessionId);
-            broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.terminated(params));
+            enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, () => {
+                broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.terminated(params));
+            });
             const status = params.result.status;
             const childState = params.hitMaxTurns || status === 429
                 ? ({ state: "idle" as const, stopReason: "max_turn_requests" as const })

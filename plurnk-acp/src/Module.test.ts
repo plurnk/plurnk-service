@@ -737,6 +737,47 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     }),
                 });
 
+                h.port.emitEvent(1, "log/entry", {
+                    entry: makeLogEntry({
+                        id: 17,
+                        session_id: 1,
+                        turn_seq: 2,
+                        sequence: 5,
+                        op: "WORK",
+                        status_rx: 200,
+                        attrs: { session: "helper", message: "message://helper/1" },
+                        rx: { status: 200, content: "", mimetype: "text/plain" },
+                    }),
+                });
+
+                h.port.emitEvent(1, "log/entry", {
+                    entry: makeLogEntry({
+                        id: 18,
+                        session_id: 1,
+                        turn_seq: 2,
+                        sequence: 6,
+                        op: "WAIT",
+                        status_rx: 202,
+                        attrs: { waiting: 30 },
+                        rx: { status: 202, content: "", mimetype: "text/plain" },
+                    }),
+                });
+
+                h.port.emitEvent(1, "log/entry", {
+                    entry: makeLogEntry({
+                        id: 19,
+                        session_id: 1,
+                        turn_seq: 3,
+                        sequence: 1,
+                        origin: "_plurnk",
+                        op: "SEND",
+                        source: "session://helper",
+                        answering: "log:///1/2/5/WORK",
+                        attrs: { body: "Intermediate progress" },
+                        rx: { status: 200, content: "Intermediate progress", mimetype: "text/markdown" },
+                    }),
+                });
+
                 const notice: Notice = {
                     source: "acp",
                     kind: "test-notice",
@@ -815,6 +856,44 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 );
                 assert.ok(updates.some((u) => u.sessionUpdate === "terminal_update"));
                 assert.ok(updates.some((u) => u.sessionUpdate === "terminal_output_chunk"));
+                const chunkIdx = updates.findIndex((u) => u.sessionUpdate === "terminal_output_chunk");
+                const shCompletedIdx = updates.findIndex(
+                    (u) =>
+                        u.sessionUpdate === "tool_call_update" &&
+                        u.toolCallId === "1/1/3" &&
+                        u.status === "completed",
+                );
+                assert.ok(
+                    chunkIdx >= 0 && shCompletedIdx > chunkIdx,
+                    "terminal_output_chunk must arrive before the concluding completed tool_call_update",
+                );
+                assert.ok(
+                    updates.some(
+                        (u) =>
+                            u.sessionUpdate === "tool_call_update" &&
+                            u.toolCallId === "1/2/5" &&
+                            u.name === "WORK" &&
+                            u.status === "completed" &&
+                            Array.isArray(u.locations) &&
+                            (u.locations[0] as { path?: string } | undefined)?.path === "session://helper",
+                    ),
+                );
+                assert.ok(
+                    updates.some(
+                        (u) =>
+                            u.sessionUpdate === "tool_call_update" &&
+                            u.toolCallId === "1/2/6" &&
+                            u.name === "WAIT" &&
+                            u.status === "completed",
+                    ),
+                );
+                assert.ok(
+                    updates.some((u) => {
+                        if (u.sessionUpdate !== "user_message_chunk") return false;
+                        const plurnk = (u._meta as { plurnk?: { answering?: string; source?: string } } | undefined)?.plurnk;
+                        return plurnk?.answering === "log:///1/2/5/WORK" && plurnk?.source === "session://helper";
+                    }),
+                );
                 assert.ok(updates.some((u) => u.sessionUpdate === "notice"));
                 assert.ok(
                     updates.some(

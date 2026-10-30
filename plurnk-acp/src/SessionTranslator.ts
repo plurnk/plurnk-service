@@ -124,7 +124,7 @@ export default class SessionTranslator {
             return "failed";
         }
         const attrs = attrRecord(row.attrs);
-        if (statusRx < 400 && (typeof attrs.stream === "string" || typeof attrs.message === "string" || statusRx === 202)) {
+        if (statusRx < 400 && typeof attrs.stream === "string") {
             return "in_progress";
         }
         return "completed";
@@ -141,7 +141,19 @@ export default class SessionTranslator {
         const text = txBody(parsedTx, attrs, parsedRx);
         const { receipt, contentBlocks } = cleanReceipt(entry.rx);
         const rawAddress = addressOf(entry);
-        const address = rawAddress ?? (typeof attrs.path === "string" ? attrs.path : null);
+        const address =
+            rawAddress ??
+            (typeof attrs.path === "string"
+                ? attrs.path
+                : typeof attrs.session === "string" && attrs.session.length > 0
+                  ? attrs.session.includes("://")
+                      ? attrs.session
+                      : `session://${attrs.session}`
+                  : typeof attrs.to === "string" && attrs.to.length > 0
+                    ? attrs.to
+                    : typeof entry.scheme === "string" && typeof entry.hostname === "string" && entry.hostname.length > 0
+                      ? `${entry.scheme}://${entry.hostname}`
+                      : null);
         const statusRx = statusOf(entry);
 
         const reasoningTurnKey = `${entry.session_id}:${entry.turn_id}`;
@@ -237,6 +249,13 @@ export default class SessionTranslator {
                     sessionUpdate: "user_message_chunk",
                     messageId,
                     content: { type: "text", text },
+                    _meta: {
+                        plurnk: {
+                            ...opMeta,
+                            ...(typeof entry.answering === "string" ? { answering: entry.answering } : {}),
+                            ...(typeof entry.source === "string" ? { source: entry.source } : {}),
+                        },
+                    },
                 },
             });
             return updates;

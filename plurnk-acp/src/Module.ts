@@ -87,21 +87,17 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             },
         });
         this.#nodeHttpHandler = createNodeHttpHandler(this.#acpServer);
+        const eventCtx = {
+            seam: this.#seam,
+            peers: this.#peers,
+            gates: this.#gates,
+            streamOffsets: this.#streamOffsets,
+            notifyPeerSession: this.#notifyPeerSession,
+            broadcastSessionUpdate: this.#broadcastSessionUpdate,
+        };
         this.#offEvents = seam.subscribeToEvents((workspaceId, method, params) => {
             if (workspaceId !== null) {
-                dispatchDaemonEvent(
-                    {
-                        seam: this.#seam,
-                        peers: this.#peers,
-                        gates: this.#gates,
-                        streamOffsets: this.#streamOffsets,
-                        notifyPeerSession: this.#notifyPeerSession,
-                        broadcastSessionUpdate: this.#broadcastSessionUpdate,
-                    },
-                    workspaceId,
-                    method,
-                    params,
-                );
+                dispatchDaemonEvent(eventCtx, workspaceId, method, params);
             }
         });
         this.#offRevoked = seam.credentials.onRevoked((family) => {
