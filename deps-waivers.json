@@ -6,5 +6,78 @@
             "lane": "mcp"
         }
     },
-    "ownerVeto": []
+    "ownerVeto": [
+        "@agentclientprotocol/sdk",
+        "@modelcontextprotocol/client",
+        "@modelcontextprotocol/core",
+        "@modelcontextprotocol/server"
+    ],
+    "watchedFamilies": [
+        "@agentclientprotocol/",
+        "@modelcontextprotocol/"
+    ],
+    "watched": [
+        {
+            "name": "@agentclientprotocol/sdk",
+            "workspaces": [
+                "plurnk-acp"
+            ],
+            "requirement": "caret",
+            "resolved": "2.2.0",
+            "verifiedLatest": "2.2.0",
+            "verifiedAt": "2026-10-31",
+            "budgetDays": 14,
+            "why": "ACP v2 draft; wire protocol and TypeScript SDK surface may change in any release"
+        },
+        {
+            "name": "@modelcontextprotocol/client",
+            "workspaces": [
+                "plurnk-mcp"
+            ],
+            "requirement": "exact",
+            "resolved": "2.4.0",
+            "verifiedLatest": "2.4.0",
+            "verifiedAt": "2026-10-31",
+            "budgetDays": 14,
+            "why": "MCP v2 client SDK; pinned exact across the monorepo"
+        },
+        {
+            "name": "@modelcontextprotocol/core",
+            "workspaces": [
+                "plurnk-mcp"
+            ],
+            "requirement": "exact",
+            "resolved": "2.4.0",
+            "verifiedLatest": "2.4.0",
+            "verifiedAt": "2026-10-31",
+            "budgetDays": 14,
+            "why": "MCP v2 core protocol types and transport primitives; pinned exact across the monorepo"
+        },
+        {
+            "name": "@modelcontextprotocol/server",
+            "workspaces": [
+                "plurnk-core",
+                "plurnk-mcp"
+            ],
+            "requirement": "exact",
+            "resolved": "2.4.0",
+            "verifiedLatest": "2.4.0",
+            "verifiedAt": "2026-10-31",
+            "budgetDays": 14,
+            "why": "MCP v2 server SDK; pinned exact across plurnk-core and plurnk-mcp"
+        },
+        {
+            "name": "@modelcontextprotocol/conformance",
+            "workspaces": [
+                "plurnk-mcp"
+            ],
+            "requirement": "exact",
+            "resolved": "0.2.0-alpha.12",
+            "verifiedLatest": "0.2.0-alpha.12",
+            "trackPrefix": "0.2.",
+            "verifiedAt": "2026-10-31",
+            "budgetDays": 14,
+            "why": "MCP v2 conformance referee; npm latest dist-tag points to legacy 0.1.x so 0.2.x is tracked explicitly"
+        }
+    ]
 }

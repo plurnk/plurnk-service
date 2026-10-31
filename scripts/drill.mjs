@@ -195,6 +195,8 @@ if (import.meta.main) {
         // surface change fails this push (#331).
         if (!(await phase("conformance", "test:client-conformance", [rootTarget]))) process.exit(1);
     }
+    // {§release-candidate-graph} Dependency freshness and watched protocol ledger check (#1359).
+    if (!(await phase("deps", "deps:check", [rootTarget]))) process.exit(1);
     // Packet Token Floor — a report, never a gate. The script always exits 0 and its output IS the
     // deliverable, so it runs outside phase() and prints directly.
     console.log((await run(rootTarget.dir, "report:floor")).out.trim());

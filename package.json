@@ -96,7 +96,7 @@
         "@types/node": "^26.6.6",
         "dependency-cruiser": "18.7.0",
         "jscpd": "5.4.2",
-        "knip": "6.44.0",
+        "knip": "6.44.1",
         "markdownlint-cli2": "^0.24.0",
         "oxlint": "^1.90.0",
         "oxlint-tsgolint": "^7.0.2005",

@@ -93,6 +93,8 @@ describe("drill tier inventory", () => {
         assert.ok(rootUnit >= 0 && rootUnit < workspaceUnit, "npm test must gate root unit coverage before workspace unit");
         const build = source.indexOf('phase("build", "build"');
         assert.ok(build >= 0 && build < rootLint && build < rootUnit, "the one build precedes every phase that reads its output");
+        const depsCheck = source.indexOf('phase("deps", "deps:check"');
+        assert.ok(depsCheck > workspaceUnit, "npm test gates dependency freshness after workspace unit coverage (#1359)");
         const hook = await readFile(new URL("../.githooks/pre-push", import.meta.url), "utf8");
         assert.doesNotMatch(hook, /npm run build/u, "the hook leaves the build to the drill");
     });

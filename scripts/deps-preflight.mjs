@@ -1,9 +1,11 @@
-// {§release-candidate-graph} — The release freshness gate. Each stale package
+// {§release-candidate-graph} — The release and push freshness gate (#1359). Each stale package
 // across the root and every workspace is either resolved (bump the range,
 // relock, drill) or waived in deps-waivers.json with { reason, issue, lane } —
 // documented, attributed debt (an open issue on the owning lane), never silence.
 // The owner's `ownerVeto` list outranks any waiver: a package listed there
-// blocks regardless.
+// blocks regardless. Watched protocol dependencies (`watched`) also enforce a
+// verification age budget (`budgetDays`) and explicit prerelease prefix tracking
+// (`trackPrefix`, e.g. `0.2.` for `@modelcontextprotocol/conformance`).
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
@@ -11,12 +13,14 @@ import { usage } from "./lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run deps:check
-Verifies that every external dependency across the root and workspaces resolves at registry latest unless waived in deps-waivers.json ({§release-candidate-graph}).
-Reads: package.json, workspace package.json files, deps-waivers.json, npm outdated --json.
-Writes: nothing (exits 1 when any unwaived or vetoed dependency is outdated).
+Verifies that every external dependency across the root and workspaces resolves at registry latest unless waived in deps-waivers.json, and that watched protocol dependencies are within their verification age budget and at their tracked latest version ({§release-candidate-graph}).
+Reads: package.json, workspace package.json files, deps-waivers.json, npm outdated --json, npm view.
+Writes: nothing (exits 1 when any unwaived, vetoed, or watched dependency is outdated or expired).
 `);
 
 const run = promisify(execFile);
+const DAY_MS = 86_400_000;
+const UNREACHABLE_RE = /network timeout|audit endpoint returned an error|ETIMEDOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN|ERR_SOCKET_TIMEOUT|FETCH_ERROR|socket hang up|request to .* failed|timed out/iu;
 
 export const classify = (outdated, waivers, ownerVeto, workspaceNames) => {
     const veto = new Set(ownerVeto);
@@ -32,14 +36,62 @@ export const classify = (outdated, waivers, ownerVeto, workspaceNames) => {
     return { blockers, excused };
 };
 
+export const evaluateWatchedFreshness = (watched = [], trackedLatestByPackage = {}, nowMs = Date.now()) => {
+    const violations = [];
+    for (const entry of watched) {
+        const verifiedMs = Date.parse(`${String(entry.verifiedAt)}T00:00:00Z`);
+        if (Number.isNaN(verifiedMs)) {
+            violations.push(`${entry.name}: invalid verifiedAt '${String(entry.verifiedAt)}'`);
+            continue;
+        }
+        const elapsedDays = Math.floor((nowMs - verifiedMs) / DAY_MS);
+        if (elapsedDays > entry.budgetDays) {
+            violations.push(
+                `${entry.name}: verifiedAt ${entry.verifiedAt} is ${elapsedDays}d old (budget: ${entry.budgetDays}d) — ` +
+                `inspect 'npm view ${entry.name} versions' and bump or refresh verifiedAt in deps-waivers.json`,
+            );
+        }
+        if (typeof entry.trackPrefix === "string" && entry.trackPrefix.length > 0) {
+            const trackedLatest = trackedLatestByPackage[entry.name];
+            if (typeof trackedLatest === "string" && trackedLatest.length > 0 && trackedLatest !== entry.verifiedLatest) {
+                violations.push(
+                    `${entry.name}: resolved ${entry.resolved} trails tracked ${entry.trackPrefix}* latest ${trackedLatest}`,
+                );
+            }
+        }
+    }
+    return violations;
+};
+
 const outdated = async () => {
     try {
-        const { stdout } = await run("npm", ["outdated", "--json"]);
+        const { stdout } = await run("npm", ["outdated", "--json"], {
+            env: { ...process.env, npm_config_fetch_retries: "0", npm_config_fetch_timeout: "15000" },
+        });
         return JSON.parse(stdout || "{}");
     } catch (err) {
-        if (!err.stdout) throw err;
-        return JSON.parse(err.stdout);
+        if (typeof err.stdout === "string" && err.stdout.trim().startsWith("{")) {
+            return JSON.parse(err.stdout);
+        }
+        throw err;
     }
+};
+
+const queryTrackedLatest = async (watched = []) => {
+    const entries = await Promise.all(
+        watched
+            .filter((entry) => typeof entry.trackPrefix === "string" && entry.trackPrefix.length > 0)
+            .map(async (entry) => {
+                const { stdout } = await run("npm", ["view", entry.name, "versions", "--json"], {
+                    env: { ...process.env, npm_config_fetch_retries: "0", npm_config_fetch_timeout: "15000" },
+                });
+                const parsed = JSON.parse(stdout.trim() || "[]");
+                const versions = Array.isArray(parsed) ? parsed : [parsed];
+                const matching = versions.filter((v) => typeof v === "string" && v.startsWith(entry.trackPrefix));
+                return [entry.name, matching.at(-1) ?? ""];
+            }),
+    );
+    return Object.fromEntries(entries);
 };
 
 const workspacePackageNames = async () => {
@@ -50,15 +102,39 @@ const workspacePackageNames = async () => {
 };
 
 if (import.meta.main) {
-    const { waivers = {}, ownerVeto = [] } = JSON.parse(await readFile("deps-waivers.json", "utf8"));
+    const { waivers = {}, ownerVeto = [], watched = [] } = JSON.parse(await readFile("deps-waivers.json", "utf8"));
     const workspaces = await workspacePackageNames();
-    const { blockers, excused } = classify(await outdated(), waivers, ownerVeto, workspaces);
+
+    const ageViolations = evaluateWatchedFreshness(watched, {}, Date.now());
+    if (ageViolations.length > 0) {
+        console.error(`deps-preflight FAILED — ${ageViolations.length} watched dependency verification budget violation(s):`);
+        for (const v of ageViolations) console.error(`  ${v}`);
+        process.exit(1);
+    }
+
+    let outdatedReport;
+    let trackedLatestByPackage = {};
+    try {
+        [outdatedReport, trackedLatestByPackage] = await Promise.all([
+            outdated(),
+            queryTrackedLatest(watched),
+        ]);
+    } catch (cause) {
+        const text = `${cause?.stdout ?? ""}\n${cause?.stderr ?? ""}\n${cause?.message ?? ""}`;
+        if (!UNREACHABLE_RE.test(text)) throw cause;
+        console.warn(`deps-preflight: registry UNREACHABLE — continuing offline (#1359).\n${text.trim().slice(0, 300)}`);
+        process.exit(0);
+    }
+
+    const trackedViolations = evaluateWatchedFreshness(watched, trackedLatestByPackage, Date.now());
+    const { blockers, excused } = classify(outdatedReport, waivers, ownerVeto, workspaces);
 
     for (const e of excused) console.log(`waived  ${e.name} ${e.current} → ${e.latest}  ${e.waiver.issue} (${e.waiver.lane})`);
 
-    if (blockers.length > 0) {
-        console.error(`deps-preflight FAILED — ${blockers.length} outdated & unwaived:`);
+    if (blockers.length > 0 || trackedViolations.length > 0) {
+        console.error(`deps-preflight FAILED — ${blockers.length + trackedViolations.length} outdated & unwaived:`);
         for (const b of blockers) console.error(`  ${b.name} ${b.current} → ${b.latest}${b.vetoed ? "  [ownerVeto — waiver ignored]" : ""}`);
+        for (const v of trackedViolations) console.error(`  ${v}`);
         console.error("Resolve (bump range, relock, drill) or waive in deps-waivers.json { reason, issue, lane }. ownerVeto outranks any waiver.");
         process.exit(1);
     }
@@ -74,5 +150,5 @@ if (import.meta.main) {
         }
     }
 
-    console.log(`deps-preflight OK — ${excused.length} waived, 0 blocking`);
+    console.log(`deps-preflight OK — ${watched.length} watched, ${excused.length} waived, 0 blocking`);
 }

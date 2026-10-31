@@ -8,7 +8,8 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import test, { describe, it } from "node:test";
 import { releaseNotes } from "./changelog.mjs";
-import { classify } from "./deps-preflight.mjs";
+import { watchedDependencyViolations } from "./dependency-policy.mjs";
+import { classify, evaluateWatchedFreshness } from "./deps-preflight.mjs";
 import { REGISTRY_VISIBILITY_ATTEMPTS, awaitRegistryVersion } from "./lib/registry-visibility.mjs";
 import { canonicalForgeOrigin, repositoryAuthorityViolations, repositoryName } from "./lib/release-authority.mjs";
 import { packCandidate, readCandidate, writeJson } from "./lib/release-candidate.mjs";
@@ -631,6 +632,60 @@ describe("deps-preflight classify — fail on any unwaived update", () => {
         assert.equal(excused.length, 0);
         assert.equal(blockers.length, 1);
         assert.equal(blockers[0].name, "@plurnk/plurnk-mimetypes-grammar-fsharp");
+    });
+
+    it("{§release-candidate-graph} enforces watched verification age budgets and prerelease prefix tracking (#1359)", () => {
+        const watched = [
+            {
+                name: "@agentclientprotocol/sdk",
+                resolved: "2.2.0",
+                verifiedLatest: "2.2.0",
+                verifiedAt: "2026-10-31",
+                budgetDays: 14,
+            },
+            {
+                name: "@modelcontextprotocol/conformance",
+                resolved: "0.2.0-alpha.12",
+                verifiedLatest: "0.2.0-alpha.12",
+                trackPrefix: "0.2.",
+                verifiedAt: "2026-10-31",
+                budgetDays: 14,
+            },
+        ];
+        assert.deepEqual(
+            evaluateWatchedFreshness(watched, { "@modelcontextprotocol/conformance": "0.2.0-alpha.12" }, Date.parse("2026-11-10T00:00:00Z")),
+            [],
+        );
+        const expired = evaluateWatchedFreshness(watched, {}, Date.parse("2026-11-20T00:00:00Z"));
+        assert.equal(expired.length, 2);
+        const driftedPrerelease = evaluateWatchedFreshness(
+            watched,
+            { "@modelcontextprotocol/conformance": "0.2.0-alpha.13" },
+            Date.parse("2026-11-05T00:00:00Z"),
+        );
+        assert.equal(driftedPrerelease.length, 1);
+        assert.match(driftedPrerelease[0], /@modelcontextprotocol\/conformance: resolved 0\.2\.0-alpha\.12 trails tracked 0\.2\.\* latest 0\.2\.0-alpha\.13/);
+    });
+
+    it("{§release-candidate-graph} watchedDependencyViolations enforces exact vs caret pins, lockfile alignment, and watchedFamilies (#1359)", async () => {
+        const policy = JSON.parse(await readFile(path.join(repoRoot, "deps-waivers.json"), "utf8"));
+        const rootPkg = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8"));
+        const lockfile = JSON.parse(await readFile(path.join(repoRoot, "package-lock.json"), "utf8"));
+        const workspaceManifests = await Promise.all(
+            rootPkg.workspaces.map(async (dir) => ({
+                file: `${dir}/package.json`,
+                manifest: JSON.parse(await readFile(path.join(repoRoot, dir, "package.json"), "utf8")),
+            })),
+        );
+        assert.deepEqual(watchedDependencyViolations({ policy, workspaceManifests, lockfile }), []);
+
+        const driftedManifests = structuredClone(workspaceManifests);
+        const mcpEntry = driftedManifests.find((e) => e.file === "plurnk-mcp/package.json");
+        mcpEntry.manifest.dependencies["@modelcontextprotocol/client"] = "^2.4.0";
+        mcpEntry.manifest.dependencies["@modelcontextprotocol/extra"] = "1.0.0";
+        const violations = watchedDependencyViolations({ policy, workspaceManifests: driftedManifests, lockfile });
+        assert.ok(violations.some((v) => v.includes("plurnk-mcp/package.json: @modelcontextprotocol/client requires '2.4.0', found '^2.4.0'")));
+        assert.ok(violations.some((v) => v.includes("@modelcontextprotocol/extra belongs to watched family")));
     });
 });
 

@@ -125,6 +125,107 @@ const importsModuleContract = async (dir) => {
     return false;
 };
 
+// {§release-candidate-graph} — Watched protocol dependencies (@agentclientprotocol/*, @modelcontextprotocol/*)
+// must be recorded in deps-waivers.json with their pin requirement (exact or caret), resolved lockfile version,
+// verifiedLatest, verifiedAt, budgetDays, and rationale (#1359).
+const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/u;
+const WATCHED_DEP_SECTIONS = ["dependencies", "devDependencies", "optionalDependencies"];
+export const watchedDependencyViolations = ({ policy, workspaceManifests, lockfile }) => {
+    const violations = [];
+    const watched = Array.isArray(policy?.watched) ? policy.watched : [];
+    const watchedFamilies = Array.isArray(policy?.watchedFamilies) ? policy.watchedFamilies : [];
+    const waivers = policy?.waivers ?? {};
+    const ownerVeto = new Set(Array.isArray(policy?.ownerVeto) ? policy.ownerVeto : []);
+
+    if (watched.length === 0) {
+        violations.push("deps-waivers.json: watched list must not be empty");
+    }
+
+    const byDir = new Map(workspaceManifests.map(({ file, manifest }) => [path.dirname(file), manifest]));
+    const watchedByName = new Map();
+
+    for (const entry of watched) {
+        const { name, workspaces = [], requirement, resolved, verifiedLatest, verifiedAt, budgetDays, why } = entry ?? {};
+        if (typeof name !== "string" || name.length === 0) {
+            violations.push("deps-waivers.json: watched entry is missing a package name");
+            continue;
+        }
+        watchedByName.set(name, entry);
+        if (!Object.hasOwn(waivers, name) && !ownerVeto.has(name)) {
+            violations.push(`deps-waivers.json: unwaived watched dependency ${name} must be listed in ownerVeto`);
+        }
+        if (typeof why !== "string" || why.trim().length === 0) {
+            violations.push(`deps-waivers.json: ${name} is missing a non-empty 'why' rationale`);
+        }
+        if (!SEMVER_RE.test(String(resolved))) {
+            violations.push(`deps-waivers.json: ${name}.resolved '${String(resolved)}' is not an exact semver`);
+        }
+        if (!SEMVER_RE.test(String(verifiedLatest))) {
+            violations.push(`deps-waivers.json: ${name}.verifiedLatest '${String(verifiedLatest)}' is not an exact semver`);
+        }
+        if (resolved !== verifiedLatest) {
+            violations.push(`deps-waivers.json: ${name}.resolved (${String(resolved)}) does not match verifiedLatest (${String(verifiedLatest)})`);
+        }
+        if (!DATE_RE.test(String(verifiedAt)) || Number.isNaN(Date.parse(`${String(verifiedAt)}T00:00:00Z`))) {
+            violations.push(`deps-waivers.json: ${name}.verifiedAt '${String(verifiedAt)}' must be YYYY-MM-DD`);
+        }
+        if (!Number.isSafeInteger(budgetDays) || budgetDays <= 0 || budgetDays > 30) {
+            violations.push(`deps-waivers.json: ${name}.budgetDays must be an integer in 1..30`);
+        }
+        if (!Array.isArray(workspaces) || workspaces.length === 0) {
+            violations.push(`deps-waivers.json: ${name}.workspaces must list at least one workspace`);
+        }
+        const expectedSpec = requirement === "exact"
+            ? String(resolved)
+            : requirement === "caret"
+                ? `^${String(resolved)}`
+                : null;
+        if (expectedSpec === null) {
+            violations.push(`deps-waivers.json: ${name}.requirement '${String(requirement)}' must be 'exact' or 'caret'`);
+        } else {
+            for (const dir of workspaces) {
+                const manifest = byDir.get(dir);
+                if (!manifest) {
+                    violations.push(`deps-waivers.json: ${name} names unknown workspace '${String(dir)}'`);
+                    continue;
+                }
+                const specs = WATCHED_DEP_SECTIONS
+                    .map((section) => manifest[section]?.[name])
+                    .filter((spec) => spec !== undefined);
+                if (specs.length === 0) {
+                    violations.push(`${String(dir)}/package.json: missing watched dependency ${name}`);
+                } else if (specs[0] !== expectedSpec) {
+                    violations.push(`${String(dir)}/package.json: ${name} requires '${expectedSpec}', found '${String(specs[0])}'`);
+                }
+            }
+        }
+        const lockEntry = lockfile?.packages?.[`node_modules/${name}`];
+        if (!lockEntry || typeof lockEntry.version !== "string") {
+            violations.push(`package-lock.json: missing node_modules/${name} resolution`);
+        } else if (lockEntry.version !== resolved) {
+            violations.push(`package-lock.json: node_modules/${name} resolves to '${lockEntry.version}', expected '${String(resolved)}' from deps-waivers.json`);
+        }
+    }
+
+    for (const { file, manifest } of workspaceManifests) {
+        const dir = path.dirname(file);
+        for (const section of WATCHED_DEP_SECTIONS) {
+            for (const name of Object.keys(manifest[section] ?? {})) {
+                if (!watchedFamilies.some((prefix) => name.startsWith(prefix))) continue;
+                const entry = watchedByName.get(name);
+                if (!entry) {
+                    violations.push(`${file}: ${section}.${name} belongs to watched family (${watchedFamilies.join(", ")}) and must be listed in deps-waivers.json`);
+                } else if (!Array.isArray(entry.workspaces) || !entry.workspaces.includes(dir)) {
+                    violations.push(`${file}: ${section}.${name} is declared in ${dir} but deps-waivers.json does not list '${dir}' in ${name}.workspaces`);
+                }
+            }
+        }
+    }
+
+    return violations;
+};
+
 if (import.meta.main) {
     const root = JSON.parse(await fs.readFile("package.json", "utf8"));
     const manifests = ["package.json", ...root.workspaces.map((dir) => path.join(dir, "package.json"))];
@@ -170,6 +271,15 @@ if (import.meta.main) {
         }
     }
 
+    const [policyRaw, lockfileRaw] = await Promise.all([
+        fs.readFile("deps-waivers.json", "utf8"),
+        fs.readFile("package-lock.json", "utf8"),
+    ]);
+    violations.push(...watchedDependencyViolations({
+        policy: JSON.parse(policyRaw),
+        workspaceManifests,
+        lockfile: JSON.parse(lockfileRaw),
+    }));
     violations.push(...packageGraphViolations(workspaceManifests));
     violations.push(...moduleContractViolations(await Promise.all(workspaceManifests.map(async (entry) => ({
         ...entry, importsContract: await importsModuleContract(path.dirname(entry.file)),

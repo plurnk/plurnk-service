@@ -77,7 +77,7 @@
         "@agentclientprotocol/sdk": "^2.2.0",
         "@plurnk/plurnk-contracts": "^7.0.0",
         "@plurnk/plurnk-parser": "^4.2.0",
-        "ws": "^8.22.0"
+        "ws": "^8.22.1"
     },
     "plurnk": {
         "kind": "module",
