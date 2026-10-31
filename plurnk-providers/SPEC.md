@@ -50,7 +50,7 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 - Cost precedence resolves in order:
   1. Direct provider charge evidence (`kind: "charged"`, e.g. OpenRouter `usage.cost` and BYOK `upstream_inference_cost`).
   2. Direct provider response estimate (`kind: "estimated"`, e.g. DeepInfra `usage.estimated_cost`).
-  3. Operator rate override (`PLURNK_PROVIDERS_COST=input=...,output=...,reasoning=...,cacheRead=...,cacheWrite=...`) over catalog rates (`kind: "estimated"`).
+  3. Operator rate override (`PLURNK_PROVIDERS_COST_INPUT`, `PLURNK_PROVIDERS_COST_OUTPUT`, `PLURNK_PROVIDERS_COST_REASONING`, `PLURNK_PROVIDERS_COST_CACHE_READ`, `PLURNK_PROVIDERS_COST_CACHE_WRITE`) over catalog rates (`kind: "estimated"`), or standalone rates on local/uncataloged routes when `INPUT` and `OUTPUT` are both set.
   4. Catalog rates (`kind: "estimated"`). When a model has a distinct rate for a token category (`reasoning`, `cacheRead`, `cacheWrite`) that the response omitted, cost resolves to `kind: "unknown"` rather than guessing.
 - `aggregateProviderAccounting` sums `usage` and `costUsd` across requests, returning `null` for `usage` or `costUsd` when any request's usage or cost is unknown while preserving `knownUsage` and `knownCostUsd` subtotals.
 
@@ -81,6 +81,7 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 | `PLURNK_PROVIDERS_FETCH_TIMEOUT` / `OPERATION_TIMEOUT` | `30000` / `600000` ms | Per-attempt fetch/idle timeout and total operation wall-clock timeout |
 | `PLURNK_PROVIDERS_RETRY_ATTEMPTS` | `3` | Maximum automatic retry attempts for retryable transport failures |
 | `PLURNK_PROVIDERS_MAX_CONCURRENCY` | `-1` (unbounded or positive integer) | Per-endpoint FIFO concurrency gate ({§provider-inference-admission}) |
+| `PLURNK_PROVIDERS_COST_<CATEGORY>` | empty (non-negative USD per 1M tokens for `INPUT`, `OUTPUT`, `REASONING`, `CACHE_READ`, `CACHE_WRITE`) | Per-category operator rate overrides merged over catalog rates ({§provider-monetary-evidence}) |
 | `PLURNK_PROVIDERS_RAWBODY` | `0` (`0 \| 1`) | Retains redacted raw request/response forensic bodies in `forensicEvidence` |
 
 - Every knob in `PROVIDERS_KNOBS` is documented in `plurnk-providers/.env.defaults` and supports case-insensitive per-alias suffix scoping (`<KNOB>_<ALIAS>`) via `scopeEnvToAlias(env, alias)`.

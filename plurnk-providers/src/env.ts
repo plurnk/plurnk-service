@@ -333,7 +333,11 @@ export const effortFromEnv = (
 // endpoint override stays PLURNK_BASEURL_<alias> (its existing precedent).
 export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_MAX_CONCURRENCY",
-    "PLURNK_PROVIDERS_COST",
+    "PLURNK_PROVIDERS_COST_INPUT",
+    "PLURNK_PROVIDERS_COST_OUTPUT",
+    "PLURNK_PROVIDERS_COST_REASONING",
+    "PLURNK_PROVIDERS_COST_CACHE_READ",
+    "PLURNK_PROVIDERS_COST_CACHE_WRITE",
     "PLURNK_PROVIDERS_OUTPUT_BUDGET",
     "PLURNK_PROVIDERS_OUTPUT_FLOOR",
     "PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE",
@@ -379,32 +383,33 @@ export const PROVIDERS_KNOBS = Object.freeze([
 // same parser — e.g. core's `PLURNK_PROVIDERS_GBNF` — without
 // reimplementing the suffix/collision rules. Default stays the
 // providers' knob list; provider call sites pass nothing.
-// {§provider-monetary-evidence} (#461) — Models.dev is the rate starting point; the
-// operator overlays exact per-1M-token USD rates when a provider reprices ahead
-// of the catalog. Format: comma-separated key=value over the catalog vocabulary
-// (input, output, reasoning, cacheRead, cacheWrite). Alias-scoped like every
+// {§provider-monetary-evidence} {§provider-configuration} (#1357) — Models.dev is the rate
+// starting point; the operator overlays exact per-1M-token USD rates via five independent
+// scalar knobs (input, output, reasoning, cacheRead, cacheWrite). Alias-scoped like every
 // provider knob.
-const COST_OVERRIDE_KEYS = Object.freeze(["input", "output", "reasoning", "cacheRead", "cacheWrite"] as const);
-export type CostOverride = Partial<Record<(typeof COST_OVERRIDE_KEYS)[number], number>>;
+const COST_OVERRIDE_KNOBS = Object.freeze([
+    ["input", "PLURNK_PROVIDERS_COST_INPUT"],
+    ["output", "PLURNK_PROVIDERS_COST_OUTPUT"],
+    ["reasoning", "PLURNK_PROVIDERS_COST_REASONING"],
+    ["cacheRead", "PLURNK_PROVIDERS_COST_CACHE_READ"],
+    ["cacheWrite", "PLURNK_PROVIDERS_COST_CACHE_WRITE"],
+] as const);
+export type CostOverride = Partial<Record<(typeof COST_OVERRIDE_KNOBS)[number][0], number>>;
 export const costOverrideFromEnv = (env: NodeJS.ProcessEnv, label: string): CostOverride | null => {
-    const name = "PLURNK_PROVIDERS_COST";
-    const raw = env[name];
-    if (raw === undefined || raw.trim().length === 0) return null;
-    const out: Partial<Record<string, number>> = {};
-    for (const part of raw.split(",")) {
-        const [key, value, ...rest] = part.split("=").map((piece) => piece.trim());
-        if (rest.length > 0 || key === undefined || value === undefined
-            || !(COST_OVERRIDE_KEYS as readonly string[]).includes(key)) {
-            throw new Error(`${label} provider: ${name} entries are key=value over ${COST_OVERRIDE_KEYS.join(", ")} (per-1M-token USD); got ${JSON.stringify(part)}`);
-        }
-        if (key in out) throw new Error(`${label} provider: ${name} repeats ${key}`);
-        const parsed = Number(value);
-        if (value.length === 0 || !Number.isFinite(parsed) || parsed < 0) {
-            throw new Error(`${label} provider: ${name} ${key} must be a non-negative per-1M-token USD rate; got ${JSON.stringify(value)}`);
+    const out: CostOverride = {};
+    for (const [key, knob] of COST_OVERRIDE_KNOBS) {
+        const raw = env[knob];
+        if (raw === undefined || raw.trim().length === 0) continue;
+        const trimmed = raw.trim();
+        const parsed = Number(trimmed);
+        if (!Number.isFinite(parsed) || parsed < 0) {
+            throw new Error(
+                `${label} provider: ${knob} must be a non-negative per-1M-token USD rate; got ${JSON.stringify(raw)}`,
+            );
         }
         out[key] = parsed;
     }
-    return out;
+    return Object.keys(out).length === 0 ? null : out;
 };
 
 export const scopeEnvToAlias = (env: NodeJS.ProcessEnv, alias: string, knobs: readonly string[] = PROVIDERS_KNOBS): NodeJS.ProcessEnv => {

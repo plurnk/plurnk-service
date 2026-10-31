@@ -310,18 +310,38 @@ test("{§provider-configuration} envelope knobs are per-alias scopable (measured
     assert.deepEqual(generationEnvelopeFromEnv(scopeEnvToAlias(env, "jennifer"), "x", 100_000, null), { outputBudget: 35_000, outputFloor: 10_000, reasoningBudget: 10_000 });
 });
 
-test("{§provider-monetary-evidence} costOverrideFromEnv parses the catalog vocabulary and refuses drift", () => {
+test("{§provider-monetary-evidence} {§provider-configuration} costOverrideFromEnv parses the five scalar cost knobs and refuses invalid values", () => {
     assert.equal(costOverrideFromEnv({}, "x"), null);
     assert.deepEqual(
-        costOverrideFromEnv({ PLURNK_PROVIDERS_COST: "input=0.22, output=0.66,cacheRead=0.007" }, "x"),
-        { input: 0.22, output: 0.66, cacheRead: 0.007 },
+        costOverrideFromEnv(
+            {
+                PLURNK_PROVIDERS_COST_INPUT: "0.22",
+                PLURNK_PROVIDERS_COST_OUTPUT: "0.66",
+                PLURNK_PROVIDERS_COST_REASONING: "0.66",
+                PLURNK_PROVIDERS_COST_CACHE_READ: "0.007",
+                PLURNK_PROVIDERS_COST_CACHE_WRITE: "0.22",
+            },
+            "x",
+        ),
+        { input: 0.22, output: 0.66, reasoning: 0.66, cacheRead: 0.007, cacheWrite: 0.22 },
     );
-    assert.throws(() => costOverrideFromEnv({ PLURNK_PROVIDERS_COST: "cache_read=0.007" }, "x"), /key=value over input, output, reasoning, cacheRead, cacheWrite/);
-    assert.throws(() => costOverrideFromEnv({ PLURNK_PROVIDERS_COST: "input=" }, "x"), /non-negative per-1M-token USD rate/);
-    assert.throws(() => costOverrideFromEnv({ PLURNK_PROVIDERS_COST: "input=-1" }, "x"), /non-negative/);
-    assert.throws(() => costOverrideFromEnv({ PLURNK_PROVIDERS_COST: "input=0.1,input=0.2" }, "x"), /repeats input/);
+    assert.throws(
+        () => costOverrideFromEnv({ PLURNK_PROVIDERS_COST_INPUT: "invalid" }, "x"),
+        /PLURNK_PROVIDERS_COST_INPUT must be a non-negative per-1M-token USD rate/,
+    );
+    assert.throws(
+        () => costOverrideFromEnv({ PLURNK_PROVIDERS_COST_OUTPUT: "-1" }, "x"),
+        /PLURNK_PROVIDERS_COST_OUTPUT must be a non-negative per-1M-token USD rate/,
+    );
     // Alias-scoped like every provider knob.
-    const scoped = scopeEnvToAlias({ PLURNK_PROVIDERS_COST_deepdumb: "input=0.44,output=1.32" }, "deepdumb");
+    const scoped = scopeEnvToAlias(
+        {
+            PLURNK_PROVIDERS_COST_INPUT: "0.10",
+            PLURNK_PROVIDERS_COST_INPUT_deepdumb: "0.44",
+            PLURNK_PROVIDERS_COST_OUTPUT_deepdumb: "1.32",
+        },
+        "deepdumb",
+    );
     assert.deepEqual(costOverrideFromEnv(scoped, "x"), { input: 0.44, output: 1.32 });
 });
 

@@ -394,7 +394,7 @@ export const providerFromModelAdapter = ({
             ? {}
             : { cacheWrite: catalogCost.cacheWritePer1M }),
     };
-    // {§provider-monetary-evidence} (#461): the catalog is the starting point; a declared
+    // {§provider-monetary-evidence} (#1357): the catalog is the starting point; a declared
     // override merges over it, and the estimate's source names the overlay.
     const costOverride = costOverrideFromEnv(env, name);
     let rates = catalogRates;
@@ -402,14 +402,14 @@ export const providerFromModelAdapter = ({
         const merged = { ...catalogRates, ...costOverride };
         if (merged.input === undefined || merged.output === undefined) {
             throw new Error(
-                `${name} provider: PLURNK_PROVIDERS_COST without catalog rates must declare input and output`,
+                `${name} provider: PLURNK_PROVIDERS_COST_INPUT and PLURNK_PROVIDERS_COST_OUTPUT must both be set when catalog rates are absent`,
             );
         }
         rates = { ...merged, input: merged.input, output: merged.output };
     }
     const rateSource = costOverride === null
         ? "Models.dev catalog rates"
-        : "operator PLURNK_PROVIDERS_COST override over Models.dev catalog rates";
+        : "operator PLURNK_PROVIDERS_COST_* override over Models.dev catalog rates";
     const estimateCost = (usage: Parameters<typeof estimateProviderCost>[0]) =>
         estimateProviderCost(usage, rates, rateSource);
     const affinityEnabled = cacheAffinityFromEnv(env, name);

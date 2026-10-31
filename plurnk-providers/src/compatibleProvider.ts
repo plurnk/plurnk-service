@@ -1,8 +1,10 @@
 import { EFFORTS, isRecord, type Effort } from "@plurnk/plurnk-contracts";
 import { outboundFetch } from "@plurnk/plurnk-meta";
 import ModelProvider, { type GrammarStyle, type ReasoningStyle } from "./ModelProvider.ts";
+import { estimateProviderCost } from "./cost.ts";
 import {
     contextWindowFromEnv,
+    costOverrideFromEnv,
     declaredReasoningEfforts,
     effectiveContextWindow,
     dataCaptureFromEnv,
@@ -190,6 +192,20 @@ export const compatibleProviderFromEnv = async (
             ? `Declare each effort the served chat template distinguishes: PLURNK_PROVIDERS_REASONING_EFFORTS=${effort.mode} (comma-separated; an alias suffix scopes it to one alias).`
             : "This route sends no fixed-effort control.");
     }
+    const costOverride = costOverrideFromEnv(env, provider);
+    let estimateCost:
+        | ((usage: Parameters<typeof estimateProviderCost>[0]) => ReturnType<typeof estimateProviderCost>)
+        | undefined;
+    if (costOverride !== null) {
+        if (costOverride.input === undefined || costOverride.output === undefined) {
+            throw new Error(
+                `${provider} provider: PLURNK_PROVIDERS_COST_INPUT and PLURNK_PROVIDERS_COST_OUTPUT must both be set when catalog rates are absent`,
+            );
+        }
+        const rates = { ...costOverride, input: costOverride.input, output: costOverride.output };
+        estimateCost = (usage) =>
+            estimateProviderCost(usage, rates, "operator PLURNK_PROVIDERS_COST_* override over Models.dev catalog rates");
+    }
     return new ModelProvider({
         inferenceAdmission: inferenceAdmissionFromEnv(env, url.replace(/\/chat\/completions$/, "")),
         model,
@@ -202,6 +218,7 @@ export const compatibleProviderFromEnv = async (
         outputFloor: envelope.outputFloor,
         reasoningBudget: effort.budget,
         supportedEfforts,
+        ...(estimateCost === undefined ? {} : { estimateCost }),
         fetchTimeoutMs: timeout,
         operationTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "PLURNK_PROVIDERS_OPERATION_TIMEOUT", provider),
         effort,

@@ -271,6 +271,110 @@ test("{§provider-capacity-admission} a missing llama-server input-token endpoin
         detail: "llama-server input-token endpoint returned HTTP 404",
     });
 });
+
+test("{§provider-monetary-evidence} {§provider-configuration} llama-server compatible route sends include_usage and settles reasoning breakdown and scalar cost overrides", async () => {
+    let sentBody: Record<string, unknown> | undefined;
+    mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url.endsWith("/models")) {
+            return new Response(JSON.stringify({
+                data: [{ id: "served.gguf", meta: { n_ctx: 40_960 } }],
+            }));
+        }
+        if (url.endsWith("/props")) {
+            return new Response(JSON.stringify({ total_slots: 1 }));
+        }
+        if (url.endsWith("/chat/completions/input_tokens")) {
+            return new Response(JSON.stringify({ input_tokens: 1_000 }));
+        }
+        if (url.endsWith("/chat/completions")) {
+            sentBody = JSON.parse(requestBody(init)) as Record<string, unknown>;
+            const chunk = (delta: Record<string, string>, finish: string | null = null) =>
+                `data: ${JSON.stringify({
+                    id: "llama-1",
+                    object: "chat.completion.chunk",
+                    created: 1,
+                    model: "served.gguf",
+                    choices: [{ index: 0, delta, finish_reason: finish }],
+                })}\n\n`;
+            return new Response(
+                chunk({ reasoning_content: "step 1 " })
+                    + chunk({ reasoning_content: "step 2" })
+                    + chunk({ content: "done" }, "stop")
+                    + `data: ${JSON.stringify({
+                        id: "llama-1",
+                        object: "chat.completion.chunk",
+                        created: 1,
+                        model: "served.gguf",
+                        choices: [],
+                        usage: {
+                            prompt_tokens: 1_000,
+                            completion_tokens: 10,
+                            total_tokens: 1_010,
+                        },
+                        timings: {
+                            cache_n: 400,
+                            prompt_n: 600,
+                            predicted_n: 10,
+                        },
+                    })}\n\ndata: [DONE]\n\n`,
+                { headers: { "content-type": "text/event-stream" } },
+            );
+        }
+        throw new Error(`unexpected request ${url}`);
+    });
+
+    await assert.rejects(
+        () =>
+            compatibleProviderFromEnv(
+                {
+                    ...env,
+                    PLURNK_PROVIDERS_COST_INPUT: "0.28",
+                },
+                "local",
+            ),
+        /PLURNK_PROVIDERS_COST_INPUT and PLURNK_PROVIDERS_COST_OUTPUT must both be set/,
+    );
+
+    const provider = await compatibleProviderFromEnv(
+        {
+            ...env,
+            PLURNK_PROVIDERS_EFFORT: "adaptive",
+            PLURNK_PROVIDERS_COST_INPUT: "0.28",
+            PLURNK_PROVIDERS_COST_OUTPUT: "0.42",
+            PLURNK_PROVIDERS_COST_REASONING: "0.84",
+            PLURNK_PROVIDERS_COST_CACHE_READ: "0.028",
+            PLURNK_PROVIDERS_COST_CACHE_WRITE: "0.28",
+        },
+        "local",
+    );
+    const response = await provider.generate({
+        sessionId: "llama-cost",
+        messages: [{ role: "user", content: "solve" }],
+    });
+
+    assert.deepEqual(sentBody?.stream_options, { include_usage: true });
+    assert.deepEqual(response.accounting[0]?.usage, {
+        inputTokens: 1_000,
+        outputTokens: 10,
+        totalTokens: 1_010,
+        inputTokenDetails: {
+            noCacheTokens: 600,
+            cacheReadTokens: 400,
+            cacheWriteTokens: 0,
+        },
+        outputTokenDetails: {
+            textTokens: 8,
+            reasoningTokens: 2,
+        },
+    });
+    assert.equal(response.accounting[0]?.cost.kind, "estimated");
+    if (response.accounting[0]?.cost.kind === "estimated") {
+        // 600 * 0.28/1M + 400 * 0.028/1M + 8 * 0.42/1M + 2 * 0.84/1M
+        // = (168 + 11.2 + 3.36 + 1.68) / 1M = 184.24 / 1M = 0.00018424
+        assert.equal(response.accounting[0].cost.amount.amount, "0.00018424");
+    }
+});
 }
 
 {

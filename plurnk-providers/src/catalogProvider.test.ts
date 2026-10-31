@@ -1054,7 +1054,9 @@ test("{§provider-monetary-evidence} declared rates overlay the catalog and the 
         ...env,
         DEEPSEEK_API_KEY: "test-key",
         PLURNK_PROVIDERS_EFFORT: "adaptive",
-        PLURNK_PROVIDERS_COST: "input=0.22,output=0.66,cacheRead=0.007",
+        PLURNK_PROVIDERS_COST_INPUT: "0.22",
+        PLURNK_PROVIDERS_COST_OUTPUT: "0.66",
+        PLURNK_PROVIDERS_COST_CACHE_READ: "0.007",
     }, "deepseek-v4-flash");
     const response = await overridden!.generate({ sessionId: "overridden", messages: [] });
     const overriddenAmount = calculateCostUsdDecimal(response.accounting[0].usage!, { ...catalogRatesOf("deepseek", "deepseek-v4-flash"), input: 0.22, output: 0.66, cacheRead: 0.007 });
@@ -1062,7 +1064,7 @@ test("{§provider-monetary-evidence} declared rates overlay the catalog and the 
     assert.deepEqual(response.accounting[0]?.cost, {
         kind: "estimated",
         amount: { amount: overriddenAmount, currency: "USD" },
-        source: "operator PLURNK_PROVIDERS_COST override over Models.dev catalog rates",
+        source: "operator PLURNK_PROVIDERS_COST_* override over Models.dev catalog rates",
     });
     mock.restoreAll();
 });

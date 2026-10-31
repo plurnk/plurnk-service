@@ -279,7 +279,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         compat: {
             supportsStore: false,
             supportsDeveloperRole: false,
-            supportsUsageInStreaming: false,
+            supportsUsageInStreaming: true,
             supportsFinishReason: true,
         },
     };

@@ -2,7 +2,7 @@
 // chunk forensics, usage reconciliation, and failure evidence attachment (#1305, #1313).
 
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { isRecord } from "@plurnk/plurnk-contracts";
+import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import { APICallError, RetryError } from "./errors.ts";
 import type {
     ProviderAttemptFinishReason,
@@ -342,6 +342,7 @@ export const collectChunkForensics = (rawChunks: readonly unknown[]): ChunkForen
     let rawUsage: Record<string, unknown> | undefined;
     let charge: unknown;
     let rawFinishReason: string | undefined;
+    let reasoningDeltaChunks = 0;
     const logprobs: TokenLogprob[] = [];
     const metadata: Record<string, unknown> = {};
     const channels: Record<string, string> = {};
@@ -388,12 +389,81 @@ export const collectChunkForensics = (rawChunks: readonly unknown[]): ChunkForen
                     rawFinishReason = choice.finish_reason;
                 }
                 if (isRecord(choice.delta)) {
+                    if (
+                        (typeof choice.delta.reasoning_content === "string" && choice.delta.reasoning_content.length > 0)
+                        || (typeof choice.delta.reasoning === "string" && choice.delta.reasoning.length > 0)
+                        || (typeof choice.delta.reasoning_text === "string" && choice.delta.reasoning_text.length > 0)
+                    ) {
+                        reasoningDeltaChunks += 1;
+                    }
                     for (const [key, value] of Object.entries(choice.delta)) {
                         if (!STANDARD_DELTA_KEYS.has(key) && typeof value === "string" && value.length > 0) {
                             channels[key] = (channels[key] ?? "") + value;
                         }
                     }
                 }
+            }
+        }
+    }
+    if (isRecord(metadata.timings)) {
+        const timings = metadata.timings;
+        const cacheN = isSafeInteger(timings.cache_n) && timings.cache_n >= 0 ? timings.cache_n : undefined;
+        if (
+            rawUsage === undefined
+            && isSafeInteger(timings.prompt_n) && timings.prompt_n >= 0
+            && isSafeInteger(timings.predicted_n) && timings.predicted_n >= 0
+        ) {
+            const cached = cacheN ?? 0;
+            const promptTokens = cached + timings.prompt_n;
+            const completionTokens = timings.predicted_n;
+            rawUsage = {
+                prompt_tokens: promptTokens,
+                completion_tokens: completionTokens,
+                total_tokens: promptTokens + completionTokens,
+                prompt_tokens_details: {
+                    cached_tokens: cached,
+                    cache_write_tokens: 0,
+                },
+            };
+        }
+        if (rawUsage !== undefined) {
+            if (isRecord(rawUsage.prompt_tokens_details)) {
+                if (rawUsage.prompt_tokens_details.cache_write_tokens === undefined) {
+                    rawUsage.prompt_tokens_details = {
+                        ...rawUsage.prompt_tokens_details,
+                        ...(rawUsage.prompt_tokens_details.cached_tokens === undefined && cacheN !== undefined
+                            ? { cached_tokens: cacheN }
+                            : {}),
+                        cache_write_tokens: 0,
+                    };
+                }
+            } else if (rawUsage.input_tokens_details === undefined && rawUsage.cached_tokens === undefined && cacheN !== undefined) {
+                rawUsage.prompt_tokens_details = {
+                    cached_tokens: cacheN,
+                    cache_write_tokens: 0,
+                };
+            }
+            const completionTokens = isSafeInteger(rawUsage.completion_tokens)
+                ? rawUsage.completion_tokens
+                : isSafeInteger(rawUsage.output_tokens)
+                    ? rawUsage.output_tokens
+                    : undefined;
+            const existingReasoning = (
+                isRecord(rawUsage.completion_tokens_details)
+                    ? rawUsage.completion_tokens_details.reasoning_tokens
+                    : undefined
+            )
+                ?? (isRecord(rawUsage.output_tokens_details) ? rawUsage.output_tokens_details.reasoning_tokens : undefined)
+                ?? rawUsage.reasoning_tokens;
+            if (
+                existingReasoning === undefined
+                && completionTokens !== undefined
+                && reasoningDeltaChunks <= completionTokens
+            ) {
+                rawUsage.completion_tokens_details = {
+                    ...(isRecord(rawUsage.completion_tokens_details) ? rawUsage.completion_tokens_details : {}),
+                    reasoning_tokens: reasoningDeltaChunks,
+                };
             }
         }
     }
