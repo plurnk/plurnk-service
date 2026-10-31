@@ -954,7 +954,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         // {§acp-proposal-resolve} The gate names the operation's own call, which its Run presented before it.
         const gated = proposal.coordinate;
         assert.match(gated, /^\d+\/\d+\/\d+$/);
-        assert.ok(sessionUpdates(interrupted).some((u) => u.sessionUpdate === "tool_call_update" && u.toolCallId === `proposal:${proposal.logEntryId}`),
+        assert.ok(sessionUpdates(interrupted).some((u) => u.sessionUpdate === "tool_call_update" && u.toolCallId === gated),
             "the gated call precedes its proposal gate");
 
         const resumed = await post(port, runInput(workspace, "host-tool-b", {

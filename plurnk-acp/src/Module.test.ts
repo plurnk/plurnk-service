@@ -1116,11 +1116,15 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             const permissionRequests2: RequestPermissionRequest[] = [];
             const elicitations1: CreateElicitationRequest[] = [];
             const completedElicitations: string[] = [];
+            const updates1: SessionUpdate[] = [];
 
             const stream1 = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
             const stream2 = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
 
             const client1 = createAcpClient()
+                .onNotification(methods.client.session.update, ({ params }) => {
+                    updates1.push(params.update);
+                })
                 .onRequest(methods.client.session.requestPermission, async ({ params }) => {
                     permissionRequests1.push(params);
                     return { outcome: { outcome: "selected", optionId: "allow_once" } };
@@ -1208,9 +1212,23 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     assert.equal(permissionRequests1.length, 1);
                     assert.equal(permissionRequests1[0]?.subject?.type, "command");
                     if (permissionRequests1[0]?.subject?.type === "command") {
-                        assert.equal(permissionRequests1[0].subject.toolCallId, "proposal:501");
+                        assert.equal(permissionRequests1[0].subject.toolCallId, "1/1/1");
                         assert.equal(permissionRequests1[0].subject.terminalId, "term:501");
                     }
+                    const pendingCall = updates1.find(
+                        (u): u is Extract<SessionUpdate, { sessionUpdate: "tool_call_update" }> =>
+                            u.sessionUpdate === "tool_call_update" && u.toolCallId === "1/1/1",
+                    );
+                    assert.ok(pendingCall !== undefined, "proposal emits pending tool_call_update with canonical coordinate toolCallId");
+                    assert.equal(pendingCall.status, "pending");
+                    assert.equal(
+                        (pendingCall._meta as { plurnk?: { coordinate?: string; status?: number } } | undefined)?.plurnk?.coordinate,
+                        "1/1/1",
+                    );
+                    assert.equal(
+                        (pendingCall._meta as { plurnk?: { coordinate?: string; status?: number } } | undefined)?.plurnk?.status,
+                        202,
+                    );
                     assert.deepEqual(
                         permissionRequests1[0]?.options.map((o) => ({ optionId: o.optionId, kind: o.kind })),
                         [

@@ -32,8 +32,6 @@ interface InteractionResolution {
     readonly resolution: ClientInteractionResolution;
 }
 
-const proposalKey = (logEntryId: number): string => `proposal:${logEntryId}`;
-
 const interactionToolCallId = (interactionId: number): string => `int:${interactionId}`;
 
 const STANDARD_PERMISSION_OPTIONS = [
@@ -127,7 +125,7 @@ const proposalToolCall = (
     }
     return {
         sessionUpdate: "tool_call_update",
-        toolCallId: proposalKey(proposal.logEntryId),
+        toolCallId: proposal.coordinate,
         name: proposal.op,
         title,
         kind,
@@ -141,6 +139,14 @@ const proposalToolCall = (
         },
         _meta: {
             plurnk: {
+                id: proposal.logEntryId,
+                coordinate: proposal.coordinate,
+                op: proposal.op,
+                origin: "model",
+                status: 202,
+                loopId: proposal.loopId,
+                turnId: proposal.turnId,
+                ...(proposal.attrs !== undefined ? { attrs: proposal.attrs } : {}),
                 proposal,
             },
         },
@@ -167,7 +173,7 @@ const proposalPermissionRequest = (
                 type: "command",
                 command: proposal.subject.command,
                 cwd: proposal.subject.cwd,
-                toolCallId: proposalKey(proposal.logEntryId),
+                toolCallId: proposal.coordinate,
                 terminalId: terminalIdForEntry(proposal.logEntryId),
             },
             options: [...STANDARD_PERMISSION_OPTIONS],
@@ -426,7 +432,9 @@ export class GateTracker {
 
         if (gate.kind === "proposal" && gate.proposal !== undefined) {
             const proposal = gate.proposal;
-            notifyPeerSession(peer, session.acpSessionId, proposalToolCall(proposal));
+            if (proposal.sessionId === session.sessionId) {
+                notifyPeerSession(peer, session.acpSessionId, proposalToolCall(proposal));
+            }
             const req = proposalPermissionRequest(session.acpSessionId, proposal);
             void peer.client
                 .request(methods.client.session.requestPermission, req, { cancellationSignal: controller.signal })
