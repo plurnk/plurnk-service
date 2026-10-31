@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-service",
-    "version": "5.0.1",
+    "version": "5.0.2",
     "description": "Plurnk agent runtime — the server / engine / core. Implements the @plurnk/plurnk-contracts contract.",
     "keywords": [
         "plurnk",
@@ -79,9 +79,9 @@
     },
     "dependencies": {
         "@opentelemetry/api": "^1.10.0",
-        "@plurnk/plurnk-acp": "1.1.0",
+        "@plurnk/plurnk-acp": "1.1.1",
         "@plurnk/plurnk-auth": "1.0.1",
-        "@plurnk/plurnk-contracts": "7.0.1",
+        "@plurnk/plurnk-contracts": "7.0.2",
         "@plurnk/plurnk-parser": "4.2.3",
         "@plurnk/plurnk-schedule": "3.0.6",
         "@plurnk/plurnk-skills": "3.0.5",
@@ -135,7 +135,7 @@
         "@plurnk/plurnk-mimetypes-text-plain": "2.0.3",
         "@plurnk/plurnk-models": "4.0.0",
         "@plurnk/plurnk-modules": "4.1.1",
-        "@plurnk/plurnk-providers": "6.0.0",
+        "@plurnk/plurnk-providers": "6.0.1",
         "@plurnk/plurnk-schemes": "3.3.1",
         "@plurnk/plurnk-schemes-http": "2.0.6",
         "@possumtech/sqlrite": "^6.6.1",

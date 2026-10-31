@@ -1,5 +1,11 @@
 # @plurnk/plurnk-acp
 
+## 1.1.1
+
+### Patch Changes
+
+- Emit ACP `WAIT` and `WORK`/`FORK` completion events, order streamed `output_rx` chunks after `tool_call`, scope `notice/event` to its owning session, project session-wide aggregate spend and parked loop state (`#1356`), replace compound `PLURNK_PROVIDERS_COST` with scalar `PLURNK_PROVIDERS_COST_<CATEGORY>` knobs, wire cost estimation into `compatibleProvider`, restore OpenAI-compatible streaming usage and normalize `llama-server` `timings` and `reasoning_content` chunk counts, and clarify curation phrasing on `plurnk.md` (`#1357`).
+
 ## 1.1.0
 
 ### Minor Changes
