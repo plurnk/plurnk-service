@@ -734,10 +734,12 @@ if (dormantBoot.probeResult?.afterDemand === 0 || dormantBoot.probeResult?.state
 }
 const packedSkills = await readPackedCapabilityDocs();
 ok(
-    dormantBoot.probeResult?.ownSkillReads?.length === 5
+    dormantBoot.probeResult?.ownSkillReads?.length === 7
         && dormantBoot.probeResult.ownSkillReads.every((result) => result.status === 200)
         && dormantBoot.probeResult.ownSkillReads[1].content === configDefaults.stdout.trimEnd()
-        && dormantBoot.probeResult.ownSkillReads[3].content === readFileSync(resolve(import.meta.dirname, "../docs/copy-move.md"), "utf8").trimEnd(),
+        && dormantBoot.probeResult.ownSkillReads[2].content === readFileSync(resolve(import.meta.dirname, "../plurnk.service"), "utf8").trimEnd()
+        && dormantBoot.probeResult.ownSkillReads[3].content === readFileSync(resolve(import.meta.dirname, "../plurnk.nginx.conf"), "utf8").trimEnd()
+        && dormantBoot.probeResult.ownSkillReads[5].content === readFileSync(resolve(import.meta.dirname, "../docs/copy-move.md"), "utf8").trimEnd(),
     "the installed Plurnk skill exposes every chapter and exactly the operator's complete defaults catalog",
 );
 ok(
