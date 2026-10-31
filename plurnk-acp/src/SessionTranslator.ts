@@ -588,7 +588,7 @@ export default class SessionTranslator {
         }];
     }
 
-    packet(event: ApplicationLoopPacket): AcpSessionUpdate[] {
+    packet(event: ApplicationLoopPacket, spend?: unknown): AcpSessionUpdate[] {
         if (event.sessionId !== this.#sessionId) return [];
         const curationWeight = event.gauge.curationWeight ?? 0;
         const curationBudget = event.gauge.curationBudget ?? 0;
@@ -608,13 +608,19 @@ export default class SessionTranslator {
                             contextTokens,
                             contextCapacity,
                         },
+                        status: {
+                            loopId: event.loopId,
+                            loopSeq: event.loopSeq,
+                            packetCount: event.packetCount,
+                            ...(spend !== undefined ? { spend } : {}),
+                        },
                     },
                 },
             },
         }];
     }
 
-    terminated(event: TerminatedNotification): AcpSessionUpdate[] {
+    terminated(event: TerminatedNotification, spend?: unknown): AcpSessionUpdate[] {
         if (event.sessionId !== this.#sessionId) return [];
         const usageObj = event.usage;
         const accounting = usageObj?.accounting;
@@ -645,6 +651,9 @@ export default class SessionTranslator {
         const problem = resultRec.problem ?? null;
         const terminalMeta = {
             plurnk: {
+                loopId: event.loopId,
+                loopSeq: event.loopSeq,
+                ...(spend !== undefined ? { status: { spend } } : {}),
                 terminal: {
                     status,
                     ...(turnCount !== undefined ? { turnCount } : {}),

@@ -39,8 +39,13 @@ const isProposalProjection = (v: unknown): v is ProposalProjection =>
     isRecord(v) && typeof v.sessionId === "number";
 const isClientInteractionProjection = (v: unknown): v is ClientInteractionProjection =>
     isRecord(v) && typeof v.sessionId === "number";
-const isNoticePayload = (v: unknown): v is { readonly notice: Notice } =>
-    isRecord(v) && isRecord(v.notice);
+const isNoticePayload = (
+    v: unknown,
+): v is {
+    readonly sessionId?: number | null;
+    readonly loopId?: number;
+    readonly notice: Notice;
+} => isRecord(v) && isRecord(v.notice);
 
 const workspaceTaskQueues = new WeakMap<Map<string, number>, Map<number, Promise<void>>>();
 const sessionStreamQueues = new WeakMap<Map<string, number>, Map<string, Promise<void>>>();
@@ -291,15 +296,20 @@ export const dispatchDaemonEvent = (
         }
         case "loop/packet": {
             if (!isLoopPacket(params)) break;
-            broadcastSessionUpdate(workspaceId, params.sessionId, (s) => s.translator.packet(params));
+            const sessionId = params.sessionId;
+            enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
+                const spend = await seam.sessionAccounting({ workspaceId, sessionId });
+                broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.packet(params, spend));
+            });
             break;
         }
         case "loop/terminated": {
             if (!isTerminatedEvent(params)) break;
             const sessionId = params.sessionId;
             gates.cancelSessionGates(workspaceId, sessionId);
-            enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, () => {
-                broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.terminated(params));
+            enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
+                const spend = await seam.sessionAccounting({ workspaceId, sessionId });
+                broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.terminated(params, spend));
             });
             const status = params.result.status;
             const childState = params.hitMaxTurns || status === 429
@@ -325,6 +335,21 @@ export const dispatchDaemonEvent = (
                             sessionId: formatSessionId(workspaceId, sessionName),
                             state: childState,
                         });
+                        void seam
+                            .sessionAccounting({ workspaceId, sessionId: session.sessionId })
+                            .then((spend) => {
+                                notifyPeerSession(peer, session.acpSessionId, {
+                                    sessionUpdate: "notice",
+                                    severity: "info",
+                                    title: "workspace:state",
+                                    _meta: {
+                                        plurnk: {
+                                            status: { spend },
+                                        },
+                                    },
+                                });
+                            })
+                            .catch(() => undefined);
                     }
                 }
             });
@@ -436,16 +461,50 @@ export const dispatchDaemonEvent = (
         case "notice/event": {
             if (!isNoticePayload(params)) break;
             const notice = params.notice;
+            const targetSessionId = typeof params.sessionId === "number" ? params.sessionId : null;
             for (const peer of peers) {
                 const visited = new Set<BoundSession>();
                 for (const session of peer.sessions.values()) {
                     if (visited.has(session)) continue;
                     visited.add(session);
                     if (session.workspaceId !== workspaceId) continue;
+                    if (targetSessionId !== null && session.sessionId !== targetSessionId) continue;
                     for (const { sessionId, update } of session.translator.notice(notice)) {
                         notifyPeerSession(peer, sessionId, update);
                     }
                 }
+            }
+            if (targetSessionId !== null && notice.source === "engine:turn" && notice.kind === "turn_generated") {
+                enqueueWorkspaceSessionsTask(ctx, workspaceId, (sessions) => {
+                    for (const peer of peers) {
+                        const visited = new Set<BoundSession>();
+                        for (const session of peer.sessions.values()) {
+                            if (visited.has(session)) continue;
+                            visited.add(session);
+                            if (
+                                session.workspaceId !== workspaceId ||
+                                !isDescendantSession(sessions, targetSessionId, session.sessionId)
+                            ) {
+                                continue;
+                            }
+                            void seam
+                                .sessionAccounting({ workspaceId, sessionId: session.sessionId })
+                                .then((spend) => {
+                                    notifyPeerSession(peer, session.acpSessionId, {
+                                        sessionUpdate: "notice",
+                                        severity: "info",
+                                        title: "workspace:state",
+                                        _meta: {
+                                            plurnk: {
+                                                status: { spend },
+                                            },
+                                        },
+                                    });
+                                })
+                                .catch(() => undefined);
+                        }
+                    }
+                });
             }
             break;
         }

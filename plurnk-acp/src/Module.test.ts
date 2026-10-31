@@ -811,6 +811,27 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         mimetype_rx: "text/markdown",
                     }),
                 });
+                h.port.emitEvent(1, "notice/event", {
+                    sessionId: 2,
+                    loopId: 2,
+                    notice: {
+                        source: "engine:lifecycle",
+                        kind: "loop_status",
+                        level: "info",
+                        status: 102,
+                        loopId: 2,
+                        loopSeq: 1,
+                    },
+                });
+                h.port.emitEvent(1, "notice/event", {
+                    sessionId: 2,
+                    loopId: 2,
+                    notice: {
+                        source: "engine:turn",
+                        kind: "turn_generated",
+                        level: "info",
+                    },
+                });
                 h.port.emitEvent(1, "loop/packet", {
                     sessionId: 1,
                     loopId: 1,
@@ -836,6 +857,13 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 await waitFor(
                     () =>
                         updates.some((u) => u.sessionUpdate === "usage_update") &&
+                        updates.some(
+                            (u) =>
+                                u.sessionUpdate === "notice" &&
+                                u.title === "workspace:state" &&
+                                (u._meta as { plurnk?: { status?: { spend?: unknown } } } | undefined)?.plurnk?.status
+                                    ?.spend !== undefined,
+                        ) &&
                         updates.some(
                             (u) =>
                                 u.sessionUpdate === "subagent_update" &&
@@ -939,15 +967,82 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.ok(
                     updates.some((u) => {
                         if (u.sessionUpdate !== "usage_update") return false;
-                        const plurnk = (u._meta as { plurnk?: { budget?: Record<string, unknown> } } | undefined)?.plurnk;
+                        const plurnk = (
+                            u._meta as
+                                | {
+                                      plurnk?: {
+                                          budget?: Record<string, unknown>;
+                                          status?: Record<string, unknown>;
+                                      };
+                                  }
+                                | undefined
+                        )?.plurnk;
                         return (
                             plurnk?.budget?.curationWeight === 420 &&
                             plurnk?.budget?.curationBudget === 4000 &&
                             plurnk?.budget?.contextTokens === 840 &&
-                            plurnk?.budget?.contextCapacity === 8000
+                            plurnk?.budget?.contextCapacity === 8000 &&
+                            plurnk?.status?.loopSeq === 1 &&
+                            plurnk?.status?.packetCount === 1 &&
+                            plurnk?.status?.spend !== undefined
                         );
                     }),
                 );
+                assert.equal(
+                    updates.some(
+                        (u) =>
+                            u.sessionUpdate === "notice" &&
+                            (u.title === "engine:lifecycle:loop_status" || u.title === "engine:turn:turn_generated"),
+                    ),
+                    false,
+                    "session-scoped notices for child session 2 must never leak directly to parent session 1",
+                );
+
+                // Resuming a parked session emits engine:lifecycle:loop_status (status 202) and status.lifecycle === "parked"
+                const origListLoops = h.port.listSessionLoops.bind(h.port);
+                h.port.listSessionLoops = async ({ sessionId }) => [
+                    {
+                        id: 7,
+                        sessionId,
+                        sequence: 7,
+                        status: 202,
+                        prompt: "Parked loop",
+                        promptSource: "acp://operator/sessions/1%23user/messages/msg-7",
+                        claimedAt: "2026-10-25T00:00:00.000Z",
+                        terminatedAt: null,
+                        terminalResult: null,
+                        packetCount: 3,
+                        waitUntil: 1700000010000,
+                        invocation: null,
+                    },
+                ];
+                try {
+                    const beforeParkedResume = updates.length;
+                    const parkedResumed = await ctx.request(methods.agent.session.resume, {
+                        sessionId: "1#user",
+                        cwd: "/workspace/alpha",
+                    });
+                    const parkedStatus = (
+                        parkedResumed._meta as { plurnk?: { status?: Record<string, unknown> } } | undefined
+                    )?.plurnk?.status;
+                    assert.equal(parkedStatus?.lifecycle, "parked");
+                    assert.equal(parkedStatus?.loopId, 7);
+                    assert.equal(parkedStatus?.loopSeq, 7);
+                    assert.equal(parkedStatus?.packetCount, 3);
+                    assert.equal(parkedStatus?.waitUntil, 1700000010000);
+                    await waitFor(() =>
+                        updates.slice(beforeParkedResume).some(
+                            (u) => u.sessionUpdate === "notice" && u.title === "engine:lifecycle:loop_status",
+                        ),
+                    );
+                    assert.equal(
+                        updates.slice(beforeParkedResume).some((u) => u.sessionUpdate === "state_update" && u.state === "idle"),
+                        false,
+                        "resuming a parked session must not emit a bogus idle state_update",
+                    );
+                } finally {
+                    h.port.listSessionLoops = origListLoops;
+                }
 
                 const entryUrl = `${h.baseUrl}/1/1/entry?target=${encodeURIComponent("log:///1/1/2/EDIT")}`;
                 const entryRes = await fetch(entryUrl);

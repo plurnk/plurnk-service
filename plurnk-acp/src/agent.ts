@@ -236,10 +236,11 @@ export const createConnectionAgent = (
                 ctx.params.systemPrompt,
             );
             const providerCatalog = tryListProviders(seam);
-            const [configOptions, availableCommands, modelInfo] = await Promise.all([
+            const [configOptions, availableCommands, modelInfo, spend] = await Promise.all([
                 buildConfigOptions(seam, bound.workspaceId, bound.sessionId),
                 buildAvailableCommands(seam, bound.workspaceId),
                 seam.readSessionModel({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
+                seam.sessionAccounting({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
             ]);
             for (const notice of seam.configurationNotices()) {
                 for (const { update } of bound.translator.notice(notice)) {
@@ -278,6 +279,7 @@ export const createConnectionAgent = (
                         status: {
                             model: modelInfo.model,
                             spawnModel: modelInfo.spawnModel,
+                            spend,
                         },
                         ...(providerCatalog.aliases !== null ? { providers: providerCatalog.aliases } : {}),
                     },
@@ -396,7 +398,27 @@ export const createConnectionAgent = (
                 ? { sessionUpdate: "state_update", state: "requires_action" }
                 : lifecycle === "running" || lifecycle === "queued"
                     ? { sessionUpdate: "state_update", state: "running" }
-                    : { sessionUpdate: "state_update", state: "idle", stopReason: "end_turn" };
+                    : lifecycle === "parked" && activeLoop !== null
+                        ? {
+                              sessionUpdate: "notice",
+                              severity: "info",
+                              title: "engine:lifecycle:loop_status",
+                              _meta: {
+                                  plurnk: {
+                                      notice: {
+                                          source: "engine:lifecycle",
+                                          kind: "loop_status",
+                                          level: "info",
+                                          status: 202,
+                                          loopId: activeLoop.id,
+                                          loopSeq: activeLoop.sequence,
+                                          packetCount: activeLoop.packetCount,
+                                          ...(activeLoop.waitUntil !== null ? { waitUntil: activeLoop.waitUntil } : {}),
+                                      },
+                                  },
+                              },
+                          }
+                        : { sessionUpdate: "state_update", state: "idle", stopReason: "end_turn" };
 
             notifyPeerSession(peer, bound.acpSessionId, currentState);
 
@@ -449,9 +471,12 @@ export const createConnectionAgent = (
                         },
                         session: { id: bound.sessionId, name: bound.sessionName },
                         status: {
+                            lifecycle,
                             model: modelInfo.model,
                             spawnModel: modelInfo.spawnModel,
+                            loopId: refLoop?.id ?? null,
                             loopSeq: refLoop?.sequence ?? null,
+                            packetCount: refLoop?.packetCount ?? null,
                             waitUntil: activeLoop?.waitUntil ?? null,
                             claimedAt: refLoop?.claimedAt ?? null,
                             terminatedAt: refLoop?.terminatedAt ?? null,
