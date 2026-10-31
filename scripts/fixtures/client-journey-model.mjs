@@ -62,6 +62,14 @@ const journeys = Object.freeze({
             content: "````NOTE <!-- Follow-up accepted while parked. -->\nThe unresolved stream remains an obligation.\n````\n\n````WAIT\nAwait settlement.\n````",
         }],
     },
+    zeroconfig: {
+        marker: "Exercise the zero-config API-key-only onboarding journey.",
+        model: "deepseek-v4-flash",
+        programs: [{
+            reasoning: "I will complete the zero-config onboarding request.",
+            content: "````SEND [200]\nThe zero-config onboarding journey is complete.\n````",
+        }],
+    },
 });
 
 const readJson = async (request) => {
@@ -86,7 +94,7 @@ const pairedReceipts = (messages) => messages.flatMap((message, index) => {
     });
 });
 
-const streamProgram = async (response, journey, program, index) => {
+const streamProgram = async (response, journey, program, index, modelName = MODEL) => {
     response.writeHead(200, {
         "cache-control": "no-cache",
         connection: "keep-alive",
@@ -97,7 +105,7 @@ const streamProgram = async (response, journey, program, index) => {
         id,
         object: "chat.completion.chunk",
         created: index + 1,
-        model: MODEL,
+        model: modelName,
         choices: [{ index: 0, delta, finish_reason: finishReason }],
     });
     response.write(frame(chunk({ reasoning_content: program.reasoning })));
@@ -203,7 +211,8 @@ export const startClientJourneyModel = async () => {
                 response.end(JSON.stringify({ error: { message: `unexpected extra ${journey} inference turn` } }));
                 return;
             }
-            if (body.model !== MODEL || body.stream !== true) {
+            const expectedModel = definition.model ?? MODEL;
+            if (body.model !== expectedModel || body.stream !== true) {
                 response.writeHead(400, { "content-type": "application/json" });
                 response.end(JSON.stringify({ error: { message: "invalid installed-journey request" } }));
                 return;
@@ -214,7 +223,7 @@ export const startClientJourneyModel = async () => {
                 response.end(JSON.stringify({ error: { message: program.rejection } }));
                 return;
             }
-            await streamProgram(response, journey, program, index);
+            await streamProgram(response, journey, program, index, expectedModel);
         } catch (error) {
             errors.push(String(error));
             process.stderr.write(`client-journey fixture: ${String(error)}\n`);
@@ -229,6 +238,7 @@ export const startClientJourneyModel = async () => {
         throw new Error("client-journey fixture did not bind a TCP port");
     }
     return {
+        baseUrl: `http://127.0.0.1:${address.port}/v1`,
         env: {
             PLURNK_MODEL: "journey",
             PLURNK_MODEL_journey: `journey-fixture/${MODEL}`,

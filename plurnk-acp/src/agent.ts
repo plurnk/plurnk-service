@@ -242,7 +242,7 @@ export const createConnectionAgent = (
                 seam.readSessionModel({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.sessionAccounting({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
             ]);
-            for (const notice of seam.configurationNotices()) {
+            for (const notice of seam.configurationNotices(bound.workspaceId)) {
                 for (const { update } of bound.translator.notice(notice)) {
                     notifyPeerSession(peer, bound.acpSessionId, update);
                 }
@@ -362,7 +362,7 @@ export const createConnectionAgent = (
                 }
             }
 
-            for (const notice of seam.configurationNotices()) {
+            for (const notice of seam.configurationNotices(bound.workspaceId)) {
                 for (const { update } of bound.translator.notice(notice)) {
                     notifyPeerSession(peer, bound.acpSessionId, update);
                 }

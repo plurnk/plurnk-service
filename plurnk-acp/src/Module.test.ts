@@ -419,6 +419,23 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.ok(updatedEffort.configOptions.some((c) => c.configId === "thought_level"));
                 assert.ok(updates.some((u) => u.sessionUpdate === "config_option_update"));
 
+                // Zero-alias / unselected model still preserves `configId: "model"` across ACP v2 (.min(1) select options)
+                const origListProviders = h.port.listProviders.bind(h.port);
+                const origReadSessionModel = h.port.readSessionModel.bind(h.port);
+                h.port.listProviders = () => ({ aliases: [] });
+                h.port.readSessionModel = async () => ({ model: null, spawnModel: null });
+                try {
+                    const zeroAliasSession = await ctx.request(methods.agent.session.new, {
+                        cwd: "/workspace/zero-alias",
+                    });
+                    const modelOpt = zeroAliasSession.configOptions?.find((c) => c.configId === "model");
+                    assert.ok(modelOpt, "model configOption is preserved on zero-alias installs");
+                    assert.equal(modelOpt.currentValue, "none");
+                } finally {
+                    h.port.listProviders = origListProviders;
+                    h.port.readSessionModel = origReadSessionModel;
+                }
+
                 const updatedAllowMode = await ctx.request(methods.agent.session.setConfigOption, {
                     sessionId: session.sessionId,
                     configId: "mode",

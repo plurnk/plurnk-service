@@ -277,7 +277,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             workspaceTurnStarting: async ({ workspaceId }) => {
                 await this.#functionality.refreshChanged({ workspaceId });
                 await this.#personas.refresh(workspaceId);
-                return [...this.configurationNotices(), ...this.#functionality.configurationNotices(workspaceId), ...this.#plugins.notices(workspaceId), ...this.#personas.notices(workspaceId)];
+                return this.configurationNotices(workspaceId);
             },
             // session:// KILL (terminate) — cancel the addressed session subtree and
             // tear down its held streams before the operation completes.
@@ -849,7 +849,15 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§credential-authority} — the file holding this boot's minted operator secret; null when the
     // secret is configured, the posture is off, or the daemon has no database path.
     get secretFile(): string | null { return this.#secretMinted ? this.#secretPath : null; }
-    configurationNotices(): readonly Notice[] { return this.#configuration.notices(); }
+    configurationNotices(workspaceId?: number): readonly Notice[] {
+        if (workspaceId === undefined) return this.#configuration.notices();
+        return [
+            ...this.#configuration.notices(),
+            ...this.#functionality.configurationNotices(workspaceId),
+            ...this.#plugins.notices(workspaceId),
+            ...this.#personas.notices(workspaceId),
+        ];
+    }
     get provider(): Provider | null { return this.#provider; }
     get schemes(): SchemeRegistry { return this.#schemes; }
     get mimetypes(): Mimetypes { return this.#mimetypes; }

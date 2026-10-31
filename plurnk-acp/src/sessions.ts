@@ -796,16 +796,44 @@ export const buildConfigOptions = async (
         name: `${a.alias} (${a.provider}/${a.model})`,
         description: a.inputCapacity ? `${Math.round(a.inputCapacity / 1000)}k context` : null,
     }));
-    const currentModelValue = model !== null
+    const catalogItems = (() => {
+        try {
+            return seam.listModels?.({})?.items ?? [];
+        } catch {
+            return [];
+        }
+    })();
+    for (const entry of catalogItems) {
+        if (!entry.readiness?.ready) continue;
+        if (modelOptions.some((o) => o.value === entry.selector)) continue;
+        const cap = entry.limits?.inputTokens ?? entry.limits?.contextTokens;
+        modelOptions.push({
+            value: entry.selector,
+            name:
+                entry.modelName && entry.modelName !== entry.selector
+                    ? `${entry.selector} (${entry.modelName})`
+                    : entry.selector,
+            description:
+                typeof cap === "number" && cap > 0
+                    ? `${String(Math.round(cap / 1000))}k context`
+                    : null,
+        });
+    }
+    const resolvedModelValue = model !== null
         ? (model.alias ?? `${model.provider}/${model.model}`)
         : (aliases.find((a) => a.active)?.alias ?? "");
-    if (currentModelValue.length > 0 && !modelOptions.some((o) => o.value === currentModelValue)) {
+    const currentModelValue = resolvedModelValue.length > 0 ? resolvedModelValue : "none";
+    if (resolvedModelValue.length > 0 && !modelOptions.some((o) => o.value === resolvedModelValue)) {
         modelOptions.unshift({
-            value: currentModelValue,
-            name: currentModelValue,
+            value: resolvedModelValue,
+            name: resolvedModelValue,
             description: null,
         });
     }
+    const selectModelOptions =
+        resolvedModelValue.length === 0
+            ? [{ value: "none", name: "None (unselected)", description: null }, ...modelOptions]
+            : modelOptions;
 
     const effortLevels = effortInfo.supportedEfforts.length > 0
         ? effortInfo.supportedEfforts
@@ -836,7 +864,7 @@ export const buildConfigOptions = async (
             category: "model",
             type: "select",
             currentValue: currentModelValue,
-            options: modelOptions,
+            options: selectModelOptions,
         },
         {
             configId: "thought_level",

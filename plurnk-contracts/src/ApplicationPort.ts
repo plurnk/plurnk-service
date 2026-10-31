@@ -69,7 +69,7 @@ export interface ApplicationPort extends HttpHost {
     readonly credentials: CredentialAuthority;
     registerSessionOwner(workspaceId: number, owner: SessionOwner): Promise<void>;
     claimSessionOwner(args: { readonly workspaceId: number; readonly sessionId: number; readonly owner: string }): Promise<SessionOwner>;
-    configurationNotices(): readonly Notice[];
+    configurationNotices(workspaceId?: number): readonly Notice[];
     listClientDisplayCapabilities(): Promise<ClientDisplayCapabilities>;
     listModuleActions(): ApplicationActionDescriptor[];
     invokeModuleAction(

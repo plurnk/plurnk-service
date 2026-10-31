@@ -18,6 +18,7 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import SqlRite from "@possumtech/sqlrite";
+import { isProviderCredentialName } from "@plurnk/plurnk-models";
 import { startClientJourneyModel } from "./fixtures/client-journey-model.mjs";
 import Launch from "@plurnk/plurnk-service/launch";
 import { resolveClientCheckout } from "./lib/project-topology.mjs";
@@ -235,8 +236,13 @@ try {
         maxBuffer: 128 * 1024 * 1024,
     });
     fixture = await startClientJourneyModel();
+    const cleanEnv = Object.fromEntries(
+        Object.entries(process.env).filter(
+            ([key]) => !key.startsWith("PLURNK_") && !isProviderCredentialName(key),
+        ),
+    );
     const daemonEnv = {
-        ...process.env,
+        ...cleanEnv,
         HOME: home,
         XDG_CONFIG_HOME: join(home, ".config"),
         XDG_DATA_HOME: join(home, ".local", "share"),
@@ -271,7 +277,7 @@ try {
     daemon = await boot();
 
     const clientEnv = {
-        ...process.env,
+        ...cleanEnv,
         HOME: home,
         XDG_CONFIG_HOME: join(home, ".config"),
         PLURNK_HOST: "127.0.0.1",
@@ -503,8 +509,6 @@ try {
     }
     process.stdout.write("installed failed-finalization journey GREEN: honest park + retained output + new input + cancellation + retained outcome\n");
 
-    fixture.assertComplete();
-
     const sharedWorkspace = await clientFor().rpc("workspace.create", { name: workspace });
     const binding = { workspaceId: sharedWorkspace.id, session: "user" };
     const terminal = clientFor(binding);
@@ -580,6 +584,40 @@ try {
     if (JSON.stringify(membersOf(activatedMembers)) !== JSON.stringify(expectedMembers)) {
         throw new Error(`persisted membership did not activate on explicit demand: ${JSON.stringify(activatedMembers)}`);
     }
+
+    // Clean-box zero-config API-key-only onboarding journey (#1360):
+    // Boot with no PLURNK_MODEL, no PLURNK_MODEL_<alias>, and no --model CLI flag — only DEEPSEEK_API_KEY
+    // and DEEPSEEK_BASE_URL in the daemon environment — and exercise /model, /models, /model <provider>/<model>, and a turn.
+    await daemon.stop();
+    daemon = await boot({
+        PLURNK_MODEL: "",
+        PLURNK_MODEL_journey: "",
+        DEEPSEEK_API_KEY: "test-deepseek-key",
+        DEEPSEEK_BASE_URL: fixture.baseUrl,
+    });
+    tui = spawnInstalledTui(clientBin, [
+        "--workspace", "installed-zeroconfig",
+        "--session", "Zero_Session",
+        "--project-root", "",
+        "--max-turns", "2",
+    ], clientEnv);
+    await tui.waitFor(wrapped("No model selected. /models lists ready models and /model <selector> chooses one."));
+    await tui.waitFor(/idle · none · ↓0 ↑0/);
+    if (tui.output().includes("Supply a provider's API key")) {
+        throw new Error(`zero-config TUI claimed no provider API key was present when DEEPSEEK_API_KEY was set\n${tui.output()}`);
+    }
+    tui.write("/model\r");
+    await tui.waitFor(/model \(Model\): none/);
+    tui.write("/models\r");
+    await tui.waitFor(/selector\s+name\s+context\s+efforts[\s\S]*readiness[\s\S]*deepseek\/deepseek-v4-flash/);
+    tui.write("/model deepseek/deepseek-v4-flash\r");
+    await tui.waitFor(/model \(Model\): deepseek\/deepseek-v4-flash/);
+    tui.write("Exercise the zero-config API-key-only onboarding journey.\r");
+    await tui.waitFor(/The zero-config onboarding journey is complete\./);
+    await tui.exit();
+    tui = undefined;
+    fixture.assertComplete();
+    process.stdout.write("installed zero-config API-key-only TUI onboarding journey GREEN: ready catalog detection + /model + /models table + direct catalog selection + turn\n");
     process.stdout.write("client composition GREEN: one packed platform, CLI and TUI, success and failure journeys, shared durable state\n");
     // {§module-shutdown-order}: an admitted but incomplete body remains outside the module's run set.
     await daemon.stop();
