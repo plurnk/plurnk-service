@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mcp",
-    "version": "3.3.2",
+    "version": "3.3.3",
     "description": "Current Model Context Protocol host module for Plurnk.",
     "keywords": [
         "plurnk",

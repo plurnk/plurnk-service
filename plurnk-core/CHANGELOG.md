@@ -1,5 +1,14 @@
 # @plurnk/plurnk-service
 
+## 5.0.4
+
+### Patch Changes
+
+- Add `plurnk-service config show [--json]` with per-knob source attribution, secret redaction, and live daemon lock status, serve unauthenticated `/health` and `/healthz` readiness probes, mount `skill://plurnk/plurnk.service` and `skill://plurnk/plurnk.nginx.conf` for model self-orientation, and tolerate redundant matching `"name"` properties while isolating invalid entries in standalone `mcp.json` (`#1362`).
+- Updated dependencies
+  - @plurnk/plurnk-mcp@3.3.3
+  - @plurnk/plurnk-meta@2.1.4
+
 ## 5.0.3
 
 ### Patch Changes

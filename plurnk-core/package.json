@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-service",
-    "version": "5.0.3",
+    "version": "5.0.4",
     "description": "Plurnk agent runtime — the server / engine / core. Implements the @plurnk/plurnk-contracts contract.",
     "keywords": [
         "plurnk",
@@ -88,8 +88,8 @@
         "@plurnk/plurnk-execs": "4.0.4",
         "@plurnk/plurnk-execs-common": "3.0.2",
         "@plurnk/plurnk-hooks": "2.0.5",
-        "@plurnk/plurnk-mcp": "3.3.2",
-        "@plurnk/plurnk-meta": "2.1.3",
+        "@plurnk/plurnk-mcp": "3.3.3",
+        "@plurnk/plurnk-meta": "2.1.4",
         "@plurnk/plurnk-agent-plugins": "2.0.1",
         "@plurnk/plurnk-agent-skills": "2.0.5",
         "@plurnk/plurnk-mimetypes": "3.0.7",
