@@ -642,7 +642,7 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
         text: "````READ (skill://inspect/SKILL.md) <1,-1>````",
     }, attached.name)).results[0];
     const ownSkillReads = [];
-    for (const pathname of ["SKILL.md", ".env.defaults", "references/configuration.md", "references/copy-move.md", "references/models.md"]) {
+    for (const pathname of ["SKILL.md", ".env.defaults", "plurnk.service", "plurnk.nginx.conf", "references/configuration.md", "references/copy-move.md", "references/models.md"]) {
         ownSkillReads.push((await acpAction(address, "op.parse", {
             text: `\`\`\`\`READ (skill://plurnk/${pathname}) <1,-1>\`\`\`\``,
         }, attached.name)).results[0]);

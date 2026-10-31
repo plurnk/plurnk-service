@@ -16,6 +16,8 @@ export default class PlurnkSkill implements SkillTree {
     readonly #nodeModules: string;
     readonly #files = new Map([
         ["SKILL.md", Paths.teachingSource(TEACHING_CORPUS.skill)],
+        ["plurnk.nginx.conf", Paths.nginxConfig],
+        ["plurnk.service", Paths.systemdUnit],
         ["references/configuration.md", Paths.configuration],
         ["references/copy-move.md", resolve(dirname(Paths.configuration), "docs/copy-move.md")],
         ["references/extensibility.md", Paths.teachingSource(TEACHING_CORPUS.skillChapters.extensibility)],

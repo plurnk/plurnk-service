@@ -38,6 +38,7 @@ import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import ProviderInstantiate from "./core/ProviderInstantiate.ts";
 import { loadCatalogCache } from "@plurnk/plurnk-models";
 import ServiceUpdater from "./core/ServiceUpdater.ts";
+import ExecEnv from "./schemes/exec-env.ts";
 
 // How often `stop` looks for the signalled process to be gone.
 const STOP_POLL_MS = 100;
@@ -51,6 +52,9 @@ export default class Service {
     static #projectRoot = resolve(Service.#codeDir, "..");
     static #hostPaths = new HostPaths();
     static #configuration = new ConfigurationDiagnostics();
+    static #envSources = new Map<string, string>();
+    static #defaultsMap = new Map<string, { value: string; owner: string }>();
+    static #declares: (key: string) => boolean = () => false;
 
     // The node_modules holding the service's extension deps (exec/scheme/mimetype), resolved
     // from this file's REAL location by the shared membership walk. Falls back to CWD.
@@ -64,9 +68,17 @@ export default class Service {
     }
 
     static #loadEnv(path: string, required: boolean): void {
-        if (existsSync(path)) {
-            try { process.loadEnvFile(path); }
-            catch (cause) { Service.#die(64, `failed to load ${path}: ${cause instanceof Error ? cause.message : String(cause)}`); }
+        const resolved = resolve(path);
+        if (existsSync(resolved)) {
+            try {
+                const before = new Set(Object.keys(process.env));
+                process.loadEnvFile(resolved);
+                for (const key of Object.keys(process.env)) {
+                    if (!before.has(key)) Service.#envSources.set(key, resolved);
+                }
+            } catch (cause) {
+                Service.#die(64, `failed to load ${path}: ${cause instanceof Error ? cause.message : String(cause)}`);
+            }
         } else if (required) {
             Service.#die(64, `${path} does not exist`);
         }
@@ -277,7 +289,21 @@ export default class Service {
             }
             const routeText = invalidModel ? "invalid model configuration" : route === null ? "no model" : Service.#formatModelRoute(route);
             // {§startup-admission} — a URL (IPv6 in brackets), then two JSON strings: exact under spaces.
-            const acpUrl = `http://${isIPv6(acpAddr.host) ? `[${acpAddr.host}]` : acpAddr.host}:${acpAddr.port}/acp`;
+            const hostBracketed = isIPv6(acpAddr.host) ? `[${acpAddr.host}]` : acpAddr.host;
+            const acpUrl = `http://${hostBracketed}:${acpAddr.port}/acp`;
+            const healthUrl = `http://${hostBracketed}:${acpAddr.port}/health`;
+            const overrides = Object.fromEntries(
+                Service.#resolvedEntries()
+                    .filter((e) => e.overridden)
+                    .map((e) => [e.key, { value: e.value, source: e.source }]),
+            );
+            await DaemonLock.annotate(dbPath, {
+                acpUrl,
+                healthUrl,
+                auth: daemon.credentials.operatorSecret !== null,
+                route: routeText,
+                overrides,
+            });
             process.stdout.write(`plurnk-service acp=${acpUrl} db=${JSON.stringify(dbPath)} route=${JSON.stringify(routeText)}\n`);
 
             const shutdown = (): void => {
@@ -316,30 +342,118 @@ export default class Service {
         process.stderr.write(`plurnk-service: stopped pid ${pid} (${dbPath})\n`);
     }
 
-    static async #configStatus(): Promise<void> {
+    static #isSecretKey(key: string): boolean {
+        if (key === "OTEL_EXPORTER_OTLP_HEADERS") return true;
+        if (/(?:^|_)(?:SECRET|PASS|PASSWORD|TOKEN|API_KEY|BEARER)$/u.test(key)) return true;
+        if (!key.startsWith("PLURNK_") && ExecEnv.ownSecretTest(process.env)(key)) return true;
+        return false;
+    }
+
+    static #resolvedEntries(): Array<{
+        readonly key: string;
+        readonly value: string;
+        readonly source: string;
+        readonly overridden: boolean;
+    }> {
+        const entries: Array<{
+            readonly key: string;
+            readonly value: string;
+            readonly source: string;
+            readonly overridden: boolean;
+        }> = [];
+        for (const key of Object.keys(process.env).toSorted()) {
+            const rawValue = process.env[key];
+            if (rawValue === undefined) continue;
+            const source = Service.#envSources.get(key) ?? "process environment";
+            const def = Service.#defaultsMap.get(key);
+            const fromLayer = source !== "process environment" && !source.startsWith("defaults (");
+            const isProviderKey = !key.startsWith("PLURNK_") && ExecEnv.ownSecretTest(process.env)(key);
+            if (def === undefined && !Service.#declares(key) && !fromLayer && !key.startsWith("OTEL_") && !isProviderKey) {
+                continue;
+            }
+            const overridden = def === undefined || rawValue !== def.value || !source.startsWith("defaults (");
+            const value = rawValue.length > 0 && Service.#isSecretKey(key) ? "<redacted>" : rawValue;
+            entries.push({ key, value, source, overridden });
+        }
+        return entries;
+    }
+
+    static async #configStatus(showAll = false, json = false): Promise<void> {
         const diagnostics = Service.#configuration;
         const aliases = await diagnostics.capture("model-aliases", () => parseAliasesFromEnv());
         const active = await diagnostics.capture("model", () => resolveActiveRoute());
         await diagnostics.capture("model-child", () => resolveChildRoute());
-        const explicitFiles = Service.#envFileArgs().map(({ path }) => resolve(Service.#hostPaths.expandUserPath(path)));
-        const configFile = Service.#configFileArg();
-        const lines = [
-            `config: ${Service.#hostPaths.configFile} (${existsSync(Service.#hostPaths.configFile) ? "present" : "absent"})`,
-            "sources (low -> high):",
-            "  package .env.defaults floor",
-            `  ${Service.#hostPaths.configFile}${existsSync(Service.#hostPaths.configFile) ? "" : " (absent)"}`,
-            ...(existsSync(Service.#hostPaths.localConfigFile) ? [`  ${Service.#hostPaths.localConfigFile}`] : []),
-            ...(configFile === null ? [] : [`  ${resolve(configFile)}${existsSync(configFile) ? "" : " (absent)"}`]),
-            ...explicitFiles.map((path) => `  ${path}${existsSync(path) ? "" : " (absent)"}`),
-            "  process environment",
-            "  CLI flags",
-            `model: ${active === null && process.env.PLURNK_MODEL ? "invalid configuration" : Service.#formatModelRoute(active)}`,
-            `declared aliases: ${aliases === null ? "unavailable" : aliases.length === 0 ? "none" : aliases.map(({ alias }) => alias).join(", ")}`,
-            `database: ${Service.#databasePath()}`,
-            "defaults: plurnk-service config defaults",
-            "validation: plurnk-service config check",
-        ];
-        process.stdout.write(`${lines.join("\n")}\n`);
+        const dbPath = Service.#databasePath();
+        const daemonStatus = await DaemonLock.status(dbPath);
+        const entries = Service.#resolvedEntries();
+        const overridden = entries.filter((e) => e.overridden);
+        const modelText = active === null && process.env.PLURNK_MODEL ? "invalid configuration" : Service.#formatModelRoute(active);
+        if (json) {
+            process.stdout.write(`${JSON.stringify({
+                configFile: Service.#hostPaths.configFile,
+                localConfigFile: Service.#hostPaths.localConfigFile,
+                database: dbPath,
+                daemon: daemonStatus,
+                model: modelText,
+                declaredAliases: aliases === null ? null : aliases.map(({ alias }) => alias),
+                templates: {
+                    installGuide: Paths.configuration,
+                    systemdUnit: Paths.systemdUnit,
+                    nginxConfig: Paths.nginxConfig,
+                },
+                entries: showAll ? entries : overridden,
+            }, null, 2)}\n`);
+        } else if (showAll) {
+            const lines = entries.map((e) => `${e.key}=${e.value}  # ${e.source}`);
+            process.stdout.write(`${lines.join("\n")}\n`);
+        } else {
+            const explicitFiles = Service.#envFileArgs().map(({ path }) => resolve(Service.#hostPaths.expandUserPath(path)));
+            const configFile = Service.#configFileArg();
+            const daemonLine = daemonStatus === null
+                ? `daemon: not running (${dbPath})`
+                : `daemon: running (pid ${daemonStatus.pid}${daemonStatus.acpUrl ? `, acp=${daemonStatus.acpUrl}` : ""}${daemonStatus.healthUrl ? `, health=${daemonStatus.healthUrl}` : ""}${daemonStatus.auth === undefined ? "" : `, auth=${daemonStatus.auth ? "on" : "off"}`}${daemonStatus.route ? `, model=${daemonStatus.route}` : ""})`;
+            const currentOverridesMap = Object.fromEntries(overridden.map((e) => [e.key, { value: e.value, source: e.source }]));
+            const daemonOverridesDiffer = daemonStatus?.overrides !== undefined
+                && JSON.stringify(daemonStatus.overrides) !== JSON.stringify(currentOverridesMap);
+            const daemonOverrideEntries = daemonStatus?.overrides === undefined ? [] : Object.entries(daemonStatus.overrides);
+            const lines = [
+                `config: ${Service.#hostPaths.configFile} (${existsSync(Service.#hostPaths.configFile) ? "present" : "absent"})`,
+                daemonLine,
+                "sources (low -> high):",
+                "  package .env.defaults floor",
+                `  ${Service.#hostPaths.configFile}${existsSync(Service.#hostPaths.configFile) ? "" : " (absent)"}`,
+                ...(existsSync(Service.#hostPaths.localConfigFile) ? [`  ${Service.#hostPaths.localConfigFile}`] : []),
+                ...(configFile === null ? [] : [`  ${resolve(configFile)}${existsSync(configFile) ? "" : " (absent)"}`]),
+                ...explicitFiles.map((path) => `  ${path}${existsSync(path) ? "" : " (absent)"}`),
+                "  process environment",
+                "  CLI flags",
+                `model: ${modelText}`,
+                `declared aliases: ${aliases === null ? "unavailable" : aliases.length === 0 ? "none" : aliases.map(({ alias }) => alias).join(", ")}`,
+                `database: ${dbPath}`,
+                ...(overridden.length === 0
+                    ? ["overrides: none"]
+                    : [
+                        "overrides:",
+                        ...overridden.map((e) => `  ${e.key}=${e.value}  # ${e.source}`),
+                    ]),
+                ...(daemonOverridesDiffer
+                    ? [
+                        daemonOverrideEntries.length === 0
+                            ? "daemon overrides (at boot): none"
+                            : "daemon overrides (at boot):",
+                        ...daemonOverrideEntries.map(([k, v]) => `  ${k}=${v.value}  # ${v.source}`),
+                    ]
+                    : []),
+                "templates:",
+                `  install guide: ${Paths.configuration}`,
+                `  systemd user unit: ${Paths.systemdUnit} (skill://plurnk/plurnk.service)`,
+                `  nginx reverse proxy: ${Paths.nginxConfig} (skill://plurnk/plurnk.nginx.conf)`,
+                "effective: plurnk-service config show",
+                "defaults: plurnk-service config defaults",
+                "validation: plurnk-service config check",
+            ];
+            process.stdout.write(`${lines.join("\n")}\n`);
+        }
         for (const notice of diagnostics.notices()) process.stderr.write(`${notice.message}\n`);
     }
 
@@ -391,6 +505,7 @@ export default class Service {
     }
 
     static async main(): Promise<void> {
+        const initialEnv: NodeJS.ProcessEnv = { ...process.env };
         // loadEnvFile is set-if-unset, so every service-owned layer loads high→low. Within the
         // repeatable env-file tier, loading last→first preserves Node's later-file-wins order.
         // {§operator-config-precedence}
@@ -420,6 +535,7 @@ export default class Service {
                 help: { type: "boolean", short: "h" },
                 version: { type: "boolean", short: "v" },
                 config: { type: "string" },
+                json: { type: "boolean" },
                 workspace: { type: "string" },
                 requiem: { type: "boolean" },
                 ...flagOptions,
@@ -429,7 +545,10 @@ export default class Service {
         for (const f of flagDescriptors) {
             const key = f.flagName.replace(/^--/, "");
             const v = values[key];
-            if (typeof v === "string") process.env[f.envName] = v;
+            if (typeof v === "string") {
+                process.env[f.envName] = v;
+                Service.#envSources.set(f.envName, `flag:${f.flagName}`);
+            }
         }
 
         if (values.help) { process.stdout.write(usage); process.exit(0); }
@@ -445,11 +564,27 @@ export default class Service {
         );
         for (const cause of configurationErrors) Service.#configuration.record("extensions", cause);
         Service.#configuration.pluginReports(reports);
-        EnvDefaults.apply(EnvDefaults.merge(defaultsFiles));
+        const mergedDefaults = EnvDefaults.merge(defaultsFiles);
+        Service.#defaultsMap = mergedDefaults;
+        for (const [key, { value, owner }] of mergedDefaults) {
+            if (process.env[key] === undefined) {
+                process.env[key] = value;
+                Service.#envSources.set(key, `defaults (${owner})`);
+            } else if (!Service.#envSources.has(key) && initialEnv[key] === value) {
+                Service.#envSources.set(key, `defaults (${owner})`);
+            }
+        }
+        for (const key of Object.keys(initialEnv)) {
+            if (!Service.#envSources.has(key)) {
+                Service.#envSources.set(key, "process environment");
+            }
+        }
+        EnvDefaults.apply(mergedDefaults);
         // {§model-catalog-cache} — load cached models.dev snapshot if present.
         try { loadCatalogCache(Service.#hostPaths.modelsCacheFile); } catch { /* ignore unreadable cache on boot */ }
         // {§operator-config-precedence} — the operator's files, never the process environment.
         const declares = EnvCatalog.declares(defaultsFiles);
+        Service.#declares = declares;
         for (const file of new Set([
             ...(configFile === null ? [] : [resolve(configFile)]),
             Service.#hostPaths.configFile,
@@ -489,8 +624,10 @@ export default class Service {
                 handler = Service.#configEdit;
             } else if (action === "check") {
                 handler = Service.#configCheck;
+            } else if (action === "show") {
+                handler = () => Service.#configStatus(true, values.json === true);
             } else if (action === null) {
-                handler = Service.#configStatus;
+                handler = () => Service.#configStatus(false, values.json === true);
             }
         } else if (command === "share") {
             if (positionals.length > 3) Service.#die(64, `unexpected arguments: ${positionals.slice(3).join(" ")}`);

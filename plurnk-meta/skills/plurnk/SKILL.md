@@ -1,6 +1,6 @@
 ---
 name: plurnk
-description: Plurnk harness configurations, extensions, and definitions.
+description: Plurnk harness configuration (`plurnk-service config`), systemd/nginx templates, extensions, and definitions.
 ---
 
 # Plurnk
@@ -8,6 +8,8 @@ description: Plurnk harness configurations, extensions, and definitions.
 | Need | Reference |
 | --- | --- |
 | Configuration cascade, persistence, permissions, skills | [Configuration](references/configuration.md) |
+| Daemon status, effective configuration, and validation | `plurnk-service config`, `plurnk-service config show`, `plurnk-service config check`, `GET /health` |
+| Systemd user service unit and nginx reverse-proxy templates | [plurnk.service](plurnk.service), [plurnk.nginx.conf](plurnk.nginx.conf) |
 | COPY/MOVE operands, source regions, destination placement | [Copy and move](references/copy-move.md) |
 | Model routes, reasoning, output and context limits, cost | [Models](references/models.md) |
 | Every installed package's settings and defaults | [Complete .env.defaults](.env.defaults) |
@@ -21,4 +23,4 @@ description: Plurnk harness configurations, extensions, and definitions.
 | Built-in executors and scheme references | `plurnk:///` |
 
 READ the relevant reference; FIND can select paths and search their bodies.
-Defaults describe available settings, not the operator's effective configuration.
+Defaults describe available settings; `plurnk-service config` and `plurnk-service config show` inspect the operator's effective configuration.

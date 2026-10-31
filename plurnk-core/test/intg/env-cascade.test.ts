@@ -323,8 +323,46 @@ test("{§operator-config-precedence} config discovery is provider-free, on-deman
         const status = await runService(fx, ["config"], { env: { PLURNK_MODEL: "missing" } });
         assert.equal(status.code, 0, "inspection still names the repair locations");
         assert.ok(status.stdout.includes(fx.homeEnv));
+        assert.match(status.stdout, /daemon: not running/u);
         assert.match(status.stdout, /model: invalid configuration/u);
+        assert.match(status.stdout, /PLURNK_MODEL=missing\s+# process environment/u);
+        assert.ok(status.stdout.includes(Paths.systemdUnit), "prints systemd unit path");
+        assert.ok(status.stdout.includes(Paths.nginxConfig), "prints nginx template path");
         assert.match(status.stderr, /PLURNK_MODEL 'missing'/u);
+
+        await mkdir(dirname(fx.homeEnv), { recursive: true });
+        await writeFile(
+            fx.homeEnv,
+            "PLURNK_MODEL_fast=openai/gpt-5\nPLURNK_SECRET=super-secret-value\nOPENAI_API_KEY=sk-live-secret\n",
+            "utf8",
+        );
+        await writeFile(
+            `${fx.homeEnv}.local`,
+            "PLURNK_MODEL=fast\n",
+            "utf8",
+        );
+        const showText = await runService(fx, ["--service-max-turns=9", "config", "show"]);
+        assert.equal(showText.code, 0, showText.stderr);
+        assert.match(showText.stdout, new RegExp(`^PLURNK_MODEL_fast=openai/gpt-5  # ${fx.homeEnv.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "mu"));
+        assert.match(showText.stdout, new RegExp(`^PLURNK_MODEL=fast  # ${`${fx.homeEnv}.local`.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "mu"));
+        assert.match(showText.stdout, /^PLURNK_SERVICE_MAX_TURNS=9  # flag:--service-max-turns$/mu);
+        assert.match(showText.stdout, /^PLURNK_SECRET=<redacted>  #/mu);
+        assert.match(showText.stdout, /^OPENAI_API_KEY=<redacted>  #/mu);
+        assert.doesNotMatch(showText.stdout, /super-secret-value|sk-live-secret/u);
+
+        const showJson = await runService(fx, ["config", "show", "--json"]);
+        assert.equal(showJson.code, 0, showJson.stderr);
+        const parsedJson = JSON.parse(showJson.stdout) as {
+            configFile: string;
+            templates: { systemdUnit: string; nginxConfig: string };
+            entries: Array<{ key: string; value: string; source: string; overridden: boolean }>;
+        };
+        assert.equal(parsedJson.configFile, fx.homeEnv);
+        assert.equal(parsedJson.templates.systemdUnit, Paths.systemdUnit);
+        assert.equal(parsedJson.templates.nginxConfig, Paths.nginxConfig);
+        const secretEntry = parsedJson.entries.find((e) => e.key === "PLURNK_SECRET");
+        assert.equal(secretEntry?.value, "<redacted>");
+        assert.equal(secretEntry?.overridden, true);
     } finally {
         await rm(fx.root, { recursive: true, force: true });
     }
@@ -433,6 +471,13 @@ for (const built of [false, true]) {
         });
         t.after(() => daemon.stop());
         assert.equal(daemon.route, "no model");
+        const healthRes = await fetch(daemon.url.replace(/\/acp$/u, "/health"));
+        assert.equal(healthRes.status, 200);
+        assert.deepEqual(await healthRes.json(), { status: "pass" });
+        const liveConfig = await runService(fx, ["config"], { built });
+        assert.equal(liveConfig.code, 0, liveConfig.stderr);
+        assert.match(liveConfig.stdout, new RegExp(`daemon: running \\(pid ${String(daemon.child.pid)}`, "u"));
+        assert.match(liveConfig.stdout, /daemon overrides \(at boot\):[\s\S]*PLURNK_MCP_GH_BEARER=<redacted>/u);
         const result = await acpAction(daemon.url, "discover", {}, { sessionId: "configuration-repair" });
         assert.equal(result.ok, true, "the actual client interface remains available for repair");
         assert.ok(typeof result.result?.actions === "object" && result.result.actions !== null && "workspace.mcp.list" in result.result.actions,
