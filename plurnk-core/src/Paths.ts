@@ -26,6 +26,8 @@ export default class Paths {
     static instructionsSystem = resolve(Paths.#CONTRACTS_ROOT, "plurnk.md");
     static sharedDefaults = resolve(Paths.#CONTRACTS_ROOT, ".env.defaults");
     static configuration = resolve(Paths.#PACKAGE_ROOT, "INSTALL.md");
+    static systemdUnit = resolve(Paths.#PACKAGE_ROOT, "plurnk.service");
+    static nginxConfig = resolve(Paths.#PACKAGE_ROOT, "plurnk.nginx.conf");
     // The first-run policy seed and built-in/conditional pull-doc sources.
     static policy = Paths.teachingSource(TEACHING_CORPUS.policy);
     // {§packet-inject} — meta-owned default Recap and its operator override.

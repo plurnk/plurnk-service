@@ -123,13 +123,15 @@ export const configuredDefinitions = async (
 ): Promise<Array<FunctionalityServiceDefinition & { definition: McpServerDefinition }>> => {
     const { resources } = configuration(environ);
     const selected = new Map(serviceDefinitions(environ).map((entry) => [entry.alias, entry]));
+    const seen = new Set(selected.keys());
     const addPlugins = (scopeDirectory: string | null): void => {
         for (const plugin of plugins?.plugins ?? []) {
             const root = plugins!.roots[plugin.scope];
             if ((root == null ? null : dirname(root)) !== scopeDirectory) continue;
             const file = join(plugin.root, "mcp.json");
             for (const [alias, entry] of plugin.mcpServers ?? []) {
-                if (selected.has(alias)) continue;
+                if (seen.has(alias)) continue;
+                seen.add(alias);
                 const reference = `/mcpServers/${alias.replaceAll("~", "~0").replaceAll("/", "~1")}`;
                 if (!isServerName(alias) || entry.type === "sse") {
                     plugins!.report({
@@ -166,18 +168,34 @@ export const configuredDefinitions = async (
             throw new ConfigurationError(file, `${file} must contain a mcpServers object and, optionally, a string $schema.`);
         }
         for (const [alias, entry] of Object.entries(document.mcpServers)) {
-            if (selected.has(alias)) continue;
+            if (seen.has(alias)) continue;
+            seen.add(alias);
             const reference = `/mcpServers/${alias.replaceAll("~", "~0").replaceAll("/", "~1")}`;
             const key = `${file}#${reference}`;
             let definition: McpServerDefinition;
             try {
                 if (!isServerName(alias)) throw new TypeError("Server alias must match [a-z][a-z0-9_-]*.");
                 if (!isObject(entry)) throw new TypeError("A server entry must be an object.");
-                if (Object.hasOwn(entry, "name")) throw new TypeError("The map key supplies the server name; omit name from the entry.");
-                const type = Object.hasOwn(entry, "type") ? entry.type : (Object.hasOwn(entry, "command") ? "stdio" : "streamable-http");
-                definition = readDefinition({ ...entry, type }, alias);
+                if (Object.hasOwn(entry, "name") && entry.name !== alias) {
+                    throw new TypeError("The map key supplies the server name; entry name must match the map key or be omitted.");
+                }
+                const { name: _ignoredName, ...rest } = entry;
+                const type = Object.hasOwn(rest, "type") ? rest.type : (Object.hasOwn(rest, "command") ? "stdio" : "streamable-http");
+                definition = readDefinition({ ...rest, type }, alias);
             } catch (cause) {
-                throw new ConfigurationError(key, `${key} must be a complete MCP server definition without name.`, { cause });
+                const configError = new ConfigurationError(key, `${key} must be a complete MCP server definition.`, { cause });
+                if (plugins !== undefined) {
+                    plugins.report({
+                        source: "engine:configuration",
+                        kind: "configuration_unavailable",
+                        level: "warn",
+                        owner: "mcp",
+                        key: configError.key,
+                        message: `${configError.message} This entry was skipped.`,
+                    });
+                    continue;
+                }
+                throw configError;
             }
             selected.set(alias, { alias, definition, enabled: resources.enabled(alias.replaceAll("_", "-")), provenance: { kind: "file", source: file, reference } });
         }

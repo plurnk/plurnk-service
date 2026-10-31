@@ -104,10 +104,22 @@ test("{§mcp-configuration} files compose whole entries beneath environment defi
 
 test("{§mcp-configuration} invalid selected entries identify their file and pointer without leaking values or falling back", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-invalid-"));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    const fallbackRoot = await mkdtemp(join(tmpdir(), "plurnk-mcp-fallback-"));
+    t.after(async () => {
+        await rm(root, { recursive: true, force: true });
+        await rm(fallbackRoot, { recursive: true, force: true });
+    });
     const file = join(root, "mcp.json");
+    const fallbackFile = join(fallbackRoot, "mcp.json");
+    await writeFile(file, JSON.stringify({ mcpServers: { tool: { name: "tool", command: "node" } } }));
+    assert.deepEqual(await configuredDefinitions([root], floor), [{
+        alias: "tool",
+        enabled: true,
+        definition: { type: "stdio", command: "node" },
+        provenance: { kind: "file", source: file, reference: "/mcpServers/tool" },
+    }], "matching redundant name property is accepted and stripped");
     for (const entry of [null, {}, { command: "node", type: null }, { command: "node", url: "http://example.com" },
-        { type: "sse", url: "http://example.com" }, { name: "tool", command: "node" }, { type: "stdio", args: ["private-value"] }]) {
+        { type: "sse", url: "http://example.com" }, { name: "other", command: "node" }, { type: "stdio", args: ["private-value"] }]) {
         await writeFile(file, JSON.stringify({ mcpServers: { tool: entry } }));
         await assert.rejects(configuredDefinitions([root], floor), (error: unknown) => {
             assert.ok(error instanceof ConfigurationError);
@@ -120,6 +132,30 @@ test("{§mcp-configuration} invalid selected entries identify their file and poi
     }
     await writeFile(file, '{"mcpServers":{"UpperCase":{"command":"node"}}}');
     await assert.rejects(configuredDefinitions([root], floor), (error: unknown) => error instanceof ConfigurationError && error.key === `${file}#/mcpServers/UpperCase`);
+
+    // During workspace resolution (plugins callback present), an invalid entry is isolated with a warning notice,
+    // valid sibling entries still load, and lower-precedence files do not supply a fallback for the failed alias.
+    await writeFile(file, JSON.stringify({
+        mcpServers: {
+            broken: { name: "mismatch", command: "node" },
+            healthy: { command: "node" },
+        },
+    }));
+    await writeFile(fallbackFile, JSON.stringify({
+        mcpServers: {
+            broken: { command: "fallback-must-not-run" },
+        },
+    }));
+    const notices: Array<{ kind: string; key?: string | null; message?: string | null }> = [];
+    const resolved = await configuredDefinitions([root, fallbackRoot], floor, {
+        plugins: [],
+        roots: { project: null, plurnk: null, xdg: null, home: null },
+        report: (notice) => notices.push(notice),
+    });
+    assert.deepEqual(resolved.map((entry) => entry.alias), ["healthy"]);
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0]?.kind, "configuration_unavailable");
+    assert.equal(notices[0]?.key, `${file}#/mcpServers/broken`);
 });
 
 test("{§mcp-configuration} missing files are inert, malformed and unreadable files remain inspectable configuration errors", async (t) => {

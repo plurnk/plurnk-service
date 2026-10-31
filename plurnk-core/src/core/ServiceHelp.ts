@@ -13,7 +13,7 @@ export default class ServiceHelp {
 
     static format(flags: FlagDescriptor[]): string {
         return `usage: plurnk-service [options] [start|stop|migrate|update]
-       plurnk-service [options] config [edit|defaults|check]
+       plurnk-service [options] config [show|edit|defaults|check] [--json]
        plurnk-service [options] share [<file.db>] [<folder>] [--workspace=<id>] [--requiem]
        plurnk-service [options] requiem <file.db> <folder>
 
@@ -22,11 +22,14 @@ ${EnvFlags.formatFlagsHelp(flags)}
   --env-file=<path>            layer env from <path> (repeatable; later wins; errors if missing)
   --env-file-if-exists=<path>  layer env from <path> if present (repeatable; later wins)
   --config=<path>              layer additional env from <path>
+  --json                       emit machine-readable JSON for config and config show
   start                        start the daemon (default when no subcommand is given)
   stop                         stop the service that holds the configured database, and wait for it to exit
   migrate                      apply pending database schema migrations, preserving existing data
   update                       update the cached model catalog and print package upgrade instructions (requires PLURNK_SERVICE_UPDATEABLE=1)
-  config [edit]                open the operator .env in $VISUAL or $EDITOR (creates it if absent)
+  config                       show daemon status, active sources, overrides, and template paths
+  config show                  print every resolved configuration key, effective value, and source
+  config edit                  open the operator .env in $VISUAL or $EDITOR (creates it if absent)
   config defaults              print every installed package's annotated .env.defaults
   config check                 validate configuration without contacting a provider
   share                        share a consistent copy of the database as a digest <folder>

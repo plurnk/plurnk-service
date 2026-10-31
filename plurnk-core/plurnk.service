@@ -1,15 +1,23 @@
 # plurnk-service systemd user unit. Install and enable explicitly.
+# Locate:   plurnk-service config   (prints the installed path of this template)
 # Install:  mkdir -p ~/.config/systemd/user
 #           cp "$(npm root -g)/@plurnk/plurnk-service/plurnk.service" ~/.config/systemd/user/
 #           systemctl --user daemon-reload && systemctl --user enable --now plurnk
+#           loginctl enable-linger "$USER"   # keep the user service running across logouts and reboots
 # Requires: npm install -g --ignore-scripts @plurnk/plurnk-service
-# If Node/npm are outside systemd's PATH (for example, nvm), replace ExecStart
+# If Node/npm are outside systemd's PATH (for example, nvm or fnm), replace ExecStart
 # with the absolute paths printed by `command -v node plurnk-service`:
 # ExecStart=/absolute/path/to/node /absolute/path/to/plurnk-service start
 # Configuration and provider credentials must be available to this service;
-# systemd does not source your interactive shell. Adjust EnvironmentFile for
-# a non-default XDG_CONFIG_HOME. Preserve the file's private permissions.
+# systemd does not source your interactive shell. Put settings and credentials in
+# ~/.config/plurnk/.env or ~/.config/plurnk/.env.local (mode 0600) and set
+# PLURNK_CLIENT_AUTOSTART=0 so `plurnk` never spawns an unsupervised daemon when
+# the unit is stopped.
+# Readiness probe: curl -fsS http://127.0.0.1:7587/health  (or /healthz)
 # Logs land in the user journal: journalctl --user -u plurnk -f
+# Sandboxing note: do NOT enable ProtectHome=true or ProtectSystem=strict unless
+# ReadWritePaths= lists every project workspace plus ~/.local/share/plurnk,
+# ~/.local/state/plurnk, and ~/.cache/plurnk, as the daemon edits project files.
 # Other machines on your network: add Environment=PLURNK_HOST=0.0.0.0 under [Service] and browse to
 # any of this machine's addresses. Beyond a network you trust, front it with plurnk.nginx.conf.
 [Unit]
@@ -20,7 +28,9 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
+SyslogIdentifier=plurnk-service
 EnvironmentFile=-%h/.config/plurnk/.env
+EnvironmentFile=-%h/.config/plurnk/.env.local
 ExecStart=/usr/bin/env plurnk-service start
 Restart=on-failure
 RestartSec=5s

@@ -13,8 +13,10 @@ test("{§teaching-corpus} {§tools-resource-materialization} listing is lazy and
     assert.ok(tree.document.description);
     const listed = await tree.list();
     assert.deepEqual(listed.filter((path) => !path.startsWith("packages/")),
-        [".env.defaults", "SKILL.md", "references/configuration.md", "references/copy-move.md", "references/extensibility.md", "references/models.md"]);
+        [".env.defaults", "SKILL.md", "plurnk.nginx.conf", "plurnk.service", "references/configuration.md", "references/copy-move.md", "references/extensibility.md", "references/models.md"]);
     assert.deepEqual(listed, listed.toSorted(), "the tree lists in one order");
+    assert.equal(await tree.resource("plurnk.service").nativePath?.(), Paths.systemdUnit);
+    assert.equal(await tree.resource("plurnk.nginx.conf").nativePath?.(), Paths.nginxConfig);
     const configuration = tree.resource("references/configuration.md");
     assert.equal(await configuration.nativePath?.(), Paths.configuration);
     const size = await configuration.size();

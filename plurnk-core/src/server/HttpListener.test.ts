@@ -69,6 +69,48 @@ test("{§http-host} a mount is an absolute pathname prefix, and each prefix is m
         assert.throws(() => listener.registerHttpRoute("acp", reply("relative")), /absolute pathname prefix/u);
         assert.throws(() => listener.registerHttpRoute("/acp/", reply("trailing")), /absolute pathname prefix/u);
         assert.throws(() => listener.registerHttpRoute("/acp?x", reply("query")), /absolute pathname prefix/u);
+        assert.throws(() => listener.registerHttpRoute("/health", reply("health")), /reserved/u);
+        assert.throws(() => listener.registerHttpRoute("/healthz", reply("healthz")), /reserved/u);
+        assert.throws(() => listener.registerHttpUpgrade("/health", acceptUpgrade("health")), /reserved/u);
+        assert.throws(() => listener.registerHttpUpgrade("/healthz", acceptUpgrade("healthz")), /reserved/u);
+    } finally { await listener.close(); }
+});
+
+test("{§http-host} {§operation-results} /health and /healthz answer 503 before admission, 200 application/health+json on GET and HEAD after admission, and 405 on other methods", async () => {
+    const listener = await HttpListener.bind({ host: "127.0.0.1", port: 0 });
+    try {
+        const { port } = listener.httpAddress();
+        listener.registerHttpRoute("/", reply("root"));
+        for (const pathname of ["/health", "/healthz"]) {
+            const before = await fetch(`http://127.0.0.1:${port}${pathname}`);
+            assert.equal(before.status, 503);
+        }
+        listener.admit();
+        for (const pathname of ["/health", "/healthz"]) {
+            const getRes = await fetch(`http://127.0.0.1:${port}${pathname}`);
+            assert.equal(getRes.status, 200);
+            assert.equal(getRes.headers.get("content-type"), "application/health+json; charset=utf-8");
+            assert.equal(getRes.headers.get("cache-control"), "no-store");
+            assert.deepEqual(await getRes.json(), { status: "pass" });
+
+            const headRes = await fetch(`http://127.0.0.1:${port}${pathname}`, { method: "HEAD" });
+            assert.equal(headRes.status, 200);
+            assert.equal(headRes.headers.get("content-type"), "application/health+json; charset=utf-8");
+            assert.equal(headRes.headers.get("cache-control"), "no-store");
+            assert.equal(await headRes.text(), "");
+
+            const postRes = await fetch(`http://127.0.0.1:${port}${pathname}`, { method: "POST" });
+            assert.equal(postRes.status, 405);
+            assert.equal(postRes.headers.get("allow"), "GET, HEAD");
+            assert.equal(postRes.headers.get("content-type"), "application/problem+json");
+            assert.deepEqual(await postRes.json(), Problems.create(
+                "http",
+                "method-not-allowed",
+                405,
+                "Health probes support only GET and HEAD.",
+                { stage: "routing", retryable: false },
+            ));
+        }
     } finally { await listener.close(); }
 });
 

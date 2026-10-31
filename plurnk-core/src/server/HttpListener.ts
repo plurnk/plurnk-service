@@ -15,6 +15,8 @@ interface Mount {
 }
 
 export default class HttpListener implements HttpHost {
+    static readonly #HEALTH_PATHS = new Set(["/health", "/healthz"]);
+    static readonly #HEALTH_BODY = JSON.stringify({ status: "pass" });
     readonly #server: Server;
     readonly #host: string;
     #mounts: readonly Mount[] = [];
@@ -62,6 +64,7 @@ export default class HttpListener implements HttpHost {
 
     registerHttpRoute(prefix: string, handler: HttpRouteHandler): void {
         if (!HttpListener.isPrefix(prefix)) throw new Error(`http listener: '${prefix}' is not an absolute pathname prefix`);
+        if (HttpListener.#HEALTH_PATHS.has(prefix)) throw new Error(`http listener: '${prefix}' is reserved`);
         const existing = this.#mounts.find((mount) => mount.prefix === prefix);
         if (existing?.handler !== undefined) {
             throw new Error(`http listener: '${prefix}' is already mounted`);
@@ -73,6 +76,7 @@ export default class HttpListener implements HttpHost {
 
     registerHttpUpgrade(prefix: string, upgrade: HttpUpgradeHandler): void {
         if (!HttpListener.isPrefix(prefix)) throw new Error(`http listener: '${prefix}' is not an absolute pathname prefix`);
+        if (HttpListener.#HEALTH_PATHS.has(prefix)) throw new Error(`http listener: '${prefix}' is reserved`);
         const existing = this.#mounts.find((mount) => mount.prefix === prefix);
         if (existing?.upgrade !== undefined) {
             throw new Error(`http listener: '${prefix}' upgrade is already mounted`);
@@ -124,6 +128,30 @@ export default class HttpListener implements HttpHost {
                 "The PLURNK service owns this listener but has not admitted its client interface yet.",
                 { stage: "startup", retryable: true },
             ));
+            return;
+        }
+        if (HttpListener.#HEALTH_PATHS.has(pathname)) {
+            const method = req.method ?? "GET";
+            if (method !== "GET" && method !== "HEAD") {
+                HttpListener.#answer(
+                    res,
+                    Problems.create(
+                        "http",
+                        "method-not-allowed",
+                        405,
+                        "Health probes support only GET and HEAD.",
+                        { stage: "routing", retryable: false },
+                    ),
+                    { allow: "GET, HEAD" },
+                );
+                return;
+            }
+            res.writeHead(200, {
+                "content-type": "application/health+json; charset=utf-8",
+                "cache-control": "no-store",
+                "content-length": String(Buffer.byteLength(HttpListener.#HEALTH_BODY)),
+            });
+            res.end(method === "HEAD" ? undefined : HttpListener.#HEALTH_BODY);
             return;
         }
         const handler = this.#mountFor(pathname)?.handler ?? null;
@@ -197,8 +225,8 @@ export default class HttpListener implements HttpHost {
         }
     }
 
-    static #answer(res: ServerResponse, problem: ProblemDetails): void {
-        res.writeHead(problem.status, { "content-type": "application/problem+json" });
+    static #answer(res: ServerResponse, problem: ProblemDetails, extraHeaders?: Record<string, string>): void {
+        res.writeHead(problem.status, { ...extraHeaders, "content-type": "application/problem+json" });
         res.end(JSON.stringify(problem));
     }
 

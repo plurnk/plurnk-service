@@ -22,15 +22,21 @@ First start seeds the user's configuration once. No model ships active;
 [choose a model route](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model) before starting a model loop.
 
 To start the service at login on Linux, the npm package includes an example
-[systemd user unit](./plurnk.service). Its comments cover manual installation,
-executable paths, environment, and logs. Installing the package never installs
-or enables the unit.
+[systemd user unit](./plurnk.service) (`skill://plurnk/plurnk.service`; its exact
+installed path is printed by `plurnk-service config`). Its comments cover manual
+installation, `loginctl enable-linger "$USER"`, executable paths, `EnvironmentFile`
+(`.env` and `.env.local`), setting `PLURNK_CLIENT_AUTOSTART=0` under supervision,
+`/health` readiness checks, sandboxing constraints, and journal logs. Installing
+the package never installs or enables the unit.
 
 To reach the daemon from other machines on your network, set `PLURNK_HOST=0.0.0.0`
 and browse to any of its addresses; nothing else is required. To serve it beyond
-a network you trust, put it behind the example [nginx front](./plurnk.nginx.conf),
-which carries TLS, security headers, sign-in throttling and an optional allow-list
-and says which two settings the daemon needs behind it.
+a network you trust, put it behind the example [nginx front](./plurnk.nginx.conf)
+(`skill://plurnk/plurnk.nginx.conf`), which carries TLS, security headers, sign-in
+throttling and an optional allow-list and says which two settings the daemon needs
+behind it. Unauthenticated `GET` and `HEAD` requests to `/health` or `/healthz`
+return `503` while starting and `200 OK` (`application/health+json`, `{"status":"pass"}`)
+once admitted.
 
 | Resource | Default location |
 | --- | --- |
@@ -44,10 +50,12 @@ and says which two settings the daemon needs behind it.
 | Plurnk-only MCP servers | `$XDG_CONFIG_HOME/plurnk/mcp.json` |
 | Personas | `.plurnk/personas/`, `.agents/personas/`, `$XDG_CONFIG_HOME/plurnk/personas/`, `$XDG_CONFIG_HOME/agents/personas/`, `~/.agents/personas/` |
 
-Use `plurnk-service config` for paths and precedence, `config edit` to edit the
-user file, and `config check` to validate it. A `PLURNK_*` key that file sets and
-no installed package declares is named at startup and by `config check`, which
-still passes; `config defaults` lists every declared key.
+Use `plurnk-service config` for daemon status, paths, precedence, non-default
+overrides, and template paths; `config show [--json]` for every resolved key,
+effective value (with secrets redacted), and winning source layer; `config edit`
+to edit the user file; and `config check` to validate it. A `PLURNK_*` key that
+file sets and no installed package declares is named at startup and by `config check`,
+which still passes; `config defaults` lists every declared key.
 
 Invalid optional configuration stays visible without removing the repair environment.
 `config check` is strict; ordinary startup keeps unrelated capabilities and client
