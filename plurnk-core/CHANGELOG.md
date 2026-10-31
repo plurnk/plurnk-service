@@ -1,5 +1,14 @@
 # @plurnk/plurnk-service
 
+## 5.0.3
+
+### Patch Changes
+
+- Unify ACP proposal and execution `toolCallId` on canonical `L/T/S` coordinates (`#1358`), enforce watched protocol dependency ledger and ACP v2 surface checks (`#1359`), and preserve `configId: "model"` with ready catalog selectors and workspace configuration notices on zero-alias installs (`#1360`).
+- Updated dependencies
+  - @plurnk/plurnk-contracts@7.0.3
+  - @plurnk/plurnk-acp@1.1.2
+
 ## 5.0.2
 
 ### Patch Changes
