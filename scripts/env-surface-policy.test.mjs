@@ -367,12 +367,15 @@ test("{§lint-gate} commit provenance validates signatures and configured author
 test("{§lint-gate} conventional branch and commit-message rules enforce bounded one-line subjects", () => {
     for (const type of CONVENTIONAL_TYPES) {
         assert.deepEqual(validateBranchName(`${type}/project-lifecycle`), [], type);
-        assert.deepEqual(validateCommitMessage(`${type}(project): normalize lifecycle\n`), [], type);
+        assert.deepEqual(validateCommitMessage(`${type}(project): normalize lifecycle\n`, { branch: `${type}/project-lifecycle` }), [], type);
     }
     assert.deepEqual(validateBranchName("main"), []);
     assert.match(validateBranchName("feature/project-lifecycle")[0], /main or type\/kebab-slug/);
     assert.match(validateBranchName("feat/Project Lifecycle")[0], /main or type\/kebab-slug/);
     assert.match(validateBranchName("feat/not_kebab")[0], /main or type\/kebab-slug/);
+    assert.match(validateCommitMessage("fix(project): normalize lifecycle\n", { branch: "main", merging: false })[0], /direct commits on 'main' are forbidden/);
+    assert.deepEqual(validateCommitMessage("Merge branch 'feat/example'\n", { branch: "main", merging: true }), []);
+    assert.match(validateCommitMessage("fix(project): normalize lifecycle\n", { branch: "feature/bad-branch" })[0], /main or type\/kebab-slug/);
     assert.deepEqual(validateCommitMessage("Merge branch 'feat/example'\n"), []);
     assert.deepEqual(validateCommitMessage("Revert \"feat: example\"\n"), []);
     assert.match(validateCommitMessage("Update lifecycle\n")[0], /type\(scope\): summary/);
