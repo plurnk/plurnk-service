@@ -1059,6 +1059,7 @@ test("{§mcp-module} {§schedule-family} a bare daemon discovers the MCP and sch
 // advertises them. The test floor configures the MCP Registry, so the mcp family serves discovery.
 const DISCOVERY: Readonly<Record<string, { readonly inputs: readonly string[]; readonly emptyListsAll?: true }>> = {
     "workspace.skills.discover": { inputs: ["source"] },
+    "workspace.personas.discover": { inputs: ["query", "source"], emptyListsAll: true },
     "workspace.schedule.discover": { inputs: ["rule"], emptyListsAll: true },
     "workspace.mcp.discover": { inputs: ["query"] },
     "workspace.env.discover": { inputs: ["query", "source"], emptyListsAll: true },

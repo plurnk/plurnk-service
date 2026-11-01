@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, test, type TestContext } from "node:test";
 import type { Db } from "../core/Db.ts";
 import HostPaths from "../core/HostPaths.ts";
-import WorkspacePersonas from "./WorkspacePersonas.ts";
+import WorkspacePersonas, { PersonaScheme, servicePersonas } from "./WorkspacePersonas.ts";
 import WorkspacePlugins from "./WorkspacePlugins.ts";
 
 describe("WorkspacePersonas", () => {
@@ -280,6 +280,110 @@ describe("WorkspacePersonas", () => {
                 assert.equal(refusal?.status, 403);
                 assert.equal(refusal?.problem?.type, "https://problems.plurnk.xyz/scheme/persona/resource-outside-root");
                 return true;
+            },
+        );
+    });
+
+    test("{§persona-discovery} servicePersonas parses inline and source definitions, respects _ENABLED controls, and rejects invalid definitions", () => {
+        const definitions = servicePersonas({
+            PLURNK_PERSONAS_ENABLED: "1",
+            PLURNK_PERSONAS_professor: JSON.stringify({
+                description: "Rigorous teacher.",
+                body: "Explain from invariants.",
+                effort: "high",
+            }),
+            PLURNK_PERSONAS_code_reviewer: JSON.stringify({
+                source: "/srv/personas/reviewer",
+                model: "fast",
+            }),
+            PLURNK_PERSONAS_code_reviewer_ENABLED: "0",
+        });
+        assert.deepEqual(definitions, [
+            {
+                alias: "code-reviewer",
+                definition: { source: "/srv/personas/reviewer", model: "fast" },
+                enabled: false,
+                provenance: { kind: "environment", source: "PLURNK_PERSONAS_code_reviewer" },
+            },
+            {
+                alias: "professor",
+                definition: {
+                    description: "Rigorous teacher.",
+                    body: "Explain from invariants.",
+                    effort: "high",
+                },
+                enabled: true,
+                provenance: { kind: "environment", source: "PLURNK_PERSONAS_professor" },
+            },
+        ]);
+
+        assert.throws(
+            () => servicePersonas({}),
+            /PLURNK_PERSONAS_ENABLED is missing from the assembled environment floor/u,
+        );
+        assert.throws(
+            () => servicePersonas({ PLURNK_PERSONAS_ENABLED: "1", PLURNK_PERSONAS_bad: "not-json" }),
+            /PLURNK_PERSONAS_bad must be valid JSON/u,
+        );
+        assert.throws(
+            () => servicePersonas({
+                PLURNK_PERSONAS_ENABLED: "1",
+                PLURNK_PERSONAS_bad: JSON.stringify({ source: "/a", description: "b", body: "c" }),
+            }),
+            /must specify either \{ source \} or \{ description, body \}/u,
+        );
+    });
+
+    test("{§persona-discovery} PersonaScheme.normalizeAddress and parseEditBody accept canonical and shorthand addresses and Markdown or JSON bodies", () => {
+        const url = (raw: string, hostname: string | null, pathname: string) => ({
+            kind: "url" as const,
+            raw,
+            scheme: "persona",
+            username: null,
+            password: null,
+            hostname,
+            port: null,
+            pathname,
+            query: null,
+            fragment: null,
+        });
+        assert.deepEqual(
+            PersonaScheme.normalizeAddress(url("persona://professor/PERSONA.md", "professor", "/PERSONA.md")),
+            { authority: "professor", pathname: "/PERSONA.md" },
+        );
+        assert.deepEqual(
+            PersonaScheme.normalizeAddress(url("persona://professor.md", "professor.md", "")),
+            { authority: "professor", pathname: "/PERSONA.md" },
+        );
+        assert.deepEqual(
+            PersonaScheme.normalizeAddress(url("persona://professor", "professor", "")),
+            { authority: "professor", pathname: "/PERSONA.md" },
+        );
+        assert.deepEqual(
+            PersonaScheme.normalizeAddress(url("persona:///professor.md", null, "/professor.md")),
+            { authority: "professor", pathname: "/PERSONA.md" },
+        );
+
+        assert.deepEqual(
+            WorkspacePersonas.parseEditBody(
+                "professor",
+                ["---", "description: First-principles teacher", "effort: high", "---", "Teach invariants first."].join("\n"),
+            ),
+            {
+                description: "First-principles teacher",
+                body: "Teach invariants first.",
+                effort: "high",
+            },
+        );
+        assert.deepEqual(
+            WorkspacePersonas.parseEditBody(
+                "professor",
+                JSON.stringify({ description: "JSON teacher", body: "Use JSON.", model: "fast" }),
+            ),
+            {
+                description: "JSON teacher",
+                body: "Use JSON.",
+                model: "fast",
             },
         );
     });
