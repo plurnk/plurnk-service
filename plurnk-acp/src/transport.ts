@@ -195,6 +195,7 @@ export const handleMessagesRoute = async (
     });
     const replayed = SessionTranslator.replay(translator, allEntries, inbox, {
         historyLoops: opts.historyLoops,
+        historyPageChars: opts.historyPageChars,
         openStreamTargets: new Set(streams.map((s) => s.target)),
         ...(targetLoop !== undefined ? { exactLoopSeq: targetLoop } : {}),
         ...(beforeLoop !== undefined ? { beforeLoopSeq: beforeLoop } : {}),

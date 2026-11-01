@@ -26,6 +26,7 @@ export const replaySessionHistory = (
     inbox: readonly ApplicationInboxMessage[] = [],
     options: {
         readonly historyLoops?: number;
+        readonly historyPageChars?: number;
         readonly beforeLoopSeq?: number;
         readonly exactLoopSeq?: number;
         readonly openStreamTargets?: ReadonlySet<string>;
@@ -57,11 +58,12 @@ export const replaySessionHistory = (
             ? new Set(candidateSeqs.slice(-options.historyLoops))
             : new Set(candidateSeqs);
 
-    const updates: AcpSessionUpdate[] = [];
+    const updatesByLoop = new Map<number, AcpSessionUpdate[]>();
     for (let i = 0; i < activeRows.length; i += 1) {
         const row = activeRows[i];
         if (!selectedLoops.has(row.loop_seq)) continue;
-        updates.push(...translator.logEntry({ entry: row }));
+        const bucket = updatesByLoop.get(row.loop_seq) ?? [];
+        bucket.push(...translator.logEntry({ entry: row }));
         const attrs = attrRecord(row.attrs);
         if (typeof attrs.stream === "string") {
             const streamEnded =
@@ -75,11 +77,39 @@ export const replaySessionHistory = (
                             (later.loop_seq === row.loop_seq && later.turn_seq > row.turn_seq),
                     );
             if (streamEnded) {
-                updates.push(
+                bucket.push(
                     ...translator.terminalConcluded(row.id, statusOf(row), { target: attrs.stream }),
                 );
             }
         }
+        updatesByLoop.set(row.loop_seq, bucket);
+    }
+
+    if (
+        typeof options.exactLoopSeq !== "number" &&
+        typeof options.historyPageChars === "number" &&
+        options.historyPageChars > 0 &&
+        selectedLoops.size > 1
+    ) {
+        const orderedSelected = [...selectedLoops].toSorted((a, b) => a - b);
+        const charsByLoop = new Map<number, number>();
+        let totalChars = 0;
+        for (const seq of orderedSelected) {
+            const len = JSON.stringify(updatesByLoop.get(seq) ?? []).length;
+            charsByLoop.set(seq, len);
+            totalChars += len;
+        }
+        for (let i = 0; i < orderedSelected.length - 1 && totalChars > options.historyPageChars; i += 1) {
+            const dropSeq = orderedSelected[i];
+            selectedLoops.delete(dropSeq);
+            updatesByLoop.delete(dropSeq);
+            totalChars -= charsByLoop.get(dropSeq) ?? 0;
+        }
+    }
+
+    const updates: AcpSessionUpdate[] = [];
+    for (const seq of [...selectedLoops].toSorted((a, b) => a - b)) {
+        updates.push(...(updatesByLoop.get(seq) ?? []));
     }
 
     if (options.beforeLoopSeq === undefined && options.exactLoopSeq === undefined) {

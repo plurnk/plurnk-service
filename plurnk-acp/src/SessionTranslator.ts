@@ -752,6 +752,7 @@ export default class SessionTranslator {
         inbox: readonly ApplicationInboxMessage[] = [],
         options: {
             readonly historyLoops?: number;
+            readonly historyPageChars?: number;
             readonly beforeLoopSeq?: number;
             readonly exactLoopSeq?: number;
             readonly openStreamTargets?: ReadonlySet<string>;

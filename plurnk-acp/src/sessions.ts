@@ -15,9 +15,13 @@ import {
     isRecord,
     isSafeInteger,
     type ApplicationOverviewWorkspace,
+    type ApplicationSessionProjection,
+    type ClientInteractionProjection,
     type ProblemDetails,
+    type ProposalProjection,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
+import type { AcpDescendantState } from "./client.ts";
 import type { ResolvedModuleOptions } from "./config.ts";
 import SessionTranslator from "./SessionTranslator.ts";
 
@@ -126,6 +130,26 @@ export const isDescendantSession = (
     }
     return false;
 };
+
+export const buildSessionDescendants = (
+    sessions: readonly ApplicationSessionProjection[],
+    proposals: readonly ProposalProjection[],
+    interactions: readonly ClientInteractionProjection[],
+    ancestorSessionId: number,
+): readonly AcpDescendantState[] =>
+    sessions
+        .filter((s) => s.hidden_at === null && isDescendantSession(sessions, s.id, ancestorSessionId))
+        .map((s) => ({
+            id: s.id,
+            name: s.name,
+            parentSessionId: s.parentSessionId,
+            kind: s.kind,
+            lifecycle: s.lifecycle,
+            gates: [
+                ...proposals.filter((p) => p.sessionId === s.id && p.disposition.decision === "review"),
+                ...interactions.filter((i) => i.sessionId === s.id),
+            ],
+        }));
 
 export const selectBoundSessionForTarget = (
     peer: AcpPeer,
@@ -398,6 +422,7 @@ export const extractPlurnkMeta = (meta: unknown): {
     readonly sessionName?: string;
     readonly create?: boolean;
     readonly activate?: boolean;
+    readonly control?: boolean;
     readonly messageId?: string;
     readonly projectRoot?: string | null;
     readonly settings?: Record<string, unknown>;
@@ -424,6 +449,7 @@ export const extractPlurnkMeta = (meta: unknown): {
                 : undefined;
     const create = typeof p.create === "boolean" ? p.create : undefined;
     const activate = typeof p.activate === "boolean" ? p.activate : undefined;
+    const control = typeof p.control === "boolean" ? p.control : undefined;
     const messageId = typeof p.messageId === "string" && p.messageId.trim().length > 0
         ? p.messageId.trim()
         : undefined;
@@ -444,6 +470,7 @@ export const extractPlurnkMeta = (meta: unknown): {
         ...(sessionName !== undefined ? { sessionName } : {}),
         ...(create !== undefined ? { create } : {}),
         ...(activate !== undefined ? { activate } : {}),
+        ...(control !== undefined ? { control } : {}),
         ...(messageId !== undefined ? { messageId } : {}),
         ...(projectRoot !== undefined ? { projectRoot } : {}),
         ...(settings !== undefined ? { settings } : {}),
@@ -674,14 +701,17 @@ export const resolveSessionBinding = async (
         requestedSessionName = plurnkMeta.sessionName;
     }
 
-    if (plurnkMeta.activate === true) {
-        await seam.activateWorkspace({ workspaceId });
+    const takeControl = plurnkMeta.control !== false;
+    if (takeControl) {
+        if (plurnkMeta.activate === true) {
+            await seam.activateWorkspace({ workspaceId });
+        }
+        await seam.registerSessionOwner(workspaceId, {
+            address: OWNER_ADDRESS,
+            tools: ["request_approval", "question", "mcp_input_required"],
+            interactive: true,
+        });
     }
-    await seam.registerSessionOwner(workspaceId, {
-        address: OWNER_ADDRESS,
-        tools: ["request_approval", "question", "mcp_input_required"],
-        interactive: true,
-    });
 
     let session = requestedSessionName !== undefined
         ? await seam.readSession({ workspaceId, identity: { name: requestedSessionName } })
@@ -699,14 +729,14 @@ export const resolveSessionBinding = async (
         const created = await seam.createSession({
             workspaceId,
             ...(requestedSessionName !== undefined ? { name: requestedSessionName } : {}),
-            owner: OWNER_ADDRESS,
+            ...(takeControl ? { owner: OWNER_ADDRESS } : {}),
         });
         session = await seam.readSession({
             workspaceId,
             identity: { id: created.sessionId },
         });
         if (session === null) throw new Error(`Failed to read newly created session ${created.sessionId}`);
-    } else {
+    } else if (takeControl) {
         if (session.hidden_at !== null) {
             await seam.setSessionHidden({
                 workspaceId,
