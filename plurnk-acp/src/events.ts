@@ -159,6 +159,15 @@ export const dispatchDaemonEvent = (
                                                     id: extractMessageId(msg.source ?? msg.path, s.acpSessionId),
                                                     loopId: msg.loopId,
                                                     lifecycle: msg.lifecycle,
+                                                    ...(s.translator.origin !== undefined &&
+                                                    s.translator.origin.length > 0
+                                                        ? {
+                                                              body: {
+                                                                  url: `${s.translator.origin}/acp/${workspaceId}/${sessionId}/entry?target=${encodeURIComponent(msg.path)}`,
+                                                                  mimeType: "text/plain",
+                                                              },
+                                                          }
+                                                        : {}),
                                                 })),
                                             },
                                         },
@@ -372,6 +381,14 @@ export const dispatchDaemonEvent = (
                             id: extractMessageId(msg.source ?? msg.path, s.acpSessionId),
                             loopId: msg.loopId,
                             lifecycle: msg.lifecycle,
+                            ...(s.translator.origin !== undefined && s.translator.origin.length > 0
+                                ? {
+                                      body: {
+                                          url: `${s.translator.origin}/acp/${workspaceId}/${sessionId}/entry?target=${encodeURIComponent(msg.path)}`,
+                                          mimeType: "text/plain",
+                                      },
+                                  }
+                                : {}),
                         })),
                     ),
                 );

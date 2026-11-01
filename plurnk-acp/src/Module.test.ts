@@ -2458,6 +2458,117 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             assert.equal(status?.claimedAt, Date.parse("2026-10-25T00:00:00.000Z"));
             assert.equal(status?.terminatedAt, Date.parse("2026-10-25T00:00:01.000Z"));
 
+            // 5. workspace.hide, workspace.list includeHidden, session/delete unhide, and live reasoning/inbox entry URLs (#1388)
+            const wsCreated = await sendRpc(5, "_plurnk/action", {
+                kind: "workspace.create",
+                params: { name: "ws-to-hide" },
+            });
+            const hiddenWsId = wsCreated.id as number;
+            const wsHidden = await sendRpc(6, "_plurnk/action", {
+                kind: "workspace.hide",
+                params: { workspaceId: hiddenWsId },
+            });
+            assert.equal(wsHidden.id, hiddenWsId);
+            assert.equal(typeof wsHidden.hidden_at, "string");
+
+            const listedDefault = await sendRpc(7, "_plurnk/action", {
+                kind: "workspace.list",
+                params: {},
+            });
+            assert.ok(
+                !(listedDefault.workspaces as Array<{ id: number }>).some((w) => w.id === hiddenWsId),
+                "workspace.list omits hidden workspaces by default",
+            );
+
+            const listedWithHidden = await sendRpc(8, "_plurnk/action", {
+                kind: "workspace.list",
+                params: { includeHidden: true },
+            });
+            assert.ok(
+                (listedWithHidden.workspaces as Array<{ id: number }>).some((w) => w.id === hiddenWsId),
+                "workspace.list includes hidden workspaces when includeHidden: true",
+            );
+
+            const wsShown = await sendRpc(9, "_plurnk/action", {
+                kind: "workspace.hide",
+                params: { workspaceId: hiddenWsId, hidden: false },
+            });
+            assert.equal(wsShown.hidden_at, null);
+
+            await sendRpc(10, "session/delete", { sessionId: "1#user" });
+            const listedAfterDelete = await sendRpc(11, "session/list", { cwd: "/workspace/alpha" });
+            assert.ok(
+                !(listedAfterDelete.sessions as Array<{ sessionId: string }>).some((s) => s.sessionId === "1#user"),
+            );
+
+            await sendRpc(12, "session/delete", {
+                sessionId: "1#user",
+                _meta: { plurnk: { hidden: false } },
+            });
+            const listedAfterUnhide = await sendRpc(13, "session/list", { cwd: "/workspace/alpha" });
+            assert.ok(
+                (listedAfterUnhide.sessions as Array<{ sessionId: string }>).some((s) => s.sessionId === "1#user"),
+            );
+
+            const liveThoughtUpdates = translator.reasoning({
+                sessionId: 1,
+                loopId: 1,
+                turnId: 2,
+                loopSeq: 1,
+                turnSeq: 2,
+                modelCallId: 9,
+                requestSequence: 1,
+                phase: "content",
+                delta: "Live reasoning chunk",
+            });
+            assert.equal(liveThoughtUpdates.length, 1);
+            assert.deepEqual(
+                (liveThoughtUpdates[0]?.update._meta as { plurnk?: unknown } | undefined)?.plurnk,
+                {
+                    coordinate: "1/2",
+                    body: {
+                        url: "http://127.0.0.1:1066/acp/1/1/entry?target=reasoning%3A%2F%2Fuser%2F1%2F2",
+                        mimeType: "text/plain",
+                    },
+                },
+            );
+
+            const ambientWithReasoning = translator.logEntry({
+                entry: makeLogEntry({
+                    id: 502,
+                    session_id: 1,
+                    session_name: "user",
+                    loop_id: 1,
+                    turn_id: 3,
+                    loop_seq: 1,
+                    turn_seq: 3,
+                    sequence: 1,
+                    origin: "_plurnk",
+                    op: null,
+                    state: "failed",
+                    status_rx: 422,
+                    reasoning: "Reasoning on rejected emission attempt",
+                    attrs: { kind: "emissionAttempt", body: "bad attempt" },
+                    rx: { status: 422 },
+                }),
+            });
+            assert.deepEqual(
+                (ambientWithReasoning[0]?.update._meta as { plurnk?: { reasoning?: unknown } } | undefined)?.plurnk
+                    ?.reasoning,
+                {
+                    url: "http://127.0.0.1:1066/acp/1/1/entry?target=reasoning%3A%2F%2Fuser%2F1%2F3",
+                    mimeType: "text/plain",
+                },
+            );
+
+            assert.deepEqual(
+                (cancelledChunk?.update._meta as { plurnk?: { body?: unknown } } | undefined)?.plurnk?.body,
+                {
+                    url: "http://127.0.0.1:1066/acp/1/1/entry?target=message%3A%2F%2Fuser%2Fmsg-cancelled",
+                    mimeType: "text/plain",
+                },
+            );
+
             ws.close();
         } finally {
             await h.close();

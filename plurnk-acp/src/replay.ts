@@ -140,17 +140,36 @@ export const replaySessionHistory = (
             ) {
                 continue;
             }
+            const inboxUrl =
+                translator.origin !== undefined && translator.origin.length > 0
+                    ? `${translator.origin}/acp/${translator.workspaceId}/${translator.sessionId}/entry?target=${encodeURIComponent(msg.path)}`
+                    : undefined;
+            const useReference =
+                inboxUrl !== undefined &&
+                options.historyPageChars !== undefined &&
+                options.historyPageChars > 0 &&
+                msg.body.length > options.historyPageChars;
             updates.push({
                 sessionId: translator.acpSessionId,
                 update: {
                     sessionUpdate: "user_message_chunk",
                     messageId,
-                    content: { type: "text", text: msg.body },
+                    content: useReference
+                        ? {
+                              type: "resource_link",
+                              uri: inboxUrl,
+                              name: msg.path,
+                              mimeType: "text/plain",
+                          }
+                        : { type: "text", text: msg.body },
                     _meta: {
                         plurnk: {
                             loopId: msg.loopId,
                             lifecycle: msg.lifecycle,
                             published: false,
+                            ...(inboxUrl !== undefined
+                                ? { body: { url: inboxUrl, mimeType: "text/plain" } }
+                                : {}),
                         },
                     },
                 },

@@ -533,6 +533,10 @@ export const createConnectionAgent = (
                                 id: extractMessageId(msg.source ?? msg.path, bound.acpSessionId),
                                 loopId: msg.loopId,
                                 lifecycle: msg.lifecycle,
+                                body: {
+                                    url: `${httpOrigin()}/acp/${bound.workspaceId}/${bound.sessionId}/entry?target=${encodeURIComponent(msg.path)}`,
+                                    mimeType: "text/plain",
+                                },
                             })),
                             spend,
                             streams,
@@ -566,6 +570,7 @@ export const createConnectionAgent = (
     app.onRequest(methods.agent.session.delete, async (ctx) => {
         peer.client = ctx.client;
         try {
+            const plurnkMeta = extractPlurnkMeta(ctx.params._meta);
             const bound = peer.sessions.get(ctx.params.sessionId)
                 ?? (await resolveSessionBinding(
                     seam,
@@ -575,12 +580,13 @@ export const createConnectionAgent = (
                     undefined,
                     false,
                 ));
+            const hidden = typeof plurnkMeta.hidden === "boolean" ? plurnkMeta.hidden : true;
             await seam.setSessionHidden({
                 workspaceId: bound.workspaceId,
                 sessionId: bound.sessionId,
-                hidden: true,
+                hidden,
             });
-            peer.sessions.delete(ctx.params.sessionId);
+            if (hidden) peer.sessions.delete(ctx.params.sessionId);
             return {};
         } catch (err) {
             throw toRequestError(err);
@@ -995,11 +1001,16 @@ export const createConnectionAgent = (
             }
 
             const rawInbox = await seam.readInbox({ workspaceId: bound.workspaceId, sessionId: bound.sessionId });
+            const origin = httpOrigin();
             const mappedInbox = rawInbox.map((msg) => ({
                 path: msg.path,
                 id: extractMessageId(msg.source ?? msg.path, bound.acpSessionId),
                 loopId: msg.loopId,
                 lifecycle: msg.lifecycle,
+                body: {
+                    url: `${origin}/acp/${bound.workspaceId}/${bound.sessionId}/entry?target=${encodeURIComponent(msg.path)}`,
+                    mimeType: "text/plain",
+                },
             }));
             const queuedMsg = mappedInbox.find((item) => item.id === messageId);
             if (queuedMsg !== undefined) {
@@ -1015,6 +1026,7 @@ export const createConnectionAgent = (
                                     loopId: queuedMsg.loopId,
                                     lifecycle: queuedMsg.lifecycle,
                                     published: false,
+                                    body: queuedMsg.body,
                                 },
                             },
                         },

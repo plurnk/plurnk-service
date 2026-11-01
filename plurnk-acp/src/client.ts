@@ -45,6 +45,7 @@ export interface AcpInboxItem {
     readonly id: string | null;
     readonly loopId: number;
     readonly lifecycle: string;
+    readonly body?: { readonly url: string; readonly mimeType: string };
 }
 
 export interface AcpWorkspaceState {
