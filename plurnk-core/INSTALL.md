@@ -193,7 +193,7 @@ outside the package.
 | --- | --- |
 | Startup defaults or installed extension configuration | The daemon's environment cascade. A remote client's shell does not change it. |
 | Model, reasoning, child model | Session selections persist. Set them through client controls; changing a startup default does not retarget an existing Session. |
-| MCPs, skills, schedules, membership | Workspace Functionality: list, discover, add, replace, enable, disable, remove. Sessions share the workspace's current selection. |
+| MCPs, skills, personas, schedules, membership | Workspace Functionality: list, discover, add, replace, enable, disable, remove. Sessions share the workspace's current selection. |
 | Command environment | `env` manages session overrides or workspace defaults. It does not reconfigure the daemon; running processes keep their launch environment. |
 | External capabilities | Service policy is a ceiling; workspace policy can narrow it for every session. Hiding a doc does not grant or revoke authority. |
 | Proposal review / YOLO | Decides who accepts or rejects an admitted operation. Automatic acceptance never overrides capability or resource permissions. |
@@ -242,7 +242,7 @@ PLURNK_MCP_ENABLED=1
 PLURNK_MCP_docs_ENABLED=0
 ```
 
-MCP, skills, schedule, and members use this same naming pattern;
+MCP, skills, personas, schedule, and members use this same naming pattern;
 their `.env.defaults` entries describe each family's definition and controls.
 Aliases use lowercase names, with `_` encoding `-`; skills retain their standard
 Unicode and digit-leading names. An empty definition is invalid, not a disable

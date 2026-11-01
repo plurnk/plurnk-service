@@ -33,7 +33,7 @@ import Credentials from "./Credentials.ts";
 import type { WorkspaceRow } from "./envelope.ts";
 import ClientInput from "./client-input.ts";
 import WorkspacePlugins from "./WorkspacePlugins.ts";
-import WorkspacePersonas from "./WorkspacePersonas.ts";
+import WorkspacePersonas, { PersonaScheme, servicePersonas } from "./WorkspacePersonas.ts";
 import { agentRootScopes, workspacePaths, type ConfigurationRootScope } from "./AgentRoots.ts";
 import ExecEnv from "../schemes/exec-env.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
@@ -98,6 +98,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         agentRootScopes();
         serviceMembers();
         modelScope();
+        servicePersonas();
     }
 
     #db: Db;
@@ -225,20 +226,18 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             preparationChanged: (workspaceId, preparation) => this.#broadcast({ workspaceId }, "workspace/preparation", { workspaceId, preparation }) });
         this.#plugins = new WorkspacePlugins({ db, hostPaths, nodeModules: this.#nodeModulesPath });
         this.#personas = new WorkspacePersonas({ db, hostPaths, plugins: this.#plugins });
+        const personasHandle = this.#functionality.register(this.#personas);
+        this.#personas.attach(personasHandle);
         if (!this.#schemes.has("persona")) {
-            this.#schemes.registerCore("persona", new ResourceTreeScheme("persona", {
-                trees: (workspaceId) => this.#personas.trees(workspaceId),
-                refusal: WorkspacePersonas.refusal,
-            }));
+            this.#schemes.registerCore(
+                "persona",
+                new PersonaScheme(
+                    this.#personas,
+                    (verb, params, identity, caller = "operation") =>
+                        personasHandle.invoke(verb, params, identity, caller),
+                ),
+            );
         }
-        this.registerWorkspaceCapabilityProvider("@plurnk/plurnk-service:personas", {
-            activate: async ({ workspaceId }) => {
-                await this.#personas.refresh(workspaceId);
-            },
-            deactivate: async ({ workspaceId }) => {
-                this.#personas.clear(workspaceId);
-            },
-        });
         // {§tools-resource-materialization} — Core's own family: file membership on the same surface.
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine, handle: () => membersHandle });
         const membersHandle = this.#functionality.register(this.#members);
@@ -276,7 +275,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             // the first subsequent model turn sees their exact result.
             workspaceTurnStarting: async ({ workspaceId }) => {
                 await this.#functionality.refreshChanged({ workspaceId });
-                await this.#personas.refresh(workspaceId);
                 return this.configurationNotices(workspaceId);
             },
             // session:// KILL (terminate) — cancel the addressed session subtree and
@@ -855,7 +853,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             ...this.#configuration.notices(),
             ...this.#functionality.configurationNotices(workspaceId),
             ...this.#plugins.notices(workspaceId),
-            ...this.#personas.notices(workspaceId),
         ];
     }
     get provider(): Provider | null { return this.#provider; }

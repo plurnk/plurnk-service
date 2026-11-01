@@ -12,12 +12,17 @@ The surfaces run from least to most code and trust, and each is for what the one
 before it cannot do:
 
 - **Configuration** when what the integration needs already exists: a setting in
-  the cascade, or a definition in `mcp.json` or a skill root.
+  the cascade, or a definition in `mcp.json`, a skill root, or a persona root.
+- **Operating policy** (`AGENTS.md` / `AGENTS.local.md`) when standing instructions
+  apply to every turn in a user environment, project, or session (`session://<session>/AGENTS.md`).
+- **A persona** (`persona://<name>/PERSONA.md`, managed via `plurnk_personas` or `EDIT`)
+  when a reusable operating identity, optional model/effort route, and instruction body
+  can be selected per session or copied to `session://<session>/AGENTS.md`.
 - **A skill** when the model needs knowledge, or a script it runs with its existing
   runtimes (`sh`, `js`).
 - **An MCP server** when X has an API the model calls as tools. A server X already
   publishes needs only its definition.
-- **A plugin** when skills and MCP servers install together, or travel to other agents.
+- **A plugin** when skills, personas, and MCP servers install together, or travel to other agents.
 - **A client** when X drives Plurnk from outside through ACP.
 - **A hook** when X hears about Plurnk's lifecycle events and answers nothing.
 - **An extension** only when the model needs something new inside the daemon that
@@ -31,24 +36,25 @@ before it cannot do:
 
 | Surface | Shape | The model sees | Code in the daemon |
 | --- | --- | --- | --- |
+| Persona | `<name>.md` or `<name>/PERSONA.md` (or inline definition) | `persona://<name>/PERSONA.md` | none |
 | Skill | a directory holding `SKILL.md` | `skill://<name>/` | none |
 | MCP server | one MCP definition | a runtime named for the server, its tools as invocation targets, and its resources as an address scheme | none: a process or a URL |
-| Plugin | a directory holding `plugin.json`, `skills/` and `mcp.json` | its skills and MCP servers | none, unless it declares an extension |
+| Plugin | a directory holding `plugin.json`, `skills/`, `personas/`, and `mcp.json` | its skills, personas, and MCP servers | none, unless it declares an extension |
 | Extension | a package declaring one kind | a runtime, an address scheme, a media-type reader, a model provider, a page materializer, or what a module contributes | trusted, in the daemon |
 
-Skills and MCP servers are definitions. The `plurnk_skills` and
-`plurnk_mcp` runtimes (`add`, `replace`, `enable`, `disable`, and `remove` tools) manage them in the current workspace,
-and `mcp:///plurnk_skills.md` and `mcp:///plurnk_mcp.md` show each
+Personas, skills, and MCP servers are definitions. The `plurnk_personas`, `plurnk_skills`, and
+`plurnk_mcp` runtimes (`add`, `replace`, `enable`, `disable`, and `remove` tools; personas also accept `EDIT` and `KILL` on `persona://`) manage them in the current workspace,
+and `mcp:///plurnk_personas.md`, `mcp:///plurnk_skills.md`, and `mcp:///plurnk_mcp.md` show each
 definition's form. A definition needs no restart; an extension loads only when
 the daemon starts.
 
 ## X uses Plurnk
 
-| Surface | Shape | Code in the daemon |
-| --- | --- | --- |
-| Application | an ACP v2 client: WebSocket or Streamable HTTP JSON-RPC 2.0 at `/acp` on the daemon's listener (`PLURNK_PORT`) | none |
-| Command | the executable in `PLURNK_HOOKS_COMMAND`, run once per event named in `PLURNK_HOOKS_EVENTS` with one JSON line on stdin; its output and exit status change nothing | none |
-| Protocol server | a module that declares mounts and serves its routes on the daemon's listener | trusted, in the daemon |
+| Surface | Shape | Code in the daemon | Contract |
+| --- | --- | --- | --- |
+| Application | an ACP v2 client: WebSocket or Streamable HTTP JSON-RPC 2.0 at `/acp` on the daemon's listener (`PLURNK_PORT`), authenticated via OAuth 2.1 (`/.well-known/*`, `/oauth/*`) when `PLURNK_AUTH=1` | none | `skill://plurnk/packages/@plurnk/plurnk-acp/SPEC.md`, `skill://plurnk/packages/@plurnk/plurnk-auth/SPEC.md` |
+| Command | the executable in `PLURNK_HOOKS_COMMAND`, run once per event named in `PLURNK_HOOKS_EVENTS` with one JSON line on stdin; its output and exit status change nothing | none | `skill://plurnk/packages/@plurnk/plurnk-hooks/SPEC.md` |
+| Protocol server | a module that declares mounts and serves its routes on the daemon's listener | trusted, in the daemon | `skill://plurnk/packages/@plurnk/plurnk-modules/SPEC.md` |
 
 ## Extensions
 

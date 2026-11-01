@@ -279,6 +279,9 @@ test(
                     (personaOpt.options as ReadonlyArray<{ readonly value?: string }>).map((o) => o.value ?? ""),
                     ["none", "reviewer"],
                 );
+                const personaToggle = created.configOptions?.find((o) => o.configId === "personas:reviewer");
+                assert.ok(personaToggle && personaToggle.type === "boolean");
+                assert.equal(personaToggle.currentValue, true);
 
                 // Select persona "reviewer" via session/set_config_option
                 const updated = await ctx.request(methods.agent.session.setConfigOption, {
@@ -378,6 +381,67 @@ test(
                     ),
                     "Child session reads session://subreviewer/AGENTS.md copied from persona://reviewer/PERSONA.md",
                 );
+
+                // Exercise EDIT and KILL on persona:// and workspace.personas.list
+                const edited = await daemon.dispatchClientAction({
+                    workspaceId: workspace.id,
+                    actor: "operator",
+                    contextSessionId: rootSession.id,
+                    statements: [
+                        {
+                            op: "EDIT",
+                            target: {
+                                kind: "url",
+                                raw: "persona://professor.md",
+                                scheme: "persona",
+                                username: null,
+                                password: null,
+                                hostname: "professor.md",
+                                port: null,
+                                pathname: "",
+                                query: null,
+                                fragment: null,
+                            },
+                            metadata: null,
+                            lineMarker: null,
+                            matcher: null,
+                            body: ["---", "description: Rigorous teacher", "effort: high", "---", "Teach from invariants."].join("\n"),
+                        },
+                    ],
+                });
+                assert.equal(edited[0]?.status, 200);
+                const afterEdit: Array<{ name: string }> = await daemon.listPersonas({ workspaceId: workspace.id });
+                assert.deepEqual(afterEdit.map((p) => p.name), ["professor", "reviewer"]);
+
+                const killed = await daemon.dispatchClientAction({
+                    workspaceId: workspace.id,
+                    actor: "operator",
+                    contextSessionId: rootSession.id,
+                    statements: [
+                        {
+                            op: "KILL",
+                            target: {
+                                kind: "url",
+                                raw: "persona://professor.md",
+                                scheme: "persona",
+                                username: null,
+                                password: null,
+                                hostname: "professor.md",
+                                port: null,
+                                pathname: "",
+                                query: null,
+                                fragment: null,
+                            },
+                            metadata: null,
+                            lineMarker: null,
+                            matcher: null,
+                            body: null,
+                        },
+                    ],
+                });
+                assert.equal(killed[0]?.status, 200);
+                const afterKill: Array<{ name: string }> = await daemon.listPersonas({ workspaceId: workspace.id });
+                assert.deepEqual(afterKill.map((p) => p.name), ["reviewer"]);
             });
         } finally {
             await daemon.stop();

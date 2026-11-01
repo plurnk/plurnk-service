@@ -909,7 +909,7 @@ export const buildConfigOptions = async (
     ];
 
     const registeredActions = seam.listModuleActions?.() ?? [];
-    for (const family of ["mcp", "skills", "schedule"] as const) {
+    for (const family of ["mcp", "skills", "schedule", "personas"] as const) {
         if (!registeredActions.some((a) => a.name === `workspace.${family}.list`)) continue;
         const listed = await seam
             .invokeModuleAction(`workspace.${family}.list`, {}, { scope: "workspace", workspaceId })
@@ -1245,7 +1245,7 @@ export const applyConfigOption = async (
             const colonIdx = configId.indexOf(":");
             const family = colonIdx > 0 ? configId.slice(0, colonIdx) : "";
             const alias = colonIdx > 0 ? configId.slice(colonIdx + 1) : "";
-            if ((family === "mcp" || family === "skills" || family === "schedule") && alias.length > 0) {
+            if ((family === "mcp" || family === "skills" || family === "schedule" || family === "personas") && alias.length > 0) {
                 const enabled = rawValue === true || value === "true" || value === "1" || value === "on";
                 const verb = enabled ? "enable" : "disable";
                 await seam.invokeModuleAction(

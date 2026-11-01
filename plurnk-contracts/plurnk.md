@@ -52,7 +52,7 @@ a final deliverable response
 ````
 
 > [!TIP]
-> The loop continues until all Open Messages receive a `[200]` or `[499]` response and all Open Work is completed.
+> The loop continues until all Open Work is resolved, with all Open Messages concluded with a `[200]` or `[499]` response.
 
 > [!TIP]
 > YOU SHOULD NOT deliberate while discovering. Submit necessary NOTE, FIND and READ operations, then deliberate on the next turn.

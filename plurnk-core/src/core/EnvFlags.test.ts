@@ -218,7 +218,7 @@ const shippedEnv = async (): Promise<Map<string, string>> => {
 test("{§operator-config-precedence} the template ships no double policy, no active model, ONLY service-owned knobs", async () => {
     const env = await shippedEnv();
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
-    const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_EXTENSIONS_|PLURNK_MEMBERS_)/;
+    const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_EXTENSIONS_|PLURNK_MEMBERS_|PLURNK_PERSONAS_)/;
     const foreign = [...env.keys()].filter((k) => !SERVICE_OWNED.test(k));
     assert.deepEqual(foreign, [], `the template declares only service-owned knobs; foreign: ${foreign.join(", ")}`);
     assert.equal(env.get("PLURNK_SERVICE_MAX_TURNS"), "-1", "model-call ceilings are opt-in, not a lifetime allowance");
@@ -251,7 +251,7 @@ test("{§operator-config-precedence} the installed panels declare every family t
         "PLURNK_MODEL_fixture", "PLURNK_BASEURL_fixture",
         "PLURNK_PROVIDERS_PROVIDER_XIAOMI_REASONING_EFFORTS",
         "PLURNK_EXECS_JS",
-        ...["MCP", "SCHEDULE", "MEMBERS"].flatMap((family) => [`PLURNK_${family}_fixture`, `PLURNK_${family}_fixture_ENABLED`]),
+        ...["MCP", "SCHEDULE", "MEMBERS", "PERSONAS"].flatMap((family) => [`PLURNK_${family}_fixture`, `PLURNK_${family}_fixture_ENABLED`]),
         "PLURNK_MCP_fixture_TOOLS", "PLURNK_SKILLS_分析", "PLURNK_SKILLS_分析_ENABLED",
     ];
     assert.deepEqual(computed.filter((key) => !declares(key)), [], "a key a package reads by a computed name belongs to a declared family");

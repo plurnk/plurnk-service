@@ -43,12 +43,12 @@ const readFilesItems = (): number | null => {
 // labelled as the card's own plan example is: the session's plan in steps, then its next step.
 const INITIALIZATION_NOTE: NoteStatement = {
     op: "NOTE", aside: "plan", metadata: null, target: null, lineMarker: null,
-    body: ["1. Survey the environment.", "2. Evaluate and react to the Open Message."].join("\n"),
+    body: ["1. Survey the environment.", "2. Resolve all Open Work."].join("\n"),
     position: UNKNOWN_POSITION,
 };
 const INITIALIZATION_CLOSING_NOTE: NoteStatement = {
     op: "NOTE", aside: "plan", metadata: null, target: null, lineMarker: null,
-    body: "Evaluate and react to the Open Message.", position: UNKNOWN_POSITION,
+    body: "Resolve all Open Work.", position: UNKNOWN_POSITION,
 };
 
 export default class InitializationTurn {
