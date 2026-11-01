@@ -17,7 +17,6 @@ test("{§operator-config-precedence} the seed is one dotenv front door with exac
     assert.match(seed, /Full installed options: plurnk-service config defaults/);
     assert.match(seed, /PLURNK_MODEL_openrouter="openrouter\/qwen\/qwen3-coder"/);
     assert.match(seed, /PLURNK_MODEL_local="openai\/qwen"/);
-    assert.match(seed, /PLURNK_PROVIDERS_GBNF_local=~\/\.config\/plurnk\/local\.gbnf/);
     assert.match(seed, /MCP SERVERS — complete definitions/);
     assert.match(seed, /PLURNK_MCP_brave=\{"type":"stdio"/);
     assert.match(seed, /PLURNK_MCP_brave_ENABLED=0/);

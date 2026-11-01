@@ -9,7 +9,6 @@
 import type {
     ChatMessage,
     Effort,
-    GrammarEvidence,
     InputModality,
     PromptTokenMeasurement,
     Provider,
@@ -51,10 +50,6 @@ export type ReasoningStyle = "none" | "think" | "template";
 
 export type NativeEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 
-// GBNF transport is a local llama-server capability. "none" means no
-// service-managed constrained sampling; endpoint-owned settings are not inferred.
-export type GrammarStyle = "none" | "llamacpp";
-
 export type CacheAffinity = { readonly target: "header" | "body"; readonly name: string };
 
 export type ModelProviderConfig = {
@@ -93,7 +88,6 @@ export type ModelProviderConfig = {
     estimateCost?: (usage: ProviderUsage | undefined) => ProviderCost;
     normalizeCost?: ProviderCostNormalizer;
     source?: string;                           // notice/problem source, e.g. "provider:openai"; default "provider"
-    grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
     // {§provider-sdk-boundary} Provider routes own the exact documented
     // projection; the common transport only applies it as managed request state.
     cacheAffinity?: CacheAffinity;
@@ -192,9 +186,8 @@ class ProviderReasoningObserverError extends Error {
 
 // Drop trailing occurrences of a server-rendered EOG marker. llama-server
 // under --special renders EOS as literal text, so a raw-EOS-ended turn carries a
-// trailing <eos> the grammar never sanctioned. Trailing-only + exact-match, so it
-// can never eat body content (a body ending in the literal marker isn't producible
-// under the grammar, and is vanishingly rare unconstrained).
+// trailing <eos>. Trailing-only + exact-match, so it
+// can never eat body content.
 const stripTrailingSpecial = (content: string, marker: string): string => {
     if (marker.length === 0) return content;
     let out = content;
@@ -277,7 +270,6 @@ export default class ModelProvider implements Provider {
     #estimateCost: (usage: ProviderUsage | undefined) => ProviderCost;
     #normalizeCost?: ProviderCostNormalizer;
     #source: string;
-    #grammarStyle: GrammarStyle;
     #cacheAffinity: CacheAffinity | undefined;
     #systemCacheBreakpoint: boolean;
     #serviceTier: string | undefined;
@@ -342,7 +334,7 @@ export default class ModelProvider implements Provider {
         }
         // Loud guard: an out-of-date consumer (stale extension dist) omitting the
         // required tuning fields must fail at construction, not silently send
-        // undefined sampling on every grammar request.
+        // undefined sampling on every request.
         if (config.temperature === undefined || config.repeatPenalty === undefined) {
             throw new Error(`${config.source ?? "provider"}: ModelProviderConfig requires temperature + repeatPenalty declared (PLURNK_PROVIDERS_TEMPERATURE / _REPEAT_PENALTY; null = provider default)`);
         }
@@ -380,7 +372,6 @@ export default class ModelProvider implements Provider {
             }));
         this.#normalizeCost = config.normalizeCost;
         this.#source = config.source ?? "provider";
-        this.#grammarStyle = config.grammarStyle ?? "none";
         this.#cacheAffinity = config.cacheAffinity;
         this.#systemCacheBreakpoint = config.systemCacheBreakpoint === true;
         if (this.#providerModel === undefined && this.#systemCacheBreakpoint) {
@@ -454,7 +445,7 @@ export default class ModelProvider implements Provider {
                 return tokens;
             };
         }
-        this.#requestBody = new ModelRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, effort: this.#effort, nativeAdaptiveThinking: this.#nativeAdaptiveThinking, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, grammarStyle: this.#grammarStyle, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
+        this.#requestBody = new ModelRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, effort: this.#effort, nativeAdaptiveThinking: this.#nativeAdaptiveThinking, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
@@ -485,10 +476,6 @@ export default class ModelProvider implements Provider {
     get servedModel(): string | undefined { return this.#servedModel; }
     // Resolved "decodes unbounded without a cap" fact; undefined = no claim.
     get requiresOutputBudget(): boolean | undefined { return this.#requiresOutputBudget; }
-    // Resolved capability: will a transported grammar actually constrain
-    // this backend's decode? Introspectable so a consumer can verify the rails
-    // are LIVE without spending a generation on a forcing-grammar probe.
-    get constrainsOutput(): boolean { return this.#grammarStyle !== "none"; }
 
     async countPromptTokens(
         messages: readonly ChatMessage[],
@@ -601,7 +588,7 @@ export default class ModelProvider implements Provider {
         });
     }
 
-    async generate({ messages, sessionId, signal, grammar, maxOutputTokens, sampling, observeRequest, observeReasoning, callKind }: ProviderGenerateArgs): Promise<ProviderResponse> {
+    async generate({ messages, sessionId, signal, maxOutputTokens, sampling, observeRequest, observeReasoning, callKind }: ProviderGenerateArgs): Promise<ProviderResponse> {
         // {§provider-interface} The session identity is required.
         if (sessionId === undefined || sessionId.length === 0) throw new Error("generate: sessionId is required — the session's stable, opaque identity");
         if (callKind !== undefined && callKind !== "emission" && callKind !== "bare") {
@@ -610,13 +597,6 @@ export default class ModelProvider implements Provider {
         // Reject before any wire call when already aborted
         // ({§provider-failure-normalization}).
         signal?.throwIfAborted();
-
-        // Grammar transport ({§provider-request-authority}): an operator's grammar rides a
-        // llama-style route verbatim and is never sent on any other style.
-        const wantGrammar = grammar !== undefined && this.#grammarStyle !== "none";
-        const sendGrammar = wantGrammar ? grammar : undefined;
-        const preserveGrammarSentence = wantGrammar
-            && this.#reasoningStyle === "template";
 
         const capacity = await this.assessRequestCapacity(messages, maxOutputTokens, signal);
         if (capacity.decision === "reject") {
@@ -649,9 +629,8 @@ export default class ModelProvider implements Provider {
             ...(this.#serviceTier !== undefined ? { service_tier: this.#serviceTier } : {}),
             ...(this.#reasoningRequestBody !== undefined
                 ? this.#reasoningRequestBody(this.#effort.mode, capacity.reasoningBudget)
-                : this.#requestBody.reasoningBody(preserveGrammarSentence, capacity.reasoningBudget)),
+                : this.#requestBody.reasoningBody(capacity.reasoningBudget)),
             ...(effectiveMaxOutputTokens === undefined ? {} : { [this.#outputTokenField]: effectiveMaxOutputTokens }),
-            ...this.#requestBody.grammarBody(sendGrammar),
             // Request per-token logprobs only when enabled (managed field —
             // reserved from caller sampling; the env flag is the single control).
             ...(this.#topLogprobs !== null ? { logprobs: true, top_logprobs: this.#topLogprobs } : {}),
@@ -699,8 +678,7 @@ export default class ModelProvider implements Provider {
             const capture = this.#rawBody ? new RequestCapture() : undefined;
             let requestReasoningStream = "";
             let structuredReasoning = false;
-            const envelopes = preserveGrammarSentence ? LeadingReasoning.TEMPLATE
-                : this.#reasoningResponseStyle === "think-tags" ? LeadingReasoning.THINK : [];
+            const envelopes = this.#reasoningResponseStyle === "think-tags" ? LeadingReasoning.THINK : [];
             const observing = emitReasoning !== undefined;
             const liveProjection = observing && envelopes.length > 0 ? new LeadingReasoning(envelopes) : undefined;
             const observeRequestReasoning = !observing
@@ -900,46 +878,13 @@ export default class ModelProvider implements Provider {
         }
 
         // llama-server --special renders EOG tokens as text, so a turn ending
-        // via raw EOS carries a trailing <eos> the grammar never sanctioned - it both
-        // false-rejects the rail verdict and leaks a control token into the packet.
-        // Strip the server-reported eos_token from the tail ONCE, before the verdict
-        // grades it and before it reaches assistant/packet. rawBody keeps the verbatim
-        // wire text for forensics.
+        // via raw EOS carries a trailing <eos> that would leak a control token into the packet.
+        // Strip the server-reported eos_token from the tail ONCE, before it reaches assistant/packet.
+        // rawBody keeps the verbatim wire text for forensics.
         if (this.#eosText !== undefined) raw.content = stripTrailingSpecial(raw.content, this.#eosText);
 
-        const grammarInput = raw.content;
         const projectedReasoning = LeadingReasoning.project(raw.content, raw.reasoning,
-            preserveGrammarSentence && !raw.reasoningProjected ? LeadingReasoning.TEMPLATE
-                : this.#reasoningResponseStyle === "think-tags" ? LeadingReasoning.THINK : []);
-
-        // Preserve the exact pre-projection response. Constrained template turns
-        // request `reasoning_format: "none"`, so even an empty channel and any
-        // template-provided opener remain observable. An unexpectedly projected
-        // response cannot supply independent evidence.
-        let grammarEvidence: GrammarEvidence | undefined;
-        if (wantGrammar) {
-            if (preserveGrammarSentence) {
-                if (!raw.reasoningProjected) {
-                    grammarEvidence = {
-                        input: grammarInput,
-                        contentStart: projectedReasoning.projected ? projectedReasoning.contentStart : 0,
-                        transported: sendGrammar !== undefined,
-                    };
-                }
-            } else if (projectedReasoning.projected) {
-                grammarEvidence = {
-                    input: grammarInput,
-                    contentStart: projectedReasoning.contentStart,
-                    transported: sendGrammar !== undefined,
-                };
-            } else {
-                grammarEvidence = {
-                    input: grammarInput,
-                    contentStart: 0,
-                    transported: sendGrammar !== undefined,
-                };
-            }
-        }
+            this.#reasoningResponseStyle === "think-tags" ? LeadingReasoning.THINK : []);
 
         if (projectedReasoning.projected) {
             raw.content = projectedReasoning.content;
@@ -978,34 +923,6 @@ export default class ModelProvider implements Provider {
             });
         }
         const usage = raw.usage;
-        if (sendGrammar !== undefined
-            && this.tokenize !== undefined
-            && usage?.outputTokens !== undefined) {
-            // {§diagnostic-observation} — billed output tokens far beyond every visible channel are reported
-            // as the two counts, naming no cause. The count requires the serving vocabulary; an estimate
-            // cannot prove absence.
-            try {
-                const [contentTokens, reasoningTokens] = await Promise.all([
-                    this.tokenize(raw.content),
-                    this.tokenize(raw.reasoning),
-                ]);
-                const visible = contentTokens.length + reasoningTokens.length;
-                if (usage.outputTokens > visible + 64) {
-                    (notices ??= []).push({
-                        source: this.#source,
-                        kind: "output_unaccounted",
-                        level: "warn",
-                        message: `${usage.outputTokens} output tokens billed; ${visible} visible across content and reasoning.`,
-                        position: Array.from(raw.content).length,
-                    });
-                }
-            } catch (cause) {
-                emitWarningOnce(
-                    `${this.#source}: exact visible-token diagnostic unavailable (${cause instanceof Error ? cause.message : String(cause)})`,
-                    "PLURNK_VISIBLE_TOKEN_COUNT_UNAVAILABLE",
-                );
-            }
-        }
 
         const meta = this.#buildMeta(raw.metadata);
         const logprobs = raw.logprobs.length > 0 ? raw.logprobs : undefined;
@@ -1024,7 +941,6 @@ export default class ModelProvider implements Provider {
             assistantRaw: raw,
             accounting,
             capacity,
-            ...(grammarEvidence !== undefined ? { grammarEvidence } : {}),
             ...(raw.rawBody !== undefined ? { rawBody: raw.rawBody } : {}),
             ...(meta !== undefined ? { meta } : {}),
             ...(notices !== undefined ? { notices } : {}),

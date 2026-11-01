@@ -190,7 +190,6 @@ test("{§session-model-selection}: an exact provider/model selector persists wit
     for (const [key, value] of Object.entries({
         PLURNK_MODEL: bootAlias,
         [`PLURNK_MODEL_${bootAlias}`]: "openai/unrelated-local-model",
-        [`PLURNK_PROVIDERS_GBNF_${bootAlias}`]: "/operator/rails/boot.gbnf",
     })) {
         declaredProviderEnv.set(key, process.env[key]);
         process.env[key] = value;
@@ -216,7 +215,7 @@ test("{§session-model-selection}: an exact provider/model selector persists wit
             assert.deepEqual(await routeSpec(db, session.model_route_id), spec);
             const stored = await db.model_route_by_id.get<{ alias: string | null }>({ id: session.model_route_id });
             assert.equal(stored?.alias, null, "database identity records the absence of an alias directly");
-            assert.equal(mock.remaining, 0, "the unrelated boot alias's GBNF scope did not intercept the direct route");
+            assert.equal(mock.remaining, 0, "the direct route ran to completion");
         } finally {
             ws.close();
         }

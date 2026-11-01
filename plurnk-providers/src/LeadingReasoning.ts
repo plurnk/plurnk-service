@@ -4,10 +4,6 @@ export type ReasoningEnvelope = readonly [opening: string, closing: string];
 // observation and settled response projection. Only an undecided delimiter is held.
 export default class LeadingReasoning {
     static readonly THINK: readonly ReasoningEnvelope[] = [["<think>", "</think>"]];
-    static readonly TEMPLATE: readonly ReasoningEnvelope[] = [
-        ["<|channel>thought\n", "<channel|>"],
-        ["<think>\n", "</think>"],
-    ];
 
     readonly #envelopes: readonly ReasoningEnvelope[];
     #pending = "";
@@ -16,7 +12,6 @@ export default class LeadingReasoning {
     #projected = false;
     #reasoning = "";
     #content = "";
-    #contentStart = 0;
 
     constructor(envelopes: readonly ReasoningEnvelope[]) {
         this.#envelopes = envelopes;
@@ -42,12 +37,10 @@ export default class LeadingReasoning {
             this.#pending = this.#pending.slice(opening.length);
             this.#closing = closing;
             this.#projected = true;
-            this.#contentStart = Array.from(opening).length;
         }
         const end = this.#pending.indexOf(this.#closing);
         if (end !== -1) {
             const delta = this.#emit(this.#pending.slice(0, end));
-            this.#contentStart += Array.from(this.#closing).length;
             this.#content = this.#pending.slice(end + this.#closing.length);
             this.#pending = "";
             this.#closed = true;
@@ -71,17 +64,16 @@ export default class LeadingReasoning {
 
     #emit(delta: string): string {
         this.#reasoning += delta;
-        this.#contentStart += Array.from(delta).length;
         return delta;
     }
 
     static project(content: string, reasoning: string, envelopes: readonly ReasoningEnvelope[]): {
-        content: string; reasoning: string; projected: boolean; contentStart: number;
+        content: string; reasoning: string; projected: boolean;
     } {
-        if (reasoning.length > 0) return { content, reasoning, projected: false, contentStart: 0 };
+        if (reasoning.length > 0) return { content, reasoning, projected: false };
         const parser = new LeadingReasoning(envelopes);
         parser.push(content);
         parser.finish();
-        return { content: parser.#content, reasoning: parser.#reasoning, projected: parser.#projected, contentStart: parser.#contentStart };
+        return { content: parser.#content, reasoning: parser.#reasoning, projected: parser.#projected };
     }
 }

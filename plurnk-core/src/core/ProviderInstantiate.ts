@@ -53,20 +53,8 @@ export default class ProviderInstantiate {
             || resolveActiveRoute(env) !== null;
     }
 
-    static assertGrammarConfigurationScope(
-        provider: Provider,
-        env: NodeJS.ProcessEnv = process.env,
-    ): void {
-        if (ProviderInstantiate.hasConfigurationScope(provider, env)) return;
-        const scoped = Object.keys(env).some((key) => key.startsWith("PLURNK_PROVIDERS_GBNF_"));
-        if (scoped) {
-            throw new Error("GBNF constraint: provider has no registered route and no active model route resolves, while route-scoped PLURNK_PROVIDERS_GBNF_* constraints are configured");
-        }
-    }
-
     // {§provider-instantiation} — identify a hand-built provider's
-    // configuration scope so direct Engine specimens exercise the same grammar
-    // resolution as daemon-constructed handles. null is an exact route using
+    // configuration scope. null is an exact route using
     // global tuning; a string is an alias-scoped route.
     static registerConfigurationScope(provider: Provider, alias: string | null): void {
         ProviderInstantiate.#configurationByProvider.set(provider, {
@@ -194,32 +182,6 @@ export default class ProviderInstantiate {
     static async loadActiveProvider(env: NodeJS.ProcessEnv = process.env): Promise<Provider | null> {
         const route = resolveActiveRoute(env); // PLURNK_MODEL resolves one alias or direct route — {§provider-instantiation}
         if (route === null) return null;
-        const provider = await ProviderInstantiate.instantiateProvider(route, env);
-        ProviderInstantiate.validateGrammarConfiguration(provider, env);
-        return provider;
-    }
-
-    // A configured GBNF is an operator's explicit local constrained-sampling contract. Admit
-    // only a provider configuration capable of carrying it; the grammar's content is the
-    // operator's business and is never validated here ({§provider-instantiation}, #588).
-    static validateGrammarConfiguration(
-        provider: Provider,
-        env: NodeJS.ProcessEnv = process.env,
-    ): void {
-        // {§provider-instantiation}: resolve through the provider's registered alias,
-        // with the active real alias; exact routes remain globally scoped
-        // retained only for the boot-global fallback.
-        ProviderInstantiate.assertGrammarConfigurationScope(provider, env);
-        const alias = ProviderInstantiate.configurationAliasOf(provider, env);
-        const scoped = alias === undefined ? env : scopeEnvToAlias(env, alias, ["PLURNK_PROVIDERS_GBNF"]);
-        const gbnf = scoped.PLURNK_PROVIDERS_GBNF;
-        if (gbnf === undefined || gbnf === "" || gbnf === "0") return; // no grammar configured — nothing to verify
-        if (provider.constrainsOutput !== true) {
-            throw new Error(
-                `PLURNK_PROVIDERS_GBNF=${gbnf} configures local constrained sampling, but '${provider.model}' does not advertise GBNF transport. `
-                + `Configure this knob only for a supported local llama-server; endpoint-managed constraints require no service-side GBNF setting. `
-                + `If this is a llama-server, set PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1 when automatic detection is unavailable.`,
-            );
-        }
+        return ProviderInstantiate.instantiateProvider(route, env);
     }
 }

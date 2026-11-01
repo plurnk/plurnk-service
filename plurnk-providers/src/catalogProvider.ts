@@ -25,7 +25,6 @@ import {
 } from "./env.ts";
 import ModelProvider, {
     type ModelProviderConfig,
-    type GrammarStyle,
     type NativeEffort,
     type CacheAffinity,
     type NativeRequestControls,
@@ -324,7 +323,6 @@ export const providerFromModelAdapter = ({
     systemCacheBreakpoint,
     additiveReasoningProvider,
     requestControls,
-    grammarStyle,
     endpoint,
 }: {
     name: string;
@@ -337,9 +335,6 @@ export const providerFromModelAdapter = ({
     contextWindow: number;
     info?: ModelInfo;
     attributions?: (context: ExtensionAttributionContext) => ExtensionAttribution;
-    // {§provider-request-authority} — extension-declared constrained-decoding
-    // capability; "none" keeps the grammar off the wire.
-    grammarStyle?: GrammarStyle;
     cacheAffinity?: CacheAffinity;
     systemCacheBreakpoint?: boolean;
     additiveReasoningProvider?: "anthropic" | "bedrock";
@@ -454,7 +449,6 @@ export const providerFromModelAdapter = ({
         ...(requestControls === undefined ? {} : { requestControls }),
         estimateCost,
         source: providerSource(name),
-        ...(grammarStyle === undefined ? {} : { grammarStyle }),
         ...dataCaptureFromEnv(env, name),
     });
 };

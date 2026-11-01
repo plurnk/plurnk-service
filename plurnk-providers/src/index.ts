@@ -1,7 +1,6 @@
 export type {
     ChatMessage,
     FinishReason,
-    GrammarEvidence,
     Provider,
     ProviderAssistant,
     ProviderAttempt,
@@ -58,7 +57,7 @@ export type { DiscoverOptions, Discovery } from "./discover.ts";
 
 // Stable PLURNK adapter over model transports and compatible local URLs.
 export { default as ModelProvider } from "./ModelProvider.ts";
-export type { ModelProviderConfig, ReasoningStyle, GrammarStyle } from "./ModelProvider.ts";
+export type { ModelProviderConfig, ReasoningStyle } from "./ModelProvider.ts";
 // {§provider-interface} Front N interchangeable backends as one Provider -
 // session-sticky for KV-cache reuse, overflow to a healthy sibling; the blend
 // DECISION stays the consumer's, by choosing which pool to call.

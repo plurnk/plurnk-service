@@ -206,14 +206,6 @@ export const classifyProviderError = (
         return cause === null ? classified : { ...classified, extensions: { ...classified.extensions, cause } };
     }
     const wire = isRecord(err) ? err : undefined;
-    if (wire?.type === "grammar_invalid") {
-        return {
-            kind: "grammar_invalid",
-            message: typeof wire.message === "string"
-                ? preview(wire.message, detailLimit)
-                : "The provider rejected the response grammar.",
-        };
-    }
     return {
         kind: "network_failure",
         message: preview(
@@ -259,9 +251,6 @@ const classifyApiCallError = (err: APICallError, detailLimit: number | undefined
                 message,
                 extensions: status === 413 ? undefined : { providerStatus: status },
             };
-        }
-        if (status === 422 && wire.type === "grammar_invalid") {
-            return { kind: "grammar_invalid", message };
         }
         if (status >= 400 && status < 500) return { kind: "request_rejected", message };
         return { kind: "invalid_response", message };

@@ -1529,7 +1529,7 @@ test("{§emission-admission} a classified provider error retains billed usage an
             await settle?.(accounting);
             throw new ProviderError(
                 "plurnk",
-                "grammar_invalid",
+                "request_rejected",
                 "The endpoint rejected the billed emission.",
                 {
                     status: 422,

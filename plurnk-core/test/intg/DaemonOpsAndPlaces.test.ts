@@ -294,7 +294,7 @@ test("{§notifications} notifyNotice broadcasts to clients attached to the loop'
                     source: "provider:local",
                     kind: "output_unaccounted",
                     level: "warn",
-                    message: "transported grammar diverged from returned content",
+                    message: "5000 output tokens billed; 1 visible across content and reasoning",
                     position: { type: "content-offset", line: 3, column: 7 },
                 },
             });
@@ -306,7 +306,7 @@ test("{§notifications} notifyNotice broadcasts to clients attached to the loop'
             assert.equal(notices[0].loopId, 42);
             assert.equal(notices[0].notice.source, "provider:local");
             assert.equal(notices[0].notice.kind, "output_unaccounted");
-            assert.equal(notices[0].notice.message, "transported grammar diverged from returned content");
+            assert.equal(notices[0].notice.message, "5000 output tokens billed; 1 visible across content and reasoning");
         } finally { ws.close(); }
     });
 });

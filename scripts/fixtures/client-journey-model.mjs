@@ -30,7 +30,7 @@ const journeys = Object.freeze({
     tui: {
         marker: "Exercise the installed interactive terminal.",
         programs: [{
-            reasoning: "I will complete the request through the interactive terminal.",
+            reasoning: "I will complete the request through the interactive terminal.\n",
             content: [
                 "````READ (log:///1/2/1/SEND)````",
                 "````READ (plurnk:///session.md) <1,-1>````",
@@ -42,7 +42,7 @@ const journeys = Object.freeze({
                 "````NOTE <!-- Confirm the packed interactive terminal path. -->\nThe shared protocol is available.\n````",
             ].join("\n"),
         }, {
-            reasoning: "The message was retrieved from its log address, so the journey can conclude.",
+            reasoning: "The message was retrieved from its log address, so the journey can conclude.\n",
             content: "````SEND [200]\nThe installed interactive journey is complete.\n````",
         }],
     },

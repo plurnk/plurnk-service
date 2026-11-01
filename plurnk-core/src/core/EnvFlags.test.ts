@@ -248,7 +248,6 @@ test("{§operator-config-precedence} the installed panels declare every family t
     const declares = EnvCatalog.declares(files);
     const computed = [
         ...PROVIDERS_KNOBS.map((knob) => `${knob}_fixture`),
-        "PLURNK_PROVIDERS_GBNF_fixture",
         "PLURNK_MODEL_fixture", "PLURNK_BASEURL_fixture",
         "PLURNK_PROVIDERS_PROVIDER_XIAOMI_REASONING_EFFORTS",
         "PLURNK_EXECS_JS",

@@ -1,6 +1,6 @@
 import { EFFORTS, isRecord, type Effort } from "@plurnk/plurnk-contracts";
 import { outboundFetch } from "@plurnk/plurnk-meta";
-import ModelProvider, { type GrammarStyle, type ReasoningStyle } from "./ModelProvider.ts";
+import ModelProvider, { type ReasoningStyle } from "./ModelProvider.ts";
 import { estimateProviderCost } from "./cost.ts";
 import {
     contextWindowFromEnv,
@@ -162,14 +162,12 @@ export const compatibleProviderFromEnv = async (
         );
     }
 
-    let grammarStyle: GrammarStyle = "none";
     let reasoningStyle: ReasoningStyle = "think";
     let slotCount: number | null = null;
     let eosText: string | undefined;
     let tokenizeUrl: string | undefined;
     let promptTokensUrl: string | undefined;
     if (llamaServer) {
-        grammarStyle = "llamacpp";
         reasoningStyle = "template";
         const props = await probeProps(url, headers, timeout);
         slotCount = props.slotCount;
@@ -233,7 +231,6 @@ export const compatibleProviderFromEnv = async (
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", provider),
         errorDetailLimit: parseRequiredInt(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT", provider),
         source: providerSource(provider),
-        grammarStyle,
         ...dataCaptureFromEnv(env, provider),
         supportsSlotPinning: llamaServer,
         slotCount,
