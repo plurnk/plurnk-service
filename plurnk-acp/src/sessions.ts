@@ -424,6 +424,7 @@ export const extractPlurnkMeta = (meta: unknown): {
     readonly create?: boolean;
     readonly activate?: boolean;
     readonly control?: boolean;
+    readonly hidden?: boolean;
     readonly messageId?: string;
     readonly projectRoot?: string | null;
     readonly settings?: Record<string, unknown>;
@@ -452,6 +453,7 @@ export const extractPlurnkMeta = (meta: unknown): {
     const create = typeof p.create === "boolean" ? p.create : undefined;
     const activate = typeof p.activate === "boolean" ? p.activate : undefined;
     const control = typeof p.control === "boolean" ? p.control : undefined;
+    const hidden = typeof p.hidden === "boolean" ? p.hidden : undefined;
     const messageId = typeof p.messageId === "string" && p.messageId.trim().length > 0
         ? p.messageId.trim()
         : undefined;
@@ -474,6 +476,7 @@ export const extractPlurnkMeta = (meta: unknown): {
         ...(create !== undefined ? { create } : {}),
         ...(activate !== undefined ? { activate } : {}),
         ...(control !== undefined ? { control } : {}),
+        ...(hidden !== undefined ? { hidden } : {}),
         ...(messageId !== undefined ? { messageId } : {}),
         ...(projectRoot !== undefined ? { projectRoot } : {}),
         ...(settings !== undefined ? { settings } : {}),
@@ -761,6 +764,7 @@ export const resolveSessionBinding = async (
         acpSessionId,
         workspaceId,
         sessionId: session.id,
+        sessionName: session.name,
         origin,
         ...(historyPageChars !== undefined ? { historyPageChars } : {}),
     });

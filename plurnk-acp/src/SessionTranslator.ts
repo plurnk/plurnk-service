@@ -72,6 +72,7 @@ export default class SessionTranslator {
     readonly #acpSessionId: string;
     readonly #workspaceId: number;
     readonly #sessionId: number;
+    readonly #sessionName: string;
     readonly #origin: string | undefined;
     readonly #historyPageChars: number | undefined;
     readonly #streamedReasoningTurns = new Set<string>();
@@ -86,12 +87,19 @@ export default class SessionTranslator {
         readonly acpSessionId: string;
         readonly workspaceId: number;
         readonly sessionId: number;
+        readonly sessionName?: string;
         readonly origin?: string;
         readonly historyPageChars?: number;
     }) {
         this.#acpSessionId = args.acpSessionId;
         this.#workspaceId = args.workspaceId;
         this.#sessionId = args.sessionId;
+        const hashIdx = args.acpSessionId.indexOf("#");
+        this.#sessionName =
+            args.sessionName ??
+            (hashIdx > 0 && hashIdx < args.acpSessionId.length - 1
+                ? args.acpSessionId.slice(hashIdx + 1)
+                : args.acpSessionId);
         this.#origin = args.origin;
         this.#historyPageChars = args.historyPageChars;
     }
@@ -171,28 +179,28 @@ export default class SessionTranslator {
                       : null);
         const statusRx = statusOf(entry);
 
+        const reasoningText = typeof entry.reasoning === "string" && entry.reasoning.length > 0 ? entry.reasoning : null;
+        const turnCoordinate = `${entry.loop_seq}/${entry.turn_seq}`;
+        const reasoningUrl =
+            reasoningText !== null && this.#origin !== undefined
+                ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(`reasoning://${entry.session_name}/${turnCoordinate}`)}`
+                : undefined;
         const reasoningTurnKey = `${entry.session_id}:${entry.turn_id}`;
         if (
             entry.op !== null
-            && typeof entry.reasoning === "string"
-            && entry.reasoning.length > 0
+            && reasoningText !== null
             && !this.#streamedReasoningTurns.has(reasoningTurnKey)
         ) {
             this.#streamedReasoningTurns.add(reasoningTurnKey);
             const thoughtMessageId = entry.reasoning_model_call_id !== null && entry.reasoning_model_call_id !== undefined
                 ? `model-call-${entry.reasoning_model_call_id}/request-${entry.reasoning_request_sequence ?? 1}/reasoning`
                 : `${coordinate}/reasoning`;
-            const turnCoordinate = `${entry.loop_seq}/${entry.turn_seq}`;
-            const reasoningUrl =
-                this.#origin !== undefined
-                    ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(`reasoning://${entry.session_name}/${turnCoordinate}`)}`
-                    : undefined;
             updates.push({
                 sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "agent_thought_chunk",
                     messageId: thoughtMessageId,
-                    content: { type: "text", text: entry.reasoning },
+                    content: { type: "text", text: reasoningText },
                     _meta: {
                         plurnk: {
                             coordinate: turnCoordinate,
@@ -227,6 +235,9 @@ export default class SessionTranslator {
             ...(address !== null ? { address, target: address } : {}),
             ...(Object.keys(attrs).length > 0 ? { attrs } : {}),
             ...(isRecord(receipt) ? { receipt } : {}),
+            ...(reasoningUrl !== undefined
+                ? { reasoning: { url: reasoningUrl, mimeType: "text/plain" } }
+                : {}),
         };
         if (isResponse || isBodiedWait) {
             const useReference =
@@ -618,6 +629,11 @@ export default class SessionTranslator {
         if (event.phase !== "content" || event.delta.length === 0) return [];
         const messageId = `model-call-${event.modelCallId}/request-${event.requestSequence}/reasoning`;
         this.#streamedReasoningTurns.add(`${event.sessionId}:${event.turnId}`);
+        const turnCoordinate = `${event.loopSeq}/${event.turnSeq}`;
+        const reasoningUrl =
+            this.#origin !== undefined
+                ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(`reasoning://${this.#sessionName}/${turnCoordinate}`)}`
+                : undefined;
         return [{
             sessionId: this.#acpSessionId,
             update: {
@@ -626,7 +642,10 @@ export default class SessionTranslator {
                 content: { type: "text", text: event.delta },
                 _meta: {
                     plurnk: {
-                        coordinate: `${event.loopSeq}/${event.turnSeq}`,
+                        coordinate: turnCoordinate,
+                        ...(reasoningUrl !== undefined
+                            ? { body: { url: reasoningUrl, mimeType: "text/plain" } }
+                            : {}),
                     },
                 },
             },

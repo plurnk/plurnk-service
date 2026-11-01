@@ -180,6 +180,7 @@ const BUILTIN_ACTIONS: Readonly<
             properties: {
                 ...TARGET_PROPS,
                 hidden: { type: "boolean" },
+                includeHidden: { type: "boolean" },
             },
         },
         outputSchema: {
@@ -210,6 +211,26 @@ const BUILTIN_ACTIONS: Readonly<
             properties: {
                 id: { type: "integer" },
                 name: { type: "string" },
+            },
+        },
+    },
+    "workspace.hide": {
+        scope: "workspace",
+        inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+                ...TARGET_PROPS,
+                hidden: { type: "boolean" },
+            },
+        },
+        outputSchema: {
+            type: "object",
+            required: ["id", "hidden_at"],
+            additionalProperties: false,
+            properties: {
+                id: { type: "integer" },
+                hidden_at: { type: ["string", "null"] },
             },
         },
     },
@@ -625,16 +646,28 @@ export const handlePlurnkAction = async (
     }
 
     if (kind === "workspace.list") {
+        const hidden =
+            typeof params.hidden === "boolean"
+                ? params.hidden
+                : params.includeHidden === true
+                  ? undefined
+                  : false;
         const workspaces = await seam.listWorkspaces({
-            ...(typeof params.hidden === "boolean" ? { hidden: params.hidden } : {}),
+            ...(hidden !== undefined ? { hidden } : {}),
         });
         return { workspaces };
     }
 
     if (kind === "workspace.sessions") {
         const target = await resolveActionTarget(seam, rawParams, params, false);
+        const hidden =
+            typeof params.hidden === "boolean"
+                ? params.hidden
+                : params.includeHidden === true
+                  ? undefined
+                  : undefined;
         const sessions = await seam.listSessions(target.workspaceId, {
-            ...(typeof params.hidden === "boolean" ? { hidden: params.hidden } : {}),
+            ...(hidden !== undefined ? { hidden } : {}),
         });
         return { sessions };
     }
@@ -649,6 +682,15 @@ export const handlePlurnkAction = async (
         );
         const nextName = typeof params.name === "string" ? params.name : typeof params.to === "string" ? params.to : "";
         return await seam.renameWorkspace(target.workspaceId, nextName);
+    }
+
+    if (kind === "workspace.hide") {
+        const target = await resolveActionTarget(seam, rawParams, params, false);
+        const hidden = typeof params.hidden === "boolean" ? params.hidden : true;
+        return await seam.setWorkspaceHidden({
+            workspaceId: target.workspaceId,
+            hidden,
+        });
     }
 
     if (kind === "workspace.share") {
@@ -713,6 +755,7 @@ export const handlePlurnkAction = async (
                 acpSessionId: formatSessionId(target.workspaceId, target.sessionName),
                 workspaceId: target.workspaceId,
                 sessionId: target.sessionId,
+                sessionName: target.sessionName,
                 origin,
             });
             const replayed = SessionTranslator.replay(translator, entries, [], {

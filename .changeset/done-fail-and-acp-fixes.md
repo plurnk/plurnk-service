@@ -12,5 +12,6 @@
 
 Introduce `DONE` and `FAIL` completion verbs, retire `SEND [200]` /
 `SEND [499]` and reasoning scraping, and align ACP v2 session projection,
-wildcard Host origins, loop epoch timestamps, and cancelled inbox replay
-(#1380 #1384 #1385 #1386 #1387).
+wildcard Host origins, loop epoch timestamps, cancelled inbox replay,
+`workspace.hide`, `workspace.list` `includeHidden`, and entry URLs on live
+reasoning and inbox items (#1380 #1384 #1385 #1386 #1387 #1388).
