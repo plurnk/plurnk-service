@@ -48,6 +48,8 @@ export default class HostPaths {
     readonly plurnkPluginsDir: string;
     readonly xdgPluginsDir: string;
     readonly globalPluginsDir: string;
+    readonly userSystemdUnitFile: string;
+    readonly systemSystemdUnitFile: string;
 
     readonly #explicitHome: boolean;
 
@@ -136,6 +138,8 @@ export default class HostPaths {
         this.plurnkPluginsDir = join(this.configDir, "plugins");
         this.xdgPluginsDir = join(this.xdgAgentsDir, "plugins");
         this.globalPluginsDir = join(this.globalAgentsDir, "plugins");
+        this.userSystemdUnitFile = join(this.configHome, "systemd", "user", "plurnk.service");
+        this.systemSystemdUnitFile = "/etc/systemd/system/plurnk.service";
     }
 
     // {§share}: command defaults use the same host path authority as the daemon.

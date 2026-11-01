@@ -2,6 +2,7 @@ import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import Launch from "../../src/launch/Launch.ts";
 import Paths from "../../src/Paths.ts";
+import Service from "../../src/service.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { spawn } from "node:child_process";
@@ -70,6 +71,9 @@ const runService = (
     delete env.PLURNK_SERVICE_DB_PATH;
     delete env.PLURNK_DB_PATH;
     delete env.PLURNK_MODEL;
+    for (const key of Object.keys(env)) {
+        if (Service.isSecretKey(key, env)) delete env[key];
+    }
     Object.assign(env, opts.env);
     const child = spawn(
         process.execPath,
@@ -324,11 +328,31 @@ test("{§operator-config-precedence} config discovery is provider-free, on-deman
         assert.equal(status.code, 0, "inspection still names the repair locations");
         assert.ok(status.stdout.includes(fx.homeEnv));
         assert.match(status.stdout, /daemon: not running/u);
+        assert.match(status.stdout, /^systemd: no unit installed$/mu);
         assert.match(status.stdout, /model: invalid configuration/u);
         assert.match(status.stdout, /PLURNK_MODEL=missing\s+# process environment/u);
-        assert.ok(status.stdout.includes(Paths.systemdUnit), "prints systemd unit path");
+        assert.match(status.stdout, new RegExp(`systemd unit template \\(user scope\\): ${Paths.systemdUnit.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&")}`, "u"));
         assert.ok(status.stdout.includes(Paths.nginxConfig), "prints nginx template path");
         assert.match(status.stderr, /PLURNK_MODEL 'missing'/u);
+
+        const userUnit = join(fx.configHome, "systemd", "user", "plurnk.service");
+        await mkdir(dirname(userUnit), { recursive: true });
+        await writeFile(userUnit, "[Unit]\nDescription=Plurnk\n", "utf8");
+        const withUnit = await runService(fx, ["config"]);
+        assert.equal(withUnit.code, 0, withUnit.stderr);
+        assert.match(withUnit.stdout, new RegExp(`^systemd user unit: ${userUnit.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&")} \\(`, "mu"));
+
+        const missingCreds = await runService(fx, ["config", "check"], {
+            env: { PLURNK_MODEL: "deepseek/deepseek-v4-flash" },
+        });
+        assert.equal(missingCreds.code, 1);
+        assert.match(missingCreds.stderr, /PLURNK_MODEL selects deepseek\/deepseek-v4-flash, which requires DEEPSEEK_API_KEY in the daemon environment\./u);
+
+        const presentCreds = await runService(fx, ["config", "check"], {
+            env: { PLURNK_MODEL: "deepseek/deepseek-v4-flash", DEEPSEEK_API_KEY: "sk-deepseek-present" },
+        });
+        assert.equal(presentCreds.code, 0, presentCreds.stderr);
+        assert.match(presentCreds.stdout, /configuration valid/u);
 
         await mkdir(dirname(fx.homeEnv), { recursive: true });
         await writeFile(
@@ -341,6 +365,18 @@ test("{§operator-config-precedence} config discovery is provider-free, on-deman
             "PLURNK_MODEL=fast\n",
             "utf8",
         );
+        const agreedCheck = await runService(fx, ["config", "check"], {
+            env: { OPENAI_API_KEY: "sk-live-secret" },
+        });
+        assert.equal(agreedCheck.code, 0, agreedCheck.stderr);
+
+        const driftedCheck = await runService(fx, ["config", "check"], {
+            env: { OPENAI_API_KEY: "sk-shell-different" },
+        });
+        assert.equal(driftedCheck.code, 1);
+        assert.match(driftedCheck.stderr, /Credential drift for `OPENAI_API_KEY`: process environment and .* have different values/u);
+        assert.doesNotMatch(driftedCheck.stderr, /sk-live-secret|sk-shell-different/u);
+
         const showText = await runService(fx, ["--service-max-turns=9", "config", "show"]);
         assert.equal(showText.code, 0, showText.stderr);
         assert.match(showText.stdout, new RegExp(`^PLURNK_MODEL_fast=openai/gpt-5  # ${fx.homeEnv.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "mu"));
@@ -478,6 +514,11 @@ for (const built of [false, true]) {
         assert.equal(liveConfig.code, 0, liveConfig.stderr);
         assert.match(liveConfig.stdout, new RegExp(`daemon: running \\(pid ${String(daemon.child.pid)}`, "u"));
         assert.match(liveConfig.stdout, /daemon overrides \(at boot\):[\s\S]*PLURNK_MCP_GH_BEARER=<redacted>/u);
+        await mkdir(dirname(fx.homeEnv), { recursive: true });
+        await writeFile(fx.homeEnv, "PLURNK_MODEL_deepseek=deepseek/deepseek-v4-flash\n", "utf8");
+        const staleConfig = await runService(fx, ["config"], { built });
+        assert.equal(staleConfig.code, 0, staleConfig.stderr);
+        assert.match(staleConfig.stdout, new RegExp(`^restart required: ${fx.homeEnv.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&")} modified after daemon \\(pid ${String(daemon.child.pid)}\\) started`, "mu"));
         const result = await acpAction(daemon.url, "discover", {}, { sessionId: "configuration-repair" });
         assert.equal(result.ok, true, "the actual client interface remains available for repair");
         assert.ok(typeof result.result?.actions === "object" && result.result.actions !== null && "workspace.mcp.list" in result.result.actions,
@@ -495,7 +536,8 @@ for (const built of [false, true]) {
             PLURNK_HOOKS_ARGS: "[1]",
             PLURNK_HOOKS_EVENTS: "Stop",
             OTEL_TRACES_EXPORTER: "unknown-exporter",
-            PLURNK_MODEL: "missing-alias",
+            PLURNK_MODEL: "deepseek/deepseek-v4-flash",
+            DEEPSEEK_API_KEY: "",
             PLURNK_MODEL_CHILD: "missing-child",
             PLURNK_SERVICE_EFFECT_HOST: "invalid",
             PLURNK_SERVICE_FILE_CREATE_SCOPE: "invalid",
@@ -536,6 +578,7 @@ for (const built of [false, true]) {
             assert.equal(notice?.level, "warn");
             assert.ok(notice?.message?.includes(key));
         }
+        assert.ok(notices.find((item) => item.key === "PLURNK_MODEL")?.message?.includes("DEEPSEEK_API_KEY"));
         assert.equal(discovered.ok, true);
         assert.ok(typeof discovered.result?.actions === "object" && discovered.result.actions !== null && "models.list" in discovered.result.actions, "model selection remains discoverable without a working default model");
         const created = await acpCall(daemon.url, "session/new", {

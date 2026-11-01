@@ -1,7 +1,7 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import ModelProvider, { type ModelProviderConfig } from "./ModelProvider.ts";
-import { configuredProviderInfo, createProviderModel, providerReadiness } from "./modelAdapters.ts";
+import { configuredProviderInfo, createProviderModel, formatModelReadinessCauses, providerReadiness, routeReadiness } from "./modelAdapters.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
 import { catalogProviderFromEnv } from "./catalogProvider.ts";
@@ -107,6 +107,34 @@ test("{§provider-configuration}: an authenticated operator declaration reports 
         () => createProviderModel("acme", "model", env),
         /PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV must be set/,
     );
+});
+
+test("{§provider-configuration}: routeReadiness validates configured model routes while exempting uncataloged local openai/ollama routes", () => {
+    const missingDeepseek = routeReadiness({ provider: "deepseek", model: "deepseek-v4-flash" }, {});
+    assert.deepEqual(missingDeepseek, {
+        ready: false,
+        causes: [{
+            kind: "credential",
+            alternatives: [["DEEPSEEK_API_KEY"]],
+        }],
+    });
+    assert.equal(formatModelReadinessCauses(missingDeepseek), "DEEPSEEK_API_KEY");
+    assert.deepEqual(
+        routeReadiness({ provider: "deepseek", model: "deepseek-v4-flash" }, { DEEPSEEK_API_KEY: "secret-key" }),
+        { ready: true, causes: [] },
+    );
+    assert.deepEqual(
+        routeReadiness({ alias: "fast", provider: "openai", model: "gpt-5" }, {}),
+        {
+            ready: false,
+            causes: [{
+                kind: "credential",
+                alternatives: [["OPENAI_API_KEY"]],
+            }],
+        },
+    );
+    assert.equal(routeReadiness({ alias: "local", provider: "openai", model: "qwen", baseUrl: "http://127.0.0.1:8080/v1" }, {}), null);
+    assert.equal(routeReadiness({ provider: "ollama", model: "qwen2.5-coder" }, {}), null);
 });
 
 test("{§provider-sdk-boundary} createProviderModel constructs Cerebras from Models.dev facts", () => {

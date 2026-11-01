@@ -470,6 +470,25 @@ ok(
         && /@plurnk\/plurnk-service/.test(configDefaults.stdout),
     "the packed binary projects the installed owner-labelled option catalog",
 );
+const seededConfigPath = resolve(sandboxHostEnv.XDG_CONFIG_HOME, "plurnk", ".env");
+const seededConfigContent = readFileSync(seededConfigPath, "utf8");
+try {
+    writeFileSync(seededConfigPath, `${seededConfigContent}\nPLURNK_MODEL_deepseek=deepseek/deepseek-v4-flash\nPLURNK_MODEL=deepseek\n`, "utf8");
+    const checkWithoutCred = runBin(["config", "check"], { DEEPSEEK_API_KEY: "" });
+    const checkWithEnvD = runBin(["config", "check"], { DEEPSEEK_API_KEY: "sk-environment-d-fixture" });
+    const statusView = runBin(["config"], { DEEPSEEK_API_KEY: "sk-environment-d-fixture" });
+    ok(
+        checkWithoutCred.code !== 0
+            && /DEEPSEEK_API_KEY/.test(checkWithoutCred.stderr ?? "")
+            && checkWithEnvD.code === 0
+            && /configuration valid/.test(checkWithEnvD.stdout)
+            && /systemd: no unit installed/.test(statusView.stdout)
+            && /systemd unit template \(user scope\):/.test(statusView.stdout),
+        "settings in ~/.config/plurnk/.env pair with ambient environment.d credentials without storing secrets in .env",
+    );
+} finally {
+    writeFileSync(seededConfigPath, seededConfigContent, "utf8");
+}
 ok(
     existsSync(resolve(mods, "@plurnk", "plurnk-meta", "skills", "plurnk", "SKILL.md"))
         && !existsSync(resolve(mods, "@plurnk", "plurnk-meta", "skills", "find-skills")),

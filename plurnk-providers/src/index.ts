@@ -48,7 +48,7 @@ export {
     loadActiveProvider,
     resetDiscoveryCache,
 } from "./ProviderRegistry.ts";
-export { providerReadiness } from "./modelAdapters.ts";
+export { formatModelReadinessCauses, providerReadiness, routeReadiness } from "./modelAdapters.ts";
 export { catalogEfforts } from "./catalogProvider.ts";
 
 // Scope-agnostic extension discovery ({§extension-discovery}).
