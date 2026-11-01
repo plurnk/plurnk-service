@@ -289,6 +289,7 @@ test("{§provider-monetary-evidence} {§provider-configuration} llama-server com
         }
         if (url.endsWith("/chat/completions")) {
             sentBody = JSON.parse(requestBody(init)) as Record<string, unknown>;
+            const includeUsage = (sentBody.stream_options as { include_usage?: boolean } | undefined)?.include_usage === true;
             const chunk = (delta: Record<string, string>, finish: string | null = null) =>
                 `data: ${JSON.stringify({
                     id: "llama-1",
@@ -301,23 +302,26 @@ test("{§provider-monetary-evidence} {§provider-configuration} llama-server com
                 chunk({ reasoning_content: "step 1 " })
                     + chunk({ reasoning_content: "step 2" })
                     + chunk({ content: "done" }, "stop")
-                    + `data: ${JSON.stringify({
-                        id: "llama-1",
-                        object: "chat.completion.chunk",
-                        created: 1,
-                        model: "served.gguf",
-                        choices: [],
-                        usage: {
-                            prompt_tokens: 1_000,
-                            completion_tokens: 10,
-                            total_tokens: 1_010,
-                        },
-                        timings: {
-                            cache_n: 400,
-                            prompt_n: 600,
-                            predicted_n: 10,
-                        },
-                    })}\n\ndata: [DONE]\n\n`,
+                    + (includeUsage
+                        ? `data: ${JSON.stringify({
+                            id: "llama-1",
+                            object: "chat.completion.chunk",
+                            created: 1,
+                            model: "served.gguf",
+                            choices: [],
+                            usage: {
+                                prompt_tokens: 1_000,
+                                completion_tokens: 10,
+                                total_tokens: 1_010,
+                            },
+                            timings: {
+                                cache_n: 400,
+                                prompt_n: 600,
+                                predicted_n: 10,
+                            },
+                        })}\n\n`
+                        : "")
+                    + "data: [DONE]\n\n",
                 { headers: { "content-type": "text/event-stream" } },
             );
         }
@@ -374,6 +378,124 @@ test("{§provider-monetary-evidence} {§provider-configuration} llama-server com
         // = (168 + 11.2 + 3.36 + 1.68) / 1M = 184.24 / 1M = 0.00018424
         assert.equal(response.accounting[0].cost.amount.amount, "0.00018424");
     }
+});
+
+test("{§provider-monetary-evidence} {§provider-request-accounting} compatible stream normalization covers include_usage gate, timings-only fallback with reasoning_content, and unknown cost without rate overrides", async () => {
+    let mode: "usage-only" | "timings-only" = "usage-only";
+    let sentBody: Record<string, unknown> | undefined;
+    mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url.endsWith("/models")) {
+            return new Response(JSON.stringify({
+                data: [{ id: "served.gguf", meta: { n_ctx: 40_960 } }],
+            }));
+        }
+        if (url.endsWith("/props")) {
+            return new Response(JSON.stringify({ total_slots: 1 }));
+        }
+        if (url.endsWith("/chat/completions/input_tokens")) {
+            return new Response(JSON.stringify({ input_tokens: 800 }));
+        }
+        if (url.endsWith("/chat/completions")) {
+            sentBody = JSON.parse(requestBody(init)) as Record<string, unknown>;
+            const includeUsage = (sentBody.stream_options as { include_usage?: boolean } | undefined)?.include_usage === true;
+            const chunk = (delta: Record<string, string>, finish: string | null = null) =>
+                `data: ${JSON.stringify({
+                    id: "compat-stream",
+                    object: "chat.completion.chunk",
+                    created: 1,
+                    model: "served.gguf",
+                    choices: [{ index: 0, delta, finish_reason: finish }],
+                })}\n\n`;
+            const trailing = mode === "usage-only"
+                ? (includeUsage
+                    ? `data: ${JSON.stringify({
+                        id: "compat-stream",
+                        object: "chat.completion.chunk",
+                        created: 1,
+                        model: "served.gguf",
+                        choices: [],
+                        usage: {
+                            prompt_tokens: 800,
+                            completion_tokens: 12,
+                            total_tokens: 812,
+                            prompt_tokens_details: {
+                                cached_tokens: 300,
+                                cache_write_tokens: 0,
+                            },
+                        },
+                    })}\n\n`
+                    : "")
+                : `data: ${JSON.stringify({
+                    id: "compat-stream",
+                    object: "chat.completion.chunk",
+                    created: 1,
+                    model: "served.gguf",
+                    choices: [],
+                    timings: {
+                        cache_n: 250,
+                        prompt_n: 550,
+                        predicted_n: 9,
+                    },
+                })}\n\n`;
+            return new Response(
+                chunk({ reasoning_content: "think 1 " })
+                    + chunk({ reasoning_content: "think 2 " })
+                    + chunk({ reasoning_content: "think 3" })
+                    + chunk({ content: "answer" }, "stop")
+                    + trailing
+                    + "data: [DONE]\n\n",
+                { headers: { "content-type": "text/event-stream" } },
+            );
+        }
+        throw new Error(`unexpected request ${url}`);
+    });
+
+    const provider = await compatibleProviderFromEnv(
+        {
+            ...env,
+            PLURNK_PROVIDERS_EFFORT: "adaptive",
+        },
+        "local",
+    );
+
+    const withUsageChunk = await provider.generate({
+        sessionId: "compat-usage-only",
+        messages: [{ role: "user", content: "first" }],
+    });
+    assert.deepEqual(sentBody?.stream_options, { include_usage: true });
+    assert.deepEqual(withUsageChunk.accounting[0]?.usage, {
+        inputTokens: 800,
+        outputTokens: 12,
+        totalTokens: 812,
+        inputTokenDetails: {
+            noCacheTokens: 500,
+            cacheReadTokens: 300,
+            cacheWriteTokens: 0,
+        },
+    });
+    assert.equal(withUsageChunk.accounting[0]?.cost.kind, "unknown");
+
+    mode = "timings-only";
+    const withTimingsFallback = await provider.generate({
+        sessionId: "compat-timings-only",
+        messages: [{ role: "user", content: "second" }],
+    });
+    assert.deepEqual(withTimingsFallback.accounting[0]?.usage, {
+        inputTokens: 800,
+        outputTokens: 9,
+        totalTokens: 809,
+        inputTokenDetails: {
+            noCacheTokens: 550,
+            cacheReadTokens: 250,
+            cacheWriteTokens: 0,
+        },
+        outputTokenDetails: {
+            textTokens: 6,
+            reasoningTokens: 3,
+        },
+    });
+    assert.equal(withTimingsFallback.accounting[0]?.cost.kind, "unknown");
 });
 }
 

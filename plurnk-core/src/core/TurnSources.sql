@@ -37,12 +37,19 @@ WHERE w.workspace_id = $workspace_id AND w.name = $session_name AND l.sequence =
 -- PREP: turn_source_candidates
 -- {§message-completion}: `ops://<session>/<loop>` is a resource of its own beside each turn's emission, so
 -- a FIND over a session's programs also finds what its loops said.
+-- $scope_prefix: the literal pathname prefix before any glob syntax, or NULL
+-- for no prefix. TypeScript applies the authoritative shell-glob match; this
+-- query supplies only a safe candidate superset.
 SELECT s.turn_id, s.kind, s.sequence, w.name AS authority,
        '/' || l.sequence || '/' || t.sequence || CASE WHEN s.kind = 'note' THEN '/' || s.sequence ELSE '' END AS pathname,
        s.content, s.deep_hash
 FROM turn_sources s JOIN turns t ON t.id = s.turn_id
 JOIN loops l ON l.id = t.loop_id JOIN sessions w ON w.id = l.session_id
-WHERE w.workspace_id = $workspace_id AND ($session_name IS NULL OR w.name = $session_name) AND s.kind = $kind
+WHERE w.workspace_id = $workspace_id
+  AND ($authority IS NULL OR w.name = $authority)
+  AND s.kind = $kind
+  AND ($scope_prefix IS NULL
+       OR substr('/' || l.sequence || '/' || t.sequence || CASE WHEN s.kind = 'note' THEN '/' || s.sequence ELSE '' END, 1, length($scope_prefix)) = $scope_prefix)
 UNION ALL
 SELECT NULL AS turn_id, 'ops' AS kind, 0 AS sequence, w.name AS authority,
        '/' || l.sequence AS pathname,
@@ -54,7 +61,11 @@ SELECT NULL AS turn_id, 'ops' AS kind, 0 AS sequence, w.name AS authority,
        NULL AS deep_hash
 FROM loops l JOIN sessions w ON w.id = l.session_id
 LEFT JOIN message_sources m ON m.loop_id = l.id AND m.ordinal = 1
-WHERE $kind = 'ops' AND w.workspace_id = $workspace_id AND ($session_name IS NULL OR w.name = $session_name)
+WHERE $kind = 'ops'
+  AND w.workspace_id = $workspace_id
+  AND ($authority IS NULL OR w.name = $authority)
+  AND ($scope_prefix IS NULL
+       OR substr('/' || l.sequence, 1, length($scope_prefix)) = $scope_prefix)
 ORDER BY authority, pathname;
 
 -- PREP: turn_source_derivations

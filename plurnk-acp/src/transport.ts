@@ -180,9 +180,10 @@ export const handleMessagesRoute = async (
     const acpSessionId = url.searchParams.get("session") ?? `${workspaceId}#user`;
     const beforeParam = url.searchParams.get("before");
     const loopParam = url.searchParams.get("loop");
-    const [allEntries, inbox] = await Promise.all([
+    const [allEntries, inbox, streams] = await Promise.all([
         seam.readLog({ workspaceId, sessionId }),
         seam.readInbox({ workspaceId, sessionId }),
+        seam.readStreams({ workspaceId, sessionId }),
     ]);
     const targetLoop = loopParam !== null && /^\d+$/.test(loopParam) ? Number(loopParam) : undefined;
     const beforeLoop = beforeParam !== null && /^\d+$/.test(beforeParam) ? Number(beforeParam) : undefined;
@@ -194,6 +195,7 @@ export const handleMessagesRoute = async (
     });
     const replayed = SessionTranslator.replay(translator, allEntries, inbox, {
         historyLoops: opts.historyLoops,
+        openStreamTargets: new Set(streams.map((s) => s.target)),
         ...(targetLoop !== undefined ? { exactLoopSeq: targetLoop } : {}),
         ...(beforeLoop !== undefined ? { beforeLoopSeq: beforeLoop } : {}),
     });

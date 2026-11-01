@@ -10,6 +10,11 @@ Writes: "package lifecycle policy OK" or violations to stdout; exit 1 on any.
 `);
 
 const TEST_TIERS = ["test:lint", "test:unit", "test:intg"];
+// Deliberately outside the push-gate drill (`TEST_TIERS`):
+// - `test:installation` packs every workspace tarball and runs `npm install` into an external consumer sandbox;
+//   it is release-gated via `release:check` and `prepublishOnly`, while `{§installation}` unit/intg witnesses run in `TEST_TIERS`.
+// - `test:live` and `test:benchlet` require live provider endpoints and operator credentials; deterministic SSE stream
+//   normalization witnesses (`{§provider-request-accounting}`, `{§provider-monetary-evidence}`) run in `plurnk-providers` `test:unit`.
 const AUXILIARY_TEST_SCRIPTS = new Set([
     "test:live",
     "test:benchlet",

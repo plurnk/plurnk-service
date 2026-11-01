@@ -4,6 +4,8 @@
 -- {§application-session-observation}: the places in scope, each with its loops' observations for its lifecycle
 -- ({§application-session-observation}) and its latest finished reply ({§message-completion}), without the reply's words.
 -- {§machine-processes} A hidden session is out of scope, and in the daemon's scope so is every session of a hidden workspace.
+-- Unbounded by SQL LIMIT because SessionOverview.hold retains gated sessions past `limit` from in-memory gate state and
+-- computes `omitted` across the full in-scope set.
 SELECT w.id, w.workspace_id AS workspaceId, w.name, w.parent_session_id AS parentSessionId,
        CASE WHEN w.fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN w.parent_session_id IS NOT NULL THEN 'work'

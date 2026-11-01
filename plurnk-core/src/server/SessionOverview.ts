@@ -11,7 +11,9 @@ export interface OverviewPlace {
 
 export default class SessionOverview {
     // Most recently finished first, by reply row; the places with no reply follow, newest first. The overview holds every
-    // place waiting on a gate and the first `limit` in that order.
+    // place waiting on a gate and the first `limit` in that order. Pagination stays in TypeScript rather than SQL LIMIT:
+    // in-memory pending gates (`scope.pending`) retain gated places past `limit`, and `omitted` counts `ranked.length - held.length`
+    // across the full in-scope set.
     static hold<T extends OverviewPlace>(places: readonly T[], gates: ReadonlyMap<number, number>, limit: number): { held: T[]; omitted: number } {
         const ranked = places.toSorted((a, b) => a.replyId !== null && b.replyId !== null ? b.replyId - a.replyId
             : a.replyId !== null ? -1 : b.replyId !== null ? 1 : b.id - a.id);
@@ -32,8 +34,12 @@ export default class SessionOverview {
             loopObservations: string; replyId: number | null; replyAt: string | null; replyCompletion: 200 | 499 | null; replyCoordinate: string | null;
         }>({ workspace_id: scope.workspaceId });
         const gates = new Map<number, number>();
-        for (const workspaceId of new Set(rows.map((row) => row.workspaceId))) {
-            for (const { sessionId } of await scope.pending(workspaceId)) gates.set(sessionId, (gates.get(sessionId) ?? 0) + 1);
+        // `scope.pending` reads in-memory gate state per workspace; resolve all distinct workspaces concurrently.
+        const pendingByWorkspace = await Promise.all(
+            [...new Set(rows.map((row) => row.workspaceId))].map((workspaceId) => scope.pending(workspaceId)),
+        );
+        for (const pending of pendingByWorkspace) {
+            for (const { sessionId } of pending) gates.set(sessionId, (gates.get(sessionId) ?? 0) + 1);
         }
         const { held, omitted } = SessionOverview.hold(rows.map((row) => projectSessionRow(row)), gates, scope.limit);
         const replies = held.flatMap(({ replyId }) => replyId === null ? [] : [replyId]);

@@ -354,6 +354,7 @@ export const createConnectionAgent = (
 
             const replayed = SessionTranslator.replay(bound.translator, entries, inbox, {
                 historyLoops: opts.historyLoops,
+                openStreamTargets: new Set(streams.map((s) => s.target)),
             });
 
             if (shouldReplay) {

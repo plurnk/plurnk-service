@@ -8,6 +8,8 @@ import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { isLogEntryKind } from "@plurnk/plurnk-contracts";
+import LogEntry, { type LogEntryRow } from "../../src/server/logEntry.ts";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, rootWorkspace, sendingOperation } from "./_db.ts";
@@ -188,10 +190,24 @@ test("{§turn-source-resources}: FIND uses ordinary folder, page and indexed-con
             assert.ok("results" in result);
             return result as FindResult;
         };
+        assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/1/2) <1,-1>````")), ["ops://analyst/1/2"]);
         assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/1/) <1,-1>````")), ["ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
+        assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/1) <1,-1>````")), ["ops://analyst/1", "ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
         assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/*/*) <2,2>````")), ["ops://analyst/1/2"]);
         assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/1/*) <1,-1> ~needle````")), ["ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
         assert.deepEqual(resourcePaths(await query("````FIND (reasoning://analyst/1/*) /^Second thought/````")), ["reasoning://analyst/1/1", "reasoning://analyst/1/2", "reasoning://analyst/1/3"], "{§find}: `^` anchors each line of a turn source");
+        const exactCandidates = await db.turn_source_candidates.all<{ authority: string; pathname: string }>({
+            workspace_id: workspaceId, authority: "analyst", kind: "ops", scope_prefix: "/1/2",
+        });
+        assert.deepEqual(exactCandidates.map(({ authority, pathname }) => `${authority}:${pathname}`), ["analyst:/1/2"]);
+        const folderCandidates = await db.turn_source_candidates.all<{ authority: string; pathname: string }>({
+            workspace_id: workspaceId, authority: "analyst", kind: "ops", scope_prefix: "/1/",
+        });
+        assert.deepEqual(folderCandidates.map(({ pathname }) => pathname), ["/1/1", "/1/2", "/1/3"]);
+        const loopCandidates = await db.turn_source_candidates.all<{ authority: string; pathname: string }>({
+            workspace_id: workspaceId, authority: "analyst", kind: "ops", scope_prefix: "/1",
+        });
+        assert.deepEqual(loopCandidates.map(({ pathname }) => pathname), ["/1", "/1/1", "/1/2", "/1/3"]);
         const indexed = await db.test_turn_sources.all<{ deep_hash: string | null }>({ session_id: sessionId });
         assert.ok(indexed.every(({ deep_hash }) => deep_hash !== null), "history uses the persistent shared derivation index");
     } finally { await db.close(); }
@@ -331,6 +347,30 @@ test("{§turn-source-resources} {§digest-forensic-fidelity}: when reasoning row
             const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
             const run = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 2, messages: [{ role: "user", content: "Start." }] });
             assert.equal(run.result.status, 200);
+            const entries = await db.log_entries_recent.all<LogEntryRow>({
+                session_id: sessionId, loop_id: null, turn_id: null, since_id: null, before_id: null,
+                loop_seq: null, turn_seq: null, sequence: null, limit: 100,
+            });
+            const presentKinds = new Set<string>();
+            for (const row of entries) {
+                const parsedAttrs: unknown = row.attrs === null ? null : JSON.parse(row.attrs);
+                const kind = typeof parsedAttrs === "object" && parsedAttrs !== null && "kind" in parsedAttrs ? parsedAttrs.kind : undefined;
+                if (kind !== undefined) {
+                    assert.ok(isLogEntryKind(kind), `attrs.kind ${JSON.stringify(kind)} must belong to LogEntryKind`);
+                    presentKinds.add(kind);
+                }
+            }
+            const digestSql = await readFile(new URL("../../src/evidence/digest.sql", import.meta.url), "utf8");
+            const filteredKinds = [...digestSql.matchAll(/json_extract\([^)]*,\s*'\$\.kind'\)\s*=\s*'([^']+)'/gu)].map((match) => match[1]);
+            assert.deepEqual(filteredKinds, ["emission"]);
+            for (const kind of filteredKinds) {
+                assert.equal(presentKinds.has(kind), true, `digest.sql filters on attrs.$.kind = '${kind}', which must exist in default runs`);
+            }
+            const firstModelOp = entries.find((row) => row.origin === "model" && row.op !== null);
+            assert.ok(firstModelOp);
+            assert.equal(firstModelOp.reasoning, "Thinking occurred.");
+            const hydrated = await LogEntry.fetchLogEntry(db, firstModelOp.id);
+            assert.equal(hydrated.reasoning, "Thinking occurred.");
         } finally {
             await db.close();
         }

@@ -527,6 +527,20 @@ export class GateTracker {
     ): Promise<void> {
         if (gate.settled || gate.settling) return;
         gate.settling = true;
+        const hasOtherSessionGate = [...this.#activeGates.values()].some(
+            (g) => g !== gate && !g.settled && !g.settling && g.workspaceId === gate.workspaceId && g.sessionId === gate.sessionId,
+        );
+        if (!hasOtherSessionGate) {
+            broadcastSessionUpdate(gate.workspaceId, gate.sessionId, (s) => [
+                {
+                    sessionId: s.acpSessionId,
+                    update: {
+                        sessionUpdate: "state_update",
+                        state: "running",
+                    },
+                },
+            ]);
+        }
         try {
             await resolveInCore();
         } catch (err) {
@@ -551,6 +565,17 @@ export class GateTracker {
                 }
                 gate.peerControllers.clear();
                 return;
+            }
+            if (!hasOtherSessionGate) {
+                broadcastSessionUpdate(gate.workspaceId, gate.sessionId, (s) => [
+                    {
+                        sessionId: s.acpSessionId,
+                        update: {
+                            sessionUpdate: "state_update",
+                            state: "requires_action",
+                        },
+                    },
+                ]);
             }
             if (problem !== null) {
                 notifyPeerSession(winner, session.acpSessionId, {
@@ -577,20 +602,5 @@ export class GateTracker {
             }
         }
         gate.peerControllers.clear();
-
-        const hasRemainingSessionGate = [...this.#activeGates.values()].some(
-            (g) => !g.settled && g.workspaceId === gate.workspaceId && g.sessionId === gate.sessionId,
-        );
-        if (!hasRemainingSessionGate) {
-            broadcastSessionUpdate(gate.workspaceId, gate.sessionId, (s) => [
-                {
-                    sessionId: s.acpSessionId,
-                    update: {
-                        sessionUpdate: "state_update",
-                        state: "running",
-                    },
-                },
-            ]);
-        }
     }
 }

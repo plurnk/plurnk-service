@@ -698,11 +698,17 @@ export const handlePlurnkAction = async (
         const target = await resolveActionTarget(seam, rawParams, params, false);
         const items = await seam.listSessionLoops({ workspaceId: target.workspaceId, sessionId: target.sessionId });
         if (typeof params.loopSeq === "number" && isSafeInteger(params.loopSeq) && params.loopSeq > 0) {
-            const entries = await seam.readLog({
-                workspaceId: target.workspaceId,
-                sessionId: target.sessionId,
-                loopSeq: params.loopSeq,
-            });
+            const [entries, streams] = await Promise.all([
+                seam.readLog({
+                    workspaceId: target.workspaceId,
+                    sessionId: target.sessionId,
+                    loopSeq: params.loopSeq,
+                }),
+                seam.readStreams({
+                    workspaceId: target.workspaceId,
+                    sessionId: target.sessionId,
+                }),
+            ]);
             const translator = new SessionTranslator({
                 acpSessionId: formatSessionId(target.workspaceId, target.sessionName),
                 workspaceId: target.workspaceId,
@@ -711,6 +717,7 @@ export const handlePlurnkAction = async (
             });
             const replayed = SessionTranslator.replay(translator, entries, [], {
                 exactLoopSeq: params.loopSeq,
+                openStreamTargets: new Set(streams.map((s) => s.target)),
             });
             return { items, updates: replayed.map((r) => r.update) };
         }

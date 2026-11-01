@@ -22,7 +22,15 @@ export { formatJsonDocument } from "./JsonDocument.ts";
 export type { JsonReplacer } from "./JsonResult.ts";
 export { requestOrigin } from "./HttpOrigin.ts";
 export type { RequestHeaders } from "./HttpOrigin.ts";
-export { addressOf, toolKindOf, type LogAddressColumns, type ProposalToolKind } from "./LogRow.ts";
+export {
+    LOG_ENTRY_KINDS,
+    addressOf,
+    isLogEntryKind,
+    toolKindOf,
+    type LogAddressColumns,
+    type LogEntryKind,
+    type ProposalToolKind,
+} from "./LogRow.ts";
 export type {
     ApplicationNotificationContract,
     LogEntryNotification,

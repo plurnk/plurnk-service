@@ -462,15 +462,20 @@ export const dispatchDaemonEvent = (
             if (!isNoticePayload(params)) break;
             const notice = params.notice;
             const targetSessionId = typeof params.sessionId === "number" ? params.sessionId : null;
-            for (const peer of peers) {
-                const visited = new Set<BoundSession>();
-                for (const session of peer.sessions.values()) {
-                    if (visited.has(session)) continue;
-                    visited.add(session);
-                    if (session.workspaceId !== workspaceId) continue;
-                    if (targetSessionId !== null && session.sessionId !== targetSessionId) continue;
-                    for (const { sessionId, update } of session.translator.notice(notice)) {
-                        notifyPeerSession(peer, sessionId, update);
+            if (targetSessionId !== null) {
+                enqueueOrRunSessionEvent(ctx, workspaceId, targetSessionId, () => {
+                    broadcastSessionUpdate(workspaceId, targetSessionId, (s) => s.translator.notice(notice));
+                });
+            } else {
+                for (const peer of peers) {
+                    const visited = new Set<BoundSession>();
+                    for (const session of peer.sessions.values()) {
+                        if (visited.has(session)) continue;
+                        visited.add(session);
+                        if (session.workspaceId !== workspaceId) continue;
+                        for (const { sessionId, update } of session.translator.notice(notice)) {
+                            notifyPeerSession(peer, sessionId, update);
+                        }
                     }
                 }
             }

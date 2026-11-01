@@ -16,6 +16,7 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "INTERNAL_ROW_OPS",
         "InvalidOperationResultError",
         "InvalidProblemDetailsError",
+        "LOG_ENTRY_KINDS",
         "MAX_TIMER_MS",
         "PLURNK_FENCE",
         "PLURNK_OPS",
@@ -36,6 +37,7 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "formatServiceUpdateReport",
         "isExecution",
         "isExecutionOp",
+        "isLogEntryKind",
         "isPlurnkOp",
         "isRecord",
         "isSafeInteger",
@@ -138,4 +140,20 @@ test("{§operation-fences} isPlurnkOp admits the operation alphabet and nothing 
 test("{§parse-recovery} unknown statement position is one frozen contracts-owned value", () => {
     assert.deepEqual(UNKNOWN_POSITION, { line: 0, column: 0 });
     assert.equal(Object.isFrozen(UNKNOWN_POSITION), true);
+});
+
+test("{§turn-source-resources} {§db-migrations} LOG_ENTRY_KINDS and isLogEntryKind enumerate the closed log_entries.attrs kind union", () => {
+    assert.deepEqual(Contracts.LOG_ENTRY_KINDS, [
+        "emission",
+        "reasoning",
+        "message",
+        "loop_termination",
+        "entry_materialized",
+        "emissionAttempt",
+    ]);
+    assert.equal(Object.isFrozen(Contracts.LOG_ENTRY_KINDS), true);
+    for (const kind of Contracts.LOG_ENTRY_KINDS) assert.equal(Contracts.isLogEntryKind(kind), true, kind);
+    for (const other of ["ops", "note", "outside", "", null, undefined, 42]) {
+        assert.equal(Contracts.isLogEntryKind(other), false, JSON.stringify(other));
+    }
 });

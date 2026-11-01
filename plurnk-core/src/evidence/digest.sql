@@ -123,8 +123,8 @@ ORDER BY r.id;
 SELECT session_id, op, COUNT(*) AS n
 FROM log_entries
 WHERE op IS NOT NULL
-  -- {§turn-source-resources}, {§turn-source-resources}: harness rows are not model-authored operations.
-  AND COALESCE(json_extract(attrs, '$.kind'), '') NOT IN ('emission', 'reasoning')
+  -- {§turn-source-resources}: harness announcement rows for turn sources are not model-authored operations.
+  AND NOT (origin = '_plurnk' AND op = 'READ' AND scheme IN ('ops', 'reasoning'))
 GROUP BY session_id, op
 ORDER BY session_id, n DESC, op;
 
@@ -140,19 +140,6 @@ JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 WHERE json_extract(le.attrs, '$.kind') = 'emission'
-ORDER BY le.id;
-
--- PREP: digest_reasonings
--- {§turn-source-resources}: every reasoning row landed, retired ones included.
-SELECT le.session_id,
-       l.sequence || '/' || t.sequence || '/' || le.sequence AS coordinate,
-       json_extract(le.rx, '$.content') AS content,
-       projection.active AS active
-FROM log_entries le
-JOIN turns t ON t.id = le.turn_id
-JOIN loops l ON l.id = le.loop_id
-JOIN log_entry_projections projection ON projection.log_entry_id = le.id
-WHERE json_extract(le.attrs, '$.kind') = 'reasoning'
 ORDER BY le.id;
 
 -- PREP: digest_edit_statements

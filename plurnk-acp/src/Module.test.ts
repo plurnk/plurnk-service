@@ -21,6 +21,7 @@ import {
     type ReasoningEventNotification,
 } from "@plurnk/plurnk-contracts";
 import Module from "./Module.ts";
+import SessionTranslator from "./SessionTranslator.ts";
 import type { AcpPlusState, ActionOutcome } from "./client.ts";
 import {
     WsConstructor,
@@ -2135,5 +2136,114 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
         } finally {
             await h.close();
         }
+    });
+
+    test("{§acp-plurnk-metadata} {§acp-history-window}: SessionTranslator correlates stream conclusion by target across entryId namespaces, settles raced logEntry, and closes replayed final-turn streams (#1378)", () => {
+        const translator = new SessionTranslator({
+            acpSessionId: "1#user",
+            workspaceId: 1,
+            sessionId: 1,
+        });
+
+        // 1. logEntry (log_entries.id = 500) followed by terminalConcluded (entries.id = 42) matched via meta.target
+        const startUpdates = translator.logEntry({
+            entry: makeLogEntry({
+                id: 500,
+                session_id: 1,
+                loop_id: 1,
+                loop_seq: 1,
+                turn_id: 1,
+                turn_seq: 1,
+                sequence: 3,
+                origin: "model",
+                op: "gitea",
+                state: "resolved",
+                status_rx: 202,
+                pathname: "list_my_repos",
+                tx: JSON.stringify({ target: { raw: "list_my_repos" }, aside: "List repos" }),
+                rx: JSON.stringify({ status: 202 }),
+                attrs: JSON.stringify({ stream: "gitea://1", aside: "List repos" }),
+            }),
+        });
+        assert.equal(startUpdates[0]?.update.sessionUpdate, "tool_call_update");
+        if (startUpdates[0]?.update.sessionUpdate === "tool_call_update") {
+            assert.equal(startUpdates[0].update.toolCallId, "1/1/3");
+            assert.equal(startUpdates[0].update.status, "in_progress");
+        }
+
+        const concludedUpdates = translator.terminalConcluded(42, 200, {
+            sessionId: 1,
+            target: "gitea://1",
+        });
+        assert.equal(concludedUpdates.length, 2);
+        assert.equal(concludedUpdates[1]?.update.sessionUpdate, "tool_call_update");
+        if (concludedUpdates[1]?.update.sessionUpdate === "tool_call_update") {
+            assert.equal(concludedUpdates[1].update.toolCallId, "1/1/3");
+            assert.equal(concludedUpdates[1].update.status, "completed");
+        }
+
+        // 2. Raced order: terminalConcluded (entries.id = 43, target = "sh://2") arrives BEFORE logEntry (log_entries.id = 501)
+        const preConcluded = translator.terminalConcluded(43, 200, {
+            sessionId: 1,
+            target: "sh://2",
+        });
+        assert.equal(preConcluded.length, 1);
+        const racedLogUpdates = translator.logEntry({
+            entry: makeLogEntry({
+                id: 501,
+                session_id: 1,
+                loop_id: 1,
+                loop_seq: 1,
+                turn_id: 1,
+                turn_seq: 1,
+                sequence: 4,
+                origin: "model",
+                op: "sh",
+                state: "resolved",
+                status_rx: 202,
+                tx: JSON.stringify({ body: "echo fast", aside: "Fast command" }),
+                rx: JSON.stringify({ status: 202 }),
+                attrs: JSON.stringify({ stream: "sh://2", aside: "Fast command" }),
+            }),
+        });
+        assert.equal(racedLogUpdates[0]?.update.sessionUpdate, "tool_call_update");
+        if (racedLogUpdates[0]?.update.sessionUpdate === "tool_call_update") {
+            assert.equal(racedLogUpdates[0].update.toolCallId, "1/1/4");
+            assert.equal(racedLogUpdates[0].update.status, "completed");
+        }
+
+        // 3. Replay closes final-turn stream when openStreamTargets does not include its target
+        const replayTranslator = new SessionTranslator({
+            acpSessionId: "1#user",
+            workspaceId: 1,
+            sessionId: 1,
+        });
+        const replayed = SessionTranslator.replay(
+            replayTranslator,
+            [
+                makeLogEntry({
+                    id: 600,
+                    session_id: 1,
+                    loop_id: 2,
+                    loop_seq: 2,
+                    turn_id: 2,
+                    turn_seq: 1,
+                    sequence: 1,
+                    origin: "model",
+                    op: "sh",
+                    state: "resolved",
+                    status_rx: 202,
+                    tx: JSON.stringify({ body: "echo done" }),
+                    rx: JSON.stringify({ status: 202 }),
+                    attrs: JSON.stringify({ stream: "sh://9" }),
+                }),
+            ],
+            [],
+            { openStreamTargets: new Set() },
+        );
+        const completedToolUpdate = replayed.find(
+            (u) => u.update.sessionUpdate === "tool_call_update" && u.update.status === "completed",
+        );
+        assert.ok(completedToolUpdate, "replay must emit completed tool_call_update when stream is not in openStreamTargets");
     });
 });

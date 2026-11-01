@@ -1,4 +1,4 @@
-import { PathSyntax, type FindStatement, type ParsedPath, type UrlPath } from "@plurnk/plurnk-contracts";
+import { type FindStatement, type ParsedPath, type UrlPath } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "@plurnk/plurnk-schemes";
 import { CoreSchemeAdapterBase, type CoreRepresentationProvider, type CoreRepresentationResolution, type CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results from "../core/results.ts";
@@ -96,38 +96,50 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         if (!this.#named(target)) return failed(400, "coordinate-malformed", `Use ${this.#kind}://<session>/ with loop/turn coordinates or a path pattern, without userinfo, a port, or a query.`);
         const pathname = target.pathname;
         const authorityScope = pathScope(target.hostname, false);
-        const scope = pathScope(/^\/\d+$/.test(pathname) ? `${pathname}/` : pathname, true);
-        const load = async () => (await db.turn_source_candidates.all<Source>({
-            workspace_id: workspaceId, session_name: PathSyntax.hasGlob(target.hostname) ? null : target.hostname, kind: this.#kind,
-        })).filter((row) => pathScopeMatches(authorityScope, row.authority)).map((row) => ({
+        // {§message-completion}: `ops://<session>/<loop>` is both a folder of that loop's emissions and the
+        // loop's own answer, so a loop coordinate selects the turns beneath it and the answer itself.
+        const loopItself = this.#kind === "ops" && /^\/\d+$/.test(pathname) ? pathname : null;
+        const scope = pathScope(loopItself !== null ? `${pathname}/` : pathname, true);
+        // SQL receives only the literal prefix and returns a safe superset. The
+        // path matcher owns the shell-glob truth below: unlike SQLite GLOB, `*`
+        // cannot cross `/`, while `**` can. A declared folder scope remains a
+        // recursive prefix independent of glob syntax. {§find}
+        const load = async (scopePrefix: string | null) => (await db.turn_source_candidates.all<Source>({
+            workspace_id: workspaceId,
+            authority: authorityScope.kind === "exact" ? authorityScope.pathname : null,
+            kind: this.#kind,
+            scope_prefix: scopePrefix,
+        })).filter((row) => authorityScope.kind !== "glob" || pathScopeMatches(authorityScope, row.authority)).map((row) => ({
             ...row, key: renderAddress({ scheme: this.#kind, authority: row.authority, pathname: row.pathname }),
         }));
         const matcher = statement.matcher;
         const relation = matcher !== null && (matcher.dialect === "fts" || matcher.dialect === "graph") ? matcher : null;
         // {§message-completion}: a loop's answer is a projection of rows the index already covers, not a
         // derived source of its own, so relation matchers read the turns beneath it.
-        const loadMatchable = async () => (await load()).filter((row) => relation === null || !/^\/\d+$/.test(row.pathname));
-        let all = await loadMatchable();
+        const loadMatchable = async (scopePrefix: string | null) =>
+            (await load(scopePrefix)).filter((row) => relation === null || !/^\/\d+$/.test(row.pathname));
+        const candidatePrefix = loopItself ?? scope.candidatePrefix;
+        let all = await loadMatchable(candidatePrefix);
         if (relation !== null && all.some(({ deep_hash }) => deep_hash === null) && core.settleDerivations !== undefined) {
             await core.settleDerivations();
-            all = await loadMatchable();
+            all = await loadMatchable(candidatePrefix);
         }
-        // {§message-completion}: `ops://<session>/<loop>` is both a folder of that loop's emissions and the
-        // loop's own answer, so a loop coordinate selects the turns beneath it and the answer itself.
-        const loopItself = this.#kind === "ops" && /^\/\d+$/.test(pathname) ? pathname : null;
-        const selected = all.filter((row) => pathScopeMatches(scope, row.pathname) || row.pathname === loopItself);
+        const selected = scope.kind === "glob"
+            ? all.filter((row) => pathScopeMatches(scope, row.pathname))
+            : all;
         if (authorityScope.kind === "exact" && scope.kind === "exact" && selected.length === 0) return failed(404, "entry-not-found", `No ${this.#kind} source exists at ${target.raw}.`);
         const projections = selected.map(({ key, content }) => ({ key, content, mimetype: this.#mimetype }));
         let matches: CandidateMatch[];
         if (relation !== null) {
             const candidates = resolveSearchCandidates(selected.map(({ key, deep_hash: deepHash }) => ({ key, deepHash })));
-            const universe = resolveSearchCandidates(all.map(({ key, deep_hash: deepHash }) => ({ key, deepHash })));
-            if (candidates.state !== "ready" || universe.state !== "ready") return failed(503, "search-index-incomplete", "The persistent search index does not yet cover the selected history.");
+            if (candidates.state !== "ready") return failed(503, "search-index-incomplete", "The persistent search index does not yet cover the selected history.");
             if (relation.dialect === "fts") {
                 const result = await EntryFts.rankCandidates(db, candidates.candidates, relation.raw.slice(1), core.signal);
                 if (result.status !== 200) return { ...result, ...emptyFindFields() };
                 matches = result.matches;
             } else {
+                const universe = resolveSearchCandidates((await loadMatchable(null)).map(({ key, deep_hash: deepHash }) => ({ key, deepHash })));
+                if (universe.state !== "ready") return failed(503, "search-index-incomplete", "The persistent search index does not yet cover the selected history.");
                 const result = await EntryGraph.matchCandidates(db, universe.candidates, candidates.candidates, relation.raw);
                 if (result.status !== 200) return { ...result, ...emptyFindFields() };
                 matches = result.matches;
