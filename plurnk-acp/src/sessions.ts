@@ -870,10 +870,8 @@ export const buildConfigOptions = async (
             ? [{ value: "none", name: "None (unselected)", description: null }, ...modelOptions]
             : modelOptions;
 
-    const effortLevels = effortInfo.supportedEfforts.length > 0
-        ? effortInfo.supportedEfforts
-        : (["low", "medium", "high"] as const);
-    const currentEffort = effortInfo.effort ?? "medium";
+    const effortLevels = effortInfo.supportedEfforts;
+    const currentEffort = effortInfo.effort ?? "";
 
     const spawnOptions = [
         { value: "inherit", name: "Inherit from parent", description: null },
