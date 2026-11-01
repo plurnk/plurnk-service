@@ -39,6 +39,7 @@ export type AcpSetupSeam = SchemeRegistrationSeam & Pick<ApplicationPort, "httpA
 
 interface RequestConnectionContext {
     readonly family: string | null;
+    readonly origin: string;
 }
 
 export default class Module implements DaemonModule<AcpSetupSeam> {
@@ -83,7 +84,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         this.#acpServer = new AcpServer({
             createAgent: () => {
                 const ctx = this.#requestContext.getStore();
-                return createConnectionAgent(this.#agentContext(), { family: ctx?.family ?? null });
+                return createConnectionAgent(this.#agentContext(ctx?.origin), { family: ctx?.family ?? null });
             },
         });
         this.#nodeHttpHandler = createNodeHttpHandler(this.#acpServer);
@@ -140,13 +141,13 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         while (this.#work.size > 0) await Promise.allSettled([...this.#work]);
     }
 
-    #agentContext() {
+    #agentContext(defaultOrigin?: string) {
         return {
             seam: this.#seam,
             opts: this.#opts,
             peers: this.#peers,
             gates: this.#gates,
-            httpOrigin: () => this.#httpOrigin(),
+            httpOrigin: () => this.#requestContext.getStore()?.origin ?? defaultOrigin ?? this.#httpOrigin(),
             notifyPeerSession: this.#notifyPeerSession,
             broadcastSessionUpdate: this.#broadcastSessionUpdate,
         };
@@ -161,10 +162,33 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         return work;
     }
 
-    #httpOrigin(): string {
+    #httpOrigin(req?: IncomingMessage): string {
         const addr = this.#seam.httpAddress();
+        const rawHeader = typeof req?.headers.host === "string" ? req.headers.host.trim() : "";
+        if (rawHeader.length > 0) {
+            try {
+                const parsed = new URL(`http://${rawHeader}`);
+                if (
+                    parsed.host === rawHeader &&
+                    parsed.hostname !== "0.0.0.0" &&
+                    parsed.hostname !== "::" &&
+                    parsed.hostname !== "[::]"
+                ) {
+                    if (parsed.port.length > 0 || typeof addr.port !== "number") {
+                        return parsed.origin;
+                    }
+                    return `http://${parsed.hostname}:${addr.port}`;
+                }
+            } catch {
+                // Fall back to listener address when Host header is malformed.
+            }
+        }
         if (typeof addr.host === "string" && typeof addr.port === "number") {
-            return `http://${addr.host}:${addr.port}`;
+            const host =
+                addr.host === "0.0.0.0" || addr.host === "::" || addr.host === "[::]"
+                    ? "127.0.0.1"
+                    : addr.host;
+            return `http://${host}:${addr.port}`;
         }
         return "";
     }
@@ -199,7 +223,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             await handleMessagesRoute(
                 this.#seam,
                 this.#opts,
-                this.#httpOrigin(),
+                this.#httpOrigin(req),
                 res,
                 Number(messagesMatch[1]),
                 Number(messagesMatch[2]),
@@ -243,7 +267,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     }
                 });
             }
-            this.#requestContext.run({ family: admission.family }, () => {
+            this.#requestContext.run({ family: admission.family, origin: this.#httpOrigin(req) }, () => {
                 this.#nodeHttpHandler(req, res);
             });
             return;
@@ -282,7 +306,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             return;
         }
         let closeWs: (() => void) | undefined;
-        const app = createConnectionAgent(this.#agentContext(), {
+        const app = createConnectionAgent(this.#agentContext(this.#httpOrigin(req)), {
             family: admission.family,
             closeTransport: () => closeWs?.(),
         });

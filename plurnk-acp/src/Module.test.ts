@@ -2264,4 +2264,203 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
         );
         assert.ok(completedToolUpdate, "replay must emit completed tool_call_update when stream is not in openStreamTargets");
     });
+
+    test("{§acp-action-binding} {§acp-plurnk-metadata} {§acp-status-descendants} {§acp-history-window}: preserves empty supportedEfforts, projects verb-less error and emissionAttempt notices, normalizes wildcard Host origins and loop epoch timestamps, and replays cancelled unobserved inbox messages (#1380 #1384 #1386 #1387)", async () => {
+        const translator = new SessionTranslator({
+            acpSessionId: "1#user",
+            workspaceId: 1,
+            sessionId: 1,
+            origin: "http://127.0.0.1:1066",
+        });
+
+        // 1. Verb-less error row projects to notice (#1384)
+        const errorUpdates = translator.logEntry({
+            entry: makeLogEntry({
+                id: 700,
+                session_id: 1,
+                loop_id: 1,
+                loop_seq: 1,
+                turn_id: 1,
+                turn_seq: 1,
+                sequence: 2,
+                origin: "model",
+                source: "grammar",
+                op: "error",
+                state: "failed",
+                status_rx: 400,
+                rx: JSON.stringify({
+                    status: 400,
+                    problem: {
+                        type: "https://problems.plurnk.xyz/grammar:parser/invalid-operation-syntax",
+                        title: "Invalid Operation Syntax",
+                        detail: "Unrecognized heading.",
+                    },
+                }),
+                attrs: JSON.stringify({}),
+            }),
+        });
+        assert.equal(errorUpdates.length, 1);
+        assert.equal(errorUpdates[0]?.update.sessionUpdate, "notice");
+        if (errorUpdates[0]?.update.sessionUpdate === "notice") {
+            assert.equal(errorUpdates[0].update.severity, "warning");
+            assert.equal(errorUpdates[0].update.title, "grammar:error");
+            assert.equal(errorUpdates[0].update.description, "Unrecognized heading.");
+        }
+
+        // 2. Actionless emissionAttempt row (op === null) projects to notice with /attempt body link (#1384)
+        const attemptUpdates = translator.logEntry({
+            entry: makeLogEntry({
+                id: 701,
+                session_id: 1,
+                loop_id: 1,
+                loop_seq: 1,
+                turn_id: 1,
+                turn_seq: 1,
+                sequence: 3,
+                origin: "model",
+                op: null,
+                state: "resolved",
+                status_rx: 200,
+                tx: "",
+                rx: JSON.stringify({ content: "raw rejected bytes", mimetype: "text/vnd.plurnk" }),
+                attrs: JSON.stringify({ kind: "emissionAttempt" }),
+            }),
+        });
+        assert.equal(attemptUpdates.length, 1);
+        assert.equal(attemptUpdates[0]?.update.sessionUpdate, "notice");
+        if (attemptUpdates[0]?.update.sessionUpdate === "notice") {
+            assert.equal(attemptUpdates[0].update.title, "emissionAttempt");
+            const meta = (attemptUpdates[0].update._meta as { plurnk?: { body?: { url?: string } } } | undefined)
+                ?.plurnk;
+            assert.equal(
+                meta?.body?.url,
+                `http://127.0.0.1:1066/acp/1/1/entry?target=${encodeURIComponent("log:///1/1/3/attempt")}`,
+            );
+        }
+
+        // 3. replaySessionHistory retains cancelled unobserved inbox messages while deduplicating published ones (#1387)
+        const replayed = SessionTranslator.replay(
+            translator,
+            [
+                makeLogEntry({
+                    id: 702,
+                    session_id: 1,
+                    loop_id: 1,
+                    loop_seq: 1,
+                    turn_id: 1,
+                    turn_seq: 1,
+                    sequence: 1,
+                    origin: "_plurnk",
+                    source: "acp://operator/sessions/1%23user/messages/msg-published",
+                    op: "SEND",
+                    state: "resolved",
+                    status_rx: 200,
+                    tx: JSON.stringify({ body: "Already published" }),
+                    rx: JSON.stringify({ status: 200 }),
+                    attrs: JSON.stringify({ kind: "message" }),
+                }),
+            ],
+            [
+                {
+                    path: "message://user/msg-cancelled",
+                    source: "acp://operator/sessions/1%23user/messages/msg-cancelled",
+                    body: "Stopped before turn 1",
+                    loopId: 2,
+                    lifecycle: "cancelled",
+                },
+                {
+                    path: "message://user/msg-published",
+                    source: "acp://operator/sessions/1%23user/messages/msg-published",
+                    body: "Already published",
+                    loopId: 1,
+                    lifecycle: "cancelled",
+                },
+            ],
+        );
+        const cancelledChunk = replayed.find(
+            (u) => u.update.sessionUpdate === "user_message_chunk" && u.update.messageId === "msg-cancelled",
+        );
+        assert.ok(cancelledChunk, "cancelled unobserved inbox message must be replayed");
+        assert.equal(
+            (cancelledChunk?.update._meta as { plurnk?: { lifecycle?: string; published?: boolean } } | undefined)
+                ?.plurnk?.lifecycle,
+            "cancelled",
+        );
+        assert.equal(
+            (cancelledChunk?.update._meta as { plurnk?: { published?: boolean } } | undefined)?.plurnk?.published,
+            false,
+        );
+        const publishedChunks = replayed.filter(
+            (u) => u.update.sessionUpdate === "user_message_chunk" && u.update.messageId === "msg-published",
+        );
+        assert.equal(publishedChunks.length, 1, "already-published message must not be duplicated from inbox");
+
+        // 4. Wildcard listener Host origin & epoch-ms loop timestamps & empty supportedEfforts (#1380 #1386)
+        const h = await createHarness();
+        try {
+            const addr = h.port.httpAddress();
+            h.port.httpAddress = () => ({ host: "0.0.0.0", port: addr.port });
+            h.port.readSessionEffort = async () => ({
+                effort: "medium",
+                source: "default",
+                supportedEfforts: [],
+            });
+            const ws = new WebSocket(h.wsUrl.replace("127.0.0.1", "localhost"));
+            await new Promise<void>((resolve, reject) => {
+                ws.onopen = () => resolve();
+                ws.onerror = () => reject(new Error("WebSocket error"));
+            });
+            const sendRpc = (id: number, method: string, params: Record<string, unknown>): Promise<Record<string, unknown>> =>
+                new Promise((resolve, reject) => {
+                    const prev = ws.onmessage;
+                    ws.onmessage = (ev: MessageEvent) => {
+                        const rawText = typeof ev.data === "string" ? ev.data : String(ev.data);
+                        const parsed = JSON.parse(rawText) as {
+                            id?: number;
+                            result?: Record<string, unknown>;
+                            error?: { message: string };
+                        };
+                        if (parsed.id !== id) return;
+                        ws.onmessage = prev;
+                        if (parsed.error) reject(new Error(parsed.error.message));
+                        else resolve(parsed.result ?? {});
+                    };
+                    ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+                });
+
+            await sendRpc(1, "initialize", {
+                protocolVersion: PROTOCOL_VERSION,
+                info: { name: "raw-rpc-test", version: "1.0.0" },
+            });
+            await sendRpc(2, "session/new", { cwd: "/workspace/alpha" });
+            const listed = await sendRpc(3, "session/list", { cwd: "/workspace/alpha" });
+            const firstSession = (
+                listed.sessions as Array<{ _meta?: { plurnk?: { reply?: { body?: { url?: string } } } } }>
+            )[0];
+            assert.ok(
+                firstSession?._meta?.plurnk?.reply?.body?.url?.startsWith(`http://localhost:${addr.port}/acp/`),
+                `expected localhost origin from Host header, got ${firstSession?._meta?.plurnk?.reply?.body?.url}`,
+            );
+
+            const resumed = await sendRpc(4, "session/resume", {
+                sessionId: "1#user",
+                cwd: "/workspace/alpha",
+            });
+            const configOptions = resumed.configOptions as Array<{
+                configId: string;
+                options?: unknown[];
+            }>;
+            const thoughtOpt = configOptions.find((o) => o.configId === "thought_level");
+            assert.deepEqual(thoughtOpt?.options, [], "supportedEfforts: [] must not fabricate fallback efforts");
+
+            const status = (resumed._meta as { plurnk?: { status?: { claimedAt?: unknown; terminatedAt?: unknown } } })
+                ?.plurnk?.status;
+            assert.equal(status?.claimedAt, Date.parse("2026-10-25T00:00:00.000Z"));
+            assert.equal(status?.terminatedAt, Date.parse("2026-10-25T00:00:01.000Z"));
+
+            ws.close();
+        } finally {
+            await h.close();
+        }
+    });
 });

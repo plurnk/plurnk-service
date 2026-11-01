@@ -113,15 +113,33 @@ export const replaySessionHistory = (
     }
 
     if (options.beforeLoopSeq === undefined && options.exactLoopSeq === undefined) {
+        const publishedSources = new Set<string>();
+        const publishedMessageIds = new Set<string>();
+        for (const row of activeRows) {
+            if (row.op !== "SEND") continue;
+            if (typeof row.source === "string" && row.source.length > 0) {
+                publishedSources.add(row.source);
+                const mid = extractMessageId(row.source, translator.acpSessionId);
+                if (mid !== null) publishedMessageIds.add(mid);
+            }
+        }
         for (const msg of inbox) {
             if (
                 msg.lifecycle !== "running" &&
                 msg.lifecycle !== "queued" &&
-                msg.lifecycle !== "parked"
+                msg.lifecycle !== "parked" &&
+                msg.lifecycle !== "cancelled"
             ) {
                 continue;
             }
             const messageId = extractMessageId(msg.source ?? msg.path, translator.acpSessionId) ?? msg.path;
+            if (
+                (typeof msg.source === "string" && publishedSources.has(msg.source)) ||
+                publishedSources.has(msg.path) ||
+                publishedMessageIds.has(messageId)
+            ) {
+                continue;
+            }
             updates.push({
                 sessionId: translator.acpSessionId,
                 update: {

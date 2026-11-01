@@ -145,14 +145,15 @@ export default class SessionTranslator {
         const parsedTx = parseJsonOrValue(entry.tx);
         const parsedRx = parseJsonOrValue(entry.rx);
         const text = txBody(parsedTx, attrs, parsedRx);
+        const leaf = entry.op ?? (attrs.kind === "emissionAttempt" ? "attempt" : null);
         const bodyUrl =
-            this.#origin !== undefined && entry.op !== null
-                ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(`log:///${coordinate}/${entry.op}`)}`
+            this.#origin !== undefined && leaf !== null
+                ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(`log:///${coordinate}/${leaf}`)}`
                 : undefined;
         const { receipt, contentBlocks } = cleanReceipt(
             entry.rx,
             bodyUrl,
-            entry.op !== null ? `log:///${coordinate}/${entry.op}` : undefined,
+            leaf !== null ? `log:///${coordinate}/${leaf}` : undefined,
         );
         const rawAddress = addressOf(entry);
         const address =
@@ -326,10 +327,10 @@ export default class SessionTranslator {
             return updates;
         }
 
-        // 4. Failed tool attempt
-        if (entry.origin === "model" && (entry.op === "error" || entry.op === "ERROR")) {
+        // 4. Failed tool attempt or error row
+        if (entry.op === "error" || entry.op === "ERROR") {
             const attempt = isRecord(attrs.attempt) ? attrs.attempt : null;
-            if (attempt !== null && typeof attempt.verb === "string") {
+            if (entry.origin === "model" && attempt !== null && typeof attempt.verb === "string") {
                 const verb = attempt.verb;
                 updates.push({
                     sessionId: this.#acpSessionId,
@@ -348,6 +349,32 @@ export default class SessionTranslator {
                 });
                 return updates;
             }
+            const problemRec = isRecord(parsedRx) && isRecord(parsedRx.problem) ? parsedRx.problem : null;
+            const detail =
+                typeof problemRec?.detail === "string"
+                    ? problemRec.detail
+                    : typeof problemRec?.title === "string"
+                      ? problemRec.title
+                      : undefined;
+            updates.push({
+                sessionId: this.#acpSessionId,
+                update: {
+                    sessionUpdate: "notice",
+                    severity: entry.origin === "model" ? "warning" : "error",
+                    title:
+                        typeof entry.source === "string" && entry.source.length > 0
+                            ? `${entry.source}:error`
+                            : "error",
+                    ...(detail !== undefined ? { description: detail } : {}),
+                    _meta: {
+                        plurnk: {
+                            ...opMeta,
+                            ...(bodyUrl !== undefined ? { body: { url: bodyUrl } } : {}),
+                        },
+                    },
+                },
+            });
+            return updates;
         }
 
         // 5. Standard tool call
@@ -567,6 +594,22 @@ export default class SessionTranslator {
             return updates;
         }
 
+        // 6. Actionless / ambient row (e.g. rejected emissionAttempt with op === null)
+        updates.push({
+            sessionId: this.#acpSessionId,
+            update: {
+                sessionUpdate: "notice",
+                severity: statusRx >= 400 ? "warning" : "info",
+                title: typeof attrs.kind === "string" && attrs.kind.length > 0 ? attrs.kind : "log:entry",
+                ...(text.length > 0 ? { description: text } : {}),
+                _meta: {
+                    plurnk: {
+                        ...opMeta,
+                        ...(bodyUrl !== undefined ? { body: { url: bodyUrl } } : {}),
+                    },
+                },
+            },
+        });
         return updates;
     }
 

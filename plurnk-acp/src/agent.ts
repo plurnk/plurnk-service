@@ -58,6 +58,15 @@ import {
     type ResolvedPromptCommand,
 } from "./sessions.ts";
 
+const toEpochMs = (ts: string | number | null | undefined): number | null => {
+    if (typeof ts === "number" && Number.isFinite(ts)) return ts;
+    if (typeof ts === "string") {
+        const parsed = Date.parse(ts);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+};
+
 export interface ConnectionAgentContext {
     readonly seam: ApplicationPort;
     readonly opts: ResolvedModuleOptions;
@@ -420,6 +429,7 @@ export const createConnectionAgent = (
                                           loopSeq: activeLoop.sequence,
                                           packetCount: activeLoop.packetCount,
                                           ...(activeLoop.waitUntil !== null ? { waitUntil: activeLoop.waitUntil } : {}),
+                                          ...(activeLoop.claimedAt !== null ? { claimedAt: toEpochMs(activeLoop.claimedAt) } : {}),
                                       },
                                   },
                               },
@@ -510,8 +520,8 @@ export const createConnectionAgent = (
                             loopSeq: refLoop?.sequence ?? null,
                             packetCount: refLoop?.packetCount ?? null,
                             waitUntil: activeLoop?.waitUntil ?? null,
-                            claimedAt: refLoop?.claimedAt ?? null,
-                            terminatedAt: refLoop?.terminatedAt ?? null,
+                            claimedAt: toEpochMs(refLoop?.claimedAt),
+                            terminatedAt: toEpochMs(refLoop?.terminatedAt),
                             descendants: buildSessionDescendants(
                                 workspaceSessions,
                                 proposals,
