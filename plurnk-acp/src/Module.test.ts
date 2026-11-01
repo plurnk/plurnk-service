@@ -2569,6 +2569,44 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 },
             );
 
+            // Fresh unseeded session (readSessionModel.model === null) projects active alias effort in configOptions (#1389)
+            h.port.readSessionModel = async () => ({ model: null, spawnModel: null });
+            h.port.listProviders = () => ({
+                aliases: [
+                    {
+                        alias: "rtx5070",
+                        provider: "vllm",
+                        model: "qwen3-coder",
+                        effort: "medium",
+                        effortSource: "default" as const,
+                        inputCapacity: 128000,
+                        active: true,
+                    },
+                ],
+            });
+            const freshSessionRes = await sendRpc(14, "session/new", { cwd: "/workspace/alpha" });
+            const freshConfigOptions = freshSessionRes.configOptions as
+                | Array<{
+                      configId: string;
+                      currentValue?: string;
+                      options?: Array<{ value: string }>;
+                  }>
+                | undefined;
+            assert.equal(
+                freshConfigOptions?.find((o) => o.configId === "model")?.currentValue,
+                "rtx5070",
+            );
+            assert.equal(
+                freshConfigOptions?.find((o) => o.configId === "thought_level")?.currentValue,
+                "medium",
+            );
+            assert.deepEqual(
+                freshConfigOptions
+                    ?.find((o) => o.configId === "thought_level")
+                    ?.options?.map((o) => o.value),
+                ["medium"],
+            );
+
             ws.close();
         } finally {
             await h.close();

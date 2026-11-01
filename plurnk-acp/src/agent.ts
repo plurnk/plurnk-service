@@ -699,6 +699,7 @@ export const createConnectionAgent = (
                     ctx.params.configId.startsWith("skills:") || ctx.params.configId.startsWith("mcp:")
                         ? await buildAvailableCommands(seam, bound.workspaceId)
                         : null;
+                const providerCatalog = tryListProviders(seam);
                 const modelInfo = await seam.readSessionModel({
                     workspaceId: bound.workspaceId,
                     sessionId: bound.sessionId,
@@ -715,6 +716,7 @@ export const createConnectionAgent = (
                             model: modelInfo.model,
                             spawnModel: modelInfo.spawnModel,
                         },
+                        ...(providerCatalog.aliases !== null ? { providers: providerCatalog.aliases } : {}),
                     },
                 };
                 broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
