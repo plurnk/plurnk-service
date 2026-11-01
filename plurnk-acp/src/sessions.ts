@@ -826,9 +826,13 @@ export const buildConfigOptions = async (
             ? [{ value: "custom", name: "Custom (session AGENTS.md)", description: null }]
             : []),
     ];
+    const activeAlias = aliases.find((a) => a.active);
     const effortInfo = model !== null
         ? await seam.readSessionEffort({ workspaceId, sessionId })
-        : { effort: null, supportedEfforts: [] as const };
+        : {
+              effort: activeAlias?.effort ?? null,
+              supportedEfforts: activeAlias?.effort ? [activeAlias.effort] : ([] as const),
+          };
 
     const modelOptions = aliases.map((a) => ({
         value: a.alias,
@@ -860,7 +864,7 @@ export const buildConfigOptions = async (
     }
     const resolvedModelValue = model !== null
         ? (model.alias ?? `${model.provider}/${model.model}`)
-        : (aliases.find((a) => a.active)?.alias ?? "");
+        : (activeAlias?.alias ?? "");
     const currentModelValue = resolvedModelValue.length > 0 ? resolvedModelValue : "none";
     if (resolvedModelValue.length > 0 && !modelOptions.some((o) => o.value === resolvedModelValue)) {
         modelOptions.unshift({
