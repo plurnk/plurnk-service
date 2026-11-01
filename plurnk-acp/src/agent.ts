@@ -43,6 +43,7 @@ import {
     assertSinglePortSecurity,
     buildAvailableCommands,
     buildConfigOptions,
+    buildSessionDescendants,
     extractPlurnkMeta,
     formatSessionId,
     listSessionsOverview,
@@ -354,6 +355,7 @@ export const createConnectionAgent = (
 
             const replayed = SessionTranslator.replay(bound.translator, entries, inbox, {
                 historyLoops: opts.historyLoops,
+                historyPageChars: opts.historyPageChars,
                 openStreamTargets: new Set(streams.map((s) => s.target)),
             });
 
@@ -481,6 +483,12 @@ export const createConnectionAgent = (
                             waitUntil: activeLoop?.waitUntil ?? null,
                             claimedAt: refLoop?.claimedAt ?? null,
                             terminatedAt: refLoop?.terminatedAt ?? null,
+                            descendants: buildSessionDescendants(
+                                workspaceSessions,
+                                proposals,
+                                interactions,
+                                bound.sessionId,
+                            ),
                             inbox,
                             spend,
                             streams,

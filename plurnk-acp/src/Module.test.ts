@@ -218,6 +218,24 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 });
                 assert.match(forked.sessionId, /^1#/);
 
+                let claimedCount = 0;
+                const origClaim = h.port.claimSessionOwner;
+                h.port.claimSessionOwner = async (args) => {
+                    claimedCount += 1;
+                    return origClaim(args);
+                };
+                const passiveResumed = await ctx.request(methods.agent.session.resume, {
+                    sessionId: "1#alice",
+                    cwd: "/workspace/alpha",
+                    _meta: { plurnk: { control: false } },
+                });
+                assert.equal(claimedCount, 0, "passive resume (control: false) does not claim session ownership");
+                const resumedDescendants = (
+                    passiveResumed._meta as { plurnk?: { status?: { descendants?: Array<{ name?: string }> } } } | undefined
+                )?.plurnk?.status?.descendants;
+                assert.ok(Array.isArray(resumedDescendants) && resumedDescendants.length === 1);
+                assert.equal(`1#${resumedDescendants[0]?.name ?? ""}`, forked.sessionId);
+
                 const listedBefore = await ctx.request(methods.agent.session.list, {
                     cwd: "/workspace/alpha",
                 });

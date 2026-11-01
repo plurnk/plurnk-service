@@ -19,6 +19,7 @@ import { attrRecord, parseJsonOrValue, txBody } from "./log-entry-projection.ts"
 import type SessionTranslator from "./SessionTranslator.ts";
 import {
     buildAvailableCommands,
+    buildSessionDescendants,
     formatSessionId,
     isDescendantSession,
     selectBoundSessionForTarget,
@@ -178,6 +179,19 @@ export const dispatchDaemonEvent = (
                     },
                 };
                 enqueueWorkspaceSessionsTask(ctx, workspaceId, (sessions) => {
+                    const childRow = sessions.find((w) => w.id === sessionId);
+                    const enrichedChildMeta = {
+                        plurnk: {
+                            ...childMeta.plurnk,
+                            ...(childRow !== undefined
+                                ? {
+                                      parentSessionId: childRow.parentSessionId,
+                                      kind: childRow.kind,
+                                      lifecycle: childRow.lifecycle,
+                                  }
+                                : {}),
+                        },
+                    };
                     for (const peer of peers) {
                         const visited = new Set<BoundSession>();
                         for (const session of peer.sessions.values()) {
@@ -193,7 +207,7 @@ export const dispatchDaemonEvent = (
                                 description: summary,
                                 capabilities: { cancel: {} },
                                 state: { state: "running" },
-                                _meta: childMeta,
+                                _meta: enrichedChildMeta,
                             });
                             if (entryRec.op === "SEND" && messageText.length > 0) {
                                 const isChildToParent = entryRec.origin === "model";
@@ -203,7 +217,7 @@ export const dispatchDaemonEvent = (
                                     senderSessionId: isChildToParent ? childSessionId : session.acpSessionId,
                                     recipientSessionId: isChildToParent ? session.acpSessionId : childSessionId,
                                     content: [{ type: "text", text: messageText }],
-                                    _meta: childMeta,
+                                    _meta: enrichedChildMeta,
                                 });
                             }
                         }
@@ -335,16 +349,27 @@ export const dispatchDaemonEvent = (
                             sessionId: formatSessionId(workspaceId, sessionName),
                             state: childState,
                         });
-                        void seam
-                            .sessionAccounting({ workspaceId, sessionId: session.sessionId })
-                            .then((spend) => {
+                        void Promise.all([
+                            seam.sessionAccounting({ workspaceId, sessionId: session.sessionId }),
+                            seam.pendingProposals(workspaceId),
+                            seam.pendingClientInteractions(workspaceId),
+                        ])
+                            .then(([spend, proposals, interactions]) => {
                                 notifyPeerSession(peer, session.acpSessionId, {
                                     sessionUpdate: "notice",
                                     severity: "info",
                                     title: "workspace:state",
                                     _meta: {
                                         plurnk: {
-                                            status: { spend },
+                                            status: {
+                                                spend,
+                                                descendants: buildSessionDescendants(
+                                                    sessions,
+                                                    proposals,
+                                                    interactions,
+                                                    session.sessionId,
+                                                ),
+                                            },
                                         },
                                     },
                                 });
