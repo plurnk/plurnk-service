@@ -1,5 +1,14 @@
 # @plurnk/plurnk-meta
 
+## 2.1.5
+
+### Patch Changes
+
+- - Add the `personas` Functionality family (`persona://<name>/PERSONA.md`, `plurnk:///personas/personas.md`, `plurnk_personas`, and `workspace.personas.*` ACP actions) with `EDIT` and `KILL` support on `persona://` and `--persona` in `orientation` (`#1371`).
+  - Export the closed `LOG_ENTRY_KINDS` union and `isLogEntryKind` guard from `@plurnk/plurnk-contracts`, simplify `logEntry.sql` and `TurnSources.sql` to direct column projections, and omit the redundant `NOTE` packet row object when the note emission is already materialized in the packet (`#1372`, `#1373`, `#1374`, `#1376`, `#1377`).
+  - Reconcile ACP stream, `WAIT`, descendant replay, history-ceiling, and passive `session/resume` contracts and specifications (`#1375`, `#1378`, `#1379`).
+  - Verify route-dependent provider credentials (`plurnk-service config verify`), scope the packaged systemd unit to `--user`, and erase retired GBNF and grammar-rail support (`#1363`, `#1364`, `#1365`, `#1366`, `#1367`, `#1369`, `#1370`).
+
 ## 2.1.4
 
 ### Patch Changes
