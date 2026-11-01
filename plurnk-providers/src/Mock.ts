@@ -6,7 +6,7 @@
 // hatch — that's an intg-only convenience.
 
 import { chatMessageText } from "./types.ts";
-import type { InputModality, ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ProviderUsage } from "./types.ts";
+import type { InputModality, ChatMessage, FinishReason, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ProviderUsage } from "./types.ts";
 import { resolveGenerationEnvelopeFromEnv } from "./env.ts";
 import { EFFORTS, type Effort } from "@plurnk/plurnk-contracts";
 import { validateProviderRequestAccounting } from "./accounting.ts";
@@ -32,7 +32,6 @@ export type MockResponse = {
     // Partial — omitted fields fall back to the deliberate zero fixture.
     usage?: Partial<ProviderUsage>;
     cost?: ProviderCost;
-    grammarEvidence?: GrammarEvidence;
 };
 
 // Returned shape: ProviderAssistant + pre-parsed ops visible for tests.
@@ -132,7 +131,7 @@ export default class Mock implements Provider {
         });
     }
 
-    async generate({ messages, maxOutputTokens, signal, grammar, observeRequest, observeReasoning }: MockGenerateArgs): Promise<MockReturnedResponse> {
+    async generate({ messages, maxOutputTokens, signal, observeRequest, observeReasoning }: MockGenerateArgs): Promise<MockReturnedResponse> {
         // Honor abort before consuming the queue — an aborted call makes no
         // "wire call" and must not exhaust a queued response
         // ({§provider-failure-normalization}).
@@ -189,16 +188,11 @@ export default class Mock implements Provider {
         if (assistant.reasoning !== null && assistant.reasoning.length > 0) {
             observeReasoning?.(assistant.reasoning);
         }
-        const grammarEvidence = next.grammarEvidence
-            ?? (grammar === undefined
-                ? undefined
-                : { input: assistant.content, contentStart: 0, transported: true });
         return {
             assistant,
             assistantRaw: next.assistantRaw ?? null,
             accounting: [requestAccounting],
             capacity,
-            ...(grammarEvidence !== undefined ? { grammarEvidence } : {}),
         };
     }
 

@@ -56,10 +56,9 @@ flowchart LR
 [`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the
 model-facing canon. It is intentionally narrower than the tolerant parser:
 one contract with deliberately different projections. A tolerant ingester
-accepting a spelling does not make that spelling canonical teaching, and an
-operator's sampling grammar admitting a sentence does not make its runtime
-semantics valid. Language and schema behavior remain owned by the contracts
-package; this root document does not restate their teaching.
+accepting a spelling does not make that spelling canonical teaching. Language
+and schema behavior remain owned by the contracts package; this root document
+does not restate their teaching.
 
 ## Package ownership
 

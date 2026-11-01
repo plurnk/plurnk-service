@@ -36,7 +36,7 @@ const catalogRatesOf = (provider: string, model: string) => {
 
 
 const mapOf = (entries: Record<string, string>, skipped: Record<string, string> = {}) =>
-    async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)), grammarStyles: new Map() });
+    async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)) });
 
 // Alias parsing is tested in @plurnk/plurnk-aliases (its owner). Here we
 // exercise the resolution + two-tier instantiation this module owns; the active
@@ -61,7 +61,7 @@ test("{§provider-configuration} instantiateProvider: cataloged name resolves in
     let scanned = false;
     const p = await instantiateProvider("openai", { ...fullEnv }, "m",
         async (s) => { imports.push(s); return {}; },
-        async () => { scanned = true; return { registry: new Map(), skipped: new Map(), grammarStyles: new Map() }; });
+        async () => { scanned = true; return { registry: new Map(), skipped: new Map() }; });
     assert.equal(p.model, "m");
     assert.deepEqual(imports, []); // tier 1 never touches the importer…
     assert.equal(scanned, false); // …nor the scan
@@ -105,7 +105,7 @@ test("{§provider-configuration} instantiateProvider: a selected extension compo
         async () => ({
             registry: new Map([["acme", "@acme/ai-provider"]]),
             skipped: new Map(),
-            packageAttributions: new Map([["@acme/ai-provider", ["static:provider"]]]), grammarStyles: new Map(),
+            packageAttributions: new Map([["@acme/ai-provider", ["static:provider"]]]),
         }),
     );
 
@@ -135,7 +135,7 @@ test("{§provider-configuration} instantiateProvider: a per-alias baseUrl drives
         return new Response(JSON.stringify({ data: [] }), { status: 200 });
     });
     await instantiateProvider("openai", { ...fullEnv }, "m", // fullEnv.OPENAI_BASE_URL is http://x — the override must win
-        async () => ({}), async () => ({ registry: new Map(), skipped: new Map(), grammarStyles: new Map() }),
+        async () => ({}), async () => ({ registry: new Map(), skipped: new Map() }),
         "http://hazel2:8080/v1");
     assert.ok(probed.some((u) => u === "http://hazel2:8080/v1/models"), `probe hit the override host; saw ${probed.join(", ")}`);
     assert.equal(probed.some((u) => u.startsWith("http://x")), false); // never the per-name OPENAI_BASE_URL
@@ -221,16 +221,16 @@ test("instantiateProvider: per-alias knobs scope through to the provider ({§pro
     });
     const env = { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW_turbo: "12345", PLURNK_PROVIDERS_LLAMA_SERVER_turbo: "1" };
     const p = await instantiateProvider("openai", env, "m",
-        async () => ({}), async () => ({ registry: new Map(), skipped: new Map(), grammarStyles: new Map() }),
+        async () => ({}), async () => ({ registry: new Map(), skipped: new Map() }),
         undefined, "turbo");
     assert.equal(p.contextWindow, 12345); // _turbo CONTEXT_WINDOW reached the provider
-    assert.equal(p.constrainsOutput, true); // _turbo LLAMA_SERVER pin reached it too
+    assert.equal(p.requiresOutputBudget, true); // _turbo LLAMA_SERVER pin reached it too
     // same env, DIFFERENT alias: neither override applies
     const q = await instantiateProvider("openai", env, "m",
-        async () => ({}), async () => ({ registry: new Map(), skipped: new Map(), grammarStyles: new Map() }),
+        async () => ({}), async () => ({ registry: new Map(), skipped: new Map() }),
         undefined, "plain");
     assert.equal(q.contextWindow, null);
-    assert.equal(q.constrainsOutput, false);
+    assert.equal(q.requiresOutputBudget, undefined);
     mock.restoreAll();
 });
 
@@ -349,7 +349,6 @@ test("{§provider-configuration} a catalog provider with unknown model metadata 
                 return {
                     registry: new Map([["cloudflare-workers-ai", "@plurnk/plurnk-providers-cloudflare"]]),
                     skipped: new Map(),
-                    grammarStyles: new Map(),
                 };
             },
         ),
@@ -374,7 +373,6 @@ test("{§provider-configuration} explicit metadata constructs an out-of-snapshot
             return {
                 registry: new Map([["cloudflare-workers-ai", "@plurnk/plurnk-providers-cloudflare"]]),
                 skipped: new Map(),
-                grammarStyles: new Map(),
             };
         },
     );
@@ -461,7 +459,7 @@ test("{§provider-configuration} two Fireworks aliases independently select defa
         PLURNK_PROVIDERS_SERVICE_TIER_standard: "default",
     };
     const imports = async () => ({});
-    const stubDiscover = async () => ({ registry: new Map(), skipped: new Map(), grammarStyles: new Map() });
+    const stubDiscover = async () => ({ registry: new Map(), skipped: new Map() });
     const fast = await instantiateProvider("fireworks-ai", env, fireworksRouter, imports, stubDiscover, undefined, "fast");
     const standard = await instantiateProvider("fireworks-ai", env, fireworksSuffix, imports, stubDiscover, undefined, "standard");
     await fast.generate({ sessionId: "fast-session", messages: [] });
@@ -540,33 +538,6 @@ test("{§executor-policy} discover: a provider package missing plurnk.name is ig
     });
     const { registry } = await discover({ cwd: root });
     assert.deepEqual([...registry.keys()], ["named"]);
-});
-
-test("{§provider-request-authority} discover: the manifest grammarStyle declaration is recorded and validated", async (t) => {
-    const root = await buildModules(t, {
-        "@acme/llamacpp-rail": {
-            name: "@acme/llamacpp-rail",
-            plurnk: { kind: "provider", name: "rail", grammarStyle: "llamacpp" },
-        },
-        "@acme/plain": {
-            name: "@acme/plain",
-            plurnk: { kind: "provider", name: "plain" },
-        },
-    });
-    const { grammarStyles } = await discover({ cwd: root });
-    assert.equal(grammarStyles.get("rail"), "llamacpp");
-    assert.equal(grammarStyles.get("plain"), "none");
-    assert.equal(grammarStyles.get("absent"), undefined);
-});
-
-test("{§provider-request-authority} discover: an invalid grammarStyle fails loudly, never guessing", async (t) => {
-    const root = await buildModules(t, {
-        "@acme/bad-grammar": {
-            name: "@acme/bad-grammar",
-            plurnk: { kind: "provider", name: "bad", grammarStyle: "guff" },
-        },
-    });
-    await assert.rejects(discover({ cwd: root }), /grammarStyle must be "none" or "llamacpp"/);
 });
 
 test("{§executor-policy} discover: an array kind declares no provider extension", async (t) => {
@@ -774,18 +745,6 @@ test("{§provider-interface} Mock: generate applies caller-supplied overrides", 
         totalTokens: 3,
     });
     assert.deepEqual(assistantRaw, { wire: true });
-});
-
-test("{§provider-interface} Mock: a supplied grammar produces unsplit evidence unless the fixture supplies exact evidence", async () => {
-    const explicit = { input: "prefixx", contentStart: 6, transported: false } as const;
-    const m = build([
-        { assistant: { content: "x", reasoning: null } },
-        { assistant: { content: "x", reasoning: null }, grammarEvidence: explicit },
-    ]);
-    const inferred = await m.generate({ messages: [], grammar: 'root ::= "x"' });
-    const supplied = await m.generate({ messages: [], grammar: 'root ::= "prefixx"' });
-    assert.deepEqual(inferred.grammarEvidence, { input: "x", contentStart: 0, transported: true });
-    assert.deepEqual(supplied.grammarEvidence, explicit);
 });
 
 test("{§provider-interface} Mock: ops escape hatch passes through when provided", async () => {

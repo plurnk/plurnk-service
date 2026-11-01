@@ -1,8 +1,8 @@
-// The provider-specific request body and headers one generate call sends: reasoning, grammar, sampling, repetition, slots, metadata. Split out of ModelProvider; every knob it reads is injected.
+// The provider-specific request body and headers one generate call sends: reasoning, sampling, repetition, slots, metadata. Split out of ModelProvider; every knob it reads is injected.
 import type { Effort } from "./types.ts";
 import { type EffortSetting } from "./env.ts";
 import { fixedEffort } from "./reasoning-effort.ts";
-import type { ReasoningStyle, GrammarStyle } from "./ModelProvider.ts";
+import type { ReasoningStyle } from "./ModelProvider.ts";
 
 // Anthropic's older manual-reasoning protocol needs an absolute allowance while
 // PLURNK's durable contract names an effort. These fractions match the native
@@ -21,7 +21,7 @@ const MANUAL_REASONING_MINIMUM = 1024;
 
 // Body keys the provider owns — a caller's `sampling` passthrough may not set
 // these. Two families:
-//   transport/managed — grammar transport, the stream/JSON choice, slot pinning,
+//   transport/managed — the stream/JSON choice, slot pinning,
 //     data capture ({§provider-failure-normalization}: backend-specific fields never cross the contract);
 //   contract invariants — `n` (atomic single completion: choices[0] is the
 //     response; n>1 = paid, dropped output), the tool-calling family (tools-in-
@@ -34,7 +34,7 @@ const MANUAL_REASONING_MINIMUM = 1024;
 // metadata, store, verbosity) pass through; the managed floors spread UNDER
 // sampling stay deliberately caller-overridable.
 const RESERVED_BODY_KEYS: ReadonlySet<string> = new Set([
-    "model", "messages", "stream", "stream_options", "grammar", "response_format", "id_slot", "logprobs", "top_logprobs",
+    "model", "messages", "stream", "stream_options", "response_format", "id_slot", "logprobs", "top_logprobs",
     "reasoning_format", "reasoning_effort", "thinking", "think", "enable_thinking", "thinking_budget", "include_reasoning", "chat_template_kwargs", "thinking_budget_tokens",
     "n", "tools", "tool_choice", "functions", "function_call", "parallel_tool_calls",
     "modalities", "audio", "prediction", "max_tokens", "max_completion_tokens",
@@ -53,13 +53,12 @@ export default class ModelRequestBody {
     readonly #repeatLastN: number | undefined;
     readonly #reasoningStyle: ReasoningStyle;
     readonly #source: string;
-    readonly #grammarStyle: GrammarStyle;
     readonly #supportsSlotPinning: boolean;
     readonly #slotCount: number | null;
     #runSlots = new Map<string, number>();
     #nextSlot = 0;
 
-    constructor({ reasoningBudget, additiveReasoningProvider, effort, nativeAdaptiveThinking, repeatPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source, grammarStyle, supportsSlotPinning, slotCount }: {
+    constructor({ reasoningBudget, additiveReasoningProvider, effort, nativeAdaptiveThinking, repeatPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source, supportsSlotPinning, slotCount }: {
         reasoningBudget: number | null;
         additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
         effort: EffortSetting;
@@ -71,7 +70,6 @@ export default class ModelRequestBody {
         repeatLastN: number | undefined;
         reasoningStyle: ReasoningStyle;
         source: string;
-        grammarStyle: GrammarStyle;
         supportsSlotPinning: boolean;
         slotCount: number | null;
     }) {
@@ -86,16 +84,12 @@ export default class ModelRequestBody {
         this.#repeatLastN = repeatLastN;
         this.#reasoningStyle = reasoningStyle;
         this.#source = source;
-        this.#grammarStyle = grammarStyle;
         this.#supportsSlotPinning = supportsSlotPinning;
         this.#slotCount = slotCount;
     }
 
-    // Reasoning activation and allowance are independent of grammar transport;
-    // only the response representation becomes lossless when evidence is needed.
     // The llama-server template mapping is owned by {§provider-effort}.
     reasoningBody(
-        preserveGrammarSentence = false,
         reasoningBudget = this.#reasoningBudget,
     ): Record<string, unknown> {
         const { mode } = this.#effort;
@@ -111,7 +105,7 @@ export default class ModelRequestBody {
                 const templateEffort = mode === "off" || mode === "adaptive" ? {} : { reasoning_effort: fixedEffort(mode) };
                 return {
                     chat_template_kwargs: { enable_thinking: on, ...templateEffort },
-                    reasoning_format: preserveGrammarSentence ? "none" : "auto",
+                    reasoning_format: "auto",
                     ...(allowance === null ? {} : { thinking_budget_tokens: allowance }),
                 };
             }
@@ -120,50 +114,29 @@ export default class ModelRequestBody {
         }
     }
 
-    // Per-session slot affinity: the consumer passes which session this is; the
-    // provider owns WHICH slot serves it. Sticky per sessionId, round-robin across
-    // new runs (distinct runs → distinct slots while slots last), LRU-bounded
-    // bookkeeping so a long-lived daemon never grows the map unboundedly —
-    // an evicted-and-returning run simply re-pins, worst case one cold prefill.
-
-    // Optional local llama-server GBNF transport ({§provider-request-authority}). Unsupported
-    // backends receive no grammar-related field.
-    grammarBody(grammar: string | undefined): Record<string, unknown> {
-        if (grammar === undefined) return {};
-        switch (this.#grammarStyle) {
-            // Grammar-constrained decoding can loop under the mask; a configured
-            // per-alias repeat_penalty is the measured remedy ({§provider-configuration}).
-            case "llamacpp": return { grammar, ...(this.#repeatPenalty !== null ? { repeat_penalty: this.#repeatPenalty } : {}) };
-            case "none": return {};
-        }
-    }
-
-
     // Local sampler extensions stay separate from portable SDK call settings.
     repetitionPenaltyBody(): Record<string, unknown> {
-        switch (this.#grammarStyle) {
-            // repeat_penalty + optional DRY (repeated-sequence penalty) + a wider
-            // repeat_last_n window — the loop-breaking tools a llama.cpp backend serves.
-            // Each rides only when its operator knob is set; absent = the box's default.
-            case "llamacpp": return {
-                ...(this.#repeatPenalty !== null ? { repeat_penalty: this.#repeatPenalty } : {}),
-                ...(this.#repeatLastN !== undefined ? { repeat_last_n: this.#repeatLastN } : {}),
-                ...(this.#dryMultiplier !== undefined && this.#dryMultiplier > 0 ? {
-                    dry_multiplier: this.#dryMultiplier,
-                    ...(this.#dryBase !== undefined ? { dry_base: this.#dryBase } : {}),
-                    ...(this.#dryAllowedLength !== undefined ? { dry_allowed_length: this.#dryAllowedLength } : {}),
-                } : {}),
-            };
-            case "none": return {};
-        }
+        if (this.#reasoningStyle !== "template") return {};
+        // repeat_penalty + optional DRY (repeated-sequence penalty) + a wider
+        // repeat_last_n window — the loop-breaking tools a llama.cpp backend serves.
+        // Each rides only when its operator knob is set; absent = the box's default.
+        return {
+            ...(this.#repeatPenalty !== null ? { repeat_penalty: this.#repeatPenalty } : {}),
+            ...(this.#repeatLastN !== undefined ? { repeat_last_n: this.#repeatLastN } : {}),
+            ...(this.#dryMultiplier !== undefined && this.#dryMultiplier > 0 ? {
+                dry_multiplier: this.#dryMultiplier,
+                ...(this.#dryBase !== undefined ? { dry_base: this.#dryBase } : {}),
+                ...(this.#dryAllowedLength !== undefined ? { dry_allowed_length: this.#dryAllowedLength } : {}),
+            } : {}),
+        };
     }
 
 
     // Caller-supplied OpenAI-compat sampling params (temperature, top_p, top_k,
     // penalties, stop, seed, …) merged UNDER the managed request: the transport-owned
-    // model and messages plus reasoning, grammar (+ its repeat-penalty floor), max_tokens and slot always
+    // model and messages plus reasoning, max_tokens and slot always
     // win, and reserved transport/protocol keys are stripped so the passthrough
-    // can't smuggle a grammar, a stream toggle, or a backend slot
+    // can't smuggle a stream toggle or a backend slot
     // ({§provider-request-authority}).
     samplingBody(sampling: Record<string, unknown> | undefined, managedKeys?: ReadonlySet<string>): Record<string, unknown> {
         if (sampling === undefined) return {};

@@ -1,5 +1,5 @@
 export { default as ModelProvider } from "./ModelProvider.ts";
-export type { ModelProviderConfig, GrammarStyle, ProviderFetch, ReasoningStyle } from "./ModelProvider.ts";
+export type { ModelProviderConfig, ProviderFetch, ReasoningStyle } from "./ModelProvider.ts";
 export type {
     ChatMessage,
     FinishReason,

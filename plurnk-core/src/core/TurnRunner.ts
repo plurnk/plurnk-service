@@ -45,13 +45,12 @@ import EmissionSplit, { DIRECTIVE } from "./EmissionSplit.ts";
 import InitializationTurn from "./InitializationTurn.ts";
 import ProviderAttemptRunner, {
     LOOP_TIMEOUT_REASON,
-    resolveOperatorGrammarPath,
     turnResult,
     type MaterializedModelRequest,
     type ProviderEmission,
 } from "./ProviderAttemptRunner.ts";
 
-export { LOOP_TIMEOUT_REASON, resolveOperatorGrammarPath };
+export { LOOP_TIMEOUT_REASON };
 
 export type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
 
@@ -923,12 +922,6 @@ export default class TurnRunner {
                 text: split.outside, tokens: contentWeight(split.outside),
             });
         }
-        // {§provider-instantiation} — transport evidence only: the turn records whether the operator's
-        // grammar reached the wire. Nothing grades the response against it; the parser's
-        // admission is the one verdict (#588).
-        const railKeys = emission.railGrammar === undefined
-            ? undefined
-            : { railsAttached: emission.railEvidence?.transported === true ? "client" : "withheld" };
         // Attach the admitted inference evidence. The turn remains open until
         // the producer-neutral admitted-turn executor settles every operation
         // and its exact source artifact.
@@ -941,9 +934,8 @@ export default class TurnRunner {
                 usageCurationBudget: this.#packets.curationBudgetFor(request.packet), // {§tokenomics}
                 finishReason: callMetadata.finishReason,
                 model: callMetadata.model,
-                // Opaque provider metadata plus the grammar transport key.
-                // {§provider-surface}, {§provider-instantiation}
-                meta: JSON.stringify({ ...response.meta, ...railKeys }),
+                // Opaque provider metadata. {§provider-surface}
+                meta: JSON.stringify({ ...response.meta }),
             },
         });
     }

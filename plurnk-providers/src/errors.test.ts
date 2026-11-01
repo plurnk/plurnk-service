@@ -92,7 +92,7 @@ test("{§provider-failure-normalization} a transport's no-replay directive does 
 });
 
 test("{§provider-failure-normalization} retryable is exactly the consumer-recoverable kind set", () => {
-    const kinds = ["rate_limit", "network_failure", "deadline_exceeded", "model_refused", "request_rejected", "invalid_response", "unauthorized", "quota_exceeded", "grammar_invalid", "capacity_exceeded", "resource_interrupted", "generation_failed"] as const;
+    const kinds = ["rate_limit", "network_failure", "deadline_exceeded", "model_refused", "request_rejected", "invalid_response", "unauthorized", "quota_exceeded", "capacity_exceeded", "resource_interrupted", "generation_failed"] as const;
     assert.deepEqual(
         kinds.filter((kind) => new ProviderError("provider:test", kind, "fixture").problem.retryable === true),
         ["rate_limit", "network_failure", "deadline_exceeded", "resource_interrupted"],
@@ -101,9 +101,7 @@ test("{§provider-failure-normalization} retryable is exactly the consumer-recov
     assert.equal(new ProviderError("provider:test", "generation_failed", "fixture").status, 502, "{§provider-failure-normalization} a declared generation error is not re-issued");
 });
 
-test("{§provider-failure-normalization} classifyProviderError: a 422 flagged grammar_invalid is distinct from other request rejections", () => {
-    const rejected = apiError(422, JSON.stringify({ error: { type: "grammar_invalid", message: "non-conforming emission rejected: ..." } }));
-    assert.equal(classifyProviderError(rejected).kind, "grammar_invalid");
+test("{§provider-failure-normalization} classifyProviderError: 422 responses classify as request_rejected", () => {
     assert.equal(classifyProviderError(apiError(422, JSON.stringify({ error: { type: "invalid_request_error" } }))).kind, "request_rejected");
     assert.equal(classifyProviderError(apiError(422, "<html>Bad</html>")).kind, "request_rejected");
 });

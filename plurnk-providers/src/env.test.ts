@@ -197,7 +197,6 @@ test("{§provider-configuration} every PROVIDERS_KNOBS entry appears in the ship
     const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
     const missing = PROVIDERS_KNOBS.filter((k) => !defaults.includes(k));
     assert.deepEqual([...missing], [], "knobs read by code but undeclared in .env.defaults");
-    assert.ok(defaults.includes("PLURNK_PROVIDERS_GBNF="), "GBNF (service-read, providers-namespace) must be declared with its default");
 });
 
 test("{§capability-policy-cascade} effort accepts only the exact portable durable vocabulary", () => {

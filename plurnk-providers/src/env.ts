@@ -380,9 +380,8 @@ export const PROVIDERS_KNOBS = Object.freeze([
 // single overlay.
 //
 // `knobs` (optional) lets a CONSUMER scope its OWN closed knob list with this
-// same parser — e.g. core's `PLURNK_PROVIDERS_GBNF` — without
-// reimplementing the suffix/collision rules. Default stays the
-// providers' knob list; provider call sites pass nothing.
+// same parser without reimplementing the suffix/collision rules. Default stays
+// the providers' knob list; provider call sites pass nothing.
 // {§provider-monetary-evidence} {§provider-configuration} (#1357) — Models.dev is the rate
 // starting point; the operator overlays exact per-1M-token USD rates via five independent
 // scalar knobs (input, output, reasoning, cacheRead, cacheWrite). Alias-scoped like every

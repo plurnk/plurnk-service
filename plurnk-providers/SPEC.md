@@ -16,12 +16,12 @@ Every `Provider` instance exposes:
 
 | Member | Contract |
 |---|---|
-| Physical & policy getters | `model`, `servedModel`, `contextWindow`, `maxInputTokens`, `maxOutputTokens`, `outputBudget`, `outputFloor`, `reasoningBudget`, `inputCapacity`, `inputWall`, `supportedEfforts`, `inputModalities` (`ReadonlySet<"image" \| "audio" \| "video" \| "pdf">`), `constrainsOutput`, and `requiresOutputBudget` |
+| Physical & policy getters | `model`, `servedModel`, `contextWindow`, `maxInputTokens`, `maxOutputTokens`, `outputBudget`, `outputFloor`, `reasoningBudget`, `inputCapacity`, `inputWall`, `supportedEfforts`, `inputModalities` (`ReadonlySet<"image" \| "audio" \| "video" \| "pdf">`), and `requiresOutputBudget` |
 | `countPromptTokens(messages, signal?)` | Measures or estimates prompt token weight (`PromptTokenMeasurement`) |
 | `assessRequestCapacity(messages, maxOutputTokens?, signal?)` | Evaluates `inputCapacity`, `inputWall`, admission `decision` (`"admit" \| "defer" \| "reject"`), and flexed `responseMax` |
-| `generate(args)` | Requires non-empty `sessionId` (used for KV-cache and slot affinity), optional `callKind` (`"emission"` or `"bare"`), optional `grammar`, `maxOutputTokens`, `sampling`, `observeRequest`, and `observeReasoning`. Native tool calls are unconditionally disabled on every protocol |
+| `generate(args)` | Requires non-empty `sessionId` (used for KV-cache and slot affinity), optional `callKind` (`"emission"` or `"bare"`), `maxOutputTokens`, `sampling`, `observeRequest`, and `observeReasoning`. Native tool calls are unconditionally disabled on every protocol |
 | `observeRequest` | Opens before each physical HTTP attempt and settles once with `(requestAccounting, forensicEvidence)`. When `PLURNK_PROVIDERS_RAWBODY=1`, `forensicEvidence.request` records `{ origin, method, body }` with credentials and URL path/query secrets stripped |
-| `observeReasoning` | Streams reasoning deltas live from structured reasoning events (`thinking_delta`) or leading tagged reasoning envelopes (`<think>...</think>` when `PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE=think-tags`, or llama-server template envelopes on grammar-constrained turns) |
+| `observeReasoning` | Streams reasoning deltas live from structured reasoning events (`thinking_delta`) or leading tagged reasoning envelopes (`<think>...</think>` when `PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE=think-tags`) |
 | `Pool` | Fronts $N \ge 1$ homogeneous backends sharing a `model` id: aggregates limits to conservative floors, pins each `sessionId` to one backend for KV-cache locality, and overflows to a healthy sibling on retryable availability failures (`network_failure`, `rate_limit`, `deadline_exceeded`) while never overflowing terminal errors or `resource_interrupted` attempts |
 
 ## §provider-capacity-admission Capacity and prompt measurement
@@ -68,7 +68,7 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 - `catalogEfforts(providerInfo, modelInfo, env)` intersects the model's cataloged effort vocabulary (extended by `PLURNK_PROVIDERS_PROVIDER_<ID>_REASONING_EFFORTS` for reasoning models) with what the provider adapter can preserve on the wire.
 - On `adaptive`, routes with native adaptive reasoning (such as Anthropic adaptive thinking or Gemini thinking) request their native adaptive posture; graded effort routes use `PLURNK_PROVIDERS_EFFORT_FALLBACK` (default `high`) when supported by the model's effort set.
 - When `PLURNK_PROVIDERS_REASONING_BUDGET` is set alongside `adaptive`, budget-capable routes send the token budget (`thinkingBudgets` / `thinking.budget_tokens` / `thinkingConfig.thinkingBudget` / `reasoning.max_tokens`); setting a fixed effort alongside `PLURNK_PROVIDERS_REASONING_BUDGET` is rejected at construction. On Google routes where `maxOutputTokens` is shared across `thoughtsTokenCount` and `candidatesTokenCount`, `thinkingConfig.thinkingBudget` is bounded by `maxOutputTokens - outputFloor` (or `maxOutputTokens - 1` when tightened below `outputFloor`) so visible output headroom is reserved.
-- On detected llama-server routes, `off` and `adaptive` send `chat_template_kwargs: { enable_thinking: false | true }`, and fixed efforts declared in `PLURNK_PROVIDERS_REASONING_EFFORTS` add `reasoning_effort`. When grammar constrains a template-reasoning turn, the adapter sends `reasoning_format: "none"` so the grammar governs the raw stream and projects the leading template block back into `assistant.reasoning`.
+- On detected llama-server routes, `off` and `adaptive` send `chat_template_kwargs: { enable_thinking: false | true }`, and fixed efforts declared in `PLURNK_PROVIDERS_REASONING_EFFORTS` add `reasoning_effort`.
 
 ## §provider-configuration Environment configuration and envelope
 
@@ -97,12 +97,11 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 | Built-in Ollama rail (`ollama.ts`) | Probes `POST <origin>/api/show` for `*.context_length`, capped by optional `PLURNK_PROVIDERS_CONTEXT_WINDOW`, and dispatches chat completions to `<origin>/v1/chat/completions`. |
 | Operator probe scripts (`scripts/`) | `providers-ping.mjs` probes one cheapest declared route per keyed provider and writes redacted JSON evidence; `token-envelope-probe.mjs` probes explicit aliases across configured or physical output limits. |
 
-## §provider-request-authority Request controls and grammar transport
+## §provider-request-authority Request controls
 
-- Caller `sampling` and extension body fields cannot override protocol-owned fields (`model`, `messages`, `stream`, `tools`, `tool_choice`, `response_format`, `grammar`, `logprobs`, `top_logprobs`).
+- Caller `sampling` and extension body fields cannot override protocol-owned fields (`model`, `messages`, `stream`, `tools`, `tool_choice`, `response_format`, `logprobs`, `top_logprobs`).
 - `PLURNK_PROVIDERS_SERVICE_TIER` and `PLURNK_PROVIDERS_TOP_LOGPROBS` project onto native SDK requests only when the route's SDK documents the control; unsupported controls emit a single `PLURNK_REQUEST_CONTROL_UNSUPPORTED` process warning and are omitted from the wire.
 - OpenRouter requests attach `HTTP-Referer` and `X-OpenRouter-Title` from `PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_URL` (validated as an absolute HTTP(S) URL) and `PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_NAME`.
-- Grammar strings (`generate({ grammar })`) are transported only when `grammarStyle === "llamacpp"` (`constrainsOutput === true`), preserving `grammarEvidence` (`{ input, contentStart, transported }`) on the response. When `tokenize` is available on a grammar turn and billed `outputTokens` exceed visible content + reasoning tokens by more than 64, an `output_unaccounted` notice is attached ({§diagnostic-observation}).
 
 ## §provider-failure-normalization Failure normalization and evidence
 
@@ -114,7 +113,6 @@ All transport and response failures normalize into `ProviderError` carrying an R
 | `quota_exceeded` | 402 or billing/quota exhaustion | 402 | `false` | `cause` |
 | `rate_limit` | 429 | 429 | `true` | `cause` |
 | `capacity_exceeded` | Preflight exact wall overflow, 413, or upstream context-length code | 413 | `false` | `cause` |
-| `grammar_invalid` | 422 with `error.type === "grammar_invalid"` | 422 | `false` | `cause` |
 | `request_rejected` | Other 400, 404, 405, 422 | 400..422 | `false` | `cause` |
 | `network_failure` | 408, 409, 5xx, socket/TLS/proxy error, or mid-stream disconnect | 502 / 503 | `true` | `cause`, optional `attempt` |
 | `deadline_exceeded` | `PLURNK_PROVIDERS_FETCH_TIMEOUT` or `PLURNK_PROVIDERS_OPERATION_TIMEOUT` | 504 | `true` | `cause`, optional `attempt` |

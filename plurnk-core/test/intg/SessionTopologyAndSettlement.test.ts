@@ -41,7 +41,6 @@ const requestAccounting = {
 const response = (
     content: string,
     capacity: ProviderResponse["capacity"],
-    grammar?: string,
 ): ProviderResponse => {
     return {
         assistant: {
@@ -53,9 +52,6 @@ const response = (
         assistantRaw: null,
         accounting: [requestAccounting],
         capacity,
-        ...(grammar === undefined
-            ? {}
-            : { grammarEvidence: { input: content, contentStart: 0, transported: true } }),
     };
 };
 
@@ -115,7 +111,6 @@ class ControlledSessionProvider implements Provider {
         messages,
         sessionId,
         signal,
-        grammar,
         observeRequest,
     }: Parameters<Provider["generate"]>[0]): Promise<ProviderResponse> {
         signal?.throwIfAborted();
@@ -134,7 +129,7 @@ class ControlledSessionProvider implements Provider {
             this.#parentStartedAt[index] = performance.now();
             this.#parentStarts[index]?.resolve();
             await settle?.(requestAccounting);
-            return response(content, capacity, grammar);
+            return response(content, capacity);
         }
 
         const index = this.#childCalls++;
@@ -145,7 +140,7 @@ class ControlledSessionProvider implements Provider {
         await settle?.(requestAccounting);
         return response(`\`\`\`\`SEND [200]
 child ${index + 1} done
-\`\`\`\``, capacity, grammar);
+\`\`\`\``, capacity);
     }
 
     releaseChild(index: number): void {

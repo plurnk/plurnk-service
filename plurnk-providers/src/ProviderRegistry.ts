@@ -66,8 +66,7 @@ export const instantiateProvider = async (
     if (catalog !== null) return catalog;
     if (name === "ollama") return ollamaProviderFromEnv(env, model, baseUrl === undefined ? undefined : { baseUrl });
     if (name === "openai") return compatibleProviderFromEnv(env, model, baseUrl);
-    // oxlint-disable-next-line typescript/no-useless-default-assignment -- tsc reads both fields as optional; the defaults are the contract
-    const { registry, skipped, packageAttributions = new Map(), grammarStyles = new Map() } = await providerPackages(discoverFn, env);
+    const { registry, skipped, packageAttributions = new Map() } = await providerPackages(discoverFn, env);
     const specifier = registry.get(name);
     if (specifier === undefined) {
         const declined = skipped.get(name);
@@ -105,7 +104,6 @@ export const instantiateProvider = async (
         providerModel: providerExtension.model(model),
         contextWindow,
         attributions,
-        ...(grammarStyles.get(name) === undefined ? {} : { grammarStyle: grammarStyles.get(name) }),
     });
 };
 

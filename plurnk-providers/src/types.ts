@@ -100,7 +100,7 @@ export const chatMessageText = (message: Pick<ChatMessage, "content">): string =
         : message.content.map((part) => part.type === "text" ? part.text : "").join("");
 
 // {§provider-interface} The caller-owned semantic contract for one logical model call. Providers do
-// not infer this from messages or grammar presence: an emission expects PLURNK
+// not infer this from messages: an emission expects PLURNK
 // output, while a bare call expects unconstrained response text.
 export type ProviderCallKind = "emission" | "bare";
 
@@ -185,8 +185,7 @@ export type ProviderAttemptFinishReason = FinishReason | "resource_interrupted" 
 
 // {§provider-failure-normalization} A per-token logprob. `logprob` is the backend's raw model
 // log-probability of the emitted token — the sampling-transform-invariant
-// confidence, chosen over Fireworks' post-mask `sampling_logprob` (measured
-// IDENTICAL under grammar, incl. an adversarial mask; the raw value is the honest
+// confidence, chosen over Fireworks' post-mask `sampling_logprob` (the raw value is the honest
 // model belief and the correct distillation target). `top` carries the top-N
 // alternatives when top_logprobs was requested. The verbatim per-token record
 // (sampling_logprob, token_id, bytes, mask fields) survives on
@@ -216,15 +215,6 @@ export interface ProviderAssistant<TFinish extends ProviderAttemptFinishReason =
     readonly meanLogprob?: number;
 }
 
-// {§provider-request-authority} — transport evidence for an operator's grammar: the exact
-// pre-projection response, where the projected content starts within it, and whether the
-// grammar reached the wire. Evidence only; nothing grades it.
-export interface GrammarEvidence {
-    readonly input: string;
-    readonly contentStart: number;
-    readonly transported: boolean;
-}
-
 // {§provider-interface}: body bytes after SDK serialization and owned
 // transforms. Origin deliberately excludes userinfo, path, query and fragment.
 export interface ProviderRequestCapture {
@@ -240,8 +230,6 @@ export interface ProviderResponse<TFinish extends ProviderAttemptFinishReason = 
     // failover that preceded this response. {§provider-request-accounting}
     readonly accounting: readonly ProviderRequestAccounting[];
     readonly capacity: ProviderRequestCapacity;
-    // {§provider-request-authority} — transport evidence; present only when a grammar was configured.
-    readonly grammarEvidence?: GrammarEvidence;
     // Per-turn provider→client metadata bag: the backend's non-standard top-level
     // response fields passed through verbatim. Monetary values carry their own
     // amount and currency; the provider does not reinterpret them. The consumer
@@ -258,7 +246,6 @@ export interface ProviderResponse<TFinish extends ProviderAttemptFinishReason = 
     readonly rawBody?: unknown;
     // Notices attached to the represented attempt. Successful
     // returns may relay them; interrupted attempt notices remain forensic.
-    // Grammar conformance itself is consumer-owned.
     readonly notices?: readonly ProviderNotice[];
 }
 
@@ -268,7 +255,6 @@ export interface ProviderGenerateArgs {
     readonly messages: ChatMessage[];
     readonly sessionId: string;
     readonly signal?: AbortSignal;
-    readonly grammar?: string;
     readonly maxOutputTokens?: number;
     // The workspace this call serves: ordinary call context for an adapter that
     // fronts more than one workspace. It is never transported to a backend and
@@ -284,11 +270,6 @@ export interface Provider {
     // Optional package-authored folksonomy evaluated by the consumer immediately
     // before a provider emission attempt ({§extension-discovery}).
     attributions?(context: ExtensionAttributionContext): ExtensionAttribution;
-    // `grammar` is an optional GBNF string, the operator's own file read by the consumer.
-    // Backends that support grammar-constrained sampling attach it verbatim; all others
-    // ignore it. The provider never chooses or modifies the grammar
-    // ({§provider-request-authority}).
-    //
     // `maxOutputTokens` may tighten the provider's configured total output
     // budget for this call. It includes visible output and hidden reasoning;
     // the adapter owns projection into each backend's native wire semantics.
@@ -301,10 +282,10 @@ export interface Provider {
     //
     // `sampling` is an optional bag of standard OpenAI-compat sampling params
     // (temperature, top_p, top_k, min_p, penalties, stop, seed, …) forwarded into
-    // the request body UNDER the provider's managed fields — model/messages/grammar/
+    // the request body UNDER the provider's managed fields — model/messages/
     // reasoning/max_tokens/slot always win, and transport/protocol keys (stream,
-    // response_format, grammar, id_slot) are stripped, so it carries sampling intent
-    // only and can't bypass grammar transport ({§provider-request-authority}). A
+    // response_format, id_slot) are stripped, so it carries sampling intent
+    // only ({§provider-request-authority}). A
     // proxy consumer fronting its own backends uses it to pass its caller's
     // sampling knobs through; a direct consumer typically leaves it unset.
     //
@@ -338,11 +319,6 @@ export interface Provider {
     // tokenizer seam maps exactly. Read-only, best-effort, no extra probing —
     // absent when no probe ran. Consumers resolve `servedModel ?? model`.
     readonly servedModel?: string;
-    // Optional resolved capability: true when a transported grammar will
-    // actually constrain the decode (rails LIVE), false/undefined otherwise —
-    // introspectable so the consumer can fail hard on a dark-rails boot instead
-    // of discovering it from unconstrained emissions.
-    readonly constrainsOutput?: boolean;
     // Optional resolved capability: true when this backend decodes
     // UNBOUNDED absent a caller cap — llama-server honors n_predict to the
     // context wall (observed in a 30,736-junk-token wall run), so a consumer

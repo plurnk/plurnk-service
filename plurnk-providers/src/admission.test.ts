@@ -441,7 +441,7 @@ const RESP: ProviderResponse = {
 
 type FakeOpts = {
     model?: string; window?: number | null; servedModel?: string;
-    constrainsOutput?: boolean; requiresOutputBudget?: boolean;
+    requiresOutputBudget?: boolean;
     maxInputTokens?: number | null; maxOutputTokens?: number | null;
     outputBudget?: number | null; outputFloor?: number | null; reasoningBudget?: number | null;
     tokenize?: boolean; throws?: Error;
@@ -471,7 +471,6 @@ const backend = (opts: FakeOpts = {}) => {
             outputFloor: opts.outputFloor ?? null,
         }),
         ...(opts.servedModel !== undefined ? { servedModel: opts.servedModel } : {}),
-        ...(opts.constrainsOutput !== undefined ? { constrainsOutput: opts.constrainsOutput } : {}),
         ...(opts.requiresOutputBudget !== undefined ? { requiresOutputBudget: opts.requiresOutputBudget } : {}),
         ...(opts.tokenize ? { tokenize: async (t: string) => [t.length] } : {}),
         countPromptTokens: async (messages) => opts.promptMeasurement ?? ({
@@ -541,9 +540,7 @@ test("{§provider-interface} Pool: physical limits and budgets aggregate to inde
     assert.equal(p.reasoningBudget, 3_200);
 });
 
-test("{§provider-interface} Pool: capabilities aggregate conservatively (constrainsOutput all-true, requiresOutputBudget any-true)", () => {
-    assert.equal(new Pool([backend({ constrainsOutput: true }).b, backend({ constrainsOutput: true }).b]).constrainsOutput, true);
-    assert.equal(new Pool([backend({ constrainsOutput: true }).b, backend({ constrainsOutput: false }).b]).constrainsOutput, undefined);
+test("{§provider-interface} Pool: requiresOutputBudget aggregates conservatively (any-true)", () => {
     assert.equal(new Pool([backend({ requiresOutputBudget: false }).b, backend({ requiresOutputBudget: true }).b]).requiresOutputBudget, true);
     assert.equal(new Pool([backend({}).b]).requiresOutputBudget, undefined);
 });

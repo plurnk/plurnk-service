@@ -1,10 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { readFile } from "node:fs/promises";
-import { resolve as resolvePath } from "node:path";
-import { homedir } from "node:os";
 import {
-    aggregateProviderAccounting, ProviderError, scopeEnvToAlias,
-    type GrammarEvidence, type Provider, type ProviderAttempt, type ProviderRequestAccounting, type ProviderResponse,
+    aggregateProviderAccounting, ProviderError,
+    type Provider, type ProviderAttempt, type ProviderRequestAccounting, type ProviderResponse,
 } from "@plurnk/plurnk-providers";
 import Meta, { Knob, type ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -52,12 +49,6 @@ export const turnResult = (
     ...facts,
 });
 
-// {§provider-instantiation}
-export const resolveOperatorGrammarPath = (value: string): string => {
-    if (value === "~" || value.startsWith("~/")) return resolvePath(homedir(), value.slice(2));
-    return resolvePath(value);
-};
-
 // The wall's abort reason — runLoop branches a mid-turn teardown to the 504 terminal on it.
 export const LOOP_TIMEOUT_REASON = "loop_timeout";
 
@@ -73,8 +64,6 @@ export type ProviderAttempts = {
     wire: MaterializedModelRequest;
     response: ProviderAttempt | undefined;
     split: SplitProviderResponse | undefined;
-    railGrammar: string | undefined;
-    railEvidence: GrammarEvidence | undefined;
     // {§fence-pairing}: judges a body in its runtime's declared media type; undefined when none declares one.
     wellFormed: BodyCheck | undefined;
     emissionAttempts: number;
@@ -102,8 +91,6 @@ export type ProviderEmission = {
     readonly response: ProviderAttempt;
     readonly split: SplitProviderResponse;
     readonly modelCallId: number;
-    readonly railGrammar: string | undefined;
-    readonly railEvidence: GrammarEvidence | undefined;
     readonly emissionAttempts: number;
     readonly signal: AbortSignal | undefined;
 };
@@ -135,8 +122,6 @@ export default class ProviderAttemptRunner {
         turnId: number;
         evidence: InferenceEvidence;
     }) => Promise<void>;
-    // {§provider-instantiation} — one read per path per daemon; the file is the operator's and static.
-    readonly #grammarCache = new Map<string, string>();
 
     constructor({
         db,
@@ -217,28 +202,6 @@ export default class ProviderAttemptRunner {
         return [...Meta.composeAttributions(provider.attributions?.(context) ?? [])];
     }
 
-    // {§provider-instantiation} — the operator's grammar text for this provider, or undefined when
-    // none is configured. A real alias scopes its knob; an alias-free direct route uses the
-    // global provider configuration. Unrelated alias settings never apply
-    // ({§provider-instantiation}). An unreadable file throws: a configured grammar
-    // never silently degrades.
-    async #operatorGrammar(provider: Provider): Promise<string | undefined> {
-        ProviderInstantiate.assertGrammarConfigurationScope(provider);
-        const alias = ProviderInstantiate.configurationAliasOf(provider);
-        const scoped = alias === undefined
-            ? process.env
-            : scopeEnvToAlias(process.env, alias, ["PLURNK_PROVIDERS_GBNF"]);
-        const configured = scoped.PLURNK_PROVIDERS_GBNF;
-        if (configured === undefined || configured === "" || configured === "0") return undefined;
-        const path = resolveOperatorGrammarPath(configured);
-        const hit = this.#grammarCache.get(path);
-        if (hit !== undefined) return hit;
-        const text = await readFile(path, "utf8");
-        this.#grammarCache.set(path, text);
-        process.stderr.write(`plurnk-engine: operator grammar: ${alias || "(bare)"} → ${path} (${text.length} chars)\n`);
-        return text;
-    }
-
     async #attemptAttributions(
         provider: Provider,
         context: ExtensionAttributionContext,
@@ -265,9 +228,7 @@ export default class ProviderAttemptRunner {
             wire,
             response: undefined,
             split: undefined,
-            railGrammar: undefined,
             wellFormed: undefined,
-            railEvidence: undefined,
             emissionAttempts: 0,
             callInFlight: false,
             modelCallSequence: 0,
@@ -290,10 +251,9 @@ export default class ProviderAttemptRunner {
     // recoverable failure re-issues the same emission attempt, an invalid emission
     // spends one, and a valid emission ends the loop ({§emission-admission}).
     async attemptProvider(args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts): Promise<ProviderEmission> {
-        const { provider, workspaceId, sessionId, loopId, signal } = args;
+        const { workspaceId, sessionId, loopId, signal } = args;
         // {§operation-results}: bracket the complete provider-attempt window with liveness notices.
         if (!signal?.aborted) this.#notices.push(workspaceId, sessionId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
-        attempts.railGrammar = await this.#operatorGrammar(provider);
         attempts.wellFormed = await EmissionSplit.bodyChecks(workspaceId, this.#executors(), this.#mimetypes);
         const attemptLimit = readEmissionAttempts();
         for (let attempt = 1; attempt <= attemptLimit;) {
@@ -332,8 +292,6 @@ export default class ProviderAttemptRunner {
             response: attempts.response,
             split: attempts.split,
             modelCallId: attempts.modelCall.id,
-            railGrammar: attempts.railGrammar,
-            railEvidence: attempts.railEvidence,
             emissionAttempts: attempts.emissionAttempts,
             signal: attempts.signal,
         };
@@ -409,7 +367,6 @@ export default class ProviderAttemptRunner {
         attempts.response = completedResponse;
         attempts.turnWireAccounting.push(...completedResponse.accounting);
         await modelCall.observeResponse(completedResponse, null, attempts.wire.nativeInputs);
-        attempts.railEvidence = attempts.railGrammar === undefined ? undefined : completedResponse.grammarEvidence;
         const split = EmissionSplit.splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed);
         attempts.split = split;
         await this.#classifyProviderAttempt(attempts, attemptRow.id, split, attempt, split.emissionValid);
@@ -494,7 +451,6 @@ export default class ProviderAttemptRunner {
                         sessionId: attempts.providerSessionId,
                         workspaceId: String(workspaceId),
                         signal: attempts.signal,
-                        grammar: attempts.railGrammar,
                         observeRequest: reasoning.observeRequest,
                         observeReasoning: reasoning.observeReasoning,
                         callKind: "emission",

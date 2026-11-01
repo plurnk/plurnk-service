@@ -140,13 +140,6 @@ export default class DigestRender {
         const tokens = usageSummary(acct);
         const cost = ` cost=${costSummary(acct)}`;
         const finishReason = turn.finish_reason ?? "—";
-        // Render only observed transport metadata; absence makes no claim
-        // about endpoint-owned settings. {§provider-instantiation}
-        const tm = parseJson(turn.meta ?? "null", null);
-        const railsFlag = isRecord(tm) ? tm.railsAttached : undefined;
-        const attached = typeof railsFlag === "boolean" || typeof railsFlag === "string" ? railsFlag : undefined;
-        const rails = attached === undefined || attached === false ? ""
-            : ` rails=${attached === true ? "client" : attached}`;
         const model = turn.model ?? "—";
         // {§outside-text}: the weight the model was told, so a digest reader sees the discard at a glance.
         const outside = turn.outside === null ? "" : ` outside=${m.evidence.textWeight(turn.outside)} tok`;
@@ -171,7 +164,7 @@ export default class DigestRender {
         const provenance = [modelTurn === null ? null : `model turn ${modelTurn}`, stem].filter((part) => part !== null).join(" · ");
         const lifecycle = `T${turn.sequence}${provenance === "" ? "" : ` (${provenance})`}: producer=${turn.producer} kind=${turn.kind} status=${turn.status}${turn.completed_at === null ? " state=open" : ""}`;
         const head = turn.kind === "inference"
-            ? `${lifecycle} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${cacheBadge(turn, m)}${outside}${errBadge}${attemptBadge}${packetBadge}`
+            ? `${lifecycle} finish=${finishReason} model=${model} ${tokens}${cost}${cacheBadge(turn, m)}${outside}${errBadge}${attemptBadge}${packetBadge}`
             : `${lifecycle}${errBadge}${packetBadge}`;
         let summary: string | null = null;
         if (packetFailure !== null) {

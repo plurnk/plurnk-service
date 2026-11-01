@@ -11,7 +11,6 @@ export type ProviderErrorKind =
     | "invalid_response"
     | "unauthorized"
     | "quota_exceeded"
-    | "grammar_invalid"
     | "capacity_exceeded"
     | "resource_interrupted"
     | "generation_failed";
@@ -23,8 +22,7 @@ const defaultStatus = (kind: ProviderErrorKind): number => {
         case "quota_exceeded": return 402;
         case "capacity_exceeded": return 413;
         case "rate_limit": return 429;
-        case "model_refused":
-        case "grammar_invalid": return 422;
+        case "model_refused": return 422;
         case "invalid_response":
         case "generation_failed": return 502;
         case "deadline_exceeded": return 504;
@@ -59,7 +57,6 @@ const buildProblem = (
         request_rejected: "request-rejected",
         unauthorized: "unauthorized",
         quota_exceeded: "quota-exceeded",
-        grammar_invalid: "grammar-invalid",
         capacity_exceeded: "capacity-exceeded",
         resource_interrupted: "resource-interrupted",
         generation_failed: "generation-failed",

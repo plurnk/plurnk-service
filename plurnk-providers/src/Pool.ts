@@ -101,14 +101,10 @@ export default class Pool implements Provider {
     get inputWall(): number | null { return this.#minimumKnown((provider) => provider.inputWall); }
 
     // Served id / capabilities aggregate CONSERVATIVELY: a session could land on any
-    // backend, so claim `constrainsOutput` only if EVERY backend does, and
-    // `requiresOutputBudget` if ANY does (bring a cap if even one backend needs it).
+    // backend, so claim `requiresOutputBudget` if ANY does (bring a cap if even one backend needs it).
     get servedModel(): string | undefined {
         const s = this.#backends[0].servedModel;
         return this.#backends.every((b) => b.servedModel === s) ? s : undefined;
-    }
-    get constrainsOutput(): boolean | undefined {
-        return this.#backends.every((b) => b.constrainsOutput === true) ? true : undefined;
     }
     get requiresOutputBudget(): boolean | undefined {
         return this.#backends.some((b) => b.requiresOutputBudget === true) ? true : undefined;

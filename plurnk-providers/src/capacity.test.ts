@@ -224,33 +224,30 @@ test("{§provider-interface} a pool accepts a modality only when every backend d
 
 {
 test("{§provider-interface}: every delimiter split preserves exact reasoning and the suffix", () => {
-    for (const envelopes of [LeadingReasoning.THINK, LeadingReasoning.TEMPLATE]) {
-        for (const [opening, closing] of envelopes) {
-            const thought = "Decision 🧠\nA < B.\n";
-            const suffix = "Answer with literal <think>tags</think>.";
-            for (const ended of [true, false]) {
-                const input = `${opening}${thought}${ended ? closing + suffix : closing.slice(0, 3)}`;
-                const expected = thought + (ended ? "" : closing.slice(0, 3));
-                for (let split = 0; split <= input.length; split++) {
-                    const parser = new LeadingReasoning(envelopes);
-                    const observed = parser.push(input.slice(0, split)) + parser.push(input.slice(split)) + parser.finish();
-                    assert.equal(observed, expected, `${opening}: split ${split}`);
-                }
-                const settled = LeadingReasoning.project(input, "", envelopes);
-                assert.equal(settled.reasoning, expected);
-                assert.equal(settled.content, ended ? suffix : "");
-                assert.equal(settled.contentStart, Array.from(input).length - Array.from(settled.content).length);
+    for (const [opening, closing] of LeadingReasoning.THINK) {
+        const thought = "Decision 🧠\nA < B.\n";
+        const suffix = "Answer with literal <think>tags</think>.";
+        for (const ended of [true, false]) {
+            const input = `${opening}${thought}${ended ? closing + suffix : closing.slice(0, 3)}`;
+            const expected = thought + (ended ? "" : closing.slice(0, 3));
+            for (let split = 0; split <= input.length; split++) {
+                const parser = new LeadingReasoning(LeadingReasoning.THINK);
+                const observed = parser.push(input.slice(0, split)) + parser.push(input.slice(split)) + parser.finish();
+                assert.equal(observed, expected, `${opening}: split ${split}`);
             }
+            const settled = LeadingReasoning.project(input, "", LeadingReasoning.THINK);
+            assert.equal(settled.reasoning, expected);
+            assert.equal(settled.content, ended ? suffix : "");
         }
     }
 });
 
 test("{§provider-interface}: an incomplete opener, later tags, and structured reasoning stay literal", () => {
     for (const input of ["<thi", " <think>text</think>", "prefix <think>text</think>", ""]) {
-        assert.deepEqual(LeadingReasoning.project(input, "", LeadingReasoning.THINK), { content: input, reasoning: "", projected: false, contentStart: 0 });
+        assert.deepEqual(LeadingReasoning.project(input, "", LeadingReasoning.THINK), { content: input, reasoning: "", projected: false });
     }
     assert.deepEqual(LeadingReasoning.project("<think>literal</think>", "native", LeadingReasoning.THINK), {
-        content: "<think>literal</think>", reasoning: "native", projected: false, contentStart: 0,
+        content: "<think>literal</think>", reasoning: "native", projected: false,
     });
 });
 }

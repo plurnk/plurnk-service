@@ -253,13 +253,11 @@ export default class SessionModels {
         effort?: Effort,
     ): Promise<Provider> {
         try {
-            const provider = await ProviderInstantiate.instantiateProvider(
+            return await ProviderInstantiate.instantiateProvider(
                 spec,
                 process.env,
                 effort,
             );
-            ProviderInstantiate.validateGrammarConfiguration(provider, process.env);
-            return provider;
         } catch (cause) {
             if (cause instanceof OperationFailureError) throw cause;
             if (cause instanceof ConfigurationError) throw new OperationFailureError(Results.configurationFailure(cause), { cause });

@@ -3,7 +3,6 @@ import type {
     PackageAttributions,
     ExtensionAttribution,
 } from "@plurnk/plurnk-meta";
-import type { GrammarStyle } from "./ModelProvider.ts";
 
 // Scope-agnostic discovery of installed provider packages
 // ({§extension-discovery}).
@@ -36,9 +35,6 @@ export type Discovery = {
     registry: Map<string, string>; // trusted providers, eligible to instantiate
     skipped: Map<string, string>;  // declined by the trust gate (untrusted)
     packageAttributions: PackageAttributions;
-    // {§provider-request-authority} — extension-declared constrained-decoding
-    // capability per provider name; "none" unless the manifest declares one.
-    grammarStyles: Map<string, GrammarStyle>;
 };
 
 
@@ -49,7 +45,6 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
     const registry = new Map<string, string>();
     const skipped = new Map<string, string>();
     const packageAttributions = new Map<string, ExtensionAttribution>();
-    const grammarStyles = new Map<string, GrammarStyle>();
     for (const dir of dirs) {
         const info = await readProviderInfo(dir);
         if (info === null) continue;
@@ -66,32 +61,24 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
         }
         const tags = Meta.normalizeAttribution(info.attribution, info.packageName);
         registry.set(info.name, info.packageName);
-        grammarStyles.set(info.name, info.grammarStyle);
         if (tags.length > 0) packageAttributions.set(info.packageName, tags);
     }
-    return { registry, skipped, packageAttributions, grammarStyles };
+    return { registry, skipped, packageAttributions };
 };
 
 // One inert manifest record for a provider package, or null for anything that
 // isn't one. Attribution remains unknown until trust admission, then the shared
 // {§extension-discovery} boundary validates it.
-type ProviderInfo = { name: string; packageName: string; attribution: unknown; grammarStyle: GrammarStyle };
+type ProviderInfo = { name: string; packageName: string; attribution: unknown };
 
 const readProviderInfo = async (dir: string): Promise<ProviderInfo | null> => {
     const manifest = await Meta.readManifest(dir, "provider");
     if (manifest === null || manifest.packageName === null) return null;
     const { packageName, plurnk: plurnkRec } = manifest;
     if (typeof plurnkRec.name !== "string" || plurnkRec.name === "") return null;
-    const grammarStyle = plurnkRec.grammarStyle;
-    if (grammarStyle !== undefined && grammarStyle !== "none" && grammarStyle !== "llamacpp") {
-        throw new Error(
-            `${packageName}: plurnk.grammarStyle must be "none" or "llamacpp", got ${JSON.stringify(grammarStyle)}.`,
-        );
-    }
     return {
         name: plurnkRec.name,
         packageName,
         attribution: plurnkRec.attribution,
-        grammarStyle: grammarStyle === undefined ? "none" : grammarStyle,
     };
 };

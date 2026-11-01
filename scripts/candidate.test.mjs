@@ -88,10 +88,6 @@ test("{§share} candidate SIGTERM stops its client and daemon, runs and exports 
         PLURNK_CANDIDATE_SKIP_BUILD: "1",
         PLURNK_CLIENT_CHECKOUT: clientRoot,
     };
-    for (const key of Object.keys(env)) {
-        if (key === "PLURNK_PROVIDERS_GBNF" || key.startsWith("PLURNK_PROVIDERS_GBNF_")) delete env[key];
-    }
-    env.PLURNK_PROVIDERS_GBNF = "0";
 
     const child = spawn(process.execPath, ["scripts/candidate.mjs"], {
         cwd: root,
@@ -150,11 +146,7 @@ test("{§environment-layers} candidate reaps its daemon when the client is termi
         PLURNK_CANDIDATE_DIR: candidateDir,
         PLURNK_CANDIDATE_SKIP_BUILD: "1",
         PLURNK_CLIENT_CHECKOUT: clientRoot,
-        PLURNK_PROVIDERS_GBNF: "0",
     };
-    for (const key of Object.keys(env)) {
-        if (key.startsWith("PLURNK_PROVIDERS_GBNF_")) delete env[key];
-    }
 
     const child = spawn(process.execPath, ["scripts/candidate.mjs"], {
         cwd: root,
@@ -219,10 +211,6 @@ test("{§environment-layers} candidate deadline snapshot photographs the project
         PLURNK_CLIENT_CHECKOUT: clientRoot,
         PLURNK_CANDIDATE_GRADE_DEADLINE_SEC: "1",
     };
-    for (const key of Object.keys(env)) {
-        if (key === "PLURNK_PROVIDERS_GBNF" || key.startsWith("PLURNK_PROVIDERS_GBNF_")) delete env[key];
-    }
-    env.PLURNK_PROVIDERS_GBNF = "0";
 
     const child = spawn(process.execPath, ["scripts/candidate.mjs", "--project-root", projectRoot], {
         cwd: root,
