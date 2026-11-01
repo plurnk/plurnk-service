@@ -2,9 +2,9 @@
 
 // oxlint-disable-next-line import/no-unassigned-import -- {§startup-admission}: it must evaluate before every later import
 import "./core/runtime-guard.ts";
-import { parseArgs } from "node:util";
-import { spawn } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { parseArgs, parseEnv } from "node:util";
+import { execFileSync, spawn } from "node:child_process";
+import { existsSync, mkdirSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { isIPv6 } from "node:net";
@@ -17,14 +17,14 @@ import { sqlFunctionPaths } from "./core/sql-functions.ts";
 import { sqliteSynchronous } from "./core/sqlite-synchronous.ts";
 import Daemon from "./server/Daemon.ts";
 import HttpListener from "./server/HttpListener.ts";
-import DaemonLock from "./server/DaemonLock.ts";
+import DaemonLock, { type DaemonStatus } from "./server/DaemonLock.ts";
 import ServiceHelp from "./core/ServiceHelp.ts";
 import EnvDefaults from "./core/env-defaults.ts";
 import EnvCatalog from "./core/env-catalog.ts";
 import HostPaths from "./core/HostPaths.ts";
 import OperatorConfig from "./core/OperatorConfig.ts";
 import Meta, { ConfigurationError } from "@plurnk/plurnk-meta";
-import { parseAliasesFromEnv, resolveActiveRoute, resolveChildRoute } from "@plurnk/plurnk-providers";
+import { formatModelReadinessCauses, parseAliasesFromEnv, resolveActiveRoute, resolveChildRoute, routeReadiness } from "@plurnk/plurnk-providers";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
 import ServiceModules from "./server/ServiceModules.ts";
 import { discoverDaemonModules } from "./server/module-discovery.ts";
@@ -42,6 +42,22 @@ import ExecEnv from "./schemes/exec-env.ts";
 
 // How often `stop` looks for the signalled process to be gone.
 const STOP_POLL_MS = 100;
+
+export interface SystemdUnitProbeResult {
+    readonly activeState?: string;
+    readonly subState?: string;
+    readonly mainPid?: number;
+}
+
+export interface SystemdUnitInspection {
+    readonly scope: "user" | "system";
+    readonly path: string;
+    readonly installed: boolean;
+    readonly activeState?: string;
+    readonly subState?: string;
+    readonly mainPid?: number;
+    readonly ownsDaemon: boolean;
+}
 
 // The `plurnk-service` executable: launches the daemon (start) or applies the schema baseline.
 // Not the user-facing client — that is the separate `plurnk` project.
@@ -116,13 +132,32 @@ export default class Service {
             : resolve(Service.#hostPaths.expandUserPath(configured));
     }
 
+    static assertRouteReady(
+        route: ProviderSpec,
+        env: NodeJS.ProcessEnv = process.env,
+        key: "PLURNK_MODEL" | "PLURNK_MODEL_CHILD" = "PLURNK_MODEL",
+    ): void {
+        const readiness = routeReadiness(route, env);
+        if (readiness === null || readiness.ready) return;
+        const requirements = formatModelReadinessCauses(readiness);
+        const label = route.alias === undefined
+            ? `${route.provider}/${route.model}`
+            : `${route.alias} (${route.provider}/${route.model})`;
+        throw new ConfigurationError(
+            key,
+            `${key} selects ${label}, which requires ${requirements} in the daemon environment.`,
+        );
+    }
+
     static #modelConfiguration(): {
         readonly aliases: ReturnType<typeof parseAliasesFromEnv>;
         readonly active: ReturnType<typeof resolveActiveRoute>;
     } {
         const aliases = parseAliasesFromEnv(process.env);
         const active = resolveActiveRoute(process.env);
-        resolveChildRoute();
+        const child = resolveChildRoute(process.env);
+        if (active !== null) Service.assertRouteReady(active, process.env, "PLURNK_MODEL");
+        if (child !== null) Service.assertRouteReady(child, process.env, "PLURNK_MODEL_CHILD");
         return { aliases, active };
     }
 
@@ -250,7 +285,9 @@ export default class Service {
         const configuration = Service.#configuration;
         await configuration.capture("model-aliases", () => parseAliasesFromEnv());
         const route = await configuration.capture("model", () => resolveActiveRoute());
-        await configuration.capture("model-child", () => resolveChildRoute());
+        const childRoute = await configuration.capture("model-child", () => resolveChildRoute());
+        if (route !== null) await configuration.capture("model", () => Service.assertRouteReady(route, process.env, "PLURNK_MODEL"));
+        if (childRoute !== null) await configuration.capture("model-child", () => Service.assertRouteReady(childRoute, process.env, "PLURNK_MODEL_CHILD"));
         // {§startup-admission}: the daemon's one listener wins the configured
         // address before anything may mutate durable state ({§http-host}). It answers 503
         // until daemon activation admits it, after every module has started.
@@ -342,11 +379,174 @@ export default class Service {
         process.stderr.write(`plurnk-service: stopped pid ${pid} (${dbPath})\n`);
     }
 
-    static #isSecretKey(key: string): boolean {
+    static isSecretKey(key: string, env: NodeJS.ProcessEnv = process.env): boolean {
         if (key === "OTEL_EXPORTER_OTLP_HEADERS") return true;
         if (/(?:^|_)(?:SECRET|PASS|PASSWORD|TOKEN|API_KEY|BEARER)$/u.test(key)) return true;
-        if (!key.startsWith("PLURNK_") && ExecEnv.ownSecretTest(process.env)(key)) return true;
+        if (!key.startsWith("PLURNK_") && ExecEnv.ownSecretTest(env)(key)) return true;
         return false;
+    }
+
+    static detectCredentialDrift(
+        initialEnv: NodeJS.ProcessEnv,
+        files: ReadonlyArray<{ readonly path: string; readonly content: string }>,
+        env: NodeJS.ProcessEnv = process.env,
+    ): ConfigurationError[] {
+        const errors: ConfigurationError[] = [];
+        const seen = new Set<string>();
+        for (const { path, content } of files) {
+            const parsed = parseEnv(content);
+            for (const [key, fileValue] of Object.entries(parsed)) {
+                if (fileValue === undefined || fileValue.length === 0) continue;
+                if (!Service.isSecretKey(key, env)) continue;
+                const shellValue = initialEnv[key];
+                if (shellValue === undefined || shellValue.length === 0 || shellValue === fileValue) continue;
+                const id = `${key}\0${path}`;
+                if (seen.has(id)) continue;
+                seen.add(id);
+                errors.push(new ConfigurationError(
+                    key,
+                    `Credential drift for \`${key}\`: process environment and ${path} have different values (process environment wins in this cascade; keep each credential in one authoritative store).`,
+                ));
+            }
+        }
+        return errors;
+    }
+
+    static #fileMtimeMs(path: string): number | null {
+        try {
+            return existsSync(path) ? statSync(path).mtimeMs : null;
+        } catch {
+            return null;
+        }
+    }
+
+    static staleOperatorFiles(
+        daemonStatus: DaemonStatus | null,
+        files: readonly string[],
+        mtimeMs: (path: string) => number | null = Service.#fileMtimeMs,
+    ): string[] {
+        if (daemonStatus?.startedAt === undefined) return [];
+        const out: string[] = [];
+        for (const file of new Set(files)) {
+            const mtime = mtimeMs(file);
+            if (mtime !== null && mtime > daemonStatus.startedAt) out.push(file);
+        }
+        return out;
+    }
+
+    static formatRestartRequired(
+        daemonStatus: DaemonStatus | null,
+        staleFiles: readonly string[],
+        overridesDiffer = false,
+    ): string | null {
+        if (daemonStatus === null) return null;
+        if (staleFiles.length > 0) {
+            return `restart required: ${staleFiles.join(", ")} modified after daemon (pid ${daemonStatus.pid}) started; restart the daemon for changes to take effect`;
+        }
+        if (overridesDiffer) {
+            return `restart required: current configuration differs from running daemon (pid ${daemonStatus.pid}); restart the daemon for changes to take effect`;
+        }
+        return null;
+    }
+
+    static #probeSystemdUnit(scope: "user" | "system"): SystemdUnitProbeResult | null {
+        try {
+            const args = [
+                ...(scope === "user" ? ["--user"] : []),
+                "show",
+                "--property=ActiveState,SubState,MainPID",
+                "--",
+                "plurnk.service",
+            ];
+            const out = execFileSync("systemctl", args, {
+                encoding: "utf8",
+                stdio: ["ignore", "pipe", "ignore"],
+            });
+            const props = new Map<string, string>();
+            for (const line of out.split("\n")) {
+                const eq = line.indexOf("=");
+                if (eq > 0) props.set(line.slice(0, eq).trim(), line.slice(eq + 1).trim());
+            }
+            const activeState = props.get("ActiveState");
+            const subState = props.get("SubState");
+            const rawPid = Number(props.get("MainPID") ?? "0");
+            const mainPid = Number.isSafeInteger(rawPid) && rawPid > 0 ? rawPid : undefined;
+            return {
+                ...(activeState ? { activeState } : {}),
+                ...(subState ? { subState } : {}),
+                ...(mainPid !== undefined ? { mainPid } : {}),
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    static inspectSystemdUnits({
+        userUnitPath = Service.#hostPaths.userSystemdUnitFile,
+        systemUnitPath = Service.#hostPaths.systemSystemdUnitFile,
+        daemonPid = null,
+        exists = existsSync,
+        probe = Service.#probeSystemdUnit,
+    }: {
+        readonly userUnitPath?: string;
+        readonly systemUnitPath?: string;
+        readonly daemonPid?: number | null;
+        readonly exists?: (path: string) => boolean;
+        readonly probe?: (scope: "user" | "system") => SystemdUnitProbeResult | null;
+    } = {}): SystemdUnitInspection[] {
+        const units: SystemdUnitInspection[] = [];
+        for (const [scope, path] of [
+            ["user", userUnitPath],
+            ["system", systemUnitPath],
+        ] as const) {
+            if (!exists(path)) {
+                units.push({ scope, path, installed: false, ownsDaemon: false });
+                continue;
+            }
+            const probed = probe(scope);
+            const mainPid = probed?.mainPid !== undefined && probed.mainPid > 0 ? probed.mainPid : undefined;
+            const ownsDaemon = daemonPid != null && daemonPid > 0 && mainPid === daemonPid;
+            units.push({
+                scope,
+                path,
+                installed: true,
+                ...(probed?.activeState ? { activeState: probed.activeState } : {}),
+                ...(probed?.subState ? { subState: probed.subState } : {}),
+                ...(mainPid !== undefined ? { mainPid } : {}),
+                ownsDaemon,
+            });
+        }
+        return units;
+    }
+
+    static formatSystemdLines(
+        units: readonly SystemdUnitInspection[],
+        daemonPid: number | null = null,
+    ): string[] {
+        const installed = units.filter((u) => u.installed);
+        if (installed.length === 0) return ["systemd: no unit installed"];
+        return installed.map((unit) => {
+            const state = unit.activeState
+                ? unit.subState ? `${unit.activeState} (${unit.subState})` : unit.activeState
+                : "installed";
+            const details = [state];
+            if (unit.mainPid !== undefined) details.push(`main pid ${unit.mainPid}`);
+            if (unit.ownsDaemon) {
+                details.push("owns daemon");
+            } else if ((daemonPid != null && daemonPid > 0) || installed.length > 1) {
+                details.push("does not own daemon");
+            }
+            return `systemd ${unit.scope} unit: ${unit.path} (${details.join(", ")})`;
+        });
+    }
+
+    static #operatorFiles(): string[] {
+        const configFile = Service.#configFileArg();
+        return [
+            ...(configFile === null ? [] : [resolve(configFile)]),
+            Service.#hostPaths.configFile,
+            Service.#hostPaths.localConfigFile,
+        ];
     }
 
     static #resolvedEntries(): Array<{
@@ -372,7 +572,7 @@ export default class Service {
                 continue;
             }
             const overridden = def === undefined || rawValue !== def.value || !source.startsWith("defaults (");
-            const value = rawValue.length > 0 && Service.#isSecretKey(key) ? "<redacted>" : rawValue;
+            const value = rawValue.length > 0 && Service.isSecretKey(key) ? "<redacted>" : rawValue;
             entries.push({ key, value, source, overridden });
         }
         return entries;
@@ -382,11 +582,19 @@ export default class Service {
         const diagnostics = Service.#configuration;
         const aliases = await diagnostics.capture("model-aliases", () => parseAliasesFromEnv());
         const active = await diagnostics.capture("model", () => resolveActiveRoute());
-        await diagnostics.capture("model-child", () => resolveChildRoute());
+        const child = await diagnostics.capture("model-child", () => resolveChildRoute());
+        if (active !== null) await diagnostics.capture("model", () => Service.assertRouteReady(active, process.env, "PLURNK_MODEL"));
+        if (child !== null) await diagnostics.capture("model-child", () => Service.assertRouteReady(child, process.env, "PLURNK_MODEL_CHILD"));
         const dbPath = Service.#databasePath();
         const daemonStatus = await DaemonLock.status(dbPath);
+        const systemdUnits = Service.inspectSystemdUnits({ daemonPid: daemonStatus?.pid ?? null });
         const entries = Service.#resolvedEntries();
         const overridden = entries.filter((e) => e.overridden);
+        const currentOverridesMap = Object.fromEntries(overridden.map((e) => [e.key, { value: e.value, source: e.source }]));
+        const daemonOverridesDiffer = daemonStatus?.overrides !== undefined
+            && JSON.stringify(daemonStatus.overrides) !== JSON.stringify(currentOverridesMap);
+        const staleFiles = Service.staleOperatorFiles(daemonStatus, Service.#operatorFiles());
+        const restartRequired = Service.formatRestartRequired(daemonStatus, staleFiles, daemonOverridesDiffer);
         const modelText = active === null && process.env.PLURNK_MODEL ? "invalid configuration" : Service.#formatModelRoute(active);
         if (json) {
             process.stdout.write(`${JSON.stringify({
@@ -394,6 +602,9 @@ export default class Service {
                 localConfigFile: Service.#hostPaths.localConfigFile,
                 database: dbPath,
                 daemon: daemonStatus,
+                restartRequired: restartRequired !== null,
+                staleConfigFiles: staleFiles,
+                systemd: systemdUnits,
                 model: modelText,
                 declaredAliases: aliases === null ? null : aliases.map(({ alias }) => alias),
                 templates: {
@@ -412,13 +623,12 @@ export default class Service {
             const daemonLine = daemonStatus === null
                 ? `daemon: not running (${dbPath})`
                 : `daemon: running (pid ${daemonStatus.pid}${daemonStatus.acpUrl ? `, acp=${daemonStatus.acpUrl}` : ""}${daemonStatus.healthUrl ? `, health=${daemonStatus.healthUrl}` : ""}${daemonStatus.auth === undefined ? "" : `, auth=${daemonStatus.auth ? "on" : "off"}`}${daemonStatus.route ? `, model=${daemonStatus.route}` : ""})`;
-            const currentOverridesMap = Object.fromEntries(overridden.map((e) => [e.key, { value: e.value, source: e.source }]));
-            const daemonOverridesDiffer = daemonStatus?.overrides !== undefined
-                && JSON.stringify(daemonStatus.overrides) !== JSON.stringify(currentOverridesMap);
             const daemonOverrideEntries = daemonStatus?.overrides === undefined ? [] : Object.entries(daemonStatus.overrides);
             const lines = [
                 `config: ${Service.#hostPaths.configFile} (${existsSync(Service.#hostPaths.configFile) ? "present" : "absent"})`,
                 daemonLine,
+                ...(restartRequired === null ? [] : [restartRequired]),
+                ...Service.formatSystemdLines(systemdUnits, daemonStatus?.pid ?? null),
                 "sources (low -> high):",
                 "  package .env.defaults floor",
                 `  ${Service.#hostPaths.configFile}${existsSync(Service.#hostPaths.configFile) ? "" : " (absent)"}`,
@@ -446,7 +656,7 @@ export default class Service {
                     : []),
                 "templates:",
                 `  install guide: ${Paths.configuration}`,
-                `  systemd user unit: ${Paths.systemdUnit} (skill://plurnk/plurnk.service)`,
+                `  systemd unit template (user scope): ${Paths.systemdUnit} (skill://plurnk/plurnk.service)`,
                 `  nginx reverse proxy: ${Paths.nginxConfig} (skill://plurnk/plurnk.nginx.conf)`,
                 "effective: plurnk-service config show",
                 "defaults: plurnk-service config defaults",
@@ -465,9 +675,13 @@ export default class Service {
         }
         const unavailable = Service.#configuration.notices().filter(({ level }) => level === "warn" || level === "error");
         if (unavailable.length > 0) throw new Error(unavailable.map(({ message }) => message).join("\n"));
-        await Service.#validateConfiguration();
-        for (const notice of Service.#configuration.notices()) process.stderr.write(`${notice.message}\n`);
         const { aliases, active } = Service.#modelConfiguration();
+        await Service.#validateConfiguration();
+        const daemonStatus = await DaemonLock.status(Service.#databasePath());
+        const staleFiles = Service.staleOperatorFiles(daemonStatus, Service.#operatorFiles());
+        const restartRequired = Service.formatRestartRequired(daemonStatus, staleFiles);
+        for (const notice of Service.#configuration.notices()) process.stderr.write(`${notice.message}\n`);
+        if (restartRequired !== null) process.stderr.write(`${restartRequired}\n`);
         process.stdout.write([
             "configuration valid",
             `config: ${Service.#hostPaths.configFile}`,
@@ -585,13 +799,15 @@ export default class Service {
         // {§operator-config-precedence} — the operator's files, never the process environment.
         const declares = EnvCatalog.declares(defaultsFiles);
         Service.#declares = declares;
-        for (const file of new Set([
-            ...(configFile === null ? [] : [resolve(configFile)]),
-            Service.#hostPaths.configFile,
-            Service.#hostPaths.localConfigFile,
-        ])) {
+        const operatorFiles: Array<{ path: string; content: string }> = [];
+        for (const file of new Set(Service.#operatorFiles())) {
             if (!existsSync(file)) continue;
-            for (const key of OperatorConfig.undeclared(await readFile(file, "utf8"), declares)) Service.#configuration.undeclared(key, file);
+            const content = await readFile(file, "utf8");
+            operatorFiles.push({ path: file, content });
+            for (const key of OperatorConfig.undeclared(content, declares)) Service.#configuration.undeclared(key, file);
+        }
+        for (const drift of Service.detectCredentialDrift(initialEnv, operatorFiles, process.env)) {
+            Service.#configuration.record("credentials", drift);
         }
 
         const command = typeof positionals[0] === "string" ? positionals[0] : "start";
@@ -663,4 +879,6 @@ export default class Service {
     }
 }
 
-await Service.main();
+if (import.meta.main) {
+    await Service.main();
+}

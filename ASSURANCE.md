@@ -68,7 +68,7 @@ Every control below is specified under its named specification tag and verified 
 
 ## Operator hardening checklist
 
-1. **Keep credentials in the login shell or service manager.** Never place provider API keys, `PLURNK_SECRET`, or `PLURNK_PASS` in a project `.env` or repository ({§operator-config-precedence}). Use `systemd` `EnvironmentFile=` or `LoadCredential=` (`plurnk.service`) with `0600` permissions.
+1. **Keep credentials in the login shell or user service manager.** Never place provider API keys, `PLURNK_SECRET`, or `PLURNK_PASS` in a project `.env` or repository ({§operator-config-precedence}). For the supervised systemd user unit (`plurnk.service`), use `~/.config/environment.d/*.conf` or `LoadCredential=` with `0600` permissions.
 2. **Terminate TLS at a reverse proxy before non-loopback exposure.** Keep `PLURNK_HOST=127.0.0.1` behind the shipped `plurnk.nginx.conf` (or equivalent TLS proxy) with `PLURNK_AUTH=1` and a strong `PLURNK_PASS` ({§acp-http-authorization}, {§auth-configuration}).
 3. **Set explicit capability and proposal posture for unattended runs.** Review `PLURNK_SERVICE_PROPOSALS` (`review`, `accept`, `reject`), `PLURNK_SERVICE_EFFECT_HOST`, and `PLURNK_SERVICE_CAPABILITIES` before running autonomous or scheduled workloads ({§capability-policy-cascade}, {§proposal-disposition}).
 4. **Constrain file creation and model membership scope when operating on sensitive hosts.** Set `PLURNK_SERVICE_FILE_CREATE_SCOPE=root` (or `none`) and `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE=root` (or `none`) with `PLURNK_MEMBERS_AUTO_ADD=0` if the model should not enroll or create files outside `project_root` ({§operator-config-workspace-settings}, {§membership-auto-add}).

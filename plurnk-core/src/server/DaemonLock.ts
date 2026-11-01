@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 export interface DaemonStatus {
     readonly pid: number;
+    readonly startedAt?: number;
     readonly acpUrl?: string;
     readonly healthUrl?: string;
     readonly auth?: boolean;
@@ -32,7 +33,7 @@ export default class DaemonLock {
             const tempPath = `${path}.${process.pid}.${token}.tmp`;
             const handle = await open(tempPath, "wx", 0o600);
             try {
-                const record: LockRecord = { pid: process.pid, token };
+                const record: LockRecord = { pid: process.pid, startedAt: Date.now(), token };
                 await handle.writeFile(`${JSON.stringify(record)}\n`, "utf8");
                 await handle.sync();
                 await handle.close();
@@ -118,6 +119,7 @@ export default class DaemonLock {
             return {
                 pid: parsed.pid,
                 token: parsed.token,
+                ...(isSafeInteger(parsed.startedAt) ? { startedAt: parsed.startedAt } : {}),
                 ...(typeof parsed.acpUrl === "string" ? { acpUrl: parsed.acpUrl } : {}),
                 ...(typeof parsed.healthUrl === "string" ? { healthUrl: parsed.healthUrl } : {}),
                 ...(typeof parsed.auth === "boolean" ? { auth: parsed.auth } : {}),

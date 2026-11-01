@@ -1,6 +1,8 @@
-import { isProviderCredentialName, lookupProvider, providerCatalogSnapshot, type ProviderInfo } from "@plurnk/plurnk-models";
+import { isProviderCredentialName, lookupProvider, providerCatalogSnapshot, resolveModel, type ProviderInfo } from "@plurnk/plurnk-models";
+import type { ProviderSpec } from "@plurnk/plurnk-aliases";
 import { Validator, type ModelReadiness, type ModelReadinessCause } from "@plurnk/plurnk-contracts";
 import { providerCostNormalizer } from "./accounting.ts";
+import { scopeEnvToAlias } from "./env.ts";
 import { providerSetting, providerEnvPrefix as envPrefix } from "./provider-env.ts";
 import type {
     CacheAffinity,
@@ -224,6 +226,22 @@ export const providerReadiness = (
     return Validator.assertModelReadiness({ ready: causes.length === 0, causes });
 };
 
+export const formatModelReadinessCauses = (readiness: ModelReadiness): string =>
+    readiness.causes
+        .map(({ alternatives }) => alternatives.map((group) => group.join(" and ")).join(" or "))
+        .join("; ");
+
+export const routeReadiness = (
+    route: ProviderSpec,
+    env: NodeJS.ProcessEnv = process.env,
+): ModelReadiness | null => {
+    if ((route.provider === "openai" || route.provider === "ollama") && resolveModel(route.provider, route.model) === null) {
+        return null;
+    }
+    const scoped = route.alias === undefined ? env : scopeEnvToAlias(env, route.alias);
+    return providerReadiness(route.provider, scoped, route.baseUrl);
+};
+
 const assertProviderReady = (
     provider: string,
     env: NodeJS.ProcessEnv,
@@ -231,10 +249,7 @@ const assertProviderReady = (
 ): void => {
     const readiness = providerReadiness(provider, env, baseUrlOverride);
     if (readiness === null || readiness.ready) return;
-    const requirements = readiness.causes
-        .map(({ alternatives }) => alternatives.map((group) => group.join(" and ")).join(" or "))
-        .join("; ");
-    throw new Error(`${provider} provider: ${requirements} must be set`);
+    throw new Error(`${provider} provider: ${formatModelReadinessCauses(readiness)} must be set`);
 };
 
 const expandEnv = (value: string, env: NodeJS.ProcessEnv, provider: string): string =>

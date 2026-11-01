@@ -21,13 +21,32 @@ leaves it running for every later session; `plurnk-service stop` ends it.
 First start seeds the user's configuration once. No model ships active;
 [choose a model route](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model) before starting a model loop.
 
-To start the service at login on Linux, the npm package includes an example
-[systemd user unit](./plurnk.service) (`skill://plurnk/plurnk.service`; its exact
-installed path is printed by `plurnk-service config`). Its comments cover manual
-installation, `loginctl enable-linger "$USER"`, executable paths, `EnvironmentFile`
-(`.env` and `.env.local`), setting `PLURNK_CLIENT_AUTOSTART=0` under supervision,
-`/health` readiness checks, sandboxing constraints, and journal logs. Installing
-the package never installs or enables the unit.
+To run a supervised daemon on Linux, the npm package ships a
+[systemd user unit template](./plurnk.service) (`skill://plurnk/plurnk.service`; its
+installed template path and any installed user or system units are reported by
+`plurnk-service config`). Installing the package never installs or enables a unit.
+
+| Aspect | Rule |
+| --- | --- |
+| Why **user** scope (`~/.config/systemd/user/plurnk.service`) | `~/.config/environment.d/*.conf` reaches the systemd **user** manager (`systemd --user`), never PID 1. A user unit receives your provider credentials from `environment.d` alongside every other user service, without copying secrets into a second Plurnk-owned store. |
+| Why `loginctl enable-linger "$USER"` | Without linger, systemd stops the user manager and every user unit at logout. Enabling linger keeps the user unit running across logouts and reboots without moving the daemon to system scope. |
+| What **system** scope (`/etc/systemd/system/plurnk.service`) costs | A system unit is a child of PID 1 and never receives `~/.config/environment.d/*.conf`. It forces credentials into `EnvironmentFile=`, turning `~/.config/plurnk/.env` into a second credential store separate from your user environment. |
+| Settings vs. credentials split | Keep Plurnk settings (model aliases, budgets, knobs, and `PLURNK_CLIENT_AUTOSTART=0` under supervision) in `~/.config/plurnk/.env` or `.env.local` (`0600`), and keep provider credentials in `~/.config/environment.d/*.conf` (`0600`). Terminal-launched `plurnk` already inherits your login shell's ambient environment directly. `$XDG_CONFIG_HOME/plurnk/.env` is authoritative for Plurnk's own consumers, not a credential service for unrelated host tools; do not source it from `.bashrc`. |
+| Read-at-start & restart rule | Both `environment.d` and `EnvironmentFile=` are read **only when the service starts**. After editing `~/.config/environment.d/*.conf`, run `systemctl --user daemon-reload && systemctl --user restart plurnk`; after editing `~/.config/plurnk/.env` or `.env.local`, restart the service (`systemctl --user restart plurnk` or `plurnk-service stop` then `start`). |
+
+To migrate from an existing hand-rolled system unit to the shipped user unit (this restarts the daemon and ends any live sessions):
+
+```sh
+sudo systemctl disable --now plurnk.service
+sudo rm -f /etc/systemd/system/plurnk.service
+sudo systemctl daemon-reload
+mkdir -p ~/.config/systemd/user ~/.config/environment.d
+chmod 700 ~/.config/environment.d
+# Place provider credentials in ~/.config/environment.d/plurnk.conf (mode 0600)
+cp "$(npm root -g)/@plurnk/plurnk-service/plurnk.service" ~/.config/systemd/user/
+loginctl enable-linger "$USER"
+systemctl --user daemon-reload && systemctl --user enable --now plurnk
+```
 
 To reach the daemon from other machines on your network, set `PLURNK_HOST=0.0.0.0`
 and browse to any of its addresses; nothing else is required. To serve it beyond
@@ -50,12 +69,18 @@ once admitted.
 | Plurnk-only MCP servers | `$XDG_CONFIG_HOME/plurnk/mcp.json` |
 | Personas | `.plurnk/personas/`, `.agents/personas/`, `$XDG_CONFIG_HOME/plurnk/personas/`, `$XDG_CONFIG_HOME/agents/personas/`, `~/.agents/personas/` |
 
-Use `plurnk-service config` for daemon status, paths, precedence, non-default
-overrides, and template paths; `config show [--json]` for every resolved key,
-effective value (with secrets redacted), and winning source layer; `config edit`
-to edit the user file; and `config check` to validate it. A `PLURNK_*` key that
-file sets and no installed package declares is named at startup and by `config check`,
-which still passes; `config defaults` lists every declared key.
+Use `plurnk-service config` for daemon status, installed systemd unit scope and
+ownership, paths, precedence, non-default overrides, and template paths;
+`config show [--json]` for every resolved key, effective value (with secrets
+redacted), and winning source layer; `config edit` to edit the user file; and
+`config check` to validate it. When an operator configuration file is modified
+after the running daemon started, `config` and `config check` report that a
+restart is required. `config check` also verifies that any configured model
+route's required provider credentials are present and fails if a credential is
+set in both the invoking environment and an operator `.env` file with different
+values. A `PLURNK_*` key that file sets and no installed package declares is
+named at startup and by `config check`, which still passes; `config defaults`
+lists every declared key.
 
 Invalid optional configuration stays visible without removing the repair environment.
 `config check` is strict; ordinary startup keeps unrelated capabilities and client

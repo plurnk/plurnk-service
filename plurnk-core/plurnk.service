@@ -8,12 +8,14 @@
 # If Node/npm are outside systemd's PATH (for example, nvm or fnm), replace ExecStart
 # with the absolute paths printed by `command -v node plurnk-service`:
 # ExecStart=/absolute/path/to/node /absolute/path/to/plurnk-service start
-# Configuration and provider credentials must be available to this service;
-# systemd does not source your interactive shell. Put settings and credentials in
-# ~/.config/plurnk/.env or ~/.config/plurnk/.env.local (mode 0600) and set
-# PLURNK_CLIENT_AUTOSTART=0 so `plurnk` never spawns an unsupervised daemon when
-# the unit is stopped.
-# Readiness probe: curl -fsS http://127.0.0.1:7587/health  (or /healthz)
+# systemd does not source your interactive shell, and reads environment.d and
+# EnvironmentFile= only when starting the service (restart after any edit).
+# Put provider credentials in ~/.config/environment.d/*.conf (mode 0600), shared
+# across your user services (`systemctl --user daemon-reload && systemctl --user restart plurnk`).
+# Put Plurnk settings in ~/.config/plurnk/.env or ~/.config/plurnk/.env.local (mode 0600)
+# and set PLURNK_CLIENT_AUTOSTART=0 so `plurnk` never spawns an unsupervised daemon
+# when the unit is stopped.
+# Readiness probe: curl -fsS http://127.0.0.1:1066/health  (or /healthz; port is PLURNK_PORT — plurnk-service config show prints it)
 # Logs land in the user journal: journalctl --user -u plurnk -f
 # Sandboxing note: do NOT enable ProtectHome=true or ProtectSystem=strict unless
 # ReadWritePaths= lists every project workspace plus ~/.local/share/plurnk,
