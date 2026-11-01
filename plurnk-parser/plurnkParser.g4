@@ -29,6 +29,8 @@ statement
     | moveStatement
     | dispositionStatement
     | sendStatement
+    | doneStatement
+    | failStatement
     | execStatement
     | bareStatement
     | workStatement
@@ -44,6 +46,8 @@ midStatement
     | copyStatement
     | moveStatement
     | sendStatement
+    | doneStatement
+    | failStatement
     | execStatement
     | bareStatement
     | workStatement
@@ -64,6 +68,8 @@ dispositionStatement
     ;
 noteStatement : OPEN_NOTE opAside? statementEnd ;
 sendStatement : OPEN_SEND (firstResourceSelection | metadata+)? opAside? statementEnd ;
+doneStatement : OPEN_DONE (firstResourceSelection | metadata+)? opAside? statementEnd ;
+failStatement : OPEN_FAIL (firstResourceSelection | metadata+)? opAside? statementEnd ;
 execStatement : OPEN_EXEC execModifiers? opAside? statementEnd ;
 bareStatement : OPEN_BARE targetWithMetadata? opAside? statementEnd ;
 workStatement : OPEN_WORK targetWithMetadata? opAside? statementEnd ;

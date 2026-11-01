@@ -24,7 +24,9 @@ body?
 * WORK: Delegate to a child session (fresh log).
 * FORK: Delegate to a child session (copied log).
 * WAIT: Yield to child sessions or streams. You may include `[60]` to check in after 60 seconds.
-* SEND: Message endpoints, sessions, or Open Messages (when the path is omitted, the oldest Open Message).
+* SEND: Deliver a new message.
+* DONE: Deliver the final deliverable message to an Open Message (oldest when path omitted).
+* FAIL: Deliver the final failure message to an Open Message (oldest when path omitted).
 
 ## Loop Protocol
 
@@ -47,12 +49,12 @@ the steps ahead and why
 a continuing progress update response
 ````
 
-````SEND [200]
+````DONE
 a final deliverable response
 ````
 
 > [!TIP]
-> The loop continues until all Open Work is resolved, with all Open Messages concluded with a `[200]` or `[499]` response.
+> The loop continues until all Open Work is resolved, with all Open Messages DONE or FAILed.
 
 > [!TIP]
 > YOU SHOULD NOT deliberate while discovering. Submit necessary NOTE, FIND and READ operations, then deliberate on the next turn.

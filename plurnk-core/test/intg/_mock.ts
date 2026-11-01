@@ -57,5 +57,5 @@ export const makeMockResponse = (dsl: string, completion: number = 0): MockRespo
 // {§message-completion}: the scripted model's reply, optionally beside operations
 // whose results must still be observed before the loop can settle.
 export const answer = (text: string, operations: string = ""): MockResponse => makeMockResponse(
-    [...(operations.length > 0 ? [operations] : []), "````SEND [200]", ...(text.length > 0 ? [text] : []), "````"].join("\n"),
+    [...(operations.length > 0 ? [operations] : []), "````DONE", ...(text.length > 0 ? [text] : []), "````"].join("\n"),
 );

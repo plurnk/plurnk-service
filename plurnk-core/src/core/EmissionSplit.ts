@@ -36,12 +36,11 @@ export type SplitProviderResponse = {
     // {§outside-text}: the text of a turn that fenced no operation, in source order; null when the turn
     // fenced one, since its text then joined the program as NOTEs.
     outside: string | null;
-    // {§turn-source-resources}: the admitted content program; null when none was admitted. The emission
-    // site renders them against their own source; reasoning operations stay in their own source.
+    // {§turn-source-resources}: the admitted content program; null when none was admitted.
     emissionStatements: readonly PlurnkStatement[] | null;
 };
 
-// What the parse of an emission's content yields, before the reasoning operations join it.
+// What the parse of an emission's content yields.
 type ParsedContent = {
     ops: PlurnkStatement[];
     contentStatementCount: number;
@@ -132,27 +131,9 @@ export default class EmissionSplit {
                 outside: [], hasUnparsedTail: false, operationOmitted: false,
             };
         const reasoning = assistant.reasoning ?? null;
-        const reasoningOps = reasoning === null ? [] : PlurnkParser.parseReasoningOperations(reasoning, (warning) => {
-            parseNotices.push({
-                source: "grammar:reasoning",
-                kind: "parse_advisory",
-                level: "warn",
-                directive: DIRECTIVE.advisory,
-                message: warning.message,
-                parserSource: warning.source,
-            });
-        });
-        const operationCount = contentStatementCount + reasoningOps.length;
-        // {§op-shapes}: an admitted reasoning operation is the turn's work, a NOTE as much as a
-        // FIND or READ, with or without a content program.
-        if (reasoningOps.length > 0) {
-            for (let i = parseErrors.length - 1; i >= 0; i--) {
-                if (parseErrors[i].message === PlurnkParser.NO_VALID_OPERATION) parseErrors.splice(i, 1);
-            }
-        }
+        const operationCount = contentStatementCount;
         parseErrors.unshift(...fabrications.slice(0, 1));
         const emissionStatements = preParsedOps === undefined && contentStatementCount > 0 ? [...ops] : null;
-        ops.unshift(...reasoningOps);
         const completionAllowed = !hasUnparsedTail && !operationOmitted && !assistant.nativeToolCalls
             && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_OPERATION)
             && !["length", "content_filter", "tool_calls"].includes(assistant.finishReason ?? "");

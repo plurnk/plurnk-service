@@ -202,7 +202,7 @@ test("{§methods} cancelLoop reaps nothing of a model session's loop", async (t)
     serverProposals(t, "accept");
     const provider = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````held\nmodel command\n````\n````WAIT\nAwait the command.\n````"),
-        makeMockResponse("````SEND [200]\nThe command ended.\n````"),
+        makeMockResponse("````DONE\nThe command ended.\n````"),
     ] });
     const { db, daemon } = await boot(t, { provider });
     const held = heldRuntime("read");
@@ -221,7 +221,7 @@ test("{§connection-lifecycle} a client operation's log:/// addresses read the s
     serverProposals(t, "accept");
     const provider = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````EDIT (workspace:///notes.md)\nremember this\n````\n````NOTE\nContinue.\n````"),
-        makeMockResponse("````SEND [200]\ndone\n````"),
+        makeMockResponse("````DONE\ndone\n````"),
     ] });
     const { db, daemon } = await boot(t, { provider });
     const { workspaceId } = await daemon.createWorkspace({ name: `client-log-${crypto.randomUUID()}` });
@@ -357,7 +357,7 @@ test("{§session-causal-admission} shutdown cancels a person's operation still d
 
 test("{§connection-lifecycle} {§machine-processes} a person's operation speaks and delegates as that person: messages arrive from them, WORK starts a root session they own, FORK branches the session they act for", async (t) => {
     serverProposals(t, "accept");
-    const provider = new Mock({ contextWindow: viableWindow(), responses: Array.from({ length: 8 }, () => makeMockResponse("````SEND [200]\nnoted\n````")) });
+    const provider = new Mock({ contextWindow: viableWindow(), responses: Array.from({ length: 8 }, () => makeMockResponse("````DONE\nnoted\n````")) });
     const { daemon } = await boot(t, { provider });
     const { workspaceId } = await daemon.createWorkspace({ name: `client-delegation-${crypto.randomUUID()}` });
     const main = await namedModelSession(daemon, workspaceId, "main");
@@ -658,7 +658,7 @@ test("{§functionality-inspection} a stalled MCP catalog is visible over ACP bef
         await release.promise;
         return null;
     });
-    const provider = new PacketCapturingMock({ responses: [makeMockResponse("```SEND [200]\nOK\n```")], contextWindow: 1_000_000 });
+    const provider = new PacketCapturingMock({ responses: [makeMockResponse("```DONE\nOK\n```")], contextWindow: 1_000_000 });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const db = await openMigrated();
     const http = await bindListener();
@@ -756,10 +756,10 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             makeMockResponse("\n````fixture (echo)\nhello from MCP\n````\n\n````NOTE\nInspect the attributable tool failure.\n````"),
             makeMockResponse("\n````KILL (log:///**/READ)````\n````fixture (echo)\n{\"message\":\"hello from MCP\"}\n````\n\n````NOTE\nInspect the corrected tool result.\n````"),
             makeMockResponse("\n````FIND (fixture:///**) <1,-1> invalid-tool-arguments````\n\n````NOTE\nInspect the source's durable terminal result.\n````"),
-            makeMockResponse("````SEND [200]\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\n````"),
+            makeMockResponse("````DONE\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\n````"),
             makeMockResponse("\n````READ (mcp:///fixture.md) <1,-1>````\n````NOTE\nInvoke the documented host tool.\n````"),
             makeMockResponse("\n````fixture (fail)````\n````NOTE\nInspect the failure.\n````"),
-            makeMockResponse("````SEND [200]\nThe MCP server reported its expected tool error; recovery is complete.\n````"),
+            makeMockResponse("````DONE\nThe MCP server reported its expected tool error; recovery is complete.\n````"),
         ],
     });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, {

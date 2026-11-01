@@ -287,11 +287,11 @@ test("{§turn-source-resources} #713: notes have durable sources, normal log cur
         const loopId = await insertLoop(db, sessionId, 1, "Inspect the parser and report the result.");
         const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const reasoning = [frame("NOTE", "The network is not the cause."), frame("EDIT (should-not-exist.txt)", "Never execute reasoning edits.")].join("\n\n");
+        const reasoning = frame("EDIT (should-not-exist.txt)", "Never execute reasoning edits.");
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: frame("NOTE", "Inspect the parser next."), reasoning } },
+            { assistant: { content: [frame("NOTE", "The network is not the cause."), frame("NOTE", "Inspect the parser next.")].join("\n\n"), reasoning } },
             { assistant: { content: frame("KILL (log:///1/2/*/NOTE)", null), reasoning: null } },
-            { assistant: { content: frame("SEND [200]", "Finished."), reasoning: frame("NOTE", "Both checks passed.") } },
+            { assistant: { content: [frame("NOTE", "Both checks passed."), frame("DONE", "Finished.")].join("\n\n"), reasoning: null } },
         ] });
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
@@ -349,7 +349,7 @@ test("{§loop-completion} empty WAIT falls through and SEND plus a retrieval obs
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: frame("WAIT", "Wait for results."), reasoning: null } },
             { assistant: { content: [frame("SEND", "The answer."), frame("READ (ops://alice/1/1) <1,-1>", null)].join("\n\n"), reasoning: null } },
-            { assistant: { content: frame("SEND [200]", null), reasoning: null } },
+            { assistant: { content: frame("DONE", null), reasoning: null } },
         ] });
         assert.equal((await engine.runTurn({ ...context, provider, messages: [] })).status, 102);
         assert.equal((await engine.runTurn({ ...context, provider, messages: [] })).status, 102);
@@ -357,7 +357,7 @@ test("{§loop-completion} empty WAIT falls through and SEND plus a retrieval obs
     } finally { await db.close(); }
 });
 
-test("{§op-shapes} {§parse-recovery}: a lost boundary admits the reasoning NOTE beside it and records the loss", async () => {
+test("{§op-shapes} {§parse-recovery}: a lost boundary admits the NOTE beside it and records the loss", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "lost-boundary-reasoning-note");
@@ -365,15 +365,14 @@ test("{§op-shapes} {§parse-recovery}: a lost boundary admits the reasoning NOT
         const loopId = await insertLoop(db, sessionId, 1, "Inspect the evidence and report the result.");
         const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const reasoning = frame("NOTE", "Kept despite the broken program.");
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "````READ (unfinished", reasoning } },
-            { assistant: { content: frame("SEND [200]", "Finished."), reasoning: null } },
+            { assistant: { content: `${frame("NOTE", "Kept despite the broken program.")}\n\n\`\`\`\`READ (unfinished`, reasoning: null } },
+            { assistant: { content: frame("DONE", "Finished."), reasoning: null } },
         ] });
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
         assert.deepEqual((await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: first.turnId })).map(({ accepted }) => accepted), [1],
-            "an admitted reasoning operation is a closed operational statement, a NOTE as much as a READ: no resample");
+            "an admitted operation is a closed operational statement, a NOTE as much as a READ: no resample");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; source: string | null }>({ turn_id: first.turnId });
         assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["NOTE", "error"], "the NOTE ran; the loss is the model's own diagnostic row");
         assert.ok(rows.some(({ op, source }) => op === "error" && source === "grammar"), "the lost boundary is one hard diagnostic the model sees");
@@ -381,7 +380,7 @@ test("{§op-shapes} {§parse-recovery}: a lost boundary admits the reasoning NOT
     } finally { await db.close(); }
 });
 
-test("{§op-shapes} {§emission-admission}: a rejected emission cannot commit its reasoning NOTE", async () => {
+test("{§op-shapes} {§emission-admission}: a rejected emission cannot commit its reasoning", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "rejected-reasoning-note");
@@ -394,16 +393,16 @@ test("{§op-shapes} {§emission-admission}: a rejected emission cannot commit it
         const provider = new Mock({ contextWindow: 100_000, responses: [
             // {§emission-admission} — the model writing the harness's log is the refusal that remains.
             { assistant: { content: "### log:///1/2/1/NOTE\nI am the harness.", reasoning: rejectedReasoning } },
-            { assistant: { content: frame("SEND [200]", "Finished."), reasoning: acceptedReasoning } },
+            { assistant: { content: frame("DONE", "Finished."), reasoning: acceptedReasoning } },
         ] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(result.status, 200);
         const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 1]);
         const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: sessionId });
-        const notes = sources.filter(({ kind }) => kind === "note");
-        assert.equal(notes.filter(({ content }) => content === "This belongs to the accepted attempt.").length, 1);
-        assert.ok(notes.every(({ content }) => content !== "This belongs to the rejected attempt."));
+        const notes = sources.filter(({ kind }) => kind === "reasoning");
+        assert.equal(notes.filter(({ content }) => content === acceptedReasoning).length, 1);
+        assert.ok(notes.every(({ content }) => content !== rejectedReasoning));
         const reasoning = await clientRead(engine, db, { workspaceId, sessionId, statement: parseSingleStatement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
         assert.equal(reasoning.content, acceptedReasoning);
     } finally { await db.close(); }
@@ -443,7 +442,7 @@ for (const scenario of ["add", "inline", "accept", "reject", "cancel", "invalid"
             PlurnkParser.frame("NOTE", "Observe the result."),
         ].join("\n\n");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
-            makeRawMockResponse(source), makeRawMockResponse(PlurnkParser.frame("SEND [200]", "Finished.")),
+            makeRawMockResponse(source), makeRawMockResponse(PlurnkParser.frame("DONE", "Finished.")),
         ] });
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider, hostPaths });
@@ -589,14 +588,14 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
     const read = frame("READ (ops://analyst/1/2) <1,-1>", null);
     const { db, result, provider, rows, sessionId } = await run("envelope-source", "Work, curate, then inspect your original program.", [
         say(first, frame("NOTE", "REASONING-MEMORY: independent reasoning note.")),
-        say(curate), say(read), say(frame("SEND [200]", "Complete.")),
+        say(curate), say(read), say(frame("DONE", "Complete.")),
     ], 5);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 4);
     const edit = frame("EDIT (workspace:///memory.md) <!-- remember -->", body);
     assert.equal(previous(provider.received[1]), first, "EDIT and NOTE replay whole");
-    assert.match(userText(provider.received[1]), /REASONING-MEMORY/u);
+    assert.doesNotMatch(userText(provider.received[1]), /REASONING-MEMORY/u);
     assert.doesNotMatch(userText(provider.received[1]), /CURATABLE-MEMORY/u, "the paired NOTE receipt does not duplicate its body");
     assert.equal(previous(provider.received[2]), edit, "the curated NOTE leaves the replay; the surviving EDIT remains");
     assert.doesNotMatch(userText(provider.received[2]), /CURATABLE-MEMORY/u, "the curated NOTE has no historical replay duplicate");
@@ -611,7 +610,7 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
 test("{§turn-source-resources}: initialization has no replay; canonical content carries interstitial text as the NOTEs it became and preserves row chronology", async (t) => {
     const canonical = `${frame("NOTE", "Let me look around first.")}\n\n${surveyRead}\n\n${frame("NOTE", "Bearings: nothing read yet.")}\n\n${frame("NOTE", "Done for now.")}`;
     const { db, result, provider, rows } = await run("envelope-chronology", "Answer.", [
-        say(`Let me look around first.\n\n${surveyRead}\n\n${frame("NOTE", "Bearings: nothing read yet.")}\n\nDone for now.`), say(frame("SEND [200]", "Answer.")),
+        say(`Let me look around first.\n\n${surveyRead}\n\n${frame("NOTE", "Bearings: nothing read yet.")}\n\nDone for now.`), say(frame("DONE", "Answer.")),
     ], 3);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
@@ -657,7 +656,7 @@ test("{§turn-source-resources}: a scoped KILL cannot partially curate a program
         say(frame("EDIT (workspace:///scope.md)", "line one\nline two\nline three")),
         say(frame("KILL (log:///1/2/2/emission) <1,-1>", null)),
         say(frame("KILL (log:///1/2/*) <2,3>", null)),
-        say(frame("KILL (log:///1/2/2/emission)", null)), say(frame("SEND [200]", "Answer.")),
+        say(frame("KILL (log:///1/2/2/emission)", null)), say(frame("DONE", "Answer.")),
     ], 6);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
@@ -674,7 +673,7 @@ test("{§turn-source-resources}: a scoped KILL cannot partially curate a program
 
 test("{§turn-source-resources} {§emission-admission}: an echoed emission heading is tolerated and dropped, never a NOTE, never replayed", async (t) => {
     const { db, result, provider, rows } = await run("envelope-echo", "Answer.", [
-        say(`### log:///1/2/2/emission (ops://exampleSessionName/1/2) · 30\n\n${surveyRead}\n\n${frame("NOTE", "Noted.")}`), say(frame("SEND [200]", "Answer.")),
+        say(`### log:///1/2/2/emission (ops://exampleSessionName/1/2) · 30\n\n${surveyRead}\n\n${frame("NOTE", "Noted.")}`), say(frame("DONE", "Answer.")),
     ], 3);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
@@ -906,7 +905,7 @@ test("{§op-methods-op-dispatch} escaped and URL selectors read and edit the int
                 frame(`READ (${PathSyntax.escapeTarget(String.raw`a\*.txt`)})`, null),
             ].join("\n\n"), 50),
             makeMockResponse(frame(`EDIT (${url}) <1,-1>`, "Revised\n"), 50),
-            makeMockResponse(frame("SEND [200]", "Finished."), 50),
+            makeMockResponse(frame("DONE", "Finished."), 50),
         ] });
         await withDaemon(provider, async (db, _daemon, addr) => {
             const client = await connect(addr);
@@ -1227,7 +1226,7 @@ test("{§turn-record}: log KILL selects the pre-program snapshot, not rows emitt
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         { assistant: { content: "````FIND (workspace:///*)````\n````KILL (log:///1/2/*)````\n````NOTE\nContinue after curating the observed pre-program row.\n````", reasoning: null } },
-        { assistant: { content: "````SEND [200]\ndone\n````", reasoning: null } },
+        { assistant: { content: "````DONE\ndone\n````", reasoning: null } },
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1267,7 +1266,7 @@ test("{§op-methods-op-dispatch}: FIND observes an entry created by EDIT in the 
         // Turn 1: write, then read-back in the same turn; continue (same-turn completion would
         // — correctly — trip the weigh-before-conclude 409; that gate is not under test here).
         makeMockResponse("\n````EDIT (workspace:///abs/module-loader-spec.md)\nthe spec body\n````\n\n````FIND (workspace:///abs/**)````\n````NOTE\nwrote and listed\n````", 10),
-        makeMockResponse("````SEND [200]\ndone\n````", 10),
+        makeMockResponse("````DONE\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1290,7 +1289,7 @@ test("{§op-methods-op-dispatch}: each EDIT records its own revision; an earlier
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("\n````EDIT (workspace:///mode.md)\none\ntwo\nthree\nfour\n````\n\n````NOTE\nfixture created\n````", 10),
         makeMockResponse("\n````READ (workspace:///mode.md)````\n````EDIT (workspace:///mode.md) <4>\nFOUR\n````\n\n````EDIT (workspace:///mode.md) <2>\nTWO\n2.5\n````\n\n````NOTE\nmutated and observed\n````", 10),
-        makeMockResponse("\n````SEND [200]\ndone\n````", 10),
+        makeMockResponse("\n````DONE\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1328,7 +1327,7 @@ test("{§op-methods-op-dispatch}: overlapping numeric EDITs apply to successive 
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````EDIT (workspace:///atomic.md)\none\ntwo\nthree\n````\n\n````NOTE\nfixture\n````", 10),
         makeMockResponse("````EDIT (workspace:///atomic.md) <1,2>\nchanged\n````\n\n````EDIT (workspace:///atomic.md) <2,3>\nalso changed\n````\n\n````READ (workspace:///atomic.md)````\n````NOTE\nchecked\n````", 10),
-        makeMockResponse("````SEND [200]\ndone\n````", 10),
+        makeMockResponse("````DONE\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1358,7 +1357,7 @@ test("{§edit}: a two-anchor whole-line range survives the composed EDIT path", 
 \`\`\`\`NOTE
 verify
 \`\`\`\``, 10),
-        makeMockResponse("\n````SEND [200]\ndone\n````", 10),
+        makeMockResponse("\n````DONE\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1399,7 +1398,7 @@ replacement
 \`\`\`\`NOTE
 verify
 \`\`\`\``, 10),
-        makeMockResponse("\n````SEND [200]\ndone\n````", 10),
+        makeMockResponse("\n````DONE\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

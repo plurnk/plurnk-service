@@ -374,8 +374,8 @@ Wait for the child.
 
 test("{§session-causal-admission}: cancellation wins over completion with an unread arrival and survives restart", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("````SEND [200]\nFinished the original request.\n````"),
-        makeMockResponse("````SEND [200]\nIndependent new request completed.\n````"),
+        makeMockResponse("````DONE\nFinished the original request.\n````"),
+        makeMockResponse("````DONE\nIndependent new request completed.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-prompt-promotion" });
@@ -590,7 +590,7 @@ test("{§session-wait-timing}: a message's reported and actual receiving loop ag
 test("{§session-causal-admission}: a concurrent cancellation leaves no runnable orphan message", async (t) => {
     const provider = new Mock({ contextWindow: 65536, responses: [
         makeMockResponse("````WAIT\nWait.\n````"),
-        makeMockResponse("````SEND [200]\nMust not execute the cancelled follow-up.\n````"),
+        makeMockResponse("````DONE\nMust not execute the cancelled follow-up.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-admission-race" });

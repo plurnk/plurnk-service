@@ -3,8 +3,10 @@ import type {
     BareStatement,
     CopyStatement,
     DispositionStatement,
+    DoneStatement,
     EditStatement,
     ExecStatement,
+    FailStatement,
     FindStatement,
     ForkStatement,
     KillStatement,
@@ -26,9 +28,11 @@ import type {
 import type {
     BareStatementContext,
     CopyStatementContext,
+    DoneStatementContext,
     EditStatementContext,
     ExecModifiersContext,
     ExecStatementContext,
+    FailStatementContext,
     FindStatementContext,
     FirstResourceSelectionContext,
     ForkStatementContext,
@@ -191,7 +195,9 @@ export default class AstBuilder {
         if (fences % 2 === 0 || !/^ {0,3}`{3,}[ \t\r]*$/u.test(lines.at(-1)!)) return statement;
         const kept = lines.slice(0, -1).join("\n").replace(/\r?\n$/u, "");
         const body = kept === "" ? null : kept;
-        if (statement.op === "SEND") return { ...statement, body: body === null ? null : AstBuilder.#parseSendBody(body) };
+        if (statement.op === "SEND" || statement.op === "DONE" || statement.op === "FAIL") {
+            return { ...statement, body: body === null ? null : AstBuilder.#parseSendBody(body) };
+        }
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the statement with its body trimmed is the same op; the union's spread cannot say so
         return { ...statement, body } as PlurnkStatement;
     }
@@ -201,6 +207,8 @@ export default class AstBuilder {
         if (ctx instanceof DispositionStatementContext) return this.#buildDisposition(ctx);
         if (ctx instanceof SendStatementContext) return this.#buildSend(ctx);
         const send = ctx.sendStatement(); if (send) return this.#buildSend(send);
+        const done = ctx.doneStatement(); if (done) return this.#buildDone(done);
+        const fail = ctx.failStatement(); if (fail) return this.#buildFail(fail);
         const find = ctx.findStatement(); if (find) return this.#buildFind(find);
         const read = ctx.readStatement(); if (read) return this.#buildRead(read);
         const edit = ctx.editStatement(); if (edit) return this.#buildEdit(edit);
@@ -398,6 +406,40 @@ export default class AstBuilder {
             aside: AstBuilder.#asideOf(ctx),
             ...slots,
             metadata: options.metadata,
+            body: raw !== null ? AstBuilder.#parseSendBody(raw) : null,
+            position,
+        };
+    }
+
+    #buildDone(ctx: DoneStatementContext): DoneStatement {
+        const position = AstBuilder.#positionOf(ctx);
+        const slots = this.#extractSlots(ctx.firstResourceSelection(), position);
+        const split = AstBuilder.#splitInlineBody(ctx, position);
+        const options = this.#liftBareOptionObject("DONE", AstBuilder.#metadataFromCtx(ctx), split, position);
+        const raw = options.lifted ? split.below : this.#headingBody("DONE", ctx, split.inline, position);
+        return {
+            op: "DONE",
+            aside: AstBuilder.#asideOf(ctx),
+            target: slots.target,
+            metadata: options.metadata,
+            lineMarker: null,
+            body: raw !== null ? AstBuilder.#parseSendBody(raw) : null,
+            position,
+        };
+    }
+
+    #buildFail(ctx: FailStatementContext): FailStatement {
+        const position = AstBuilder.#positionOf(ctx);
+        const slots = this.#extractSlots(ctx.firstResourceSelection(), position);
+        const split = AstBuilder.#splitInlineBody(ctx, position);
+        const options = this.#liftBareOptionObject("FAIL", AstBuilder.#metadataFromCtx(ctx), split, position);
+        const raw = options.lifted ? split.below : this.#headingBody("FAIL", ctx, split.inline, position);
+        return {
+            op: "FAIL",
+            aside: AstBuilder.#asideOf(ctx),
+            target: slots.target,
+            metadata: options.metadata,
+            lineMarker: null,
             body: raw !== null ? AstBuilder.#parseSendBody(raw) : null,
             position,
         };

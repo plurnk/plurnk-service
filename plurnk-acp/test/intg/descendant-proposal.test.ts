@@ -39,8 +39,8 @@ test(
                         "````NOTE\nConfirming the write.\n````",
                     10,
                 ),
-                makeMockResponse("````SEND [200]\nChild work complete.\n````", 10),
-                makeMockResponse("````SEND [200]\nDelegated work confirmed.\n````", 10),
+                makeMockResponse("````DONE\nChild work complete.\n````", 10),
+                makeMockResponse("````DONE\nDelegated work confirmed.\n````", 10),
             ],
         });
         const db = await openTestDatabase();

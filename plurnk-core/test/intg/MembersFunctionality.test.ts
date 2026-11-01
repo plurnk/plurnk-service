@@ -88,7 +88,7 @@ for (const decision of ["auto", "accept", "reject"] as const) test(`{§op-method
                 PlurnkParser.frame("READ (loose.md)", ""),
                 PlurnkParser.frame("NOTE", "Review the admitted file."),
             ].join("\n\n")),
-            makeMockResponse(PlurnkParser.frame("SEND [200]", "Read the file.")),
+            makeMockResponse(PlurnkParser.frame("DONE", "Read the file.")),
         ] });
         const daemon = new Daemon({ db, provider });
         const results: Array<{ status: number; body?: string }> = [];

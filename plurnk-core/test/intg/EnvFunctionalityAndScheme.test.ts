@@ -36,7 +36,7 @@ for (const scope of ["session", "workspace"] as const) {
                 PlurnkParser.frame("sh", 'printf "%s" "$SETTLEMENT_WITNESS"'),
                 PlurnkParser.frame("NOTE", "Review the shell output."),
             ].join("\n\n")),
-            makeRawMockResponse(PlurnkParser.frame("SEND [200]", "Finished.")),
+            makeRawMockResponse(PlurnkParser.frame("DONE", "Finished.")),
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); });

@@ -64,7 +64,11 @@ export const txBody = (tx: unknown, attrs?: Readonly<Record<string, unknown>>, p
     return "";
 };
 
-export const cleanReceipt = (rx: unknown): {
+export const cleanReceipt = (
+    rx: unknown,
+    bodyUrl?: string,
+    targetName?: string,
+): {
     readonly receipt: unknown;
     readonly contentBlocks: ToolCallContent[];
 } => {
@@ -77,10 +81,30 @@ export const cleanReceipt = (rx: unknown): {
         };
     }
     const rawContent = typeof parsed.content === "string" && parsed.content.length > 0 ? parsed.content : null;
-    const kept = Object.entries(parsed).filter(([key]) => !MODEL_FACTS.has(key));
+    const status = typeof parsed.status === "number" ? parsed.status : 200;
+    const useReference = rawContent !== null && status < 400 && typeof bodyUrl === "string" && bodyUrl.length > 0;
+    const kept = Object.entries(parsed).filter(
+        ([key]) => !MODEL_FACTS.has(key) && (!useReference || key !== "content"),
+    );
     const receipt = Object.fromEntries(kept);
     const contentBlocks: ToolCallContent[] = [];
-    if (rawContent !== null) {
+    if (useReference) {
+        const mimeType =
+            typeof parsed.mimetype === "string" && parsed.mimetype.length > 0 ? parsed.mimetype : "text/plain";
+        contentBlocks.push({
+            type: "content",
+            content: { type: "text", text: JSON.stringify(receipt) },
+        });
+        contentBlocks.push({
+            type: "content",
+            content: {
+                type: "resource_link",
+                uri: bodyUrl,
+                name: targetName ?? bodyUrl,
+                mimeType,
+            },
+        });
+    } else if (rawContent !== null) {
         contentBlocks.push({
             type: "content",
             content: { type: "text", text: rawContent },
@@ -102,7 +126,7 @@ export const isResponseMessage = (
     sessionId: string,
 ): boolean => {
     if ("inherited_history" in entry && entry.inherited_history === 1) return false;
-    if (entry.op !== "SEND" && entry.op !== "KILL") return false;
+    if (entry.op !== "SEND" && entry.op !== "DONE" && entry.op !== "FAIL" && entry.op !== "KILL") return false;
     const statusRx = statusOf(entry);
     if (statusRx < 200 || statusRx >= 300) return false;
     if (text.trim().length === 0) return false;
@@ -118,7 +142,7 @@ export const isResponseMessage = (
     if (typeof attrs.to === "string" && (attrs.to.startsWith("session://") || attrs.to.startsWith("workspace://"))) return false;
     if (isRecord(parsedRx) && Array.isArray(parsedRx.repliedTo)) return true;
     if (attrs.kind === "response" || attrs.kind === "message") return true;
-    if (entry.op === "SEND" && (entry.scheme === null || entry.scheme === undefined || entry.scheme === "acp") && !entry.pathname) return true;
+    if ((entry.op === "SEND" || entry.op === "DONE" || entry.op === "FAIL") && (entry.scheme === null || entry.scheme === undefined || entry.scheme === "acp") && !entry.pathname) return true;
     return false;
 };
 

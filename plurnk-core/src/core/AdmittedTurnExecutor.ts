@@ -24,8 +24,8 @@ import { ENGINE_PROBLEMS } from "./turn-signals.ts";
 import type { ParseErrorInfo } from "./EmissionSplit.ts";
 import type { EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult, AdmittedTextSource } from "./TurnRunner.ts";
 
-// SEND recipients own their input; resource operations use the manifest.
-const OWNS_METADATA: ReadonlySet<string> = new Set(["SEND"]);
+// SEND/DONE/FAIL recipients own their input; resource operations use the manifest.
+const OWNS_METADATA: ReadonlySet<string> = new Set(["SEND", "DONE", "FAIL"]);
 
 // The exec scheme's turn settlement: its own hook, read where a turn settles.
 const settlesTurnSpawns = (handler: object | undefined): handler is {

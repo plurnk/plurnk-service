@@ -523,7 +523,7 @@ test("{§log-history-projection} a KILL that worked never renders; one that matc
         "````KILL (log:///1/**/READ) <2,-1>````\n````KILL (log:///1/**/EDIT)````\n````KILL (log:///9/9/9)````\n````NOTE\ncurated\n````",
         "````KILL (log:///1/**/EDIT)````\n````READ (log:///1/3/2/KILL)````\n````READ (workspace:///note)````\n````KILL (workspace:///note)````\n````NOTE\nverified\n````",
         "````NOTE\nthe mismatch has been seen; moving on\n````",
-        "````SEND [200]\ndone\n````",
+        "````DONE\ndone\n````",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -562,7 +562,7 @@ test("{§log-history-projection} a KILL that worked never renders; one that matc
             }>({ loop_id: result.loopId });
             const recordedKills = history.filter(({ op, pathname }) => op === "KILL" && pathname !== null);
             assert.deepEqual(recordedKills.map(({ status_rx }) => status_rx), [200, 200, 404, 204, 200]);
-            assert.deepEqual(history.filter(({ op, pathname, rx }) => op === "SEND" && pathname === null && JSON.parse(rx).completion === 200)
+            assert.deepEqual(history.filter(({ op, pathname, rx }) => op === "DONE" && pathname === null && JSON.parse(rx).completion === 200)
                 .map(({ status_rx }) => status_rx), [200], "the final reply resolves the message without curating a resource");
             assert.ok(recordedKills.every(({ active }) => active === 1), "packet suppression does not retire or delete receipt history");
             assert.equal(JSON.parse(recordedKills[0].rx).matched, 1, "the broad sweep matches the file READ; initialization reads nothing back ({§session-initialization-entry})");
@@ -957,6 +957,29 @@ test(`{§db-migrations} {§functionality-coordinator}: a ${V5_0_0_CHAPTER_10.lab
     } finally { after.close(); }
 });
 
+test(`{§db-migrations} {§message-completion} {§env-delta}: a ${V5_0_0.label} database upgrades views to include DONE and FAIL responses and ambient candidates`, async (t) => {
+    const path = await baseline(t, V5_0_0);
+    const upgraded = await openMigrated(path);
+    try {
+        const workspaceId = await insertWorkspace(upgraded, "doneFailViews");
+        const parentId = await insertSession(upgraded, workspaceId, null, "root");
+        const childId = await insertSession(upgraded, workspaceId, parentId, "child");
+        const loopId = await insertLoop(upgraded, childId, 1, "Ask");
+        const engine = new Engine({ db: upgraded, schemes: new SchemeRegistry() });
+        await engine.runTurn({
+            workspaceId, sessionId: childId, loopId, messages: [],
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````DONE\nDone answer.\n````", reasoning: null } }] }),
+        });
+    } finally { await upgraded.close(); }
+    const after = new DatabaseSync(path);
+    try {
+        const responses = after.prepare("SELECT content FROM log_responses ORDER BY id").all() as Array<{ content: string }>;
+        assert.deepEqual(responses.map((row) => ({ ...row })), [{ content: "Done answer." }]);
+        const candidates = after.prepare("SELECT op FROM ambient_events WHERE op IN ('DONE', 'FAIL') ORDER BY source_record_id").all() as Array<{ op: string }>;
+        assert.deepEqual(candidates.map((row) => ({ ...row })), [{ op: "DONE" }]);
+    } finally { after.close(); }
+});
+
 test("{§db-migrations}: a database from before the 5.0.0 support floor or from a newer release is refused naming both versions read", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-pre-floor-"));
     t.after(() => rm(root, { recursive: true, force: true }));
@@ -977,14 +1000,14 @@ test("{§db-migrations}: a database from before the 5.0.0 support floor or from 
     finally { raw.close(); }
     await assert.rejects(
         () => openMigrated(newerPath),
-        /database schema \(version 99\) is newer than this build \(schema version 11\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
+        /database schema \(version 99\) is newer than this build \(schema version 12\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
     );
 });
 
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.equal(versions.length, V5_0_0.version, "the 5.0.0 baseline versions are all present");
+    assert.equal(versions.length, 12, "all migration versions are present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});

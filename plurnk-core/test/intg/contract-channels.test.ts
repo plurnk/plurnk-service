@@ -635,7 +635,7 @@ test("{§channel-selection} channel exploration across operation owners permits 
             response("````EDIT (workspace:///note)\nretained text\n````"),
             ...misses.map((operation) => response(operation)),
             response("````READ (workspace:///note)````"),
-            { assistant: { content: "````SEND [200]\nRetrieved the retained text.\n````", reasoning: null } },
+            { assistant: { content: "````DONE\nRetrieved the retained text.\n````", reasoning: null } },
         ] });
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 15 });
         assert.equal(result.result.status, 200, JSON.stringify(result.result));

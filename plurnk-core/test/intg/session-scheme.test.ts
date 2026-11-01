@@ -1105,11 +1105,11 @@ test("{§op-methods-op-dispatch} KILL(session) settles before same-turn completi
 
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: {
-                content: "```KILL (session://leftover-session)\n```\n\n```SEND [200]\nDone, session killed.\n```", reasoning: null,
+                content: "```KILL (session://leftover-session)\n```\n\n```DONE\nDone, session killed.\n```", reasoning: null,
             } }] }),
             workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
         });
-        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["KILL", 200], ["SEND", 200]]);
+        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["KILL", 200], ["DONE", 200]]);
         const wstatus = await db.test_get_loop_status.get<{ status: number }>({ id: sessionLoop });
         assert.equal(wstatus?.status, 499, "the killed session's loop is 499 NOW, not next turn — KILL landed before the turn moved on");
         assert.equal(result.status, 200, "the stopped session is no longer live pending work and KILL permits completion");
@@ -1173,7 +1173,7 @@ for (const answer of ["", "The module was tested."]) {
             const collected = await readThroughScheme("session", null, readStmt(sessionPath("req-test")), makeSchemeCtx({ db, workspaceId, sessionId: reader }));
             assert.equal(collected.status, 425);
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: PlurnkParser.frame("SEND [200]", answer), reasoning: null } },
+                { assistant: { content: PlurnkParser.frame("DONE", answer), reasoning: null } },
             ] });
             const completed = await engine.runTurn({ provider, workspaceId, sessionId: session, loopId: wLoop, messages: [] });
             assert.equal(completed.status, 200, "explicit completion is independent of answer delivery");
@@ -1285,13 +1285,13 @@ for (const c of CASES) {
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````WORK (session://counter)\nWrite the number 3 to count.txt and conclude.\n````\n\n````WAIT\nwaiting\n````", 10),
             makeMockResponse("````EDIT (count.txt)\n3\n````\n\n````NOTE\nwrote\n````", 10),
-            makeMockResponse("````SEND [200]\nwritten\n````", 10),
+            makeMockResponse("````DONE\nwritten\n````", 10),
             makeMockResponse(`${c.read}
 
 \`\`\`\`NOTE
 reading
 \`\`\`\``, 10),
-            makeMockResponse("````SEND [200]\ndone\n````", 10),
+            makeMockResponse("````DONE\ndone\n````", 10),
         ] });
         try {
             await withDaemon(mock, async (db, _daemon, addr) => {
@@ -1336,8 +1336,8 @@ test("{§child-orientation} a child's packet names its parent session; the root'
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         makeMockResponse("````WORK (session://counter)\nReply with the number 3.\n````\n\n````WAIT\nwaiting\n````", 10),
-        makeMockResponse("````SEND [200]\n3\n````", 10),
-        makeMockResponse("````SEND [200]\ndone\n````", 10),
+        makeMockResponse("````DONE\n3\n````", 10),
+        makeMockResponse("````DONE\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1388,10 +1388,10 @@ test("{§session-scheme} ping/pong: WORK spawns a session once, then WORK to the
     // resume before the child answers, so one Mock serves both sessions deterministically.
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````WORK (session://pong)\nping 1\n````\n\n````WAIT\nawaiting pong\n````", 10),
-        makeMockResponse("````SEND [200]\npong 1\n````", 10),
+        makeMockResponse("````DONE\npong 1\n````", 10),
         makeMockResponse("````WORK (session://pong)\nping 2\n````\n\n````WAIT\nawaiting pong again\n````", 10),
-        makeMockResponse("````SEND [200]\npong 2\n````", 10),
-        makeMockResponse("````SEND [200]\nheard pong 1 and pong 2\n````", 10),
+        makeMockResponse("````DONE\npong 2\n````", 10),
+        makeMockResponse("````DONE\nheard pong 1 and pong 2\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1428,8 +1428,8 @@ test("{§session-scheme} a held name: FORK is 409 naming the working forms, WORK
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````WORK (session://pong)\nping\n````\n\n````WAIT\nawaiting pong\n````", 10),
-        makeMockResponse("````SEND [200]\npong\n````", 10),
-        makeMockResponse("````SEND [200]\ndone\n````", 10),
+        makeMockResponse("````DONE\npong\n````", 10),
+        makeMockResponse("````DONE\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -1482,8 +1482,8 @@ const parentThenChild = (brief: string, work: string) => new Mock({ contextWindo
 \`\`\`\`WAIT
 delegated
 \`\`\`\``, 10),
-    makeMockResponse("````SEND [200]\nchild done\n````", 10),
-    makeMockResponse("````SEND [200]\nparent done\n````", 10),
+    makeMockResponse("````DONE\nchild done\n````", 10),
+    makeMockResponse("````DONE\nparent done\n````", 10),
 ] });
 
 const childPrompts = async (db: Db, parentSessionId: number) => {
@@ -1543,7 +1543,7 @@ test("{§session-scheme}: a missing resource is the operation's failure and spaw
     try {
         const mock = new Mock({ contextWindow: 16384, responses: [
             makeMockResponse("````WORK (missing.md)\n````\n\n````WORK (session://bad/path)\nx\n````\n\n````NOTE\ntried\n````", 10),
-            makeMockResponse("````SEND [200]\ngiving up\n````", 10),
+            makeMockResponse("````DONE\ngiving up\n````", 10),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

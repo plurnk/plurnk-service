@@ -54,7 +54,7 @@ const contentResponse = (content: string): MockResponse => ({
 
 // A complete, admitted draining turn. Its only job is to run so the model's
 // next packet drains the notices buffer on read.
-const drainTurn = contentResponse("````SEND [200]\ndrained\n````");
+const drainTurn = contentResponse("````DONE\ndrained\n````");
 
 // A provider transport anomaly notice: the provider notice path carries observations
 // such as a decode escaping into a discarded channel ({§provider-instantiation} grades nothing).
@@ -174,7 +174,7 @@ for (const fail of [false, true]) {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_workspaceId, { notice }) => {
             if (fail && notice.kind === "parse_advisory") throw cause;
         } });
-        const provider = new Mock({ contextWindow: 100_000, responses: [contentResponse("````NOTE remember\n````\n\n````SEND [200]\ndone\n````")] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [contentResponse("````NOTE remember\n````\n\n````DONE\ndone\n````")] });
         const running = engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [] });
         if (fail) await assert.rejects(running, (error) => error === cause);
         else assert.equal((await running).result.status, 200);
@@ -510,7 +510,7 @@ test("{§operation-fences}: literal programs inside a longer fence produce no sp
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const emission = "`````EDIT (workspace:///a.md) <!-- first note -->\nalpha\n````EDIT (workspace:///b.md) <!-- literal example -->\nbeta\n````\n````EDIT (workspace:///c.md)\ngamma\n````\n`````\n````NOTE\ncontinue\n````";
-        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("````SEND [200]\ndone\n````")] });
+        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("````DONE\ndone\n````")] });
         const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(t1.emissionAttempts, 1);
         const edits = t1.outcomes.filter(({ op }) => op === "EDIT");

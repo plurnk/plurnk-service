@@ -132,41 +132,38 @@ const setupRange = async () => {
     return { db, engine, workspaceId, sessionId, loopId };
 };
 
-for (const channel of ["content", "reasoning"] as const) {
-    for (const [scope, end] of [["<395,12>", 406], ["<395,+12>", 407]] as const) {
-        test(`{§matcher-prefix-claims} ${channel} READ ${scope} returns the exact lines, preserves source and warns without a strike`, async (t) => {
-            const { db, engine, ...context } = await setupRange();
-            t.after(() => db.close());
-            const lines = Array.from({ length: 410 }, (_, i) => `line ${i + 1}`);
-            await seedEntryWithChannel(db, { workspaceId: context.workspaceId, pathname: "/range.txt", content: lines.join("\n") });
-            const emission = PlurnkParser.frame(`READ (workspace:///range.txt) ${scope}`, null);
-            const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: "", reasoning: null, [channel]: emission } },
-                { assistant: { content: PlurnkParser.frame("SEND [200]", "done"), reasoning: null } },
-            ] });
-            const first = await engine.runTurn({ ...context, provider, messages: [] });
-            const second = await engine.runTurn({ ...context, provider, messages: [] });
-            assert.equal(first.status, 102);
-            assert.equal(second.status, 200);
-            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-            const read = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(row.logPath));
-            assert.ok(read, "the explicit READ has its own receipt");
-            if (channel === "content") assert.equal(packetSection(packet, "emission-history"), PlurnkParser.frame(`READ (workspace:///range.txt) <395,${end}>`, null));
-            else assert.equal(read.path, "workspace:///range.txt", "an unpaired reasoning READ remains self-describing");
-            const shown = String(read?.body).split("\n").filter(Boolean).map((line) => line.replace(/^\s*\d+<@[0-9A-Za-z]{5}>/u, ""));
-            assert.deepEqual(shown, lines.slice(394, end));
-            const notice = packetSection(packet, "notices");
-            assert.ok(notice.includes(`Scope ${scope} was read as <395,${end}>.`), notice);
-            assert.equal(notice.split("\n").filter((line) => line.includes("Scope ")).length, 1);
-            assert.doesNotMatch(notice, /strike|no_operation|No valid Operation/u);
-            const outcomes = await db.test_log_entries_by_turn.all<{ op: string; pathname: string; status_rx: number }>({ turn_id: first.turnId });
-            assert.deepEqual(outcomes.filter(({ op, pathname }) => op === "READ" && pathname === "/range.txt").map(({ status_rx }) => status_rx), [200]);
-            assert.ok(outcomes.every(({ status_rx }) => status_rx < 400), JSON.stringify(outcomes));
-            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: context.sessionId });
-            assert.ok(sources.some(({ turn_id, kind, content }) => turn_id === first.turnId && kind === (channel === "content" ? "ops" : "reasoning") && content === emission),
-                "normalization must not rewrite the forensic emission");
-        });
-    }
+for (const [scope, end] of [["<395,12>", 406], ["<395,+12>", 407]] as const) {
+    test(`{§matcher-prefix-claims} READ ${scope} returns the exact lines, preserves source and warns without a strike`, async (t) => {
+        const { db, engine, ...context } = await setupRange();
+        t.after(() => db.close());
+        const lines = Array.from({ length: 410 }, (_, i) => `line ${i + 1}`);
+        await seedEntryWithChannel(db, { workspaceId: context.workspaceId, pathname: "/range.txt", content: lines.join("\n") });
+        const emission = PlurnkParser.frame(`READ (workspace:///range.txt) ${scope}`, null);
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            { assistant: { content: emission, reasoning: null } },
+            { assistant: { content: PlurnkParser.frame("DONE", "done"), reasoning: null } },
+        ] });
+        const first = await engine.runTurn({ ...context, provider, messages: [] });
+        const second = await engine.runTurn({ ...context, provider, messages: [] });
+        assert.equal(first.status, 102);
+        assert.equal(second.status, 200);
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
+        const read = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(row.logPath));
+        assert.ok(read, "the explicit READ has its own receipt");
+        assert.equal(packetSection(packet, "emission-history"), PlurnkParser.frame(`READ (workspace:///range.txt) <395,${end}>`, null));
+        const shown = String(read?.body).split("\n").filter(Boolean).map((line) => line.replace(/^\s*\d+<@[0-9A-Za-z]{5}>/u, ""));
+        assert.deepEqual(shown, lines.slice(394, end));
+        const notice = packetSection(packet, "notices");
+        assert.ok(notice.includes(`Scope ${scope} was read as <395,${end}>.`), notice);
+        assert.equal(notice.split("\n").filter((line) => line.includes("Scope ")).length, 1);
+        assert.doesNotMatch(notice, /strike|no_operation|No valid Operation/u);
+        const outcomes = await db.test_log_entries_by_turn.all<{ op: string; pathname: string; status_rx: number }>({ turn_id: first.turnId });
+        assert.deepEqual(outcomes.filter(({ op, pathname }) => op === "READ" && pathname === "/range.txt").map(({ status_rx }) => status_rx), [200]);
+        assert.ok(outcomes.every(({ status_rx }) => status_rx < 400), JSON.stringify(outcomes));
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: context.sessionId });
+        assert.ok(sources.some(({ turn_id, kind, content }) => turn_id === first.turnId && kind === "ops" && content === emission),
+            "normalization must not rewrite the forensic emission");
+    });
 }
 
 test("{§matcher-prefix-claims} FIND selects positions and anchor inversions remain real range errors", async (t) => {

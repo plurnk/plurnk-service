@@ -15,7 +15,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { GateTracker } from "./gates.ts";
-import { attrRecord, parseJsonOrValue, txBody } from "./log-entry-projection.ts";
+import { attrRecord, extractMessageId, parseJsonOrValue, txBody } from "./log-entry-projection.ts";
 import type SessionTranslator from "./SessionTranslator.ts";
 import {
     buildAvailableCommands,
@@ -140,8 +140,33 @@ export const dispatchDaemonEvent = (
                 gates.cancelProposalIfSettled(workspaceId, entryId, entryRec.state);
             }
             if (isLogEntryPayload(params)) {
-                enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, () => {
+                enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
                     broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.logEntry(params));
+                    if (entryRec.origin === "_plurnk" && entryRec.op === "SEND") {
+                        const rawInbox = await seam.readInbox({ workspaceId, sessionId });
+                        broadcastSessionUpdate(workspaceId, sessionId, (s) => [
+                            {
+                                sessionId: s.acpSessionId,
+                                update: {
+                                    sessionUpdate: "notice",
+                                    severity: "info",
+                                    title: "workspace:state",
+                                    _meta: {
+                                        plurnk: {
+                                            status: {
+                                                inbox: rawInbox.map((msg) => ({
+                                                    path: msg.path,
+                                                    id: extractMessageId(msg.source ?? msg.path, s.acpSessionId),
+                                                    loopId: msg.loopId,
+                                                    lifecycle: msg.lifecycle,
+                                                })),
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        ]);
+                    }
                 });
             }
             const hasOtherWorkspaceSession = [...peers].some((peer) => {
@@ -209,7 +234,7 @@ export const dispatchDaemonEvent = (
                                 state: { state: "running" },
                                 _meta: enrichedChildMeta,
                             });
-                            if (entryRec.op === "SEND" && messageText.length > 0) {
+                            if ((entryRec.op === "SEND" || entryRec.op === "DONE" || entryRec.op === "FAIL") && messageText.length > 0) {
                                 const isChildToParent = entryRec.origin === "model";
                                 notifyPeerSession(peer, session.acpSessionId, {
                                     sessionUpdate: "session_message",
@@ -239,11 +264,16 @@ export const dispatchDaemonEvent = (
             const channel = typeof params.channel === "string" ? params.channel : null;
             if (entryId === null || sessionId === null) break;
             const streamMeta: Record<string, unknown> = {
+                entryId,
                 sessionId,
                 ...(target !== null ? { target } : {}),
                 ...(channel !== null ? { channel } : {}),
                 ...(typeof params.state === "string" ? { state: params.state } : {}),
                 ...(typeof params.contentLength === "number" ? { contentLength: params.contentLength } : {}),
+                ...(typeof params.mimetype === "string" ? { mimetype: params.mimetype } : {}),
+                ...(typeof params.loop_seq === "number" ? { loop_seq: params.loop_seq } : {}),
+                ...(typeof params.turn_seq === "number" ? { turn_seq: params.turn_seq } : {}),
+                ...(typeof params.sequence === "number" ? { sequence: params.sequence } : {}),
             };
             broadcastSessionUpdate(workspaceId, sessionId, (s) => [
                 {
@@ -291,10 +321,17 @@ export const dispatchDaemonEvent = (
                 : 200;
             if (entryId === null || sessionId === null) break;
             const concludedMeta: Record<string, unknown> = {
+                entryId,
                 sessionId,
                 ...(target !== null ? { target } : {}),
+                ...(typeof params.subscriptionId === "number" ? { subscriptionId: params.subscriptionId } : {}),
+                ...(typeof params.scheme === "string" ? { scheme: params.scheme } : {}),
                 ...(isRecord(params.result) ? { result: params.result } : {}),
-                ...(isRecord(params.summary) ? { summary: params.summary } : {}),
+                ...(typeof params.summary === "string" || isRecord(params.summary) ? { summary: params.summary } : {}),
+                ...(typeof params.wakeAction === "string" ? { wakeAction: params.wakeAction } : {}),
+                ...(typeof params.loop_seq === "number" ? { loop_seq: params.loop_seq } : {}),
+                ...(typeof params.turn_seq === "number" ? { turn_seq: params.turn_seq } : {}),
+                ...(typeof params.sequence === "number" ? { sequence: params.sequence } : {}),
             };
             enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, () => {
                 broadcastSessionUpdate(workspaceId, sessionId, (s) =>
@@ -322,8 +359,22 @@ export const dispatchDaemonEvent = (
             const sessionId = params.sessionId;
             gates.cancelSessionGates(workspaceId, sessionId);
             enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
-                const spend = await seam.sessionAccounting({ workspaceId, sessionId });
-                broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.terminated(params, spend));
+                const [spend, rawInbox] = await Promise.all([
+                    seam.sessionAccounting({ workspaceId, sessionId }),
+                    seam.readInbox({ workspaceId, sessionId }),
+                ]);
+                broadcastSessionUpdate(workspaceId, sessionId, (s) =>
+                    s.translator.terminated(
+                        params,
+                        spend,
+                        rawInbox.map((msg) => ({
+                            path: msg.path,
+                            id: extractMessageId(msg.source ?? msg.path, s.acpSessionId),
+                            loopId: msg.loopId,
+                            lifecycle: msg.lifecycle,
+                        })),
+                    ),
+                );
             });
             const status = params.result.status;
             const childState = params.hitMaxTurns || status === 429
@@ -347,7 +398,21 @@ export const dispatchDaemonEvent = (
                         notifyPeerSession(peer, session.acpSessionId, {
                             sessionUpdate: "subagent_update",
                             sessionId: formatSessionId(workspaceId, sessionName),
+                            title: sessionName,
                             state: childState,
+                            _meta: {
+                                plurnk: {
+                                    id: sessionId,
+                                    name: sessionName,
+                                    ...(sessionRow !== undefined
+                                        ? {
+                                              parentSessionId: sessionRow.parentSessionId,
+                                              kind: sessionRow.kind,
+                                              lifecycle: sessionRow.lifecycle,
+                                          }
+                                        : {}),
+                                },
+                            },
                         });
                         void Promise.all([
                             seam.sessionAccounting({ workspaceId, sessionId: session.sessionId }),
@@ -423,6 +488,19 @@ export const dispatchDaemonEvent = (
                                     title: childName,
                                     capabilities: { cancel: {} },
                                     state: { state: "requires_action" },
+                                    _meta: {
+                                        plurnk: {
+                                            id: proposal.sessionId,
+                                            name: childName,
+                                            ...(childRow !== undefined
+                                                ? {
+                                                      parentSessionId: childRow.parentSessionId,
+                                                      kind: childRow.kind,
+                                                      lifecycle: childRow.lifecycle,
+                                                  }
+                                                : {}),
+                                        },
+                                    },
                                 });
                             }
                             gates.dispatchToPeer(gate, peer, ancestorSession, seam, peers, notifyPeerSession, broadcastSessionUpdate);
@@ -474,6 +552,19 @@ export const dispatchDaemonEvent = (
                                     title: childName,
                                     capabilities: { cancel: {} },
                                     state: { state: "requires_action" },
+                                    _meta: {
+                                        plurnk: {
+                                            id: interaction.sessionId,
+                                            name: childName,
+                                            ...(childRow !== undefined
+                                                ? {
+                                                      parentSessionId: childRow.parentSessionId,
+                                                      kind: childRow.kind,
+                                                      lifecycle: childRow.lifecycle,
+                                                  }
+                                                : {}),
+                                        },
+                                    },
                                 });
                             }
                             gates.dispatchToPeer(gate, peer, ancestorSession, seam, peers, notifyPeerSession, broadcastSessionUpdate);
@@ -504,7 +595,11 @@ export const dispatchDaemonEvent = (
                     }
                 }
             }
-            if (targetSessionId !== null && notice.source === "engine:turn" && notice.kind === "turn_generated") {
+            if (
+                targetSessionId !== null &&
+                ((notice.source === "engine:turn" && notice.kind === "turn_generated") ||
+                    (notice.source === "engine:lifecycle" && notice.kind === "loop_status"))
+            ) {
                 enqueueWorkspaceSessionsTask(ctx, workspaceId, (sessions) => {
                     for (const peer of peers) {
                         const visited = new Set<BoundSession>();
@@ -517,16 +612,27 @@ export const dispatchDaemonEvent = (
                             ) {
                                 continue;
                             }
-                            void seam
-                                .sessionAccounting({ workspaceId, sessionId: session.sessionId })
-                                .then((spend) => {
+                            void Promise.all([
+                                seam.sessionAccounting({ workspaceId, sessionId: session.sessionId }),
+                                seam.pendingProposals(workspaceId),
+                                seam.pendingClientInteractions(workspaceId),
+                            ])
+                                .then(([spend, proposals, interactions]) => {
                                     notifyPeerSession(peer, session.acpSessionId, {
                                         sessionUpdate: "notice",
                                         severity: "info",
                                         title: "workspace:state",
                                         _meta: {
                                             plurnk: {
-                                                status: { spend },
+                                                status: {
+                                                    spend,
+                                                    descendants: buildSessionDescendants(
+                                                        sessions,
+                                                        proposals,
+                                                        interactions,
+                                                        session.sessionId,
+                                                    ),
+                                                },
                                             },
                                         },
                                     });

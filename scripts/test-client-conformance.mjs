@@ -308,7 +308,7 @@ try {
         || cliRecord.finalStatus !== 200
         || cliRecord.workspace?.name !== "installed-cli"
         || cliRecord.turnCount !== 2
-        || JSON.stringify(modelOps) !== JSON.stringify(["SEND"])) {
+        || JSON.stringify(modelOps) !== JSON.stringify(["DONE"])) {
         throw new Error(`installed CLI returned the wrong semantic record\n${cli.stdout}`);
     }
     const envInspected = await runClient(process.execPath, [
@@ -358,7 +358,7 @@ try {
     const fileRecord = JSON.parse(files.stdout);
     const fileOps = fileRecord.turns?.flatMap(({ ops }) => ops).filter(({ origin }) => origin === "model").map(({ op }) => op);
     if (fileRecord.finalStatus !== 200 || fileRecord.response !== "The installed file journey is complete."
-        || JSON.stringify(fileOps) !== JSON.stringify(["EDIT", "EDIT", "SEND"])
+        || JSON.stringify(fileOps) !== JSON.stringify(["EDIT", "EDIT", "DONE"])
         || await readFile(join(project, "integrity.txt"), "utf8") !== "after") {
         throw new Error(`installed file publication failed\n${files.stdout}\n${files.stderr}`);
     }
@@ -407,7 +407,7 @@ try {
     await tui.waitFor(/model \(Model\):/);
     await tui.exit();
     tui = undefined;
-    process.stdout.write("installed interactive TUI journey GREEN: Functionality + message/indexed READ + references + reasoning + NOTE + SEND + status\n");
+    process.stdout.write("installed interactive TUI journey GREEN: Functionality + message/indexed READ + references + reasoning + NOTE + DONE + status\n");
 
     tui = spawnInstalledTui(clientBin, [
         "--workspace", "installed-rejected",

@@ -32,7 +32,7 @@ for (const alias of ["ts", "javascript", "typescript", "node"] as const) {
         ].join("\n");
         const mock = new Mock({ contextWindow: 100_000, responses: [
             makeRawMockResponse(source, 10),
-            makeRawMockResponse("```SEND [200]\nResult observed.\n```", 10),
+            makeRawMockResponse("```DONE\nResult observed.\n```", 10),
         ] });
         await withDaemon(mock, async (db, daemon, addr) => {
             const client = await connect(addr);
@@ -102,7 +102,7 @@ for (const disablePython of [false, true]) {
             assert.ok(registry.entry(tag), `${tag} remains in the default composition`);
         }
 
-        const mock = new Mock({ contextWindow: 100000, responses: [makeMockResponse("````SEND [200]\nReady.\n````")] });
+        const mock = new Mock({ contextWindow: 100000, responses: [makeMockResponse("````DONE\nReady.\n````")] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {

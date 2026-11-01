@@ -16,7 +16,8 @@ test("{§turn-source-resources} the frozen projection keeps every header and bod
         "WORK (session://helper)",
         "SEND (session://helper)",
         "NOTE",
-        "SEND [200]",
+        "DONE",
+        "FAIL",
     ];
     const bodies = [
         null,
@@ -29,6 +30,7 @@ test("{§turn-source-resources} the frozen projection keeps every header and bod
         "Coordinate the investigation.",
         "Remember the conclusion.",
         "The complete final answer.",
+        "The failure explanation.",
     ];
     const source = headers.map((header, index) => PlurnkParser.frame(header, bodies[index])).join("\n\n");
     const parsed = PlurnkParser.parse(source, { executors: ["sh", "gitea"] });
@@ -66,14 +68,14 @@ test("{§turn-source-resources} a long body is frozen whole", () => {
 test("{§outside-text} comments outside operation fences are not part of a reply", () => {
     const emitted = [
         `${PlurnkParser.frame("EDIT (workspace:///notes.md)", "complete body")} <!-- imitated aside -->`,
-        PlurnkParser.frame("SEND [200]", "The answer."),
+        PlurnkParser.frame("DONE", "The answer."),
         "<!-- a trailing comment of its own -->",
     ].join("\n\n");
     const parsed = PlurnkParser.parse(emitted);
     const statements = parsed.items.filter((item) => item.kind === "statement").map((item) => (item as { statement: PlurnkStatement }).statement);
-    assert.deepEqual(statements.map(({ op }) => op), ["EDIT", "SEND"]);
+    assert.deepEqual(statements.map(({ op }) => op), ["EDIT", "DONE"]);
     assert.equal((statements[0] as EditStatement).body, "complete body");
-    assert.equal(statements[1]?.op === "SEND" ? statements[1].body?.raw : null, "The answer.");
+    assert.equal(statements[1]?.op === "DONE" ? statements[1].body?.raw : null, "The answer.");
     assert.deepEqual(parsed.items.filter((item) => item.kind === "text").map((item) => (item as { content: string }).content.trim()),
         ["<!-- imitated aside -->", "<!-- a trailing comment of its own -->"]);
 });

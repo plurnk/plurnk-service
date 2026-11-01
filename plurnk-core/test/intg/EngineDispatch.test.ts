@@ -12,7 +12,7 @@ import { type ParsedPath, type ReadStatement, type TextLineMarker, type EditStat
 import { type ResolvedEditStatement, type SchemeCtx } from "@plurnk/plurnk-schemes";
 import { openMigrated, insertWorkspace, insertSession, insertOperationTurn, seedEnvelope, insertLoop, insertTurn } from "./_db.ts";
 import { readThroughScheme, DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { urlPath, sendStmt } from "./_dsl.ts";
+import { urlPath, sendStmt, doneStmt } from "./_dsl.ts";
 import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -266,13 +266,13 @@ test("{§loop-completion}: retiring a failed receipt does not make it observed",
         const result = await engine.executeAdmittedTurn({ ...env, turnId, fromSequence: 2, origin: "model",
             source: null, emission: null, statements: [
                 killStmt({ target: urlPath("log", `/${coordinates.loop_seq}/${coordinates.turn_seq}/1/READ`) }),
-                { ...sendStmt(null), metadata: ["200"] },
+                doneStmt(null),
             ],
         });
         assert.equal(result.status, 102, "retiring the receipt cannot remove the observation barrier");
         assert.deepEqual(result.outcomes, [
             { op: "KILL", status: 200, problemType: null },
-            { op: "SEND", status: 200, problemType: null },
+            { op: "DONE", status: 200, problemType: null },
         ], "curation and delivery succeed independently of continuation");
         const history = await db.test_log_entries_by_turn.all<{ op: string; origin: string; active: number; status_rx: number }>({ turn_id: turnId });
         const receipt = history.find(({ op, origin }) => op === "READ" && origin === "model");

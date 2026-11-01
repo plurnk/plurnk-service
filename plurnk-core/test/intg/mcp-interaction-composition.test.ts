@@ -46,7 +46,7 @@ const setup = async (
     serverProposals(t, "accept");
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse(`${operation}\n\n${step("WAIT")}`),
-        makeMockResponse(PlurnkParser.frame("SEND [200]", "MCP result observed.")),
+        makeMockResponse(PlurnkParser.frame("DONE", "MCP result observed.")),
     ] });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, servers);
     const db = await openMigrated();
@@ -808,7 +808,7 @@ test("{§mcp-configuration} unsupported entries reach the model as diagnostics w
     const file = join(root, "mcp.json");
     await writeFile(file, JSON.stringify({ $schema: MCP_SCHEMA, mcpServers: { example: entry, legacy: { type: "sse", url: "https://example.org/mcp" } } }));
     const db = await openMigrated();
-    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 2 }, () => makeMockResponse("````SEND [200]\nChecked.\n````")) });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 2 }, () => makeMockResponse("````DONE\nChecked.\n````")) });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });

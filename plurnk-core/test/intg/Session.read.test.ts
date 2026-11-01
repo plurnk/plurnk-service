@@ -708,7 +708,7 @@ class CapturingMock extends Mock {
 }
 
 const turn = (ops: string, terminal = false) => ({
-    assistant: { content: `${ops}\n${PlurnkParser.frame(terminal ? "SEND [200]" : "NOTE", terminal ? "Skill inspected." : null)}`, reasoning: null },
+    assistant: { content: `${ops}\n${PlurnkParser.frame(terminal ? "DONE" : "NOTE", terminal ? "Skill inspected." : null)}`, reasoning: null },
 });
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");

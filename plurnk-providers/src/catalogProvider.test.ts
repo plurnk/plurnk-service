@@ -588,7 +588,7 @@ test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudg
                         role: "model",
                         parts: [
                             { text: "planning", thought: true },
-                            { text: "```NOTE\nPlan ready.\n```\n\n```SEND [200]\nCompleted.\n```" },
+                            { text: "```NOTE\nPlan ready.\n```\n\n```DONE\nCompleted.\n```" },
                         ],
                     },
                     finishReason: "MALFORMED_RESPONSE",
@@ -644,7 +644,7 @@ test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudg
                     role: "model",
                     parts: [
                         { text: "recovered thought", thought: true },
-                        { text: "```SEND [200]\nRecovered.\n```" },
+                        { text: "```DONE\nRecovered.\n```" },
                     ],
                 },
                 finishReason: "MAX_TOKENS",
@@ -674,7 +674,7 @@ test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudg
     }, "thinkingBudget is bounded by maxOutputTokens minus outputFloor");
     assert.equal(first?.assistant.finishReason, "stop");
     assert.equal((first?.assistantRaw as { rawFinishReason?: string } | undefined)?.rawFinishReason, "MALFORMED_RESPONSE");
-    assert.match(first?.assistant.content ?? "", /SEND \[200\]/);
+    assert.match(first?.assistant.content ?? "", /DONE/);
 
     const adaptive = catalogProviderFromEnv("google", {
         ...env,

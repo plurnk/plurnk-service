@@ -175,7 +175,7 @@ test("{§methods-invocation}: a turn's admitted reasoning rides its first model 
             PlurnkParser.frame("READ (workspace:///facts.txt)", null),
             PlurnkParser.frame("NOTE", "Answer from the facts."),
         ].join("\n\n"), "First turn reasoning."),
-        reasoned(PlurnkParser.frame("SEND [200]", "Done."), "Second turn reasoning."),
+        reasoned(PlurnkParser.frame("DONE", "Done."), "Second turn reasoning."),
     ] });
     await withDaemon(provider, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "reasoning-carrier", projectRoot: null });
@@ -193,7 +193,7 @@ test("{§methods-invocation}: a turn's admitted reasoning rides its first model 
             const rows = (await daemon.readLog({ workspaceId, sessionId, loopId: accepted.loopId }))
                 .filter((row) => row.origin === "model" && row.op !== null)
                 .toSorted((left, right) => left.id - right.id);
-            const carriers = [["READ", "First turn reasoning."], ["NOTE", null], ["SEND", "Second turn reasoning."]];
+            const carriers = [["READ", "First turn reasoning."], ["NOTE", null], ["DONE", "Second turn reasoning."]];
             assert.deepEqual(rows.map((row) => [row.op, row.reasoning ?? null]), carriers);
             assert.deepEqual(rows.map((row) => { const first = announced.get(row.id); return [first?.op, first?.reasoning ?? null]; }), carriers,
                 "each row's first announcement already carries what a read returns");
@@ -241,7 +241,7 @@ test("{§notifications}: provider SSE reaches standard ACP before the reasoning 
             assert.equal(events.filter(({ update }) => update.sessionUpdate === "agent_thought_chunk").length, 1);
         } finally {
             clearTimeout(timer);
-            send("</think>````SEND [200]\nDone.\n````", "stop");
+            send("</think>````DONE\nDone.\n````", "stop");
             controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
             controller.close();
             assert.equal((await run).status, 200);
@@ -318,7 +318,7 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
         for (const { name, sessionId } of sessions) assert.equal(observed.get(sessionId)!.join(""), `Thinking ${name}.`);
         for (const index of [1, 2, 0]) {
             const { name } = sessions[index];
-            emit(name, { content: `${style === "think-tags" ? "</think>" : ""}\`\`\`\`SEND [200]
+            emit(name, { content: `${style === "think-tags" ? "</think>" : ""}\`\`\`\`DONE
 ONLY_${name}
 \`\`\`\`` }, "stop", {
                 prompt_tokens: 10 + index, completion_tokens: 20 + index, total_tokens: 30 + 2 * index,
@@ -333,7 +333,7 @@ ONLY_${name}
             const calls = await db.test_model_calls.all<{ response: string }>({ turn_id: turnId });
             const response = JSON.parse(calls[0].response);
             assert.equal(response.assistant.reasoning, `Thinking ${name}.`);
-            assert.equal(response.assistant.content, `\`\`\`\`SEND [200]\nONLY_${name}
+            assert.equal(response.assistant.content, `\`\`\`\`DONE\nONLY_${name}
 \`\`\`\``);
             for (const other of sessions.filter((session) => session.sessionId !== sessionId)) {
                 assert.ok(!JSON.stringify(response.rawBody).includes(other.name), "forensic raw chunks belong to this request only");

@@ -1399,12 +1399,6 @@ test("{§fence-pairing}: unknown invocations retain inline chains, split heading
     ]) assert.deepEqual(statements(PlurnkParser.parse(source)).map(writtenOp), ["fresh", "READ"], source);
 });
 
-test("{§fence-pairing} {§op-shapes}: explicit invocation slots cannot admit executors from reasoning", () => {
-    const read = PlurnkParser.frame("READ (secret)", null);
-    assert.deepEqual(PlurnkParser.parseReasoningOperations(PlurnkParser.frame("fresh (lookup)", read)), []);
-    assert.deepEqual(PlurnkParser.parseReasoningOperations(PlurnkParser.frame("fresh [{}]", body)), []);
-});
-
 test("{§slot-order}: every executor's heading object is body, never inferred metadata", () => {
     for (const runtime of ["sh", "fresh"]) for (const executors of [[], [runtime]]) {
         const parsed = PlurnkParser.parse(`\`\`\`${runtime} (lookup) ${body}\nsecond line\n\`\`\``, { executors });
@@ -1460,6 +1454,10 @@ const SHAPES: readonly (readonly [heading: string, op: string, read: Read])[] = 
     ["MOVE (a.md) (b.md)", "MOVE", (_kind, _text, inline) => ({ advisory: ignored("MOVE", inline) })],
     ["SEND", "SEND", optioned("SEND", undefined)],
     ["SEND (session://x)", "SEND", optioned("SEND", undefined)],
+    ["DONE", "DONE", optioned("DONE", undefined)],
+    ["DONE (message://a/b)", "DONE", optioned("DONE", undefined)],
+    ["FAIL", "FAIL", optioned("FAIL", undefined)],
+    ["FAIL (message://a/b)", "FAIL", optioned("FAIL", undefined)],
     // BARE, WORK and FORK take an option block only after their target.
     ["BARE", "BARE", bodied("BARE")],
     ["BARE (p.md)", "BARE", optioned("BARE", "")],
@@ -1470,7 +1468,6 @@ const SHAPES: readonly (readonly [heading: string, op: string, read: Read])[] = 
     ["sh", "sh", bodied("sh")],
     ["NOTE", "NOTE", bodied("NOTE")],
     ["WAIT", "WAIT", bodied("WAIT")],
-    ["SEND [200]", "SEND", (kind, text, inline) => ({ ...bodied("SEND")(kind, text, inline), metadata: ["200"] })],
 ];
 
 const parse = (source: string) => PlurnkParser.parse(source, { executors: ["sh"] });
@@ -1576,11 +1573,11 @@ test("{§matcher-prefix-claims}: a refused heading still leaves its sibling exec
 
 test("{§operation-fences}: a reply's wider fence keeps operation examples literal", () => {
     const body = "Example:\n```READ (example.md)\n```\nThe answer continues.";
-    for (const heading of ["SEND [200]", "SEND [200] <!-- final -->"]) {
+    for (const [heading, op] of [["DONE", "DONE"], ["DONE <!-- final -->", "DONE"], ["FAIL", "FAIL"], ["FAIL <!-- final -->", "FAIL"]] as const) {
         const result = PlurnkParser.parse(PlurnkParser.frame(heading, body));
         const operations = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.deepEqual(operations.map(writtenOp), ["SEND"]);
-        assert.ok(operations[0].op === "SEND");
+        assert.deepEqual(operations.map(writtenOp), [op]);
+        assert.ok(operations[0].op === op);
         assert.equal(operations[0].body?.raw, body);
         assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     }
@@ -1671,37 +1668,6 @@ test("{§op-shapes} #713: NOTE-only turns continue without a synthetic lifecycle
     assert.equal(parsed.length, 1);
     assert.equal(parsed[0].op, "NOTE");
     assert.equal(PlurnkParser.stringify(parsed), frame("NOTE", "The test failed before our change."));
-});
-
-test("{§op-shapes}: reasoning notes preserve literal nested examples", () => {
-    const reasoning = [
-        "I should remember the observation.",
-        frame("NOTE", "The first probe ruled out the network."),
-        frame("EDIT (not-a-real-write)", "Never execute a reasoned edit."),
-        frame("SEND", frame("NOTE", "This is a quoted example, not a note.")),
-        frame("NOTE", "Try the local parser next."),
-    ].join("\n\n");
-    const notes = PlurnkParser.parseReasoningOperations(reasoning);
-    assert.deepEqual(notes.map((note) => note.body), [
-        "The first probe ruled out the network.",
-        "Try the local parser next.",
-    ]);
-    assert.ok(notes.every((note) => note.op === "NOTE"));
-});
-
-test("{§op-shapes}: enclosing code fences protect quoted NOTE examples", () => {
-    const example = frame("NOTE", "This is quoted, not retained memory.");
-    for (const enclosing of ["```", "`````", "`````text", "`````sh", "~~~", "~~~markdown"]) {
-        const closer = enclosing.match(/^[`~]+/)![0];
-        const quoted = `${enclosing}\n${example}\n${closer}`;
-        assert.deepEqual(PlurnkParser.parseReasoningOperations(quoted), [], enclosing);
-    }
-    const source = [
-        `\`\`\`\`\`text\n${example}\n\`\`\`\`\``,
-        frame("NOTE", "This is the actual determination."),
-    ].join("\n\n");
-    assert.deepEqual(PlurnkParser.parseReasoningOperations(source).map(({ body }) => body), ["This is the actual determination."]);
-    assert.deepEqual(PlurnkParser.parseReasoningOperations(example.split("\n").map((line) => `> ${line}`).join("\n")), []);
 });
 });
 
@@ -1865,9 +1831,6 @@ for (const op of ["READ", "FIND"]) {
             assert.equal(canonical, `${PlurnkParser.frame("NOTE", body)}\n\n${PlurnkParser.frame(`${op} (config.ts)`, null)}`);
             const again = PlurnkParser.parse(canonical);
             assert.deepEqual(again.items.filter((item) => item.kind === "error"), []);
-            const reasoning = PlurnkParser.parseReasoningOperations(source);
-            assert.deepEqual(reasoning.map((statement) => statement.op), ["NOTE", op]);
-            assert.equal(reasoning[0].body, body);
         });
     }
     test(`{§op-shapes}: ${op} keeps header selection independent of its annotation`, () => {
@@ -1915,11 +1878,13 @@ test("{§slot-order} zai run426: `WORK (session://…) <1,-1>` runs the WORK wit
     assert.ok(!diagnostics(text).some((entry) => entry.startsWith("error:")), "no hard diagnostic, no dead turn");
 });
 
-test("{§slot-order} FORK, BARE, NOTE and a recipientless SEND drop a scope in any position; a recipient SEND keeps its scope", () => {
+test("{§slot-order} FORK, BARE, DONE, FAIL, NOTE and a recipientless SEND drop a scope in any position; a recipient SEND keeps its scope", () => {
     for (const [input, op, message] of [
         ["```FORK (session://x) <@abcde,@fghij>\nTask.\n```", "FORK", "`FORK` takes a target only; the scope `<@abcde,@fghij>` was ignored."],
         ["```BARE <3> <!-- why -->\nPrompt.\n```", "BARE", "`BARE` takes a target only; the scope `<3>` was ignored."],
         ["```WORK <1,-1> (session://x)\nTask.\n```", "WORK", "`WORK` takes a target only; the scope `<1,-1>` was ignored."],
+        ["```DONE (message://a/b) <3>\nReply.\n```", "DONE", "`DONE` takes a target only; the scope `<3>` was ignored."],
+        ["```FAIL <3>\nFailure.\n```", "FAIL", "`FAIL` takes a target only; the scope `<3>` was ignored."],
         ["```NOTE <3>\nRemember.\n```", "NOTE", "`NOTE` takes no target or scope; the scope `<3>` was ignored."],
         ["```SEND <3>\nhi\n```", "SEND", "`SEND` without a recipient takes no scope; the scope `<3>` was ignored."],
     ] as const) {
@@ -2009,20 +1974,20 @@ const PLAN = "```NOTE <!-- plan -->\nExplain without running anything.\n```\n\n"
 
 test("{§fence-pairing}: a reply narrower than the fences wrapping its examples still holds them", () => {
     // The outer fence is three wide and the wrappers four, closed as the author closed it: with a wrapper's width.
-    const statements = ops(PLAN + "```SEND [200]\n" + REPLY_BODY + "\n````");
-    assert.deepEqual(statements.map((statement) => statement.op), ["NOTE", "SEND"]);
+    const statements = ops(PLAN + "```DONE\n" + REPLY_BODY + "\n````");
+    assert.deepEqual(statements.map((statement) => statement.op), ["NOTE", "DONE"]);
     assert.equal(bodyOf(statements[1]), REPLY_BODY);
 });
 
 test("{§operation-fences}: the canonical wider outer fence reads the same reply identically", () => {
-    const statements = ops(PLAN + "`````SEND [200]\n" + REPLY_BODY + "\n`````");
-    assert.deepEqual(statements.map((statement) => statement.op), ["NOTE", "SEND"]);
+    const statements = ops(PLAN + "`````DONE\n" + REPLY_BODY + "\n`````");
+    assert.deepEqual(statements.map((statement) => statement.op), ["NOTE", "DONE"]);
     assert.equal(bodyOf(statements[1]), REPLY_BODY);
 });
 
 test("{§fence-pairing}: an example quoted at the reply's own width still ends the reply and runs", () => {
-    const statements = ops("```SEND [200]\nUse this form:\n```\n```READ (a.md) <1,5>\n```\n```\nThat is all.\n```");
-    assert.deepEqual(statements.map((statement) => statement.op), ["SEND", "READ"]);
+    const statements = ops("```DONE\nUse this form:\n```\n```READ (a.md) <1,5>\n```\n```\nThat is all.\n```");
+    assert.deepEqual(statements.map((statement) => statement.op), ["DONE", "READ"]);
     assert.equal(bodyOf(statements[0]), "Use this form:");
 });
 });

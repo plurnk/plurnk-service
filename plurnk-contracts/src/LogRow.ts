@@ -50,6 +50,8 @@ export const toolKindOf = (op: string | null, scheme: string | null): ProposalTo
         case "WAIT":
             return "think";
         case "SEND":
+        case "DONE":
+        case "FAIL":
             return "other";
         case "WORK":
         case "FORK":

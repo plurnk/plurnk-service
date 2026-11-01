@@ -420,6 +420,7 @@ export const extractPlurnkMeta = (meta: unknown): {
     readonly workspaceId?: number;
     readonly workspaceName?: string;
     readonly sessionName?: string;
+    readonly reason?: string;
     readonly create?: boolean;
     readonly activate?: boolean;
     readonly control?: boolean;
@@ -447,6 +448,7 @@ export const extractPlurnkMeta = (meta: unknown): {
             : typeof p.name === "string" && p.name.trim().length > 0
                 ? p.name.trim()
                 : undefined;
+    const reason = typeof p.reason === "string" && p.reason.trim().length > 0 ? p.reason.trim() : undefined;
     const create = typeof p.create === "boolean" ? p.create : undefined;
     const activate = typeof p.activate === "boolean" ? p.activate : undefined;
     const control = typeof p.control === "boolean" ? p.control : undefined;
@@ -468,6 +470,7 @@ export const extractPlurnkMeta = (meta: unknown): {
         ...(workspaceId !== undefined ? { workspaceId } : {}),
         ...(workspaceName !== undefined ? { workspaceName } : {}),
         ...(sessionName !== undefined ? { sessionName } : {}),
+        ...(reason !== undefined ? { reason } : {}),
         ...(create !== undefined ? { create } : {}),
         ...(activate !== undefined ? { activate } : {}),
         ...(control !== undefined ? { control } : {}),
@@ -599,6 +602,7 @@ export const resolveSessionBinding = async (
     cwd: string | undefined,
     createIfMissing: boolean,
     meta?: unknown,
+    historyPageChars?: number,
 ): Promise<BoundSession> => {
     const plurnkMeta = extractPlurnkMeta(meta);
     const allowCreate = plurnkMeta.create ?? createIfMissing;
@@ -758,6 +762,7 @@ export const resolveSessionBinding = async (
         workspaceId,
         sessionId: session.id,
         origin,
+        ...(historyPageChars !== undefined ? { historyPageChars } : {}),
     });
 
     const bound: BoundSession = {
@@ -1385,7 +1390,7 @@ export const listSessionsOverview = async (
                       ...reply,
                       body: {
                           url: `${origin}/acp/${s.workspaceId}/${s.id}/entry?target=${encodeURIComponent(
-                              `log:///${reply.coordinate}/SEND`,
+                              `log:///${reply.coordinate}/${reply.completion === 499 ? "FAIL" : "DONE"}`,
                           )}`,
                       },
                   }

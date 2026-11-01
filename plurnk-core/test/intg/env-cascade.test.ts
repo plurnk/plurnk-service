@@ -878,7 +878,7 @@ test("{§operator-config-precedence} under the shipped policy wiring, the shippe
         assert.deepEqual(carriers, policy === "" ? [] : ["system-policy"], "nonempty policy content appears only in its owned section");
         assert.equal(packetSection(packet, "system-policy"), policy, "the section carries the exact authored policy");
         const rows = await db.test_log_sequencees_by_turn.all<{ op: string; pathname: string | null }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.map(({ op, pathname }) => ({ op, pathname })), [{ op: "SEND", pathname: null }, { op: "SEND", pathname: null }],
+        assert.deepEqual(rows.map(({ op, pathname }) => ({ op, pathname })), [{ op: "SEND", pathname: null }, { op: "DONE", pathname: null }],
             "the turn holds the message arrival and the conclusion; the policy rides only its section");
     } finally {
         if (prevPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = prevPolicy;

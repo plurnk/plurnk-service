@@ -243,7 +243,7 @@ Await results.
 \`\`\`\``),
                 response(`${extraSlotCopy}
 \`\`\`\`${last}\`\`\`\``),
-                response("````SEND [200]\nMust not reach a fourth model call.\n````"),
+                response("````DONE\nMust not reach a fourth model call.\n````"),
             ] });
             const seen: Array<number | undefined> = [];
             const generate = provider.generate.bind(provider);
@@ -315,7 +315,7 @@ Await results.
 test("{§engine-rails}: actual parks end repetition windows even when wakes stay in one drain", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
         ...Array.from({ length: 6 }, () => response("````READ (workspace:///missing)````\n````WAIT\nAwait results.\n````")),
-        response("````SEND [200]\nObservation complete.\n````"),
+        response("````DONE\nObservation complete.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "wait-cycle-windows" });
@@ -374,7 +374,7 @@ for (const identical of [false, true]) {
                 ...lines.map((line) => turn(`\`\`\`\`EDIT (workspace:///journal) <-1>
 ${line}
 \`\`\`\``)),
-                turn("````SEND [200]\nAppended all six lines.\n````", null),
+                turn("````DONE\nAppended all six lines.\n````", null),
             ] });
             const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 10 });
             assert.equal(result.result.status, 200, JSON.stringify(result.result));
@@ -418,7 +418,7 @@ for (const changing of [false, true]) {
             const engine = new Engine({ db, schemes });
             const provider = new Mock({ contextWindow: 100000, responses: [
                 ...Array.from({ length: 6 }, () => turn("````READ (observed-content:///latest)````", status)),
-                turn("````SEND [200]\nObserved all six results.\n````", null),
+                turn("````DONE\nObserved all six results.\n````", null),
             ] });
             const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 10 });
             assert.equal(result.result.status, changing ? 200 : 508, JSON.stringify(result.result));
@@ -477,9 +477,9 @@ started
 \`\`\`\``, 50),
             makeMockResponse("````NOTE\nReview the independent work\n````", 50),
             makeMockResponse("````WAIT\nAwait the command\n````", 50),
-            makeMockResponse("````SEND [200]\ndone\n````", 50),
+            makeMockResponse("````DONE\ndone\n````", 50),
             makeMockResponse("````NOTE\nnothing to wait on\n````", 50),
-            makeMockResponse("````SEND [200]\nconcluded\n````", 50),
+            makeMockResponse("````DONE\nconcluded\n````", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -548,7 +548,7 @@ Await results.
             response(collect),
             response(collect),
             response(collect),
-            response("````SEND [200]\n42\n````"),
+            response("````DONE\n42\n````"),
         ] });
         const run = () => new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 8, maxStrikes: priorStrike ? 2 : 1,
@@ -611,8 +611,8 @@ test("{§session-loop-lifecycle} the daemon wakes a collecting parent on actual 
     const provider = new Mock({ contextWindow: 100000, responses: [
         response("````WAIT\nAwait instructions.\n````"),
         response(collect),
-        response("````SEND [200]\nChild answer: 42.\n````\n\n````SEND [200]\nFollow-up acknowledged.\n````"),
-        response("````SEND [200]\nChild answer received: 42.\n````"),
+        response("````DONE\nChild answer: 42.\n````\n\n````DONE\nFollow-up acknowledged.\n````"),
+        response("````DONE\nChild answer received: 42.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "join-wake-rails" });
@@ -799,7 +799,7 @@ test(`{§session-wait-timing}: ${kind} completion ${phase} is acknowledged only 
             });
         }
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            contentResponse("````SEND [200]\nThe answer is 42.\n````"),
+            contentResponse("````DONE\nThe answer is 42.\n````"),
             contentResponse(""),
         ] });
         if (phase === "during inference") {
@@ -931,7 +931,7 @@ test("{§loop-completion} Engine.runLoop: a completion over a live stream joins 
         assert.equal(provider.remaining, 1, "no further turn runs until the stream concludes and wakes the loop");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
         const modelRows = rows.filter((r) => r.origin === "model");
-        assert.deepEqual(modelRows.map(({ op, status_rx }) => [op, status_rx]), [["SEND", 200]],
+        assert.deepEqual(modelRows.map(({ op, status_rx }) => [op, status_rx]), [["DONE", 200]],
             "reply delivery succeeds while the loop joins the live stream");
     } finally { await db.close(); }
 });
@@ -1132,7 +1132,7 @@ echo attempt-${i} >&2; exit 1
 \`\`\`\`NOTE
 fixing the tests
 \`\`\`\``, 10)),
-        makeMockResponse("````SEND [200]\ngreen\n````", 10),
+        makeMockResponse("````DONE\ngreen\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1173,7 +1173,7 @@ class Flaky extends Mock {
             contextWindow: viableWindow() * 4,
             responses: signals.map((signal) => makeMockResponse(signal === 102
                 ? "\n````FIND (workspace:///**)````\n````NOTE\ncontinue\n````"
-                : "````SEND [200]\ndone\n````", 20)),
+                : "````DONE\ndone\n````", 20)),
         });
         this.failures = failures;
     }
@@ -1269,7 +1269,7 @@ test("{§engine-rails} a whole-call deadline recovers through the real provider 
                 });
                 const content = requests.length === 2
                     ? "````FIND (workspace:///**)\n````"
-                    : "````SEND [200]\nRecovered.\n````";
+                    : "````DONE\nRecovered.\n````";
                 return new Response(`data: ${JSON.stringify({
                     id: `response-${requests.length}`, model: "deadline-recovery",
                     choices: [{ index: 0, delta: { content }, finish_reason: "stop" }],
@@ -1378,7 +1378,7 @@ for (const cancel of [false, true]) {
     serverProposals(approvalContext, "accept");
         const mock = new Mock({ contextWindow: 16384, responses: [
             makeMockResponse("\n````KILL (workspace:///no-such-entry)\n````\n````SEND\nThe requested entry does not exist.\n````"),
-            makeMockResponse(cancel ? "````KILL (session://alice)\n````" : "````SEND [200]\n````"),
+            makeMockResponse(cancel ? "````KILL (session://alice)\n````" : "````DONE\n````"),
         ] });
         await withDaemon(mock, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: "failed-op-observation" });
@@ -1397,7 +1397,7 @@ for (const cancel of [false, true]) {
                 assert.equal(mock.received.length, 2);
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: result.loopId });
                 assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [
-                    ["KILL", 404], ["SEND", 200], [cancel ? "KILL" : "SEND", 200],
+                    ["KILL", 404], ["SEND", 200], [cancel ? "KILL" : "DONE", 200],
                 ]);
                 const failure = rows.find(({ op, status_rx }) => op === "KILL" && status_rx === 404)!;
                 const problem = JSON.parse(failure.rx).problem;
@@ -1432,7 +1432,7 @@ const loop = async (responses: string[], maxStrikes: number) => {
 // The recorded shape (#853, glm): a turn whose READ succeeded beside a hard 400 struck, and two such
 // turns ended productive loops.
 test("{§engine-rails}: a hard 400 beside a successful READ neither strikes nor survives into the streak", async () => {
-    const { db, loopId, result } = await loop([`${extraSlotCopy}\n${read}`, extraSlotCopy, `${extraSlotCopy}\n${read}`, "````SEND [200]\n42\n````"], 2);
+    const { db, loopId, result } = await loop([`${extraSlotCopy}\n${read}`, extraSlotCopy, `${extraSlotCopy}\n${read}`, "````DONE\n42\n````"], 2);
     try {
         assert.equal(result.result.status, 200, "no productive turn struck, and the lone failing turn was forgiven by the next productive one");
         assert.equal(await new StrikeRail(db).streak(loopId), 0);

@@ -257,10 +257,6 @@ test("{§fence-pairing}: every heading line the lexer opens, the pairing pairs �
     }
 });
 
-test("{§op-shapes}: the same heading in a reasoning emission is read, not thrown (#996)", () => {
-    assert.doesNotThrow(() => PlurnkParser.parseReasoningOperations("```NOTE`\nbody\n```\n"));
-});
-
 test("{§operation-fences}: deepseek-flash's NOTE with a backtick glued to its name, as recorded on the 16k rung of #995 (#996)", () => {
     const input = recorded("deep16-run341-3cdd88d7-1-12");
     assert.deepEqual(errors(input), [STRAY]);
@@ -358,16 +354,18 @@ test("{§op-shapes} {§matcher-prefix-claims} {§slot-order} PlurnkStatement: pa
 });
 
 test("{§op-shapes}: a completion reply preserves its literal answer and optional aside", () => {
-    for (const body of [null, "The answer is **42**.", "SEND (session://alice)\n```sh\necho 42\n```", "{\"answer\":42}"]) {
-        const source = PlurnkParser.frame("SEND [200] <!-- final answer -->", body);
-        const result = PlurnkParser.parse(source);
-        assert.equal(result.items.length, 1, "a final body is not a matcher or parser advisory");
-        const item = result.items[0];
-        assert.equal(item.kind, "statement");
-        if (item.kind !== "statement" || item.statement.op !== "SEND") assert.fail("expected SEND");
-        assert.equal(item.statement.body?.raw ?? null, body);
-        assert.equal(item.statement.aside, "final answer");
-        assert.equal(validateRoundTrip(source)?.valid, true);
+    for (const op of ["DONE", "FAIL"] as const) {
+        for (const body of [null, "The answer is **42**.", "SEND (session://alice)\n```sh\necho 42\n```", "{\"answer\":42}"]) {
+            const source = PlurnkParser.frame(`${op} <!-- final answer -->`, body);
+            const result = PlurnkParser.parse(source);
+            assert.equal(result.items.length, 1, "a final body is not a matcher or parser advisory");
+            const item = result.items[0];
+            assert.equal(item.kind, "statement");
+            if (item.kind !== "statement" || item.statement.op !== op) assert.fail(`expected ${op}`);
+            assert.equal(item.statement.body?.raw ?? null, body);
+            assert.equal(item.statement.aside, "final answer");
+            assert.equal(validateRoundTrip(source)?.valid, true);
+        }
     }
 });
 });

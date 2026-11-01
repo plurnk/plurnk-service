@@ -102,8 +102,8 @@ export default class NativeToolCalls {
 
     // The fenced form of what a block of markup asks for, as the receipt teaches it.
     static #form(text: string, executors: readonly string[]): string {
-        const named = /\b(FIND|READ|EDIT|COPY|MOVE|KILL|SEND|NOTE|WAIT|BARE|WORK|FORK)\b/u.exec(text)?.[1]
-            ?? /["=](find|read|edit|kill|send|note|wait|work|fork)["\s>]/iu.exec(text)?.[1]?.toUpperCase();
+        const named = /\b(FIND|READ|EDIT|COPY|MOVE|KILL|SEND|DONE|FAIL|NOTE|WAIT|BARE|WORK|FORK)\b/u.exec(text)?.[1]
+            ?? /["=](find|read|edit|kill|send|done|fail|note|wait|work|fork)["\s>]/iu.exec(text)?.[1]?.toUpperCase();
         const path = /"(?:path|file_path|filepath|file|target)"\s*:\s*"([^"]+)"/u.exec(text)?.[1]
             ?? /\b(?:path|file)="([^"]+)"/u.exec(text)?.[1]
             ?? /\b(?:FIND|READ|EDIT|COPY|MOVE|KILL)\b`?[>\s]*\(([^()\s]+)\)/u.exec(text)?.[1];

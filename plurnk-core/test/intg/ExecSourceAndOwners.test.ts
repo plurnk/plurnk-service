@@ -776,7 +776,7 @@ test("{§exec-target-routing} {§diagnostic-observation} a bare execution of a t
         contextWindow: 100_000,
         responses: [
             makeMockResponse("````sh\nfail {\"message\":\"boom\"}\n````\n\n````WAIT\nwaiting on the shell\n````", 10),
-            makeMockResponse("````SEND [200]\nseen\n````", 10),
+            makeMockResponse("````DONE\nseen\n````", 10),
         ],
     });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });
@@ -820,7 +820,7 @@ test("{§exec-target-routing} a program the registry does not know keeps the she
         contextWindow: 100_000,
         responses: [
             makeMockResponse("````sh\nno_such_program_zq --help\n````\n\n````WAIT\nwaiting\n````", 10),
-            makeMockResponse("````SEND [200]\nseen\n````", 10),
+            makeMockResponse("````DONE\nseen\n````", 10),
         ],
     });
     const db = await openMigrated();

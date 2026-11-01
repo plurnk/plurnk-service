@@ -33,7 +33,7 @@ test(
                 contextWindow: 32768,
                 responses: [
                     makeMockResponse("````sh\necho held-once\n````"),
-                    makeMockResponse("````SEND [200]\nDone.\n````"),
+                    makeMockResponse("````DONE\nDone.\n````"),
                     makeMockResponse("````sh\necho cancelled-gate\n````"),
                 ],
             }),

@@ -468,7 +468,7 @@ export default class ProposalLifecycle {
         target: { scheme: string | null; authority: string | null; pathname: string | null },
         attrs: Record<string, unknown>,
     ): { selector: CapabilitySelector; descriptor: CapabilityDescriptor } | null {
-        if (op === "NOTE" || op === "WAIT") return null;
+        if (op === "NOTE" || op === "WAIT" || op === "DONE" || op === "FAIL") return null;
         if (isExecutionOp(op)) {
             const registry = this.#executors()?.toolRegistry(op, row.workspaceId) ?? null;
             const tool = registry !== null && typeof attrs.target === "string" && attrs.target.length > 0

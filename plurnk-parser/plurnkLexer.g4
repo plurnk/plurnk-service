@@ -2,7 +2,7 @@ lexer grammar plurnkLexer;
 
 tokens {
     OPEN_FIND, OPEN_READ, OPEN_EDIT, OPEN_COPY, OPEN_MOVE,
-    OPEN_SEND, OPEN_NOTE, OPEN_WAIT,
+    OPEN_SEND, OPEN_DONE, OPEN_FAIL, OPEN_NOTE, OPEN_WAIT,
     OPEN_EXEC, OPEN_BARE, OPEN_WORK, OPEN_FORK, OPEN_KILL,
     LPAREN, RPAREN, LBRACKET, RBRACKET, L_MARKER, BODY_OPEN, SECTION_END,
     TARGET_TEXT, METADATA_TEXT, BODY_TEXT, TEXT, ASIDE, ARROW_TARGET
@@ -24,9 +24,8 @@ private fencePairing(): Pairing {
     this.pairingCache ??= FencePairing.pair(this.inputStream.toString(), {
         operations: new Set(Object.keys(plurnkLexer.OPERATIONS)),
         executors: this.knownExecutors,
-        reasoning: this.reasoning,
         heading: (heading, name) => {
-            const { selfClosed, statement } = plurnkLexer.readHeading(heading, this.knownExecutors, this.reasoning);
+            const { selfClosed, statement } = plurnkLexer.readHeading(heading, this.knownExecutors);
             const op = statement?.op ?? name;
             const body = StatementShape.body(op, statement?.op === "KILL" ? statement : undefined);
             return { selfClosed, bodiless: body === "none", prose: body === "prose", mutation: body === "mutation" };
@@ -41,11 +40,10 @@ private closedOnLine(tokens: readonly Token[]): boolean {
     return this.mode === plurnkLexer.DEFAULT_MODE && (this.inlineCloserSeen
         || tokens.some((token) => token.type === plurnkLexer.SECTION_END && token.text?.includes("\x60")));
 }
-public static readHeading(heading: string, executors?: ReadonlySet<string>, reasoning = false) {
+public static readHeading(heading: string, executors?: ReadonlySet<string>) {
     const lexer = new plurnkLexer(antlr.CharStream.fromString(heading + "\n"));
     lexer.lineOnly = true;
     if (executors !== undefined) lexer.knownExecutors = new Set(executors);
-    lexer.reasoning = reasoning;
     const errors = new HeadingErrors();
     lexer.removeErrorListeners();
     lexer.addErrorListener(errors);
@@ -65,12 +63,6 @@ private blockEnd(required: boolean): BlockEnd | undefined {
     if (end === undefined && required) throw new Error(`fence pairing has no end for the block opened at ${this.openFenceStart}`);
     return end;
 }
-// {§op-shapes}: only authored closures, never repaired/incomplete blocks.
-public hasClosedBlock(line: number): boolean {
-    const pairing = this.fencePairing();
-    const start = pairing.lineStarts[line - 1];
-    return start !== undefined && (pairing.selfClosed.has(start) || pairing.ends.get(start)?.kind === "closer");
-}
 private quotationHere(): boolean { return this.lineOnly ? this.fenceOpens() : this.fencePairing().quotations.has(this.lineStartOf(this.inputStream.index)); }
 private splitHere(): boolean { return !this.lineOnly && this.fencePairing().splits.has(this.lineStartOf(this.inputStream.index)); }
 private surplusHere(): boolean { return !this.lineOnly && this.fencePairing().surplus.has(this.lineStartOf(this.inputStream.index)); }
@@ -83,8 +75,6 @@ private openHeadingColumn: number = 0;
 private fenceLength: number = 0;
 private fenceCharacter: number = 0x60;
 private openFenceStart: number = 0;
-// {§op-shapes} — quotations are opaque; no program-boundary recovery.
-public reasoning: boolean = false;
 private started: boolean = false;
 // {§fence-pairing} — a closer on the heading line may be followed by the next opener on the same line.
 private inlineChain: boolean = false;
@@ -185,7 +175,7 @@ private headingName(name: string, offset: number): boolean {
     const at = this.skipHorizontal(offset);
     let suffix = "";
     for (let index = at; index < at + 4 && this.inputStream.LA(index) > 0; index++) suffix += String.fromCodePoint(this.inputStream.LA(index));
-    return HeadingReader.opens(name, suffix, this.knownExecutors, this.reasoning);
+    return HeadingReader.opens(name, suffix, this.knownExecutors);
 }
 private slotReady: boolean = false;
 // {§slot-order}: whether this heading has taken its target; a SEND without one takes no scope.
@@ -196,6 +186,7 @@ private targetClosed(): void {
 }
 private scopeless(): boolean {
     return this.openOp === "WORK" || this.openOp === "FORK" || this.openOp === "BARE" || this.openOp === "NOTE"
+        || this.openOp === "DONE" || this.openOp === "FAIL"
         || this.openOp === "SEND" && !this.headingTarget;
 }
 private targetDepth: number = 0;
@@ -215,7 +206,7 @@ private operationHeading(): boolean {
 
 // {§fence-pairing} - a fence that opened no operation quotes. Its tag draws nothing: an unknown name
 // without invocation slots is a code block at any width, and one indented further than three spaces is the taught
-// offset ({§fence-pairing}). Reasoning quotes freely.
+// offset ({§fence-pairing}).
 private quote(): void {
     this.quoteStart = this.tokenStartCharIndex;
     // A labeled code block (a plurnk or md tag) is an example by declaration; only an unlabeled
@@ -242,7 +233,7 @@ public takeForgottenTags(): Array<{ line: number; column: number; tag: string }>
 // {§fence-pairing} - an operation inside an unlabeled code block is shown, never run: the model that
 // wrapped it is told so once. Labeled blocks draw nothing here.
 private noteQuoted(): void {
-    if (this.reasoning || this.quoteLabeled) return;
+    if (this.quoteLabeled) return;
     const tag = this.text.replace(/^\x60+/, "");
     if (!this.headingName(tag, 1)) return;
     this.quotedTags.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, tag });
@@ -271,14 +262,14 @@ public takeQuotedTags(): Array<{ line: number; column: number; tag: string }> {
 private static readonly OPERATIONS: Readonly<Record<string, number>> = {
     FIND: plurnkLexer.OPEN_FIND, READ: plurnkLexer.OPEN_READ,
     EDIT: plurnkLexer.OPEN_EDIT, COPY: plurnkLexer.OPEN_COPY, MOVE: plurnkLexer.OPEN_MOVE,
-    SEND: plurnkLexer.OPEN_SEND, BARE: plurnkLexer.OPEN_BARE,
+    SEND: plurnkLexer.OPEN_SEND, DONE: plurnkLexer.OPEN_DONE, FAIL: plurnkLexer.OPEN_FAIL, BARE: plurnkLexer.OPEN_BARE,
     NOTE: plurnkLexer.OPEN_NOTE, WAIT: plurnkLexer.OPEN_WAIT,
     WORK: plurnkLexer.OPEN_WORK, FORK: plurnkLexer.OPEN_FORK, KILL: plurnkLexer.OPEN_KILL,
 };
 
-// {§operation-fences} — a native name and optional complete aside, outside reasoning.
+// {§operation-fences} — a native name and optional complete aside.
 private nakedHeadingHere(): boolean {
-    if (!this.atColumnZero() || this.reasoning) return false;
+    if (!this.atColumnZero()) return false;
     let name = "";
     for (let cursor = 1; ; cursor++) {
         const c = this.inputStream.LA(cursor);
@@ -416,7 +407,6 @@ private closingAt(offset: number): boolean {
     if (cursor - offset < this.fenceLength) return false;
     while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
     if (this.inputStream.LA(cursor) <= 0 || this.offsetAfterEol(cursor) !== null) return true;
-    if (this.reasoning) return false;
     // {§fence-pairing} — a closer followed on its line by one aside and nothing else still closes;
     // read as body, that line would be written into the edited resource (#758, dogfood item 17).
     if (this.asideToLineEnd(cursor)) return true;
@@ -440,7 +430,6 @@ private closingAt(offset: number): boolean {
 // after {§operation-fences} has ruled out complete nesting: a wider block holds narrower headings
 // only while it closes, so no unclosed block swallows the operations after it.
 private headingAt(offset: number): boolean {
-    if (this.reasoning) return false;
     let cursor = offset;
     while (this.inputStream.LA(cursor) === 0x60) cursor++;
     if (cursor - offset < 3) return false;
@@ -572,7 +561,7 @@ fragment EOL : '\r'? '\n' ;
 
 // {§operation-fences} - only top-level fences can open statements. The first
 // block may terminate a provider preamble without an intervening newline.
-OPEN : { this.atLineStart() || !this.reasoning && this.inlineChain }? FENCE NAME { this.operationHeading() }? { this.open(); } -> mode(SLOTS) ;
+OPEN : { this.atLineStart() || this.inlineChain }? FENCE NAME { this.operationHeading() }? { this.open(); } -> mode(SLOTS) ;
 // {§operation-fences} — the name opens; the ordinary heading lexer reads its aside.
 NAKED_OPEN : { this.nakedHeadingHere() }? [A-Z]+ { this.openNaked(); } -> mode(SLOTS) ;
 // {§op-shapes} — an enclosing code fence is quotation, including unknown tags and tildes.

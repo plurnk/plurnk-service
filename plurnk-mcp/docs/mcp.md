@@ -70,8 +70,8 @@ own workspace). Read-only host variables `PLURNK_WORKSPACE`, `PLURNK_SESSION`
 (when bound), `PLURNK_PROJECT_ROOT` (when present), and `PLURNK_STATE_DIR` are
 available to `${NAME}` expansion and `stdio` subprocesses. Inbound
 `sampling/createMessage` requests arrive as Open Messages at
-`<server>:///messages/<id>` and are answered with `SEND [200]` (or declined with
-`SEND [499]`); subscribable resources (`READ (<server>:///resources/<uri>)`) open
+`<server>:///messages/<id>` and are answered with `DONE` (or declined with
+`FAIL`); subscribable resources (`READ (<server>:///resources/<uri>)`) open
 a stream that wakes the session when `notifications/resources/updated` arrives.
 
 Installed Agent Plugins contribute servers from their root `mcp.json` through

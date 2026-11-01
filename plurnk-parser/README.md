@@ -30,14 +30,13 @@ for (const item of result.items) {
 ```
 
 Parse items are ordered and discriminate as `statement`, `error`, or `text`.
-In `parse()` and `parseStatements()`, outside-block prose is ignored; in `parseReasoningOperations()`, outside-block prose is preserved as `{ kind: "text", text }`; literal bodies remain exact.
+In `parse()`, outside-block prose is preserved as `{ kind: "text", content, position }`; in `parseStatements()`, outside-block prose is ignored; literal bodies remain exact.
 The parser entry points deliberately accept different document tiers:
 
 | Entry point                    | Accepted input                                        |
 |--------------------------------|-------------------------------------------------------|
 | `PlurnkParser.parse`           | One operation-bearing model turn; omitted lifecycle declaration continues silently |
 | `PlurnkParser.parseStatements` | A sequence of protocol statements                     |
-| `PlurnkParser.parseReasoningOperations` | Interleaved reasoning prose and read-only `READ`/`FIND`/`NOTE` operations |
 | `PlurnkParser.stringify` / `frame` | Canonical fenced source serialization for one statement or a statement list |
 | `parsePath`                    | One path or URI using parser-equivalent decomposition |
 

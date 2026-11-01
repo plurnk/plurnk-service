@@ -182,7 +182,7 @@ export default class PacketRowFacts {
     // structured mutation receipts. Returns what the body projection needs to know about the result.
     static rowResultFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null, fullBody: ResolvedLogBody): RowResultFacts {
         const { meta, op } = identity;
-        if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.attachments) && rx.attachments.length > 0) {
+        if ((op === "SEND" || op === "DONE" || op === "FAIL") && rx !== null && typeof rx === "object" && Array.isArray(rx.attachments) && rx.attachments.length > 0) {
             meta.attachments = rx.attachments.map(({ name, mediaType, target }) => ({ name, mediaType, path: target }));
         }
         // {§log-wire-format}: preserve the returned address, not a second authored target.
@@ -292,7 +292,7 @@ export default class PacketRowFacts {
             meta.channels = rx.channels;
         }
         // {§message-completion} — a reply's row names the prompts it answered.
-        if ((op === "SEND" || op === "KILL") && rx !== null && typeof rx === "object" && Array.isArray(rx.repliedTo)) {
+        if ((op === "SEND" || op === "DONE" || op === "FAIL" || op === "KILL") && rx !== null && typeof rx === "object" && Array.isArray(rx.repliedTo)) {
             meta.repliedTo = rx.repliedTo;
         }
         if (op === "READ" || op === "FIND") {

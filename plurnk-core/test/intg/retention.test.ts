@@ -560,7 +560,7 @@ test("{§content-store}: message admission and attachment-only replies retain by
     serverProposals(t, "accept");
     await using db = await openMigrated();
     const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { reasoning: null,
-        content: '````SEND [200,{"attachments":["workspace:///reply.txt"]}]\n````\n\n````KILL (log:///**)\n````' } }] });
+        content: '````DONE [{"attachments":["workspace:///reply.txt"]}]\n````\n\n````KILL (log:///**)\n````' } }] });
     const daemon = new Daemon({ db, provider });
     const retention = collector(db);
     const original = NativeContent.retain.bind(NativeContent);

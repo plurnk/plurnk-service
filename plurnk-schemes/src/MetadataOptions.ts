@@ -16,7 +16,7 @@ export default class MetadataOptions {
     static readonly SERVICE_KEYS = Object.freeze(["lifetime"] as const);
 
     // `source` names the owner in the Problem (`executor:metadata`, `http`, …).
-    static read(blocks: readonly string[] | null | undefined, source: string, extra: Record<string, unknown> = {}): { elements: unknown[] } | { failure: SchemeResult } {
+    static #read(blocks: readonly string[] | null | undefined, source: string, extra: Record<string, unknown> = {}): { elements: unknown[] } | { failure: SchemeResult } {
         const fail = (code: string, detail: string): { failure: SchemeResult } => ({
             failure: Results.failure(source, code, 400, detail, {}, { ...extra, retryable: false }),
         });
@@ -36,7 +36,7 @@ export default class MetadataOptions {
     }
 
     static parse(blocks: readonly string[] | null | undefined, source: string, extra: Record<string, unknown> = {}): MetadataOptionsParsed {
-        const read = MetadataOptions.read(blocks, source, extra);
+        const read = MetadataOptions.#read(blocks, source, extra);
         if ("failure" in read) return read;
         const options: Record<string, unknown> = {};
         for (const element of read.elements) {

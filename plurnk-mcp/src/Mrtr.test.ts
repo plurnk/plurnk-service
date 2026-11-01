@@ -786,7 +786,7 @@ test("{§mcp-open-work} outbound requests stamp unforgeable plurnkWorkspace and 
             sampled.push({ params });
             return {
                 role: "assistant",
-                content: { type: "text", text: "Answered via SEND [200]" },
+                content: { type: "text", text: "Answered via DONE" },
                 model: "plurnk",
                 stopReason: "endTurn",
             };
@@ -831,7 +831,7 @@ test("{§mcp-open-work} outbound requests stamp unforgeable plurnkWorkspace and 
         assert.deepEqual(pushedUpdates[0]?.inputResponses, {
             reply: {
                 role: "assistant",
-                content: { type: "text", text: "Answered via SEND [200]" },
+                content: { type: "text", text: "Answered via DONE" },
                 model: "plurnk",
                 stopReason: "endTurn",
             },

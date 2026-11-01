@@ -48,7 +48,7 @@ for (const modalities of [["audio"], []] as InputModality[][]) {
             turn(`\`\`\`\`KILL (clip.wav)\`\`\`\`\n${next}`),
             turn(`\`\`\`\`READ (log:///1/2/4/READ)\`\`\`\`\n${next}`),
             turn(`\`\`\`\`KILL (log:///1/2/4/READ) <42>\`\`\`\`\n${next}`),
-            turn("````SEND [200]\nAudio inspection complete.\n````"),
+            turn("````DONE\nAudio inspection complete.\n````"),
         ] });
         try {
             await withDaemon(provider, async (db, _daemon, addr) => {
@@ -307,7 +307,7 @@ looking
 keep looking
 \`\`\`\``)
                 : mockTurn("````NOTE\ncontinue inspecting\n````"),
-            mockTurn("````SEND [200]\nseen\n````"),
+            mockTurn("````DONE\nseen\n````"),
         ],
     });
     try {
@@ -359,7 +359,7 @@ test("{§tokenomics}: a READ that does not fit is a bodiless receipt; native out
             mockTurn(`\`\`\`\`READ (logo.png)\`\`\`\`\n\`\`\`\`READ (large.txt) <1,-1>\`\`\`\`\n${next}`),
             mockTurn(next),
             mockTurn(`\`\`\`\`READ (logo.png)\`\`\`\`\n${next}`),
-            mockTurn("````SEND [200]\nImage inspection complete.\n````"),
+            mockTurn("````DONE\nImage inspection complete.\n````"),
         ] });
         await withDaemon(provider, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -424,7 +424,7 @@ test("{§log-wire-format} invalid-emission rerolls reuse the same materialized n
         mockTurn("````READ (logo.png)````\n````NOTE\nlooking\n````"),
         { assistant: { content: "````READ (workspace:///not-a-plurnk-emission", reasoning: null }, assistantRaw: null },
         mockTurn("````NOTE\nrecovered\n````"),
-        mockTurn("````SEND [200]\nseen\n````"),
+        mockTurn("````DONE\nseen\n````"),
     ]);
     const attempted = requests.slice(1, 3);
     assert.equal(attempted.length, 2);
@@ -440,7 +440,7 @@ test("{§log-wire-format} a response-less network retry retains the same materia
         responses: [
             mockTurn("````READ (logo.png)````\n````NOTE\nlooking\n````"),
             mockTurn("````NOTE\nrecovered\n````"),
-            mockTurn("````SEND [200]\nseen\n````"),
+            mockTurn("````DONE\nseen\n````"),
         ],
     });
     await runLoop(["image"], "````READ (logo.png)````", false, undefined, provider);
@@ -477,7 +477,7 @@ test("{§log-wire-format} native content survives completed responses until scop
         mockTurn(`\`\`\`\`READ (logo.png)\`\`\`\`\n${next}`),
         mockTurn(next),
         mockTurn(`\`\`\`\`KILL (log:///*/*/*/READ) <42>\`\`\`\`\n${next}`),
-        mockTurn("````SEND [200]\nImage inspection complete.\n````"),
+        mockTurn("````DONE\nImage inspection complete.\n````"),
     ]);
     for (const index of [1, 2]) {
         const content = nativeParts(requests[index]);
@@ -493,7 +493,7 @@ test("{§log-wire-format} retained and forked READs preserve original bytes afte
     const requests = await runLoop(["image"], undefined, false, [
         mockTurn(`\`\`\`\`READ (logo.png)\`\`\`\`\n${next}`),
         mockTurn(`\`\`\`\`KILL (logo.png)\`\`\`\`\n${next}`),
-        mockTurn("````SEND [200]\nImage inspection complete.\n````"),
+        mockTurn("````DONE\nImage inspection complete.\n````"),
     ], undefined, async (root, db, loopId) => {
         await assert.rejects(readFile(join(root, "logo.png")), { code: "ENOENT" }, "the source was actually deleted");
         const loop = await db.drain_message_source.get<{ session_id: number }>({ loop_id: loopId });
@@ -515,7 +515,7 @@ test("{§log-wire-format} explicit log READ preserves its own observation after 
         mockTurn(`\`\`\`\`READ (logo.png)\`\`\`\`\n${next}`),
         mockTurn(`\`\`\`\`KILL (logo.png)\`\`\`\`\n\`\`\`\`READ (log:///1/2/4/READ)\`\`\`\`\n${next}`),
         mockTurn(`\`\`\`\`KILL (log:///1/2/4/READ) <42>\`\`\`\`\n${next}`),
-        mockTurn("````SEND [200]\nImage inspection complete.\n````"),
+        mockTurn("````DONE\nImage inspection complete.\n````"),
     ]);
     const copied = nativeParts(requests[2]);
     assert.equal(copied.filter((part) => part.type === "file").length, 2);
@@ -530,7 +530,7 @@ test("{§log-kill-scope} a text-only route preserves ordinary scoped trimming of
     const requests = await runLoop([], undefined, false, [
         mockTurn(`\`\`\`\`READ (logo.png#bytes) <1,16>\`\`\`\`\n${next}`),
         mockTurn(`\`\`\`\`KILL (log:///1/2/4/READ) <1>\`\`\`\`\n${next}`),
-        mockTurn("````SEND [200]\nImage inspection complete.\n````"),
+        mockTurn("````DONE\nImage inspection complete.\n````"),
     ]);
     assert.ok(requests[2].every((message) => typeof message.content === "string"));
     const content = userText(requests[2]);
@@ -575,7 +575,7 @@ const runLoop = async (modalities: readonly InputModality[]) => {
     const mock = new Mock({
         contextWindow: viableWindow(),
         inputModalities: modalities,
-        responses: [mockTurn("````READ (contract.pdf)````\n````NOTE\nlooking\n````"), mockTurn("````SEND [200]\nseen\n````")],
+        responses: [mockTurn("````READ (contract.pdf)````\n````NOTE\nlooking\n````"), mockTurn("````DONE\nseen\n````")],
     });
     try {
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -700,7 +700,7 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             ...(form === "multipart" ? [turn(`\`\`\`\`READ ($RESOURCE)\`\`\`\`\n\n${step("NOTE")}`)] : []),
             turn(`\`\`\`\`READ ($RESOURCE${form === "inline" || form === "link" ? "#bytes" : ""}) <1,3>\`\`\`\`\n\n${step("NOTE")}`),
             turn(step("NOTE")),
-            turn(step("SEND [200]")),
+            turn(step("DONE")),
         ] });
         provider.beforeFirstRead = () => assert.equal(resourceReads, 0, "listing a resource link does not acquire its bytes");
         const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
@@ -802,7 +802,7 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             turn(`\`\`\`\`READ (fixture:///prompts/inspect) <1,-1>\n\`\`\`\`\n\n${step("NOTE")}`),
             turn(`\`\`\`\`READ ($RESOURCE#bytes) <1,3>\n\`\`\`\`\n\n${step("NOTE")}`),
             turn(step("NOTE")),
-            turn(step("SEND [200]")),
+            turn(step("DONE")),
         ] });
         const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
         const db = await openMigrated();

@@ -442,9 +442,9 @@ export const createHarness = async (options?: {
                         id: logs.length + 1,
                         session_id: sessionId,
                         session_name: sessions.find((w) => w.id === sessionId)?.name ?? "user",
-                        op: "SEND",
+                        op: "DONE",
                         attrs: { kind: "message", to: "acp://operator", body: `Echo: ${prompt}` },
-                        rx: { status: 200, content: `Echo: ${prompt}`, mimetype: "text/markdown" },
+                        rx: { status: 200, completion: 200, content: `Echo: ${prompt}`, mimetype: "text/markdown" },
                         mimetype_rx: "text/markdown",
                     }),
                 });

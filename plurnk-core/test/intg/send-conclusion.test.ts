@@ -19,8 +19,8 @@ describe("send-conclusion", () => {
 const said = (content: string, reasoning: string | null = null): MockResponse => ({ assistant: { content, reasoning } });
 const message = "message://alice/assignment";
 const send = (content = "") => PlurnkParser.frame("SEND", content);
-const conclude = (content = "") => PlurnkParser.frame("SEND [200]", content);
-const correct = (content: string) => PlurnkParser.frame(`SEND (${message}) [200]`, content);
+const conclude = (content = "") => PlurnkParser.frame("DONE", content);
+const correct = (content: string) => PlurnkParser.frame(`DONE (${message})`, content);
 
 const setup = async (responses: MockResponse[]) => {
     const db = await openMigrated();
@@ -67,7 +67,7 @@ for (const final of ["Four, precisely.", "", " \n\t"]) {
             assert.equal(result.status, 200);
             assert.equal(result.content, final.trim() ? final : "Four.");
             const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: concluded.turnId });
-            assert.deepEqual(JSON.parse(rows.find(({ op }) => op === "SEND")!.rx).repliedTo, repliedTo, "completion addresses the original message even without speech");
+            assert.deepEqual(JSON.parse(rows.find(({ op }) => op === "DONE")!.rx).repliedTo, repliedTo, "completion addresses the original message even without speech");
             const history = await db.message_history.all<{ direction: string; body: string }>({
                 workspace_id: ids.workspaceId, session_id: ids.sessionId, loop_id: ids.loopId,
             });
@@ -85,11 +85,11 @@ for (const final of ["Four, precisely.", "", " \n\t"]) {
     });
 }
 
-test("{§slot-order} {§message-completion}: leading completion metadata resolves only its addressed Open Message", async () => {
+test("{§slot-order} {§message-completion}: addressed completion resolves only its addressed Open Message", async () => {
     const followup = "message://alice/followup";
     const { db, engine, turn, answer, ids, leadLoop } = await setup([
-        said(PlurnkParser.frame(`SEND [200] (${followup})`, "Follow-up deliverable.")),
-        said(PlurnkParser.frame(`SEND [200] (${message})`, "Four.")),
+        said(PlurnkParser.frame(`DONE (${followup})`, "Follow-up deliverable.")),
+        said(PlurnkParser.frame(`DONE (${message})`, "Four.")),
     ]);
     try {
         await engine.injectIntoLoop(ids.loopId, "Also answer this follow-up.", [], "session://lead", {}, followup, await sendingOperation(db, leadLoop));
@@ -99,7 +99,7 @@ test("{§slot-order} {§message-completion}: leading completion metadata resolve
         assert.equal(second.status, 200, "both explicitly addressed messages are now complete");
         for (const [turnId, addressed] of [[first.turnId, followup], [second.turnId, message]] as const) {
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; rx: string }>({ turn_id: turnId });
-            const replies = rows.filter(({ op, origin }) => op === "SEND" && origin === "model").map(({ rx }) => JSON.parse(rx));
+            const replies = rows.filter(({ op, origin }) => op === "DONE" && origin === "model").map(({ rx }) => JSON.parse(rx));
             assert.equal(replies.length, 1);
             assert.equal(replies[0].status, 200);
             const expected = await db.message_source_by_address.get<{ key_path: string }>({ workspace_id: ids.workspaceId, path: addressed });
@@ -190,7 +190,7 @@ test("{§message-completion}: sequential final replies both deliver and the late
         const result = await turn();
         assert.equal(result.status, 200);
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["SEND", "SEND"]);
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["DONE", "DONE"]);
         const delivered = await answer();
         assert.ok("content" in delivered);
         assert.equal(delivered.content, "Precisely four.");
@@ -208,7 +208,7 @@ test("{§message-completion}: a NOTE after progress delivery leaves messages unr
 
 {
     for (const obligation of ["child", "stream"] as const) {
-        for (const park of ["WAIT", "SEND [200]"] as const) {
+        for (const park of ["WAIT", "DONE"] as const) {
             test(`{§loop-completion}: an earlier reply does not park ordinary work before ${park} with a live ${obligation}`, async () => {
                 const first = `${send("Working on it.")}\n\n${PlurnkParser.frame("NOTE", "Continue the work.")}`;
                 const { db, turn, ids } = await setup([
@@ -453,41 +453,10 @@ test("{§message-completion}: a provider output cutoff cannot certify a final re
     } finally { await db.close(); }
 });
 
-for (const preview of ["0", "1"]) test(`{§outside-text} {§op-shapes}: a reasoning NOTE is the turn's work; no content program is not empty (preview=${preview})`, async (t) => {
-    const previous = process.env.PLURNK_SERVICE_REASONING_ROWS;
-    process.env.PLURNK_SERVICE_REASONING_ROWS = preview;
-    t.after(() => { if (previous === undefined) delete process.env.PLURNK_SERVICE_REASONING_ROWS; else process.env.PLURNK_SERVICE_REASONING_ROWS = previous; });
-    const { db, turn, provider } = await setup([said("", PlurnkParser.frame("NOTE", "Still calculating.")), said(conclude("Four."))]);
-    try {
-        const noted = await turn();
-        assert.equal(noted.status, 102);
-        assert.equal(noted.emptyTurn, false, "an admitted reasoning NOTE is an authored operation, exactly as a content NOTE");
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: noted.turnId });
-        assert.deepEqual(rows.map(({ origin, op }) => `${origin}:${op}`).filter((row) => row !== "_plurnk:SEND"),
-            preview === "1" ? ["_plurnk:READ", "model:NOTE"] : ["model:NOTE"], "the authored NOTE and any optional reasoning preview, with no strike row");
-        assert.equal((await turn()).status, 200);
-        assert.doesNotMatch(JSON.stringify(provider.received[1]), /No valid Operation Syntax OPs detected\./,
-            "the next packet carries the turn, not a complaint about it");
-    } finally { await db.close(); }
-});
-
-test("{§outside-text}: a reasoning NOTE is work, not a request to wait, after the messages are answered", async () => {
-    const { db, turn, ids } = await setup([said("Four."), said("", PlurnkParser.frame("NOTE", "Still checking."))]);
-    try {
-        assert.equal((await turn()).status, 102);
-        await holdChild(db, ids.workspaceId, ids.sessionId);
-        const empty = await turn();
-        assert.equal(empty.emptyTurn, false, "the reasoning NOTE is an authored operation");
-        assert.equal(empty.status, 102, "a NOTE is never a request to wait; only WAIT parks on the child");
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: empty.turnId });
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["NOTE"]);
-    } finally { await db.close(); }
-});
-
-test("{§loop-completion}: WAIT on a turn with a reply SEND or non-final SEND [200] concludes when no work or unobserved result remains", async () => {
+test("{§loop-completion}: WAIT on a turn with a reply SEND or non-final DONE concludes when no work or unobserved result remains", async () => {
     for (const [label, extraMessage, emission, withRead, expected] of [
         ["SEND + WAIT concludes single message", false, `${send("Four.")}\n\n${PlurnkParser.frame("WAIT [60]", "Waiting for reply.")}`, false, 200],
-        ["non-final SEND [200] + WAIT concludes remaining message", true, `${conclude("Four.")}\n\n${PlurnkParser.frame("WAIT", null)}`, false, 200],
+        ["non-final DONE + WAIT concludes remaining message", true, `${conclude("Four.")}\n\n${PlurnkParser.frame("WAIT", null)}`, false, 200],
         ["SEND + READ + WAIT continues to observe READ result", false, `${send("Checking.")}\n\n${PlurnkParser.frame("READ (workspace:///input.txt)", null)}\n\n${PlurnkParser.frame("WAIT", null)}`, true, 102],
     ] as const) {
         const { db, engine, turn, answer, ids, leadLoop } = await setup([said(emission)]);
@@ -533,7 +502,7 @@ for (const [name, first, detail] of [
         const workspaceId = await insertWorkspace(db, "explicit-lifecycle");
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "Answer.");
-        const provider = new Mock({ contextWindow: 100000, responses: [response(first), response(frame("SEND [200]", "Answer."))] });
+        const provider = new Mock({ contextWindow: 100000, responses: [response(first), response(frame("DONE", "Answer."))] });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3, maxStrikes: 2,
         });
@@ -550,8 +519,8 @@ for (const [name, first, detail] of [
             }).length, 1, "one durable correction, not duplicated grammar and runtime errors");
             assert.match(JSON.stringify(provider.received[1]), new RegExp(detail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
         }
-        assert.equal(rows.filter(({ op, origin }) => origin === "model" && op === "SEND").length, 1);
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), [/^`+(\w+)/u.exec(first)![1], "SEND"],
+        assert.equal(rows.filter(({ op, origin }) => origin === "model" && op === "DONE").length, 1);
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), [/^`+(\w+)/u.exec(first)![1], "DONE"],
             "the model's rows are exactly its program and its conclusion");
     });
 }
@@ -586,7 +555,7 @@ for (const [cancel, status] of [[false, 200], [true, 499]] as const) {
         const provider = new Mock({ contextWindow: 100000, responses: [
             response(`${frame("FIND (workspace:///*)", "")}\n${frame("SEND", "The answer.")}`),
             response(`${frame("KILL (log:///1/2/*/SEND)", "")}\n${cancel ? frame("KILL (session://alice)", "") : frame("NOTE", "Result observed.")}`),
-            response(frame("SEND [200]", "")),
+            response(frame("DONE", "")),
         ] });
         const lifecycle = new LoopLifecycle(db);
         const result = await new Engine({ db, schemes: new SchemeRegistry(), cancelSession: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
@@ -610,7 +579,7 @@ test("{§message-completion} a terminal response supersedes earlier delivered SE
     const loopId = await insertLoop(db, sessionId, 1, "What is the codename?");
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(`${frame("SEND", "The codename is Bumblebee.")}\n${frame("SEND", "The codename is phoenix.")}`),
-        response(frame("SEND [200]", "")),
+        response(frame("DONE", "")),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);
@@ -630,7 +599,7 @@ test("{§loop-completion} an observed cleanup failure does not invalidate comple
     const brief = "Codename: phoenix. Host: db.internal. TODO: add error handling.";
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(`${frame("SEND", brief)}\n${frame("KILL (reasoning://alice/1/2) <1,-1>", "")}`, "The requested project brief is ready."),
-        response(frame("SEND [200]", "")),
+        response(frame("DONE", "")),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
     const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId });
@@ -678,7 +647,7 @@ for (const [cancel, parentStatus, childStatus] of [[false, 202, 102], [true, 499
         const childLoopId = await insertLoop(db, childId, 1, "Finish delegated work.");
         const lifecycle = new LoopLifecycle(db);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelSession: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } });
-        const provider = new Mock({ contextWindow: 100000, responses: [response(frame(cancel ? "KILL (session://alice)" : "SEND [200]", cancel ? "" : "Waiting for the delegated result."))] });
+        const provider = new Mock({ contextWindow: 100000, responses: [response(frame(cancel ? "KILL (session://alice)" : "DONE", cancel ? "" : "Waiting for the delegated result."))] });
         const result = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
         assert.equal(result.status, parentStatus);
         assert.equal(await lifecycle.status(loopId), parentStatus);
@@ -708,7 +677,7 @@ test("{§op-shapes} writing about failure in NOTE does not declare failure", asy
     const loopId = await insertLoop(db, sessionId, 1, "Try both approaches.");
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(frame("NOTE", "First approach failed.\nTry the second approach.")),
-        response(frame("SEND [200]", "Second approach succeeded.")),
+        response(frame("DONE", "Second approach succeeded.")),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);
@@ -815,19 +784,19 @@ test("{§message-completion}: progress delivers without resolving; explicit comp
     assert.equal((await f.turn(frame(`SEND (${f.message("first")})`, "Working."))).status, 102);
     assert.deepEqual(await f.replies(), ["Working."]);
     assert.equal(await f.remaining(), 1);
-    assert.equal((await f.turn(frame("SEND [200]", "Finished."))).status, 200);
+    assert.equal((await f.turn(frame("DONE", "Finished."))).status, 200);
     assert.equal(await f.remaining(), 0);
     assert.deepEqual(await f.replies(), ["Working.", "Finished."]);
 });
 
-for (const code of [null, 200, 499]) {
-    test(`{§log-wire-format} {§message-completion}: SEND ${code ?? "progress"} omits delivery success without changing message state`, async (t) => {
+for (const verb of ["SEND", "DONE", "FAIL"] as const) {
+    test(`{§log-wire-format} {§message-completion}: ${verb} omits delivery success without changing message state`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
         await f.add("second");
-        const body = code === null ? "Sign-in is required." : "The request is settled.";
-        const result = await f.turn(frame(code === null ? "SEND" : `SEND [${code}]`, body));
-        assert.equal(result.outcomes.find(({ op }) => op === "SEND")?.status, 200, "delivery still reports success");
-        assert.equal(await f.remaining(), code === null ? 2 : 1);
+        const body = verb === "SEND" ? "Sign-in is required." : "The request is settled.";
+        const result = await f.turn(frame(verb, body));
+        assert.equal(result.outcomes.find(({ op }) => op === verb)?.status, 200, "delivery still reports success");
+        assert.equal(await f.remaining(), verb === "SEND" ? 2 : 1);
 
         const observation = await f.turn(frame("NOTE", "The second request remains open."));
         const storedPacket = await f.db.test_get_packet.get<{ packet: string }>({ id: observation.turnId });
@@ -838,15 +807,15 @@ for (const code of [null, 200, 499]) {
         assert.equal(Object.hasOwn(reply, "status"), false, "delivery success cannot masquerade as message completion");
         assert.equal(Object.hasOwn(reply, "metadata"), false, "the paired operation supplies authored metadata");
         assert.equal(reply.body, undefined, "the answer appears once, in the complete operation");
-        assert.equal(packetSection(packet, "emission-history"), frame(code === null ? "SEND" : `SEND [${code}]`, body));
+        assert.equal(packetSection(packet, "emission-history"), frame(verb, body));
         const arrivals = receipts.filter(({ origin }) => origin === "user");
         assert.equal(arrivals.length, 2);
         for (const arrival of arrivals) assert.equal(Object.hasOwn(arrival, "status"), false);
         const open = JSON.parse(packetSection(packet, "work")).messages as Array<{ path: string }>;
-        assert.deepEqual(open.map(({ path }) => path), (code === null ? arrivals : arrivals.slice(1)).map(({ resource }) => resource));
+        assert.deepEqual(open.map(({ path }) => path), (verb === "SEND" ? arrivals : arrivals.slice(1)).map(({ resource }) => resource));
 
         const rows = await f.db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number; rx: string }>({ turn_id: result.turnId });
-        const durable = rows.find(({ op, origin }) => op === "SEND" && origin === "model");
+        const durable = rows.find(({ op, origin }) => op === verb && origin === "model");
         assert.equal(durable?.status_rx, 200);
         assert.equal(JSON.parse(durable.rx).status, 200);
     });
@@ -856,8 +825,8 @@ test("{§message-completion}: two independent final replies execute in one turn"
     const f = await setup(); t.after(() => f.db.close());
     await f.add("second");
     const completed = await f.turn([
-        frame(`SEND (${f.message("first")}) [200]`, "First answer."),
-        frame(`SEND (${f.message("second")}) [200]`, "Second answer."),
+        frame(`DONE (${f.message("first")})`, "First answer."),
+        frame(`DONE (${f.message("second")})`, "Second answer."),
     ].join("\n\n"));
     assert.equal(completed.status, 200);
     assert.equal(await f.remaining(), 0);
@@ -865,20 +834,20 @@ test("{§message-completion}: two independent final replies execute in one turn"
 });
 
 for (const count of [0, 1, 2]) {
-    for (const metadata of ["", " [200]", " [499]"]) {
-        test(`{§message-completion}: targetless SEND${metadata} with ${count} Open Messages`, async (t) => {
+    for (const verb of ["SEND", "DONE", "FAIL"] as const) {
+        test(`{§message-completion}: targetless ${verb} with ${count} Open Messages`, async (t) => {
             const f = await setup(); t.after(() => f.db.close());
             await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, pathname: "/evidence.txt", content: "Evidence." });
-            if (count === 0) await f.turn(`${frame("READ (workspace:///evidence.txt)")}\n\n${frame(`SEND (${f.message("first")}) [200]`, "First answer.")}`);
+            if (count === 0) await f.turn(`${frame("READ (workspace:///evidence.txt)")}\n\n${frame(`DONE (${f.message("first")})`, "First answer.")}`);
             if (count === 2) await f.add("second");
             const before = await f.replies();
-            const result = await f.turn(frame(`SEND${metadata}`, "Implicit reply."));
-            const delivery = result.outcomes.find(({ op }) => op === "SEND");
+            const result = await f.turn(frame(verb, "Implicit reply."));
+            const delivery = result.outcomes.find(({ op }) => op === verb);
             assert.equal(delivery?.status, 200);
-            assert.equal(await f.remaining(), count > 0 && metadata !== "" ? count - 1 : count);
+            assert.equal(await f.remaining(), count > 0 && verb !== "SEND" ? count - 1 : count);
             assert.deepEqual(await f.replies(), [...before, "Implicit reply."]);
             const rows = await f.db.test_log_entries_by_turn.all<{ op: string; origin: string; rx: string }>({ turn_id: result.turnId });
-            const reply = rows.find(({ op, origin }) => op === "SEND" && origin === "model");
+            const reply = rows.find(({ op, origin }) => op === verb && origin === "model");
             assert.deepEqual(JSON.parse(reply!.rx).repliedTo, [f.message("first")]);
             if (count === 0) {
                 assert.equal(JSON.parse(reply!.rx).completion, undefined, "with none open, the reply is speech only");
@@ -907,22 +876,22 @@ test("{§message-completion}: progress and consecutive completions consume the q
     await f.add("second");
     const result = await f.turn([
         frame("SEND", "First progress."),
-        frame("SEND [200]", "First answer."),
+        frame("DONE", "First answer."),
         frame("SEND", "Second progress."),
-        frame("SEND [499]", "Second cancelled."),
+        frame("FAIL", "Second cancelled."),
     ].join("\n\n"));
     assert.equal(result.status, 200);
     assert.equal(await f.remaining(), 0);
     const rows = await f.db.test_log_entries_by_turn.all<{ op: string; origin: string; rx: string }>({ turn_id: result.turnId });
-    assert.deepEqual(rows.filter(({ op, origin }) => op === "SEND" && origin === "model").map(({ rx }) => JSON.parse(rx).repliedTo),
+    assert.deepEqual(rows.filter(({ op, origin }) => (op === "SEND" || op === "DONE" || op === "FAIL") && origin === "model").map(({ rx }) => JSON.parse(rx).repliedTo),
         [[f.message("first")], [f.message("first")], [f.message("second")], [f.message("second")]]);
 });
 
 test("{§message-completion}: corrections name an already-resolved message explicitly", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
     await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, pathname: "/evidence.txt", content: "New evidence." });
-    assert.equal((await f.turn(`${frame("READ (workspace:///evidence.txt)")}\n\n${frame("SEND [200]", "Initial answer.")}`)).status, 102);
-    assert.equal((await f.turn(frame(`SEND (${f.message("first")}) [200]`, "Corrected answer."))).status, 200);
+    assert.equal((await f.turn(`${frame("READ (workspace:///evidence.txt)")}\n\n${frame("DONE", "Initial answer.")}`)).status, 102);
+    assert.equal((await f.turn(frame(`DONE (${f.message("first")})`, "Corrected answer."))).status, 200);
     assert.deepEqual(await f.replies(), ["Initial answer.", "Corrected answer."]);
 });
 
@@ -931,7 +900,7 @@ for (const tail of ["", frame("NOTE", "The result is sufficient."), frame("KILL 
         const f = await setup(); t.after(() => f.db.close());
         await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, scheme: "workspace", pathname: "/evidence.txt",
             channel: "body", content: "Late evidence.", mimetype: "text/plain", state: "static" });
-        const first = await f.turn([frame("READ (workspace:///evidence.txt)"), frame("SEND [200]", "The deliverable.")].join("\n\n"));
+        const first = await f.turn([frame("READ (workspace:///evidence.txt)"), frame("DONE", "The deliverable.")].join("\n\n"));
         assert.equal(first.status, 102, "the READ receipt requires an observation turn");
         assert.equal(await f.remaining(), 0, "the delivered final reply resolved its messages already");
         assert.deepEqual(await f.replies(), ["The deliverable."], "the answer is not withheld");
@@ -951,7 +920,7 @@ test("{§loop-completion}: empty output with an unresolved message is recovery",
 test("{§message-completion}: empty completion resolves without replacing earlier speech", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
     await f.turn(frame(`SEND (${f.message("first")})`, "Delivered answer."));
-    assert.equal((await f.turn(frame("SEND [200]"))).status, 200);
+    assert.equal((await f.turn(frame("DONE"))).status, 200);
     assert.equal(await f.remaining(), 0);
     assert.deepEqual((await f.replies()).filter(Boolean), ["Delivered answer."]);
 });
@@ -961,7 +930,7 @@ test("{§loop-completion}: new operations after final replies create new observa
     await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, scheme: "workspace", pathname: "/evidence.txt",
         channel: "body", content: "Inspect again.", mimetype: "text/plain", state: "static" });
     const read = frame("READ (workspace:///evidence.txt)");
-    assert.equal((await f.turn(`${frame("SEND [200]", "Answer.")}\n\n${read}`)).status, 102);
+    assert.equal((await f.turn(`${frame("DONE", "Answer.")}\n\n${read}`)).status, 102);
     assert.equal((await f.turn(read)).status, 102);
     assert.equal((await f.turn("")).status, 200);
 });
@@ -969,20 +938,20 @@ test("{§loop-completion}: new operations after final replies create new observa
 test("{§loop-completion}: final replies join held work without cancelling it", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
     const childLoop = await holdChild(f.db, f.ids.workspaceId, f.ids.sessionId);
-    assert.equal((await f.turn(frame("SEND [200]", "Answer while the child finishes."))).status, 202);
+    assert.equal((await f.turn(frame("DONE", "Answer while the child finishes."))).status, 202);
     assert.equal(await f.remaining(), 0);
     assert.equal((await f.db.lifecycle_loop_status.get<{ status: number }>({ loop_id: childLoop }))!.status, 102);
 });
 
-for (const code of [200, 499]) {
-    test(`{§message-completion}: [${code}] leaves child and stream work alive until normal settlement`, async (t) => {
+for (const [verb, code] of [["DONE", 200], ["FAIL", 499]] as const) {
+    test(`{§message-completion}: ${verb} leaves child and stream work alive until normal settlement`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
         const childLoop = await holdChild(f.db, f.ids.workspaceId, f.ids.sessionId);
         const entry = await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, scheme: "sh", pathname: "/live", channel: "stdout", state: "active" });
         const stream = await f.db.open_subscription.get<{ id: number }>({ session_id: f.ids.sessionId, entry_id: entry, scheme: "sh", handle: "fixture-live" });
         assert.ok(stream);
         const held = () => f.db.session_live_obligations.get<{ streams: number; sessions: number }>({ session_id: f.ids.sessionId });
-        assert.equal((await f.turn(frame(`SEND [${code}]`, "Outcome delivered."))).status, 202);
+        assert.equal((await f.turn(frame(verb, "Outcome delivered."))).status, 202);
         assert.deepEqual(await held(), { streams: 1, sessions: 1 }, "message resolution cancels neither obligation");
         const lifecycle = new LoopLifecycle(f.db);
         await lifecycle.finish(childLoop, { status: 200 });
@@ -998,7 +967,7 @@ for (const code of [200, 499]) {
 test("{§message-completion}: an attachment-only completion retains its deliverable", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
     await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, pathname: "/report.txt", content: "Final report." });
-    assert.equal((await f.turn(frame('SEND [200,{"attachments":["workspace:///report.txt"]}]'))).status, 200);
+    assert.equal((await f.turn(frame('DONE [{"attachments":["workspace:///report.txt"]}]'))).status, 200);
     assert.equal(await f.remaining(), 0);
     const history = await f.db.message_history.all<{ direction: string; body: string; evidence: string }>({
         workspace_id: f.ids.workspaceId, session_id: f.ids.sessionId, loop_id: f.ids.loopId,
@@ -1013,19 +982,19 @@ test("{§message-completion}: an attachment-only completion retains its delivera
 test("{§message-completion}: a later request stays open after an earlier final reply", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
     await f.add("second");
-    assert.equal((await f.turn(frame(`SEND (${f.message("first")}) [200]`, "First answer."))).status, 102);
+    assert.equal((await f.turn(frame(`DONE (${f.message("first")})`, "First answer."))).status, 102);
     assert.equal(await f.remaining(), 1);
     assert.equal((await f.turn("")).status, 102);
-    assert.equal((await f.turn(frame(`SEND (${f.message("second")}) [200]`, "Second answer."))).status, 200);
+    assert.equal((await f.turn(frame(`DONE (${f.message("second")})`, "Second answer."))).status, 200);
 });
 
-for (const [codes, expected] of [[[499, 499], 499], [[499, 200], 200], [[200, 499], 200]] as const) {
-    test(`{§message-completion}: message outcomes ${codes.join("+")} settle as ${expected}`, async (t) => {
+for (const [verbs, expected] of [[["FAIL", "FAIL"], 499], [["FAIL", "DONE"], 200], [["DONE", "FAIL"], 200]] as const) {
+    test(`{§message-completion}: message outcomes ${verbs.join("+")} settle as ${expected}`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
         await f.add("second");
         const result = await f.turn([
-            frame(`SEND (${f.message("first")}) [${codes[0]}]`, "First outcome."),
-            frame(`SEND (${f.message("second")}) [${codes[1]}]`, "Second outcome."),
+            frame(`${verbs[0]} (${f.message("first")})`, "First outcome."),
+            frame(`${verbs[1]} (${f.message("second")})`, "Second outcome."),
         ].join("\n\n"));
         assert.equal(result.status, expected);
         assert.equal(await f.remaining(), 0);
@@ -1036,17 +1005,17 @@ for (const [codes, expected] of [[[499, 499], 499], [[499, 200], 200], [[200, 49
 test("{§message-completion}: a corrected completion wins without ordinary progress reopening it", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
     await f.add("second");
-    await f.turn(frame(`SEND (${f.message("first")}) [499]`, "Cannot yet deliver."));
-    await f.turn(frame(`SEND (${f.message("first")}) [200]`, "Found the answer."));
+    await f.turn(frame(`FAIL (${f.message("first")})`, "Cannot yet deliver."));
+    await f.turn(frame(`DONE (${f.message("first")})`, "Found the answer."));
     await f.turn(frame(`SEND (${f.message("first")})`, "Additional context."));
     assert.equal(await f.remaining(), 1);
-    assert.equal((await f.turn(frame(`SEND (${f.message("second")}) [499]`, "Cancelled."))).status, 200);
+    assert.equal((await f.turn(frame(`FAIL (${f.message("second")})`, "Cancelled."))).status, 200);
 });
 
-for (const invalid of ["[201]", "[500]", "[200,499]", '["200"]', '[200,{"attachments":["workspace:///missing.pdf"]}]']) {
+for (const invalid of ["SEND [42]", "DONE [42]", "FAIL [42]", 'DONE ["unexpected"]', 'DONE [{"attachments":["workspace:///missing.pdf"]}]']) {
     test(`{§message-completion}: failed reply ${invalid} leaves its message unresolved`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
-        const result = await f.turn(frame(`SEND ${invalid}`, "Not delivered."));
+        const result = await f.turn(frame(invalid, "Not delivered."));
         assert.equal(result.status, 102);
         assert.ok(result.outcomes.some(({ status }) => status >= 400));
         assert.equal(await f.remaining(), 1);
@@ -1059,7 +1028,7 @@ for (const finishReason of ["length", "content_filter", "tool_calls"] as const) 
         const f = await setup(); t.after(() => f.db.close());
         await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, scheme: "workspace", pathname: "/evidence.txt",
             channel: "body", content: "Evidence.", mimetype: "text/plain", state: "static" });
-        await f.turn(`${frame("READ (workspace:///evidence.txt)")}\n\n${frame("SEND [200]", "Answer.")}`);
+        await f.turn(`${frame("READ (workspace:///evidence.txt)")}\n\n${frame("DONE", "Answer.")}`);
         assert.equal((await f.turn("", "", finishReason)).status, 102);
         assert.equal((await f.turn("")).status, 200);
     });
@@ -1074,7 +1043,7 @@ for (const content of [
     test(`{§loop-completion}: omitted operation cannot certify settlement: ${content}`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
         await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, pathname: "/evidence.txt", content: "Evidence." });
-        assert.equal((await f.turn(`${frame("READ (workspace:///evidence.txt)")}\n\n${frame("SEND [200]", "Answer.")}`)).status, 102);
+        assert.equal((await f.turn(`${frame("READ (workspace:///evidence.txt)")}\n\n${frame("DONE", "Answer.")}`)).status, 102);
         assert.equal((await f.turn(content)).status, 102, "omitted work requires another opportunity to act");
         assert.equal((await f.turn("")).status, 200, "the diagnostic does not create a lasting acknowledgement state");
     });
@@ -1082,7 +1051,7 @@ for (const content of [
 
 test("{§loop-completion}: an admitted syntax recovery does not withhold completion", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
-    const result = await f.turn("````\nSEND [200]\nAnswer.\n````");
+    const result = await f.turn("````\nDONE\nAnswer.\n````");
     assert.equal(result.status, 200);
     assert.deepEqual(await f.replies(), ["Answer."]);
 });
@@ -1108,11 +1077,11 @@ const setup = async (responses: MockResponse[]) => {
 const speech = async (f: Awaited<ReturnType<typeof setup>>) => (await f.history())
     .filter(({ direction, body }) => direction === "outbound" && body.trim().length > 0).map(({ body }) => body);
 
-test("{§operation-fences}: ordinary EDIT, progress SEND and final SEND execute without framing notices", async (t) => {
+test("{§operation-fences}: ordinary EDIT, progress SEND and final DONE execute without framing notices", async (t) => {
     const f = await setup([
         response(frame("EDIT (workspace:///kept.md)", "Retained.")),
         response(frame("SEND", "Progress delivered.")),
-        response(frame("SEND [200]", "Verified.")),
+        response(frame("DONE", "Verified.")),
     ]);
     t.after(() => f.db.close());
     for (const status of [102, 102, 200]) {
@@ -1131,8 +1100,8 @@ for (const shape of ["nested", "indented"] as const) {
     test(`{§fence-pairing}: a ${shape} deletion example is not executed`, async (t) => {
         const example = frame("KILL (workspace:///kept.md)");
         const answer = `Example only:\n${example}\nNothing was deleted.`;
-        const content = shape === "nested" ? frame("SEND [200]", answer)
-            : example.split("\n").map((line) => `\t${line}`).join("\n") + "\n\n" + frame("SEND [200]", "Done.");
+        const content = shape === "nested" ? frame("DONE", answer)
+            : example.split("\n").map((line) => `\t${line}`).join("\n") + "\n\n" + frame("DONE", "Done.");
         const f = await setup([response(frame("EDIT (workspace:///kept.md)", "Retained.")), response(content)]);
         t.after(() => f.db.close());
         assert.equal((await f.turn()).status, 102);
@@ -1145,7 +1114,7 @@ for (const shape of ["nested", "indented"] as const) {
 }
 
 test("{§outside-text}: rejected prose is not silently promoted by a later completion", async (t) => {
-    const f = await setup([response("42."), response(frame("SEND [200]"))]);
+    const f = await setup([response("42."), response(frame("DONE"))]);
     t.after(() => f.db.close());
     const first = await f.turn();
     assert.equal(first.status, 102);
@@ -1157,7 +1126,7 @@ test("{§outside-text}: rejected prose is not silently promoted by a later compl
 for (const completionFirst of [false, true]) {
     test(`{§loop-completion}: EDIT ${completionFirst ? "after" : "before"} a final reply still runs and requires observation`, async (t) => {
         const edit = frame("EDIT (workspace:///answer)", "42");
-        const reply = frame("SEND [200]", "Delivered answer.");
+        const reply = frame("DONE", "Delivered answer.");
         const f = await setup([response((completionFirst ? [reply, edit] : [edit, reply]).join("\n\n")), response("")]);
         t.after(() => f.db.close());
         const first = await f.turn();
@@ -1171,7 +1140,7 @@ for (const completionFirst of [false, true]) {
 
     test(`{§loop-completion}: curation ${completionFirst ? "after" : "before"} completion runs without extending the loop`, async (t) => {
         const curate = frame("KILL (log:///**/NOTE)");
-        const reply = frame("SEND [200]", "42.");
+        const reply = frame("DONE", "42.");
         const f = await setup([response(frame("NOTE", "Disposable scratch.")), response((completionFirst ? [reply, curate] : [curate, reply]).join("\n\n"))]);
         t.after(() => f.db.close());
         assert.equal((await f.turn()).status, 102);
@@ -1183,7 +1152,7 @@ for (const completionFirst of [false, true]) {
 
 for (const body of [null, "", " \n\t"]) {
     test(`{§message-completion}: empty reply ${JSON.stringify(body)} resolves without inventing speech`, async (t) => {
-        const f = await setup([response(frame("SEND [200]", body))]);
+        const f = await setup([response(frame("DONE", body))]);
         t.after(() => f.db.close());
         const turn = await f.turn();
         assert.equal(turn.status, 200);
@@ -1198,7 +1167,7 @@ for (const body of [null, "", " \n\t"]) {
 
 for (const stage of ["inference", "terminal transition"] as const) {
     test(`{§message-arrival}: a reply cannot resolve an unseen message arriving during ${stage}`, async (t) => {
-        const f = await setup([response(frame("SEND [200]")), response(frame("SEND [200]"))]);
+        const f = await setup([response(frame("DONE")), response(frame("DONE"))]);
         t.after(() => f.db.close());
         let injected = false;
         const inject = async () => {
@@ -1225,7 +1194,7 @@ for (const stage of ["inference", "terminal transition"] as const) {
 }
 
 test("{§loop-completion}: a reasoning NOTE does not extend a resolved loop", async (t) => {
-    const f = await setup([response(frame("SEND [200]", "42."), frame("NOTE", "Arithmetic verified."))]);
+    const f = await setup([response(frame("DONE", "42."), frame("NOTE", "Arithmetic verified."))]);
     t.after(() => f.db.close());
     assert.equal((await f.turn()).status, 200);
     assert.deepEqual(await speech(f), ["42."]);
@@ -1233,7 +1202,7 @@ test("{§loop-completion}: a reasoning NOTE does not extend a resolved loop", as
 
 for (const [header, status] of [["SEND (reasoning://alice/1/1)", 400], ["KILL (log:///9/9/9)", 404]] as const) {
     test(`{§loop-completion}: failure of ${header} requires observation but never withholds a successful reply`, async (t) => {
-        const f = await setup([response(`${frame(header)}\n\n${frame("SEND [200]", "Answer.")}`), response("")]);
+        const f = await setup([response(`${frame(header)}\n\n${frame("DONE", "Answer.")}`), response("")]);
         t.after(() => f.db.close());
         const first = await f.turn();
         assert.equal(first.status, 102);
@@ -1247,7 +1216,7 @@ test("{§loop-completion}: omitted operations prevent settlement and an omitted 
     const previous = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     process.env.PLURNK_SERVICE_MAX_COMMANDS = "1";
     t.after(() => { if (previous === undefined) delete process.env.PLURNK_SERVICE_MAX_COMMANDS; else process.env.PLURNK_SERVICE_MAX_COMMANDS = previous; });
-    const f = await setup([response([frame("NOTE", "Kept."), frame("NOTE", "Omitted."), frame("SEND [200]", "Not delivered.")].join("\n\n")), response(frame("SEND [200]", "Reviewed."))]);
+    const f = await setup([response([frame("NOTE", "Kept."), frame("NOTE", "Omitted."), frame("DONE", "Not delivered.")].join("\n\n")), response(frame("DONE", "Reviewed."))]);
     t.after(() => f.db.close());
     const first = await f.turn();
     assert.equal(first.status, 102);

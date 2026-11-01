@@ -10,7 +10,6 @@ import { formatHeadingNotation } from "./MatcherSyntax.ts";
 import NativeToolCalls from "./NativeToolCalls.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
-import { isReasoningOperation, type ReasoningOperation } from "./ReasoningOperation.ts";
 import {
     PlurnkParseError,
     type ParseAttempt,
@@ -159,25 +158,6 @@ export default class PlurnkParser {
         return result;
     }
 
-    // {§op-shapes} — only closed top-level operations cross this boundary.
-    static parseReasoningOperations(input: string, onAdvisory?: (advisory: PlurnkParseError) => void): ReasoningOperation[] {
-        const warnings = new Map<PlurnkStatement, PlurnkParseError[]>();
-        const { result, lexer } = PlurnkParser.#run(input, (parser) => parser.statementSeq(), (ctx, spellings) => {
-            const built = AstBuilder.build(ctx, spellings);
-            if (built.statements[0] !== undefined) warnings.set(built.statements[0], built.advisories);
-            return built;
-        }, {}, "reasoning");
-        const reasoning = (statement: PlurnkStatement): statement is ReasoningOperation => isReasoningOperation(statement.op);
-        const operations = result.items.flatMap((item) => item.kind === "statement"
-            && reasoning(item.statement)
-            && lexer.hasClosedBlock(item.statement.position.line)
-            ? [item.statement] : []);
-        for (const operation of operations) {
-            for (const warning of warnings.get(operation) ?? []) onAdvisory?.(warning);
-        }
-        return operations;
-    }
-
     // {§whitespace-contract} — no source operation is reported as its own fact, beside every diagnostic
     // that explains it: a host admits a turn whose only diagnostic is this one as an empty turn
     // ({§outside-text}) and rejects one that also carries a malformed heading.
@@ -237,10 +217,9 @@ export default class PlurnkParser {
         parseFn: (parser: plurnkParser) => ParserRuleContext,
         buildFn: (ctx: BuildContext, spellings: ReadonlyMap<string, string>) => { statements: PlurnkStatement[]; advisories: PlurnkParseError[] } = (ctx, spellings) => AstBuilder.build(ctx, spellings),
         options: ParseOptions = {},
-        tier: "statements" | "model" | "reasoning" = "statements",
+        tier: "statements" | "model" = "statements",
     ): { result: ParseResult; lexer: plurnkLexer } {
         const lexer = new plurnkLexer(CharStream.fromString(input));
-        lexer.reasoning = tier === "reasoning";
         lexer.wellFormed = options.wellFormed;
         const spellings = HeadingReader.executorSpellings(lexer.knownExecutors, options.executors);
         const errors: PlurnkParseError[] = [];

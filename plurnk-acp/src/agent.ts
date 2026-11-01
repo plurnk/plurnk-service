@@ -34,6 +34,7 @@ import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { executeSlashCommand, handlePlurnkAction } from "./actions.ts";
 import type { ResolvedModuleOptions } from "./config.ts";
 import type { GateTracker } from "./gates.ts";
+import { extractMessageId } from "./log-entry-projection.ts";
 import SessionTranslator from "./SessionTranslator.ts";
 import {
     applyAcpMcpServers,
@@ -215,6 +216,7 @@ export const createConnectionAgent = (
                 ctx.params.cwd,
                 true,
                 ctx.params._meta,
+                opts.historyPageChars,
             );
             await applyAdditionalDirectories(
                 seam,
@@ -315,6 +317,7 @@ export const createConnectionAgent = (
                 ctx.params.cwd,
                 false,
                 ctx.params._meta,
+                opts.historyPageChars,
             );
             await applyAdditionalDirectories(
                 seam,
@@ -435,6 +438,19 @@ export const createConnectionAgent = (
                         title: childName,
                         capabilities: { cancel: {} },
                         state: { state: "requires_action" },
+                        _meta: {
+                            plurnk: {
+                                id: proposal.sessionId,
+                                name: childName,
+                                ...(childRow !== undefined
+                                    ? {
+                                          parentSessionId: childRow.parentSessionId,
+                                          kind: childRow.kind,
+                                          lifecycle: childRow.lifecycle,
+                                      }
+                                    : {}),
+                            },
+                        },
                     });
                 }
                 const gate = gates.openOrGet(bound.workspaceId, proposal.sessionId, "proposal", proposal);
@@ -450,6 +466,19 @@ export const createConnectionAgent = (
                         title: childName,
                         capabilities: { cancel: {} },
                         state: { state: "requires_action" },
+                        _meta: {
+                            plurnk: {
+                                id: interaction.sessionId,
+                                name: childName,
+                                ...(childRow !== undefined
+                                    ? {
+                                          parentSessionId: childRow.parentSessionId,
+                                          kind: childRow.kind,
+                                          lifecycle: childRow.lifecycle,
+                                      }
+                                    : {}),
+                            },
+                        },
                     });
                 }
                 const gate = gates.openOrGet(bound.workspaceId, interaction.sessionId, "interaction", undefined, interaction);
@@ -489,7 +518,12 @@ export const createConnectionAgent = (
                                 interactions,
                                 bound.sessionId,
                             ),
-                            inbox,
+                            inbox: inbox.map((msg) => ({
+                                path: msg.path,
+                                id: extractMessageId(msg.source ?? msg.path, bound.acpSessionId),
+                                loopId: msg.loopId,
+                                lifecycle: msg.lifecycle,
+                            })),
                             spend,
                             streams,
                         },
@@ -547,6 +581,7 @@ export const createConnectionAgent = (
         peer.client = ctx.client;
         try {
             assertSinglePortSecurity(ctx.params);
+            const plurnkMeta = extractPlurnkMeta(ctx.params._meta);
             const parent = peer.sessions.get(ctx.params.sessionId)
                 ?? (await resolveSessionBinding(
                     seam,
@@ -555,10 +590,13 @@ export const createConnectionAgent = (
                     ctx.params.sessionId,
                     ctx.params.cwd,
                     false,
+                    undefined,
+                    opts.historyPageChars,
                 ));
             const forked = await seam.forkSession({
                 workspaceId: parent.workspaceId,
                 sessionId: parent.sessionId,
+                ...(plurnkMeta.sessionName !== undefined ? { name: plurnkMeta.sessionName } : {}),
             });
             const forkedSession = await seam.readSession({
                 workspaceId: parent.workspaceId,
@@ -573,6 +611,8 @@ export const createConnectionAgent = (
                 newSessionId,
                 ctx.params.cwd,
                 false,
+                undefined,
+                opts.historyPageChars,
             );
             await applyAcpMcpServers(
                 seam,
@@ -592,6 +632,12 @@ export const createConnectionAgent = (
             return {
                 sessionId: newSessionId,
                 configOptions,
+                _meta: {
+                    plurnk: {
+                        sessionId: forked.sessionId,
+                        sessionName,
+                    },
+                },
             };
         } catch (err) {
             throw toRequestError(err);
@@ -609,14 +655,23 @@ export const createConnectionAgent = (
         async (ctx): Promise<SetSessionConfigOptionResponse> => {
             peer.client = ctx.client;
             try {
-                const bound = peer.sessions.get(ctx.params.sessionId)
+                const hasMetaWorkspace =
+                    isRecord(ctx.params._meta) &&
+                    isRecord(ctx.params._meta.plurnk) &&
+                    (ctx.params._meta.plurnk.workspace !== undefined ||
+                        ctx.params._meta.plurnk.workspaceName !== undefined ||
+                        ctx.params._meta.plurnk.workspaceId !== undefined ||
+                        ctx.params._meta.plurnk.projectRoot !== undefined);
+                const bound = (!hasMetaWorkspace ? peer.sessions.get(ctx.params.sessionId) : undefined)
                     ?? (await resolveSessionBinding(
                         seam,
                         httpOrigin(),
                         peer,
                         ctx.params.sessionId,
                         undefined,
-                        false,
+                        hasMetaWorkspace,
+                        ctx.params._meta,
+                        opts.historyPageChars,
                     ));
                 const configOptions = await applyConfigOption(
                     seam,
@@ -634,6 +689,12 @@ export const createConnectionAgent = (
                 });
                 const statusMeta = {
                     plurnk: {
+                        workspace: {
+                            id: bound.workspaceId,
+                            name: bound.workspaceName,
+                            projectRoot: bound.projectRoot,
+                            projectLabel: bound.projectLabel,
+                        },
                         status: {
                             model: modelInfo.model,
                             spawnModel: modelInfo.spawnModel,
@@ -680,6 +741,7 @@ export const createConnectionAgent = (
                     undefined,
                     true,
                     ctx.params._meta,
+                    opts.historyPageChars,
                 ));
             const textParts: string[] = [];
             const promptOpenPaths: string[] = [];
@@ -922,6 +984,49 @@ export const createConnectionAgent = (
                 throw new RequestError(-32000, ack.problem.detail, ack.problem);
             }
 
+            const rawInbox = await seam.readInbox({ workspaceId: bound.workspaceId, sessionId: bound.sessionId });
+            const mappedInbox = rawInbox.map((msg) => ({
+                path: msg.path,
+                id: extractMessageId(msg.source ?? msg.path, bound.acpSessionId),
+                loopId: msg.loopId,
+                lifecycle: msg.lifecycle,
+            }));
+            const queuedMsg = mappedInbox.find((item) => item.id === messageId);
+            if (queuedMsg !== undefined) {
+                broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
+                    {
+                        sessionId: s.acpSessionId,
+                        update: {
+                            sessionUpdate: "user_message_chunk",
+                            messageId,
+                            content: { type: "text", text },
+                            _meta: {
+                                plurnk: {
+                                    loopId: queuedMsg.loopId,
+                                    lifecycle: queuedMsg.lifecycle,
+                                    published: false,
+                                },
+                            },
+                        },
+                    },
+                    {
+                        sessionId: s.acpSessionId,
+                        update: {
+                            sessionUpdate: "notice",
+                            severity: "info",
+                            title: "workspace:state",
+                            _meta: {
+                                plurnk: {
+                                    status: {
+                                        inbox: mappedInbox,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                ]);
+            }
+
             return {
                 messageId,
                 _meta: {
@@ -941,6 +1046,7 @@ export const createConnectionAgent = (
     });
 
     app.onNotification(methods.agent.session.cancel, async (ctx) => {
+        const plurnkMeta = extractPlurnkMeta(ctx.params._meta);
         const bound = peer.sessions.get(ctx.params.sessionId)
             ?? (await resolveSessionBinding(
                 seam,
@@ -949,12 +1055,14 @@ export const createConnectionAgent = (
                 ctx.params.sessionId,
                 undefined,
                 false,
+                undefined,
+                opts.historyPageChars,
             ).catch(() => undefined));
         if (bound === undefined) return;
         await seam.cancelSession({
             workspaceId: bound.workspaceId,
             sessionId: bound.sessionId,
-            reason: "Cancelled by ACP client",
+            reason: plurnkMeta.reason ?? "Cancelled by ACP client",
         });
     });
 

@@ -266,9 +266,9 @@ test(`{§oauth-continuation}: ACP accepts authorization in an ${busy ? "active" 
         ...httpEntry(served.url),
         authorization: { type: "oauth", redirectUrl: `${origin}/callback`, clientMetadataUrl: "https://client.example.test/oauth.json" },
     } }, [
-        ...(busy ? [makeMockResponse("```SEND [200]\nThe held turn finished.\n```")] : []),
+        ...(busy ? [makeMockResponse("```DONE\nThe held turn finished.\n```")] : []),
         makeMockResponse("````fixture (echo)\n{\"message\":\"management proof\"}\n````\n\n````WAIT\nObserve the result.\n````"),
-        makeMockResponse("````SEND [200]\nObserved the authorized result.\n````"),
+        makeMockResponse("````DONE\nObserved the authorized result.\n````"),
     ]);
     const enabled = await action("authorization", "workspace.mcp.enable", { alias: "fixture" });
     assert.equal(enabled.ok, true, JSON.stringify(enabled));
@@ -396,7 +396,7 @@ test("{§oauth-client-credentials}: ACP application credentials and SDK refresh 
     const authorization = { type: "client-credentials", clientId: "fixture-app", clientSecret: "${MCP_APP_SECRET}", issuer: served.issuer, scope: "mcp:read" };
     const { action, post, provider } = await setup(t, { fixture: { ...httpEntry(served.url), authorization } }, [
         makeMockResponse("````fixture (echo)\n{\"message\":\"application proof\"}\n````\n\n````WAIT\nObserve the result.\n````"),
-        makeMockResponse("````SEND [200]\nObserved the application result.\n````"),
+        makeMockResponse("````DONE\nObserved the application result.\n````"),
     ], {
         MCP_APP_SECRET: "fixture-app-secret",
     });
@@ -474,7 +474,7 @@ test("{§mcp-host-composition} {§operation-results}: MCP progress reaches ACP w
     }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
     const { post, provider } = await setup(t, { fixture: httpEntry(served.url) }, [
         makeMockResponse("````fixture (observe)\n{}\n````\n\n````WAIT\nObserve the result.\n````"),
-        makeMockResponse("````SEND [200]\nThe observation completed.\n````"),
+        makeMockResponse("````DONE\nThe observation completed.\n````"),
     ]);
     const received = Promise.withResolvers<Record<string, unknown>>();
     const running = post("live-progress", undefined, "Observe the tool result.", (event) => {
@@ -549,7 +549,7 @@ for (const deferred of [false, true]) {
 \`\`\`\`WAIT
 Observe the result.
 \`\`\`\``),
-                makeMockResponse("````SEND [200]\nInspected the result.\n````"),
+                makeMockResponse("````DONE\nInspected the result.\n````"),
             ]);
             const events = await post("structured", undefined, "Inspect the tool's result, including any failure.");
             assert.equal(((events.at(-1)?.result as { _meta?: { plurnk?: { stopReason?: string } } } | undefined)?._meta?.plurnk?.stopReason), "end_turn", JSON.stringify(events));
@@ -686,7 +686,7 @@ test("{§tools-resource-materialization} Turn0 catalogs the skill; only a reques
     }
     const provider = new CapturingMock({ contextWindow: 32768, responses: [
         { assistant: { content: "````READ (skill://plurnk/.env.defaults) <1,3>````\n````NOTE\nInspect the reference.\n````", reasoning: null } },
-        { assistant: { content: "````SEND [200]\nReference received.\n````", reasoning: null } },
+        { assistant: { content: "````DONE\nReference received.\n````", reasoning: null } },
     ] });
     await withDaemon(provider, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -708,7 +708,7 @@ test("{§tools-resource-materialization} Turn0 catalogs the skill; only a reques
 describe("tools-expanded-survey", () => {
 test("{§tools-resource-materialization} turn 0 exposes executable inline-program bodies in interpreter summaries", { timeout: 30_000 }, async () => {
     const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse(
-        PlurnkParser.frame("SEND [200]", "Surveyed."),
+        PlurnkParser.frame("DONE", "Surveyed."),
     )] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });

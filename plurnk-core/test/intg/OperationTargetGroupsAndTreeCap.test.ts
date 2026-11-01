@@ -321,7 +321,7 @@ for (const limit of [0, 1, 2]) {
             if (limit === 0) await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ maxCommands: 0 }) });
             await seedEntryWithChannel(db, { workspaceId, pathname: "/alpha.md", content: "alpha" });
             await seedEntryWithChannel(db, { workspaceId, pathname: "/beta.md", content: "beta" });
-            const source = "```READ (workspace:///alpha.md) (workspace:///beta.md)\n```\n\n```NOTE\nafter the group\n```\n\n```SEND [200]\n```\n\n```WAIT\n```";
+            const source = "```READ (workspace:///alpha.md) (workspace:///beta.md)\n```\n\n```NOTE\nafter the group\n```\n\n```DONE\n```\n\n```WAIT\n```";
             const provider = new Mock({ contextWindow: 100_000, responses: [response(source)] });
             const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Read both resources." }] });
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; pathname: string; rx: string; status_rx: number }>({ turn_id: result.turnId });
@@ -376,8 +376,8 @@ test("{§operator-config-workspace-settings}: runtime ancestry does not replace 
         makeMockResponse("````WORK (session://child)\nDelegate to a grandchild.\n````\n\n````WAIT\n````"),
         makeMockResponse("````WORK (session://grandchild)\nDo the leaf work.\n````\n\n````WAIT\n````"),
         makeMockResponse("````NOTE\nLeaf work is in progress.\n````"),
-        makeMockResponse("````SEND [200]\nLeaf work is complete.\n````"),
-        makeMockResponse("````SEND [200]\nThis fifth call exceeds the explicit ceiling.\n````"),
+        makeMockResponse("````DONE\nLeaf work is complete.\n````"),
+        makeMockResponse("````DONE\nThis fifth call exceeds the explicit ceiling.\n````"),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -411,7 +411,7 @@ test("{§operator-config-workspace-settings}: BARE under the runtime actor still
     const childSpec = declaredProvider("runtime-bare", "runtime-bare-model");
     const parent = new Mock({ contextWindow: 32_768, responses: [
         makeMockResponse("````BARE\nOne allowed answer.\n````\n\n````BARE\nNo room for another answer.\n````\n\n````NOTE\nReview the results.\n````"),
-        makeMockResponse("````SEND [200]\nThis call must not run.\n````"),
+        makeMockResponse("````DONE\nThis call must not run.\n````"),
     ] });
     const child = new Mock({ contextWindow: 8_192, responses: [
         { assistant: { content: "allowed", reasoning: null } },
@@ -484,7 +484,7 @@ test("{§operator-config-workspace-settings}: a child's turns spend the parent's
     const mock = new Mock({ contextWindow: 16_384, responses: [
         makeMockResponse("````WORK (session://helper)\nDo one small thing.\n````\n\n````WAIT\ndelegated\n````", 10),
         makeMockResponse("````NOTE\nchild working\n````", 10),
-        makeMockResponse("````SEND [200]\nchild done\n````", 10),
+        makeMockResponse("````DONE\nchild done\n````", 10),
         makeMockResponse("````NOTE\nparent continues\n````", 10),
         makeMockResponse("````NOTE\nnever requested: the tree's ceiling is met first\n````", 10),
     ] });

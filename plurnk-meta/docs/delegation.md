@@ -80,26 +80,25 @@ start new work.
 ## Messages
 
 `Open Work`'s `messages` list names unresolved requests; an arrival receipt's `resource` links
-to the same source. SEND to that address replies to that message. Without a path,
-SEND selects the oldest Open Message; progress leaves it open, completion advances
-to the next. With none open, name a recipient explicitly, including for corrections.
-`[200]` marks a completed request; `[499]` marks a cancelled
-request, without cancelling its session or running work. A SEND without either
-code is progress, leaving the request open. An empty completion still resolves
+to the same source. DONE, FAIL, or SEND to that address replies to that message. Without a path,
+DONE, FAIL, and SEND select the oldest Open Message; SEND leaves it open, while DONE and FAIL advance
+to the next. With none open, SEND names a recipient explicitly, including for corrections.
+DONE marks a completed request; FAIL marks a cancelled
+request, without cancelling its session or running work. A SEND is progress,
+leaving the request open. An empty DONE or FAIL still resolves
 its message while retaining earlier speech. SEND to a session
 control address gives it new work instead. Curation of a message's log
 occurrences never deletes the source or changes whether it was answered.
 Another session may answer it; the assigned session and original sender receive
 that reply without a new request.
 
-```SEND (message://exampleSessionName/ab3d5678) [200]
+```DONE (message://exampleSessionName/ab3d5678)
 The completed answer to this request goes here.
 ```
 
-SEND accepts `[{"attachments":["report.pdf","workspace:///example.md"]}]`:
+SEND, DONE, and FAIL accept `[{"attachments":["report.pdf","workspace:///example.md"]}]`:
 send-time copies delivered through ordinary resource links, not native media
 injection; the recipient READs what it needs, and a missing source fails before
-delivery. The same option works on a targetless reply and composes with completion as
-`[200,{"attachments":["report.pdf"]}]`. A SEND takes no scope;
+delivery. The same option works on a targetless reply. SEND, DONE, and FAIL take no scope;
 delivery later or on a cadence is the `schedule` family's, arriving as an
 ordinary message from `schedule://<alias>`.

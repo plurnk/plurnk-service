@@ -436,7 +436,7 @@ test("{§turn-source-resources} orientation verdict counts only the model's own 
         ] },
         { turn: 2, ops: [
             { op: "READ", target: "ops://meta/1/2", status: 200, origin: "_plurnk" },
-            { op: "SEND", target: null, status: 200, origin: "model" },
+            { op: "DONE", target: null, status: 200, origin: "model" },
         ] },
     ];
     const verdict = evaluateOrientation(harnessOnly, orientationDigest);

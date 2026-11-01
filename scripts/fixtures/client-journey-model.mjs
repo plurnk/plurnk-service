@@ -11,7 +11,7 @@ const journeys = Object.freeze({
         marker: "Exercise the installed one-shot interface.",
         programs: [{
             reasoning: "I will complete the installed one-shot request through the shared protocol.",
-            content: "````SEND [200]\nThe installed one-shot journey is complete.\n````",
+            content: "````DONE\nThe installed one-shot journey is complete.\n````",
         }],
     },
     files: {
@@ -24,7 +24,7 @@ const journeys = Object.freeze({
             content: "```EDIT (integrity.txt) <1,-1>\nafter\n```",
         }, {
             reasoning: "The file operations have settled.",
-            content: "```SEND [200]\nThe installed file journey is complete.\n```",
+            content: "```DONE\nThe installed file journey is complete.\n```",
         }],
     },
     tui: {
@@ -43,7 +43,7 @@ const journeys = Object.freeze({
             ].join("\n"),
         }, {
             reasoning: "The message was retrieved from its log address, so the journey can conclude.\n",
-            content: "````SEND [200]\nThe installed interactive journey is complete.\n````",
+            content: "````DONE\nThe installed interactive journey is complete.\n````",
         }],
     },
     rejected: {
@@ -67,7 +67,7 @@ const journeys = Object.freeze({
         model: "deepseek-v4-flash",
         programs: [{
             reasoning: "I will complete the zero-config onboarding request.",
-            content: "````SEND [200]\nThe zero-config onboarding journey is complete.\n````",
+            content: "````DONE\nThe zero-config onboarding journey is complete.\n````",
         }],
     },
 });

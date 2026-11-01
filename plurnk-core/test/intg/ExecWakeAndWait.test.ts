@@ -57,7 +57,7 @@ test("{§session-causal-admission}: a person's operation can cancel a workspace 
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 65536, responses: [
         mockResponse("````sh\nsleep 30\n````\n````WAIT\nWait for the command's outcome.\n````"),
-        mockResponse("````SEND [200]\nThe command was cancelled.\n````"),
+        mockResponse("````DONE\nThe command was cancelled.\n````"),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -119,7 +119,7 @@ test("{§notifications}: a pending completion wake is not reported as an execute
     });
     const provider = new Mock({ contextWindow: 65536, responses: [
         mockResponse("````sh\nsleep 30\n````\n````WAIT\nWait for the command.\n````"),
-        mockResponse("````SEND [200]\nA cancelled task must not reach this turn.\n````"),
+        mockResponse("````DONE\nA cancelled task must not reach this turn.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -161,13 +161,13 @@ test("{§session-model-selection}: an async wake resumes with the loop's durable
     const releasePath = join(releaseDir, "release");
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("````SEND [200]\nboot provider must never run this loop\n````")],
+        responses: [mockResponse("````DONE\nboot provider must never run this loop\n````")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl(`while [ ! -f '${releasePath}' ]; do sleep 0.05; done; echo selected`)),
-            mockResponse("````SEND [200]\nresumed on selected provider\n````"),
+            mockResponse("````DONE\nresumed on selected provider\n````"),
         ],
     });
     const selectedSpec = { alias: "wakeb", provider: "openai", model: "wake-provider-b" } as const;
@@ -230,14 +230,14 @@ test("{§session-model-selection}: a selector-less continuation resumes the loop
     const releasePath = join(releaseDir, "release");
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("````SEND [200]\nboot provider must never run this loop\n````")],
+        responses: [mockResponse("````DONE\nboot provider must never run this loop\n````")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl(`while [ ! -f '${releasePath}' ]; do sleep 0.05; done; echo selected`)),
             mockResponse("````NOTE\nawaiting the exec before concluding\n````"),
-            mockResponse("````SEND [200]\nresumed on selected provider\n````"),
+            mockResponse("````DONE\nresumed on selected provider\n````"),
         ],
     });
     const selectedSpec = { alias: "wakedefault", provider: "openai", model: "wake-provider-b" } as const;
@@ -282,13 +282,13 @@ test("{§session-model-selection}: a parked loop retains its provider across dae
     serverProposals(t, "accept");
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("````SEND [200]\nboot provider must remain unused\n````")],
+        responses: [mockResponse("````DONE\nboot provider must remain unused\n````")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl("sleep 30")),
-            mockResponse("````SEND [200]\nresumed after restart on selected provider\n````"),
+            mockResponse("````DONE\nresumed after restart on selected provider\n````"),
         ],
     });
     const selectedSpec = { alias: "restartb", provider: "openai", model: "restart-provider-b" } as const;
@@ -381,7 +381,7 @@ test("{§session-wait-timing} wake-on-completion: a slept (202) loop resumes IN 
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl("sleep 0.05; echo hi")),
-            mockResponse("````SEND [200]\nsaw the wake\n````"),
+            mockResponse("````DONE\nsaw the wake\n````"),
         ],
     });
 
@@ -448,7 +448,7 @@ test("{§session-wait-timing} wake-on-completion preserves the durable loop's cu
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl("sleep 0.05; echo ceiling")),
-            mockResponse("````SEND [200]\nmust not receive a second model turn\n````"),
+            mockResponse("````DONE\nmust not receive a second model turn\n````"),
         ],
     });
 
@@ -494,7 +494,7 @@ test("{§session-causal-admission} wake-on-completion: active loop → daemon do
             continueResponse,
             continueResponse,
             continueResponse,
-            mockResponse("````SEND [200]\ndone\n````"),
+            mockResponse("````DONE\ndone\n````"),
         ],
     });
 
@@ -534,7 +534,7 @@ test("{§session-causal-admission} wake-on-completion: streaming spawn outlives 
         responses: [
             mockResponse("````sh\nfor i in 5 4 3 2 1; do echo $i; sleep 0.4; done\n````\n\n````WAIT\nfire and forget\n````"),
             // Wake-opened loop just terminates so the test completes:
-            mockResponse("````SEND [200]\nsaw the wake\n````"),
+            mockResponse("````DONE\nsaw the wake\n````"),
         ],
     });
 
@@ -592,7 +592,7 @@ test("{§session-loop-lifecycle} wake-on-completion: loop.cancel mid-spawn → d
         contextWindow: 16384,
         responses: [
             mockResponse("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
-            mockResponse("````SEND [200]\nnever\n````"),
+            mockResponse("````DONE\nnever\n````"),
         ],
     });
 
@@ -643,7 +643,7 @@ test("{§executor-subprocess} loop.cancel preserves partial stdout on the 499 co
         contextWindow: 16384,
         responses: [
             mockResponse("````sh\nprintf 'a\\nb\\n'; sleep 30\n````\n\n````NOTE\nrunning\n````"),
-            mockResponse("````SEND [200]\nnever\n````"),
+            mockResponse("````DONE\nnever\n````"),
         ],
     });
 
@@ -1071,7 +1071,7 @@ test("{§session-loop-lifecycle} closure wakes the parked loop exactly once befo
     process.env.PLURNK_SERVICE_WAIT_SEC = "600";
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````sh\nsleep 3; echo closed\n````\n\n````WAIT\nwaiting for closure\n````", 10),
-        makeMockResponse("````SEND [200]\nobserved terminal closure\n````", 10),
+        makeMockResponse("````DONE\nobserved terminal closure\n````", 10),
     ] });
     try {
         await withDaemon(mock, async (_db, _daemon, addr) => {

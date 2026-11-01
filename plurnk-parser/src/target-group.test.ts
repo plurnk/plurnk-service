@@ -117,9 +117,8 @@ test("{§slot-order}: ambiguous, invalid and ineligible targets stay singular an
     }
 });
 
-test("{§op-shapes} {§slot-order}: reasoning and statement tiers receive the same compiled selections", () => {
+test("{§op-shapes} {§slot-order}: model and statement tiers receive the same compiled selections", () => {
     const source = "```READ (a) <1,3> (b) /shared/\n```";
-    assert.deepEqual(PlurnkParser.parseReasoningOperations(source), operations(source));
     const statements = PlurnkParser.parseStatements(source);
     assert.deepEqual(statements.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []), operations(source));
 });

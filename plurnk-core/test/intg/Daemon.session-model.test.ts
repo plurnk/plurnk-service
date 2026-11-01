@@ -55,7 +55,7 @@ test("{§session-model-selection}: the configured default is selected on first u
     const spec = declaredProvider("lazy", "lazy-model");
     declaredProviderEnv.set("PLURNK_MODEL", process.env.PLURNK_MODEL);
     process.env.PLURNK_MODEL = spec.alias;
-    const mock = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````SEND [200]\nready\n````")] });
+    const mock = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````DONE\nready\n````")] });
     ProviderInstantiate.registerInstance(mock, spec);
     await withDaemon(null, async (_db, daemon, addr) => {
         assert.equal(daemon.provider, null, "no process-wide model was constructed");
@@ -94,7 +94,7 @@ test("{§configuration-repair-path}: an invalid default leaves client inspection
     const spec = declaredProvider("repair", "repair-model");
     declaredProviderEnv.set("PLURNK_MODEL", process.env.PLURNK_MODEL);
     process.env.PLURNK_MODEL = "missing-default";
-    const mock = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````SEND [200]\nrepaired\n````")] });
+    const mock = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````DONE\nrepaired\n````")] });
     ProviderInstantiate.registerInstance(mock, spec);
     await withDaemon(null, async (db, daemon, addr) => {
         assert.ok(daemon.listProviders().aliases.some(({ alias }) => alias === spec.alias));
@@ -121,7 +121,7 @@ test("{§configuration-repair-path}: an invalid child default refuses work until
     const child = declaredProvider("child", "child-repair-model");
     declaredProviderEnv.set("PLURNK_MODEL_CHILD", process.env.PLURNK_MODEL_CHILD);
     process.env.PLURNK_MODEL_CHILD = "missing-child";
-    const mock = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````SEND [200]\nrepaired child policy\n````")] });
+    const mock = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````DONE\nrepaired child policy\n````")] });
     ProviderInstantiate.registerInstance(mock, spec);
     ProviderInstantiate.registerInstance(new Mock({ contextWindow: 16_384, responses: [] }), child);
     await withDaemon(null, async (_db, daemon, addr) => {
@@ -148,8 +148,8 @@ test("{§session-model-selection}: an explicit selection persists onto the sessi
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("````SEND [200]\nfirst\n````"),
-            makeMockResponse("````SEND [200]\nsecond\n````"),
+            makeMockResponse("````DONE\nfirst\n````"),
+            makeMockResponse("````DONE\nsecond\n````"),
         ],
     });
     ProviderInstantiate.registerInstance(mock, spec);
@@ -196,7 +196,7 @@ test("{§session-model-selection}: an exact provider/model selector persists wit
     }
     const mock = new Mock({
         contextWindow: 16_384,
-        responses: [makeMockResponse("````SEND [200]\ndirect route complete\n````")],
+        responses: [makeMockResponse("````DONE\ndirect route complete\n````")],
     });
     ProviderInstantiate.registerInstance(mock, spec);
 
@@ -325,7 +325,7 @@ test("{§session-model-selection}: alias configuration seeds once, explicit poli
     const spec = declaredProvider("reasoning-durable", "reasoning-durable-model");
     const mock = new Mock({
         contextWindow: 16_384,
-        responses: [makeMockResponse("````SEND [200]\nfixed reasoning\n````")],
+        responses: [makeMockResponse("````DONE\nfixed reasoning\n````")],
     });
     const aliasKnob = `PLURNK_PROVIDERS_EFFORT_${spec.alias}`;
     const previous = process.env[aliasKnob];
@@ -526,12 +526,12 @@ test("{§session-model-selection}: the spawn override persists onto the session 
     const parent = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("````SEND [200]\nfirst done\n````"),
+            makeMockResponse("````DONE\nfirst done\n````"),
             makeMockResponse("````WORK (session://kid)\ndelegate it\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````SEND [200]\nsecond done\n````"),
+            makeMockResponse("````DONE\nsecond done\n````"),
         ],
     });
-    const child = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````SEND [200]\nkid done\n````")] });
+    const child = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````DONE\nkid done\n````")] });
     ProviderInstantiate.registerInstance(parent, parentSpec);
     ProviderInstantiate.registerInstance(child, childSpec);
 
@@ -583,8 +583,8 @@ test("{§session-model-selection}: an absent spawn override inherits the session
         contextWindow: 16_384,
         responses: [
             makeMockResponse("````WORK (session://kid)\ndelegate it\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````SEND [200]\ndone\n````"),
-            makeMockResponse("````SEND [200]\nkid done\n````"),
+            makeMockResponse("````DONE\ndone\n````"),
+            makeMockResponse("````DONE\nkid done\n````"),
         ],
     });
     ProviderInstantiate.registerInstance(mock, spec);
@@ -621,8 +621,8 @@ test("{§session-model-selection}: a redeclared alias does not rewrite the sessi
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("````SEND [200]\nfirst\n````"),
-            makeMockResponse("````SEND [200]\nsecond\n````"),
+            makeMockResponse("````DONE\nfirst\n````"),
+            makeMockResponse("````DONE\nsecond\n````"),
         ],
     });
     ProviderInstantiate.registerInstance(mock, spec);
@@ -666,12 +666,12 @@ test("{§session-model-selection}: the session's durable model and spawn overrid
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("````SEND [200]\nbefore restart\n````"),
+            makeMockResponse("````DONE\nbefore restart\n````"),
             makeMockResponse("````WORK (session://kid)\ndelegate\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````SEND [200]\nafter restart\n````"),
+            makeMockResponse("````DONE\nafter restart\n````"),
         ],
     });
-    const child = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````SEND [200]\nkid done\n````")] });
+    const child = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````DONE\nkid done\n````")] });
     ProviderInstantiate.registerInstance(mock, spec);
     ProviderInstantiate.registerInstance(child, childSpec);
 
@@ -730,7 +730,7 @@ for (const selection of ["model", "spawn model", "reasoning", "prompt model", "p
         const replacement = declaredProvider("replacement", "replacement-model");
         const mock = new Mock({
             contextWindow: 16_384,
-            responses: [makeMockResponse("````SEND [200]\nnew work complete\n````")],
+            responses: [makeMockResponse("````DONE\nnew work complete\n````")],
         });
         ProviderInstantiate.registerInstance(mock, spec);
         ProviderInstantiate.registerInstance(mock, spec, process.env, "high");
@@ -844,7 +844,7 @@ test("{§session-model-selection}: a selection while the session holds a parked 
         contextWindow: 16_384,
         responses: [
             makeMockResponse("````sh\nsleep 30\n````\n\n````WAIT\ndone\n````"),
-            makeMockResponse("````SEND [200]\nresumed\n````"),
+            makeMockResponse("````DONE\nresumed\n````"),
         ],
     });
     ProviderInstantiate.registerInstance(mock, spec);
@@ -1039,13 +1039,13 @@ test("{§session-model-selection}: switching to a smaller model whose budget can
     const large = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse(`\`\`\`\`NOTE\n${bigNote}\n\`\`\`\`\n\n\`\`\`\`SEND [200]\nstored note\n\`\`\`\``),
-            makeMockResponse("````KILL (log:///**/NOTE)````\n\n````SEND [200]\ncurated note\n````"),
+            makeMockResponse(`\`\`\`\`NOTE\n${bigNote}\n\`\`\`\`\n\n\`\`\`\`DONE\nstored note\n\`\`\`\``),
+            makeMockResponse("````KILL (log:///**/NOTE)````\n\n````DONE\ncurated note\n````"),
         ],
     });
     const small = new Mock({
         contextWindow: 12_000,
-        responses: [makeMockResponse("````SEND [200]\nsmall model ran\n````")],
+        responses: [makeMockResponse("````DONE\nsmall model ran\n````")],
     });
     ProviderInstantiate.registerInstance(large, largeSpec);
     ProviderInstantiate.registerInstance(small, smallSpec);

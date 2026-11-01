@@ -29,11 +29,11 @@ const isExecutorEvidence = ({ problemType }: StrikeOutcome): boolean =>
 const isUnreadablePattern = ({ problemType }: StrikeOutcome): boolean => problemType === UNREADABLE_PATTERN;
 
 // {§engine-rails} — only an operation that acts on the task and succeeds is progress;
-// NOTE, WAIT and a targetless SEND do not act on task resources.
+// NOTE, WAIT and a targetless message reply do not act on task resources.
 export const isProgress = (statement: PlurnkStatement, status: number): boolean => status < 400
     && statement.op !== "NOTE"
     && statement.op !== "WAIT"
-    && !(statement.op === "SEND" && statement.target === null);
+    && !((statement.op === "SEND" || statement.op === "DONE" || statement.op === "FAIL") && statement.target === null);
 
 const SOURCE_DECORATION = new Set(["aside", "position"]);
 

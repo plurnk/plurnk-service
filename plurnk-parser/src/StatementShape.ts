@@ -7,7 +7,7 @@ type Selection = Pick<KillStatement, "target" | "lineMarker" | "metadata">;
 export default class StatementShape {
     static readonly #BODIES = {
         FIND: "annotation", READ: "annotation", EDIT: "mutation", COPY: "none", MOVE: "none",
-        SEND: "prose", BARE: "prose", WORK: "prose", FORK: "prose",
+        SEND: "prose", DONE: "prose", FAIL: "prose", BARE: "prose", WORK: "prose", FORK: "prose",
         NOTE: "text", WAIT: "text", KILL: "text",
     } as const satisfies Record<PlurnkOp, BodyShape>;
 
@@ -34,6 +34,8 @@ export default class StatementShape {
             MOVE: "`MOVE (from) <scope>? (to) <scope>?` on the opening fence line; MOVE takes no body.",
             KILL: "`KILL (path) <L,M>?` on the opening fence line.",
             SEND: "`SEND (recipient)?` on the opening fence line, the message on the lines below, then the closing fence.",
+            DONE: "`DONE (message://...)?` on the opening fence line, the deliverable on the lines below, then the closing fence.",
+            FAIL: "`FAIL (message://...)?` on the opening fence line, the explanation on the lines below, then the closing fence.",
             WORK: "`WORK (session://name)?` on the opening fence line, the child's task on the lines below, then the closing fence.",
             FORK: "`FORK (session://name)?` on the opening fence line, the child's task on the lines below, then the closing fence.",
             BARE: "`BARE (path)?` on the opening fence line, the prompt on the lines below, then the closing fence.",

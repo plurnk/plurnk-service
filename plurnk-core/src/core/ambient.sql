@@ -17,7 +17,7 @@ END;
 DROP TRIGGER IF EXISTS log_entries_deliver_replies;
 CREATE TRIGGER log_entries_deliver_replies
 AFTER INSERT ON log_entries
-WHEN NEW.op IN ('SEND', 'KILL') AND NEW.state = 'resolved' AND NEW.status_rx BETWEEN 200 AND 299
+WHEN NEW.op IN ('SEND', 'DONE', 'FAIL', 'KILL') AND NEW.state = 'resolved' AND NEW.status_rx BETWEEN 200 AND 299
   AND NEW.source IS NULL AND NEW.inherited_history = 0
   AND json_type(CASE WHEN json_valid(NEW.rx) THEN NEW.rx END, '$.repliedTo') = 'array'
 BEGIN

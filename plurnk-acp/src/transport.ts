@@ -136,6 +136,18 @@ export const handleEntryRoute = async (
     sessionId: number,
     url: URL,
 ): Promise<void> => {
+    for (const key of url.searchParams.keys()) {
+        if (key !== "target" && key !== "channel" && key !== "offset" && key !== "access_token") {
+            writeHttpProblem(
+                res,
+                httpProblem("entry-query-invalid", 400, `Unsupported query parameter '${key}'.`, {
+                    stage: "validation",
+                    retryable: false,
+                }),
+            );
+            return;
+        }
+    }
     const target = url.searchParams.get("target");
     if (!target || target.trim().length === 0) {
         writeHttpProblem(
@@ -147,24 +159,53 @@ export const handleEntryRoute = async (
         );
         return;
     }
-    const channel = url.searchParams.get("channel") ?? "body";
+    const channelParam = url.searchParams.get("channel");
+    if (channelParam !== null && channelParam.trim().length === 0) {
+        writeHttpProblem(
+            res,
+            httpProblem("entry-query-invalid", 400, "Query parameter 'channel' must not be empty.", {
+                stage: "validation",
+                retryable: false,
+            }),
+        );
+        return;
+    }
     const offsetParam = url.searchParams.get("offset");
-    const offset = offsetParam !== null && /^\d+$/.test(offsetParam) ? Number(offsetParam) : undefined;
-    const readResult = await seam.readEntry({
-        workspaceId,
-        sessionId,
-        target,
-        channel,
-        ...(offset !== undefined ? { offset } : {}),
-    });
+    if (offsetParam !== null && !/^\d+$/.test(offsetParam)) {
+        writeHttpProblem(
+            res,
+            httpProblem("entry-query-invalid", 400, "Query parameter 'offset' must be a non-negative integer.", {
+                stage: "validation",
+                retryable: false,
+            }),
+        );
+        return;
+    }
+    const offset = offsetParam !== null ? Number(offsetParam) : undefined;
+    const readResult =
+        channelParam === null && offset === undefined
+            ? await seam.readEntryChannel({ workspaceId, sessionId, target })
+            : await seam.readEntry({
+                  workspaceId,
+                  sessionId,
+                  target,
+                  ...(channelParam !== null ? { channel: channelParam } : {}),
+                  ...(offset !== undefined ? { offset } : {}),
+              });
     if (readResult.entry === null) {
         writeHttpProblem(res, readResult.problem);
         return;
     }
-    const entryChannel = readResult.entry.channels[channel];
+    const entryChannel =
+        channelParam !== null
+            ? readResult.entry.channels[channelParam]
+            : Object.values(readResult.entry.channels)[0];
     const content = entryChannel?.content ?? "";
     const mimetype = entryChannel?.mimetype ?? "text/plain";
-    res.writeHead(200, { "content-type": mimetype });
+    res.writeHead(200, {
+        "content-type": `${mimetype}; charset=utf-8`,
+        "cache-control": "no-store",
+    });
     res.end(content);
 };
 
@@ -192,6 +233,7 @@ export const handleMessagesRoute = async (
         workspaceId,
         sessionId,
         origin,
+        ...(targetLoop === undefined ? { historyPageChars: opts.historyPageChars } : {}),
     });
     const replayed = SessionTranslator.replay(translator, allEntries, inbox, {
         historyLoops: opts.historyLoops,

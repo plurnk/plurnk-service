@@ -1059,7 +1059,7 @@ test("{§log-kill-scope} a log KILL's body lands as the model's own NOTE row aft
         "````EDIT (workspace:///note)\nfirst line\nsecond line\n````\n\n````READ (workspace:///note)````\n````NOTE\nwrote\n````",
         `\`\`\`\`KILL (log:///1/**/{READ,NOTE}) <!-- retire the read and the note; keep what they taught -->\n${distillation}\n\`\`\`\`\n\`\`\`\`KILL (log:///1/**/EDIT)\n   \n\`\`\`\`\n\`\`\`\`NOTE\ncurated\n\`\`\`\``,
         "````NOTE\nmoving on\n````",
-        "````SEND [200]\ndone\n````",
+        "````DONE\ndone\n````",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1103,7 +1103,7 @@ test("{§log-kill-scope} a failed log KILL still keeps its body as the model's N
     const mock = new Mock({ contextWindow: 32768, responses: [
         "````NOTE\nwrote\n````",
         "````KILL (log:///9/9/9)\nnothing here\n````\n````NOTE\nchecked\n````",
-        "````SEND [200]\ndone\n````",
+        "````DONE\ndone\n````",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1147,7 +1147,7 @@ for (const partial of [false, true]) {
         const provider = new Mock({ contextWindow: 100000, responses: [
             `${first}\n\n${second}`,
             PlurnkParser.frame(`KILL (log:///1/2/3/NOTE)${partial ? " <1>" : ""}`, null),
-            PlurnkParser.frame("SEND [200]", "Done."),
+            PlurnkParser.frame("DONE", "Done."),
         ].map((content) => ({ assistant: { content, reasoning: null } })) });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
         assert.equal(result.result.status, 200);

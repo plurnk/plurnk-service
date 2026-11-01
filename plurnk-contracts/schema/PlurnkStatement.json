@@ -23,6 +23,12 @@
             "$ref": "#/$defs/SendStatement"
         },
         {
+            "$ref": "#/$defs/DoneStatement"
+        },
+        {
+            "$ref": "#/$defs/FailStatement"
+        },
+        {
             "$ref": "#/$defs/ExecStatement"
         },
         {
@@ -328,6 +334,78 @@
                 },
                 "lineMarker": {
                     "$ref": "#/$defs/LineMarkerOrNull"
+                },
+                "body": {
+                    "$ref": "#/$defs/SendBodyOrNull"
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
+            }
+        },
+        "DoneStatement": {
+            "type": "object",
+            "required": [
+                "op",
+                "aside",
+                "metadata",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "op": {
+                    "const": "DONE"
+                },
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
+                },
+                "metadata": {
+                    "$ref": "#/$defs/SchemeMetadataOrNull"
+                },
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "type": "null"
+                },
+                "body": {
+                    "$ref": "#/$defs/SendBodyOrNull"
+                },
+                "position": {
+                    "$ref": "#/$defs/PositionRef"
+                }
+            }
+        },
+        "FailStatement": {
+            "type": "object",
+            "required": [
+                "op",
+                "aside",
+                "metadata",
+                "target",
+                "lineMarker",
+                "body",
+                "position"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "op": {
+                    "const": "FAIL"
+                },
+                "aside": {
+                    "$ref": "#/$defs/AsideOrNull"
+                },
+                "metadata": {
+                    "$ref": "#/$defs/SchemeMetadataOrNull"
+                },
+                "target": {
+                    "$ref": "#/$defs/PathOrNull"
+                },
+                "lineMarker": {
+                    "type": "null"
                 },
                 "body": {
                     "$ref": "#/$defs/SendBodyOrNull"

@@ -113,7 +113,7 @@ created
 \`\`\`\`NOTE
 verify
 \`\`\`\``, 10),
-        makeMockResponse("````SEND [200]\ndone\n````", 10),
+        makeMockResponse("````DONE\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -122,7 +122,7 @@ verify
             const result = await runLoopToTerminal(ws, 2, { prompt: "run" });
             assert.equal(result.finalStatus, 200);
             const rows = (await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string; tx: string }>({ loop_id: result.loopId }))
-                .filter(({ origin, op }) => origin === "model" && op !== "SEND" && op !== "NOTE"
+                .filter(({ origin, op }) => origin === "model" && op !== "SEND" && op !== "DONE" && op !== "FAIL" && op !== "NOTE"
                     && !TurnDisposition.isOp(op)).slice(1);
             assert.deepEqual(rows.map(({ op }) => op), fixture.order);
             assert.deepEqual(rows.filter(({ op }) => op === "READ").map(({ rx }) => JSON.parse(rx).content), fixture.reads);
@@ -416,7 +416,7 @@ for (const readers of [undefined, 1]) test(`{§scheme-address} a client read acq
     const minted = "proto://anonymous/threads/t/messages/m1";
     const provider = new Mock({ contextWindow: 32768, responses: [
         reasoned("````NOTE\nOne.\nTwo.\nThree.\n````", thought),
-        makeMockResponse("````SEND [200]\nThe answer.\n````"),
+        makeMockResponse("````DONE\nThe answer.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "entry-acquisition" });
@@ -874,7 +874,7 @@ test("{§manifest} runtime scheme traits participate in the same selector space"
 describe("Message.attachments", () => {
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 const next = "````NOTE\nDeliver selected resources.\n````";
-const done = "````SEND [200]\nAttachment handling verified.\n````";
+const done = "````DONE\nAttachment handling verified.\n````";
 
 test("{§op-methods-op-dispatch}: session SEND snapshots only selected resources and a failed source sends nothing", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
@@ -998,7 +998,7 @@ Answer.
         const curated = await db.test_log_entries_by_turn.all<{ id: number; active: number }>({ turn_id: seed.turnId });
         assert.equal(curated.find(({ id }) => id === plan.id)?.active, 0, "the KILL authored after SEND curated the earlier note");
         assert.equal((await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [response("```SEND [200]\n```")] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [response("```DONE\n```")] }),
             workspaceId, sessionId, loopId, messages: [],
         })).status, 200);
     } finally { await db.close(); }
