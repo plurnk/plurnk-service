@@ -56,7 +56,7 @@ export default class Matcher {
                     const rows = scheme === "log"
                         ? await ctx.db.log_find_candidates.all<{ coordinate: string; deep_hash: string | null }>({ session_id: ctx.sessionId, scope_prefix: null, max_id: null })
                         : scheme === "ops" || scheme === "reasoning" || scheme === "note"
-                            ? await ctx.db.turn_source_candidates.all<{ pathname: string; deep_hash: string | null }>({ workspace_id: ctx.workspaceId, session_name: target.kind === "url" ? target.hostname : null, kind: scheme })
+                            ? await ctx.db.turn_source_candidates.all<{ pathname: string; deep_hash: string | null }>({ workspace_id: ctx.workspaceId, authority: target.kind === "url" ? target.hostname : null, kind: scheme, scope_prefix: null })
                                 .then((sources) => sources.filter(({ pathname }) => !/^\/\d+$/.test(pathname)))
                             : await ctx.db.find_workspace_derivation_candidates.all<{ key: string; deep_hash: string | null }>({ workspace_id: ctx.workspaceId });
                     const universe = resolveSearchCandidates(rows.map(({ deep_hash }, index) => ({ key: String(index), deepHash: deep_hash })));

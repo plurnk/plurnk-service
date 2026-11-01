@@ -1050,6 +1050,10 @@ test("{§db-migrations}: no registry statement scans a growing table without an 
         }
     } finally { await close(); }
     assert.deepEqual(offenders, [], `full scans of growing tables:\n${offenders.join("\n")}`);
+    const turnSourcePlan = plans.find(({ name }) => name === "turn_source_candidates");
+    assert.ok(turnSourcePlan !== undefined);
+    assert.ok(turnSourcePlan.rows.filter((detail) => detail.startsWith("SEARCH w USING")).length >= 2,
+        "both UNION ALL arms of turn_source_candidates narrow by workspace/authority in SQL");
 });
 
 // {§db-migrations} — an index earns its place by a plan that uses it, a foreign key whose

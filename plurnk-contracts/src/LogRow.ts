@@ -14,6 +14,23 @@ export type LogAddressColumns = {
 export type ProposalToolKind = Extract<NonNullable<ProposalProjection["subject"]>, { type: "tool_call" }>["kind"];
 
 /**
+ * {§turn-source-resources} {§db-migrations} Closed union of `log_entries.attrs` `kind` discriminator values.
+ */
+export const LOG_ENTRY_KINDS = Object.freeze([
+    "emission",
+    "reasoning",
+    "message",
+    "loop_termination",
+    "entry_materialized",
+    "emissionAttempt",
+] as const);
+
+export type LogEntryKind = (typeof LOG_ENTRY_KINDS)[number];
+
+export const isLogEntryKind = (value: unknown): value is LogEntryKind =>
+    typeof value === "string" && (LOG_ENTRY_KINDS as readonly string[]).includes(value);
+
+/**
  * {§acp-plurnk-metadata} {§capability-policy-cascade} Canonical tool-call kind classification for a log or proposal operation.
  */
 export const toolKindOf = (op: string | null, scheme: string | null): ProposalToolKind => {

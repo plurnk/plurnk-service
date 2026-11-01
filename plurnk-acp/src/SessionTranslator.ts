@@ -75,6 +75,9 @@ export default class SessionTranslator {
     readonly #origin: string | undefined;
     readonly #streamedReasoningTurns = new Set<string>();
     readonly #toolCallIdByEntryId = new Map<number, string>();
+    readonly #toolCallIdByStreamTarget = new Map<string, string>();
+    readonly #concludedStreamStatusByEntryId = new Map<number, number>();
+    readonly #concludedStreamStatusByTarget = new Map<string, number>();
     readonly #planIdByCoordinate = new Map<string, string>();
     readonly #planIdByTarget = new Map<string, string>();
 
@@ -287,8 +290,26 @@ export default class SessionTranslator {
         // 5. Standard tool call
         if (entry.op !== null && entry.op !== "error" && entry.op !== "ERROR") {
             this.#toolCallIdByEntryId.set(entry.id, coordinate);
+            if (typeof attrs.stream === "string" && attrs.stream.length > 0) {
+                this.#toolCallIdByStreamTarget.set(attrs.stream, coordinate);
+            }
             const kind = SessionTranslator.toolKindOf(entry.op, entry.scheme ?? null);
-            const status = SessionTranslator.toolStatusOf(entry);
+            const concludedStreamStatus =
+                (typeof attrs.stream === "string" && attrs.stream.length > 0
+                    ? this.#concludedStreamStatusByTarget.get(attrs.stream)
+                    : undefined) ??
+                this.#concludedStreamStatusByEntryId.get(entry.id);
+            const rawStatus = SessionTranslator.toolStatusOf(entry);
+            const status: ToolCallStatus =
+                rawStatus === "in_progress" && concludedStreamStatus !== undefined
+                    ? concludedStreamStatus < 400
+                        ? "completed"
+                        : "failed"
+                    : rawStatus;
+            const effectiveStatusRx =
+                rawStatus === "in_progress" && concludedStreamStatus !== undefined
+                    ? concludedStreamStatus
+                    : statusRx;
             const rawInput = isRecord(parsedTx)
                 ? Object.fromEntries(Object.entries(parsedTx).filter(([k]) => k !== "op" && k !== "position"))
                 : parsedTx;
@@ -397,6 +418,7 @@ export default class SessionTranslator {
                     _meta: {
                         plurnk: {
                             ...opMeta,
+                            status: effectiveStatusRx,
                             ...(bodyUrl !== undefined ? { body: { url: bodyUrl } } : {}),
                         },
                     },
@@ -421,7 +443,7 @@ export default class SessionTranslator {
                             ? { output: { data: Buffer.from(initialOut, "utf8").toString("base64") } }
                             : {}),
                         ...(status === "completed" || status === "failed"
-                            ? { exitStatus: { exitCode: statusRx === 200 ? 0 : statusRx } }
+                            ? { exitStatus: { exitCode: effectiveStatusRx === 200 ? 0 : effectiveStatusRx } }
                             : {}),
                     },
                 });
@@ -518,6 +540,11 @@ export default class SessionTranslator {
 
     terminalConcluded(entryId: number, status: number, meta?: Record<string, unknown>): AcpSessionUpdate[] {
         const terminalId = terminalIdForEntry(entryId);
+        const target = typeof meta?.target === "string" && meta.target.length > 0 ? meta.target : null;
+        this.#concludedStreamStatusByEntryId.set(entryId, status);
+        if (target !== null) {
+            this.#concludedStreamStatusByTarget.set(target, status);
+        }
         const updates: AcpSessionUpdate[] = [
             {
                 sessionId: this.#acpSessionId,
@@ -531,7 +558,9 @@ export default class SessionTranslator {
                 },
             },
         ];
-        const toolCallId = this.#toolCallIdByEntryId.get(entryId);
+        const toolCallId =
+            this.#toolCallIdByEntryId.get(entryId) ??
+            (target !== null ? this.#toolCallIdByStreamTarget.get(target) : undefined);
         if (toolCallId !== undefined) {
             updates.push({
                 sessionId: this.#acpSessionId,
@@ -539,6 +568,12 @@ export default class SessionTranslator {
                     sessionUpdate: "tool_call_update",
                     toolCallId,
                     status: status < 400 ? "completed" : "failed",
+                    _meta: {
+                        plurnk: {
+                            status,
+                            ...(target !== null ? { attrs: { stream: target } } : {}),
+                        },
+                    },
                 },
             });
         }
@@ -719,6 +754,7 @@ export default class SessionTranslator {
             readonly historyLoops?: number;
             readonly beforeLoopSeq?: number;
             readonly exactLoopSeq?: number;
+            readonly openStreamTargets?: ReadonlySet<string>;
         } = {},
     ): ReplayResult {
         return replaySessionHistory(translator, rows, inbox, options);

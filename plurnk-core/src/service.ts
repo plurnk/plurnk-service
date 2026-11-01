@@ -420,6 +420,8 @@ export default class Service {
         }
     }
 
+    // {§installation} {§operator-config-precedence}: operator files are read once at start, so an edit after
+    // `startedAt` or boot-override drift requires a daemon restart before taking effect.
     static staleOperatorFiles(
         daemonStatus: DaemonStatus | null,
         files: readonly string[],
@@ -481,6 +483,7 @@ export default class Service {
         }
     }
 
+    // {§installation}: report installed user and system systemd units and whether either unit's MainPID owns the daemon.
     static inspectSystemdUnits({
         userUnitPath = Service.#hostPaths.userSystemdUnitFile,
         systemUnitPath = Service.#hostPaths.systemSystemdUnitFile,

@@ -572,6 +572,14 @@ test("{§log-wire-format}: a present operation aside materializes and absence co
         tx: { runtime: "gitea", aside: null, body: null },
     }], tok);
     assert.doesNotMatch(absent, /"aside":/);
+
+    const noteWithTag = PacketWire.renderLog([{
+        coordinate: "1/1/1",
+        origin: "_plurnk",
+        op: "NOTE", status: 200,
+        tx: { aside: "plan", body: "1. Review the Open Work." },
+    }], tok);
+    assert.doesNotMatch(noteWithTag, /"aside":/, "NOTE rows omit aside from receipt metadata (#1373)");
 });
 
 test("{§log-wire-format}: heading addresses precede the facts, and the facts keep one stable order", async (t) => {

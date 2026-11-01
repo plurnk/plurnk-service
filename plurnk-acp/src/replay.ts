@@ -28,6 +28,7 @@ export const replaySessionHistory = (
         readonly historyLoops?: number;
         readonly beforeLoopSeq?: number;
         readonly exactLoopSeq?: number;
+        readonly openStreamTargets?: ReadonlySet<string>;
     } = {},
 ): ReplayResult => {
     const activeRows = rows
@@ -63,17 +64,19 @@ export const replaySessionHistory = (
         updates.push(...translator.logEntry({ entry: row }));
         const attrs = attrRecord(row.attrs);
         if (typeof attrs.stream === "string") {
-            const streamEnded = activeRows
-                .slice(i + 1)
-                .some(
-                    (later) =>
-                        addressOf(later) === attrs.stream ||
-                        later.loop_seq > row.loop_seq ||
-                        (later.loop_seq === row.loop_seq && later.turn_seq > row.turn_seq),
-                );
+            const streamEnded =
+                (options.openStreamTargets !== undefined && !options.openStreamTargets.has(attrs.stream)) ||
+                activeRows
+                    .slice(i + 1)
+                    .some(
+                        (later) =>
+                            addressOf(later) === attrs.stream ||
+                            later.loop_seq > row.loop_seq ||
+                            (later.loop_seq === row.loop_seq && later.turn_seq > row.turn_seq),
+                    );
             if (streamEnded) {
                 updates.push(
-                    ...translator.terminalConcluded(row.id, statusOf(row)),
+                    ...translator.terminalConcluded(row.id, statusOf(row), { target: attrs.stream }),
                 );
             }
         }

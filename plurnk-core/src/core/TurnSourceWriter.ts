@@ -1,5 +1,5 @@
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
-import { UNKNOWN_POSITION, type BareStatement, type PlurnkStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
+import { UNKNOWN_POSITION, type BareStatement, type LogEntryKind, type PlurnkStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -73,7 +73,7 @@ export default class TurnSourceWriter {
         verbatim: string; sessionId: number; loopId: number; turnId: number; sequence: number;
         modelCallId: number;
     }): Promise<number> {
-        const durableAttrs = { kind: "emissionAttempt" };
+        const durableAttrs: { kind: LogEntryKind } = { kind: "emissionAttempt" };
         const rx = JSON.stringify({ content: verbatim, mimetype: "text/vnd.plurnk" });
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
@@ -116,7 +116,7 @@ export default class TurnSourceWriter {
                 username: null, password: null, hostname: sessionName, port: null, pathname, query: null, fragment: null,
             },
         };
-        const durableAttrs = { kind: "emission" };
+        const durableAttrs: { kind: LogEntryKind } = { kind: "emission" };
         const tx = JSON.stringify(DurableStatement.project(statement));
         const rx = JSON.stringify({ status: 200, content, mimetype: "text/vnd.plurnk" });
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
@@ -167,7 +167,7 @@ export default class TurnSourceWriter {
                 username: null, password: null, hostname: sessionName, port: null, pathname, query: null, fragment: null,
             },
         };
-        const durableAttrs = { kind: "reasoning" };
+        const durableAttrs: { kind: LogEntryKind } = { kind: "reasoning" };
         const tx = JSON.stringify(DurableStatement.project(statement));
         const rx = JSON.stringify(projected === null
             ? { status: 200, content: reasoning, mimetype: "text/markdown" }

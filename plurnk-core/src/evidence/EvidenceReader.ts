@@ -14,7 +14,7 @@ import FabricatedLog from "../core/FabricatedLog.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { contentWeight } from "../core/content-weight.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
-import { Validator, type ParsedPath } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, type ParsedPath } from "@plurnk/plurnk-contracts";
 import { providerRequestFromStorageRow, type ProviderRequestStorageRow } from "../core/provider-accounting.ts";
 
 const describeNonError = (value: unknown): string => {
@@ -94,7 +94,6 @@ export default class EvidenceReader implements DigestEvidence {
             logEntries: db.digest_log_entries.all<Omit<LogRow, "target"> & { target_tx: string | null }>(),
             editRows: db.digest_edit_statements.all<EditRow>(),
             emissionRows: db.digest_emissions.all<EmissionRow>(),
-            reasoningRows: db.digest_reasonings.all<ReasoningRow>(),
             curationEffects: db.digest_curation_effects.all<LogCurationEffectRow>(),
             sessionRollupRows: db.digest_session_rollups.all<SessionRollupRow>(),
             opMixRows: db.digest_session_op_mix.all<OpMixRow>(),
@@ -110,8 +109,23 @@ export default class EvidenceReader implements DigestEvidence {
         if (rows.searchState === undefined || rows.derivationState === undefined) throw new Error("search aggregate returned no row");
         const roots = new Map(rows.workspaces.map(({ id, project_root }) => [id, project_root]));
         const sessionRoots = new Map(rows.sessions.map(({ id, workspace_id }) => [id, roots.get(workspace_id) ?? null]));
+        const loopSequences = new Map(rows.loops.map(({ id, sequence }) => [id, sequence]));
+        const turnSequences = new Map(rows.turns.map(({ id, sequence }) => [id, sequence]));
+        const reasoningRows: ReasoningRow[] = rows.logEntries
+            .filter((row) => row.origin === "_plurnk" && row.op === "READ" && row.scheme === "reasoning")
+            .toSorted((a, b) => a.id - b.id)
+            .map((row) => {
+                const parsed: unknown = row.rx === null ? null : JSON.parse(row.rx);
+                return {
+                    session_id: row.session_id,
+                    coordinate: `${loopSequences.get(row.loop_id) ?? 0}/${turnSequences.get(row.turn_id) ?? 0}/${row.sequence}`,
+                    content: isRecord(parsed) && typeof parsed.content === "string" ? parsed.content : "",
+                    active: row.projection_active,
+                };
+            });
         return {
             ...rows,
+            reasoningRows,
             storage: rows.storage, searchState: rows.searchState, derivationState: rows.derivationState,
             // {§emission-admission}: an echoed emission heading is counted where the model wrote it, in the text
             // outside its operations, whether that text became NOTEs beside them or the turn's outside source.

@@ -9,7 +9,7 @@ import Paths from "./Paths.ts";
 import Service from "./service.ts";
 
 describe("Service config and credential diagnostics", () => {
-    test("{§operator-config-precedence} systemd unit inspection: system-only, user-only, both-installed, and neither-installed shapes", () => {
+    test("{§installation} {§operator-config-precedence} systemd unit inspection: system-only, user-only, both-installed, and neither-installed shapes", () => {
         const userUnitPath = "/home/tay/.config/systemd/user/plurnk.service";
         const systemUnitPath = "/etc/systemd/system/plurnk.service";
 
@@ -72,7 +72,7 @@ describe("Service config and credential diagnostics", () => {
         assert.deepEqual(Service.formatSystemdLines(neither, null), ["systemd: no unit installed"]);
     });
 
-    test("{§operator-config-precedence} assertRouteReady names missing provider credentials and passes when present", () => {
+    test("{§installation} {§operator-config-precedence} assertRouteReady names missing provider credentials and passes when present", () => {
         assert.throws(
             () => Service.assertRouteReady({ provider: "deepseek", model: "deepseek-v4-flash" }, {}, "PLURNK_MODEL"),
             (cause: unknown) => {
@@ -99,7 +99,7 @@ describe("Service config and credential diagnostics", () => {
         );
     });
 
-    test("{§operator-config-precedence} staleOperatorFiles and formatRestartRequired detect operator file edits after daemon start", () => {
+    test("{§installation} {§operator-config-precedence} staleOperatorFiles and formatRestartRequired detect operator file edits after daemon start", () => {
         const configFile = "/home/tay/.config/plurnk/.env";
         const localConfigFile = "/home/tay/.config/plurnk/.env.local";
         const status = { pid: 35812, startedAt: 1_700_000_000_000 };
@@ -125,7 +125,7 @@ describe("Service config and credential diagnostics", () => {
         assert.equal(Service.formatRestartRequired(status, fresh, false), null);
     });
 
-    test("{§operator-config-precedence} detectCredentialDrift catches shell-vs-file divergence without printing secret values", () => {
+    test("{§installation} {§operator-config-precedence} detectCredentialDrift catches shell-vs-file divergence without printing secret values", () => {
         const configFile = "/home/tay/.config/plurnk/.env";
         const shellSecret = "sk-shell-rotated-value-never-print";
         const fileSecret = "sk-file-stale-value-never-print";
@@ -171,7 +171,7 @@ describe("Service config and credential diagnostics", () => {
         );
     });
 
-    test("{§credential-authority} {§operator-config-precedence} OperatorConfig never copies ambient credentials into the seeded config directory", async () => {
+    test("{§installation} {§credential-authority} {§operator-config-precedence} OperatorConfig never copies ambient credentials into the seeded config directory", async () => {
         const root = await mkdtemp(join(tmpdir(), "plurnk-no-credential-copy-"));
         const ambientSecret = "sk-ambient-secret-must-never-be-written";
         const prior = process.env.DEEPSEEK_API_KEY;

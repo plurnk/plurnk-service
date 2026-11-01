@@ -1,9 +1,9 @@
-// Off-hot-path e2e: install the built package into a clean sandbox as a consumer would, then
+// Off-hot-path e2e ({§installation}): install the built package into a clean sandbox as a consumer would, then
 // prove it works out of the box — the bin boots the DB from installed dist,
 // the daemon serves indexed search without inference, and a
 // fresh install has no active model ({§operator-config-precedence}): the pointer surfaces instead.
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -472,21 +472,28 @@ ok(
 );
 const seededConfigPath = resolve(sandboxHostEnv.XDG_CONFIG_HOME, "plurnk", ".env");
 const seededConfigContent = readFileSync(seededConfigPath, "utf8");
+const userUnitDir = resolve(sandboxHostEnv.XDG_CONFIG_HOME, "systemd", "user");
+const userUnitPath = resolve(userUnitDir, "plurnk.service");
 try {
     writeFileSync(seededConfigPath, `${seededConfigContent}\nPLURNK_MODEL_deepseek=deepseek/deepseek-v4-flash\nPLURNK_MODEL=deepseek\n`, "utf8");
     const checkWithoutCred = runBin(["config", "check"], { DEEPSEEK_API_KEY: "" });
     const checkWithEnvD = runBin(["config", "check"], { DEEPSEEK_API_KEY: "sk-environment-d-fixture" });
     const statusView = runBin(["config"], { DEEPSEEK_API_KEY: "sk-environment-d-fixture" });
+    mkdirSync(userUnitDir, { recursive: true });
+    writeFileSync(userUnitPath, readFileSync(resolve(installedRoot, "plurnk.service"), "utf8"), "utf8");
+    const statusWithUnit = runBin(["config"], { DEEPSEEK_API_KEY: "sk-environment-d-fixture" });
     ok(
         checkWithoutCred.code !== 0
             && /DEEPSEEK_API_KEY/.test(checkWithoutCred.stderr ?? "")
             && checkWithEnvD.code === 0
             && /configuration valid/.test(checkWithEnvD.stdout)
             && /systemd: no unit installed/.test(statusView.stdout)
-            && /systemd unit template \(user scope\):/.test(statusView.stdout),
-        "settings in ~/.config/plurnk/.env pair with ambient environment.d credentials without storing secrets in .env",
+            && /systemd unit template \(user scope\):/.test(statusView.stdout)
+            && statusWithUnit.stdout.includes(`systemd user unit: ${userUnitPath}`),
+        "settings in ~/.config/plurnk/.env pair with ambient environment.d credentials and report installed user-unit state ({§installation})",
     );
 } finally {
+    rmSync(userUnitPath, { force: true });
     writeFileSync(seededConfigPath, seededConfigContent, "utf8");
 }
 ok(

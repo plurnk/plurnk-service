@@ -1,5 +1,6 @@
--- Log-entry hydration for wire surfacing. {§methods-invocation}: a turn's admitted readable
--- reasoning rides its first model operation row, derived from the packet, never stored on a row.
+-- Log-entry hydration for wire surfacing. {§methods-invocation} {§turn-source-resources}: a turn's
+-- admitted readable reasoning rides its first model operation row, derived from `turn_sources`
+-- (`kind = 'reasoning'`), never duplicated onto a log row.
 
 -- PREP: log_entry_by_id
 -- loop_seq / turn_seq are the loop+turn ordinals (the logical coordinate clients
@@ -10,9 +11,15 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
             AND le.op IS NOT NULL
             AND le.sequence = (SELECT MIN(f.sequence) FROM log_entries f
                                WHERE f.turn_id = le.turn_id AND f.origin = 'model' AND f.op IS NOT NULL)
-            AND json_type(t.packet, '$.assistant.reasoning') = 'text'
-            AND length(json_extract(t.packet, '$.assistant.reasoning')) > 0
-           THEN json_extract(t.packet, '$.assistant.reasoning')
+           THEN COALESCE(
+               (SELECT s.content FROM turn_sources s
+                WHERE s.turn_id = le.turn_id AND s.kind = 'reasoning' AND s.sequence = 0 AND length(s.content) > 0),
+               CASE
+                   WHEN json_type(t.packet, '$.assistant.reasoning') = 'text'
+                    AND length(json_extract(t.packet, '$.assistant.reasoning')) > 0
+                   THEN json_extract(t.packet, '$.assistant.reasoning')
+               END
+           )
        END AS reasoning,
        -- {§methods-invocation} The request that streamed it: the turn's accepted model call and that
        -- call's response request. History a FORK inherited names none.
@@ -70,9 +77,15 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
             AND le.op IS NOT NULL
             AND le.sequence = (SELECT MIN(f.sequence) FROM log_entries f
                                WHERE f.turn_id = le.turn_id AND f.origin = 'model' AND f.op IS NOT NULL)
-            AND json_type(t.packet, '$.assistant.reasoning') = 'text'
-            AND length(json_extract(t.packet, '$.assistant.reasoning')) > 0
-           THEN json_extract(t.packet, '$.assistant.reasoning')
+           THEN COALESCE(
+               (SELECT s.content FROM turn_sources s
+                WHERE s.turn_id = le.turn_id AND s.kind = 'reasoning' AND s.sequence = 0 AND length(s.content) > 0),
+               CASE
+                   WHEN json_type(t.packet, '$.assistant.reasoning') = 'text'
+                    AND length(json_extract(t.packet, '$.assistant.reasoning')) > 0
+                   THEN json_extract(t.packet, '$.assistant.reasoning')
+               END
+           )
        END AS reasoning,
        -- {§methods-invocation} The request that streamed it: the turn's accepted model call and that
        -- call's response request. History a FORK inherited names none.

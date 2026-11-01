@@ -37,11 +37,33 @@ test("live: smoke — boot, read one entry, complete, and write digest evidence"
     const digest = JSON.parse(readFileSync(join(s.runDir, "digest", "digest.json"), "utf8")) as {
         loops?: unknown[];
         turns?: unknown[];
-        provider_requests?: unknown[];
+        provider_requests?: Array<{
+            state?: string;
+            inputTokens?: number | null;
+            accounting?: {
+                usage?: {
+                    inputTokens?: number;
+                    outputTokens?: number;
+                    totalTokens?: number;
+                } | null;
+                cost?: {
+                    kind?: string;
+                } | null;
+            } | null;
+        }>;
     };
     assert.ok((digest.loops?.length ?? 0) >= 1, "digest records the completed loop");
     assert.ok((digest.turns?.length ?? 0) >= 2, "digest records the loop turns");
     assert.ok((digest.provider_requests?.length ?? 0) >= 1, "digest records the provider requests");
+    const settledRequests = (digest.provider_requests ?? []).filter(({ state }) => state === "settled");
+    assert.ok(settledRequests.length >= 1, "live smoke settles at least one provider request");
+    for (const request of settledRequests) {
+        assert.equal(typeof request.inputTokens, "number", "settled live request records ledger inputTokens");
+        assert.equal(typeof request.accounting?.usage?.inputTokens, "number", "settled live request records usage.inputTokens");
+        assert.equal(typeof request.accounting?.usage?.outputTokens, "number", "settled live request records usage.outputTokens");
+        assert.equal(typeof request.accounting?.usage?.totalTokens, "number", "settled live request records usage.totalTokens");
+        assert.equal(typeof request.accounting?.cost?.kind, "string", "settled live request records cost.kind");
+    }
     const census = JSON.parse(readFileSync(join(s.runDir, "census.json"), "utf8")) as {
         specimen?: string;
         loops?: number;
