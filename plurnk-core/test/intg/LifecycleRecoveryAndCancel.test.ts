@@ -48,7 +48,7 @@ test("{§message-arrival} boot restores a drain for accepted queued work", async
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("````SEND [200]\nrecovered queued work\n````")],
+        responses: [makeMockResponse("````DONE\nrecovered queued work\n````")],
     });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
@@ -95,7 +95,7 @@ test("{§message-arrival} boot restores a drain for accepted queued work", async
 
 test("{§session-wait-timing}: restart settles an interrupted child and wakes the parent parked on it", async () => {
     const db = await openMigrated();
-    const mock = new Mock({ contextWindow: 65536, responses: [makeMockResponse("````SEND [200]\nThe child was interrupted.\n````")] });
+    const mock = new Mock({ contextWindow: 65536, responses: [makeMockResponse("````DONE\nThe child was interrupted.\n````")] });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
     try {
@@ -122,7 +122,7 @@ test("{§machine-processes}: boot rejects queued provider work owned by a non-mo
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("````SEND [200]\nmust remain unused\n````")],
+        responses: [makeMockResponse("````DONE\nmust remain unused\n````")],
     });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
@@ -281,7 +281,7 @@ for (const staged of ["loop", "messages"] as const) {
         const db = await openMigrated();
         const firstProvider = new Mock({
             contextWindow: 16384,
-            responses: [makeMockResponse("````SEND [200]\nFirst orphan recovered.\n````\n\n````SEND [200]\nSecond orphan recovered.\n````")],
+            responses: [makeMockResponse("````DONE\nFirst orphan recovered.\n````\n\n````DONE\nSecond orphan recovered.\n````")],
         });
         ProviderInstantiate.registerInstance(firstProvider, providerSpec);
         const firstDaemon = new Daemon({ db, provider: firstProvider });
@@ -342,7 +342,7 @@ for (const staged of ["loop", "messages"] as const) {
 
             const secondProvider = new Mock({
                 contextWindow: 16384,
-                responses: [makeMockResponse("````SEND [200]\nmust remain unused\n````")],
+                responses: [makeMockResponse("````DONE\nmust remain unused\n````")],
             });
             ProviderInstantiate.registerInstance(secondProvider, providerSpec);
             secondDaemon = new Daemon({ db, provider: secondProvider });
@@ -362,7 +362,7 @@ for (const staged of ["loop", "messages"] as const) {
 
 test("{§session-causal-admission}: cancelled undelivered messages stay cancelled across restart", async () => {
     const db = await openMigrated();
-    const mock = new Mock({ contextWindow: 65536, responses: [makeMockResponse("````SEND [200]\nMust not execute.\n````")] });
+    const mock = new Mock({ contextWindow: 65536, responses: [makeMockResponse("````DONE\nMust not execute.\n````")] });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
     try {
@@ -490,7 +490,7 @@ test("{§message-arrival} boot settles vanished owners and resumes the now-unblo
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("````SEND [200]\nparent observed the interrupted child\n````")],
+        responses: [makeMockResponse("````DONE\nparent observed the interrupted child\n````")],
     });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
@@ -567,7 +567,7 @@ test("{§message-arrival} a child drain exception still propagates the parent wa
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("````SEND [200]\nparent handled child failure\n````")],
+        responses: [makeMockResponse("````DONE\nparent handled child failure\n````")],
     });
     const generate = mock.generate.bind(mock);
     let calls = 0;
@@ -665,7 +665,7 @@ test("{§turn-record}: cancellation during packet preparation completes the turn
         }
         return build.apply(this, args);
     });
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````SEND [200]\ndone\n````")] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````DONE\ndone\n````")] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -697,7 +697,7 @@ test("{§loop-completion}: cancelling a live loop records who and why", async (a
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
-        makeMockResponse("````SEND [200]\ndone\n````"),
+        makeMockResponse("````DONE\ndone\n````"),
     ]});
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -757,7 +757,7 @@ test("{§methods}: cancelling a parked loop terminalizes it", async (t) => {
     });
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````sh\nsleep 30\n````\n\n````WAIT\nawaiting the slow job\n````"),
-        makeMockResponse("````SEND [200]\ndone\n````"),
+        makeMockResponse("````DONE\ndone\n````"),
     ]});
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

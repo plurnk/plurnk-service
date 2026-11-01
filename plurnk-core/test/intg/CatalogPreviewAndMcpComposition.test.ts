@@ -59,7 +59,7 @@ describe("catalog-preview", () => {
 
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; attrs: string; folded: string; origin: string };
-const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND [200]\ndone\n```", 50)] });
+const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```DONE\ndone\n```", 50)] });
 
 test("{§actor-boundary} PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
@@ -187,7 +187,7 @@ test("{§actor-boundary} turn-0 once-per-session foists fire on the session's fi
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {
-        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("```SEND [200]\ndone\n```", 50), makeMockResponse("```SEND [200]\ndone\n```", 50)] });
+        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("```DONE\ndone\n```", 50), makeMockResponse("```DONE\ndone\n```", 50)] });
         await withDaemon(twoLoops, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -368,8 +368,8 @@ describe("inject-fold-posture", () => {
 const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
     // A non-auto execution proposal holds loop 1 live (paused at the review) while injects arrive.
     makeMockResponse("\n````sh\necho hold\n````\n\n````NOTE\nworking\n````", 10),
-    makeMockResponse("````SEND [200]\ndone\n````", 10),
-    makeMockResponse("````SEND [200]\ndone again\n````", 10),
+    makeMockResponse("````DONE\ndone\n````", 10),
+    makeMockResponse("````DONE\ndone again\n````", 10),
 ] });
 
 test("{§session-ownership}: injecting a message preserves the owner's pending review", async () => {
@@ -430,7 +430,7 @@ test("{§methods-workspace-create}: an omitted ceiling resumes a parked loop unc
         contextWindow: 16384,
         responses: [
             makeMockResponse("````sh\nsleep 30\n````\n\n````WAIT\npark\n````", 10),
-            makeMockResponse("````SEND [200]\ndone\n````", 10),
+            makeMockResponse("````DONE\ndone\n````", 10),
         ],
     });
 
@@ -511,7 +511,7 @@ for (const standing of ["absent", "ignored", "untracked", "tracked", "excluded"]
                 if (standing !== "absent") {
                     await writeFile(join(dir, "packages", "web", "AGENTS.local.md"), "# Nested\n", "utf8");
                 }
-                const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
+                const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
                 await withDaemon(mock, async (db, _daemon, addr) => {
                     const ws = await connect(addr);
                     try {
@@ -560,8 +560,8 @@ test("{§session-initialization-entry} {§session-scheme}: a pre-populated sessi
                     "````WORK (session://child)\nInspect the grammar.\n````",
                     "````WAIT\n````",
                 ].join("\n\n"), 50),
-                makeMockResponse("````SEND [200]\nChild finished.\n````", 50),
-                makeMockResponse("````SEND [200]\nParent finished.\n````", 50),
+                makeMockResponse("````DONE\nChild finished.\n````", 50),
+                makeMockResponse("````DONE\nParent finished.\n````", 50),
             ],
         });
         await withDaemon(provider, async (db, _daemon, addr) => {
@@ -629,7 +629,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         "````fixture (third)\n{}\n````\n\n````WAIT\nObserve the result.\n````",
-        "````SEND [200]\nCatalog tool result observed.\n````",
+        "````DONE\nCatalog tool result observed.\n````",
     ].map(makeMockResponse) });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const db = await openMigrated();
@@ -785,10 +785,10 @@ test("{§mcp-host-composition} {§actor-boundary} resource updates refresh a lat
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         `${read(alpha)}\n\n${read(beta)}\n\n${step("NOTE")}`,
-        step("SEND [200]"),
-        step("SEND [200]"),
+        step("DONE"),
+        step("DONE"),
         `${read(alpha)}\n\n${step("NOTE")}`,
-        step("SEND [200]"),
+        step("DONE"),
     ].map(makeMockResponse) });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });

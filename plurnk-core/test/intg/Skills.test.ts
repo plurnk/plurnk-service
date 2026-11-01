@@ -167,7 +167,7 @@ test("{§module-workspace-residency}: a busy workspace refuses skill binding cha
     // A model turn whose execution waits for its owner's review keeps the workspace busy.
     const provider = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````sh\nprintf never\n````"),
-        makeMockResponse("````SEND [200]\nThe execution was declined.\n````"),
+        makeMockResponse("````DONE\nThe execution was declined.\n````"),
     ] });
     const daemon = new Daemon({ db, provider, hostPaths });
     t.after(async () => { await daemon.stop(); await db.close(); await rm(base, { recursive: true, force: true }); });

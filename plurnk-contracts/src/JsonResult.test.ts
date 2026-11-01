@@ -92,6 +92,8 @@ test("{§acp-plurnk-metadata} {§capability-policy-cascade} toolKindOf maps verb
     assert.equal(toolKindOf("NOTE", null), "think");
     assert.equal(toolKindOf("WAIT", null), "think");
     assert.equal(toolKindOf("SEND", null), "other");
+    assert.equal(toolKindOf("DONE", null), "other");
+    assert.equal(toolKindOf("FAIL", null), "other");
     assert.equal(toolKindOf("WORK", null), "execute");
     assert.equal(toolKindOf("FORK", null), "execute");
     assert.equal(toolKindOf("sh", "sh"), "execute");

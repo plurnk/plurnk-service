@@ -88,20 +88,6 @@ assertClean("model turn", PlurnkParser.parse(program));
 const result = PlurnkParser.parseStatements(PlurnkParser.frame("EDIT (workspace:///foo)", "body content"));
 assertClean("statement sequence", result);
 
-const reasoning = PlurnkParser.frame("READ (workspace:///fact.txt)", null);
-if (PlurnkParser.parseReasoningOperations(reasoning)[0]?.op !== "READ") {
-    throw new Error("reasoning admission is not available from the packed parser");
-}
-const warnings = [];
-const relative = PlurnkParser.parseReasoningOperations(
-    PlurnkParser.frame("READ (workspace:///fact.txt) <395,+12>", null),
-    (warning) => warnings.push(warning.message),
-);
-if (JSON.stringify(relative[0]?.lineMarker?.marks) !== "[395,407]"
-    || JSON.stringify(warnings) !== JSON.stringify(["Scope <395,+12> was read as <395,407>."])) {
-    throw new Error("packed reasoning range recovery lost its coordinates or advisory");
-}
-
 const selected = PlurnkParser.parseStatements(PlurnkParser.frame('READ (https://example.com) [{"headers":{"Accept":"text/plain"}}] /needle/', null));
 assertClean("owner metadata with matcher", selected);
 const selection = selected.items[0]?.statement;
@@ -127,10 +113,6 @@ for (const op of ["READ", "FIND"]) {
             throw new Error("packed retrieval annotation was lost or became a selector");
         }
     }
-    const reasoning = PlurnkParser.parseReasoningOperations(source);
-    if (reasoning.length !== 2 || reasoning[0]?.op !== "NOTE" || reasoning[1]?.op !== op) {
-        throw new Error("packed reasoning annotation differs from ordinary admission");
-    }
 }
 for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
     const input = '{"query":"unchanged"}';
@@ -150,14 +132,15 @@ const ticks = String.fromCharCode(96).repeat(3);
 const answerTail = "Complete answer.\\n" + ticks + "\\n"
     + PlurnkParser.frame("EDIT (must-not-execute.md)", "Example only.") + "\\nThe report continues.";
 for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
-    for (const target of ["", " (message://dogfood04/6094c6e9)"]) {
-        const parsed = parse(PlurnkParser.frame("SEND [200]" + target, answerTail));
-        assertClean("completion reply", parsed);
-        const statements = statementsOf(parsed);
-        if (statements.length !== 1 || statements[0]?.op !== "SEND" || statements[0]?.body?.raw !== answerTail
-            || statements[0]?.metadata?.[0] !== "200"
-            || statements[0]?.target?.raw !== (target ? "message://dogfood04/6094c6e9" : undefined)) {
-            throw new Error("packed parser changed the completion reply's target, metadata, or body");
+    for (const op of ["DONE", "FAIL"]) {
+        for (const target of ["", " (message://dogfood04/6094c6e9)"]) {
+            const parsed = parse(PlurnkParser.frame(op + target, answerTail));
+            assertClean("completion reply", parsed);
+            const statements = statementsOf(parsed);
+            if (statements.length !== 1 || statements[0]?.op !== op || statements[0]?.body?.raw !== answerTail
+                || statements[0]?.target?.raw !== (target ? "message://dogfood04/6094c6e9" : undefined)) {
+                throw new Error("packed parser changed the completion reply's target or body");
+            }
         }
     }
 }

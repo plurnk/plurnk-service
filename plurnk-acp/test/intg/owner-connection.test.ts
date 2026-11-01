@@ -35,14 +35,14 @@ test(
                 contextWindow: 32768,
                 responses: [
                     makeMockResponse("````WORK (session://spawned)\nSay ready.\n````\n````WAIT\n````"),
-                    makeMockResponse("````SEND [200]\nReady.\n````"),
-                    makeMockResponse("````SEND [200]\nSpawned child.\n````"),
+                    makeMockResponse("````DONE\nReady.\n````"),
+                    makeMockResponse("````DONE\nSpawned child.\n````"),
                     makeMockResponse(
                         '````plurnk_question (ask)\n{"message":"Proceed?","requestedSchema":{"type":"object","properties":{"proceed":{"type":"boolean"}},"required":["proceed"]}}\n````',
                     ),
-                    makeMockResponse("````SEND [200]\nChild answered.\n````"),
+                    makeMockResponse("````DONE\nChild answered.\n````"),
                     makeMockResponse("````sh\necho helper-ok\n````"),
-                    makeMockResponse("````SEND [200]\nHelper done.\n````"),
+                    makeMockResponse("````DONE\nHelper done.\n````"),
                 ],
             }),
         });
@@ -248,8 +248,8 @@ test(
                     makeMockResponse(
                         "````COPY (persona://reviewer/PERSONA.md) (session://subreviewer/AGENTS.md)\n````\n````WORK (session://subreviewer)\nAudit auth.\n````\n````WAIT\n````",
                     ),
-                    makeMockResponse("````SEND [200]\nAudit complete.\n````"),
-                    makeMockResponse("````SEND [200]\nAll reviewed.\n````"),
+                    makeMockResponse("````DONE\nAudit complete.\n````"),
+                    makeMockResponse("````DONE\nAll reviewed.\n````"),
                 ],
             }),
         });

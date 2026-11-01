@@ -334,7 +334,7 @@ Core consumes [`@plurnk/plurnk-providers`](../plurnk-providers/SPEC.md) through 
 
 ### §emission-admission Emission Admission, Retry, and Attribution
 
-An emission attempt parses `assistant.content` as the operational turn program and `assistant.reasoning` for explicit `NOTE` blocks ({§op-shapes}):
+An emission attempt parses `assistant.content` as the operational turn program ({§op-shapes}):
 
 | Outcome | Rule |
 | --- | --- |
@@ -551,7 +551,7 @@ The session log (`log:///<L>/<T>/<A>[/<leaf>]`) is an append-only SQLite ledger 
 Every turn records immutable source evidence in `turn_sources`, addressable across the workspace by session name:
 
 - `ops://<session>/<L>/<T>`: the turn's admitted operation program (including `_plurnk` initialization surveys). For model turns with admitted content operations, the engine records one born-folded `_plurnk` announcement row (`### log:///<L>/<T>/<A>/emission (ops://<session>/<L>/<T>)`) before the turn's operations; retained content operations replay as `assistant` messages. Rejected emission attempts record an actionless `emissionAttempt` row.
-- `reasoning://<session>/<L>/<T>`: the turn's final exposed provider reasoning (`204` when the turn had none, `404` when the turn does not exist), shared as the canonical durable reasoning source across `READ (reasoning://...)`, `readLog` / `log/entry` hydration ({§methods-invocation}), and forensic digests. Operations fenced inside reasoning execute once after the stream completes; content operations replay in `assistant` history while reasoning operations leave their receipts in the log. When `PLURNK_SERVICE_REASONING_ROWS=1` and context budget permits after required results, the engine inserts a `_plurnk` `reasoning` preview row (bounded by `PLURNK_SERVICE_REASONING_TRAILING_LINES` or the shared page) immediately before the emission row.
+- `reasoning://<session>/<L>/<T>`: the turn's final exposed provider reasoning (`204` when the turn had none, `404` when the turn does not exist), shared as the canonical durable reasoning source across `READ (reasoning://...)`, `readLog` / `log/entry` hydration ({§methods-invocation}), and forensic digests. Reasoning is never parsed for operations. When `PLURNK_SERVICE_REASONING_ROWS=1` and context budget permits after required results, the engine inserts a `_plurnk` `reasoning` preview row (bounded by `PLURNK_SERVICE_REASONING_TRAILING_LINES` or the shared page) immediately before the emission row.
 - `note://<session>/<L>/<T>/<A>`: each admitted `NOTE` body, distillation, or interstitial outside-text note. All three schemes (`ops`, `reasoning`, `note`) are read-only (`403` on write/kill), hash-free (`400` on line anchors), indexed for `FIND`, and preserved under local coordinates on `FORK`.
 - **`log_entries.attrs` `kind` discriminator (`LogEntryKind`)**: `log_entries.attrs` is an opaque JSON object (`json_type(attrs) = 'object'` in SQLite, {§db-migrations}) whose optional `kind` property belongs to the closed `LogEntryKind` union (`"emission" | "reasoning" | "message" | "loop_termination" | "entry_materialized" | "emissionAttempt"` in `@plurnk/plurnk-contracts`), enforced at the TypeScript writer/contract boundary so schema evolution does not require a table-rebuild migration.
 
@@ -597,30 +597,30 @@ FIND (<target>) [<scope>] [<pattern>] [<!-- aside -->]
 
 ## §send Messaging and turn disposition
 
-SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metadata, lineMarker }`.
+SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metadata, lineMarker }`; DONE / FAIL AST: `{ op: "DONE" | "FAIL", target: ParsedPath | null, body: SendBody | null, metadata, lineMarker: null }`.
 
-- **Message:** SEND delivers to an actor (`session://<name>`), a scheme that implements SEND (`https://` POST), or an exact message address. Targetless SEND selects the oldest published Open Message. A SEND to a non-recipient scheme (e.g., `log://`) is refused `400 send-target-not-a-recipient`; a scheme without SEND returns `501`.
+- **Message:** SEND delivers to an actor (`session://<name>`), a scheme that implements SEND (`https://` POST), or an exact message address. Targetless SEND, DONE, and FAIL select the oldest published Open Message; `DONE (<path>)` and `FAIL (<path>)` select the Open Message at `<path>`. A SEND to a non-recipient scheme (e.g., `log://`) is refused `400 send-target-not-a-recipient`; a scheme without SEND returns `501`.
 - **Workflow:** WAIT yields. The loop concludes from resolved messages, settled work, and observed results ({§loop-completion}). NOTE retains memory without parking or creating an observation obligation; KILL names something to cancel or curate.
 
 ### §message-completion Reply delivery and message completion
 
-| Reply metadata | Delivery | Message obligation |
+| Reply verb | Delivery | Message obligation |
 | --- | --- | --- |
-| No completion code | Deliver authored text and attachments | Remains open |
-| `[200]` | Deliver final answer | Completed |
-| `[499]` | Deliver cancellation explanation | Cancelled (no implicit session/execution cancellation) |
+| `SEND` | Deliver authored text and attachments | Remains open |
+| `DONE` | Deliver final answer (`completion: 200`) | Completed |
+| `FAIL` | Deliver failure/cancellation explanation (`completion: 499`) | Cancelled (no implicit session/execution cancellation) |
 
 | Aspect | Rule |
 | --- | --- |
-| Targetless SEND | Selects the oldest published Open Message at dispatch time; progress leaves it open, `[200]`/`[499]` resolves it. With none open, delivers speech to the loop's latest published message without changing outcomes (refused only when the loop has no published message). Never broadcasts or answers unpublished arrivals. |
-| Empty & sequential replies | Empty completion replies resolve selected messages without inventing speech or erasing an earlier answer. Replies execute and deliver in authored order; the latest explicit completion reply determines each message's outcome. |
+| Targetless SEND / DONE / FAIL | Selects the oldest published Open Message at dispatch time; `SEND` leaves it open, `DONE`/`FAIL` resolves it. With none open, delivers speech to the loop's latest published message without changing outcomes (refused only when the loop has no published message). Never broadcasts or answers unpublished arrivals. |
+| Empty & sequential replies | Empty completion replies (`DONE` / `FAIL`) resolve selected messages without inventing speech or erasing an earlier answer. Replies execute and deliver in authored order; the latest explicit completion reply determines each message's outcome. |
 | Receipt & history | A successful reply records `repliedTo` (immutable `message://<session>/<key>` addresses answered) and remains recoverable in `message_history`. Actor-addressed SEND, WAIT, NOTE, asides, and ambient observations are not replies. |
-| Latest finished reply | The session's newest model-authored delivered SEND (not copied history, {§machine-processes}) recording `completion` `200` or `499`; daemon abandonment `499` replies never count. |
+| Latest finished reply | The session's newest model-authored delivered reply (`DONE`, `FAIL`, or `SEND` completed via `WAIT`, not copied history, {§machine-processes}) recording `completion` `200` or `499`; daemon abandonment `499` replies never count. |
 | Loop answer (`ops://<session>/<loop>`) | READ resolves to the latest nonempty reply body to the loop's starting message. A failed terminal takes precedence and retains its exact Problem. Running without a reply returns `425`; concluded without speech returns `200` empty body. |
 
 ### §loop-completion Loop completion, obligations, and WAIT disposition
 
-A model loop concludes only when all messages have explicit completion replies, every held child and non-detached stream (`session_obligations` / `loop_obligations`) has settled, and every required result has crossed a packet boundary. Every fired operation except SEND, NOTE, WAIT, and successful KILL requires a subsequent packet before completion. When all messages are resolved but new results require another packet, the engine emits `All Open Messages resolved. Review new results; emit no OPs if finished.` When a loop ends, any message another session sent it without completion is answered `499` by `_plurnk` (`Loop N ended with status S; this message was not answered.`, {§message-arrival}) after re-homing unpublished arrivals.
+A model loop concludes only when all messages have explicit completion replies, every held child and non-detached stream (`session_obligations` / `loop_obligations`) has settled, and every required result has crossed a packet boundary. Every fired operation except SEND, DONE, FAIL, NOTE, WAIT, and successful KILL requires a subsequent packet before completion. When all messages are resolved but new results require another packet, the engine emits `All Open Messages resolved. Review new results; emit no OPs if finished.` When a loop ends, any message another session sent it without completion is answered `499` by `_plurnk` (`Loop N ended with status S; this message was not answered.`, {§message-arrival}) after re-homing unpublished arrivals.
 
 | Condition, in evaluation order | Outcome |
 | --- | --- |
@@ -641,9 +641,9 @@ External cancellation records `terminated_by = 'cancel'` ({§methods}) and prepe
 | --- | --- |
 | Outside text beside fenced OPs | Each span from {§whitespace-contract} becomes one `NOTE` at its position, frozen in the emission ({§turn-source-resources}) and replayed in history ({§emission-history}) with no notice. |
 | Outside text with no fenced OP | Stored verbatim as one `outside` turn source ({§turn-source-resources}) and surfaced once via `outside/event` ({§notifications}, {§acp-plurnk-metadata}); never enters a packet or delivers a reply. |
-| Empty turn (no content or reasoning OP) | When no boundary was lost ({§parse-recovery}) and messages remain unresolved or emission is incomplete, counts one progress strike ({§engine-rails}) and records `422 The turn performed no operation.` ({§operation-results}). |
+| Empty turn (no content OP) | When no boundary was lost ({§parse-recovery}) and messages remain unresolved or emission is incomplete, counts one progress strike ({§engine-rails}) and records `422 The turn performed no operation.` ({§operation-results}). |
 | Terminal evidence (`unconcluded`) | If a failed terminal's last inference turn performed no authored operation and kept text, Problem Details carries `unconcluded: "ops://<session>/<loop>/<turn>"` citing that emission without re-sending or softening the terminal. |
-| Ignored scheme metadata | READ, FIND, EDIT, KILL, WORK, or FORK carrying `[metadata]` for a scheme taking none runs without it and emits one `metadata_ignored` warning notice; SEND and executions validate their own metadata ({§op-methods-op-dispatch}). |
+| Ignored scheme metadata | READ, FIND, EDIT, KILL, WORK, or FORK carrying `[metadata]` for a scheme taking none runs without it and emits one `metadata_ignored` warning notice; SEND, DONE, FAIL, and executions validate their own metadata ({§op-methods-op-dispatch}). |
 
 ## §exec Executions
 
@@ -751,7 +751,7 @@ Every daemon database access goes through package-owned SqlRite statements (`nod
 
 | Concern | Rule |
 | --- | --- |
-| Baseline & migrations | `migrations/001_workspaces`..`011_definition_shapes` form the 5.0.0 re-founded baseline. Released migrations are frozen; shape changes add a new versioned file with upgrade coverage from the support floor. Pre-floor, newer-release, or mismatched databases refuse open naming both schema versions read and non-destructive remediation guidance. |
+| Baseline & migrations | `migrations/001_workspaces`..`011_definition_shapes` form the 5.0.0 re-founded baseline; `012_done_fail_responses` updates response and ambient views for `DONE` and `FAIL`. Released migrations are frozen; shape changes add a new versioned file with upgrade coverage from the support floor. Pre-floor, newer-release, or mismatched databases refuse open naming both schema versions read and non-destructive remediation guidance. |
 | Process triggers (`INIT`) | Row-writing triggers live in `-- INIT: <name>` blocks alongside their statements (`DROP TRIGGER IF EXISTS` + `CREATE TRIGGER`), running on the writer after `MIGRATE`. Baseline migrations hold only schema and `RAISE` guard triggers. |
 | Validation topology & identity | SQL CHECK constraints and guard triggers enforce storage invariants once, matching JSON Schema gates at `Results` and `Validator`. Every entry has non-null unique identity `(workspace_id, scheme, authority, pathname)` cascading on workspace delete; namespace schemes use `authority = ""`, file members use `scheme = "file"`. |
 | Indexes | Every FK column checked by delete/cascade/update is indexed, no `PREP` query scans a growing table unless whole-table by design, and every explicit index has a query-plan, FK, or uniqueness owner (such as `log_entries_emission_turn` enforcing at most one `attrs.$.kind = 'emission'` row per `turn_id` under {§turn-source-resources}). |
@@ -1188,7 +1188,7 @@ sequenceDiagram
 | `capability-denied` | 403 | Capability '*route*' is denied by *scope* policy. |
 | `spawn-prompt-empty` | 422 | *OP* has no prompt text. Recovery: Write the prompt on the lines beneath the *OP* fence line, or name a resource that holds it. |
 | `message-not-found` | 404 | No accepted message exists at *address*. |
-| `send-target-required` | 400 | SEND has no recipient and its loop has no published message. Recovery: Name a recipient address. |
+| `send-target-required` | 400 | *OP* has no recipient and its loop has no published message. Recovery: Name a recipient address. |
 | `edit-collision` | 409 | EDIT collided with the current resource state ({§edit}). Recovery: *n* of *m* edits applied. READ the target for current coordinates. |
 | `edit-target-required` | 400 | A line-anchored EDIT requires a target resource. Recovery: Provide the target that rendered the line anchor. |
 | `kill-target-required` | 400 | KILL requires a target path. |
@@ -1207,7 +1207,6 @@ sequenceDiagram
 | `send-target-not-a-recipient` | 400 | The addressed scheme is not a SEND recipient. Recovery: Name a message address or a recipient that implements SEND. |
 | `invalid-operation-syntax` | 400 | The parser's diagnostic for an invalid operation in an admitted turn. |
 | `unreadable-pattern` | 400 | The pattern reader's diagnostic for an unreadable matcher. |
-| `completion-invalid` | 400 | A reply accepts one completion code: 200 or 499. |
 | `attachment-address-invalid` | 400 | An attachment selects one exact resource address. |
 
 #### Loop and Context Problem Codes

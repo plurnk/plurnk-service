@@ -430,7 +430,7 @@ const program = async (frames: (anchor: (line: number) => string) => string[]): 
                 assert.ok(Array.isArray(anchors) && anchors.length === 11, "the READ published one anchor per line 790..800");
                 return await respond(frames((line) => anchors[line - 790]).join("\n\n"), args);
             }
-            return await respond(PlurnkParser.frame("SEND [200]", "Done."), args);
+            return await respond(PlurnkParser.frame("DONE", "Done."), args);
         };
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Add the test." }] });
         assert.equal(result.result.status, 200, JSON.stringify(result.result).slice(0, 300));
@@ -1019,7 +1019,7 @@ for (const [name, source] of [
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
         makeRawMockResponse(source, 10),
-        makeMockResponse(PlurnkParser.frame("SEND [200]", "Checked.")),
+        makeMockResponse(PlurnkParser.frame("DONE", "Checked.")),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, hostPaths });

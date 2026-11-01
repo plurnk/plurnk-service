@@ -297,7 +297,7 @@ for (const capture of [false, true]) {
                 return new Response(`data: ${JSON.stringify({
                     id: `request-${calls}`, model: "evidence",
                     choices: [{ index: 0, delta: {
-                        content: calls === 1 ? failedContent : "````SEND [200]\nRecovered.\n````",
+                        content: calls === 1 ? failedContent : "````DONE\nRecovered.\n````",
                         reasoning_content: calls === 1 ? "Partial failed reasoning." : "Fresh reasoning.",
                     }, finish_reason: calls === 1 ? null : "stop" }],
                     ...(calls === 1 ? {} : { usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 } }),
@@ -329,7 +329,7 @@ for (const capture of [false, true]) {
         assert.match(failed.evidence.error.message, /Stream ended without finish_reason/);
         assert.equal(recovered.accounting.outcome, "response");
         assert.equal(recovered.evidence.reasoning, "Fresh reasoning.");
-        assert.equal(recovered.evidence.content, "````SEND [200]\nRecovered.\n````");
+        assert.equal(recovered.evidence.content, "````DONE\nRecovered.\n````");
         assert.equal(digest.workspaces[0].accounting.costUsd, null);
         assert.equal(digest.workspaces[0].accounting.knownCostUsd, "0.25");
         assert.equal(digest.workspaces[0].accounting.usage, null);

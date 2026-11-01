@@ -15,7 +15,7 @@ export type Cell = {
 };
 
 const HEAD: Readonly<Record<string, string>> = {
-    reply: "SEND [200]", SEND: "SEND", NOTE: "NOTE", BARE: "BARE",
+    DONE: "DONE", FAIL: "FAIL", SEND: "SEND", NOTE: "NOTE", BARE: "BARE",
     EDIT: "EDIT (docs/guide.md) <1,-1>", WORK: "WORK (session://helper)",
 };
 const fence = (width: number, character = "`") => character.repeat(width);
@@ -55,8 +55,7 @@ const TAILS: readonly Tail[] = [
 
 export const cells = (): Cell[] => {
     const out: Cell[] = [];
-    for (const [label, head] of Object.entries(HEAD)) for (const width of [3, 4, 5]) for (const inner of INNERS) for (const tail of TAILS) {
-        const op = label === "reply" ? "SEND" : label;
+    for (const [op, head] of Object.entries(HEAD)) for (const width of [3, 4, 5]) for (const inner of INNERS) for (const tail of TAILS) {
         const body = inner.body(width);
         if (body === null) continue;
         const text = `${fence(width)}${head}\n${body}\n${fence(width)}${tail.text}`;

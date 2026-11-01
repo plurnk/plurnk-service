@@ -51,8 +51,6 @@ export type Pairing = {
 type PairingOptions = {
     readonly operations?: ReadonlySet<string>;
     readonly executors: ReadonlySet<string>;
-    /** {§op-shapes} — other operations quote rather than execute. */
-    readonly reasoning: boolean;
     /** The grammar and AST builder own slot binding, body shape and inline closure. */
     readonly heading: (heading: string, name: string) => Omit<Split, "runtime">;
     /** {§fence-pairing}: whether a body is well-formed in its runtime's declared media type; absent, or
@@ -115,14 +113,13 @@ export default class FencePairing {
     }
 
     // {§fence-pairing}: the line under a bare fence is an operation heading when it names a native operation
-    // alone or with a slot, or an executor with its operand (sh and env are words); reasoning opens none.
+    // alone or with a slot, or an executor with its operand (sh and env are words).
     static #split(fence: string, next: string, options: PairingOptions): Split | null {
-        if (options.reasoning) return null;
         const name = HeadingReader.NAME.exec(next)?.[0];
         if (name === undefined) return null;
         const native = options.operations ? options.operations.has(name) : isPlurnkOp(name);
         const after = next.slice(name.length);
-        if (!HeadingReader.opens(name, after, options.executors, options.reasoning)) return null;
+        if (!HeadingReader.opens(name, after, options.executors)) return null;
         const rest = after.trimStart();
         if (!(native ? rest === "" || /^[(<[]/u.test(rest) : rest.startsWith("("))) return null;
         return { ...options.heading(`${fence}${next}`, name), runtime: native ? null : name };
@@ -130,7 +127,7 @@ export default class FencePairing {
 
     static #line(text: string, options: PairingOptions): Line {
         const isNative = (name: string): boolean => options.operations ? options.operations.has(name) : isPlurnkOp(name);
-        const naked = HeadingReader.nakedHeading(text, options.reasoning);
+        const naked = HeadingReader.nakedHeading(text);
         if (naked !== null && isNative(naked.name)) return { kind: "name", name: naked.name, alone: naked.alone };
         const match = /^( {0,3})(`{3,}|~{3,})(.*)$/u.exec(text);
         if (match === null) return { kind: "text" };
@@ -142,14 +139,14 @@ export default class FencePairing {
             // A closer glued to the next opener ({§fence-pairing}): six backticks then READ is a close
             // then a heading when the run splits into a closer and a known opener.
             const glued = /^[ \t]*(`{3,})([A-Za-z0-9_.+-]+)(.*)$/u.exec(tail);
-            if (glued !== null && HeadingReader.opens(glued[2], glued[3], options.executors, options.reasoning)) {
+            if (glued !== null && HeadingReader.opens(glued[2], glued[3], options.executors)) {
                 const headingWidth = glued[1].length;
                 return { kind: "closeThenHeading", width, headingWidth, ...options.heading(tail.trimStart(), glued[2]) };
             }
             // {§fence-pairing}: recognition must agree with OPEN in the lexer, including unknown
             // names with explicit slots; availability never changes their syntactic shape.
             const name = HeadingReader.NAME.exec(tail)?.[0];
-            if (name !== undefined && HeadingReader.opens(name, tail.slice(name.length), options.executors, options.reasoning)) {
+            if (name !== undefined && HeadingReader.opens(name, tail.slice(name.length), options.executors)) {
                 return { kind: "heading", width, ...options.heading(text.trimStart(), name), runtime: isNative(name) ? null : name };
             }
             if (tail.trimEnd().endsWith("`".repeat(width))) return { kind: "text" };

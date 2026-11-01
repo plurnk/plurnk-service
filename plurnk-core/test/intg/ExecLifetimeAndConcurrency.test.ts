@@ -361,7 +361,7 @@ ${heartbeat(file)}
 the server stays up
 \`\`\`\`
 \`\`\`\`SEND
-\`\`\`\``), mockTurn("````SEND [200]\n````")],
+\`\`\`\``), mockTurn("````DONE\n````")],
         });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -790,7 +790,7 @@ describe("exec-lifetime", () => {
 const refusal = async (fence: string, name: string): Promise<{ status: number; problem: { type: string; detail: string; recovery?: string } }> => {
     const mock = new Mock({ contextWindow: 100_000, responses: [
         makeRawMockResponse(`${fence}\nsleep 0\n\`\`\`\`\n\n\`\`\`\`WAIT\nObserve the refusal.\n\`\`\`\``, 10),
-        makeRawMockResponse("````SEND [200]\nRefused; done.\n````", 10),
+        makeRawMockResponse("````DONE\nRefused; done.\n````", 10),
     ] });
     let row: { status: number; problem: { type: string; detail: string; recovery?: string } } | undefined;
     await withDaemon(mock, async (db, daemon, addr) => {
@@ -840,7 +840,7 @@ test("{§exec-lifetime}: a turn-scoped run is reaped at the next pre-turn; a loo
     const mock = new Mock({ contextWindow: 100_000, responses: [
         makeRawMockResponse('````sh [{"lifetime": "turn"}]\nsleep 45\n````\n\n````NOTE\nBackgrounded for this turn only.\n````', 10),
         makeRawMockResponse("````NOTE\nThe next turn begins; the turn-scoped run is gone.\n````", 10),
-        makeRawMockResponse("````SEND [200]\nDone.\n````", 10),
+        makeRawMockResponse("````DONE\nDone.\n````", 10),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const client = await connect(addr);
@@ -913,7 +913,7 @@ test("{§exec-lifetime} a bounded lifetime kills the spawn at its deadline and c
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         // Park on the stream: its only conclusion is the reap, so turn 2 sees the 504 close.
         makeMockResponse("````sh [{\"lifetime\": \"2s\"}]\nsleep 30\n````\n\n````WAIT\nwaiting for the reap\n````", 10),
-        makeMockResponse("````SEND [200]\nthe spawn timed out; done\n````", 10),
+        makeMockResponse("````DONE\nthe spawn timed out; done\n````", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

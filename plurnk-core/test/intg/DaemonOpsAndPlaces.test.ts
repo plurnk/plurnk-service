@@ -29,7 +29,7 @@ describe("Daemon.addressed-messages", () => {
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "100";
 
 test("{§methods}: a client message's address is its idempotency key: the same words are the accepted message, other words are refused", async () => {
-    const provider = new Mock({ contextWindow: 100_000, responses: [makeMockResponse(PlurnkParser.frame("SEND [200]", "Hello back."))] });
+    const provider = new Mock({ contextWindow: 100_000, responses: [makeMockResponse(PlurnkParser.frame("DONE", "Hello back."))] });
     await withDaemon(provider, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "keyed-messages", projectRoot: null });
         const { sessionId } = await daemon.createSession({ workspaceId, name: "keyed" });
@@ -61,7 +61,7 @@ test("{§session-scheme}: an empty directed SEND refuses before admission and th
             PlurnkParser.frame("SEND (session://receiver)", null),
             PlurnkParser.frame("NOTE", "Keep the sibling operation."),
         ].join("\n\n")),
-        makeMockResponse(PlurnkParser.frame("SEND [200]", "No message was delivered to the receiver.")),
+        makeMockResponse(PlurnkParser.frame("DONE", "No message was delivered to the receiver.")),
     ] });
     await withDaemon(provider, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "empty-session-message", projectRoot: null });
@@ -102,7 +102,7 @@ test("{§message-arrival} {§connection-lifecycle}: a person's answer, sent as a
         const address = "message://assigned/12345678";
         const accepted = await daemon.runLoop({ workspaceId, sessionId, prompt: "What is the result?", messageAddress: address });
         await waitForDb(() => db.test_get_loop_status.get({ id: accepted.loopId }), (row) => row?.status === 202);
-        const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`SEND (${address}) [200]`, "The result is 42."));
+        const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`DONE (${address})`, "The result is 42."));
         assert.equal(parsed.items.length, 1);
         const item = parsed.items[0];
         assert.equal(item.kind, "statement");
@@ -153,9 +153,9 @@ const heldProvider = (): { provider: ModelProvider; release: () => void; calls: 
         fetch: async () => {
             calls++;
             if (calls === 1) {
-                return streamed([frame({ reasoning_content: "Weighing A." }), frame({ content: "````SEND [200]\nAnswer A.\n````" }, "stop")], held.promise);
+                return streamed([frame({ reasoning_content: "Weighing A." }), frame({ content: "````DONE\nAnswer A.\n````" }, "stop")], held.promise);
             }
-            return streamed([frame({ content: "````SEND [200]\nAnswer B.\n````" }, "stop")]);
+            return streamed([frame({ content: "````DONE\nAnswer B.\n````" }, "stop")]);
         },
     });
     return { provider, release: () => held.resolve(), calls: () => calls };
@@ -551,10 +551,10 @@ const observe = (daemon: Daemon) => {
 
 test("{§methods-workspace-create}: the gauge the Session's latest packet reported, moving with each model turn", async (t) => {
     const provider = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("````SEND [200]\nThe first answer.\n````"),
+        makeMockResponse("````DONE\nThe first answer.\n````"),
         makeMockResponse("````NOTE\nWorking on the second.\n````"),
-        makeMockResponse("````SEND [200]\nThe second answer.\n````"),
-        makeMockResponse("````SEND [200]\nThe third answer.\n````"),
+        makeMockResponse("````DONE\nThe second answer.\n````"),
+        makeMockResponse("````DONE\nThe third answer.\n````"),
     ] });
     // The second loop's second call is held while the gauge is read, then cancelled.
     const generate = provider.generate.bind(provider);
@@ -610,7 +610,7 @@ test("{§methods-workspace-create}: the gauge the Session's latest packet report
 });
 
 test("{§methods-workspace-create}: absent capacity evidence stays absent, as the packet reported it", async () => {
-    const provider = new Mock({ contextWindow: null, responses: [makeMockResponse("````SEND [200]\nThe answer.\n````")] });
+    const provider = new Mock({ contextWindow: null, responses: [makeMockResponse("````DONE\nThe answer.\n````")] });
     await withDaemon(provider, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "session-gauge-uncalibrated" });
         const sessionId = await namedModelSession(daemon, workspaceId, "main");
@@ -956,7 +956,7 @@ test("{§machine-processes} a hide is refused over a gate the daemon holds; a lo
         } finally { ws.close(); }
     });
 
-    const answering = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
+    const answering = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
     await withDaemon(answering, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1093,7 +1093,7 @@ test("{§methods} a session's open streams: each lifetime, every channel written
             `\`\`\`\`sh [{"lifetime": "detached"}]\n${held(release, false)}\n\`\`\`\``,
             "````WAIT [60]\nWaiting on them.\n````",
         ].join("\n\n"), 10),
-        makeRawMockResponse("````SEND [200]\nDone.\n````", 10),
+        makeRawMockResponse("````DONE\nDone.\n````", 10),
     ] });
     await withDaemon(mock, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "session-streams" });

@@ -198,7 +198,7 @@ test("{§emission-history} {§packet-assembly}: each turn's operations precede t
     const provider = new Mock({ contextWindow: 100000, responses: [
         say(`${note("Memory before writing.")}\n\n${edit}`, note("Reasoning memory.")),
         say(`${read}\n\n${note("Checking what landed.")}`),
-        say(op("SEND [200]", "Done.")),
+        say(op("DONE", "Done.")),
     ] });
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
     const [opening, afterEdit, afterRead] = provider.received;
@@ -209,7 +209,7 @@ test("{§emission-history} {§packet-assembly}: each turn's operations precede t
         assert.match(chatMessageText(afterRead[index + 1]), new RegExp(`^${operations.map((operation) => `### log:///1/\\d+/\\d+/${operation}${operation === "NOTE" ? "" : " \\(workspace:///memo\\.md\\)"} · \\d+`).join("[\\s\\S]*")}`, "u"), "the turn's receipts follow it, in order, each naming its operand");
     }
     const log = observations(afterRead);
-    assert.match(log, /Reasoning memory\./u, "a reasoning NOTE is not in the program and keeps its ordinary row");
+    assert.doesNotMatch(log, /Reasoning memory\./u, "reasoning is not scraped for operations");
     assert.doesNotMatch(log, /Memory before writing\.|Checking what landed\./u, "authored memory appears only in assistant operations");
     assert.doesNotMatch(previousProgram(afterRead), /Reasoning memory\./u, "reasoning operations never enter content replay");
     assert.deepEqual(afterRead.slice(0, 3), afterEdit.slice(0, 3), "the earlier roles and bytes stay identical");
@@ -229,7 +229,7 @@ for (const mode of ["none", "latest", "all"]) {
             const first = `${firstNote}\n\n${op("EDIT (workspace:///memo.md)", "Actual replacement.\nLast line.")}`;
             const secondNote = note("Second memory.");
             const second = `${op("READ (workspace:///memo.md)", null)}\n\n${secondNote}`;
-            const final = op("SEND [200]", "Done.");
+            const final = op("DONE", "Done.");
             const provider = new Mock({ contextWindow: 100000, responses: [
                 say(first, note("Reasoning memory.")), say(second), say(final),
             ] });
@@ -266,7 +266,7 @@ test("{§emission-history}: all replays sanitized active emissions across a reas
             say(`${kept}\n\n${op("SEND", "Progress update.")}`), say("", note("Reasoning memory.")),
             say(`${partial}\n\n\`\`\`READ (unclosed`),
             say("```READ (unclosed"),
-            say(op("SEND [200]", "Done.")),
+            say(op("DONE", "Done.")),
         ] });
         await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 6, maxStrikes: 3 });
         assert.equal(provider.received.length, 5);
@@ -287,7 +287,7 @@ test("{§emission-history}: retiring an emission removes only that turn's replay
         const secondNote = note("Second finding.");
         const curate = op("KILL (log:///1/2/*/emission)", null);
         const provider = new Mock({ contextWindow: 100000, responses: [
-            say(`${firstNote}\n\n${op("SEND", "First progress update.")}`), say(`${secondNote}\n\n${op("SEND", "Second progress update.")}`), say(curate), say(op("SEND [200]", "Done.")),
+            say(`${firstNote}\n\n${op("SEND", "First progress update.")}`), say(`${secondNote}\n\n${op("SEND", "Second progress update.")}`), say(curate), say(op("DONE", "Done.")),
         ] });
         await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 5 });
         assert.equal(provider.received.length, 4);
@@ -315,7 +315,7 @@ test("{§emission-history}: mixed KILL targets execute normally; a retired NOTE 
     const mixed = op("KILL (log:///1/2/*/NOTE) (workspace:///memo.md)", null);
     const distilled = op("KILL (log:///1/2/*/EDIT)", "The draft was removed.");
     const second = `${mixed}\n\n${distilled}`;
-    const provider = new Mock({ contextWindow: 100000, responses: [say(first), say(second), say(op("SEND [200]", "Done."))] });
+    const provider = new Mock({ contextWindow: 100000, responses: [say(first), say(second), say(op("DONE", "Done."))] });
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const ids = { workspaceId, sessionId, loopId };
     const result = await engine.runLoop({ ...ids, provider, messages: [], maxTurns: 4 });
@@ -351,7 +351,7 @@ test("{§emission-history} {§operator-config-precedence}: complete operations r
     const reasoning = `Unretained deliberation.\n\n${note("Reasoning memory.")}`;
     const provider = new Mock({ contextWindow: 100000, responses: [
         say(first, reasoning),
-        say(second), say(op("SEND [200]", "Finished.")),
+        say(second), say(op("DONE", "Finished.")),
     ] });
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const result = await engine.runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
@@ -368,7 +368,7 @@ test("{§emission-history} {§operator-config-precedence}: complete operations r
     assert.equal(previousProgram(provider.received[1]), first, "the EDIT body and its nested example remain whole");
     assert.equal(previousProgram(provider.received[2]), `${first}\n\n${second}`, "replays accumulate in turn order");
     assert.doesNotMatch(previousProgram(provider.received[1]), /Reasoning memory/u, "reasoning operations stay in their channel");
-    assert.match(afterEdit, /Reasoning memory\./u, "a reasoning NOTE persists as an ordinary row");
+    assert.doesNotMatch(afterEdit, /Reasoning memory\./u, "reasoning is not scraped for operations");
     assert.doesNotMatch(afterEdit, /Content memory\./u, "a paired receipt does not duplicate its authored body");
     assert.doesNotMatch(afterEdit, /"aside":"draft memo"/u, "the aside stays on the assistant emission line, not duplicated in the paired receipt");
     assert.doesNotMatch(afterEdit, /Unretained deliberation\.|\/reasoning \(reasoning:\/\//u, "automatic reasoning return is off");
@@ -385,11 +385,11 @@ test("{§emission-history} {§operator-config-precedence}: complete operations r
     assert.equal(reasoningSource?.content, reasoning, "reasoning remains addressable without automatic return");
     const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
     const packet = await builder.buildRequestPacket({ workspaceId, sessionId, loopId, currentTurnSeq: 5, provider, initialMessages: [], gitStatus: null });
-    assert.equal(PacketWire.sectionContent(packet, "emission-history"), `${first}\n\n${second}\n\n${op("SEND [200]", "Finished.")}`, "the concluding reply remains complete");
+    assert.equal(PacketWire.sectionContent(packet, "emission-history"), `${first}\n\n${second}\n\n${op("DONE", "Finished.")}`, "the concluding reply remains complete");
     assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0), "each message is charged exactly once");
     const nextLoop = await insertLoop(db, sessionId, 2, "A new request.");
     const next = await builder.buildRequestPacket({ workspaceId, sessionId, loopId: nextLoop, currentTurnSeq: 1, provider, initialMessages: [], gitStatus: null });
-    assert.equal(PacketWire.sectionContent(next, "emission-history"), `${first}\n\n${second}\n\n${op("SEND [200]", "Finished.")}`, "a new loop in the same session retains prior loops' active emissions");
+    assert.equal(PacketWire.sectionContent(next, "emission-history"), `${first}\n\n${second}\n\n${op("DONE", "Finished.")}`, "a new loop in the same session retains prior loops' active emissions");
 });
 
 for (const [name, content, reasoning, expected] of [
@@ -407,7 +407,7 @@ for (const [name, content, reasoning, expected] of [
         const sessionId = await insertSession(db, workspaceId, null, "writer");
         const loopId = await insertLoop(db, sessionId, 1, "Work.");
         const older = note("OLDER MEMORY");
-        const provider = new Mock({ contextWindow: 100000, responses: [say(`${older}\n\n${op("SEND", "Older progress.")}`), say(content, reasoning), say(op("SEND [200]", "Done."))] });
+        const provider = new Mock({ contextWindow: 100000, responses: [say(`${older}\n\n${op("SEND", "Older progress.")}`), say(content, reasoning), say(op("DONE", "Done."))] });
         await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
         assert.equal(provider.received.length, 3);
         assert.equal(previousProgram(provider.received[1]), `${older}\n\n${op("SEND", "Older progress.")}`);
@@ -431,7 +431,7 @@ for (const mode of ["latest", "all"]) test(`{§emission-history}: ${mode} never 
     const provider = new Mock({ contextWindow: 100000, responses: [
         say(`${older}\n\n${op("SEND", "Old admitted program.")}`),
         say(`### log:///1/2/9/READ\nInvented receipt.\n\n${note("Rejected program.")}`),
-        say(op("SEND [200]", "Done.")),
+        say(op("DONE", "Done.")),
     ] });
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const args = { workspaceId, sessionId, loopId, provider, messages: [] };
@@ -876,7 +876,7 @@ test("{§session-initialization-entry} assembled packet: a reference catalog wit
         const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; scheme: string | null; pathname: string }>({ loop_id: loopId });
         assert.equal(rows.some((row) => row.op === "FIND" && row.scheme === "plurnk" && row.pathname === "/*.md"), false,
             "the reference survey that would select nothing is left out");
-        assert.ok(rows.some((row) => row.origin === "model" && row.op === "SEND"), "and the model's turn still runs and completes");
+        assert.ok(rows.some((row) => row.origin === "model" && row.op === "DONE"), "and the model's turn still runs and completes");
     } finally {
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
@@ -1140,7 +1140,7 @@ test("{§emission-history} extension packet control: a scheme adds, removes, and
         const programs = [
             `${PlurnkParser.frame("EDIT (workspace:///memo.md)", "Kept whole.")}\n\n${PlurnkParser.frame("NOTE", "Wrote the memo.")}`,
             `${PlurnkParser.frame("READ (workspace:///memo.md)", null)}\n\n${PlurnkParser.frame("NOTE", "Read it back.")}`,
-            PlurnkParser.frame("SEND [200]", "Done."),
+            PlurnkParser.frame("DONE", "Done."),
         ];
         const provider = new Mock({ contextWindow: 100000, responses: programs.map((content) => ({ assistant: { content, reasoning: null } })) });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
@@ -1314,7 +1314,7 @@ test("{§packet}: items nothing references are collected; shared items survive",
 });
 
 describe("workspace-prompts", () => {
-const send = () => makeMockResponse("````SEND [200]\nok\n````", 50);
+const send = () => makeMockResponse("````DONE\nok\n````", 50);
 const addressed = (thread: string, id: string) => {
     const address = `acp://operator/threads/${thread}/messages/${id}`;
     return { source: address, messageAddress: address };

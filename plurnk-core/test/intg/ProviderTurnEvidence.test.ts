@@ -169,7 +169,7 @@ test("{§provider-surface} generate carries the workspace this call serves, and 
         // it carried the coordinate, not the id.
         const loopId = await insertLoop(db, sessionId, 5, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const mock = new CoordMock({ contextWindow: viableWindow(), responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
+        const mock = new CoordMock({ contextWindow: viableWindow(), responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
         await engine.runTurn({ provider: mock, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "x" }, { role: "user", content: "go" }] });
         assert.equal(mock.seen.workspaceId, String(workspaceId), "the workspace id, stringified");
         assert.equal(mock.seen.callKind, "emission", "ordinary turns declare the emission output contract");

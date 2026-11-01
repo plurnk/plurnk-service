@@ -257,11 +257,6 @@ test("{§operation-fences}: a genuinely missing enclosing closer still recovers 
     assert.equal(bodyText(ops[1]), "echo actual-command");
 });
 
-test("{§operation-fences}: reasoning quotations cannot promote nested NOTE examples", () => {
-    const source = "````text\nA quoted example:\n````NOTE\nNot a memory.\n````\nExplanation.\n````\n````NOTE\nActual memory.\n````";
-    assert.deepEqual(PlurnkParser.parseReasoningOperations(source).map(({ body }) => body), ["Actual memory."]);
-});
-
 test("{§operation-fences}: equal totals with incompatible widths or labels do not establish nesting", () => {
     for (const closer of ["```", "````9"]) {
         // {§fence-pairing} keeps an executor block inside a SEND; an EDIT body has no such rule.
@@ -321,12 +316,12 @@ test("{§fence-pairing}: once every reading needs a repair, operations written w
         "```EDIT (a.py) <1>", "from b import c",
         "```sh", "python -m pytest -q",
         "```WAIT",
-        "```SEND [200]", "Fixed.", "", "```python", "from b import c", "```", "",
+        "```DONE", "Fixed.", "", "```python", "from b import c", "```", "",
         "Verified.",
         "```",
     ].join("\n");
     const result = PlurnkParser.parse(emission, { executors: ["sh"] });
-    assert.deepEqual(statements(result).map(writtenOp), ["NOTE", "EDIT", "sh", "WAIT", "SEND"]);
+    assert.deepEqual(statements(result).map(writtenOp), ["NOTE", "EDIT", "sh", "WAIT", "DONE"]);
     assert.equal(bodyText(statements(result).at(-1)!), "Fixed.\n\n```python\nfrom b import c\n```\n\nVerified.");
 });
 });
@@ -359,16 +354,17 @@ test("{§fence-pairing} a closing fence with stray trailing text closes the oper
             ["sh", "echo hello", "sh"],
             ["NOTE", "Thinking through the steps.", "NOTE"],
             ["EDIT (a.md) <1,1>", "replacement", "EDIT"],
-            ["SEND [200]", "Final answer.", "SEND"],
+            ["SEND", "Progress.", "SEND"],
+            ["DONE", "Final answer.", "DONE"],
+            ["FAIL", "Could not complete.", "FAIL"],
         ] as const) {
             const source = `${openerFence}${header}\n${body}\n${closer}`;
             const pairing = FencePairing.pair(source, {
                 executors: new Set(executors),
-                reasoning: false,
                 heading: (_h, name) => ({
                     selfClosed: false,
                     bodiless: false,
-                    prose: name === "SEND",
+                    prose: name === "SEND" || name === "DONE" || name === "FAIL",
                     mutation: name === "EDIT",
                 }),
             });
@@ -383,7 +379,7 @@ test("{§fence-pairing} a closing fence with stray trailing text closes the oper
             assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), [], `${header} (${closer})`);
             const ops = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
             assert.deepEqual(ops.map(writtenOp), [expectedOp], `${header} (${closer})`);
-            const actualBody = ops[0].op === "SEND" ? ops[0].body?.raw : "body" in ops[0] ? ops[0].body : null;
+            const actualBody = ops[0].op === "SEND" || ops[0].op === "DONE" || ops[0].op === "FAIL" ? ops[0].body?.raw : "body" in ops[0] ? ops[0].body : null;
             assert.equal(actualBody, body, `${header} (${closer})`);
         }
     }
@@ -681,12 +677,11 @@ test("{§whitespace-contract}: aside recovery never admits operands, extra text,
     }
 });
 
-test("{§operation-fences} {§fence-pairing}: asides do not admit indented, quoted, or reasoning-channel names", () => {
-    for (const op of ["NOTE", "FIND", "READ", "SEND"]) {
+test("{§operation-fences} {§fence-pairing}: asides do not admit indented or quoted names", () => {
+    for (const op of ["NOTE", "FIND", "READ", "SEND", "DONE", "FAIL"]) {
         const text = `${op} <!-- example -->\nOnly an example.\n`;
         for (const prefix of [" ", "\t", "> "]) assert.deepEqual(statements(PlurnkParser.parse(`${prefix}${text}`)), [], prefix + op);
         assert.deepEqual(statements(PlurnkParser.parse(`\`\`\`text\n${text}\`\`\``)), [], op);
-        assert.deepEqual(PlurnkParser.parseReasoningOperations(text), [], op);
     }
     assert.deepEqual(statements(PlurnkParser.parse("sh <!-- example -->\necho hi\n", { executors: ["sh"] })), []);
 });
@@ -721,10 +716,6 @@ test("{§whitespace-contract}: a name with an operand and no fence still did not
         assert.deepEqual(warnings(result), [`Unfenced \`${line.split(/[ (<[]/u)[0]}\` ignored.`], line);
     }
     assert.deepEqual(warnings(PlurnkParser.parse("READ the file first, then decide.\n")), ["Unfenced `READ` ignored."], "a verb opening a column-zero line is the unfenced form, as before");
-});
-
-test("{§operation-fences}: reasoning is never read this way", () => {
-    assert.deepEqual(PlurnkParser.parseReasoningOperations("NOTE\nA rehearsal, not a note.\n"), []);
 });
 });
 
@@ -1050,11 +1041,13 @@ test("{§fence-pairing}: up to three spaces still open, close and end a block; f
 
 test("{§operation-fences}: complete nested three-backtick operations stay literal bodies", () => {
     for (const width of [3, 4]) {
-        const body = ["Example:", block(3, "sh", "echo example"), block(3, "KILL (notes.md)"), "Still the answer."].join("\n");
-        const result = PlurnkParser.parse(block(width, "SEND [200]", body));
-        assert.equal(result.unparsedTail, undefined);
-        assert.deepEqual(statements(result).map(writtenOp), ["SEND"]);
-        assert.equal(bodyText(statements(result)[0]), body);
+        for (const op of ["SEND", "DONE", "FAIL"]) {
+            const body = ["Example:", block(3, "sh", "echo example"), block(3, "KILL (notes.md)"), "Still the answer."].join("\n");
+            const result = PlurnkParser.parse(block(width, op, body));
+            assert.equal(result.unparsedTail, undefined);
+            assert.deepEqual(statements(result).map(writtenOp), [op]);
+            assert.equal(bodyText(statements(result)[0]), body);
+        }
     }
 });
 
@@ -1090,24 +1083,12 @@ test("{§fence-pairing}: compact and inline-chained operations accept either fen
     }
 });
 
-test("{§op-shapes}: reasoning accepts three-backtick NOTE while preserving enclosing quotations", () => {
-    const quoted = block(3, "NOTE", "An example, not retained memory.");
-    const reasoning = [
-        block(3, "NOTE", "Actual memory."),
-        block(3, "sh", "echo never-executed"),
-        block(3, "SEND", quoted),
-        block(3, "text", quoted),
-        quoted.split("\n").map((line) => `    ${line}`).join("\n"),
-    ].join("\n\n");
-    assert.deepEqual(PlurnkParser.parseReasoningOperations(reasoning).map(({ body }) => body), ["Actual memory."]);
-});
-
 test("{§operation-fences}: canonical output is three-backtick, one wider than any fence in the body", () => {
     assert.equal(PLURNK_FENCE, "```");
-    assert.equal(PlurnkParser.frame("SEND [200]", "Done."), block(3, "SEND [200]", "Done."));
+    assert.equal(PlurnkParser.frame("DONE", "Done."), block(3, "DONE", "Done."));
     const body = block(3, "sh", "echo example");
-    assert.equal(PlurnkParser.frame("SEND [200]", body), block(4, "SEND [200]", body));
-    const result = PlurnkParser.parse(PlurnkParser.frame("SEND [200]", body));
+    assert.equal(PlurnkParser.frame("DONE", body), block(4, "DONE", body));
+    const result = PlurnkParser.parse(PlurnkParser.frame("DONE", body));
     clean(result);
     assert.equal(bodyText(statements(result)[0]), body);
 });
@@ -1123,20 +1104,19 @@ const bodyOf = (statement: ReturnType<typeof statements>[number] | undefined): s
 };
 
 test("{§operation-fences} replies keep every line after a balanced inner fence pair", () => {
-    const fenced = statements("```SEND [200]\nRan the tests:\n```\ntraceback\n```\nAll done.\n```");
-    assert.deepEqual(fenced.map(({ op }) => op), ["SEND"]);
-    assert.equal(bodyOf(fenced[0]), "Ran the tests:\n```\ntraceback\n```\nAll done.");
-    for (const op of ["SEND", "WORK (session://verify)"]) {
+    for (const op of ["SEND", "DONE", "FAIL", "WORK (session://verify)"]) {
         const [statement] = statements(`\`\`\`${op}\nRan the tests:\n\`\`\`\ntraceback\n\`\`\`\nAll done.\n\`\`\``);
         assert.equal(bodyOf(statement), "Ran the tests:\n```\ntraceback\n```\nAll done.", op);
     }
 });
 
-test("{§operation-fences} a naked SEND's final unpaired fence is its closer, not the deliverable's last line", () => {
-    const [kill] = statements("SEND\nRan the tests:\n```\ntraceback\n```\nAll done.\n```");
-    assert.equal(bodyOf(kill), "Ran the tests:\n```\ntraceback\n```\nAll done.");
-    assert.equal(bodyOf(statements("SEND\nAll done.\n```")[0]), "All done.");
-    assert.equal(bodyOf(statements("SEND\n```\ncode\n```")[0]), "```\ncode\n```", "a paired final fence stays body");
+test("{§operation-fences} a naked SEND, DONE, or FAIL's final unpaired fence is its closer, not the deliverable's last line", () => {
+    for (const op of ["SEND", "DONE", "FAIL"]) {
+        const [msg] = statements(`${op}\nRan the tests:\n\`\`\`\ntraceback\n\`\`\`\nAll done.\n\`\`\``);
+        assert.equal(bodyOf(msg), "Ran the tests:\n```\ntraceback\n```\nAll done.");
+        assert.equal(bodyOf(statements(`${op}\nAll done.\n\`\`\``)[0]), "All done.");
+        assert.equal(bodyOf(statements(`${op}\n\`\`\`\ncode\n\`\`\``)[0]), "```\ncode\n```", "a paired final fence stays body");
+    }
 });
 
 
@@ -1214,24 +1194,27 @@ for (const [tier, parse] of [
     ["stored", PlurnkParser.parseStatements],
 ] as const) {
     test(`{§operation-fences}: ${tier} preserves nested examples in a final reply's ordinary body`, () => {
-        for (const body of ["All done.", "```python\nprint(42)\n```", "```\n42\n```", "A\n````READ (example.md)````\nB"]) {
-            const result = parse(PlurnkParser.frame("SEND [200]", body));
-            assert.equal(result.unparsedTail, undefined);
-            assert.deepEqual(result.items.filter((item) => item.kind === "error" || item.kind === "text"), []);
-            const ops = statements(result);
-            assert.deepEqual(ops.map(writtenOp), ["SEND"]);
-            assert.equal(ops[0].op === "SEND" ? ops[0].body?.raw : null, body);
-            assert.deepEqual(ops[0].op === "SEND" ? ops[0].metadata : null, ["200"]);
+        for (const op of ["DONE", "FAIL"] as const) {
+            for (const body of ["All done.", "```python\nprint(42)\n```", "```\n42\n```", "A\n````READ (example.md)````\nB"]) {
+                const result = parse(PlurnkParser.frame(op, body));
+                assert.equal(result.unparsedTail, undefined);
+                assert.deepEqual(result.items.filter((item) => item.kind === "error" || item.kind === "text"), []);
+                const ops = statements(result);
+                assert.deepEqual(ops.map(writtenOp), [op]);
+                assert.equal(ops[0].op === op ? ops[0].body?.raw : null, body);
+            }
         }
     });
 
     test(`{§operation-fences}: ${tier} final reply closers preserve subsequent operations`, () => {
-        for (const reply of ["```SEND [200]```", "```SEND [200]\nDone.\n```", "````SEND [200] <!-- answer -->\nDone.\n````"]) {
-            const result = parse(`${reply}\n\n${PlurnkParser.frame("EDIT (next.md)", "replacement")}`);
-            assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
-            const ops = statements(result);
-            assert.deepEqual(ops.map(writtenOp), ["SEND", "EDIT"]);
-            assert.equal(ops[1].op === "EDIT" ? ops[1].body : null, "replacement");
+        for (const op of ["DONE", "FAIL"] as const) {
+            for (const reply of [`\`\`\`${op}\`\`\``, `\`\`\`${op}\nDone.\n\`\`\``, `\`\`\`\`${op} <!-- answer -->\nDone.\n\`\`\`\``]) {
+                const result = parse(`${reply}\n\n${PlurnkParser.frame("EDIT (next.md)", "replacement")}`);
+                assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+                const ops = statements(result);
+                assert.deepEqual(ops.map(writtenOp), [op, "EDIT"]);
+                assert.equal(ops[1].op === "EDIT" ? ops[1].body : null, "replacement");
+            }
         }
     });
 
@@ -1245,7 +1228,6 @@ for (const [tier, parse] of [
 test("{§fence-pairing}: a quoted operation does not claim the rest of the document", () => {
     const result = PlurnkParser.parse("````text\n```KILL (notes.md)\n```\n````\n```READ (actual.md)\n```");
     assert.deepEqual(statements(result).map(writtenOp), ["READ"]);
-    assert.deepEqual(PlurnkParser.parseReasoningOperations("````text\n```SEND [200]\n```NOTE\nQuoted.\n```\n````\n```NOTE\nActual.\n```").map(({ body }) => body), ["Actual."]);
 });
 });
 

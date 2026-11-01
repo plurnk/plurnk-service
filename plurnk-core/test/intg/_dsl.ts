@@ -2,7 +2,7 @@
 // dispatches an op uses one of these.
 
 import type {
-    ReadStatement, SendStatement, DispositionStatement, NoteStatement, KillStatement,
+    ReadStatement, SendStatement, DoneStatement, FailStatement, DispositionStatement, NoteStatement, KillStatement,
     FindStatement, CopyStatement, MoveStatement, ExecStatement,
     LocalPath, UrlPath, ParsedPath, MatcherBody, LineMarker, TextLineMarker,RuntimeTag
 } from "@plurnk/plurnk-contracts";
@@ -57,7 +57,21 @@ export const killStmt = (target: ParsedPath | null, lineMarker: TextLineMarker |
     position: { line: 1, column: 1 },
 });
 
-export const completeStmt = (body: string | null = null): SendStatement => ({ ...sendStmt(null, body), metadata: ["200"] });
+export const doneStmt = (body: string | null = null, target: ParsedPath | null = null): DoneStatement => ({
+    metadata: null,
+    op: "DONE", aside: null, target, lineMarker: null,
+    body: body === null ? null : { raw: body, json: null },
+    position: { line: 1, column: 1 },
+});
+
+export const failStmt = (body: string | null = null, target: ParsedPath | null = null): FailStatement => ({
+    metadata: null,
+    op: "FAIL", aside: null, target, lineMarker: null,
+    body: body === null ? null : { raw: body, json: null },
+    position: { line: 1, column: 1 },
+});
+
+export const completeStmt = (body: string | null = null): DoneStatement => doneStmt(body);
 
 export const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null): FindStatement => ({
     metadata: null,

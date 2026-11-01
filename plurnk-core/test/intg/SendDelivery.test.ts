@@ -24,7 +24,7 @@ for (const cancelled of [false, true]) {
         const provider = new Mock({ contextWindow: 100_000, responses: [
             makeMockResponse("````FIND (workspace:///)\n````\n````SEND\nFirst answer.\n````"),
             makeMockResponse("````FIND (workspace:///)\n````\n````SEND\nSecond answer.\n````"),
-            makeMockResponse(cancelled ? "````KILL (session://root)\n````" : "````SEND [200]\n````"),
+            makeMockResponse(cancelled ? "````KILL (session://root)\n````" : "````DONE\n````"),
         ] });
         await withDaemon(provider, async (db, daemon, addr) => {
             const ws = await connect(addr);
@@ -73,7 +73,7 @@ test("{§message-completion}: a loop's address reads its SEND answer; running is
         assert.equal(running.problem?.type, "https://problems.plurnk.xyz/scheme/ops/loop-running");
 
         const firstReply = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\nFour.\n````\n\n````SEND [200]\n````", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\nFour.\n````\n\n````DONE\n````", reasoning: null } }] }),
             workspaceId, sessionId, loopId: first, maxTurns: 3, messages: [{ role: "user", content: "What is two plus two?" }],
         });
         assert.equal(firstReply.result.status, 200);
@@ -84,21 +84,23 @@ test("{§message-completion}: a loop's address reads its SEND answer; running is
 
         const second = await insertLoop(db, sessionId, 2, "And three plus three?");
         const sent = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\nSix.\n````\n\n````SEND [200]\n````", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````DONE\nSix.\n````", reasoning: null } }] }),
             workspaceId, sessionId, loopId: second, maxTurns: 3, messages: [{ role: "user", content: "And three plus three?" }],
         });
         assert.equal(sent.result.status, 200);
         const reply = await read("ops://alice/2");
         assert.ok("content" in reply);
-        assert.equal(reply.content, "Six.", "a SEND answer is the loop's answer too, without its fence");
+        assert.equal(reply.content, "Six.", "a DONE answer is the loop's answer too, without its fence");
         const written = (await db.test_log_entries_by_turn.all<{ op: string; origin: string; attrs: string; tx: string }>({ turn_id: sent.turnIds.at(-1)! }))
-            .find(({ op, origin }) => op === "SEND" && origin === "model");
-        assert.equal(LogEntryProjection.leaf(written!), "SEND", "a SEND the model wrote stays a SEND");
+            .find(({ op, origin }) => op === "DONE" && origin === "model");
+        assert.equal(LogEntryProjection.leaf(written!), "DONE", "a DONE the model wrote stays a DONE");
 
         assert.equal((await read("ops://alice/9")).status, 404, "a loop that does not exist");
         assert.equal((await read("ops://alice/1/2")).status, 200, "a turn coordinate still reads that turn's emission");
-        const row = await read("log:///1/2/3/SEND", sessionId);
-        assert.equal(row.status, 200, "a final reply is an ordinary SEND row");
+        const sendRow = await read("log:///1/2/3/SEND", sessionId);
+        assert.equal(sendRow.status, 200, "a progress reply is an ordinary SEND row");
+        const doneRow = await read("log:///2/1/3/DONE", sessionId);
+        assert.equal(doneRow.status, 200, "a final reply is an ordinary DONE row");
     } finally { await db.close(); }
 });
 
@@ -114,7 +116,7 @@ for (const [shape, body] of [
         const loopId = await insertLoop(db, childId, 1, "Review the draft.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: `\`\`\`\`SEND [200]\n${body}${shape === "ordinary" ? "\n````" : ""}`, reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: `\`\`\`\`DONE\n${body}${shape === "ordinary" ? "\n````" : ""}`, reasoning: null } }] }),
             workspaceId, sessionId: childId, loopId, maxTurns: 3, messages: [{ role: "user", content: "Review the draft." }],
         });
         assert.equal(result.result.status, 200);
@@ -152,7 +154,7 @@ for (const transport of ["text", "wire"] as const) {
                         requests += 1;
                         const first = requests === 1;
                         const delta = first ? { content, ...(transport === "wire" ? { tool_calls: [tool] } : {}) }
-                            : { content: PlurnkParser.frame("SEND [200]", "Finished.") };
+                            : { content: PlurnkParser.frame("DONE", "Finished.") };
                         return new Response(`data: ${JSON.stringify({
                             model: "fixture", choices: [{ index: 0, delta, finish_reason: first && transport === "wire" ? "tool_calls" : "stop" }],
                         })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
@@ -200,7 +202,7 @@ for (const finish of ["stop", "tool_calls"]) {
             temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "off", budget: null },
             fetch: async () => {
                 requests += 1;
-                const delta = requests === 1 ? { content: `${PlurnkParser.frame("READ (workspace:///fact.txt)", null)}\n${PlurnkParser.frame("SEND [200]", "The fact.")}` }
+                const delta = requests === 1 ? { content: `${PlurnkParser.frame("READ (workspace:///fact.txt)", null)}\n${PlurnkParser.frame("DONE", "The fact.")}` }
                     : requests === 2 ? { tool_calls: [tool] } : { content: "" };
                 return new Response(`data: ${JSON.stringify({ model: "fixture", choices: [{ index: 0, delta, finish_reason: requests === 2 ? finish : "stop" }] })}\n\ndata: [DONE]\n\n`,
                     { headers: { "content-type": "text/event-stream" } });
@@ -233,10 +235,10 @@ test("{§operation-fences}: a complete nested reply reaches the client without e
         "````sh", "printf must-not-execute", "````",
         "The rest of the answer survives intact. 🙂",
     ].join("\n");
-    const source = `\`\`\`\`SEND\n${body}\n\`\`\`\`\n\n\`\`\`\`SEND [200]\n\`\`\`\``;
+    const source = `\`\`\`\`SEND\n${body}\n\`\`\`\`\n\n\`\`\`\`DONE\n\`\`\`\``;
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(source, 10),
-        makeMockResponse("````SEND [200]\nUnexpected continuation.\n````", 10),
+        makeMockResponse("````DONE\nUnexpected continuation.\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -247,7 +249,7 @@ test("{§operation-fences}: a complete nested reply reaches the client without e
             assert.equal(result.content, undefined);
             assert.equal(await lastReply(db, loopId), body, "the client receives the entire answer, not its prefix");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: loopId });
-            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["SEND", 200], ["SEND", 200]], "quoted commands produce no dispatch, proposals or execution receipts");
+            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["SEND", 200], ["DONE", 200]], "quoted commands produce no dispatch, proposals or execution receipts");
             const turns = await db.test_list_turns_in_loop.all<{ producer: string }>({ loop_id: loopId });
             assert.equal(turns.filter(({ producer }) => producer === "model").length, 1, "no recovery turn or unnecessary continuation");
             const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: modelSessionId! });
@@ -260,7 +262,7 @@ test("{§fence-pairing} {§op-shapes}: recovered READ preserves nested prose; a 
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(MISFENCED, 10),
-        makeMockResponse("````SEND [200]\nthe answer\n````", 10),
+        makeMockResponse("````DONE\nthe answer\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -289,7 +291,7 @@ test("{§op-shapes}: messages that start with operation names remain literal rep
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND\nREAD (belfry.md) returned nothing because the file is empty.\n````\n\n````SEND\nDone\n````\n\n````SEND\nsh is the default shell here.\n````", 10),
-        makeMockResponse("````SEND [200]\n````", 10),
+        makeMockResponse("````DONE\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -298,7 +300,7 @@ test("{§op-shapes}: messages that start with operation names remain literal rep
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "explain" });
             assert.equal(finalStatus, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: loopId });
-            const sends = rows.filter((r) => r.origin === "model" && r.op === "SEND");
+            const sends = rows.filter((r) => r.origin === "model" && (r.op === "SEND" || r.op === "DONE"));
             assert.deepEqual(sends.map(({ status_rx }) => status_rx), [200, 200, 200, 200], "message content is never parsed as another operation");
             assert.equal(rows.filter(({ origin }) => origin === "model").length, 4);
         } finally { ws.close(); }
@@ -308,7 +310,7 @@ test("{§op-shapes}: messages that start with operation names remain literal rep
 test("{§message-completion}: a delivered reply names the open messages it answered", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````SEND [200]\nthe answer\n````", 10),
+        makeMockResponse("````DONE\nthe answer\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -317,7 +319,7 @@ test("{§message-completion}: a delivered reply names the open messages it answe
             const { finalStatus, loopId, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "answer me" });
             assert.equal(finalStatus, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
-            const send = rows.find((r) => r.origin === "model" && r.op === "SEND");
+            const send = rows.find((r) => r.origin === "model" && r.op === "DONE");
             assert.equal(send?.status_rx, 200);
             const receipt = JSON.parse(send.rx) as { repliedTo: string[]; recipients?: unknown };
             assert.ok(Array.isArray(receipt.repliedTo), "a reply names answered message addresses in repliedTo");
@@ -338,8 +340,8 @@ test("{§log-wire-format} {§tokenomics}: a sent reply renders whole in the next
     serverProposals(approvalContext, "accept");
     const body = Array.from({ length: 40 }, (_, index) => `delivered line ${index + 1}`).join("\n");
     const mock = new Mock({ contextWindow: 100_000, responses: [
-        makeMockResponse(`\`\`\`\`SEND\n${body}\n\`\`\`\`\n\n\`\`\`\`SEND [200]\n\`\`\`\``, 10),
-        makeMockResponse("````SEND [200]\nNoted.\n````", 10),
+        makeMockResponse(`\`\`\`\`SEND\n${body}\n\`\`\`\`\n\n\`\`\`\`DONE\n\`\`\`\``, 10),
+        makeMockResponse("````DONE\nNoted.\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -369,7 +371,7 @@ test("{§operation-results} a SEND addressed to a turn source the model may not 
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND (reasoning://alice/1/1)\nthe answer\n````", 10),
-        makeMockResponse("````SEND [200]\nthe answer\n````", 10),
+        makeMockResponse("````DONE\nthe answer\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -378,7 +380,7 @@ test("{§operation-results} a SEND addressed to a turn source the model may not 
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "answer me" });
             assert.equal(finalStatus, 200, "the target-less reply concluded on the second turn");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
-            const sends = rows.filter((r) => r.op === "SEND" && r.origin === "model");
+            const sends = rows.filter((r) => (r.op === "SEND" || r.op === "DONE") && r.origin === "model");
             assert.equal(sends[0]?.status_rx, 400, "the directed SEND was refused 400, not 403");
             const problem = (JSON.parse(sends[0].rx) as { problem?: Record<string, unknown> }).problem;
             assert.equal(problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/send-target-not-a-recipient");
@@ -397,7 +399,7 @@ test("{§operation-results} a SEND addressed to a file path preserves the scheme
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND (.)\nwaiting\n````", 10),
-        makeMockResponse("````SEND [200]\ndone\n````", 10),
+        makeMockResponse("````DONE\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -449,20 +451,20 @@ test("{§message-completion} {§application-session-observation} a session's lat
     await run(alice, await ask(1), said(frame("SEND", "Still working on it.")));
     assert.equal(await replyOf(alice), null, "a progress reply finishes nothing");
     const first = await ask(2);
-    await run(alice, first, said(frame("SEND [200]", "First answer, in full.\nWith detail.")));
+    await run(alice, first, said(frame("DONE", "First answer, in full.\nWith detail.")));
     const answered = await replyOf(alice);
     assert.deepEqual([answered?.completion, answered?.excerpt, answered?.continued, answered?.coordinate.split("/")[0]], [200, "First answer", true, "2"],
         "a completion reply finishes, its excerpt cut to the setting");
     assert.ok(typeof answered?.at === "number" && answered.at > 0, "its stamp is Unix milliseconds");
-    await run(alice, await ask(3), said(frame("SEND [499]", "Stopped: the input is missing.")));
+    await run(alice, await ask(3), said(frame("FAIL", "Stopped: the input is missing.")));
     const cancelled = await replyOf(alice);
     assert.deepEqual([cancelled?.completion, cancelled?.excerpt], [499, "Stopped: the"], "a cancelling reply finishes too");
     assert.ok((cancelled?.id ?? 0) > (answered?.id ?? 0));
-    await run(alice, await ask(4), said(frame("SEND [200]"), frame("SEND [200]", "Speech after the completion.")));
+    await run(alice, await ask(4), said(frame("DONE"), frame("DONE", "Speech after the completion.")));
     const empty = await replyOf(alice);
     assert.deepEqual([empty?.completion, empty?.excerpt, empty?.continued], [200, "", false],
         "an empty completion is the latest finished reply, and speech that completed nothing never replaces it");
-    await run(alice, await ask(5), said(frame("SEND (acp://operator/threads/alice/messages/missing) [200]", "Lost.")));
+    await run(alice, await ask(5), said(frame("DONE (acp://operator/threads/alice/messages/missing)", "Lost.")));
     assert.equal((await replyOf(alice))?.id, empty?.id, "a failed delivery finishes nothing");
     // {§loop-completion}: a message another session sent, left open by a loop that ended.
     const abandoned = await ask(6, "session://boss");
@@ -472,7 +474,7 @@ test("{§message-completion} {§application-session-observation} a session's lat
     assert.notEqual(after?.lifecycle, "completed", "the lifecycle is the newest loop's, whatever the latest reply");
 
     const scout = await insertSession(db, workspaceId, alice, "scout");
-    await run(scout, await insertLoop(db, scout, 1, "Scout the field."), said(frame("SEND [200]", "Scouted.")));
+    await run(scout, await insertLoop(db, scout, 1, "Scout the field."), said(frame("DONE", "Scouted.")));
     assert.deepEqual([(await replyOf(scout))?.excerpt, (await replyOf(alice))?.id], ["Scouted.", empty?.id], "a child's reply is the child's");
     await run(alice, await ask(7), said(frame("FORK (session://twin)", "Carry on from here.")));
     const twin = (await read()).sessions.find(({ name }) => name === "twin");

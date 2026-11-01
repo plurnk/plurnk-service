@@ -55,7 +55,7 @@ test("{§fence-pairing}: an operation inside an unlabeled fence never runs, and 
         const result = await engine.runLoop({
             provider: new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content: source, reasoning: null } },
-                { assistant: { content: PlurnkParser.frame("SEND [200]", null), reasoning: null } },
+                { assistant: { content: PlurnkParser.frame("DONE", null), reasoning: null } },
             ] }),
             workspaceId, sessionId, loopId, maxTurns: 3,
             messages: [{ role: "user", content: "Show the examples." }],
@@ -93,7 +93,7 @@ test("{§outside-text} {§whitespace-contract}: an unfenced heading is never run
         const result = await engine.runLoop({
             provider: new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content: source, reasoning: null } },
-                { assistant: { content: PlurnkParser.frame("SEND [200]", null), reasoning: null } },
+                { assistant: { content: PlurnkParser.frame("DONE", null), reasoning: null } },
             ] }),
             workspaceId, sessionId, loopId, maxTurns: 3,
             messages: [{ role: "user", content: "Show the examples." }],
@@ -112,20 +112,21 @@ test("{§outside-text} {§whitespace-contract}: an unfenced heading is never run
     } finally { await db.close(); }
 });
 
-test("{§whitespace-contract}: an ignored content heading does not deny a successful reasoning operation", async () => {
+test("{§whitespace-contract}: an ignored content heading does not deny a successful fenced operation", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `reasoning-and-unfenced-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `fenced-and-unfenced-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "Read the note.");
         const body = "The recovery marker is MARIGOLD-43.";
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: body });
         const heading = "READ (workspace:///notes.md)";
-        const reasoning = PlurnkParser.frame(heading, null);
+        const content = `${PlurnkParser.frame(heading, null)}\n\n${heading}`;
+        const reasoning = "Deliberating before reading.";
         const notices: Array<{ kind: string; message?: string }> = [];
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: heading, reasoning } },
-            { assistant: { content: PlurnkParser.frame("SEND [200]", body), reasoning: null } },
+            { assistant: { content, reasoning } },
+            { assistant: { content: PlurnkParser.frame("DONE", body), reasoning: null } },
         ] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
         const result = await engine.runLoop({
@@ -137,14 +138,14 @@ test("{§whitespace-contract}: an ignored content heading does not deny a succes
         const turnId = result.turnIds.at(-2)!;
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: turnId });
         const reads = rows.filter(({ op, origin }) => op === "READ" && origin === "model");
-        assert.deepEqual(reads.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).content]), [[200, body]], "the reasoning READ ran once; its unfenced repetition did not run");
-        assert.deepEqual(rows.filter(({ op }) => op === "error"), [], "a valid reasoning operation prevents a no-operation strike");
+        assert.deepEqual(reads.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).content]), [[200, body]], "the fenced READ ran once; its unfenced repetition did not run");
+        assert.deepEqual(rows.filter(({ op }) => op === "error"), [], "a valid operation prevents a no-operation strike");
         assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory").map(({ message }) => message), ["Unfenced `READ` ignored."]);
         const next = JSON.stringify(provider.received[1]);
         assert.ok(next.includes(body), "the next request contains the successful result");
         assert.ok(next.includes("Unfenced `READ` ignored."), "the same request identifies only the ignored fragment");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
-        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, heading);
+        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, content);
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "reasoning")?.content, reasoning);
     } finally { await db.close(); }
 });
@@ -157,7 +158,7 @@ test("{§message-completion}: a final reply, code block and all, answers the ope
         const loopId = await insertLoop(db, sessionId, 1, "How do I run the tests?");
         const answer = "The runner is configured in the package root:\n\n```ts\nexport default { timeout: 30_000 };\n```\n\nIt takes about a minute.";
         const notices: Array<{ kind: string }> = [];
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: PlurnkParser.frame("SEND [200]", answer), reasoning: "simple question" } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: PlurnkParser.frame("DONE", answer), reasoning: "simple question" } }] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice) });
         const result = await engine.runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 3, maxStrikes: 3,
@@ -166,9 +167,9 @@ test("{§message-completion}: a final reply, code block and all, answers the ope
         assert.equal(result.result.status, 200);
         assert.equal(provider.received.length, 1, "one model turn: the answer");
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: result.turnIds.at(-1)! });
-        const completions = rows.filter(({ origin, op }) => origin === "model" && op === "SEND");
+        const completions = rows.filter(({ origin, op }) => origin === "model" && op === "DONE");
         assert.deepEqual(completions.map(({ status_rx }) => status_rx), [200]);
-        assert.equal(JSON.parse(completions[0].tx).body.raw, answer, "the exact SEND body is the reply");
+        assert.equal(JSON.parse(completions[0].tx).body.raw, answer, "the exact DONE body is the reply");
         assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 0, "an answer is not an empty turn");
         const rail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: loopId });
         assert.equal(rail?.strike_streak, 0);
@@ -183,7 +184,7 @@ test("{§fence-pairing}: a SEND with nested examples delivers its literal body",
         const loopId = await insertLoop(db, sessionId, 1, "How do I read a file?");
         const answer = "An operation opens with three backticks:\n\n```text\n```READ (notes.md)\n```\n```";
         const result = await engineRun(db, workspaceId, sessionId, loopId,
-            PlurnkParser.frame("SEND", answer) + "\n\n" + PlurnkParser.frame("SEND [200]", null), "How do I read a file?");
+            PlurnkParser.frame("SEND", answer) + "\n\n" + PlurnkParser.frame("DONE", null), "How do I read a file?");
         assert.equal(result.result.status, 200);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
         const send = rows.find(({ origin, op }) => origin === "model" && op === "SEND");
@@ -207,7 +208,7 @@ for (const [label, content, finishReason] of [
             const reasoning = Array.from({ length: 120 }, (_, index) => `thinking about it ${index + 1}`).join("\n");
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content, reasoning, finishReason } },
-                { assistant: { content: "````SEND [200]\nDone.\n````", reasoning: null } },
+                { assistant: { content: "````DONE\nDone.\n````", reasoning: null } },
             ] });
             const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice) });
             const result = await engine.runLoop({
@@ -233,7 +234,7 @@ for (const [label, content, finishReason] of [
             const errors = JSON.parse(packetSection(JSON.parse(answer!.packet), "errors") || "[]") as Array<{ status: number }>;
             assert.deepEqual(errors.map(({ status }) => status), [422], "the strike rides the next packet's errors");
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
-            assert.equal(JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === "SEND")!.tx).body.raw, "Done.", "the later completion reply answered");
+            assert.equal(JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === "DONE")!.tx).body.raw, "Done.", "the later completion reply answered");
             const rail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: loopId });
             assert.equal(rail?.strike_streak, 0, "the answer cleared the streak the empty turn earned");
         } finally { await db.close(); }
@@ -259,7 +260,7 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
             { assistant: { content: toxin, reasoning: null, finishReason: "stop" } },
             { assistant: { content: untranslated, reasoning: "Read the note first.", finishReason: "stop" } },
             { assistant: { content: `${brokenOp}\n\n\`\`\`\`NOTE\nstill here\n\`\`\`\``, reasoning: null, finishReason: "stop" } },
-            { assistant: { content: "````SEND [200]\nDone.\n````", reasoning: null } },
+            { assistant: { content: "````DONE\nDone.\n````", reasoning: null } },
         ] });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Do the thing." }] });
@@ -313,7 +314,7 @@ for (const preview of ["0", "1"]) for (const finishReason of [undefined, "stop",
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content: PlurnkParser.frame("READ (workspace:///notes.md)", "") + "\n" + PlurnkParser.frame("SEND", "Recorded."), reasoning: null } },
                 { assistant: { content: "", reasoning, ...(finishReason === undefined ? {} : { finishReason }) } },
-                { assistant: { content: PlurnkParser.frame("SEND [200]", null), reasoning: null } },
+                { assistant: { content: PlurnkParser.frame("DONE", null), reasoning: null } },
             ] });
             const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice) });
             const result = await engine.runLoop({
@@ -377,7 +378,7 @@ test("{§fence-pairing}: an offset example draws no parser advisory, and does no
         const notices: Array<{ kind: string; message?: string }> = [];
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "I'll read it now.\n\n    " + FENCE + "READ (workspace:///notes.md)\n    " + FENCE, reasoning: null } },
-            { assistant: { content: PlurnkParser.frame("SEND [200]", "It says: Keep this note."), reasoning: null } },
+            { assistant: { content: PlurnkParser.frame("DONE", "It says: Keep this note."), reasoning: null } },
         ] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 4, maxStrikes: 3, messages: [{ role: "user", content: "Read the note." }] });
@@ -395,7 +396,7 @@ test("{§fence-pairing}: an offset example draws no parser advisory, and does no
         assert.equal(sources.find((row) => row.turn_id === result.turnIds.at(-2) && row.kind === "outside")?.content,
             "I'll read it now.\n\n    " + FENCE + "READ (workspace:///notes.md)\n    " + FENCE, "the offset example is retained literally, never executed");
         assert.equal(
-            JSON.parse(all.at(-1)!.find(({ origin, op }) => origin === "model" && op === "SEND")!.tx).body.raw,
+            JSON.parse(all.at(-1)!.find(({ origin, op }) => origin === "model" && op === "DONE")!.tx).body.raw,
             "It says: Keep this note.",
             "the fenced answer concludes, stripped of its envelope",
         );
@@ -881,17 +882,14 @@ for (const parked of [false, true]) for (const location of ["absent", "content",
             const childLoopId = parked ? await holdChild(db, workspaceId, sessionId) : null;
             const contentNote = location === "content" || location === "both";
             const reasoningNote = location === "reasoning" || location === "both";
-            const expectedNotes = [
-                ...(reasoningNote ? ["Kept from reasoning."] : []),
-                ...(contentNote ? ["Kept from content."] : []),
-            ];
+            const expectedNotes = contentNote ? ["Kept from content."] : [];
             const operation = parked ? "```WAIT\n```" : "```FIND (workspace:///*)\n```";
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: {
                     content: `${contentNote ? "```NOTE\nKept from content.\n```\n\n" : ""}${operation}`,
                     reasoning: reasoningNote ? "```NOTE\nKept from reasoning.\n```" : null,
                 } },
-                { assistant: { content: "```SEND [200]\nDone.\n```", reasoning: null } },
+                { assistant: { content: "```DONE\nDone.\n```", reasoning: null } },
             ] });
             const first = await engine.runTurn({ ...context, provider, messages: [] });
             assert.equal(first.status, parked ? 202 : 102, "work determines continuation independently of notes");
@@ -904,11 +902,11 @@ for (const parked of [false, true]) for (const location of ["absent", "content",
             assert.equal(final.status, 200, "the observed work and answered message settle without another note");
             assert.equal(provider.received.length, 2);
             assert.equal(await noticesOf(db, first.turnId), "", "the first model turn has no earlier model turn to report");
-            assert.equal(await noticesOf(db, final.turnId), location === "absent" ? NOTICE : "",
-                location === "absent" ? "the turn after a continuing or parked turn with no NOTE is told so, once" : "a NOTE in the program or from reasoning carries the turn forward");
+            assert.equal(await noticesOf(db, final.turnId), contentNote ? "" : NOTICE,
+                contentNote ? "a NOTE in the program carries the turn forward" : "the turn after a continuing or parked turn with no content NOTE is told so, once");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
             assert.deepEqual(sources.filter(({ turn_id, kind }) => turn_id === first.turnId && kind === "note").map(({ content }) => content),
-                expectedNotes, "only authored memory persists, in reasoning then content order");
+                expectedNotes, "only content-authored memory persists; reasoning fences stay inert");
             for (const turn of [first, final]) {
                 assert.ok((await rowsOf(db, turn.turnId)).every(({ op }) => op !== "error"), "valid work produces no failure receipt");
             }
@@ -921,7 +919,7 @@ test("{§outside-text} {§operation-results}: an operation-free response keeps i
     try {
         const result = await runLoop(db, [
             { content: "Still thinking about it.", reasoning: null },
-            { content: "```SEND [200]\nDone.\n```", reasoning: null },
+            { content: "```DONE\nDone.\n```", reasoning: null },
         ]);
         assert.equal(result.result.status, 200);
         const [, empty, final] = result.turnIds;
@@ -950,7 +948,7 @@ test("{§outside-text} prose before, between and after fences lands as NOTEs in 
         const loopId = await insertLoop(db, sessionId, 1, "Look around.");
         const provider = new Mock({ contextWindow: 100_000, responses: [
             "Thinking out loud first.\n\n```FIND (workspace:///*)\n```\n\nBetween the two.\n\n```FIND (workspace:///*)\n```\n\nAnd a trailing remark.",
-            "```SEND [200]\nDone.\n```",
+            "```DONE\nDone.\n```",
         ].map((content) => ({ assistant: { content, reasoning: null, finishReason: "stop" } })) });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Look around." }],
@@ -1194,7 +1192,7 @@ test("{§outside-text}: the citation reaches the parent, the reader best placed 
 test("{§outside-text}: an empty completion reply resolves the message without replacing the earlier answer", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
-        const provider = new Mock({ contextWindow: 100_000, responses: [said("````SEND\nThe answer is four.\n````"), said("````SEND [200]\n````")] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [said("````SEND\nThe answer is four.\n````"), said("````DONE\n````")] });
         const loop = await engine.runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 3,
             messages: [{ role: "user", content: "What is two plus two?" }],

@@ -191,7 +191,7 @@ test("{§functionality-model-projection} one raw model program observes each man
             frame("discover", { query: "next" }),
             PlurnkParser.frame("NOTE", "Review the results."),
         ].join("\n\n")),
-        makeRawMockResponse(PlurnkParser.frame("SEND [200]", "Finished.")),
+        makeRawMockResponse(PlurnkParser.frame("DONE", "Finished.")),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });
@@ -431,7 +431,7 @@ test("{§functionality-replacement} mutations distinguish local creation, settle
 test("{§module-workspace-residency} a model turn and concurrent catalog refresh both complete without reversing their locks", { timeout: 10000 }, async (t) => {
     serverProposals(t, "accept");
     const db = await openMigrated();
-    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("```SEND [200]\nReady.\n```")] });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("```DONE\nReady.\n```")] });
     const daemon = new Daemon({ db, provider });
     const entered = Promise.withResolvers<void>();
     const resume = Promise.withResolvers<void>();
@@ -1146,7 +1146,7 @@ for (const verb of ["add", "replace"]) for (const hold of ["", "plurnk_fx:host"]
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeMockResponse(`${PlurnkParser.frame(`plurnk_fx (${verb})`, JSON.stringify({ alias, kind: "doc" }))}\n${step("NOTE")}`),
             makeMockResponse(`${PlurnkParser.frame(alias, "fixture")}\n${step("NOTE")}`),
-            makeMockResponse(step("SEND [200]")),
+            makeMockResponse(step("DONE")),
         ] });
         const db = await openMigrated();
         const log: string[] = [];
@@ -1179,7 +1179,7 @@ test("{§functionality-model-projection} authorization-required holds the model 
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse(PlurnkParser.frame("plurnk_fx (add)", JSON.stringify({ alias: "candidate", kind: "auth" }))),
         makeMockResponse(PlurnkParser.frame("candidate", "fixture")),
-        makeMockResponse(PlurnkParser.frame("SEND [200]", "The candidate ran after sign-in.")),
+        makeMockResponse(PlurnkParser.frame("DONE", "The candidate ran after sign-in.")),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });

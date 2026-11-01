@@ -118,16 +118,8 @@ test("{§manifest} Manifest.of admits only declared top-level fields", () => {
     );
 });
 
-test("{§slot-order} MetadataOptions.read retains ordered scalars and objects for their owning contract", () => {
-    assert.deepEqual(MetadataOptions.read(null, "message:reply"), { elements: [] });
-    assert.deepEqual(MetadataOptions.read(['200,{"attachments":["workspace:///report.txt"]}'], "message:reply"),
-        { elements: [200, { attachments: ["workspace:///report.txt"] }] });
-    const refused = MetadataOptions.parse(["200"], "scheme:test");
-    assert.ok("failure" in refused, "the object-options contract still rejects scalars");
-    assert.equal(refused.failure.problem?.type, "https://problems.plurnk.xyz/scheme/test/metadata-invalid");
-});
-
 test("{§slot-order} MetadataOptions.parse merges option objects left to right", () => {
+    assert.deepEqual(MetadataOptions.parse(null, "scheme:test"), { options: {} });
     const read = MetadataOptions.parse(['{"a": 1}, {"b": 2, "a": 3}'], "scheme:test");
     assert.deepEqual(read, { options: { a: 3, b: 2 } });
 });

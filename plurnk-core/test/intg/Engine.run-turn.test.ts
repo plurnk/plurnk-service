@@ -121,7 +121,7 @@ test("{§turn-record}: initialization and inference preserve turnOps beside ordi
         try {
             // A workspace entry, so the workspace survey selects something and the initialization program exists.
             await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
-            const source = "````SEND [200]\ndone\n````";
+            const source = "````DONE\ndone\n````";
             const provider = new Mock({
                 contextWindow: 100000,
                 responses: [contentResp(source)],
@@ -290,9 +290,9 @@ test("{§notifications}: retries produce distinct physical-request reasoning seg
         assert.ok(events.every((event) => event.turnId === turn?.id && event.loopSeq === loop?.sequence && event.turnSeq === events[0]?.turnSeq),
             "every event names its turn's ordinals in the session's log, the same across a retry");
         const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: sessionId });
-        const notes = sources.filter(({ kind }) => kind === "note");
-        assert.equal(notes.filter(({ content }) => content === "Accepted retry note.").length, 1);
-        assert.ok(notes.every(({ content }) => content !== "Abandoned retry note."), "streamed reasoning from failed requests remains evidence, not committed memory");
+        const reasoningSources = sources.filter(({ kind }) => kind === "reasoning");
+        assert.equal(reasoningSources.filter(({ content }) => content === acceptedReasoning).length, 1);
+        assert.ok(reasoningSources.every(({ content }) => content !== abandonedReasoning), "streamed reasoning from failed requests remains evidence, not committed turn reasoning");
     } finally { await db.close(); }
 });
 
@@ -1084,7 +1084,7 @@ test("{§emission-history} {§emission-history}: a turn's content operations pre
     const note = frame("NOTE", "An authored memory.");
     const provider = new Mock({ contextWindow: 100000, responses: [
         say([edit, read, note].join("\n\n"), frame("NOTE", "Reasoning is not content.")),
-        say(frame("SEND [200]", "Done.")),
+        say(frame("DONE", "Done.")),
     ] });
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
     const request = provider.received[1];
@@ -1104,7 +1104,7 @@ test("{§emission-history} {§emission-history}: a turn's content operations pre
         const head = record.split("\n\n")[0];
         assert.equal(Number(/ · (\d+)/u.exec(head)![1]), contentWeight(head) + contentWeight(operations[op]), "the curation charge owns the complete operation and receipt once");
     }
-    assert.match(request.filter(({ role }) => role === "user").map(chatMessageText).join("\n"), /Reasoning is not content\./u);
+    assert.doesNotMatch(request.filter(({ role }) => role === "user").map(chatMessageText).join("\n"), /Reasoning is not content\./u);
     const source = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, session_name: "writer", loop_seq: 1, turn_seq: 2, kind: "ops", sequence: 0 });
     assert.equal(source!.content, [edit, read, note].join("\n\n"));
 });
@@ -1118,16 +1118,16 @@ test("{§op-shapes}: failed retrievals retain their annotations independently, w
     const source = frame("READ (workspace:///absent.txt)", "/not-a-pattern/");
     const provider = new Mock({ contextWindow: 100000, responses: [
         say(source, frame("READ (workspace:///also-absent.txt)", "Reasoning annotation.")),
-        say(frame("SEND [200]", "Neither resource exists.")),
+        say(frame("DONE", "Neither resource exists.")),
     ] });
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
     const request = provider.received[1];
     assert.deepEqual(request.filter(({ role }) => role === "assistant").map(chatMessageText), [[frame("NOTE", "/not-a-pattern/"), frame("READ (workspace:///absent.txt)", null)].join("\n\n")]);
     const user = request.filter(({ role }) => role === "user").map(chatMessageText).join("\n");
-    assert.match(user, /Reasoning annotation\./u);
-    assert.match(user, /also-absent\.txt/u);
+    assert.doesNotMatch(user, /Reasoning annotation\./u);
+    assert.doesNotMatch(user, /also-absent\.txt/u);
     assert.doesNotMatch(user, /not-a-pattern/u);
-    assert.equal([...user.matchAll(/"status":404/gu)].length >= 2, true);
+    assert.equal([...user.matchAll(/"status":404/gu)].length >= 1, true);
     const notes = await db.test_log_entries_by_session_op_full.all<{ tx: string }>({ session_id: sessionId, op: "NOTE" });
     assert.ok(notes.some(({ tx }) => JSON.parse(tx).body === "/not-a-pattern/"));
 });
@@ -1143,7 +1143,7 @@ test("{§emission-history} {§op-methods-op-dispatch}: one glob replay owns conc
     const copy = frame("COPY (workspace:///case-a.*) (workspace:///copy.txt)", null);
     const provider = new Mock({ contextWindow: 100000, responses: [
         say([frame("EDIT (workspace:///case-a.txt)", "First."), frame("EDIT (workspace:///case-b.txt)", "Second.")].join("\n\n")),
-        say(`${glob}\n\n${missing}\n\n${copy}`), say(frame("SEND [200]", "The missing note was absent.")),
+        say(`${glob}\n\n${missing}\n\n${copy}`), say(frame("DONE", "The missing note was absent.")),
     ] });
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
     const request = provider.received[2];

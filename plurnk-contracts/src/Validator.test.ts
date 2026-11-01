@@ -969,6 +969,11 @@ test("{§op-shapes} {§matcher-prefix-claims} {§parse-recovery} {§whitespace-c
     }).valid, true);
 
     assert.equal(Validator.validatePlurnkStatement({ ...baseFields("SEND"), body: "just a string" }).valid, false);
+    for (const op of ["DONE", "FAIL"]) {
+        assert.equal(Validator.validatePlurnkStatement(baseFields(op)).valid, true, `${op} accepts empty body`);
+        assert.equal(Validator.validatePlurnkStatement({ ...baseFields(op), body: { raw: "done", json: null } }).valid, true, `${op} accepts SendBody`);
+        assert.equal(Validator.validatePlurnkStatement({ ...baseFields(op), lineMarker: { marks: [1] } }).valid, false, `${op} refuses lineMarker`);
+    }
     assert.equal(Validator.validatePlurnkStatement({ ...baseFields("EDIT"), body: "some markdown content" }).valid, true);
     assert.equal(Validator.validatePlurnkStatement({ ...baseFields("EDIT"), body: { dialect: "glob", raw: "*.xml" } }).valid, false);
     assert.equal(Validator.validatePlurnkStatement({ ...baseFields("DROP") }).valid, false);

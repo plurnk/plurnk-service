@@ -467,7 +467,7 @@ for (const fixture of [
         const pending: { batch: string | null } = { batch: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````READ (doc.md) <1,-1>````\n````NOTE\nreading\n````", 50),
-            makeMockResponse("````SEND [200]\nread\n````", 50),
+            makeMockResponse("````DONE\nread\n````", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
@@ -478,7 +478,7 @@ for (const fixture of [
 \`\`\`\`NOTE
 editing
 \`\`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````SEND [200]\nedited\n````", 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````DONE\nedited\n````", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -607,7 +607,7 @@ for (const fixture of cases) test(`{§op-methods-op-dispatch} ${fixture.name}`, 
         const pending: { batch: string | null } = { batch: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````READ (doc.md) <1,-1>````\n````NOTE\nreading\n````", 50),
-            makeMockResponse("````SEND [200]\nread\n````", 50),
+            makeMockResponse("````DONE\nread\n````", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
@@ -618,7 +618,7 @@ for (const fixture of cases) test(`{§op-methods-op-dispatch} ${fixture.name}`, 
 \`\`\`\`NOTE
 editing
 \`\`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````SEND [200]\nedited\n````", 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````DONE\nedited\n````", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -713,7 +713,7 @@ test("{§edit-result-receipt-projection} the EDIT row renders the landed lines w
         const pending: { anchor: string | null } = { anchor: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````EDIT (f.go) <1>\nvar x int64\n````\n\n````NOTE\nfirst\n````", 50),
-            makeMockResponse("````SEND [200]\ndone\n````", 50),
+            makeMockResponse("````DONE\ndone\n````", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
@@ -726,7 +726,7 @@ func requireFn(a int) int { // anchored
 \`\`\`\`NOTE
 second
 \`\`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````DONE\ndone\n````", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {

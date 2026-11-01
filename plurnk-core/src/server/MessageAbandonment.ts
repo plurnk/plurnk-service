@@ -1,5 +1,5 @@
 // {§loop-completion} — a loop that ends with another session's message unanswered answers it 499 by the
-// daemon's hand: one SEND to each message's address, in a maintenance turn of the loop that ended, so the
+// daemon's hand: one FAIL to each message's address, in a maintenance turn of the loop that ended, so the
 // sender wakes and reads the decline instead of waiting on a loop that is gone. No loop is opened: a cancelled
 // scope stays cancelled ({§session-causal-admission}); the turn belongs to the ended loop.
 import { PlurnkParser } from "@plurnk/plurnk-parser";
@@ -19,7 +19,7 @@ export default class MessageAbandonment {
         const open = await db.drain_abandoned_messages.all<{ path: string }>({ loop_id: loopId });
         if (open.length === 0) return 0;
         const text = open
-            .map(({ path }) => `\`\`\`\`SEND (${path}) [499]\n${MessageAbandonment.detail(loopId, status)}\n\`\`\`\``)
+            .map(({ path }) => `\`\`\`\`FAIL (${path})\n${MessageAbandonment.detail(loopId, status)}\n\`\`\`\``)
             .join("\n\n");
         const parsed = PlurnkParser.parseStatements(text, { executors: [] });
         const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);

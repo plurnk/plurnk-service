@@ -66,7 +66,7 @@ FROM unanswered_messages m
 JOIN (
     SELECT id, rx FROM log_entries
     WHERE turn_id = $turn_id
-      AND op = 'SEND' AND origin = 'model' AND state = 'resolved'
+      AND op IN ('SEND', 'DONE', 'FAIL') AND origin = 'model' AND state = 'resolved'
       AND status_rx BETWEEN 200 AND 299
       AND source IS NULL AND inherited_history = 0
       AND json_valid(rx) AND json_array_length(rx, '$.repliedTo') > 0
@@ -79,7 +79,7 @@ WHERE m.loop_id = $loop_id AND m.log_entry_id IS NOT NULL;
 DROP TRIGGER IF EXISTS message_complete_on_reply;
 CREATE TRIGGER message_complete_on_reply
 AFTER INSERT ON log_entries
-WHEN NEW.op = 'SEND' AND NEW.state = 'resolved' AND NEW.status_rx BETWEEN 200 AND 299
+WHEN NEW.op IN ('SEND', 'DONE', 'FAIL') AND NEW.state = 'resolved' AND NEW.status_rx BETWEEN 200 AND 299
     AND NEW.source IS NULL AND NEW.inherited_history = 0 AND json_valid(NEW.rx)
     AND json_extract(NEW.rx, '$.completion') IN (200, 499)
 BEGIN

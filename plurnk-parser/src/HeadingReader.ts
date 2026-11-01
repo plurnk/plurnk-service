@@ -3,7 +3,6 @@ import { PlurnkParseError, isPlurnkOp, type PlurnkOp, type PlurnkStatement } fro
 import { plurnkParser } from "./generated/plurnkParser.ts";
 import AstBuilder from "./AstBuilder.ts";
 import HeadingTokens from "./HeadingTokens.ts";
-import { isReasoningOperation } from "./ReasoningOperation.ts";
 
 const JS_ALIASES = ["ts", "javascript", "typescript", "node"] as const;
 
@@ -19,8 +18,7 @@ export default class HeadingReader {
 
     // {§fence-pairing}: the lexer and fence pairing share recognition; the slot grammar validates
     // what follows. A slot opener suffices even when its slot is malformed, so it receives a diagnostic.
-    static opens(name: string, suffix: string, executors: ReadonlySet<string>, reasoning: boolean): boolean {
-        if (reasoning) return isReasoningOperation(name);
+    static opens(name: string, suffix: string, executors: ReadonlySet<string>): boolean {
         if (isPlurnkOp(name)) return true;
         const lower = name.toLowerCase();
         for (const executor of executors) if (executor.toLowerCase() === lower) return true;
@@ -28,9 +26,8 @@ export default class HeadingReader {
         return next.startsWith("(") || next.startsWith("[") || next.startsWith("<") && !next.startsWith("<!--");
     }
 
-    // {§operation-fences}: a native name alone or with one complete aside on its line, outside reasoning.
-    static nakedHeading(text: string, reasoning: boolean): { name: PlurnkOp; alone: boolean } | null {
-        if (reasoning) return null;
+    // {§operation-fences}: a native name alone or with one complete aside on its line.
+    static nakedHeading(text: string): { name: PlurnkOp; alone: boolean } | null {
         const match = /^([A-Z]+)(?:[ \t]*(<!--(?:(?!-->)[^\r\n])*-->))?[ \t]*$/u.exec(text);
         if (match === null || !isPlurnkOp(match[1])) return null;
         return { name: match[1], alone: match[2] === undefined };

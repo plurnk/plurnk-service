@@ -197,7 +197,7 @@ export default class LogBody {
             };
         }
 
-        if (row.op === "SEND" || row.op === "KILL" || row.op === "WORK" || row.op === "FORK") {
+        if (row.op === "SEND" || row.op === "DONE" || row.op === "FAIL" || row.op === "KILL" || row.op === "WORK" || row.op === "FORK") {
             if (tx !== null && typeof tx === "object") {
                 const body = (tx as { body?: unknown }).body;
                 const content = typeof body === "string"
@@ -214,7 +214,7 @@ export default class LogBody {
                     };
                 }
             }
-            if (row.op === "SEND" && typeof rx === "string" && rx.length > 0) {
+            if ((row.op === "SEND" || row.op === "DONE" || row.op === "FAIL") && typeof rx === "string" && rx.length > 0) {
                 return {
                     provenance: "returned",
                     content: rx,

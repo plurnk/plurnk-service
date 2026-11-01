@@ -46,7 +46,7 @@ for (const [op, maxStrikes] of [["READ (workspace:///answer.md)", 0], ["READ (wo
         const { db, engine, workspaceId, sessionId, loopId } = await fixture(t);
         const provider = new Mock({ contextWindow: 100000, responses: [
             response(frame(op, op === "BARE" ? "What is six times seven?" : null), frame("SEND", "The answer is 42.")),
-            response(frame("SEND [200]", null)),
+            response(frame("DONE", null)),
         ] });
         const childProvider = new Mock({ contextWindow: 100000, responses: [response("42")] });
         const result = await engine.runLoop({ provider, childProvider, workspaceId, sessionId, loopId, messages: [], maxTurns: 3, maxStrikes });
@@ -57,7 +57,7 @@ for (const [op, maxStrikes] of [["READ (workspace:///answer.md)", 0], ["READ (wo
         assert.match(JSON.stringify(provider.received[1]), /42/, "the observation packet contains the result");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string }>({ loop_id: loopId });
         const authored = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(authored.map((row) => row.op), [op.split(" ")[0], "SEND", "SEND"], "the model resolves its messages without repeating the answer");
+        assert.deepEqual(authored.map((row) => row.op), [op.split(" ")[0], "SEND", "DONE"], "the model resolves its messages without repeating the answer");
         assert.equal(authored.find((row) => row.op === "SEND")?.status_rx, 200, "reply delivery is not deferred");
         assert.equal(await new StrikeRail(db).streak(loopId), 0);
         const turns = await Promise.all(result.turnIds.slice(1).map((id) => db.test_get_turn.get<{ status: number }>({ id })));
@@ -69,7 +69,7 @@ test("{§message-completion} observation permits a corrected reply", async (t) =
     const { db, engine, workspaceId, sessionId, loopId } = await fixture(t);
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(frame("READ (workspace:///answer.md)", null), frame("SEND", "The answer is 41.")),
-        response(frame("SEND [200]", "Correction: the answer is 42.")),
+        response(frame("DONE", "Correction: the answer is 42.")),
     ] });
     const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);
@@ -84,7 +84,7 @@ for (const target of ["log:///999/*/*", "workspace:///answer.md"]) {
         const { engine, workspaceId, sessionId, loopId } = await fixture(t);
         const provider = new Mock({ contextWindow: 100000, responses: [
             response(frame(`KILL (${target})`, null), frame("SEND", "Finished.")),
-            response(frame("SEND [200]", null)),
+            response(frame("DONE", null)),
         ] });
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 2 });
         assert.equal(result.result.status, 200);
@@ -108,7 +108,7 @@ test("{§loop-completion} repeated work costs observations, not ceremony strikes
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(frame("READ (workspace:///answer.md)", null), frame("SEND", "The answer is 42.")),
         response(frame("FIND (workspace:///answer.md)", null)),
-        response(frame("SEND [200]", null)),
+        response(frame("DONE", null)),
     ] });
     const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 4, maxStrikes: 1 });
     assert.equal(result.result.status, 200);
@@ -120,10 +120,10 @@ for (const kind of ["sessions", "streams", "failed-stream-results", "late-failed
     test(`{§loop-completion} ${kind} arriving after packet assembly prevents premature conclusion`, async (t) => {
         const { db, engine, workspaceId, sessionId, loopId } = await fixture(t);
         const live = kind === "sessions" || kind === "streams";
-        const operation = kind === "operation-failure" ? "READ (workspace:///missing.md)" : kind === "kill-failure" ? "KILL (workspace:///missing.md)" : "SEND [200]";
+        const operation = kind === "operation-failure" ? "READ (workspace:///missing.md)" : kind === "kill-failure" ? "KILL (workspace:///missing.md)" : "DONE";
         const provider = new Mock({ contextWindow: 100000, responses: [
             response(frame("READ (workspace:///answer.md)", null), frame("SEND", "The answer is 42.")),
-            response(frame(operation, null)), response(operation === "SEND [200]" ? "" : frame("SEND [200]", null)),
+            response(frame(operation, null)), response(operation === "DONE" ? "" : frame("DONE", null)),
         ] });
         const generate = provider.generate.bind(provider);
         t.mock.method(provider, "generate", async (args: Parameters<Mock["generate"]>[0]) => {
@@ -209,8 +209,8 @@ test("{§loop-completion} completion with a live child session joins it on the r
 
         const rows = await db.test_log_entries_by_turn.all<{ status_rx: number; op: string; origin: string }>({ turn_id: premature.turnId });
         const modelRows = rows.filter(({ origin }) => origin === "model");
-        const completion = modelRows.find((r) => r.op === "SEND");
-        assert.deepEqual(modelRows.map(({ op }) => op), ["SEND"], "joining adds no fictional operation");
+        const completion = modelRows.find((r) => r.op === "DONE");
+        assert.deepEqual(modelRows.map(({ op }) => op), ["DONE"], "joining adds no fictional operation");
         assert.equal(completion?.status_rx, 200, "the reply is delivered while the loop joins the child");
     } finally { await db.close(); }
 });
@@ -539,7 +539,7 @@ for (const curate of [false, true]) {
         const extra = curate ? "````READ (workspace:///notes.md)\n````\n````READ (workspace:///notes.md)\n````\n````KILL (log:///**/EDIT)\n````\n" : "";
         const mock = new Mock({ contextWindow: 16384, responses: [
             makeMockResponse("````EDIT (workspace:///notes.md)\nhello\n````\n" + extra + "````SEND\nWritten.\n````"),
-            makeMockResponse("````SEND [200]\n````"),
+            makeMockResponse("````DONE\n````"),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -552,10 +552,10 @@ for (const curate of [false, true]) {
                 assert.equal(mock.received.length, 2, "a completed mutation needs one observation turn, no terminal ceremony");
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: result.loopId });
                 const model = rows.filter(({ origin }) => origin === "model");
-                assert.deepEqual(model.map(({ op }) => op), curate ? ["EDIT", "READ", "READ", "KILL", "SEND", "SEND"] : ["EDIT", "SEND", "SEND"]);
+                assert.deepEqual(model.map(({ op }) => op), curate ? ["EDIT", "READ", "READ", "KILL", "SEND", "DONE"] : ["EDIT", "SEND", "DONE"]);
                 assert.equal(model[0].status_rx, 201);
                 assert.deepEqual(model.slice(1).map(({ op, status_rx }) => [op, status_rx]),
-                    curate ? [["READ", 200], ["READ", 200], ["KILL", 204], ["SEND", 200], ["SEND", 200]] : [["SEND", 200], ["SEND", 200]],
+                    curate ? [["READ", 200], ["READ", 200], ["KILL", 204], ["SEND", 200], ["DONE", 200]] : [["SEND", 200], ["DONE", 200]],
                     "curation cannot select a same-turn receipt before it is published");
                 assert.match(JSON.stringify(mock.received[1]), /notes\.md/);
                 const entry = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "workspace", name: "body" });
@@ -589,7 +589,7 @@ for (const command of ["true", "hostname"]) {
             contextWindow: 100_000,
             responses: [
                 makeMockResponse(`\`\`\`\`sh\n${command}\n\`\`\`\`${reply}`),
-                makeMockResponse(`\`\`\`\`SEND [200]\n${answer}\n\`\`\`\``),
+                makeMockResponse(`\`\`\`\`DONE\n${answer}\n\`\`\`\``),
             ],
         });
         await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -608,8 +608,8 @@ for (const command of ["true", "hostname"]) {
                 const rows = await db.test_log_entries_by_session.all<{ op: string; origin: string; status_rx: number }>({ session_id: result.modelSessionId });
                 assert.ok(rows.some((r) => isExecutionOp(r.op)), "the stream ran");
                 assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op),
-                    ["sh", ...(earlyReply ? ["SEND"] : []), "SEND"], "no synthetic completion operation");
-                assert.equal(rows.filter((r) => r.op === "SEND" && r.origin === "model" && r.status_rx === 200).length,
+                    ["sh", ...(earlyReply ? ["SEND"] : []), "DONE"], "no synthetic completion operation");
+                assert.equal(rows.filter((r) => (r.op === "SEND" || r.op === "DONE") && r.origin === "model" && r.status_rx === 200).length,
                     earlyReply ? 2 : 1, "only the authored replies were delivered");
             } finally {
                 ws.close();
@@ -630,7 +630,7 @@ test("{§loop-completion}: a successful execution receipt defers completion one 
         contextWindow: 100_000,
         responses: [
             makeMockResponse("````sh\ntrue\n````\n````SEND\nCompleted.\n````"),
-            makeMockResponse("````SEND [200]\n````"),
+            makeMockResponse("````DONE\n````"),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -642,7 +642,7 @@ test("{§loop-completion}: a successful execution receipt defers completion one 
             assert.equal(provider.received.length, 2);
             assert.equal(provider.remaining, 0);
             const rows = await db.test_log_entries_by_session.all<{ op: string; origin: string; status_rx: number }>({ session_id: result.modelSessionId });
-            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "SEND"]);
+            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "DONE"]);
             assert.equal(result.result.content, undefined);
             assert.equal(await lastReply(db, result.loopId), "Completed.", "an empty completion resolves the observed assignment without repeating its answer");
             assert.equal(rows.filter(({ op, origin }) => isExecutionOp(op) && origin === "model").length, 1, "the submitted command was executed");
@@ -658,7 +658,7 @@ test("{§loop-completion}: a same-turn stream's nonzero exit defers completion w
         contextWindow: 100_000,
         responses: [
             makeMockResponse("````sh\nexit 3\n````\n````SEND\nconcluding blind\n````"),
-            makeMockResponse("````SEND [200]\nconcluding after reading the failure\n````"),
+            makeMockResponse("````DONE\nconcluding after reading the failure\n````"),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -669,12 +669,12 @@ test("{§loop-completion}: a same-turn stream's nonzero exit defers completion w
             assert.equal(result.finalStatus, 200);
             assert.equal(provider.remaining, 0, "the deferral cost exactly one more provider turn");
             const rows = await db.test_log_entries_by_session.all<{ id: number; op: string; origin: string; status_rx: number }>({ session_id: result.modelSessionId });
-            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "SEND"]);
+            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "DONE"]);
             assert.ok(rows.some(({ op, origin, status_rx }) => op === "READ" && origin === "_plurnk" && status_rx === 200), "the terminal stream observation lands as the command's answer");
             assert.match(JSON.stringify(provider.received[1]), /\\"exitCode\\":3/, "the exit code reaches the observation packet");
             assert.equal(result.result.content, undefined);
         assert.equal(await lastReply(db, result.loopId), "concluding after reading the failure");
-            assert.ok(rows.filter(({ origin, op }) => origin === "model" && ["SEND", "KILL"].includes(op)).every(({ status_rx }) => status_rx === 200),
+            assert.ok(rows.filter(({ origin, op }) => origin === "model" && ["SEND", "DONE", "KILL"].includes(op)).every(({ status_rx }) => status_rx === 200),
                 "both replies succeeded independently of the execution");
         } finally {
             ws.close();
@@ -748,12 +748,12 @@ for (const [name, completion, answer] of [["answered 200", 200, "the code is 481
         const provider = new Scripted(() => db, {
             root: [
                 () => "````WORK (session://kid)\nask me for the code, then report what I said\n````\n\n````WAIT\nawaiting kid\n````",
-                async (d) => `\`\`\`\`SEND (${await openMessageFrom(d, workspaceId, "kid")}) [${completion}]\n${answer}\n\`\`\`\`\n\n\`\`\`\`WAIT\nstill awaiting kid\n\`\`\`\``,
-                () => "````SEND [200]\nkid is done\n````",
+                async (d) => `\`\`\`\`${completion === 200 ? "DONE" : "FAIL"} (${await openMessageFrom(d, workspaceId, "kid")})\n${answer}\n\`\`\`\`\n\n\`\`\`\`WAIT\nstill awaiting kid\n\`\`\`\``,
+                () => "````DONE\nkid is done\n````",
             ],
             kid: [
                 async (d) => `\`\`\`\`SEND (${await parentOf(d, workspaceId, "kid")})\nwhat is the code?\n\`\`\`\`\n\n\`\`\`\`WAIT\nawaiting the parent's answer\n\`\`\`\``,
-                () => "````SEND [200]\nreported\n````",
+                () => "````DONE\nreported\n````",
             ],
         });
         await withDaemon(provider, async (database, _daemon, addr) => {
@@ -792,7 +792,7 @@ test("{§loop-completion} a parent that strikes out with the child's message una
         ],
         kid: [
             async (d) => `\`\`\`\`SEND (${await parentOf(d, workspaceId, "kid")})\nwhat is the code?\n\`\`\`\`\n\n\`\`\`\`WAIT\nawaiting the parent's answer\n\`\`\`\``,
-            () => "````SEND [200]\nthe parent went away without answering\n````",
+            () => "````DONE\nthe parent went away without answering\n````",
         ],
     });
     await withDaemon(provider, async (database, _daemon, addr) => {

@@ -66,7 +66,7 @@ for (const enabled of [true, false]) {
             turn(`\`\`\`\`READ (${url}#readable)\`\`\`\`\n${step()}`),
             turn(`\`\`\`\`READ (${url}#bytes) <2,3>\`\`\`\`\n${step()}`),
             turn(`\`\`\`\`READ (${url}#header)\`\`\`\`\n${step()}`),
-            turn(step("SEND [200]")),
+            turn(step("DONE")),
         ] });
         await run(provider);
         const parts = provider.received.map((messages) => messages.flatMap((message) => Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : []));
@@ -110,7 +110,7 @@ test("{§http-lifecycle} 304 revalidation preserves bytes and later replacement 
         turn(`\`\`\`\`READ (${url}) <1,2>\`\`\`\`\n${step()}`),
         turn(`\`\`\`\`READ (${url}#readable)\`\`\`\`\n${step()}`),
         turn(`\`\`\`\`READ (${url}#bytes) <1,2>\`\`\`\`\n${step()}`),
-        turn(step("SEND [200]")),
+        turn(step("DONE")),
     ] });
     await run(provider);
     assert.deepEqual(validators, [undefined, '"v1"', '"v1"']);

@@ -111,7 +111,7 @@ test("{§share-packet-names}: restore preserves history, decisions and attachmen
     const provider = new Mock({ contextWindow: 100_000, responses: [
         { assistant: { content: "````READ (doc.md)\n````", reasoning: "Inspect before editing." } },
         { assistant: { content: "````EDIT (doc.md) <1,-1>\nPreserved project version.\n````", reasoning: "Apply the requested change." } },
-        { assistant: { content: "````SEND [200]\nUpdated the document.\n````", reasoning: "The edit succeeded." },
+        { assistant: { content: "````DONE\nUpdated the document.\n````", reasoning: "The edit succeeded." },
             usage: { inputTokens: 50, outputTokens: 10, totalTokens: 60 },
             cost: { kind: "charged", amount: { amount: "0.01", currency: "USD" }, source: "fixture invoice" } },
     ] });
@@ -409,7 +409,7 @@ test("{§schedule-family} a discovered schedule arms a persisted rule at restart
     assert.equal(added.status, 201);
     await first.stop();
 
-    const provider = new Mock({ contextWindow: 65_536, responses: [{ assistant: { content: "````SEND [200]\nReceived.\n````", reasoning: null } }] });
+    const provider = new Mock({ contextWindow: 65_536, responses: [{ assistant: { content: "````DONE\nReceived.\n````", reasoning: null } }] });
     const second = new Daemon({ db, provider });
     t.after(async () => { await second.stop(); await db.close(); });
     await second.start();

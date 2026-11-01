@@ -1050,7 +1050,7 @@ test("{§tokenomics} runTurn stores provider-derived curation and request-shaped
 });
 
 test("{§tokenomics} providers.list advertises resolved physical input capacity", async () => {
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````DONE\ndone\n````", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1376,7 +1376,7 @@ test("{§tokenomics} null window + no per-alias knob → NO-CAP: the turn builds
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const mock = new Mock({ contextWindow: null, responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
+        const mock = new Mock({ contextWindow: null, responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
         const result = await engine.runTurn({ provider: mock, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.ok(result.turnId > 0, "the turn builds unbounded — a probe blip degrades to no-cap, never crashes the loop");
         assert.equal((await engine.loopUsage(loopId)).curationBudget, null, "the client sees no invented allowance when physical capacity is unknown");

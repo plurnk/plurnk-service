@@ -1382,7 +1382,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 h.port.emitEvent(1, "loop/proposal", siblingProposal);
                 h.port.emitEvent(1, "loop/terminated", makeTerminatedEvent({ sessionId: 3, loopId: 3 }));
 
-                // Bodiless SEND on descendant session 2 ("helper") emits subagent_update but NOT session_message("SEND")
+                // Bodiless DONE on descendant session 2 ("helper") emits subagent_update but NOT session_message("DONE")
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 711,
@@ -1390,9 +1390,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_name: "helper",
                         loop_id: 2,
                         turn_id: 1,
-                        op: "SEND",
+                        op: "DONE",
                         attrs: {},
-                        rx: { status: 200, content: "", mimetype: "text/plain" },
+                        rx: { status: 204, completion: 200, content: "", mimetype: "text/plain" },
                     }),
                 });
 
@@ -1492,9 +1492,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     turn_seq: 1,
                     sequence: 2,
                     origin: "model",
-                    op: "SEND",
+                    op: "DONE",
                     attrs: { kind: "message", to: "acp://operator", body: "Loop 1 answer" },
-                    rx: { status: 200, content: "Loop 1 answer", mimetype: "text/markdown" },
+                    rx: { status: 200, completion: 200, content: "Loop 1 answer", mimetype: "text/markdown" },
                     mimetype_rx: "text/markdown",
                 }),
                 makeLogEntry({
@@ -1521,9 +1521,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     turn_seq: 1,
                     sequence: 2,
                     origin: "model",
-                    op: "SEND",
+                    op: "FAIL",
                     attrs: { kind: "message", to: "acp://operator", body: "X".repeat(600) },
-                    rx: { status: 200, content: "X".repeat(600), mimetype: "text/markdown" },
+                    rx: { status: 200, completion: 499, content: "X".repeat(600), mimetype: "text/markdown" },
                     mimetype_rx: "text/markdown",
                 }),
             );
@@ -1932,9 +1932,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         turn_seq: 1,
                         sequence: 1,
                         origin: "model",
-                        op: "SEND",
+                        op: "DONE",
                         attrs: { body: "Done working" },
-                        rx: { status: 200, content: "Done working" },
+                        rx: { status: 200, completion: 200, content: "Done working" },
                     }),
                 });
                 h.port.emitEvent(1, "loop/terminated", {

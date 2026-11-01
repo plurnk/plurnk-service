@@ -111,9 +111,9 @@ test("{§connection-lifecycle} origin is attribution (provenance), never read to
 test("{§env-delta} an idle session wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 8192, responses: [
-        makeMockResponse("````SEND [200]\nfirst done\n````", 10),
-        makeMockResponse("````SEND [200]\nwoke done\n````", 10),
-        makeMockResponse("````SEND [200]\nextra\n````", 10),
+        makeMockResponse("````DONE\nfirst done\n````", 10),
+        makeMockResponse("````DONE\nwoke done\n````", 10),
+        makeMockResponse("````DONE\nextra\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -155,7 +155,7 @@ test("{§session-initialization-entry} runtime-owned entry work is an ordinary a
     await mkdir(join(dir, "node_modules", "dep"), { recursive: true });
     await writeFile(join(dir, "node_modules", "dep", "AGENTS.md"), "never seen", "utf8");
     try {
-        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
+        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -1003,7 +1003,7 @@ describe("client-isolation", () => {
 test("{§machine-processes} a client operation cannot SEND the runtime actor into model inference", async () => {
     const mock = new Mock({
         contextWindow: 8192,
-        responses: [makeMockResponse("````SEND [200]\nthis must remain unused\n````", 50)],
+        responses: [makeMockResponse("````DONE\nthis must remain unused\n````", 50)],
     });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1023,7 +1023,7 @@ test("{§machine-processes} a client operation cannot SEND the runtime actor int
 
 test("{§connection-lifecycle} {§actor-boundary} a client op.* journals in the runtime session and never enters the model's packet", async () => {
     // The model just terminates; we only care where the client op landed.
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1058,7 +1058,7 @@ test("{§connection-lifecycle} {§actor-boundary} a client op.* journals in the 
 });
 
 test("{§connection-lifecycle} a connection reads the model session by id — loop.run returns modelSessionId, log.read targets it, ownership-gated", async () => {
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1099,7 +1099,7 @@ test("{§connection-lifecycle} a connection reads the model session by id — lo
 });
 
 test("{§connection-lifecycle} workspace.sessions tags each session with its actor — the model session is found by origin, not name", async () => {
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1201,7 +1201,7 @@ test("{§session-ownership} server acceptance resolves through Core without a cl
     const first = "````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse(first, 50),
-        makeMockResponse("````SEND [200]\ndone\n````", 0),
+        makeMockResponse("````DONE\ndone\n````", 0),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());
@@ -1224,7 +1224,7 @@ test("{§proposal-disposition} server rejection settles the same admitted propos
     serverProposals(t, "reject");
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````", 50),
-        makeMockResponse("````SEND [200]\nthe edit was declined; concluding\n````", 50),
+        makeMockResponse("````DONE\nthe edit was declined; concluding\n````", 50),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());

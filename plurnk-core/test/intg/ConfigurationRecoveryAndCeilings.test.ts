@@ -51,7 +51,7 @@ test("{§configuration-repair-path} a misconfigured installed executor leaves it
     const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse("````brokenfixture\ninspect\n````\n\n````healthyfixture\ninspect\n````"),
-        makeMockResponse("````SEND [200]\nThe healthy executor worked; the other needs its endpoint configured.\n````"),
+        makeMockResponse("````DONE\nThe healthy executor worked; the other needs its endpoint configured.\n````"),
     ] });
     const daemon = new Daemon({ db, provider });
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -89,7 +89,7 @@ test("{§configuration-repair-path} invalid scratch configuration does not block
     const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse("````sh\nprintf inline-still-works\n````"),
-        makeMockResponse("````SEND [200]\nThe inline program worked.\n````"),
+        makeMockResponse("````DONE\nThe inline program worked.\n````"),
     ] });
     const daemon = new Daemon({ db, provider });
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -120,7 +120,7 @@ for (const [key, invocation] of [
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeMockResponse(`\`\`\`\`${invocation}\nprintf should-not-run\n\`\`\`\`\n\n\`\`\`\`EDIT (workspace:///repair.txt)\nrepair remains available\n\`\`\`\``),
             makeMockResponse("````READ (workspace:///repair.txt)\n````"),
-            makeMockResponse("````SEND [200]\nOrdinary editing and inspection still work.\n````"),
+            makeMockResponse("````DONE\nOrdinary editing and inspection still work.\n````"),
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); });
@@ -161,7 +161,7 @@ for (const key of [
         const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeMockResponse("````plurnk_env (list)\n````"),
-            makeMockResponse("````SEND [200]\nConfiguration is inspectable.\n````"),
+            makeMockResponse("````DONE\nConfiguration is inspectable.\n````"),
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); });
@@ -188,7 +188,7 @@ test("{§configuration-repair-path} startup diagnostics reach the model and clie
     await configuration.capture("hooks", () => { throw new ConfigurationError(key, `${key} must be a JSON array of strings.`); });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse("````plurnk_env (list)\n````"),
-        makeMockResponse("````SEND [200]\nThe hook configuration needs repair; ordinary operations remain available.\n````"),
+        makeMockResponse("````DONE\nThe hook configuration needs repair; ordinary operations remain available.\n````"),
     ] });
     const daemon = new Daemon({ db, provider, configuration });
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -236,7 +236,7 @@ for (const [family, key, value] of [
         const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeMockResponse(`\`\`\`\`plurnk_${family} (list)\n\`\`\`\`\n\n\`\`\`\`plurnk_env (list)\n\`\`\`\``),
-            makeMockResponse("````SEND [200]\nThe configuration error is visible; this agent is still usable.\n````"),
+            makeMockResponse("````DONE\nThe configuration error is visible; this agent is still usable.\n````"),
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); });
@@ -284,7 +284,7 @@ const execFileP = promisify(execFile);
 
 const twoEdits = () => new Mock({ contextWindow: viableWindow(), responses: [
     makeMockResponse("````EDIT (workspace:///a.md)\naaa\n````\n\n````EDIT (workspace:///b.md)\nbbb\n````\n\n````NOTE\ncontinue\n````", 50),
-    makeMockResponse("````SEND [200]\ndone\n````", 50),
+    makeMockResponse("````DONE\ndone\n````", 50),
 ] });
 const entryId = (db: Db, pathname: string) =>
     db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "workspace", pathname });
@@ -369,7 +369,7 @@ test("{§operator-config} workspace settings.git:false denies git membership for
 });
 
 test("{§operator-config} workspace.create rejects malformed ceiling settings — fail hard, no silent accept", async () => {
-    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

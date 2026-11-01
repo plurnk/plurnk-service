@@ -728,15 +728,15 @@ test("{§session-model-selection}: a smaller WORK provider carries through every
         contextWindow: 32768,
         responses: [
             makeMockResponse("````WORK (session://child)\ndelegate once\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````SEND [200]\ntree complete\n````"),
+            makeMockResponse("````DONE\ntree complete\n````"),
         ],
     });
     const child = new Mock({
         contextWindow: 16384,
         responses: [
             makeMockResponse("````WORK (session://grandchild)\ndelegate again\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````SEND [200]\nleaf complete\n````"),
-            makeMockResponse("````SEND [200]\nchild complete\n````"),
+            makeMockResponse("````DONE\nleaf complete\n````"),
+            makeMockResponse("````DONE\nchild complete\n````"),
         ],
     });
     ProviderInstantiate.registerInstance(parent, parentSpec);
@@ -787,12 +787,12 @@ test("{§session-model-selection}: the configured child alias supplies an omitte
         contextWindow: 16384,
         responses: [
             makeMockResponse("````WORK (session://child)\nuse configured child\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````SEND [200]\nparent complete\n````"),
+            makeMockResponse("````DONE\nparent complete\n````"),
         ],
     });
     const child = new Mock({
         contextWindow: 8192,
-        responses: [makeMockResponse("````SEND [200]\nchild complete\n````")],
+        responses: [makeMockResponse("````DONE\nchild complete\n````")],
     });
     ProviderInstantiate.registerInstance(parent, parentSpec);
     ProviderInstantiate.registerInstance(child, childSpec);
@@ -826,7 +826,7 @@ test("{§op-methods-op-dispatch}: BARE consumes the loop's durable child provide
         contextWindow: 16_384,
         responses: [
             makeMockResponse("\n````BARE\nWhat is the capital of Germany?\n````\n\n````NOTE\nReview the answer.\n````"),
-            makeMockResponse("````SEND [200]\nThe isolated answer was reviewed.\n````"),
+            makeMockResponse("````DONE\nThe isolated answer was reviewed.\n````"),
         ],
     });
     const child = new Mock({
@@ -866,8 +866,8 @@ test("{§session-model-selection}: explicit inherit overrides configuration and 
         contextWindow: 16384,
         responses: [
             makeMockResponse("````WORK (session://child)\ndo it\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````SEND [200]\nchild complete\n````"),
-            makeMockResponse("````SEND [200]\nparent complete\n````"),
+            makeMockResponse("````DONE\nchild complete\n````"),
+            makeMockResponse("````DONE\nparent complete\n````"),
         ],
     });
     ProviderInstantiate.registerInstance(mock, spec);
@@ -903,7 +903,7 @@ test("{§session-model-selection}: an oversized FORK fails as an ordinary child 
         contextWindow: 32768,
         responses: [
             makeMockResponse("````FORK (session://branch)\ncontinue with inherited history\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````SEND [200]\nobserved child failure\n````"),
+            makeMockResponse("````DONE\nobserved child failure\n````"),
         ],
     });
     // {§tokenomics} — a window whose wall cannot hold the inherited packet.

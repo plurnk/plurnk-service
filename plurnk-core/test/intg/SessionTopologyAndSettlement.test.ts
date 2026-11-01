@@ -138,7 +138,7 @@ class ControlledSessionProvider implements Provider {
         await this.#childReleases[index].promise;
         signal?.throwIfAborted();
         await settle?.(requestAccounting);
-        return response(`\`\`\`\`SEND [200]
+        return response(`\`\`\`\`DONE
 child ${index + 1} done
 \`\`\`\``, capacity);
     }
@@ -162,7 +162,7 @@ test("{§session-causal-admission} near-simultaneous child conclusions share one
             "````WORK (session://first)\nfinish first\n\n````\n"
             + "````WORK (session://second)\nfinish second\n\n````\n"
             + "````WAIT\nwaiting for both\n````",
-            "````SEND [200]\nboth children landed\n````",
+            "````DONE\nboth children landed\n````",
         ],
     });
     try {
@@ -225,7 +225,7 @@ test("{§session-causal-admission} a lone child conclusion resumes immediately w
         childCount: 1,
         parentTurns: [
             "````WORK (session://only)\nfinish the only job\n````\n\n````WAIT\nwaiting\n````",
-            "````SEND [200]\nonly child landed\n````",
+            "````DONE\nonly child landed\n````",
         ],
     });
     try {
@@ -280,7 +280,7 @@ test("{§session-causal-admission} stream conclusions coalesce across the same s
                 + "````sh\nsleep 0.40; echo second-stream\n\n````\n"
                 + "````WAIT\nwaiting for both streams\n````",
             ),
-            makeMockResponse("````SEND [200]\nboth streams landed\n````"),
+            makeMockResponse("````DONE\nboth streams landed\n````"),
         ],
     });
     try {
@@ -313,7 +313,7 @@ test("{§session-causal-admission} a child and stream conclusion share the same 
             "````WORK (session://child)\nfinish independently\n\n````\n"
             + "````sh\nsleep 0.50; echo stream-done\n\n````\n"
             + "````WAIT\nwaiting for child and stream\n````",
-            "````SEND [200]\nchild and stream landed\n````",
+            "````DONE\nchild and stream landed\n````",
         ],
     });
     try {
@@ -366,7 +366,7 @@ test("{§session-causal-admission} the settlement deadline is bounded and does n
             + "````WORK (session://third)\nfinish third\n\n````\n"
             + "````WAIT\nwaiting for all three\n````",
             "````WAIT\ntwo landed; still waiting\n````",
-            "````SEND [200]\nall three landed\n````",
+            "````DONE\nall three landed\n````",
         ],
     });
     const windowOpened = Promise.withResolvers<void>();
@@ -528,8 +528,8 @@ test("{§schedule-residency} restart arms the coordinator's complete definitions
 test("{§schedule-delivery}: an occurrence after conclusion starts a successor loop", { timeout: 30_000 }, async () => {
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 65536, responses: [
-        "````SEND [200]\nDone for now; the reminder will start its own loop.\n````",
-        "````SEND [200]\nReceived scheduled-proof.\n````",
+        "````DONE\nDone for now; the reminder will start its own loop.\n````",
+        "````DONE\nReceived scheduled-proof.\n````",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     let now = INITIAL;
     let serial = 0;
@@ -655,9 +655,9 @@ test("{§session-loop-lifecycle} a child session concluding wakes a parent parke
         // Parent turn 1: spawn a child session, then hibernate awaiting it.
         makeMockResponse("````WORK (session://session)\ncompute the thing and finish\n````\n\n````WAIT\nspawned session; waiting on it\n````", 10),
         // Child turn 1: do its part and conclude → this is the wake edge for the parent.
-        makeMockResponse("````SEND [200]\nsession done\n````", 10),
+        makeMockResponse("````DONE\nsession done\n````", 10),
         // Parent turn 2 (only reached if the child's conclusion woke it): conclude.
-        makeMockResponse("````SEND [200]\nsession finished; all done\n````", 10),
+        makeMockResponse("````DONE\nsession finished; all done\n````", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -687,7 +687,7 @@ test("{§session-loop-lifecycle} a child cancelling itself (499) also wakes the 
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````WORK (session://doomed)\ntry the risky thing\n````\n\n````WAIT\nwaiting on doomed\n````", 10),
         makeMockResponse("````SEND\ndoomed gave up\n````\n````KILL (session://doomed)\n````", 10),
-        makeMockResponse("````SEND [200]\ndoomed is done (failed); concluding\n````", 10),
+        makeMockResponse("````DONE\ndoomed is done (failed); concluding\n````", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -706,7 +706,7 @@ test("{§session-causal-admission}: one completed child task wakes its parent wh
         makeMockResponse("````WAIT\nFirst task waits.\n````"),
         makeMockResponse("````WAIT\nSecond task waits.\n````"),
         makeMockResponse("````WAIT\nParent awaits results.\n````"),
-        makeMockResponse("````SEND [200]\nFirst task result: 42.\n````\n\n````SEND [200]\nFirst task result: 42.\n````"),
+        makeMockResponse("````DONE\nFirst task result: 42.\n````\n\n````DONE\nFirst task result: 42.\n````"),
         makeMockResponse("````WAIT\nFirst result observed; second task remains.\n````"),
     ] });
     try {
@@ -760,7 +760,7 @@ test("{§session-causal-admission}: cancelling a parked child notifies its waiti
     const provider = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````WAIT\nChild waits.\n````"),
         makeMockResponse("````WAIT\nParent awaits child.\n````"),
-        makeMockResponse("````SEND [200]\nChild cancellation observed.\n````"),
+        makeMockResponse("````DONE\nChild cancellation observed.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-parked-child" });
@@ -790,7 +790,7 @@ test("{§session-loop-lifecycle} an empty failed child stream is observed by the
         makeMockResponse("````WORK (session://stream-child)\nrun the empty failing stream and report its outcome\n````\n\n````WAIT\nwaiting on stream-child\n````", 10),
         makeMockResponse("````sh (emptyfail)\ngo\n````\n\n````WAIT\nwaiting for emptyfail\n````", 10),
         makeMockResponse("````SEND\nemptyfail failed with no output\n````\n````KILL (session://stream-child)\n````", 10),
-        makeMockResponse("````SEND [200]\nthe child reported the empty stream failure\n````", 10),
+        makeMockResponse("````DONE\nthe child reported the empty stream failure\n````", 10),
     ] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         await daemon.registerRuntime({
@@ -902,9 +902,9 @@ test("{§session-loop-lifecycle} wake propagates UP a grandchild chain (parent�
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````WORK (session://child)\ndo subwork\n````\n\n````WAIT\nawaiting child\n````", 10),       // parent t1
         makeMockResponse("````WORK (session://grandchild)\ndo leaf work\n````\n\n````WAIT\nawaiting grandchild\n````", 10), // child t1
-        makeMockResponse("````SEND [200]\nleaf done\n````", 10),                                                   // grandchild
-        makeMockResponse("````SEND [200]\nchild done\n````", 10),                                                  // child t2 (woken)
-        makeMockResponse("````SEND [200]\nall done\n````", 10),                                                    // parent t2 (woken)
+        makeMockResponse("````DONE\nleaf done\n````", 10),                                                   // grandchild
+        makeMockResponse("````DONE\nchild done\n````", 10),                                                  // child t2 (woken)
+        makeMockResponse("````DONE\nall done\n````", 10),                                                    // parent t2 (woken)
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -922,10 +922,10 @@ test("{§session-loop-lifecycle} a parent wakes across SEQUENTIAL children (mult
     // static packet so the wake budget edge is the subtree, not the tool teaching.
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````WORK (session://w1)\nfirst job\n````\n\n````WAIT\nawaiting w1\n````", 10), // parent t1
-        makeMockResponse("````SEND [200]\nw1 done\n````", 10),                                       // w1
+        makeMockResponse("````DONE\nw1 done\n````", 10),                                       // w1
         makeMockResponse("````WORK (session://w2)\nsecond job\n````\n\n````WAIT\nawaiting w2\n````", 10),// parent t2 (woken by w1)
-        makeMockResponse("````SEND [200]\nw2 done\n````", 10),                                       // w2
-        makeMockResponse("````SEND [200]\nboth done\n````", 10),                                     // parent t3 (woken by w2)
+        makeMockResponse("````DONE\nw2 done\n````", 10),                                       // w2
+        makeMockResponse("````DONE\nboth done\n````", 10),                                     // parent t3 (woken by w2)
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -953,11 +953,11 @@ test("{§session-causal-admission} an irc (SEND session://name) wakes a CONCLUDE
     // message as its prompt (the same wake `loop.inject` proves for the operator voice), never a
     // resume-in-place of a slept loop — there is no slept loop to resume.
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("````SEND [200]\nstanding by for the entry code\n````", 10), // loop 1 — idle actor concludes
+        makeMockResponse("````DONE\nstanding by for the entry code\n````", 10), // loop 1 — idle actor concludes
     ] });
     const directRoute: ProviderSpec = { provider: "mocktest", model: `irc-${crypto.randomUUID()}` };
     const selected = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("````SEND [200]\nreceived the entry code and confirmed\n````", 10),
+        makeMockResponse("````DONE\nreceived the entry code and confirmed\n````", 10),
     ] });
     ProviderInstantiate.registerInstance(selected, directRoute);
     await withDaemon(mock, async (db, daemon, addr) => {
@@ -999,7 +999,7 @@ test("{§session-loop-lifecycle} an empty wait continues through the real loop u
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````WAIT\nnothing running; done for now\n````", 10),
-        makeMockResponse("````SEND [200]\nNo work remains.\n````", 10),
+        makeMockResponse("````DONE\nNo work remains.\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1011,7 +1011,7 @@ test("{§session-loop-lifecycle} an empty wait continues through the real loop u
             assert.equal(t.length, 1, "the loop concluded — one loop/terminated, no held-open 202");
             assert.equal(t[0].result.status, 200, "the answered assignment concludes the loop");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: t[0].loopId! });
-            assert.deepEqual(rows.filter(({ op, origin }) => origin === "model" && (op === "WAIT" || op === "SEND")).map(({ status_rx }) => status_rx), [102, 200]);
+            assert.deepEqual(rows.filter(({ op, origin }) => origin === "model" && (op === "WAIT" || op === "DONE")).map(({ status_rx }) => status_rx), [102, 200]);
             assert.equal(mock.remaining, 0);
         } finally { ws.close(); }
     });
@@ -1028,7 +1028,7 @@ test("{§session-ownership} server auto-approval settles both WORK and FORK chil
         makeMockResponse("````EDIT (workspace:///from-fork)\npayload\n````\n\n````SEND\nfork done\n````", 10),
         // {§loop-completion}: the children observe their EDIT receipts
         // before completing. A parent claim remains gated on its child results.
-        ...Array.from({ length: 4 }, () => makeMockResponse("````SEND [200]\nDelegated edits observed.\n````", 10)),
+        ...Array.from({ length: 4 }, () => makeMockResponse("````DONE\nDelegated edits observed.\n````", 10)),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1056,10 +1056,10 @@ test("{§loop-completion} a wake re-queue (100) mid-drain is re-claimed and cont
     // (202→100) and the drain re-claims it (100→102). Exactly one terminal must fire for the parent, 200.
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````WORK (session://helper)\ndo a quick thing\n````\n\n````WAIT\nawaiting helper\n````", 10), // parent — blocks on its child
-        makeMockResponse("````SEND [200]\nhelper done\n````", 10),                    // helper — concludes, waking the parent
-        makeMockResponse("````SEND [200]\nhelper delivered; concluding\n````", 10),   // parent — re-queued by the wake, concludes
-        makeMockResponse("````SEND [200]\ndone\n````", 10),                           // buffer
-        makeMockResponse("````SEND [200]\ndone\n````", 10),                           // buffer
+        makeMockResponse("````DONE\nhelper done\n````", 10),                    // helper — concludes, waking the parent
+        makeMockResponse("````DONE\nhelper delivered; concluding\n````", 10),   // parent — re-queued by the wake, concludes
+        makeMockResponse("````DONE\ndone\n````", 10),                           // buffer
+        makeMockResponse("````DONE\ndone\n````", 10),                           // buffer
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1088,7 +1088,7 @@ test("{§log-history-projection} log-targeted KILL is recorded in the DB, and a 
         makeMockResponse("````EDIT (workspace:///note)\nsome content worth folding\n````\n\n````NOTE\nwrote\n````", 10),
         // The phantom KILL fails (404); the next turn observes the failure.
         makeMockResponse("````KILL (log:///1/2/1) <1,-1>````\n````KILL (log:///9/9/9) <1,-1>````\n````NOTE\ncurated\n````", 10),
-        makeMockResponse("````SEND [200]\nthe phantom KILL failed; curation done\n````", 10),
+        makeMockResponse("````DONE\nthe phantom KILL failed; curation done\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1177,7 +1177,7 @@ test("{§loop-completion} a delivered answer cannot complete before the just-con
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
         const r = await engine.executeAdmittedTurn({ statements: [completeStmt("done")], source: null, emission: null, workspaceId, sessionId: parent, loopId: parentLoop, turnId: parentTurn, fromSequence: 1, origin: "model" });
         assert.equal(r.status, 102, "concluding over an undelivered session result is deferred, never refused");
-        assert.deepEqual(r.outcomes, [{ op: "SEND", status: 200, problemType: null }]);
+        assert.deepEqual(r.outcomes, [{ op: "DONE", status: 200, problemType: null }]);
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "", reasoning: null } }] });
         const observed = await engine.runTurn({ provider, workspaceId, sessionId: parent, loopId: parentLoop, messages: [] });
         assert.equal(observed.status, 200);

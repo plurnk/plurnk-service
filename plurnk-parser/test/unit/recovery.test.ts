@@ -852,9 +852,9 @@ for (const [scope, marks] of [
     }
 }
 
-test("{§matcher-prefix-claims} reasoning and statement scopes use the same normalization", () => {
-    const reasoning = PlurnkParser.parseReasoningOperations(PlurnkParser.frame("READ (file.md) <395,+12>", null));
-    assert.deepEqual(reasoning[0]?.lineMarker?.marks, [395, 407]);
+test("{§matcher-prefix-claims} model and statement scopes use the same normalization", () => {
+    const model = PlurnkParser.parse(PlurnkParser.frame("READ (file.md) <395,+12>", null));
+    assert.deepEqual(model.items.flatMap((item) => item.kind === "statement" ? [marksOf(item.statement)] : []), [[395, 407]]);
     const statements = PlurnkParser.parseStatements(PlurnkParser.frame("READ (file.md) <395,12>", null));
     assert.deepEqual(statements.items.flatMap((item) => item.kind === "statement" ? [marksOf(item.statement)] : []), [[395, 406]]);
     assert.deepEqual(statements.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []), ["Scope <395,12> was read as <395,406>."]);
@@ -910,80 +910,6 @@ test("{§matcher-prefix-claims} SEND and WAIT keep their owner-defined scopes", 
     const waiting = PlurnkParser.parse(PlurnkParser.frame("WAIT <395,12>", null));
     assertAdmitted(waiting);
     assert.deepEqual(warningsOf(waiting), ["Ignored WAIT duration <395,12>."]);
-});
-});
-
-describe("reasoning-operations", () => {
-const frame = PlurnkParser.frame;
-const parse = (source: string) => PlurnkParser.parseReasoningOperations(source);
-
-test("{§op-shapes}: complete NOTE, FIND and READ retain source order and repeated occurrences", () => {
-    const source = [
-        "I need the actual contents before editing.",
-        frame("NOTE", "Check the exported interface."),
-        frame("FIND (workspace:///*) /interface/", null),
-        frame("READ (workspace:///api.ts) <1,16>", null),
-        frame("READ (workspace:///api.ts) <1,16>", null),
-    ].join("\n\n");
-    assert.deepEqual(parse(source).map(({ op }) => op), ["NOTE", "FIND", "READ", "READ"]);
-});
-
-
-test("{§op-shapes}: quotations and other operations do not execute fact-finding examples", () => {
-    const example = frame("READ (workspace:///quoted.txt)", null);
-    for (const fence of ["```", "`````", "`````text", "~~~markdown", "````EDIT (file.txt)", "````sh", "````WAIT"]) {
-        const closer = fence.match(/^[`~]+/u)![0];
-        assert.deepEqual(parse(`${fence}\n${example}\n${closer}`), [], fence);
-    }
-    for (const source of [
-        `Example: ${example}`,
-        example.split("\n").map((line) => `> ${line}`).join("\n"),
-        example.split("\n").map((line) => `    ${line}`).join("\n"),
-        "READ (workspace:///naked.txt)",
-        "<tool_call><function=READ><parameter=path>file.txt</parameter></function></tool_call>",
-    ]) assert.deepEqual(parse(source), [], source);
-});
-
-test("{§op-shapes}: fact-finding quoted inside a NOTE remains note content", () => {
-    const example = frame("READ (workspace:///quoted.txt)", null);
-    const source = frame("NOTE", example);
-    const operations = parse(source);
-    assert.equal(operations.length, 1);
-    assert.equal(operations[0].op, "NOTE");
-    assert.equal(operations[0].body, example);
-});
-
-test("{§op-shapes}: only authored, closed operations survive an unfinished suffix", () => {
-    for (const suffix of ["````READ (unfinished", "````READ (file.txt)\n", "````NOTE\nUnfinished", "````FIND (*)\n"]) {
-        assert.deepEqual(parse(suffix), [], suffix);
-        const source = `${frame("READ (workspace:///complete.txt)", null)}\n\n${suffix}`;
-        assert.deepEqual(parse(source).map(({ op }) => op), ["READ"], suffix);
-    }
-    assert.deepEqual(parse("````READ (missing close\n````"), []);
-});
-
-test("{§op-shapes}: normalization warnings belong only to admitted operations", () => {
-    const warning = "Scope <5,2> was read as <5,6>.";
-    for (const source of [
-        frame("READ (file.txt) <5,2>", null),
-        frame("FIND (*) <5,2>", null),
-    ]) {
-        const warnings: string[] = [];
-        const ops = PlurnkParser.parseReasoningOperations(source, (advisory) => warnings.push(advisory.message));
-        assert.equal(ops.length, 1);
-        assert.deepEqual(warnings, [warning]);
-    }
-    for (const ignored of [
-        "```READ (unfinished.txt) <5,2>\n",
-        frame("EDIT (file.txt) <5,2>", "replacement"),
-        frame("NOTE", frame("READ (quoted.txt) <5,2>", null)),
-        frame("text", frame("READ (quoted.txt) <5,2>", null)),
-        frame("READ (file.txt) <9007199254740991,2>", null),
-    ]) {
-        const warnings: string[] = [];
-        PlurnkParser.parseReasoningOperations(ignored, (advisory) => warnings.push(advisory.message));
-        assert.deepEqual(warnings, [], ignored);
-    }
 });
 });
 

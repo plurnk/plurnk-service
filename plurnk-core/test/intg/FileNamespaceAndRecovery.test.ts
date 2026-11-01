@@ -45,7 +45,7 @@ test("{§fs-namespace} file URLs preserve native filename identity through reads
         const frame = PlurnkParser.frame;
         const provider = new Mock({ contextWindow: 100_000, responses: [
             makeMockResponse(names.map((name) => frame(`READ (${pathToFileURL(join(root, name)).href})`, null)).join("\n\n"), 50),
-            makeMockResponse(frame("SEND [200]", "Finished."), 50),
+            makeMockResponse(frame("DONE", "Finished."), 50),
         ] });
         await withDaemon(provider, async (db, daemon, addr) => {
             const client = await connect(addr);
@@ -91,7 +91,7 @@ test("{§fs-namespace} encoded file operands compose across mutations, attachmen
             makeMockResponse([frame(`FIND (${glob})`, null), frame(`READ (${glob})`, null)].join("\n\n"), 50),
             makeMockResponse([...names.map((name) => frame(`KILL (${uri(`moved-${name}`)})`, null)), frame("FIND (*)", null)].join("\n\n"), 50),
             makeMockResponse(frame(`FIND (${pathToFileURL(join(root, directory)).href}/**)`, null), 50),
-            makeMockResponse(frame("SEND [200]", "Finished."), 50),
+            makeMockResponse(frame("DONE", "Finished."), 50),
         ] });
         await withDaemon(provider, async (db, daemon, addr) => {
             const client = await connect(addr);
@@ -181,7 +181,7 @@ test("{§fs-namespace} malformed URLs refuse only their operation and preserve d
         const frame = PlurnkParser.frame;
         const provider = new Mock({ contextWindow: 100_000, responses: [
             makeMockResponse(invalid.map((target) => frame(`READ (${target})`, null)).join("\n\n"), 50),
-            makeMockResponse(frame("SEND [200]", "The addresses were refused."), 50),
+            makeMockResponse(frame("DONE", "The addresses were refused."), 50),
         ] });
         await withDaemon(provider, async (db, _daemon, addr) => {
             const client = await connect(addr);
@@ -233,7 +233,7 @@ for (const form of ["absolute", "home", "literal"] as const) test(`{§fs-namespa
                 frame(`READ (${spelling("*.txt")})`, null),
             ].join("\n\n"), 50),
             makeMockResponse(frame(`KILL (${spelling("moved.txt")})`, null), 50),
-            makeMockResponse(frame("SEND [200]", "Finished."), 50),
+            makeMockResponse(frame("DONE", "Finished."), 50),
         ] });
         await withDaemon(provider, async (db, daemon, addr) => {
             const client = await connect(addr);

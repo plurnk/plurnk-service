@@ -58,7 +58,7 @@ test("{§functionality-model-projection} MCP replacement precedes a tool invocat
             PlurnkParser.frame("fixture (environment)", "{}"),
             PlurnkParser.frame("NOTE", "Observe the new server's reply."),
         ].join("\n\n")),
-        makeRawMockResponse(PlurnkParser.frame("SEND [200]", "Finished.")),
+        makeRawMockResponse(PlurnkParser.frame("DONE", "Finished.")),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, hostPaths });
@@ -612,7 +612,7 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
 test("{§execution-output-identity}: MCP resource elicitation and its receipt belong to the requesting model operation", { timeout: 20_000 }, async (t) => {
     const f = await fixture(t, [
         `${PlurnkParser.frame(`READ (other://${resourcePath(guardedUri)})`, null)}\n\n${step("NOTE")}`,
-        PlurnkParser.frame("SEND [200]", "The resource was read."),
+        PlurnkParser.frame("DONE", "The resource was read."),
     ]);
     const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, sessionId: f.alice, prompt: "Read Bob's guarded resource." });
     const waiting = await waitForDb(() => f.daemon.pendingClientInteractions(f.workspaceId), (items) => items.length === 1);
@@ -1221,29 +1221,29 @@ test("{§mcp-open-work} MCP server auto-creates bound workspace and session, rou
 
     // Step 2 responses:
     // - responses[0]: caller Turn 1 invokes `telegram (ask-inbox)` and parks in 202
-    // - responses[1]: inbox Turn 1 (woken by `telegram:///messages/tg-42`) replies `SEND (telegram:///messages/tg-42) [200]`
-    // - responses[2]: caller Turn 2 observes `Approved by inbox!` and completes `SEND [200]`
+    // - responses[1]: inbox Turn 1 (woken by `telegram:///messages/tg-42`) replies `DONE (telegram:///messages/tg-42)`
+    // - responses[2]: caller Turn 2 observes `Approved by inbox!` and completes `DONE`
     // Step 3 responses:
     // - responses[3]: inbox Turn 1 reads subscribable `telegram:///resources/fixture%3A%2F%2Ffeed`
     // - responses[4]: inbox Turn 2 observes `feed-v1` and parks in 202 on the open resource stream
-    // - responses[5]: inbox Turn 3 (woken by `notifications/resources/updated`) observes `feed-v2` and completes `SEND [200]`
+    // - responses[5]: inbox Turn 3 (woken by `notifications/resources/updated`) observes `feed-v2` and completes `DONE`
     const provider = new Mock({
         contextWindow: 1_000_000,
         responses: [
             makeRawMockResponse([
                 PlurnkParser.frame("telegram (ask-inbox)", "{}"),
-                PlurnkParser.frame("SEND [200]", "Waiting for inbox approval."),
+                PlurnkParser.frame("DONE", "Waiting for inbox approval."),
             ].join("\n\n")),
             makeRawMockResponse(
-                PlurnkParser.frame("SEND (telegram:///messages/tg-42) [200]", "Approved by inbox!"),
+                PlurnkParser.frame("DONE (telegram:///messages/tg-42)", "Approved by inbox!"),
             ),
-            makeRawMockResponse(PlurnkParser.frame("SEND [200]", "Caller observed approval.")),
+            makeRawMockResponse(PlurnkParser.frame("DONE", "Caller observed approval.")),
             makeRawMockResponse([
                 PlurnkParser.frame("READ (telegram:///resources/fixture%3A%2F%2Ffeed)", null),
-                PlurnkParser.frame("SEND [200]", "Subscribed to feed."),
+                PlurnkParser.frame("DONE", "Subscribed to feed."),
             ].join("\n\n")),
-            makeRawMockResponse(PlurnkParser.frame("SEND [200]", "Waiting for feed update.")),
-            makeRawMockResponse(PlurnkParser.frame("SEND [200]", "Inbox observed feed-v2.")),
+            makeRawMockResponse(PlurnkParser.frame("DONE", "Waiting for feed update.")),
+            makeRawMockResponse(PlurnkParser.frame("DONE", "Inbox observed feed-v2.")),
         ],
     });
 

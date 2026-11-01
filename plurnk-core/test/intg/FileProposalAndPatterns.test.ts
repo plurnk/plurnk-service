@@ -57,7 +57,7 @@ test("{§capability-ctx} {§edit-result-receipt-projection} {§op-methods-op-dis
                 + "````EDIT (reviewed.md) <4>\nFOUR\n````\n"
                 + "````SEND\ndone\n````",
                 20,
-            ), makeMockResponse("````SEND [200]\ndone\n````", 10)], // {§loop-completion} — the edit receipts force the second turn
+            ), makeMockResponse("````DONE\ndone\n````", 10)], // {§loop-completion} — the edit receipts force the second turn
         });
         const reviewed = "reviewer\nreplacement\n";
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -791,7 +791,7 @@ test("{§edit} a stale hash anchor rejects an EDIT before proposal — no silent
         const staleAnchor = LineAnchors.token("doc.md", 1, "V1 original\n");
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````READ (doc.md)````\n````NOTE\nReview the file.\n````", 50),
-            makeMockResponse("````SEND [200]\nRead complete.\n````", 50),
+            makeMockResponse("````DONE\nRead complete.\n````", 50),
             makeMockResponse(`\`\`\`\`EDIT (doc.md) <${staleAnchor}>
 V3 model clobber
 \`\`\`\`
@@ -801,7 +801,7 @@ done
 \`\`\`\`
 \`\`\`\`SEND
 \`\`\`\``, 50),
-            makeMockResponse("````SEND [200]\nStale edit rejected.\n````", 50),
+            makeMockResponse("````DONE\nStale edit rejected.\n````", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -1403,7 +1403,7 @@ seeded
 \`\`\`\`NOTE
 searched
 \`\`\`\``, 10),
-        makeMockResponse("````SEND [200]\ndone\n````", 10),
+        makeMockResponse("````DONE\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

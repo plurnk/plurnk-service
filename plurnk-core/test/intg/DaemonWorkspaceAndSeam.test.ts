@@ -533,8 +533,8 @@ test("{§tokenomics} the client-interface seam — runLoop drives a loop end to 
     // budget. This test verifies the seam path, not small-window viability
     // ({§tokenomics}).
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("````SEND [200]\ndone\n````", 50),
-        makeMockResponse("````SEND [200]\ndone again\n````", 50),
+        makeMockResponse("````DONE\ndone\n````", 50),
+        makeMockResponse("````DONE\ndone again\n````", 50),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -737,7 +737,7 @@ test("{§methods} the client-interface seam — readLog returns a workspace's jo
 
 test("{§methods} the client-interface seam — metadata reads surface providers, workspaces, sessions, and constraints", async () => {
     // The render surface beyond the journal: providers+budget, workspaces, sessions, and the constraint overlay.
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````DONE\ndone\n````", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -767,7 +767,7 @@ test("{§methods} the client-interface seam — metadata reads surface providers
 test("{§methods-workspace-create} {§methods-workspace-create} the client-interface seam — workspace lifecycle: create/attach/rename", async () => {
     // {§methods-workspace-create}: the module decodes its protocol; core owns semantic validation,
     // the envelope, name invariants, membership, and workspace/created.
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````DONE\ndone\n````", 10)] });
     await withDaemon(mock, async (_db, daemon, _addr) => {
         const events: Array<{ method: string; params: unknown }> = [];
         daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });
@@ -877,7 +877,7 @@ test("{§methods} the client-interface seam — readEntry returns an entry's sha
 });
 
 test("{§application-session-observation} the client-interface seam — forkSession branches a session's log, ownership + name invariants held", async () => {
-    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````DONE\ndone\n````", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -929,7 +929,7 @@ describe("ApplicationPort.topology", () => {
 test("{§notifications} {§application-session-observation} {§methods-workspace-create}{§methods-workspace-create}{§methods-workspace-create}: exterior adapters observe exact topology and durable loop state", async () => {
     const provider = new Mock({
         contextWindow: 16_384,
-        responses: [makeMockResponse("````SEND [200]\ncomposed result\n````", 10)],
+        responses: [makeMockResponse("````DONE\ncomposed result\n````", 10)],
     });
 
     await withDaemon(provider, async (_db, daemon) => {
@@ -1168,7 +1168,7 @@ test("{§methods-workspace-create} workspace.rename mutates the workspace name; 
 
 describe("seam-create-session", () => {
 test("{§methods-workspace-create} {§methods-workspace-create}: fresh named session — empty log, runLoop accepts", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````SEND [200]\nhello from thread-2\n````", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````DONE\nhello from thread-2\n````", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {

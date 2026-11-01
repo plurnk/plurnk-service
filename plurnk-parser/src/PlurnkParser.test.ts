@@ -248,16 +248,18 @@ const parse = (heading: string, body: string | null = null) => {
     return parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 };
 
-test("{§slot-order}: SEND accepts completion metadata before its message path", () => {
-    const result = PlurnkParser.parse("```SEND [200] (message://dogfood04/6094c6e9)\nFinal deliverable\n```");
-    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
-    const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    assert.equal(statements.length, 1);
-    const statement = statements[0];
-    assert.equal(statement.op, "SEND");
-    assert.equal(statement.target?.raw, "message://dogfood04/6094c6e9");
-    assert.deepEqual(statement.metadata, ["200"]);
-    assert.deepEqual(statement.body, { raw: "Final deliverable", json: null });
+test("{§slot-order}: SEND, DONE, and FAIL accept attachment metadata before or after their message path", () => {
+    for (const op of ["SEND", "DONE", "FAIL"] as const) {
+        const result = PlurnkParser.parse(`\`\`\`${op} [{"attach":["a.png"]}] (message://dogfood04/6094c6e9)\nFinal deliverable\n\`\`\``);
+        assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+        const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+        assert.equal(statements.length, 1);
+        const statement = statements[0];
+        assert.equal(statement.op, op);
+        assert.equal(statement.target?.raw, "message://dogfood04/6094c6e9");
+        assert.deepEqual(statement.metadata, ['{"attach":["a.png"]}']);
+        assert.deepEqual(statement.body, { raw: "Final deliverable", json: null });
+    }
 });
 
 for (const op of ["FIND", "READ", "EDIT", "KILL", "SEND", "sh", "gitea"]) {
@@ -285,7 +287,7 @@ for (const op of ["FIND", "READ", "EDIT", "KILL"]) {
     });
 }
 
-for (const op of ["BARE", "WORK", "FORK", "WAIT"]) {
+for (const op of ["BARE", "WORK", "FORK", "WAIT", "DONE", "FAIL"]) {
     test(`{§slot-order}: ${op} accepts leading metadata without changing its body`, () => {
         const metadata = op === "WAIT" ? "[60]" : '[{"x":1}]';
         assert.deepEqual(parse(`${op} ${metadata} (session://child)`, "literal body"),
@@ -300,19 +302,8 @@ test("{§slot-order}: prefix and suffix blocks retain exact bytes in authored or
     assert.deepEqual(statements, parse('READ (item) <1> [opaque] [{"x": [1,2]}]'));
 });
 
-test("{§slot-order} {§op-shapes}: reasoning uses the same metadata binding", () => {
-    const canonical = ["FIND (item) <1,3> /needle/", "READ (item) <4,6> [{\"keep\":1}]"];
-    const reordered = ["FIND (item) <1,3> /needle/", "READ [{\"keep\":1}] (item) <4,6>"];
-    const program = (headings: string[]) => headings.map((heading) => PlurnkParser.frame(heading, null)).join("\n\n");
-    const warnings: string[] = [];
-    const statements = PlurnkParser.parseReasoningOperations(program(reordered), (warning) => warnings.push(warning.message));
-    assert.equal(statements.length, 2);
-    assert.deepEqual(statements, PlurnkParser.parseReasoningOperations(program(canonical)));
-    assert.deepEqual(warnings, []);
-});
-
 test("{§slot-order}: metadata ordering does not add NOTE metadata", () => {
-    const parsed = PlurnkParser.parse("```NOTE [200]\nliteral body\n```");
+    const parsed = PlurnkParser.parse("```NOTE [{\"keep\":1}]\nliteral body\n```");
     assert.ok(parsed.items.some((item) => item.kind === "error" && item.error.severity === "error"));
     assert.equal(parsed.items.some((item) => item.kind === "statement"), false);
 });

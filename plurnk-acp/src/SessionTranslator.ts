@@ -73,6 +73,7 @@ export default class SessionTranslator {
     readonly #workspaceId: number;
     readonly #sessionId: number;
     readonly #origin: string | undefined;
+    readonly #historyPageChars: number | undefined;
     readonly #streamedReasoningTurns = new Set<string>();
     readonly #toolCallIdByEntryId = new Map<number, string>();
     readonly #toolCallIdByStreamTarget = new Map<string, string>();
@@ -86,11 +87,13 @@ export default class SessionTranslator {
         readonly workspaceId: number;
         readonly sessionId: number;
         readonly origin?: string;
+        readonly historyPageChars?: number;
     }) {
         this.#acpSessionId = args.acpSessionId;
         this.#workspaceId = args.workspaceId;
         this.#sessionId = args.sessionId;
         this.#origin = args.origin;
+        this.#historyPageChars = args.historyPageChars;
     }
 
     get acpSessionId(): string {
@@ -142,7 +145,15 @@ export default class SessionTranslator {
         const parsedTx = parseJsonOrValue(entry.tx);
         const parsedRx = parseJsonOrValue(entry.rx);
         const text = txBody(parsedTx, attrs, parsedRx);
-        const { receipt, contentBlocks } = cleanReceipt(entry.rx);
+        const bodyUrl =
+            this.#origin !== undefined && entry.op !== null
+                ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(`log:///${coordinate}/${entry.op}`)}`
+                : undefined;
+        const { receipt, contentBlocks } = cleanReceipt(
+            entry.rx,
+            bodyUrl,
+            entry.op !== null ? `log:///${coordinate}/${entry.op}` : undefined,
+        );
         const rawAddress = addressOf(entry);
         const address =
             rawAddress ??
@@ -170,12 +181,25 @@ export default class SessionTranslator {
             const thoughtMessageId = entry.reasoning_model_call_id !== null && entry.reasoning_model_call_id !== undefined
                 ? `model-call-${entry.reasoning_model_call_id}/request-${entry.reasoning_request_sequence ?? 1}/reasoning`
                 : `${coordinate}/reasoning`;
+            const turnCoordinate = `${entry.loop_seq}/${entry.turn_seq}`;
+            const reasoningUrl =
+                this.#origin !== undefined
+                    ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(`reasoning://${entry.session_name}/${turnCoordinate}`)}`
+                    : undefined;
             updates.push({
                 sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "agent_thought_chunk",
                     messageId: thoughtMessageId,
                     content: { type: "text", text: entry.reasoning },
+                    _meta: {
+                        plurnk: {
+                            coordinate: turnCoordinate,
+                            ...(reasoningUrl !== undefined
+                                ? { body: { url: reasoningUrl, mimeType: "text/plain" } }
+                                : {}),
+                        },
+                    },
                 },
             });
         }
@@ -185,6 +209,7 @@ export default class SessionTranslator {
         const isBodiedWait = entry.origin === "model" && entry.op === "WAIT" && text.trim().length > 0;
         const opMeta = {
             id: entry.id,
+            sessionId: entry.session_id,
             coordinate,
             op: entry.op,
             origin: entry.origin,
@@ -195,16 +220,39 @@ export default class SessionTranslator {
             loopSeq: entry.loop_seq,
             sequence: entry.sequence,
             scope: null,
+            ...(typeof entry.state === "string" ? { state: entry.state } : {}),
+            ...(typeof entry.source === "string" ? { source: entry.source } : {}),
+            ...(typeof entry.signal === "number" ? { signal: entry.signal } : {}),
+            ...(address !== null ? { address, target: address } : {}),
             ...(Object.keys(attrs).length > 0 ? { attrs } : {}),
+            ...(isRecord(receipt) ? { receipt } : {}),
         };
         if (isResponse || isBodiedWait) {
+            const useReference =
+                this.#origin !== undefined &&
+                this.#historyPageChars !== undefined &&
+                this.#historyPageChars > 0 &&
+                text.length > this.#historyPageChars &&
+                bodyUrl !== undefined;
             updates.push({
                 sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "agent_message_chunk",
                     messageId: coordinate,
-                    content: { type: "text", text },
-                    _meta: { plurnk: opMeta },
+                    content: useReference
+                        ? {
+                              type: "resource_link",
+                              uri: bodyUrl,
+                              name: `log:///${coordinate}/${entry.op}`,
+                              mimeType: typeof entry.mimetype_rx === "string" ? entry.mimetype_rx : "text/markdown",
+                          }
+                        : { type: "text", text },
+                    _meta: {
+                        plurnk: {
+                            ...opMeta,
+                            ...(isBodiedWait && isRecord(receipt) ? { receipt } : {}),
+                        },
+                    },
                 },
             });
             return updates;
@@ -223,7 +271,7 @@ export default class SessionTranslator {
                     : undefined;
         const targetCallId = invocationCoordinate(rawInvocation);
         if (targetCallId !== null) {
-            const dischargeContent: ToolCallContent[] = entry.op === "SEND" && text.length > 0
+            const dischargeContent: ToolCallContent[] = (entry.op === "SEND" || entry.op === "DONE" || entry.op === "FAIL") && text.length > 0
                 ? [{ type: "content", content: { type: "text", text } }]
                 : contentBlocks;
             updates.push({
@@ -234,6 +282,7 @@ export default class SessionTranslator {
                     status: SessionTranslator.toolStatusOf(entry),
                     rawOutput: receipt,
                     ...(dischargeContent.length === 0 ? {} : { content: dischargeContent }),
+                    _meta: { plurnk: opMeta },
                 },
             });
             return updates;
@@ -246,12 +295,25 @@ export default class SessionTranslator {
             && (attrs.kind === "message" || typeof entry.answering === "string")
         ) {
             const messageId = extractMessageId(entry.source, this.#acpSessionId) ?? coordinate;
+            const useReference =
+                this.#origin !== undefined &&
+                this.#historyPageChars !== undefined &&
+                this.#historyPageChars > 0 &&
+                text.length > this.#historyPageChars &&
+                bodyUrl !== undefined;
             updates.push({
                 sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "user_message_chunk",
                     messageId,
-                    content: { type: "text", text },
+                    content: useReference
+                        ? {
+                              type: "resource_link",
+                              uri: bodyUrl,
+                              name: `log:///${coordinate}/${entry.op}`,
+                              mimeType: typeof entry.mimetype_tx === "string" ? entry.mimetype_tx : "text/plain",
+                          }
+                        : { type: "text", text },
                     _meta: {
                         plurnk: {
                             ...opMeta,
@@ -281,6 +343,7 @@ export default class SessionTranslator {
                         rawInput: { text: typeof attempt.text === "string" ? attempt.text : "" },
                         rawOutput: receipt,
                         ...(contentBlocks.length === 0 ? {} : { content: contentBlocks }),
+                        _meta: { plurnk: opMeta },
                     },
                 });
                 return updates;
@@ -387,9 +450,6 @@ export default class SessionTranslator {
                             : null;
             const baseTitle = address === null ? entry.op : `${entry.op} (${address})`;
             const title = comment === null ? baseTitle : `${baseTitle} — ${comment}`;
-            const bodyUrl = this.#origin !== undefined
-                ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(`log:///${coordinate}/${entry.op}`)}`
-                : undefined;
 
             const startLine = extractStartLine(attrs, parsedTx, parsedRx);
 
@@ -521,6 +581,11 @@ export default class SessionTranslator {
                 sessionUpdate: "agent_thought_chunk",
                 messageId,
                 content: { type: "text", text: event.delta },
+                _meta: {
+                    plurnk: {
+                        coordinate: `${event.loopSeq}/${event.turnSeq}`,
+                    },
+                },
             },
         }];
     }
@@ -541,6 +606,9 @@ export default class SessionTranslator {
     terminalConcluded(entryId: number, status: number, meta?: Record<string, unknown>): AcpSessionUpdate[] {
         const terminalId = terminalIdForEntry(entryId);
         const target = typeof meta?.target === "string" && meta.target.length > 0 ? meta.target : null;
+        const resultRec = isRecord(meta?.result) ? meta.result : null;
+        const exitCode = typeof resultRec?.exitCode === "number" ? resultRec.exitCode : status === 200 ? 0 : status;
+        const signal = typeof resultRec?.signal === "string" ? resultRec.signal : undefined;
         this.#concludedStreamStatusByEntryId.set(entryId, status);
         if (target !== null) {
             this.#concludedStreamStatusByTarget.set(target, status);
@@ -552,7 +620,8 @@ export default class SessionTranslator {
                     sessionUpdate: "terminal_update",
                     terminalId,
                     exitStatus: {
-                        exitCode: status === 200 ? 0 : status,
+                        exitCode,
+                        ...(signal !== undefined ? { signal } : {}),
                     },
                     ...(meta !== undefined ? { _meta: { plurnk: meta } } : {}),
                 },
@@ -655,7 +724,7 @@ export default class SessionTranslator {
         }];
     }
 
-    terminated(event: TerminatedNotification, spend?: unknown): AcpSessionUpdate[] {
+    terminated(event: TerminatedNotification, spend?: unknown, inbox?: unknown): AcpSessionUpdate[] {
         if (event.sessionId !== this.#sessionId) return [];
         const usageObj = event.usage;
         const accounting = usageObj?.accounting;
@@ -688,7 +757,14 @@ export default class SessionTranslator {
             plurnk: {
                 loopId: event.loopId,
                 loopSeq: event.loopSeq,
-                ...(spend !== undefined ? { status: { spend } } : {}),
+                ...(spend !== undefined || inbox !== undefined
+                    ? {
+                          status: {
+                              ...(spend !== undefined ? { spend } : {}),
+                              ...(inbox !== undefined ? { inbox } : {}),
+                          },
+                      }
+                    : {}),
                 terminal: {
                     status,
                     ...(turnCount !== undefined ? { turnCount } : {}),

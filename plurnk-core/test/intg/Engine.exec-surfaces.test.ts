@@ -48,7 +48,7 @@ test("{§log-history-projection}: executor receipts keep one identity through pa
         makeMockResponse(`\`\`\`\`${runtime}\nidentityneedle\n\`\`\`\`\n${task}`, 10),
         makeMockResponse(`\`\`\`\`READ (${path})\`\`\`\`\n\`\`\`\`FIND (log:///**/${runtime}) ~identityneedle\`\`\`\`\n${task}`, 10),
         makeMockResponse(`\`\`\`\`KILL (log:///**/${runtime})\`\`\`\`\n${task}`, 10),
-        makeMockResponse("````SEND [200]\nReviewed.\n````", 10),
+        makeMockResponse("````DONE\nReviewed.\n````", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -85,7 +85,7 @@ test("{§log-history-projection}: rejected executor proposals use the same recei
     serverProposals(approvalContext, "reject");
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sh\nprintf rejected\n````\n````NOTE\nInspect the decision.\n````", 10),
-        makeMockResponse("````SEND [200]\nThe command was not run.\n````", 10),
+        makeMockResponse("````DONE\nThe command was not run.\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -109,7 +109,7 @@ test("{§exec-stream} a model's execution result surfaces visibly in the next tu
     // {§exec-stream}: waiting joins the command; its result is visible before completion.
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sh\necho plurnk-index-probe\n````\n\n````WAIT\nwaiting\n````", 10),
-        makeMockResponse("````SEND [200]\ndone\n````", 10),
+        makeMockResponse("````DONE\ndone\n````", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -147,7 +147,7 @@ test("{§exec-stream} a generated JSON result publishes whole with the extent th
     const program = "process.stdout.write(Array.from({ length: 30 }, (_, i) => JSON.stringify({ n: i + 1, payload: String(i + 1).padStart(100, '0') })).join('\\n'))";
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````js\n" + program + "\n````\n````WAIT\nwaiting\n````", 10),
-        makeMockResponse("````SEND [200]\ndone\n````", 10),
+        makeMockResponse("````DONE\ndone\n````", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -197,7 +197,7 @@ test("{§exec-stream} a failed execution with output on both channels is one fai
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sh\nprintf 'partial output\\n'; printf 'last words\\n' >&2; kill -KILL $$\n````\n\n````WAIT\nwaiting\n````", 10),
-        makeMockResponse("````SEND [200]\nfailure observed\n````", 10),
+        makeMockResponse("````DONE\nfailure observed\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -227,7 +227,7 @@ test("{§executor-results} {§exec-stream} a nonzero exit reaches the model as t
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sh\nprintf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3\n````\n\n````WAIT\nwaiting\n````", 10),
-        makeMockResponse("````SEND [200]\nfailure observed\n````", 10),
+        makeMockResponse("````DONE\nfailure observed\n````", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -287,7 +287,7 @@ test("{§exec-stream} the cursor-terminal race: a one-burst stream consumed befo
         makeMockResponse("````sh\necho burst-payload && sleep 2\n````\n\n````NOTE\nspawned\n````", 10),
         makeMockResponse("````NOTE\nwaiting\n````", 10),
         makeMockResponse("````NOTE\nchecking\n````", 10),
-        makeMockResponse("````SEND [200]\ndone\n````", 10),
+        makeMockResponse("````DONE\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -317,7 +317,7 @@ test("{§exec-stream} a command that prints nothing on any channel lands exactly
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sh\ntrue\n````\n\n````NOTE\nspawned\n````", 10),
         makeMockResponse("````NOTE\nchecking\n````", 10),
-        makeMockResponse("````SEND [200]\ndone\n````", 10),
+        makeMockResponse("````DONE\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -957,7 +957,7 @@ for (const specimen of [
                 workspaceId, sessionId, loopId, turnId, fromSequence: 3, origin: "model",
             });
             assert.equal(completed.status, 102, "closed but unobserved: the completion defers to the next packet");
-            assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200, problemType: null }], "message completion is delivered while the loop still observes results");
+            assert.deepEqual(completed.outcomes, [{ op: "DONE", status: 200, problemType: null }], "message completion is delivered while the loop still observes results");
             const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: {
                 content: "", reasoning: null,
             } }] });
@@ -985,7 +985,7 @@ test("{§loop-completion}: an earlier turn's completed stream is identified with
             workspaceId, sessionId, loopId, turnId: nextTurnId, fromSequence: 1, origin: "model",
         });
         assert.equal(completed.status, 102);
-        assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200, problemType: null }], "the earlier execution is not invented in this program");
+        assert.deepEqual(completed.outcomes, [{ op: "DONE", status: 200, problemType: null }], "the earlier execution is not invented in this program");
     } finally { await db.close(); }
 });
 });
@@ -1024,7 +1024,7 @@ test("{§exec-stream} a 40-line stream closes as its first page with the extent;
         responses: [
             makeRawMockResponse("````sh\nseq 1 40\n````\n\n````NOTE\nlaunched the count\n````\n\n````WAIT\nwaiting\n````", 10),
             makeMockResponse("````READ ($STREAM#stdout) <38,40>````\n````NOTE\nreading the tail\n````", 10),
-            makeMockResponse("````SEND [200]\ndone\n````", 10),
+            makeMockResponse("````DONE\ndone\n````", 10),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -1094,7 +1094,7 @@ test("{§exec-stream} an active stream reaches the model only as an Open Work st
             makeMockResponse("````sh\nseq 1 5; sleep 2\n````\n\n````NOTE\nlet it run\n````", 10),
             // the stream is still running when this packet is built: only the pointer shows it
             makeMockResponse("````WAIT\nwait for it\n````", 10),
-            makeMockResponse("````SEND [200]\ndone\n````", 10),
+            makeMockResponse("````DONE\ndone\n````", 10),
         ],
     });
     await withSettlement("200", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -1147,7 +1147,7 @@ process.stdout.write(${JSON.stringify(content)});
 waiting
 \`\`\`\``, 10),
         makeMockResponse("````READ ($STREAM#stdout) <1,-1>````\n````NOTE\nRead the full result.\n````", 10),
-        makeMockResponse("````SEND [200]\ndone\n````", 10),
+        makeMockResponse("````DONE\ndone\n````", 10),
     ] });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1189,7 +1189,7 @@ test("{§exec-stream} FIND over an exec stream channel answers the match instead
     const mock = new StreamMock({ contextWindow: 16384, responses: [
         makeMockResponse("````sh\nprintf 'alpha\\nbeta\\n'\n````\n\n````WAIT\nwaiting\n````", 10),
         makeMockResponse("````FIND ($STREAM#stdout) /beta/````\n\n````NOTE\nlooking\n````", 10),
-        makeMockResponse("````SEND [200]\ndone\n````", 10),
+        makeMockResponse("````DONE\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1233,7 +1233,7 @@ for (const body of [null, '{"query":"fixture"}']) {
             frame("fixture (inspect)", body),
             frame("READ ($INVOCATION) <17,40>", null),
             frame("READ ($STREAM) <17,40>", null),
-            frame("SEND [200]", "The output's tail is result 40."),
+            frame("DONE", "The output's tail is result 40."),
         ].map((content) => ({ assistant: { content, reasoning: null } })) });
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider, hostPaths });
@@ -1321,7 +1321,7 @@ for (const shape of RESPONSES) {
         await engine.injectIntoLoop(loopId, "Probe the endpoint.", [], "acp://operator/threads/probe/messages/question");
         const provider = new Mock({ contextWindow: 100_000, responses: [
             response(frame("SEND (https://93.184.216.34/mcp)", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}")),
-            response(frame("SEND [200]", "Probed.")),
+            response(frame("DONE", "Probed.")),
             response(frame("NOTE", "Nothing remains.")),
             response(frame("NOTE", "Nothing remains.")),
         ] });

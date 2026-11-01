@@ -913,7 +913,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
 
     coordinator.attachSeam(seam);
     try {
-        // 1. Auto-creates workspace and session on wildcard operator binding and resolves via progressive + final SEND [200]
+        // 1. Auto-creates workspace and session on wildcard operator binding and resolves via progressive SEND + final DONE
         const samplePromise = coordinator.sample({
             server: "telegram",
             binding: {
@@ -945,7 +945,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
         const createdWs = workspaces.find((ws) => ws.name === "matrix-room")!;
         assert.ok(createdWs);
 
-        // Emit progressive chunk (no completion) then final SEND [200]
+        // Emit progressive chunk (no completion) then final DONE
         listener!(createdWs.id, "log/entry", {
             op: "SEND",
             status_rx: 200,
@@ -953,7 +953,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
             tx: { body: "Part 1." },
         });
         listener!(createdWs.id, "log/entry", {
-            op: "SEND",
+            op: "DONE",
             status_rx: 200,
             rx: { completion: 200, repliedTo: ["telegram:///messages/msg-1"] },
             tx: { body: "All green." },
@@ -967,7 +967,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
             stopReason: "endTurn",
         });
 
-        // 2. Rejects when SEND [499] declines the message
+        // 2. Rejects when FAIL declines the message
         const declinedPromise = coordinator.sample({
             server: "telegram",
             binding: {
@@ -985,7 +985,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
         });
         await delay(10);
         listener!(1, "log/entry", {
-            op: "SEND",
+            op: "FAIL",
             status_rx: 200,
             rx: { completion: 499, repliedTo: ["telegram:///messages/msg-2"] },
             tx: { body: "Cannot fulfill request." },

@@ -25,7 +25,7 @@ FROM sessions w
 LEFT JOIN log_entries reply ON reply.id = (
     SELECT le.id FROM log_entries le
     WHERE le.session_id = w.id
-      AND le.op = 'SEND' AND le.origin = 'model' AND le.inherited_history = 0
+      AND le.op IN ('SEND', 'DONE', 'FAIL') AND le.origin = 'model' AND le.inherited_history = 0
       AND le.state = 'resolved' AND le.status_rx < 400
       AND COALESCE(
           CASE WHEN le.mimetype_rx = 'application/json' AND json_valid(le.rx)

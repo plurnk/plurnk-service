@@ -127,7 +127,7 @@ test("{§methods-workspace-create} {§packet}: one oversized attachment lands as
     const content = `Telemetry: ${"sample nominal; ".repeat(12_000)}\nRecovery site: ${fixture.answer}.\n`;
     const provider = new Mock({ contextWindow: 20_000, responses: [
         makeMockResponse("````READ (incident.txt) <2>````\n````NOTE\nInspect the recovery site.\n````"),
-        makeMockResponse(`\`\`\`\`SEND [200]
+        makeMockResponse(`\`\`\`\`DONE
 ${fixture.answer}
 \`\`\`\``),
     ] });
@@ -173,7 +173,7 @@ for (const retire of [false, true]) test(`{§tokenomics}: sixteen attachments la
         contextWindow: 20_000,
         responses: [
             makeMockResponse("````KILL (log:///**/FIND)````\n````READ (incident.txt) <2>````\n````NOTE\nInspect the recovery site.\n````"),
-            makeMockResponse(`${retire ? "````KILL (log:///**/READ)````\n" : ""}\`\`\`\`SEND [200]
+            makeMockResponse(`${retire ? "````KILL (log:///**/READ)````\n" : ""}\`\`\`\`DONE
 ${fixture.answer}
 \`\`\`\``),
         ],

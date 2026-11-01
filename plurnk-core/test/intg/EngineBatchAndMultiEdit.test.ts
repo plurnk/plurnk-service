@@ -180,7 +180,7 @@ test("{§op-methods-op-dispatch} separate numeric EDITs never negotiate a shared
         await seeded(root);
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````EDIT (f.go) <2,3>\nfunc resolve() string {\n\treturn \"\"\n}\n\n````\n\n````EDIT (f.go) <3,5>\nfunc requireFn(a int) int {\n\treturn a + 1\n}\n````\n\n````NOTE\nediting\n````", 50),
-            makeMockResponse("````SEND [200]\ndone\n````", 50),
+            makeMockResponse("````DONE\ndone\n````", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -206,7 +206,7 @@ test("{§op-methods-op-dispatch} a READ rendering pasted back as a body is strip
         const pending: { body: string | null; fake: string | null } = { body: null, fake: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````READ (f.go) <1,-1>````\n````NOTE\nreading\n````", 50),
-            makeMockResponse("````SEND [200]\nread\n````", 50),
+            makeMockResponse("````DONE\nread\n````", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
@@ -223,7 +223,7 @@ ${pending.fake}
 \`\`\`\`NOTE
 editing
 \`\`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````SEND [200]\nedited\n````", 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````DONE\nedited\n````", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -259,7 +259,7 @@ test("{§op-methods-op-dispatch} a paste from an older READ still verifies, agai
         const pending: { body: string | null } = { body: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````READ (f.go) <1,-1>````\n````NOTE\nreading\n````", 50),
-            makeMockResponse("````SEND [200]\nread\n````", 50),
+            makeMockResponse("````DONE\nread\n````", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
@@ -272,7 +272,7 @@ ${pending.body}
 \`\`\`\`NOTE
 editing
 \`\`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````SEND [200]\nedited\n````", 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````DONE\nedited\n````", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -305,7 +305,7 @@ test("{§op-methods-op-dispatch} an identical subsequent EDIT reports its own or
         await seeded(root);
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````EDIT (f.go) <1>\nvar x int64\n````\n\n````EDIT (f.go) <1>\nvar x int64\n````\n\n````NOTE\nediting\n````", 50),
-            makeMockResponse("````SEND [200]\ndone\n````", 50),
+            makeMockResponse("````DONE\ndone\n````", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -332,7 +332,7 @@ test("{§op-methods-op-dispatch} a numeric EDIT can modify content introduced by
         // The outer rewrites requireFn but keeps its return line verbatim; the inner edits that line.
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````EDIT (f.go) <3,5>\nfunc requireFn(a int, debug bool) int {\n\treturn a\n}\n````\n\n````EDIT (f.go) <4>\n\treturn a * 2\n````\n\n````NOTE\nediting\n````", 50),
-            makeMockResponse("````SEND [200]\ndone\n````", 50),
+            makeMockResponse("````DONE\ndone\n````", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -357,7 +357,7 @@ test("{§op-methods-op-dispatch} a shortened region does not secretly relocate a
         await seeded(root);
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````EDIT (f.go) <3,5>\nfunc requireFn(a int) int { return a }\n````\n\n````EDIT (f.go) <4>\n\treturn a * 2\n````\n\n````NOTE\nediting\n````", 50),
-            makeMockResponse("````SEND [200]\ndone\n````", 50),
+            makeMockResponse("````DONE\ndone\n````", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -844,7 +844,7 @@ const program = async (ctx: Ctx, sequence: number, frames: (a: Anchors, b: Ancho
             published = await anchorsFromLog(ctx);
             return await respond(frames(...published).join("\n\n"), args);
         }
-        return await respond(PlurnkParser.frame("SEND [200]", "Done."), args);
+        return await respond(PlurnkParser.frame("DONE", "Done."), args);
     };
     const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Apply the fix." }] });
     assert.equal(result.result.status, 200, JSON.stringify(result.result).slice(0, 300));

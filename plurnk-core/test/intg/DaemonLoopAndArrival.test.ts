@@ -18,7 +18,7 @@ import { viableWindow } from "./_provider.ts";
 describe("Daemon.loop", () => {
 test("{§loop-completion} loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
     const dsl = "````EDIT (workspace:///france/capital)\nParis\n````\n\n````SEND\nParis is the capital.\n````";
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142), makeMockResponse("````SEND [200]\nParis is the capital.\n````", 0)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142), makeMockResponse("````DONE\nParis is the capital.\n````", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -47,7 +47,7 @@ test("{§loop-completion} loop.run accepts immediately (100); the loop's outcome
 test("{§message-arrival}: a trusted adapter source survives message publication", async () => {
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)],
+        responses: [makeMockResponse("````DONE\ndone\n````", 10)],
     });
 
     await withDaemon(mock, async (_db, daemon) => {
@@ -87,8 +87,8 @@ test("{§message-arrival}: a trusted adapter source survives message publication
 test("{§operation-results} loop.inject speaks into an existing session; errors when there's none", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````SEND [200]\nfirst done\n````", 10),
-        makeMockResponse("````SEND [200]\ninjected done\n````", 10),
+        makeMockResponse("````DONE\nfirst done\n````", 10),
+        makeMockResponse("````DONE\ninjected done\n````", 10),
     ] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -119,7 +119,7 @@ test("{§operation-results} loop.inject speaks into an existing session; errors 
 });
 
 test("{§operation-results} run.fork branches the model session into a named session; errors with no session", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````EDIT (workspace:///x)\nhi\n````\n\n````SEND\ndone\n````", 10), makeMockResponse("````SEND [200]\ndone\n````", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````EDIT (workspace:///x)\nhi\n````\n\n````SEND\ndone\n````", 10), makeMockResponse("````DONE\ndone\n````", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -161,7 +161,7 @@ test("{§operation-results} run.fork branches the model session into a named ses
 
 test("{§turn-source-resources} loop.run streams log/entry notifications during execution", async () => {
     const dsl = "````EDIT (workspace:///x)\nhello\n````\n\n````SEND\ndone\n````";
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("````SEND [200]\ndone\n````", 0)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("````DONE\ndone\n````", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -187,7 +187,7 @@ test("{§turn-source-resources} loop.run streams log/entry notifications during 
                 const entry = (event as { entry: { op: string | null; origin: string } }).entry;
                 return (entry.op === "SEND" && entry.origin === "_plurnk") || entry.origin === "model";
             });
-            assert.deepEqual(authored.map((event) => (event as { entry: { op: string } }).entry.op), ["SEND", "EDIT", "SEND", "SEND"], "each authored message and operation streams independently of initialization");
+            assert.deepEqual(authored.map((event) => (event as { entry: { op: string } }).entry.op), ["SEND", "EDIT", "SEND", "DONE"], "each authored message and operation streams independently of initialization");
             const prompt = authored[0] as { entry: { op: string; origin: string } };
             assert.equal(prompt.entry.op, "SEND");
             assert.equal(prompt.entry.origin, "_plurnk");
@@ -198,7 +198,7 @@ test("{§turn-source-resources} loop.run streams log/entry notifications during 
             assert.equal(firstReply.entry.op, "SEND");
             assert.equal(firstReply.entry.status_rx, 200, "delivery succeeds before the EDIT is observed");
             const observedReply = authored[3] as { entry: { op: string; status_rx: number } };
-            assert.equal(observedReply.entry.op, "SEND");
+            assert.equal(observedReply.entry.op, "DONE");
             assert.equal(observedReply.entry.status_rx, 200, "the observation turn's reply is also delivered");
             assert.equal(terminal.finalStatus, 200);
         } finally { ws.close(); }
@@ -207,7 +207,7 @@ test("{§turn-source-resources} loop.run streams log/entry notifications during 
 
 test("{§notifications} loop.run fires loop/terminated notification on completion", async () => {
     const dsl = "````EDIT (workspace:///x)\nbody\n````\n\n````SEND\ndone\n````";
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("````SEND [200]\ndone\n````", 0)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("````DONE\ndone\n````", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -341,7 +341,7 @@ test("{§tokenomics} loop.run respects maxTurns cap when model emits non-termina
 });
 
 test("{§methods-workspace-create}: a fresh loop foists one turn-zero READ per path", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````DONE\ndone\n````", 10)] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -365,7 +365,7 @@ test("{§methods-workspace-create}: a fresh loop foists one turn-zero READ per p
 });
 
 test("{§methods-workspace-create}: initial reads preserve file paths, scheme addresses and channels", async () => {
-    const mock = new Mock({ contextWindow: 32_768, responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
+    const mock = new Mock({ contextWindow: 32_768, responses: [makeMockResponse("````DONE\ndone\n````", 10)] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -391,7 +391,7 @@ test("{§methods-workspace-create}: initial reads preserve file paths, scheme ad
 
 test("{§methods} a throwing seam subscriber never kills the loop — the transport's failure is its own", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````DONE\ndone\n````", 10)] });
     const logged: string[] = [];
     const realErr = console.error;
     console.error = (...a: unknown[]) => { logged.push(a.map(String).join(" ")); };
@@ -413,7 +413,7 @@ test("{§methods} a throwing seam subscriber never kills the loop — the transp
 
 describe("arrival-fold", () => {
 type LogRow = { origin: string; op: string; pathname: string; scheme: string; folded: string; turn_id: number };
-const mock = () => new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
+const mock = () => new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
 
 test("{§message-arrival} the arrival row and a normal same-turn op are both born open", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
@@ -426,7 +426,7 @@ test("{§message-arrival} the arrival row and a normal same-turn op are both bor
             const prompt = rows.find((r) => r.op === "SEND" && r.origin === "_plurnk");
             assert.ok(prompt !== undefined, "the message is logged once as an inbound SEND row");
             assert.equal(prompt.folded, "[]", "new message delivery is visible");
-            const send = rows.find((r) => r.op === "SEND" && r.origin === "model" && r.turn_id === prompt.turn_id);
+            const send = rows.find((r) => r.op === "DONE" && r.origin === "model" && r.turn_id === prompt.turn_id);
             assert.ok(send !== undefined, "the model's own op shares the turn");
             assert.equal(send.folded, "[]", "a normal op in the same turn stays visible");
         } finally { ws.close(); }
@@ -435,7 +435,7 @@ test("{§message-arrival} the arrival row and a normal same-turn op are both bor
 });
 
 describe("arrival-preview", () => {
-const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("````SEND [200]\ndone\n````", 40)] });
+const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("````DONE\ndone\n````", 40)] });
 
 type LogRow = { op: string; origin: string; scheme: string | null; pathname: string | null; lineMarker: string | null; tx: string | null; rx: string | null; status_rx: number };
 

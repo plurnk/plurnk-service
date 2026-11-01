@@ -31,7 +31,7 @@ test("{§emission-history} {§digest-forensic-fidelity}: stored and shared reque
     const provider = new Mock({ contextWindow: 100000, responses: [
         { assistant: { content: frame("EDIT (workspace:///memo.md)", "The complete replacement."), reasoning: null } },
         { assistant: { content: frame("READ (workspace:///memo.md)", null), reasoning: null } },
-        { assistant: { content: frame("SEND [200]", "Done."), reasoning: null } },
+        { assistant: { content: frame("DONE", "Done."), reasoning: null } },
     ] });
     const db = await openMigrated(dbPath);
     try {
@@ -81,7 +81,7 @@ test("{§provider-failure-normalization}: blank emissions retain their wire chan
                 if (requests > 1) {
                     return new Response(`data: ${JSON.stringify({
                         id: "text", model: "wire-evidence",
-                        choices: [{ index: 0, delta: { content: "````SEND [200]\nInspected.\n````" }, finish_reason: "stop" }],
+                        choices: [{ index: 0, delta: { content: "````DONE\nInspected.\n````" }, finish_reason: "stop" }],
                         usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 },
                     })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
                 }
@@ -123,7 +123,7 @@ test("{§provider-failure-normalization}: blank emissions retain their wire chan
             { index: 0, id: "call-1", type: "function", name: "READ", arguments: '{"path":"example.txt"}' },
         ]);
         assert.deepEqual(raw.wire.channels, { refusal: "retained vendor text" });
-        assert.equal(await readFile(join(digestDir, `${stems[2]}.assistant.md`), "utf8"), "````SEND [200]\nInspected.\n````");
+        assert.equal(await readFile(join(digestDir, `${stems[2]}.assistant.md`), "utf8"), "````DONE\nInspected.\n````");
         const report = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.doesNotMatch(report, /rejected-emissions=/);
         assert.match(await readFile(join(digestDir, `${stems[2]}.user.md`), "utf8"), /native tool calls, but no tools were declared/);

@@ -69,6 +69,8 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
         { source: "````NOTE\ncontinue\n````", expected: [] },
         { source: "````WAIT\nwaiting\n````", expected: [] },
         { source: "````SEND\nupdate\n````", expected: [] },
+        { source: "````DONE\ncomplete\n````", expected: [] },
+        { source: "````FAIL\ncannot complete\n````", expected: [] },
         { source: "````sh\ngit status --short\n````", expected: [{ operation: "sh", scheme: "exec", runtime: "sh", access: "execute", traits: [] }] },
         { source: "````BARE\nWhat is 2 + 2?\n````", expected: [{ operation: "BARE", access: "execute", traits: [] }] },
         { source: "````BARE (session://alice/prompt.md)````", expected: [

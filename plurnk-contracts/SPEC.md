@@ -66,7 +66,7 @@ flowchart LR
 | `ProposalProjection` | Identity, review target, body/attrs, owner, capability selector, ACP v2 subject, stale signal, disposition | One validated projection for live delivery and reconnect |
 
 - **Exact selector conjunction**: A capability selector matches a `CapabilityDescriptor` when every declared field equals the descriptor and every declared `trait` occurs in the descriptor's trait set. Within a policy layer, `deny` wins over `only` and `allow`; when `only` is present, at least one selector must match. An empty policy admits everything; an empty `only` list admits nothing.
-- **Subtractive cascade**: Capability admission is purely subtractive and order-independent: a descriptor is admitted only when every active layer (`service` and `workspace`) admits it. Workspace policy cannot restore authority denied by the service. A demand is pre-approved across layers only when it is admitted across every layer and matches at least one layer's `allow` selector. Log/program control (`KILL (log:///...)`, native dispositions `WAIT`/`NOTE`, and targetless `SEND`) creates no capability demand.
+- **Subtractive cascade**: Capability admission is purely subtractive and order-independent: a descriptor is admitted only when every active layer (`service` and `workspace`) admits it. Workspace policy cannot restore authority denied by the service. A demand is pre-approved across layers only when it is admitted across every layer and matches at least one layer's `allow` selector. Log/program control (`KILL (log:///...)`, native dispositions `WAIT`/`NOTE`, `DONE`, `FAIL`, and targetless `SEND`) creates no capability demand.
 - **Proposals and session ownership**: `ProposalPolicy` (`review | accept | reject`) and `SessionOwner` (`address`, `clientTools`, `interactive`) govern stopped-world approval after capability admission succeeds.
 - **Effort and model catalog wire**: `Effort` is `off | adaptive | low | medium | high | xhigh | max`. `ModelRoute`, `ModelCatalogPage`, and `ModelReadiness` expose provider/model identity, capabilities (including supported `efforts`), physical limits, and alternative required environment-variable name sets (names only, never values, credentials, or tuning internals).
 
@@ -99,7 +99,7 @@ input
 ```
 `````
 
-- **Backtick block boundaries**: Every canonical statement is a fenced block opened at column 0–3 by three or more backticks (`PLURNK_FENCE` is ``` ``` ```) followed on the same physical line by an operation keyword (`FIND`, `READ`, `EDIT`, `COPY`, `MOVE`, `SEND`, `BARE`, `WORK`, `FORK`, `KILL`, `NOTE`, `WAIT`) or a runtime executor name.
+- **Backtick block boundaries**: Every canonical statement is a fenced block opened at column 0–3 by three or more backticks (`PLURNK_FENCE` is ``` ``` ```) followed on the same physical line by an operation keyword (`FIND`, `READ`, `EDIT`, `COPY`, `MOVE`, `SEND`, `DONE`, `FAIL`, `BARE`, `WORK`, `FORK`, `KILL`, `NOTE`, `WAIT`) or a runtime executor name.
 - **Fence width and nesting**: The parser accepts three or more backticks and renders three; a wider outer fence encloses narrower inner fences verbatim without dispatching them. A block closes at a line with at least the opening backtick count and only horizontal whitespace (or an optional closer aside), or falls back at the next outer operation heading or end of input.
 - **Naked operation recovery**: A column-zero line outside any block containing only a native operation name and optional `<!-- aside -->` opens that operation with a warning-severity advisory naming three backticks as the taught form.
 
@@ -111,7 +111,7 @@ input
 | --- | --- |
 | Complete vs. repaired readings | Complete nested interpretations take precedence over missing-closer repairs; among repaired readings, preserving authored operations outranks repair count. |
 | Unclosed mutation yields | An `EDIT` body never swallows a same-width native operation heading; a missing closer is supplied before the next native heading so both operations run. |
-| Prose code blocks and message run-on | Inside `SEND`, `WORK`, `FORK`, or `BARE` bodies, executor headings (` ```sh `, ` ```python3 `) are literal code blocks shown in the message, and an unclosed message body runs to the end of the turn. |
+| Prose code blocks and message run-on | Inside `SEND`, `DONE`, `FAIL`, `WORK`, `FORK`, or `BARE` bodies, executor headings (` ```sh `, ` ```python3 `) are literal code blocks shown in the message, and an unclosed message body runs to the end of the turn. |
 | Quotations and indented fences | A bare fence or non-operation info string opens an inert quotation block; fences indented by 4+ spaces or a tab are literal CommonMark indented code. |
 | Near-miss tolerances | Inline chains on a closer line, closing fences with stray non-heading trailing text (repaired with trailing characters and any immediately following retry closers discarded), transparent mid-heading closers, case-insensitive executor names, `js`/`ts`/`node` alias fallback, forgotten tag on the line below a bare fence, unclosed header asides, and `@<1-4 digits>` line anchors are recovered with deterministic advisories. |
 | Native tool-call recovery | When a model emits provider-native tool-call markup (`<tool_call>`, `<function=...>`, JSON tool calls) instead of fenced operations, the parser recovers recognizable PLURNK operations or emits a warning receipt for unexecuted markup. |
@@ -124,8 +124,8 @@ Producers write `(target) <scope> [metadata] <!-- aside -->` separated by single
 | Construct | Contract |
 | --- | --- |
 | Target groups and multi-target slots | A `READ` or `KILL` heading may carry multiple `(path)` slots, and a `FIND`, `READ`, or `KILL` `(path)` slot may carry a comma/pipe/whitespace-separated list of explicit `scheme://` URIs or a comma/pipe-separated list of local paths/globs outside brackets/braces, compiling into one statement per target in authored order. |
-| Scope on scopeless OPs | A `<scope>` written on `WORK`, `FORK`, `BARE`, `NOTE`, or targetless `SEND` is dropped with a warning advisory while the operation still runs. |
-| Heading inline body & bare options | Trailing text on the heading line is read as the matcher on `FIND`/`READ`/`KILL` (and sigil-led `EDIT`), as `[{...}]` metadata when a bare JSON object appears on `SEND`/`WORK`/`FORK`/`BARE`, or as the first body line with a warning advisory. |
+| Scope on scopeless OPs | A `<scope>` written on `WORK`, `FORK`, `BARE`, `NOTE`, `DONE`, `FAIL`, or targetless `SEND` is dropped with a warning advisory while the operation still runs. |
+| Heading inline body & bare options | Trailing text on the heading line is read as the matcher on `FIND`/`READ`/`KILL` (and sigil-led `EDIT`), as `[{...}]` metadata when a bare JSON object appears on `SEND`/`DONE`/`FAIL`/`WORK`/`FORK`/`BARE`, or as the first body line with a warning advisory. |
 | Scheme metadata modifier | `[metadata]` preserves balanced brackets and quoted strings as raw inner text for the target scheme or executor (`MetadataOptions` parses first-party arrays of option objects and reserves `env`). |
 | Operation aside | A trailing `<!-- aside -->` comment on the heading line is stripped into `aside` (`string` or `null`) as descriptive metadata. |
 
@@ -144,13 +144,15 @@ Producers write `(target) <scope> [metadata] <!-- aside -->` separated by single
 | `WORK` / `FORK` | optional `session://name` or prompt resource | none | task prompt |
 | `KILL` | required target | optional text region | distillation `NOTE` on `log:///`; empty otherwise |
 | `SEND` | optional recipient | recipient-defined; none for sessions | message body |
+| `DONE` | optional `message://` target | none | final deliverable message body (optional) |
+| `FAIL` | optional `message://` target | none | final failure message body (optional) |
 | `NOTE` | none | none | literal working memory |
 | `WAIT` | optional label | none (`[seconds]` in metadata) | wait explanation |
 
-- **Retrieval annotations and reasoning operations**: Nonblank bodies beneath `FIND` or `READ` normalize into a preceding `NOTE` statement. `PlurnkParser.parseReasoningOperations` extracts complete line-leading `NOTE`, `FIND`, and `READ` blocks from exposed model reasoning to run before the content program.
+- **Retrieval annotations**: Nonblank bodies beneath `FIND` or `READ` normalize into a preceding `NOTE` statement.
 - **Text scope algebra**: `<N>` selects whole line `N` (`0` prepends, `-1` appends on mutation); `<N,M>` selects inclusive lines `N..M`; `<SL,SC,EL,EC>` selects an exact 1-based Unicode code-point region with exclusive end (three-integer scopes normalize to four).
 - **Local path fragments**: Bare paths decompose `#channel` into `fragment` just like `scheme://` URLs so channel selectors round-trip identically.
-- **Turn dispositions (`WAIT` and `SEND`)**: Dispositions may appear anywhere in a turn; multiple `WAIT` statements coalesce to the shortest `[seconds]` bound, and `SEND [200]` (or `[202]` park) governs loop completion once all earlier operations in the turn settle.
+- **Turn dispositions (`WAIT`, `DONE`, and `FAIL`)**: Dispositions may appear anywhere in a turn; multiple `WAIT` statements coalesce to the shortest `[seconds]` bound, and `DONE` (`200`) or `FAIL` (`499`) resolves an Open Message once all earlier operations in the turn settle.
 
 ---
 

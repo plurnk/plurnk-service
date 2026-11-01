@@ -3,7 +3,7 @@ import { ConfigurationError } from "@plurnk/plurnk-meta";
 import AmbientMembers from "./AmbientMembers.ts";
 import { TurnDisposition, PathSyntax, Validator, isExecution, isRecord } from "@plurnk/plurnk-contracts";
 import Turn from "./Turn.ts";
-import type { BareStatement, CapabilityProjection, DispositionStatement, EditStatement, FindStatement, ForkStatement, KillStatement, NoteStatement, ParsedPath, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, CapabilityProjection, DispositionStatement, DoneStatement, EditStatement, FailStatement, FindStatement, ForkStatement, KillStatement, NoteStatement, ParsedPath, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -40,7 +40,6 @@ import SessionControlHandler from "./SessionControlHandler.ts";
 import SessionControlAddress from "./SessionControlAddress.ts";
 import KillHandler from "./KillHandler.ts";
 import TurnDispositionHandler, { type CompletionEvidence, type PacketBoundaries } from "./TurnDispositionHandler.ts";
-import ReplyMetadata from "./ReplyMetadata.ts";
 import LogWriter from "./LogWriter.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import DataStatementRunner from "./DataStatementRunner.ts";
@@ -623,7 +622,7 @@ export default class Dispatcher {
                     result = selection.result;
                 } else if (statement.op === "EDIT") {
                     result = await this.#resourceMutations.edit(statement, schemeCtx, context.editSequence);
-                } else if (statement.op === "SEND" && statement.target === null) {
+                } else if (statement.op === "DONE" || statement.op === "FAIL" || (statement.op === "SEND" && statement.target === null)) {
                     result = await this.#respond(statement, schemeCtx, loopId);
                 } else if (statement.op === "NOTE") {
                     await Turn.recordSource(this.#db, turnId, "note", statement.body ?? "", { sequence });
@@ -978,9 +977,8 @@ export default class Dispatcher {
 
 
     // {§message-completion}: message content is literal; only its header selects a destination.
-    async #respond(statement: SendStatement, schemeCtx: PlurnkSchemeContext, loopId: number): Promise<DispatchResult> {
-        const options = ReplyMetadata.read(statement.metadata);
-        if ("failure" in options) return options.failure;
+    async #respond(statement: SendStatement | DoneStatement | FailStatement, schemeCtx: PlurnkSchemeContext, loopId: number): Promise<DispatchResult> {
+        const completion = statement.op === "DONE" ? 200 : statement.op === "FAIL" ? 499 : null;
         const target = statement.target;
         let repliedTo: string[];
         let speechOnly = false;
@@ -990,7 +988,7 @@ export default class Dispatcher {
             // delivered to its originating client, its outcome unchanged.
             const message = open ?? await this.#db.message_latest_published.get<{ key_path: string }>({ loop_id: loopId });
             if (message === undefined) return Dispatcher.#failure(
-                "send-target-required", 400, "SEND has no recipient and its loop has no published message.", {},
+                "send-target-required", 400, `${statement.op} has no recipient and its loop has no published message.`, {},
                 { recovery: "Name a recipient address.", retryable: false },
             );
             repliedTo = [message.key_path];
@@ -1004,10 +1002,10 @@ export default class Dispatcher {
             );
             repliedTo = [message.key_path];
         }
-        const captured = await MessageAttachments.capture(options.metadata, schemeCtx.resources!, "message:reply");
+        const captured = await MessageAttachments.capture(statement.metadata, schemeCtx.resources!, "message:reply");
         if ("failure" in captured) return captured.failure;
         return { status: 200, repliedTo,
-            ...(options.completion === null || speechOnly ? {} : { completion: options.completion }),
+            ...(completion === null || speechOnly ? {} : { completion }),
             ...(captured.attachments.length === 0 ? {} : { attachments: MessageAttachments.receipts(captured.attachments) }) };
     }
 

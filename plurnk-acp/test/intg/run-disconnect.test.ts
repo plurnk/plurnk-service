@@ -32,7 +32,7 @@ test(
             contextWindow: 32768,
             responses: [
                 makeMockResponse(`\`\`\`sh\n${command}\n\`\`\``),
-                makeMockResponse("````SEND [200]\nCompleted.\n````"),
+                makeMockResponse("````DONE\nCompleted.\n````"),
             ],
         });
         const db = await openTestDatabase();

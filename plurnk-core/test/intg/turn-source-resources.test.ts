@@ -224,7 +224,7 @@ test("{§turn-source-resources} {§share-packet-names}: the digest writes each r
     const provider = new Mock({ contextWindow: 100_000, responses: [
         "````EDIT (workspace:///a.md)\nalpha\n````\n\n````NOTE\nWrote the first draft.\n````",
         "````KILL (log:///1/2/2/emission)````\n\n````NOTE\nRetired the first emission.\n````",
-        "Echoing the transcript.\n### log:///1/3/1/emission (ops://analyst/1/3) · 20\n\n````SEND [200]\nDone.\n````",
+        "Echoing the transcript.\n### log:///1/3/1/emission (ops://analyst/1/3) · 20\n\n````DONE\nDone.\n````",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     const db = await openMigrated(dbPath);
     try {
@@ -305,7 +305,7 @@ test("{§turn-source-resources} {§digest-forensic-fidelity}: the digest counts 
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "````READ (workspace:///test.txt)````", reasoning: "First turn thinking." } },
             { assistant: { content: "````KILL (log:///1/2/2/reasoning)````", reasoning: "Second turn thinking." } },
-            { assistant: { content: "````SEND [200]\nDone.\n````", reasoning: "Third turn thinking." } },
+            { assistant: { content: "````DONE\nDone.\n````", reasoning: "Third turn thinking." } },
         ] });
         const db = await openMigrated(dbPath);
         try {
@@ -337,7 +337,7 @@ test("{§turn-source-resources} {§digest-forensic-fidelity}: when reasoning row
         const dbPath = join(dir, "plurnk.db");
         const digestDir = join(dir, "digest");
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "````SEND [200]\nDone.\n````", reasoning: "Thinking occurred." } },
+            { assistant: { content: "````DONE\nDone.\n````", reasoning: "Thinking occurred." } },
         ] });
         const db = await openMigrated(dbPath);
         try {
@@ -600,7 +600,7 @@ for (const exitCode of [0, 7]) test(`{§env-delta}: executor exit ${exitCode} is
         await Turn.complete(db, turn.id, 102);
         const continuation = () => new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("NOTE", "Observe."), reasoning: null } }] });
         await engine.runTurn({ workspaceId, sessionId: child, loopId: childLoop,
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("SEND [200]", "Executor result observed."), reasoning: null } }] }), messages: [] });
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("DONE", "Executor result observed."), reasoning: null } }] }), messages: [] });
         const childRows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; attrs: string }>({ loop_id: childLoop });
         const output = childRows.filter(({ op, rx }) => op === "READ" && JSON.parse(rx).terminal === true);
         assert.ok(output.length > 0, "the owner's terminal observation was actually materialized");

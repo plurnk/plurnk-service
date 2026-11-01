@@ -337,7 +337,7 @@ test("{§observability-boundary} specimen schedules deliver and shut down withou
     serverProposals(t, "accept");
     const provider = new Mock({
         contextWindow: 100_000,
-        responses: [makeMockResponse("````SEND [200]\nScheduled message received.\n````", 10)],
+        responses: [makeMockResponse("````DONE\nScheduled message received.\n````", 10)],
     });
     t.mock.method(ProviderInstantiate, "loadActiveProvider", async () => provider);
     const inference = t.mock.method(provider, "generate");
@@ -684,7 +684,7 @@ const explosionProofLoop = async (): Promise<boolean> => {
             contextWindow: 16384,
             responses: [{
                 assistant: {
-                    content: "\n````SEND [200]\nstill works.\n````",
+                    content: "\n````DONE\nstill works.\n````",
                     reasoning: null,
                 },
             }],
@@ -791,7 +791,7 @@ test("{§observability-boundary} observe: prompts, bodies, hosts, URLs, and secr
             contextWindow: 16384,
             responses: [{
                 assistant: {
-                    content: "\n````SEND [200]\ntask complete.\n````",
+                    content: "\n````DONE\ntask complete.\n````",
                     reasoning: null,
                 },
             }],
@@ -851,7 +851,7 @@ test("{§observability-boundary} observe: an invalid first emission retries unde
                 },
                 {
                     assistant: {
-                        content: "\n````SEND [200]\nrecovered.\n````",
+                        content: "\n````DONE\nrecovered.\n````",
                         reasoning: null,
                     },
                 },
@@ -928,7 +928,7 @@ test("{§observability-boundary} observe: a real loop emits the loop → turn �
                 responses: [{
                     assistant: {
                         // ops deliberately absent: the engine must parse this content.
-                        content: "\n````SEND [200]\nobserved.\n````",
+                        content: "\n````DONE\nobserved.\n````",
                         reasoning: null,
                     },
                 }],
@@ -995,9 +995,9 @@ test("{§observability-boundary} observe: a real loop emits the loop → turn �
             const ops = dispatches.map((s) => s.attributes.op);
             assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 0, "completion invents no lifecycle operation");
             assert.ok(ops.includes("FIND"), "initialization's surveys use ordinary dispatch");
-            assert.equal(ops.filter((op) => op === "SEND").length, 1, "the model's completion has its own dispatch span");
+            assert.equal(ops.filter((op) => op === "DONE").length, 1, "the model's completion has its own dispatch span");
             assert.ok(
-                ops.filter((op) => op !== "SEND" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "NOTE" || op === "FIND" || op === "READ" || op === "plurnk_mcp"),
+                ops.filter((op) => op !== "DONE" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "NOTE" || op === "FIND" || op === "READ" || op === "plurnk_mcp"),
                 `initialization dispatches only orientation operations; got ${ops.join(", ")}`,
             );
             for (const d of dispatches) {
