@@ -16,6 +16,7 @@ import { WsConstructor, createAcpClient, createHarness } from "../harness.ts";
 const AGENT_METHOD_POSTURE = {
     initialize: "supported",
     auth_login: "oauth-out-of-band",
+    auth_status: "oauth-out-of-band",
     providers_list: "supported",
     providers_set: "config-option",
     providers_disable: "config-option",
@@ -27,8 +28,14 @@ const AGENT_METHOD_POSTURE = {
     session_list: "supported",
     session_delete: "supported",
     session_fork: "supported",
+    session_archive: "tracked-#1396",
+    session_unarchive: "tracked-#1396",
+    session_status: "tracked-#1396",
+    session_set_title: "tracked-#1396",
     session_resume: "supported",
     session_close: "supported",
+    tool_call_cancel: "tracked-#1396",
+    terminal_cancel: "tracked-#1396",
     auth_logout: "oauth-out-of-band",
 } as const satisfies Record<keyof typeof AGENT_METHODS, string>;
 
@@ -38,6 +45,7 @@ const CLIENT_METHOD_POSTURE = {
     mcp_message: "supported",
     elicitation_create: "supported",
     elicitation_complete: "supported",
+    auth_status_update: "oauth-out-of-band",
 } as const satisfies Record<keyof typeof CLIENT_METHODS, string>;
 
 const SESSION_UPDATE_POSTURE = {

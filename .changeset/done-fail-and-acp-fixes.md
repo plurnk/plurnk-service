@@ -5,6 +5,7 @@
 "@plurnk/plurnk-acp": minor
 "@plurnk/plurnk-mcp": patch
 "@plurnk/plurnk-meta": patch
+"@plurnk/plurnk-mimetypes-audio": patch
 "@plurnk/plurnk-mimetypes-text-html": patch
 "@plurnk/plurnk-providers": patch
 "@plurnk/plurnk-schemes": patch
