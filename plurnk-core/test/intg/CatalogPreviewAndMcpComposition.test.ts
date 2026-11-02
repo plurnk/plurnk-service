@@ -492,7 +492,7 @@ const LOCAL = "# Local\nThis machine's rules.\n";
 for (const standing of ["absent", "ignored", "untracked", "tracked", "excluded"] as const) {
     for (const withAgents of [true, false]) {
         const projected = standing !== "absent" && standing !== "excluded";
-        test(`{§session-initialization-entry}: an AGENTS.local.md ${standing}${withAgents ? " beside AGENTS.md" : ""} is ${projected ? "read at turn 0" : "not projected"}`, async () => {
+        test(`{§session-initialization-entry}: an AGENTS.local.md ${standing}${withAgents ? " beside AGENTS.md" : ""} is ${projected ? "delivered in system-policy" : "not projected"}`, async () => {
             const prior = Object.fromEntries(["PLURNK_SERVICE_GIT_ALLOWED", "PLURNK_SERVICE_GIT_AUTO", "PLURNK_MEMBERS_ENABLED", "PLURNK_MEMBERS_no_local"]
                 .map((key) => [key, process.env[key]]));
             process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
@@ -516,7 +516,7 @@ for (const standing of ["absent", "ignored", "untracked", "tracked", "excluded"]
                     const ws = await connect(addr);
                     try {
                         const workspaceId = ((await rpcCall(ws, 1, "workspace.create", { name: "local-instructions", projectRoot: dir })).result as { id: number }).id;
-                        const { loopId, finalStatus } = (await runLoopToTerminal(ws, 2, { prompt: "go" })) as { loopId: number; finalStatus: number };
+                        const { loopId, modelSessionId, finalStatus } = (await runLoopToTerminal(ws, 2, { prompt: "go" })) as { loopId: number; modelSessionId: number; finalStatus: number };
                         assert.equal(finalStatus, 200);
                         const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
                             workspace_id: workspaceId, scheme: "file", authority: "", pathname: "AGENTS.local.md",
@@ -528,9 +528,14 @@ for (const standing of ["absent", "ignored", "untracked", "tracked", "excluded"]
                         }
                         const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string | null; hostname: string | null; pathname: string; status_rx: number }>({ loop_id: loopId });
                         const reads = rows.filter((row) => row.op === "READ" && row.scheme === null && row.hostname === null && /^AGENTS(\.local)?\.md$/u.test(row.pathname));
-                        assert.deepEqual(reads.map(({ pathname, status_rx }) => [pathname, status_rx]),
-                            [...withAgents ? [["AGENTS.md", 200]] : [], ...projected ? [["AGENTS.local.md", 200]] : []],
-                            "turn 0 reads AGENTS.md, then its local override, each found");
+                        assert.deepEqual(reads, [], "turn 0 does not foist READs of root AGENTS(.local).md");
+                        const latestPacket = await db.engine_session_latest_packet.get<{ packet: string }>({ session_id: modelSessionId });
+                        assert.ok(latestPacket, "session recorded its request packet");
+                        const systemText = packetSection(JSON.parse(latestPacket.packet), "system-policy");
+                        if (withAgents) assert.match(systemText, /# Project\nShared rules\./u, "project AGENTS.md rides system-policy");
+                        else assert.doesNotMatch(systemText, /# Project\nShared rules\./u);
+                        if (projected) assert.match(systemText, new RegExp(LOCAL.trim().replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"), "projected AGENTS.local.md rides system-policy");
+                        else assert.doesNotMatch(systemText, new RegExp(LOCAL.trim().replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
                         const nested = await db.crud_find_workspace_entry.get<{ id: number }>({
                             workspace_id: workspaceId, scheme: "file", authority: "", pathname: "packages/web/AGENTS.local.md",
                         });
@@ -548,7 +553,7 @@ for (const standing of ["absent", "ignored", "untracked", "tracked", "excluded"]
     }
 }
 
-test("{§session-initialization-entry} {§session-scheme}: a pre-populated session://<name>/AGENTS.md is read on that session's turn 0", async () => {
+test("{§session-initialization-entry} {§session-scheme}: a pre-populated session://<name>/AGENTS.md rides system-policy on that session", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     try {
@@ -578,11 +583,13 @@ test("{§session-initialization-entry} {§session-scheme}: a pre-populated sessi
                     origin: string; op: string; scheme: string; hostname: string | null; pathname: string; status_rx: number; rx: string;
                 }>({ loop_id: childLoops[0].id });
                 const agentsRead = rows.find((row) => row.origin === "_plurnk" && row.op === "READ" && row.scheme === "session" && row.hostname === "child" && row.pathname === "/AGENTS.md");
-                assert.ok(agentsRead, "child turn 0 foists a READ of session://child/AGENTS.md");
-                assert.equal(agentsRead.status_rx, 200);
-                assert.match(JSON.parse(agentsRead.rx).content, /Focus only on parser recovery\./u);
+                assert.equal(agentsRead, undefined, "child turn 0 does not foist a READ of session://child/AGENTS.md");
+                const childPacket = await db.engine_session_latest_packet.get<{ packet: string }>({ session_id: childSession.id });
+                assert.ok(childPacket, "child session recorded its request packet");
+                const childSystemText = packetSection(JSON.parse(childPacket.packet), "system-policy");
+                assert.match(childSystemText, /# Child Role\nFocus only on parser recovery\./u, "session://child/AGENTS.md rides system-policy");
                 const sessionSurvey = rows.find((row) => row.origin === "_plurnk" && row.op === "FIND" && row.scheme === "session" && row.hostname === "child" && row.pathname === "/*");
-                assert.ok(sessionSurvey, "child turn 0 also surveys session://child/*");
+                assert.ok(sessionSurvey, "child turn 0 still surveys session://child/*");
                 assert.equal(sessionSurvey.status_rx, 200);
                 assert.match(sessionSurvey.rx, /session:\/\/child\/AGENTS\.md/u);
             } finally { ws.close(); }

@@ -87,13 +87,16 @@ export default class EnvDefaults {
         const configurationErrors = [...sources.configurationErrors];
         const members = await EnvDefaults.#memberFiles(sources.packages.filter(({ dir }) => !sources.pluginPackages.has(dir)));
         const files = [own, ...members.filter((m) => m.owner !== own.owner)];
+        const rootPackages = (await Promise.all(
+            Object.values(sources.roots).map((directory) => (directory ? Meta.packageDirs(directory) : Promise.resolve([]))),
+        )).flat().map(({ dir }) => dir);
         const selected = new Set(sources.plugins.map(({ root }) => root));
-        const nativeDirs = new Set([...selected, ...sources.pluginPackages]);
+        const nativeDirs = new Set([...selected, ...rootPackages, ...sources.pluginPackages]);
         for (const dir of nativeDirs) {
             try {
                 const native = await Meta.readManifest(dir);
                 if (native === null || native.packageName === null || !Meta.isTrusted(native.packageName)) continue;
-                if (native.plurnk.kind === "module" ? !selected.has(dir) : !sources.pluginPackages.has(dir)) continue;
+                if (native.plurnk.kind === "module" ? (selected.size > 0 && !selected.has(dir)) : !sources.pluginPackages.has(dir)) continue;
                 const file = await EnvDefaults.nativeFile(dir, native.packageName);
                 if (file !== null) files.push(file);
             } catch (cause) {

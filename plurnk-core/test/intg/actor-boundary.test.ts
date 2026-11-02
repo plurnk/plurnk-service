@@ -25,7 +25,7 @@ import { makeMockResponse } from "./_mock.ts";
 import { Validator, Problems, type EditStatement, type UrlPath, type ParsedPath, type ClientEntry, type EntryReadResult as EntryReadWire, type KillStatement, type NoteStatement, type SessionOwner } from "@plurnk/plurnk-contracts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { copyStmt, editStmt, fullReplace, moveStmt, urlPath } from "./_dsl.ts";
-import { logEntries } from "./_packet.ts";
+import { logEntries, packetSection } from "./_packet.ts";
 import { modelOperation } from "./_sessions.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { schemeManifest } from "./_scheme.ts";
@@ -218,7 +218,11 @@ test("{§session-initialization-entry} runtime-owned entry work is an ordinary a
                 }>({ loop_id: loopId });
                 const docRead = modelLoopLog.find((row) => row.op === "READ" && (row.scheme === null || row.scheme === "file")
                     && row.hostname === null && row.pathname === "AGENTS.md");
-                assert.ok(docRead !== undefined && docRead.status_rx === 200, "Turn 0 reads the addressed Session's generated policy entry");
+                assert.equal(docRead, undefined, "Turn 0 does not foist a READ of the root AGENTS.md");
+                const modelSessionId = (await db.test_get_session_id_by_loop.get<{ session_id: number }>({ loop_id: loopId }))!.session_id;
+                const latestPacketRow = await db.engine_session_latest_packet.get<{ packet: string }>({ session_id: modelSessionId });
+                const systemPolicy = packetSection(JSON.parse(latestPacketRow!.packet), "system-policy") ?? "";
+                assert.match(systemPolicy, /# Self-hosting\nThe runtime is an actor\./u, "project AGENTS.md rides system-policy in the packet");
             } finally { ws.close(); }
         });
     } finally {

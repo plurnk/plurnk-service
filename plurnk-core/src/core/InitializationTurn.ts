@@ -54,54 +54,6 @@ const INITIALIZATION_CLOSING_NOTE: NoteStatement = {
 export default class InitializationTurn {
     // {§session-initialization-entry} — the session's first turn is the worked
     // example itself: the actual orienting operations.
-    // {§session-initialization-entry} — global AGENTS(.local).md (materialized on plurnk:///),
-    // project AGENTS(.local).md (at their real project paths), and session://<session>/AGENTS.md
-    // when pre-populated in the session's scratch namespace, each get one foisted <1,-1> READ on
-    // the session's first loop.
-    static async guidanceStatements(db: Db, workspaceId: number, sessionName: string): Promise<Array<FindStatement | ReadStatement>> {
-        const statements: Array<FindStatement | ReadStatement> = [];
-        for (const pathname of ["/AGENTS.md", "/AGENTS.local.md"]) {
-            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
-                workspace_id: workspaceId, scheme: "plurnk", authority: "", pathname,
-            });
-            if (entry === undefined) continue;
-            const target: UrlPath = {
-                kind: "url", raw: `plurnk://${pathname}`, scheme: "plurnk",
-                username: null, password: null, hostname: null, port: null,
-                pathname, query: null, fragment: null,
-            };
-            statements.push({
-                op: "READ", aside: null, target,
-                metadata: null, lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: UNKNOWN_POSITION,
-            } satisfies ReadStatement);
-        }
-        for (const pathname of ["AGENTS.md", "AGENTS.local.md"]) {
-            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
-                workspace_id: workspaceId, scheme: "file", authority: "", pathname,
-            });
-            if (entry === undefined) continue;
-            statements.push({
-                op: "READ", aside: null, target: { kind: "local", raw: pathname },
-                metadata: null, lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: UNKNOWN_POSITION,
-            } satisfies ReadStatement);
-        }
-        const sessionAgents = await db.crud_find_workspace_entry.get<{ id: number }>({
-            workspace_id: workspaceId, scheme: "session", authority: sessionName, pathname: "/AGENTS.md",
-        });
-        if (sessionAgents !== undefined) {
-            const target: UrlPath = {
-                kind: "url", raw: `session://${sessionName}/AGENTS.md`, scheme: "session",
-                username: null, password: null, hostname: sessionName, port: null,
-                pathname: "/AGENTS.md", query: null, fragment: null,
-            };
-            statements.push({
-                op: "READ", aside: null, target,
-                metadata: null, lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: UNKNOWN_POSITION,
-            } satisfies ReadStatement);
-        }
-        return statements;
-    }
-
     // {§session-initialization-entry}: execute the initialization program before the model boundary.
     static async run(args: {
         db: Db;

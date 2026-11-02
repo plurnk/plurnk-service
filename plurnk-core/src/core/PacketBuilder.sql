@@ -215,3 +215,31 @@ JOIN sessions w ON w.id = l.session_id
 WHERE l.session_id = $session_id AND t.packet IS NOT NULL
 ORDER BY l.sequence DESC, t.sequence DESC
 LIMIT 1;
+
+-- PREP: engine_packet_policy_entries
+-- {§packet-assembly} — project-tier root `AGENTS(.local).md` and session-tier
+-- `session://<session>/AGENTS.md` that populate `system-policy` alongside the
+-- global policy tier, ordered deterministically: project `AGENTS.md`, project
+-- `AGENTS.local.md`, then `session://<session>/AGENTS.md`.
+SELECT
+    e.scheme AS scheme,
+    e.pathname AS pathname,
+    w.project_root AS project_root,
+    CAST(ec.content AS TEXT) AS content
+FROM entries e
+JOIN workspaces w
+    ON w.id = e.workspace_id
+LEFT JOIN entry_channels ec
+    ON ec.entry_id = e.id
+   AND ec.name = e.default_channel
+WHERE e.workspace_id = $workspace_id
+  AND (
+      (e.scheme = 'file' AND e.authority = '' AND e.pathname IN ('AGENTS.md', '/AGENTS.md', 'AGENTS.local.md', '/AGENTS.local.md'))
+      OR (e.scheme = 'session' AND e.authority = $session_name AND e.pathname IN ('AGENTS.md', '/AGENTS.md'))
+  )
+ORDER BY
+    CASE
+        WHEN e.scheme = 'file' AND e.pathname IN ('AGENTS.md', '/AGENTS.md') THEN 1
+        WHEN e.scheme = 'file' AND e.pathname IN ('AGENTS.local.md', '/AGENTS.local.md') THEN 2
+        ELSE 3
+    END;
