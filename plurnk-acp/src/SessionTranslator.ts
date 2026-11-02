@@ -180,10 +180,14 @@ export default class SessionTranslator {
         const statusRx = statusOf(entry);
 
         const reasoningText = typeof entry.reasoning === "string" && entry.reasoning.length > 0 ? entry.reasoning : null;
+        const sessionName =
+            typeof entry.session_name === "string" && entry.session_name.length > 0
+                ? entry.session_name
+                : this.#sessionName;
         const turnCoordinate = `${entry.loop_seq}/${entry.turn_seq}`;
         const reasoningUrl =
             reasoningText !== null && this.#origin !== undefined
-                ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(`reasoning://${entry.session_name}/${turnCoordinate}`)}`
+                ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(`reasoning://${sessionName}/${turnCoordinate}`)}`
                 : undefined;
         const reasoningTurnKey = `${entry.session_id}:${entry.turn_id}`;
         if (
@@ -203,6 +207,12 @@ export default class SessionTranslator {
                     content: { type: "text", text: reasoningText },
                     _meta: {
                         plurnk: {
+                            sessionId: entry.session_id,
+                            sessionName,
+                            loopId: entry.loop_id,
+                            loopSeq: entry.loop_seq,
+                            turnId: entry.turn_id,
+                            turnSeq: entry.turn_seq,
                             coordinate: turnCoordinate,
                             ...(reasoningUrl !== undefined
                                 ? { body: { url: reasoningUrl, mimeType: "text/plain" } }
@@ -219,6 +229,7 @@ export default class SessionTranslator {
         const opMeta = {
             id: entry.id,
             sessionId: entry.session_id,
+            sessionName,
             coordinate,
             op: entry.op,
             origin: entry.origin,
@@ -642,6 +653,12 @@ export default class SessionTranslator {
                 content: { type: "text", text: event.delta },
                 _meta: {
                     plurnk: {
+                        sessionId: event.sessionId,
+                        sessionName: this.#sessionName,
+                        loopId: event.loopId,
+                        loopSeq: event.loopSeq,
+                        turnId: event.turnId,
+                        turnSeq: event.turnSeq,
                         coordinate: turnCoordinate,
                         ...(reasoningUrl !== undefined
                             ? { body: { url: reasoningUrl, mimeType: "text/plain" } }

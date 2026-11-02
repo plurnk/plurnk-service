@@ -539,12 +539,18 @@ const resolveActionTarget = async (
     };
 };
 
+export interface PlurnkActionCallbacks {
+    readonly onWorkspaceRenamed?: (workspaceId: number, name: string) => void;
+    readonly scheduleOverviewRefresh?: () => void;
+}
+
 export const handlePlurnkAction = async (
     seam: ApplicationPort,
     origin: string,
     rawParams: unknown,
     peer: AcpPeer | undefined,
     notifyPeerSession: (peer: AcpPeer, sessionId: string, update: SessionUpdate) => void,
+    callbacks?: PlurnkActionCallbacks,
 ): Promise<unknown> => {
     if (!isRecord(rawParams) || typeof rawParams.kind !== "string") {
         throw RequestError.invalidParams({ detail: "_plurnk/action requires a string 'kind'." });
@@ -590,6 +596,7 @@ export const handlePlurnkAction = async (
             ...(typeof params.projectRoot === "string" || params.projectRoot === null ? { projectRoot: params.projectRoot } : {}),
             ...(typeof params.settings === "string" || isRecord(params.settings) ? { settings: params.settings } : {}),
         });
+        callbacks?.scheduleOverviewRefresh?.();
         return {
             ...created,
             id: created.workspaceId,
@@ -681,16 +688,21 @@ export const handlePlurnkAction = async (
             false,
         );
         const nextName = typeof params.name === "string" ? params.name : typeof params.to === "string" ? params.to : "";
-        return await seam.renameWorkspace(target.workspaceId, nextName);
+        const renamed = await seam.renameWorkspace(target.workspaceId, nextName);
+        callbacks?.onWorkspaceRenamed?.(renamed.id, renamed.name);
+        callbacks?.scheduleOverviewRefresh?.();
+        return renamed;
     }
 
     if (kind === "workspace.hide") {
         const target = await resolveActionTarget(seam, rawParams, params, false);
         const hidden = typeof params.hidden === "boolean" ? params.hidden : true;
-        return await seam.setWorkspaceHidden({
+        const result = await seam.setWorkspaceHidden({
             workspaceId: target.workspaceId,
             hidden,
         });
+        callbacks?.scheduleOverviewRefresh?.();
+        return result;
     }
 
     if (kind === "workspace.share") {
@@ -944,6 +956,7 @@ export const executeSlashCommand = async (
     rest: string,
     peer: AcpPeer | undefined,
     notifyPeerSession: (peer: AcpPeer, sessionId: string, update: SessionUpdate) => void,
+    callbacks?: PlurnkActionCallbacks,
 ): Promise<string> => {
     const envelope = {
         sessionId: bound.acpSessionId,
@@ -952,7 +965,7 @@ export const executeSlashCommand = async (
         session: bound.sessionName,
     };
     const invoke = (action: Record<string, unknown>): Promise<unknown> =>
-        handlePlurnkAction(seam, origin, action, peer, notifyPeerSession);
+        handlePlurnkAction(seam, origin, action, peer, notifyPeerSession, callbacks);
 
     if (cmd === "script") {
         const res = await invoke({ ...envelope, kind: "op.parse", params: { text: rest } });

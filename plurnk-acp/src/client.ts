@@ -1,12 +1,80 @@
-// {§acp-daemon-client} Runtime-neutral client contracts for @plurnk/plurnk-acp/client.
+// {§acp-daemon-client} {§acp-plurnk-metadata} {§acp-overview} Runtime-neutral client contracts for @plurnk/plurnk-acp/client.
 import type {
+    ApplicationOverviewWorkspace,
+    ApplicationSessionKind,
+    ApplicationSessionReply,
+    ClientInteractionProjection,
     Effort,
     FunctionalityPreparationActivity,
+    LoopLifecycle,
     ModelRoute,
     ProposalProjection,
-    ClientInteractionProjection,
     ProviderAccounting,
 } from "@plurnk/plurnk-contracts";
+
+export interface AcpThoughtMetadata {
+    readonly sessionId: number;
+    readonly sessionName: string;
+    readonly loopId: number;
+    readonly loopSeq: number;
+    readonly turnId: number;
+    readonly turnSeq: number;
+    readonly coordinate: string;
+    readonly body?: { readonly url: string; readonly mimeType: string };
+}
+
+export interface AcpOperationMetadata {
+    readonly id: number;
+    readonly sessionId: number;
+    readonly sessionName: string;
+    readonly coordinate: string;
+    readonly op: string | null;
+    readonly origin: string;
+    readonly status: number;
+    readonly turnId: number;
+    readonly turnSeq: number;
+    readonly loopId: number;
+    readonly loopSeq: number;
+    readonly sequence: number;
+    readonly scope: null;
+    readonly state?: string;
+    readonly source?: string;
+    readonly signal?: number;
+    readonly address?: string;
+    readonly target?: string;
+    readonly attrs?: Readonly<Record<string, unknown>>;
+    readonly receipt?: Readonly<Record<string, unknown>>;
+    readonly reasoning?: { readonly url: string; readonly mimeType: string };
+    readonly body?: { readonly url: string; readonly mimeType?: string };
+}
+
+export interface AcpOverviewReply extends ApplicationSessionReply {
+    readonly body: { readonly url: string; readonly mimeType: string };
+}
+
+export interface AcpOverviewSessionMetadata {
+    readonly workspaceId: number;
+    readonly workspaceName: string;
+    readonly id: number;
+    readonly sessionId: number;
+    readonly name: string;
+    readonly sessionName: string;
+    readonly parentSessionId: number | null;
+    readonly kind: ApplicationSessionKind;
+    readonly lifecycle: LoopLifecycle;
+    readonly gates: number;
+    readonly projectRoot: string | null;
+    readonly projectLabel: string | null;
+    readonly reply: AcpOverviewReply | null;
+}
+
+export interface AcpOverviewResponseMetadata {
+    readonly scope: { readonly workspaceId: number } | null;
+    readonly workspaces: readonly ApplicationOverviewWorkspace[];
+    readonly omitted: number;
+    readonly recent?: readonly unknown[];
+    readonly recentOmitted?: number;
+}
 
 export interface AcpDescendantState {
     readonly id: number;

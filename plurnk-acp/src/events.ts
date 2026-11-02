@@ -120,7 +120,58 @@ export interface DaemonEventDispatchContext {
         sessionId: number,
         buildUpdates: (session: BoundSession) => readonly { readonly sessionId: string; readonly update: SessionUpdate }[],
     ) => void;
+    readonly scheduleOverviewRefresh?: () => void;
 }
+
+export const applyWorkspaceRenamed = (
+    peers: ReadonlySet<AcpPeer>,
+    notifyPeerSession: (peer: AcpPeer, sessionId: string, update: SessionUpdate) => void,
+    workspaceId: number,
+    nextName: string,
+    scheduleOverviewRefresh?: () => void,
+): void => {
+    for (const peer of peers) {
+        const visited = new Set<BoundSession>();
+        for (const session of peer.sessions.values()) {
+            if (visited.has(session)) continue;
+            visited.add(session);
+            if (session.workspaceId !== workspaceId || session.workspaceName === nextName) continue;
+            session.workspaceName = nextName;
+            notifyPeerSession(peer, session.acpSessionId, {
+                sessionUpdate: "session_info_update",
+                title: `${nextName}#${session.sessionName}`,
+                _meta: {
+                    plurnk: {
+                        workspaceId,
+                        workspaceName: nextName,
+                        workspace: {
+                            id: workspaceId,
+                            name: nextName,
+                            projectRoot: session.projectRoot,
+                            projectLabel: session.projectLabel,
+                        },
+                    },
+                },
+            });
+            notifyPeerSession(peer, session.acpSessionId, {
+                sessionUpdate: "notice",
+                severity: "info",
+                title: "workspace:state",
+                _meta: {
+                    plurnk: {
+                        workspace: {
+                            id: workspaceId,
+                            name: nextName,
+                            projectRoot: session.projectRoot,
+                            projectLabel: session.projectLabel,
+                        },
+                    },
+                },
+            });
+        }
+    }
+    scheduleOverviewRefresh?.();
+};
 
 export const dispatchDaemonEvent = (
     ctx: DaemonEventDispatchContext,
@@ -138,6 +189,16 @@ export const dispatchDaemonEvent = (
             if (entryId === null || sessionId === null) break;
             if (typeof entryRec.state === "string") {
                 gates.cancelProposalIfSettled(workspaceId, entryId, entryRec.state);
+            }
+            if (
+                entryRec.op === "SEND" ||
+                entryRec.op === "DONE" ||
+                entryRec.op === "FAIL" ||
+                entryRec.op === "WORK" ||
+                entryRec.op === "FORK" ||
+                typeof entryRec.state === "string"
+            ) {
+                ctx.scheduleOverviewRefresh?.();
             }
             if (isLogEntryPayload(params)) {
                 enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
@@ -361,12 +422,14 @@ export const dispatchDaemonEvent = (
                 const spend = await seam.sessionAccounting({ workspaceId, sessionId });
                 broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.packet(params, spend));
             });
+            ctx.scheduleOverviewRefresh?.();
             break;
         }
         case "loop/terminated": {
             if (!isTerminatedEvent(params)) break;
             const sessionId = params.sessionId;
             gates.cancelSessionGates(workspaceId, sessionId);
+            ctx.scheduleOverviewRefresh?.();
             enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
                 const [spend, rawInbox] = await Promise.all([
                     seam.sessionAccounting({ workspaceId, sessionId }),
@@ -467,6 +530,7 @@ export const dispatchDaemonEvent = (
             const proposal = params;
             if (proposal.disposition.decision !== "review") break;
             const gate = gates.openOrGet(workspaceId, proposal.sessionId, "proposal", proposal);
+            ctx.scheduleOverviewRefresh?.();
             broadcastSessionUpdate(workspaceId, proposal.sessionId, (s) => [
                 {
                     sessionId: s.acpSessionId,
@@ -531,6 +595,7 @@ export const dispatchDaemonEvent = (
             if (!isClientInteractionProjection(params)) break;
             const interaction = params;
             const gate = gates.openOrGet(workspaceId, interaction.sessionId, "interaction", undefined, interaction);
+            ctx.scheduleOverviewRefresh?.();
             broadcastSessionUpdate(workspaceId, interaction.sessionId, (s) => [
                 {
                     sessionId: s.acpSessionId,
@@ -611,6 +676,9 @@ export const dispatchDaemonEvent = (
                         }
                     }
                 }
+            }
+            if (notice.source === "engine:lifecycle" && notice.kind === "loop_status") {
+                ctx.scheduleOverviewRefresh?.();
             }
             if (
                 targetSessionId !== null &&
@@ -704,6 +772,16 @@ export const dispatchDaemonEvent = (
                     })
                     .catch(() => undefined);
             }
+            break;
+        }
+        case "workspace/renamed": {
+            if (!isRecord(params) || typeof params.name !== "string" || params.name.length === 0) break;
+            applyWorkspaceRenamed(peers, notifyPeerSession, workspaceId, params.name, ctx.scheduleOverviewRefresh);
+            break;
+        }
+        case "workspace/hidden":
+        case "session/hidden": {
+            ctx.scheduleOverviewRefresh?.();
             break;
         }
         default:

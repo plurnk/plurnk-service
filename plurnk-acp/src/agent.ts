@@ -33,6 +33,7 @@ import {
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { executeSlashCommand, handlePlurnkAction } from "./actions.ts";
 import type { ResolvedModuleOptions } from "./config.ts";
+import { applyWorkspaceRenamed } from "./events.ts";
 import type { GateTracker } from "./gates.ts";
 import { extractMessageId } from "./log-entry-projection.ts";
 import SessionTranslator from "./SessionTranslator.ts";
@@ -48,6 +49,7 @@ import {
     extractPlurnkMeta,
     formatSessionId,
     listSessionsOverview,
+    parseOverviewRequest,
     resolvePromptCommand,
     resolveSessionBinding,
     selectBoundSessionForTarget,
@@ -79,13 +81,28 @@ export interface ConnectionAgentContext {
         sessionId: number,
         buildUpdates: (session: BoundSession) => readonly { readonly sessionId: string; readonly update: SessionUpdate }[],
     ) => void;
+    readonly scheduleOverviewRefresh?: () => void;
 }
 
 export const createConnectionAgent = (
     host: ConnectionAgentContext,
     connInfo: { readonly family: string | null; readonly closeTransport?: () => void },
 ): AgentApp => {
-    const { seam, opts, peers, gates, httpOrigin, notifyPeerSession, broadcastSessionUpdate } = host;
+    const {
+        seam,
+        opts,
+        peers,
+        gates,
+        httpOrigin,
+        notifyPeerSession,
+        broadcastSessionUpdate,
+        scheduleOverviewRefresh,
+    } = host;
+    const actionCallbacks = {
+        onWorkspaceRenamed: (workspaceId: number, name: string) =>
+            applyWorkspaceRenamed(peers, notifyPeerSession, workspaceId, name, scheduleOverviewRefresh),
+        scheduleOverviewRefresh,
+    };
 
     const peer: AcpPeer = {
         family: connInfo.family,
@@ -206,6 +223,7 @@ export const createConnectionAgent = (
                     ctx.params,
                     peer,
                     notifyPeerSession,
+                    actionCallbacks,
                 );
             } catch (err) {
                 throw toRequestError(err);
@@ -272,6 +290,7 @@ export const createConnectionAgent = (
                     },
                 });
             }
+            scheduleOverviewRefresh?.();
             return {
                 sessionId: bound.acpSessionId,
                 configOptions,
@@ -555,13 +574,23 @@ export const createConnectionAgent = (
     app.onRequest(methods.agent.session.list, async (ctx): Promise<ListSessionsResponse> => {
         peer.client = ctx.client;
         try {
-            const sessions = await listSessionsOverview(
+            const origin = httpOrigin();
+            const query = parseOverviewRequest(ctx.params.cwd, ctx.params._meta);
+            const response = await listSessionsOverview(
                 seam,
                 opts,
-                httpOrigin(),
-                ctx.params.cwd,
+                origin,
+                query,
             );
-            return { sessions };
+            if (query.subscribe !== false) {
+                peer.overviewSubscription = {
+                    ...query,
+                    origin,
+                };
+            } else {
+                delete peer.overviewSubscription;
+            }
+            return response;
         } catch (err) {
             throw toRequestError(err);
         }
@@ -587,6 +616,7 @@ export const createConnectionAgent = (
                 hidden,
             });
             if (hidden) peer.sessions.delete(ctx.params.sessionId);
+            scheduleOverviewRefresh?.();
             return {};
         } catch (err) {
             throw toRequestError(err);
@@ -645,6 +675,7 @@ export const createConnectionAgent = (
                 ctx.params.systemPrompt,
             );
             const configOptions = await buildConfigOptions(seam, parent.workspaceId, forked.sessionId);
+            scheduleOverviewRefresh?.();
             return {
                 sessionId: newSessionId,
                 configOptions,
@@ -902,6 +933,7 @@ export const createConnectionAgent = (
                     pendingBuiltinCommand.rest,
                     peer,
                     notifyPeerSession,
+                    actionCallbacks,
                 );
                 broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
                     {
