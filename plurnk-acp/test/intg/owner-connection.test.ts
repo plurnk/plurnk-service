@@ -19,9 +19,10 @@ test(
     { timeout: 30_000 },
     async () => {
         await import(join(SERVICE, "test/setup.ts"));
-        const [{ default: Daemon }, { makeMockResponse }, { waitForDb }, { Mock }] = await Promise.all([
+        const [{ default: Daemon }, { makeMockResponse }, { packetSection }, { waitForDb }, { Mock }] = await Promise.all([
             import(join(SERVICE, "src/server/Daemon.ts")),
             import(join(SERVICE, "test/intg/_mock.ts")),
+            import(join(SERVICE, "test/intg/_packet.ts")),
             import(join(SERVICE, "test/intg/_rpc.ts")),
             import("@plurnk/plurnk-providers"),
         ]);
@@ -116,7 +117,7 @@ test(
                     workspaceId: workspace.id,
                     sessionId: parentRow.id,
                 });
-                assert.ok(
+                assert.equal(
                     parentLogs.some(
                         (e) =>
                             e.op === "READ" &&
@@ -124,7 +125,17 @@ test(
                             e.hostname === "parent" &&
                             e.pathname === "/AGENTS.md",
                     ),
-                    "Turn 0 foists READ (session://parent/AGENTS.md) materialized from ACP systemPrompt",
+                    false,
+                    "Turn 0 does not foist READ (session://parent/AGENTS.md)",
+                );
+                const parentPacket: { packet: string } | undefined = await db.engine_session_latest_packet.get({
+                    session_id: parentRow.id,
+                });
+                assert.ok(parentPacket);
+                assert.match(
+                    packetSection(JSON.parse(parentPacket.packet), "system-policy"),
+                    /Parent session instructions\./u,
+                    "session://parent/AGENTS.md materialized from ACP systemPrompt rides system-policy",
                 );
 
                 // Also create an unowned session `helper` directly so `session/resume` claims it for `acp://operator`
@@ -133,7 +144,7 @@ test(
                     name: "helper",
                 });
 
-                // 2. Resume `${workspace.id}#spawned` with systemPrompt after Turn 0 and prompt it: it foists READ (session://spawned/AGENTS.md) and resolves `question` via elicitation/create
+                // 2. Resume `${workspace.id}#spawned` with systemPrompt after Turn 0 and prompt it: it delivers session://spawned/AGENTS.md in system-policy and resolves `question` via elicitation/create
                 const childSessionId = `${workspace.id}#spawned`;
                 await ctx.request(methods.agent.session.resume, {
                     sessionId: childSessionId,
@@ -167,7 +178,7 @@ test(
                     workspaceId: workspace.id,
                     sessionId: spawnedRow.id,
                 });
-                assert.ok(
+                assert.equal(
                     spawnedLogs.some(
                         (e) =>
                             e.op === "READ" &&
@@ -175,7 +186,17 @@ test(
                             e.hostname === "spawned" &&
                             e.pathname === "/AGENTS.md",
                     ),
-                    "Post-Turn-0 session/resume with systemPrompt foists READ (session://spawned/AGENTS.md) (#1347)",
+                    false,
+                    "Post-Turn-0 session/resume with systemPrompt does not foist READ (session://spawned/AGENTS.md)",
+                );
+                const spawnedPacket: { packet: string } | undefined = await db.engine_session_latest_packet.get({
+                    session_id: spawnedRow.id,
+                });
+                assert.ok(spawnedPacket);
+                assert.match(
+                    packetSection(JSON.parse(spawnedPacket.packet), "system-policy"),
+                    /Spawned child role on resume\./u,
+                    "Post-Turn-0 session/resume with systemPrompt delivers session://spawned/AGENTS.md in system-policy",
                 );
 
                 // 3. Resume `${workspace.id}#helper`: claims ownership for `acp://operator` and resolves its `sh` proposal
@@ -215,9 +236,10 @@ test(
     { timeout: 30_000 },
     async (t) => {
         await import(join(SERVICE, "test/setup.ts"));
-        const [{ default: Daemon }, { makeMockResponse }, { waitForDb }, { Mock }] = await Promise.all([
+        const [{ default: Daemon }, { makeMockResponse }, { packetSection }, { waitForDb }, { Mock }] = await Promise.all([
             import(join(SERVICE, "src/server/Daemon.ts")),
             import(join(SERVICE, "test/intg/_mock.ts")),
+            import(join(SERVICE, "test/intg/_packet.ts")),
             import(join(SERVICE, "test/intg/_rpc.ts")),
             import("@plurnk/plurnk-providers"),
         ]);
@@ -346,7 +368,7 @@ test(
                     rootLogs.some((e) => e.op === "FIND" && e.scheme === "persona" && e.pathname === "/PERSONA.md"),
                     "Turn 0 surveys persona://*/PERSONA.md when personas exist",
                 );
-                assert.ok(
+                assert.equal(
                     rootLogs.some(
                         (e) =>
                             e.op === "READ" &&
@@ -354,7 +376,17 @@ test(
                             e.hostname === rootSession.name &&
                             e.pathname === "/AGENTS.md",
                     ),
-                    "Turn 0 reads session://<root>/AGENTS.md written by configId persona",
+                    false,
+                    "Turn 0 does not foist READ (session://<root>/AGENTS.md)",
+                );
+                const rootPacket: { packet: string } | undefined = await db.engine_session_latest_packet.get({
+                    session_id: rootSession.id,
+                });
+                assert.ok(rootPacket);
+                assert.match(
+                    packetSection(JSON.parse(rootPacket.packet), "system-policy"),
+                    /Review every diff for security defects\./u,
+                    "session://<root>/AGENTS.md written by configId persona rides system-policy",
                 );
 
                 const childSession = await daemon.readSession({
@@ -371,7 +403,7 @@ test(
                     workspaceId: workspace.id,
                     sessionId: childSession.id,
                 });
-                assert.ok(
+                assert.equal(
                     childLogs.some(
                         (e) =>
                             e.op === "READ" &&
@@ -379,7 +411,17 @@ test(
                             e.hostname === "subreviewer" &&
                             e.pathname === "/AGENTS.md",
                     ),
-                    "Child session reads session://subreviewer/AGENTS.md copied from persona://reviewer/PERSONA.md",
+                    false,
+                    "Child session does not foist READ (session://subreviewer/AGENTS.md)",
+                );
+                const childPacket: { packet: string } | undefined = await db.engine_session_latest_packet.get({
+                    session_id: childSession.id,
+                });
+                assert.ok(childPacket);
+                assert.match(
+                    packetSection(JSON.parse(childPacket.packet), "system-policy"),
+                    /Review every diff for security defects\./u,
+                    "Child session receives session://subreviewer/AGENTS.md copied from persona://reviewer/PERSONA.md in system-policy",
                 );
 
                 // Exercise EDIT and KILL on persona:// and workspace.personas.list
