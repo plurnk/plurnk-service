@@ -275,7 +275,12 @@ export default class Results {
             ) {
                 throw new TypeError("invalid scope normalization: canonical must contain four safe integers");
             }
-            if (!requested.every((coordinate, index) => canonical[index] === coordinate)) {
+            if (
+                canonical[0] !== requested[0]
+                || canonical[1] !== requested[1]
+                || canonical[2] < 1
+                || (canonical[2] !== requested[2] && requested[2] !== -1 && requested[2] <= canonical[2])
+            ) {
                 throw new TypeError("invalid scope normalization: canonical coordinates must preserve the requested prefix");
             }
         }

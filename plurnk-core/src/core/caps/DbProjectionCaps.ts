@@ -1,5 +1,5 @@
 import type { ParseIssueTransition, ProjectedBinary, ProjectedText, ProjectionCaps } from "@plurnk/plurnk-schemes";
-import { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { isMimetypeInputError, Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import ErrorDetail from "../ErrorDetail.ts";
 
@@ -58,6 +58,7 @@ export default class DbProjectionCaps implements ProjectionCaps {
             if (!result.ok || result.grammarMissing !== undefined) return undefined;
             return result.parseIssues ?? 0;
         } catch (cause) {
+            if (isMimetypeInputError(cause)) return 1;
             const detail = ErrorDetail.preview(cause);
             const notice = {
                 source: "engine:mimetype",

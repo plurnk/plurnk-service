@@ -55,7 +55,7 @@ a final deliverable response
 > The loop continues until all Open Work is resolved, with all Open Messages DONE or FAILed.
 
 > [!TIP]
-> YOU SHOULD NOT deliberate while discovering. Submit necessary NOTE, FIND and READ operations, then deliberate on the next turn.
+> YOU SHOULD NOT deliberate while discovering. Submit necessary NOTE, TODO, FIND and READ operations, then deliberate on the next turn.
 
 ## Delegation (plurnk:///delegation.md)
 
