@@ -3,7 +3,7 @@
 // the daemon serves indexed search without inference, and a
 // fresh install has no active model ({§operator-config-precedence}): the pointer surfaces instead.
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -155,14 +155,21 @@ const packedMaterializerInventory = () => {
 const packedPublicSurface = () => {
     const program = `
         const digest = await import("@plurnk/plurnk-digest");
+        const meta = await import("@plurnk/plurnk-meta");
         process.stdout.write(JSON.stringify({
             digest: typeof digest.Digest,
+            meta: typeof meta.resolveActionRoute,
         }));
     `;
-    return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", program], {
+    const plain = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", program], {
         cwd: sandbox,
         encoding: "utf8",
     }));
+    const devCondition = JSON.parse(execFileSync(process.execPath, ["--conditions=plurnk-dev", "--input-type=module", "--eval", program], {
+        cwd: sandbox,
+        encoding: "utf8",
+    }));
+    return { ...plain, devCondition };
 };
 
 const runBin = (args, env = {}) => {
@@ -288,7 +295,7 @@ const markerCount = (path) => existsSync(path)
 
 process.stdout.write("== plurnk-service installation e2e ==\n");
 process.stdout.write("-- local sandbox install --\n");
-installSandbox();
+await installSandbox();
 ok(existsSync(bin), "plurnk-service bin linked in the sandbox");
 
 const mods = resolve(sandbox, "node_modules");
@@ -308,6 +315,14 @@ ok(
     "the packed export paths match {§observability-boundary} exactly",
 );
 ok(publicSurface.digest === "function", "the packed forensic package is importable");
+ok(
+    publicSurface.devCondition.digest === "function" && publicSurface.devCondition.meta === "function",
+    "packed @plurnk/* packages remain importable under --conditions=plurnk-dev (#1391)",
+);
+const unprojectedManifests = readdirSync(resolve(mods, "@plurnk"))
+    .filter((entry) => existsSync(resolve(mods, "@plurnk", entry, "package.json")))
+    .filter((entry) => readFileSync(resolve(mods, "@plurnk", entry, "package.json"), "utf8").includes('"plurnk-dev"'));
+ok(unprojectedManifests.length === 0, "no installed @plurnk/* manifest retains the repository-only plurnk-dev export condition (#1391)");
 ok(installedPackage.name === "@plurnk/plurnk-service", "the packed package.json subpath remains addressable");
 
 const serviceDependencies = Object.keys(installedPackage.dependencies ?? {});
