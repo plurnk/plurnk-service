@@ -480,6 +480,7 @@ export const dispatchDaemonEvent = (
                             sessionUpdate: "subagent_update",
                             sessionId: formatSessionId(workspaceId, sessionName),
                             title: sessionName,
+                            capabilities: { cancel: {} },
                             state: childState,
                             _meta: {
                                 plurnk: {

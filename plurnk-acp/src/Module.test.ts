@@ -159,7 +159,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             const wsClient = createAcpClient();
             const conn = wsClient.connect(wsStream);
             await conn.initialized;
-            h.port.revokeFamily("fam-1");
+            const logoutRes = await conn.agent.request(methods.agent.auth.logout, {});
+            assert.deepEqual(logoutRes, {});
             await conn.closed;
         } finally {
             await h.close();
@@ -822,6 +823,29 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 };
                 h.port.emitEvent(1, "notice/event", { notice });
 
+                h.port.emitEvent(1, "log/entry", {
+                    entry: makeLogEntry({
+                        id: 20,
+                        session_id: 1,
+                        turn_seq: 3,
+                        sequence: 2,
+                        op: "EDIT",
+                        attrs: { path: "file:///workspace/alpha/plan.md", body: "# File Plan" },
+                        rx: { status: 200, content: "# File Plan", mimetype: "text/markdown" },
+                    }),
+                });
+                h.port.emitEvent(1, "log/entry", {
+                    entry: makeLogEntry({
+                        id: 21,
+                        session_id: 1,
+                        turn_seq: 3,
+                        sequence: 3,
+                        op: "EDIT",
+                        attrs: { path: "file:///workspace/alpha/plan.md", body: "" },
+                        rx: { status: 200, deleted: true, content: "", mimetype: "text/markdown" },
+                    }),
+                });
+
                 h.port.sessions.push({
                     id: 2,
                     workspaceId: 1,
@@ -979,6 +1003,22 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.ok(
                     updates.some(
                         (u) =>
+                            SessionUpdate.isPlanUpdate(u) &&
+                            PlanUpdateContent.isFile(u.plan) &&
+                            u.plan.planId === "file:///workspace/alpha/plan.md" &&
+                            u.plan.uri === "file:///workspace/alpha/plan.md",
+                    ),
+                );
+                assert.ok(
+                    updates.some(
+                        (u) =>
+                            SessionUpdate.isPlanRemoved(u) &&
+                            u.planId === "file:///workspace/alpha/plan.md",
+                    ),
+                );
+                assert.ok(
+                    updates.some(
+                        (u) =>
                             u.sessionUpdate === "subagent_update" &&
                             u.sessionId === "1#helper" &&
                             (u.capabilities as { cancel?: unknown } | undefined)?.cancel !== undefined,
@@ -989,7 +1029,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         (u) =>
                             u.sessionUpdate === "subagent_update" &&
                             u.sessionId === "1#helper" &&
-                            (u.state as { state?: string } | undefined)?.state === "idle",
+                            (u.state as { state?: string } | undefined)?.state === "idle" &&
+                            (u.capabilities as { cancel?: unknown } | undefined)?.cancel !== undefined,
                     ),
                 );
                 assert.ok(

@@ -597,6 +597,38 @@ export default class SessionTranslator {
                         },
                     });
                 }
+            } else if (
+                entry.op === "EDIT" &&
+                status === "completed" &&
+                address !== null &&
+                /^file:\/\//iu.test(address) &&
+                /(?:^|\/)plan\.md$/iu.test(address)
+            ) {
+                if (isRecord(parsedRx) && parsedRx.deleted === true) {
+                    this.#planIdByTarget.delete(address);
+                    for (const [noteCoord, pid] of [...this.#planIdByCoordinate.entries()]) {
+                        if (pid === address) this.#planIdByCoordinate.delete(noteCoord);
+                    }
+                    updates.push({
+                        sessionId: this.#acpSessionId,
+                        update: {
+                            sessionUpdate: "plan_removed",
+                            planId: address,
+                            _meta: { plurnk: opMeta },
+                        },
+                    });
+                } else {
+                    this.#planIdByCoordinate.set(coordinate, address);
+                    this.#planIdByTarget.set(address, address);
+                    updates.push({
+                        sessionId: this.#acpSessionId,
+                        update: {
+                            sessionUpdate: "plan_update",
+                            plan: { type: "file", planId: address, uri: address },
+                            _meta: { plurnk: opMeta },
+                        },
+                    });
+                }
             } else if (entry.op === "KILL" && status === "completed") {
                 const removedPlanIds = new Set<string>();
                 if (address !== null) {
