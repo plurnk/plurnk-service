@@ -23,8 +23,10 @@ token:
   `session/update` notifications ({§acp-history-window}), emits the current-state
   `state_update` snapshot and `usage_update`, and re-emits any pending `session/request_permission`
   or `elicitation/create` requests ({§acp-proposal-resolve}).
-- `session/fork`, `session/list`, `session/delete`, `session/close`, `session/set_config_option`,
-  `session/prompt`, `session/cancel`, `providers/list`, `mcp/message`, and `_plurnk/action`
+- `session/fork`, `session/list`, `session/archive`, `session/unarchive`, `session/delete`,
+  `session/status`, `session/set_title`, `session/close`, `session/set_config_option`,
+  `session/prompt`, `session/cancel`, `tool_call/cancel`, `terminal/cancel`, `auth/status`,
+  `providers/list`, `mcp/message`, and `_plurnk/action`
   operate directly on the daemon's `ApplicationPort` ({§acp-daemon-client}).
 
 ## Event Projection

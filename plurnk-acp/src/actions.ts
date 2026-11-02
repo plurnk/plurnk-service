@@ -159,8 +159,8 @@ const BUILTIN_ACTIONS: Readonly<
             type: "object",
             additionalProperties: false,
             properties: {
-                hidden: { type: "boolean" },
-                includeHidden: { type: "boolean" },
+                archived: { type: "boolean" },
+                includeArchived: { type: "boolean" },
             },
         },
         outputSchema: {
@@ -179,8 +179,8 @@ const BUILTIN_ACTIONS: Readonly<
             additionalProperties: false,
             properties: {
                 ...TARGET_PROPS,
-                hidden: { type: "boolean" },
-                includeHidden: { type: "boolean" },
+                archived: { type: "boolean" },
+                includeArchived: { type: "boolean" },
             },
         },
         outputSchema: {
@@ -214,23 +214,23 @@ const BUILTIN_ACTIONS: Readonly<
             },
         },
     },
-    "workspace.hide": {
+    "workspace.archive": {
         scope: "workspace",
         inputSchema: {
             type: "object",
             additionalProperties: false,
             properties: {
                 ...TARGET_PROPS,
-                hidden: { type: "boolean" },
+                archived: { type: "boolean" },
             },
         },
         outputSchema: {
             type: "object",
-            required: ["id", "hidden_at"],
+            required: ["id", "archived_at"],
             additionalProperties: false,
             properties: {
                 id: { type: "integer" },
-                hidden_at: { type: ["string", "null"] },
+                archived_at: { type: ["string", "null"] },
             },
         },
     },
@@ -542,6 +542,7 @@ const resolveActionTarget = async (
 export interface PlurnkActionCallbacks {
     readonly onWorkspaceRenamed?: (workspaceId: number, name: string) => void;
     readonly scheduleOverviewRefresh?: () => void;
+    readonly onAuthStatusChanged?: () => void;
 }
 
 export const handlePlurnkAction = async (
@@ -653,28 +654,28 @@ export const handlePlurnkAction = async (
     }
 
     if (kind === "workspace.list") {
-        const hidden =
-            typeof params.hidden === "boolean"
-                ? params.hidden
-                : params.includeHidden === true
+        const archived =
+            typeof params.archived === "boolean"
+                ? params.archived
+                : params.includeArchived === true
                   ? undefined
                   : false;
         const workspaces = await seam.listWorkspaces({
-            ...(hidden !== undefined ? { hidden } : {}),
+            ...(archived !== undefined ? { archived } : {}),
         });
         return { workspaces };
     }
 
     if (kind === "workspace.sessions") {
         const target = await resolveActionTarget(seam, rawParams, params, false);
-        const hidden =
-            typeof params.hidden === "boolean"
-                ? params.hidden
-                : params.includeHidden === true
+        const archived =
+            typeof params.archived === "boolean"
+                ? params.archived
+                : params.includeArchived === true
                   ? undefined
                   : undefined;
         const sessions = await seam.listSessions(target.workspaceId, {
-            ...(hidden !== undefined ? { hidden } : {}),
+            ...(archived !== undefined ? { archived } : {}),
         });
         return { sessions };
     }
@@ -694,12 +695,12 @@ export const handlePlurnkAction = async (
         return renamed;
     }
 
-    if (kind === "workspace.hide") {
+    if (kind === "workspace.archive") {
         const target = await resolveActionTarget(seam, rawParams, params, false);
-        const hidden = typeof params.hidden === "boolean" ? params.hidden : true;
-        const result = await seam.setWorkspaceHidden({
+        const archived = typeof params.archived === "boolean" ? params.archived : true;
+        const result = await seam.setWorkspaceArchived({
             workspaceId: target.workspaceId,
-            hidden,
+            archived,
         });
         callbacks?.scheduleOverviewRefresh?.();
         return result;
@@ -944,6 +945,9 @@ export const handlePlurnkAction = async (
                 });
             }
         }
+    }
+    if (kind.includes(".env.")) {
+        callbacks?.onAuthStatusChanged?.();
     }
     return actionResult;
 };

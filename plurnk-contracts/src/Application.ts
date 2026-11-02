@@ -58,8 +58,10 @@ export interface ApplicationSessionProjection {
     readonly parentSessionId: number | null;
     readonly kind: ApplicationSessionKind;
     readonly lifecycle: LoopLifecycle;
-    /** {§machine-processes} When the session was hidden, or null while it is shown. */
-    readonly hidden_at: string | null;
+    /** {§machine-processes} When the session was archived, or null while it is unarchived. */
+    readonly archived_at: string | null;
+    /** {§machine-processes} Optional human-readable title set via `session/set_title`. */
+    readonly title?: string | null;
 }
 
 /** {§application-session-observation} A session's latest finished reply ({§message-completion}). */
@@ -88,6 +90,7 @@ export interface ApplicationOverviewSession {
     /** The proposals and client interactions it waits on. */
     readonly gates: number;
     readonly reply: ApplicationSessionReply | null;
+    readonly title?: string | null;
 }
 
 /** {§application-session-observation} A workspace the overview's places belong to. */
@@ -107,28 +110,41 @@ export interface ApplicationSessionOverview {
     readonly omitted: number;
 }
 
-/** {§machine-processes} A workspace's mark after a hide or a show. */
-export interface ApplicationWorkspaceHiding {
+/** {§machine-processes} A workspace's mark after an archive or unarchive. */
+export interface ApplicationWorkspaceArchiving {
     readonly id: number;
-    /** When the workspace was hidden, or null while it is shown. */
-    readonly hidden_at: string | null;
+    /** When the workspace was archived, or null while it is unarchived. */
+    readonly archived_at: string | null;
 }
 
-/** {§machine-processes} A session's mark after a hide or a show. */
-export interface ApplicationSessionHiding {
+/** {§machine-processes} A session's mark after an archive or unarchive. */
+export interface ApplicationSessionArchiving {
     readonly id: number;
-    /** When the session was hidden, or null while it is shown. */
-    readonly hidden_at: string | null;
-    /** The sessions whose mark the call changed, in id order: the group it hid or showed, none when nothing changed. */
+    /** When the session was archived, or null while it is unarchived. */
+    readonly archived_at: string | null;
+    /** The sessions whose mark the call changed, in id order: the group it archived or unarchived, none when nothing changed. */
     readonly sessionIds: readonly number[];
+}
+
+/** {§machine-processes} A session subtree removed by `deleteSession`. */
+export interface ApplicationSessionDeletion {
+    readonly id: number;
+    /** Every session id deleted in the subtree, in id order. */
+    readonly sessionIds: readonly number[];
+}
+
+/** {§machine-processes} A session's normalized title stored by `setSessionTitle`. */
+export interface ApplicationSessionTitling {
+    readonly id: number;
+    readonly title: string;
 }
 
 export interface ApplicationSessionQuery {
     readonly origin?: ApplicationSessionOrigin;
     /** Omitted means every lineage position; null means roots only. */
     readonly parentSessionId?: number | null;
-    /** {§machine-processes} Omitted lists every session; true only hidden ones, false only shown ones. */
-    readonly hidden?: boolean;
+    /** {§machine-processes} Omitted lists every session; true only archived ones, false only unarchived ones. */
+    readonly archived?: boolean;
 }
 
 export type ApplicationSessionIdentity =

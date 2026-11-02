@@ -10,8 +10,13 @@ import {
     agent,
     methods,
     type AgentApp,
+    type ArchiveSessionResponse,
+    type AuthStatusResponse,
+    type CancelTerminalResponse,
+    type CancelToolCallResponse,
     type CloseSessionResponse,
     type ContentBlock,
+    type DeleteSessionResponse,
     type ForkSessionResponse,
     type InitializeResponse,
     type ListProvidersResponse,
@@ -19,8 +24,12 @@ import {
     type NewSessionResponse,
     type PromptResponse,
     type ResumeSessionResponse,
+    type SessionStatusResponse,
     type SessionUpdate,
     type SetSessionConfigOptionResponse,
+    type SetSessionTitleResponse,
+    type StateUpdate,
+    type UnarchiveSessionResponse,
 } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import {
     Problems,
@@ -35,20 +44,24 @@ import { executeSlashCommand, handlePlurnkAction } from "./actions.ts";
 import type { ResolvedModuleOptions } from "./config.ts";
 import { applyWorkspaceRenamed } from "./events.ts";
 import type { GateTracker } from "./gates.ts";
-import { extractMessageId } from "./log-entry-projection.ts";
+import { attrRecord, extractMessageId } from "./log-entry-projection.ts";
 import SessionTranslator from "./SessionTranslator.ts";
 import {
+    OWNER_ADDRESS,
     applyAcpMcpServers,
     applyAdditionalDirectories,
     applyConfigOption,
     applySystemPrompt,
     assertSinglePortSecurity,
+    buildAuthStatus,
     buildAvailableCommands,
     buildConfigOptions,
     buildSessionDescendants,
     extractPlurnkMeta,
     formatSessionId,
+    isDescendantSession,
     listSessionsOverview,
+    lookupSessionTarget,
     parseOverviewRequest,
     resolvePromptCommand,
     resolveSessionBinding,
@@ -98,10 +111,21 @@ export const createConnectionAgent = (
         broadcastSessionUpdate,
         scheduleOverviewRefresh,
     } = host;
+    const notifyAuthStatusChanged = (): void => {
+        const status = buildAuthStatus(seam);
+        const json = JSON.stringify(status);
+        for (const p of peers) {
+            if (p.client === null || p.lastAuthStatusJson === json) continue;
+            p.lastAuthStatusJson = json;
+            void p.client.notify(methods.client.auth.statusUpdate, status).catch(() => undefined);
+        }
+    };
+
     const actionCallbacks = {
         onWorkspaceRenamed: (workspaceId: number, name: string) =>
             applyWorkspaceRenamed(peers, notifyPeerSession, workspaceId, name, scheduleOverviewRefresh),
         scheduleOverviewRefresh,
+        onAuthStatusChanged: notifyAuthStatusChanged,
     };
 
     const peer: AcpPeer = {
@@ -178,14 +202,27 @@ export const createConnectionAgent = (
                     mcp: {
                         acp: {},
                     },
+                    archive: {},
                     delete: {},
                     fork: {},
+                    status: {},
+                    title: {},
                     additionalDirectories: {},
                     systemPrompt: {},
+                },
+                auth: {
+                    status: {},
                 },
                 providers: {},
             },
         };
+    });
+
+    app.onRequest(methods.agent.auth.status, async (ctx): Promise<AuthStatusResponse> => {
+        peer.client = ctx.client;
+        const status = buildAuthStatus(seam);
+        peer.lastAuthStatusJson = JSON.stringify(status);
+        return status;
     });
 
     app.onRequest(methods.agent.providers.list, async (ctx): Promise<ListProvidersResponse> => {
@@ -571,11 +608,58 @@ export const createConnectionAgent = (
         }
     });
 
+    const cancelSubtreeWork = async (
+        workspaceId: number,
+        subtreeIds: ReadonlySet<number>,
+        reason: string,
+    ): Promise<void> => {
+        const [proposals, interactions] = await Promise.all([
+            seam.pendingProposals(workspaceId).catch(() => []),
+            seam.pendingClientInteractions(workspaceId).catch(() => []),
+        ]);
+        for (const p of proposals) {
+            if (subtreeIds.has(p.sessionId) && p.disposition.decision === "review") {
+                await seam
+                    .resolveProposal(p.logEntryId, { decision: "cancel" }, { workspaceId, address: OWNER_ADDRESS })
+                    .catch(() => undefined);
+            }
+        }
+        for (const i of interactions) {
+            if (subtreeIds.has(i.sessionId)) {
+                await seam
+                    .resolveClientInteraction(
+                        i.interactionId,
+                        { action: "cancel" },
+                        { workspaceId, address: OWNER_ADDRESS },
+                    )
+                    .catch(() => undefined);
+            }
+        }
+        for (const sId of subtreeIds) {
+            const streams = await seam.readStreams({ workspaceId, sessionId: sId }).catch(() => []);
+            for (const st of streams) {
+                await seam.cancelStream({ workspaceId, sessionId: sId, entryId: st.entryId }).catch(() => undefined);
+            }
+            await seam.cancelSession({ workspaceId, sessionId: sId, reason }).catch(() => undefined);
+            gates.cancelSessionGates(workspaceId, sId);
+        }
+    };
+
+    const removeBoundSubtree = (workspaceId: number, subtreeIds: ReadonlySet<number>, targetPeers: Iterable<AcpPeer>): void => {
+        for (const p of targetPeers) {
+            for (const [key, bound] of [...p.sessions.entries()]) {
+                if (bound.workspaceId === workspaceId && subtreeIds.has(bound.sessionId)) {
+                    p.sessions.delete(key);
+                }
+            }
+        }
+    };
+
     app.onRequest(methods.agent.session.list, async (ctx): Promise<ListSessionsResponse> => {
         peer.client = ctx.client;
         try {
             const origin = httpOrigin();
-            const query = parseOverviewRequest(ctx.params.cwd, ctx.params._meta);
+            const query = parseOverviewRequest(ctx.params.cwd, ctx.params._meta, ctx.params.archived);
             const response = await listSessionsOverview(
                 seam,
                 opts,
@@ -596,28 +680,313 @@ export const createConnectionAgent = (
         }
     });
 
-    app.onRequest(methods.agent.session.delete, async (ctx) => {
+    app.onRequest(methods.agent.session.archive, async (ctx): Promise<ArchiveSessionResponse> => {
         peer.client = ctx.client;
         try {
-            const plurnkMeta = extractPlurnkMeta(ctx.params._meta);
-            const bound = peer.sessions.get(ctx.params.sessionId)
-                ?? (await resolveSessionBinding(
-                    seam,
-                    httpOrigin(),
-                    peer,
-                    ctx.params.sessionId,
-                    undefined,
-                    false,
-                ));
-            const hidden = typeof plurnkMeta.hidden === "boolean" ? plurnkMeta.hidden : true;
-            await seam.setSessionHidden({
-                workspaceId: bound.workspaceId,
-                sessionId: bound.sessionId,
-                hidden,
+            const target = await lookupSessionTarget(seam, ctx.params.sessionId, undefined, ctx.params._meta);
+            const allSessions = await seam.listSessions(target.workspaceId);
+            const subtreeIds = new Set<number>([target.session.id]);
+            for (const s of allSessions) {
+                if (isDescendantSession(allSessions, s.id, target.session.id)) {
+                    subtreeIds.add(s.id);
+                }
+            }
+            await cancelSubtreeWork(target.workspaceId, subtreeIds, "Archived by ACP client");
+            removeBoundSubtree(target.workspaceId, subtreeIds, peers);
+            await seam.setSessionArchived({
+                workspaceId: target.workspaceId,
+                sessionId: target.session.id,
+                archived: true,
             });
-            if (hidden) peer.sessions.delete(ctx.params.sessionId);
             scheduleOverviewRefresh?.();
             return {};
+        } catch (err) {
+            throw toRequestError(err);
+        }
+    });
+
+    app.onRequest(methods.agent.session.unarchive, async (ctx): Promise<UnarchiveSessionResponse> => {
+        peer.client = ctx.client;
+        try {
+            const target = await lookupSessionTarget(seam, ctx.params.sessionId, undefined, ctx.params._meta);
+            await seam.setSessionArchived({
+                workspaceId: target.workspaceId,
+                sessionId: target.session.id,
+                archived: false,
+            });
+            scheduleOverviewRefresh?.();
+            return {};
+        } catch (err) {
+            throw toRequestError(err);
+        }
+    });
+
+    app.onRequest(methods.agent.session.delete, async (ctx): Promise<DeleteSessionResponse> => {
+        peer.client = ctx.client;
+        try {
+            const target = await lookupSessionTarget(seam, ctx.params.sessionId, undefined, ctx.params._meta);
+            const allSessions = await seam.listSessions(target.workspaceId);
+            const subtreeIds = new Set<number>([target.session.id]);
+            for (const s of allSessions) {
+                if (isDescendantSession(allSessions, s.id, target.session.id)) {
+                    subtreeIds.add(s.id);
+                }
+            }
+            await cancelSubtreeWork(target.workspaceId, subtreeIds, "Deleted by ACP client");
+            const deleted = await seam.deleteSession({
+                workspaceId: target.workspaceId,
+                sessionId: target.session.id,
+            });
+            for (const id of deleted.sessionIds) {
+                subtreeIds.add(id);
+            }
+            removeBoundSubtree(target.workspaceId, subtreeIds, peers);
+            scheduleOverviewRefresh?.();
+            return {};
+        } catch (err) {
+            throw toRequestError(err);
+        }
+    });
+
+    app.onRequest(methods.agent.session.status, async (ctx): Promise<SessionStatusResponse> => {
+        peer.client = ctx.client;
+        try {
+            const target = await lookupSessionTarget(seam, ctx.params.sessionId, undefined, ctx.params._meta);
+            let isOpen = false;
+            for (const p of peers) {
+                for (const bound of p.sessions.values()) {
+                    if (bound.workspaceId === target.workspaceId && bound.sessionId === target.session.id) {
+                        isOpen = true;
+                        break;
+                    }
+                }
+                if (isOpen) break;
+            }
+            if (!isOpen) {
+                return { status: "saved" };
+            }
+            const [loops, proposals, interactions, workspaceSessions] = await Promise.all([
+                seam.listSessionLoops({ workspaceId: target.workspaceId, sessionId: target.session.id }),
+                seam.pendingProposals(target.workspaceId),
+                seam.pendingClientInteractions(target.workspaceId),
+                seam.listSessions(target.workspaceId),
+            ]);
+            const hasPendingProposal = proposals.some(
+                (p) =>
+                    p.disposition.decision === "review" &&
+                    (p.sessionId === target.session.id ||
+                        isDescendantSession(workspaceSessions, p.sessionId, target.session.id)),
+            );
+            const hasPendingInteraction = interactions.some(
+                (i) =>
+                    i.sessionId === target.session.id ||
+                    isDescendantSession(workspaceSessions, i.sessionId, target.session.id),
+            );
+            const activeLoop = selectSessionLoop(loops);
+            const lifecycle = activeLoop !== null ? lifecycleOfLoopStatus(activeLoop.status) : "idle";
+            const state: StateUpdate =
+                hasPendingProposal || hasPendingInteraction
+                    ? { state: "requires_action" }
+                    : lifecycle === "running" || lifecycle === "queued"
+                      ? { state: "running" }
+                      : { state: "idle", stopReason: "end_turn" };
+            return {
+                status: "open",
+                state,
+            };
+        } catch (err) {
+            throw toRequestError(err);
+        }
+    });
+
+    app.onRequest(methods.agent.session.setTitle, async (ctx): Promise<SetSessionTitleResponse> => {
+        peer.client = ctx.client;
+        try {
+            const rawTitle: unknown = ctx.params.title;
+            if (typeof rawTitle !== "string" || rawTitle.trim().length === 0) {
+                const problem = Problems.create(
+                    "acp",
+                    "session-title-invalid",
+                    400,
+                    "Session title must be a non-empty string.",
+                );
+                throw new RequestError(-32602, `${problem.detail} (session-title-invalid)`, { ...problem, problem });
+            }
+            const target = await lookupSessionTarget(seam, ctx.params.sessionId, undefined, ctx.params._meta);
+            const updated = await seam.setSessionTitle({
+                workspaceId: target.workspaceId,
+                sessionId: target.session.id,
+                title: rawTitle.trim(),
+            });
+            scheduleOverviewRefresh?.();
+            return { title: updated.title };
+        } catch (err) {
+            throw toRequestError(err);
+        }
+    });
+
+    app.onRequest(methods.agent.terminal.cancel, async (ctx): Promise<CancelTerminalResponse> => {
+        peer.client = ctx.client;
+        try {
+            const target = await lookupSessionTarget(seam, ctx.params.sessionId, undefined, ctx.params._meta);
+            const rawTerminalId = typeof ctx.params.terminalId === "string" ? ctx.params.terminalId : "";
+            const match = /^term:([1-9]\d*)$/u.exec(rawTerminalId);
+            if (match === null) {
+                throw RequestError.invalidParams({
+                    detail: `Terminal '${rawTerminalId}' is unknown, has already exited, or is not cancellable.`,
+                });
+            }
+            const entryId = Number(match[1]);
+            const cancelled = await seam.cancelStream({
+                workspaceId: target.workspaceId,
+                sessionId: target.session.id,
+                entryId,
+            });
+            if (!cancelled) {
+                throw RequestError.invalidParams({
+                    detail: `Terminal '${rawTerminalId}' is unknown, has already exited, or is not cancellable.`,
+                });
+            }
+            return {};
+        } catch (err) {
+            throw toRequestError(err);
+        }
+    });
+
+    app.onRequest(methods.agent.toolCall.cancel, async (ctx): Promise<CancelToolCallResponse> => {
+        peer.client = ctx.client;
+        try {
+            const target = await lookupSessionTarget(seam, ctx.params.sessionId, undefined, ctx.params._meta);
+            const toolCallId = typeof ctx.params.toolCallId === "string" ? ctx.params.toolCallId : "";
+            if (toolCallId.length === 0) {
+                throw RequestError.invalidParams({ detail: "toolCallId must be a non-empty string." });
+            }
+
+            const interactionMatch = /^interaction:([1-9]\d*)$/u.exec(toolCallId);
+            if (interactionMatch !== null) {
+                const interactionId = Number(interactionMatch[1]);
+                const pendingInteractions = await seam.pendingClientInteractions(target.workspaceId);
+                const matchedInteraction = pendingInteractions.find(
+                    (i) => i.interactionId === interactionId && i.sessionId === target.session.id,
+                );
+                if (matchedInteraction === undefined) {
+                    throw RequestError.invalidParams({
+                        detail: `Tool call '${toolCallId}' is unknown, already final, or not cancellable.`,
+                    });
+                }
+                await seam.resolveClientInteraction(
+                    interactionId,
+                    { action: "cancel" },
+                    { workspaceId: target.workspaceId, address: OWNER_ADDRESS },
+                );
+                gates.cancelSessionGates(target.workspaceId, target.session.id);
+                broadcastSessionUpdate(target.workspaceId, target.session.id, (s) => [
+                    {
+                        sessionId: s.acpSessionId,
+                        update: {
+                            sessionUpdate: "tool_call_update",
+                            toolCallId,
+                            status: "cancelled",
+                            capabilities: { cancel: null },
+                        },
+                    },
+                ]);
+                return {};
+            }
+
+            const pendingProposals = await seam.pendingProposals(target.workspaceId);
+            const matchedProposal = pendingProposals.find(
+                (p) =>
+                    p.sessionId === target.session.id &&
+                    p.coordinate === toolCallId &&
+                    p.disposition.decision === "review",
+            );
+            if (matchedProposal !== undefined) {
+                await seam.resolveProposal(
+                    matchedProposal.logEntryId,
+                    { decision: "cancel" },
+                    { workspaceId: target.workspaceId, address: OWNER_ADDRESS },
+                );
+                gates.cancelProposalIfSettled(target.workspaceId, matchedProposal.logEntryId, "cancelled");
+                broadcastSessionUpdate(target.workspaceId, target.session.id, (s) => [
+                    {
+                        sessionId: s.acpSessionId,
+                        update: {
+                            sessionUpdate: "tool_call_update",
+                            toolCallId,
+                            status: "cancelled",
+                            capabilities: { cancel: null },
+                        },
+                    },
+                ]);
+                return {};
+            }
+
+            const streamCancelled = await seam.cancelStream({
+                workspaceId: target.workspaceId,
+                sessionId: target.session.id,
+                coordinate: toolCallId,
+            });
+            if (streamCancelled) {
+                broadcastSessionUpdate(target.workspaceId, target.session.id, (s) => [
+                    {
+                        sessionId: s.acpSessionId,
+                        update: {
+                            sessionUpdate: "tool_call_update",
+                            toolCallId,
+                            status: "cancelled",
+                            capabilities: { cancel: null },
+                        },
+                    },
+                ]);
+                return {};
+            }
+
+            const logRows = await seam.readLog({
+                workspaceId: target.workspaceId,
+                sessionId: target.session.id,
+            });
+            const matchedRow = logRows.find(
+                (r) =>
+                    `${r.loop_seq}/${r.turn_seq}/${r.sequence}` === toolCallId &&
+                    (r.op === "WORK" || r.op === "FORK"),
+            );
+            if (matchedRow !== undefined) {
+                const attrs = attrRecord(matchedRow.attrs);
+                const childSessionName = typeof attrs?.session === "string" ? attrs.session : null;
+                if (childSessionName !== null) {
+                    const workspaceSessions = await seam.listSessions(target.workspaceId);
+                    const childSession = workspaceSessions.find((s) => s.name === childSessionName);
+                    if (
+                        childSession !== undefined &&
+                        (childSession.lifecycle === "running" ||
+                            childSession.lifecycle === "queued" ||
+                            childSession.lifecycle === "parked")
+                    ) {
+                        await seam.cancelSession({
+                            workspaceId: target.workspaceId,
+                            sessionId: childSession.id,
+                            reason: `Cancelled tool call '${toolCallId}' by ACP client`,
+                        });
+                        broadcastSessionUpdate(target.workspaceId, target.session.id, (s) => [
+                            {
+                                sessionId: s.acpSessionId,
+                                update: {
+                                    sessionUpdate: "tool_call_update",
+                                    toolCallId,
+                                    status: "cancelled",
+                                    capabilities: { cancel: null },
+                                },
+                            },
+                        ]);
+                        return {};
+                    }
+                }
+            }
+
+            throw RequestError.invalidParams({
+                detail: `Tool call '${toolCallId}' is unknown, already final, or not cancellable.`,
+            });
         } catch (err) {
             throw toRequestError(err);
         }
@@ -693,7 +1062,12 @@ export const createConnectionAgent = (
 
     app.onRequest(methods.agent.session.close, async (ctx): Promise<CloseSessionResponse> => {
         peer.client = ctx.client;
-        peer.sessions.delete(ctx.params.sessionId);
+        const bound = peer.sessions.get(ctx.params.sessionId);
+        if (bound !== undefined) {
+            removeBoundSubtree(bound.workspaceId, new Set([bound.sessionId]), [peer]);
+        } else {
+            peer.sessions.delete(ctx.params.sessionId);
+        }
         return {};
     });
 

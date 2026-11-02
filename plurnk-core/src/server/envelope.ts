@@ -29,7 +29,7 @@ export interface WorkspaceRow {
     project_root: string | null;
     created_at: string;
     // {§machine-processes}
-    hidden_at: string | null;
+    archived_at: string | null;
 }
 
 // The stored envelope; the daemon adds the folder's label, which needs its home ({§execution-output-identity}).
@@ -43,23 +43,28 @@ export interface SessionRow {
     owner: string;
     parentSessionId: number | null;
     // {§machine-processes}
-    hidden_at: string | null;
+    archived_at: string | null;
+    title?: string | null;
     // {§application-session-observation}
     kind: ApplicationSessionKind;
     lifecycle: SessionLifecycle;
 }
 
-export const projectSessionRow = <T extends { loopObservations: string }>(row: T): Omit<T, "loopObservations"> & { lifecycle: SessionLifecycle } => {
-    const { loopObservations, ...rest } = row;
+export const projectSessionRow = <T extends { loopObservations: string; title?: string | null }>(row: T): Omit<T, "loopObservations" | "title"> & { lifecycle: SessionLifecycle; title?: string } => {
+    const { loopObservations, title, ...rest } = row;
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: the session query's loop observations, as its SQL aggregates them
     const loops = JSON.parse(loopObservations) as Array<{ status: number; sequence: number; terminatedAt: string | null }>;
-    return { ...rest, lifecycle: lifecycleOfLoopStatus(selectSessionLoop(loops)?.status) };
+    return {
+        ...rest,
+        ...(typeof title === "string" ? { title } : {}),
+        lifecycle: lifecycleOfLoopStatus(selectSessionLoop(loops)?.status),
+    };
 };
 
 export interface SessionQuery {
     origin?: SessionRow["origin"];
     parentSessionId?: number | null;
-    hidden?: boolean;
+    archived?: boolean;
 }
 
 export default class Envelope {
@@ -83,13 +88,13 @@ export default class Envelope {
         while (workspace === undefined && opts.name === undefined) workspace = await insert(Envelope.generateWorkspaceName());
         if (workspace === undefined) {
             const name = opts.name!;
-            // {§machine-processes} A hidden workspace still holds its name.
-            const holder = await db.envelope_get_workspace_by_name.get<{ hidden_at: string | null }>({ name });
+            // {§machine-processes} An archived workspace still holds its name.
+            const holder = await db.envelope_get_workspace_by_name.get<{ archived_at: string | null }>({ name });
             throw envelopeFailure(
                 "daemon:workspace",
                 "name-conflict",
                 409,
-                `Workspace name '${name}' is already in use${holder === undefined || holder.hidden_at === null ? "" : " by a hidden workspace"}.`,
+                `Workspace name '${name}' is already in use${holder === undefined || holder.archived_at === null ? "" : " by an archived workspace"}.`,
                 {
                     name,
                     recovery: "Choose another workspace name or attach to the existing workspace.",
@@ -147,7 +152,7 @@ export default class Envelope {
             origin: query.origin ?? null,
             filter_parent: filterParent ? 1 : 0,
             parent_session_id: query.parentSessionId ?? null,
-            hidden: query.hidden === undefined ? null : query.hidden ? 1 : 0,
+            archived: query.archived === undefined ? null : query.archived ? 1 : 0,
         });
         return rows.map(projectSessionRow);
     }
@@ -171,8 +176,8 @@ export default class Envelope {
         });
     }
 
-    static async listWorkspaces(db: Db, hidden?: boolean): Promise<WorkspaceRow[]> {
-        return await db.envelope_list_workspaces.all<WorkspaceRow>({ hidden: hidden === undefined ? null : hidden ? 1 : 0 });
+    static async listWorkspaces(db: Db, archived?: boolean): Promise<WorkspaceRow[]> {
+        return await db.envelope_list_workspaces.all<WorkspaceRow>({ archived: archived === undefined ? null : archived ? 1 : 0 });
     }
 
     // workspace.rename — the workspace name is a mutable handle (vs a session's immutable

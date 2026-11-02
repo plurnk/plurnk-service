@@ -832,7 +832,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     parentSessionId: 1,
                     kind: "work",
                     lifecycle: "running",
-                    hidden_at: null,
+                    archived_at: null,
                 });
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
@@ -1302,7 +1302,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     parentSessionId: 1,
                     kind: "work",
                     lifecycle: "running",
-                    hidden_at: null,
+                    archived_at: null,
                 },
                 {
                     id: 3,
@@ -1314,7 +1314,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     parentSessionId: null,
                     kind: "root",
                     lifecycle: "running",
-                    hidden_at: null,
+                    archived_at: null,
                 },
             );
 
@@ -1757,7 +1757,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 parentSessionId: 1,
                 kind: "work",
                 lifecycle: "running",
-                hidden_at: null,
+                archived_at: null,
             });
             const origListModuleActions = h.port.listModuleActions.bind(h.port);
             h.port.listModuleActions = () => [
@@ -2458,57 +2458,82 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             assert.equal(status?.claimedAt, Date.parse("2026-10-25T00:00:00.000Z"));
             assert.equal(status?.terminatedAt, Date.parse("2026-10-25T00:00:01.000Z"));
 
-            // 5. workspace.hide, workspace.list includeHidden, session/delete unhide, and live reasoning/inbox entry URLs (#1388)
+            // 5. workspace.archive, workspace.list includeArchived, session/archive, session/unarchive, session/set_title, session/status, auth/status, and live reasoning/inbox entry URLs (#1388, #1396)
             const wsCreated = await sendRpc(5, "_plurnk/action", {
                 kind: "workspace.create",
-                params: { name: "ws-to-hide" },
+                params: { name: "ws-to-archive" },
             });
-            const hiddenWsId = wsCreated.id as number;
-            const wsHidden = await sendRpc(6, "_plurnk/action", {
-                kind: "workspace.hide",
-                params: { workspaceId: hiddenWsId },
+            const archivedWsId = wsCreated.id as number;
+            const wsArchived = await sendRpc(6, "_plurnk/action", {
+                kind: "workspace.archive",
+                params: { workspaceId: archivedWsId },
             });
-            assert.equal(wsHidden.id, hiddenWsId);
-            assert.equal(typeof wsHidden.hidden_at, "string");
+            assert.equal(wsArchived.id, archivedWsId);
+            assert.equal(typeof wsArchived.archived_at, "string");
 
             const listedDefault = await sendRpc(7, "_plurnk/action", {
                 kind: "workspace.list",
                 params: {},
             });
             assert.ok(
-                !(listedDefault.workspaces as Array<{ id: number }>).some((w) => w.id === hiddenWsId),
-                "workspace.list omits hidden workspaces by default",
+                !(listedDefault.workspaces as Array<{ id: number }>).some((w) => w.id === archivedWsId),
+                "workspace.list omits archived workspaces by default",
             );
 
-            const listedWithHidden = await sendRpc(8, "_plurnk/action", {
+            const listedWithArchived = await sendRpc(8, "_plurnk/action", {
                 kind: "workspace.list",
-                params: { includeHidden: true },
+                params: { includeArchived: true },
             });
             assert.ok(
-                (listedWithHidden.workspaces as Array<{ id: number }>).some((w) => w.id === hiddenWsId),
-                "workspace.list includes hidden workspaces when includeHidden: true",
+                (listedWithArchived.workspaces as Array<{ id: number }>).some((w) => w.id === archivedWsId),
+                "workspace.list includes archived workspaces when includeArchived: true",
             );
 
-            const wsShown = await sendRpc(9, "_plurnk/action", {
-                kind: "workspace.hide",
-                params: { workspaceId: hiddenWsId, hidden: false },
+            const wsUnarchived = await sendRpc(9, "_plurnk/action", {
+                kind: "workspace.archive",
+                params: { workspaceId: archivedWsId, archived: false },
             });
-            assert.equal(wsShown.hidden_at, null);
+            assert.equal(wsUnarchived.archived_at, null);
 
-            await sendRpc(10, "session/delete", { sessionId: "1#user" });
-            const listedAfterDelete = await sendRpc(11, "session/list", { cwd: "/workspace/alpha" });
+            await sendRpc(10, "session/archive", { sessionId: "1#user" });
+            const listedAfterArchive = await sendRpc(11, "session/list", { cwd: "/workspace/alpha" });
             assert.ok(
-                !(listedAfterDelete.sessions as Array<{ sessionId: string }>).some((s) => s.sessionId === "1#user"),
+                !(listedAfterArchive.sessions as Array<{ sessionId: string }>).some((s) => s.sessionId === "1#user"),
             );
+            const listedOnlyArchived = await sendRpc(110, "session/list", {
+                cwd: "/workspace/alpha",
+                archived: "only",
+            });
+            assert.ok(
+                (listedOnlyArchived.sessions as Array<{ sessionId: string; archived?: boolean }>).some(
+                    (s) => s.sessionId === "1#user" && s.archived === true,
+                ),
+            );
+            const savedStatus = await sendRpc(111, "session/status", { sessionId: "1#user" });
+            assert.equal(savedStatus.status, "saved");
 
-            await sendRpc(12, "session/delete", {
+            await sendRpc(12, "session/unarchive", {
                 sessionId: "1#user",
-                _meta: { plurnk: { hidden: false } },
             });
-            const listedAfterUnhide = await sendRpc(13, "session/list", { cwd: "/workspace/alpha" });
+            const listedAfterUnarchive = await sendRpc(13, "session/list", { cwd: "/workspace/alpha" });
             assert.ok(
-                (listedAfterUnhide.sessions as Array<{ sessionId: string }>).some((s) => s.sessionId === "1#user"),
+                (listedAfterUnarchive.sessions as Array<{ sessionId: string; archived?: boolean }>).some(
+                    (s) => s.sessionId === "1#user" && s.archived === false,
+                ),
             );
+            const titled = await sendRpc(130, "session/set_title", {
+                sessionId: "1#user",
+                title: "  Primary Session  ",
+            });
+            assert.equal(titled.title, "Primary Session");
+            const listedAfterTitle = await sendRpc(131, "session/list", { cwd: "/workspace/alpha" });
+            const userSessionInfo = (
+                listedAfterTitle.sessions as Array<{ sessionId: string; title?: string }>
+            ).find((s) => s.sessionId === "1#user");
+            assert.equal(userSessionInfo?.title, "Primary Session");
+            const authStatus = await sendRpc(132, "auth/status", {});
+            assert.equal(authStatus.state, "authenticated");
+            assert.ok(Array.isArray(authStatus.accounts) && authStatus.accounts.length > 0);
 
             const liveThoughtUpdates = translator.reasoning({
                 sessionId: 1,

@@ -1,5 +1,10 @@
-// {§machine-processes} Hiding and showing workspaces and sessions: a durable mark, never a deletion.
-import type { ApplicationSessionHiding, ApplicationWorkspaceHiding } from "@plurnk/plurnk-contracts";
+// {§machine-processes} Archiving, unarchiving, deleting, and titling workspaces and sessions.
+import type {
+    ApplicationSessionArchiving,
+    ApplicationSessionDeletion,
+    ApplicationSessionTitling,
+    ApplicationWorkspaceArchiving,
+} from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import { daemonFailure } from "./daemon-results.ts";
 
@@ -40,53 +45,172 @@ export default class Places {
         };
     }
 
-    static #refuse(owner: string, live: LiveWork, detail: string, extensions: Readonly<Record<string, unknown>>): void {
+    static #refuse(owner: string, live: LiveWork, detail: string, verb: string, extensions: Readonly<Record<string, unknown>>): void {
         if (WORK.every(([key]) => live[key] === 0)) return;
         throw daemonFailure(owner, "live-work", 409, `${detail} ${described(live)}.`, {
-            ...extensions, ...live, recovery: "Conclude or cancel the work, then hide it.", retryable: false,
+            ...extensions, ...live, recovery: `Conclude or cancel the work, then ${verb} it.`, retryable: false,
         });
     }
 
-    static async setWorkspaceHidden(db: Db, gates: PlaceGates, workspaceId: number, hidden: boolean): Promise<{ readonly hiding: ApplicationWorkspaceHiding; readonly changed: boolean }> {
+    static async setWorkspaceArchived(
+        db: Db,
+        gates: PlaceGates,
+        workspaceId: number,
+        archived: boolean,
+    ): Promise<{ readonly archiving: ApplicationWorkspaceArchiving; readonly changed: boolean }> {
         const mark = async () => {
-            const row = await db.place_workspace_mark.get<{ hidden_at: string | null }>({ workspace_id: workspaceId });
+            const row = await db.place_workspace_mark.get<{ archived_at: string | null }>({ workspace_id: workspaceId });
             if (row === undefined) throw daemonFailure("daemon:workspace", "workspace-not-found", 404, `Workspace ${workspaceId} does not exist.`, { workspaceId });
-            return row.hidden_at;
+            return row.archived_at;
         };
-        if (!hidden) {
-            const shown = await db.place_workspace_show.get<{ id: number }>({ workspace_id: workspaceId });
-            if (shown === undefined) await mark();
-            return { hiding: { id: workspaceId, hidden_at: null }, changed: shown !== undefined };
+        if (!archived) {
+            const unarchived = await db.place_workspace_unarchive.get<{ id: number }>({ workspace_id: workspaceId });
+            if (unarchived === undefined) await mark();
+            return { archiving: { id: workspaceId, archived_at: null }, changed: unarchived !== undefined };
         }
-        // The hide's own statement refuses a loop or a stream that started after the read; the read then names it.
+        // The archive's own statement refuses a loop or a stream that started after the read; the read then names it.
         for (;;) {
             const before = await mark();
-            if (before !== null) return { hiding: { id: workspaceId, hidden_at: before }, changed: false };
-            Places.#refuse("daemon:workspace", await Places.#liveWork(db, gates, workspaceId, null), `Workspace ${workspaceId} holds`, { workspaceId });
-            const row = await db.place_workspace_hide.get<{ hidden_at: string }>({ workspace_id: workspaceId });
-            if (row !== undefined) return { hiding: { id: workspaceId, hidden_at: row.hidden_at }, changed: true };
+            if (before !== null) return { archiving: { id: workspaceId, archived_at: before }, changed: false };
+            Places.#refuse("daemon:workspace", await Places.#liveWork(db, gates, workspaceId, null), `Workspace ${workspaceId} holds`, "archive", { workspaceId });
+            const row = await db.place_workspace_archive.get<{ archived_at: string }>({ workspace_id: workspaceId });
+            if (row !== undefined) return { archiving: { id: workspaceId, archived_at: row.archived_at }, changed: true };
         }
     }
 
-    static async setSessionHidden(db: Db, gates: PlaceGates, workspaceId: number, sessionId: number, hidden: boolean): Promise<ApplicationSessionHiding> {
+    static async setSessionArchived(
+        db: Db,
+        gates: PlaceGates,
+        workspaceId: number,
+        sessionId: number,
+        archived: boolean,
+    ): Promise<ApplicationSessionArchiving> {
         const mark = async () => {
-            const row = await db.place_session_mark.get<{ hidden_at: string | null }>({ workspace_id: workspaceId, session_id: sessionId });
+            const row = await db.place_session_mark.get<{ archived_at: string | null; origin: string }>({ workspace_id: workspaceId, session_id: sessionId });
             if (row === undefined) throw daemonFailure("daemon:session", "session-not-found", 404,
                 `Session ${sessionId} does not belong to workspace ${workspaceId}.`, { workspaceId, sessionId });
-            return row.hidden_at;
+            return row.archived_at;
         };
-        if (!hidden) {
+        if (!archived) {
             await mark();
-            const shown = await db.place_session_show.all<{ id: number }>({ workspace_id: workspaceId, session_id: sessionId });
-            return { id: sessionId, hidden_at: null, sessionIds: ids(shown) };
+            const unarchived = await db.place_session_unarchive.all<{ id: number }>({ workspace_id: workspaceId, session_id: sessionId });
+            return { id: sessionId, archived_at: null, sessionIds: ids(unarchived) };
         }
         for (;;) {
             const before = await mark();
-            if (before !== null) return { id: sessionId, hidden_at: before, sessionIds: [] };
+            if (before !== null) return { id: sessionId, archived_at: before, sessionIds: [] };
             Places.#refuse("daemon:session", await Places.#liveWork(db, gates, workspaceId, sessionId),
-                `Session ${sessionId} and the sessions beneath it hold`, { workspaceId, sessionId });
-            const rows = await db.place_session_hide.all<{ id: number; hidden_at: string }>({ workspace_id: workspaceId, session_id: sessionId });
-            if (rows.length > 0) return { id: sessionId, hidden_at: rows[0].hidden_at, sessionIds: ids(rows) };
+                `Session ${sessionId} and the sessions beneath it hold`, "archive", { workspaceId, sessionId });
+            const rows = await db.place_session_archive.all<{ id: number; archived_at: string }>({ workspace_id: workspaceId, session_id: sessionId });
+            if (rows.length > 0) return { id: sessionId, archived_at: rows[0].archived_at, sessionIds: ids(rows) };
         }
+    }
+
+    static async deleteSession(
+        db: Db,
+        gates: PlaceGates,
+        workspaceId: number,
+        sessionId: number,
+    ): Promise<ApplicationSessionDeletion> {
+        for (;;) {
+            const row = await db.place_session_mark.get<{ archived_at: string | null; origin: string }>({
+                workspace_id: workspaceId,
+                session_id: sessionId,
+            });
+            if (row === undefined) {
+                throw daemonFailure(
+                    "daemon:session",
+                    "session-not-found",
+                    404,
+                    `Session ${sessionId} does not belong to workspace ${workspaceId}.`,
+                    { workspaceId, sessionId },
+                );
+            }
+            if (row.origin !== "model") {
+                throw daemonFailure(
+                    "daemon:session",
+                    "model-session-required",
+                    409,
+                    `Session ${sessionId} is not a model session.`,
+                    { workspaceId, sessionId, origin: row.origin, retryable: false },
+                );
+            }
+            Places.#refuse(
+                "daemon:session",
+                await Places.#liveWork(db, gates, workspaceId, sessionId),
+                `Session ${sessionId} and the sessions beneath it hold`,
+                "delete",
+                { workspaceId, sessionId },
+            );
+            const subtree = await db.place_session_subtree.all<{ id: number }>({
+                workspace_id: workspaceId,
+                session_id: sessionId,
+            });
+            const deleted = await db.place_session_delete.get<{ id: number }>({
+                workspace_id: workspaceId,
+                session_id: sessionId,
+            });
+            if (deleted !== undefined) {
+                return { id: sessionId, sessionIds: ids(subtree) };
+            }
+        }
+    }
+
+    static async setSessionTitle(
+        db: Db,
+        workspaceId: number,
+        sessionId: number,
+        title: string,
+    ): Promise<{ readonly titling: ApplicationSessionTitling; readonly changed: boolean }> {
+        if (typeof title !== "string" || !title.isWellFormed()) {
+            throw daemonFailure(
+                "daemon:session",
+                "title-invalid",
+                400,
+                "title must be a well-formed non-empty string.",
+                { field: "title", retryable: false },
+            );
+        }
+        const normalized = title.trim();
+        if (normalized.length === 0) {
+            throw daemonFailure(
+                "daemon:session",
+                "title-invalid",
+                400,
+                "title must not be empty after trimming whitespace.",
+                { field: "title", retryable: false },
+            );
+        }
+        const row = await db.place_session_mark.get<{ archived_at: string | null; origin: string; title: string | null }>({
+            workspace_id: workspaceId,
+            session_id: sessionId,
+        });
+        if (row === undefined) {
+            throw daemonFailure(
+                "daemon:session",
+                "session-not-found",
+                404,
+                `Session ${sessionId} does not belong to workspace ${workspaceId}.`,
+                { workspaceId, sessionId },
+            );
+        }
+        if (row.origin !== "model") {
+            throw daemonFailure(
+                "daemon:session",
+                "model-session-required",
+                409,
+                `Session ${sessionId} is not a model session.`,
+                { workspaceId, sessionId, origin: row.origin, retryable: false },
+            );
+        }
+        if (row.title === normalized) {
+            return { titling: { id: sessionId, title: normalized }, changed: false };
+        }
+        await db.place_session_title.get<{ id: number; title: string }>({
+            workspace_id: workspaceId,
+            session_id: sessionId,
+            title: normalized,
+        });
+        return { titling: { id: sessionId, title: normalized }, changed: true };
     }
 }

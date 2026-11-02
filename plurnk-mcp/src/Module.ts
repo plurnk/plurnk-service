@@ -255,7 +255,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         } catch {
             return;
         }
-        let workspaces = await seam.listWorkspaces({ hidden: false });
+        let workspaces = await seam.listWorkspaces({ archived: false });
         const needsBootstrapWorkspace = envDefs.some((entry) => {
             try {
                 return rawWorkspaceBinding(entry.alias, entry.definition, this.#env) !== undefined
@@ -266,7 +266,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         });
         if (workspaces.length === 0 && needsBootstrapWorkspace) {
             await this.#openWork.ensureWorkspace("default");
-            workspaces = await seam.listWorkspaces({ hidden: false });
+            workspaces = await seam.listWorkspaces({ archived: false });
         }
         let operatorDefs = envDefs;
         if (workspaces.length > 0) {
@@ -303,7 +303,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             if (rawWs === undefined || rawWs === "*" || (Array.isArray(rawWs) && rawWs.includes("*"))) {
                 if (workspaces.length === 0) {
                     const created = await this.#openWork.ensureWorkspace("default");
-                    workspaces = await seam.listWorkspaces({ hidden: false });
+                    workspaces = await seam.listWorkspaces({ archived: false });
                     targetWorkspaces.push(created);
                 } else {
                     for (const ws of workspaces) targetWorkspaces.push({ id: ws.id, name: ws.name });

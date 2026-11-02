@@ -63,6 +63,8 @@ export interface AcpOverviewSessionMetadata {
     readonly kind: ApplicationSessionKind;
     readonly lifecycle: LoopLifecycle;
     readonly gates: number;
+    readonly archived?: boolean;
+    readonly title?: string | null;
     readonly projectRoot: string | null;
     readonly projectLabel: string | null;
     readonly reply: AcpOverviewReply | null;

@@ -974,8 +974,8 @@ test("{§notifications} {§application-session-observation} {§methods-workspace
             // {§application-session-observation} — a root session with no loop yet (#523).
             kind: "root",
             lifecycle: "idle",
-            // {§machine-processes} — shown.
-            hidden_at: null,
+            // {§machine-processes} — unarchived.
+            archived_at: null,
         });
         assert.equal(typeof projectedContext.created_at, "string");
         // {§methods-workspace-create} — an omitted parent filter returns every lineage
@@ -1004,7 +1004,7 @@ test("{§notifications} {§application-session-observation} {§methods-workspace
             // forkSession mints a FORK child (fork boundary set); no loop has run on it yet.
             kind: "fork",
             lifecycle: "idle",
-            hidden_at: null,
+            archived_at: null,
         });
 
         const terminated: Array<{ loopId: number }> = [];

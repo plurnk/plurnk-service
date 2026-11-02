@@ -294,6 +294,7 @@ export default class SessionTranslator {
                     : undefined;
         const targetCallId = invocationCoordinate(rawInvocation);
         if (targetCallId !== null) {
+            const dischargeStatus = SessionTranslator.toolStatusOf(entry);
             const dischargeContent: ToolCallContent[] = (entry.op === "SEND" || entry.op === "DONE" || entry.op === "FAIL") && text.length > 0
                 ? [{ type: "content", content: { type: "text", text } }]
                 : contentBlocks;
@@ -302,7 +303,8 @@ export default class SessionTranslator {
                 update: {
                     sessionUpdate: "tool_call_update",
                     toolCallId: targetCallId,
-                    status: SessionTranslator.toolStatusOf(entry),
+                    status: dischargeStatus,
+                    capabilities: { cancel: dischargeStatus === "in_progress" ? {} : null },
                     rawOutput: receipt,
                     ...(dischargeContent.length === 0 ? {} : { content: dischargeContent }),
                     _meta: { plurnk: opMeta },
@@ -501,6 +503,14 @@ export default class SessionTranslator {
             const title = comment === null ? baseTitle : `${baseTitle} — ${comment}`;
 
             const startLine = extractStartLine(attrs, parsedTx, parsedRx);
+            const cancellable =
+                status === "in_progress" ||
+                status === "pending" ||
+                ((entry.op === "WORK" || entry.op === "FORK") &&
+                    status === "completed" &&
+                    typeof attrs.session === "string" &&
+                    attrs.session.length > 0);
+            const settledStream = typeof attrs.stream === "string" && status !== "in_progress";
 
             updates.push({
                 sessionId: this.#acpSessionId,
@@ -511,6 +521,11 @@ export default class SessionTranslator {
                     title,
                     kind,
                     status,
+                    ...(cancellable
+                        ? { capabilities: { cancel: {} } }
+                        : settledStream
+                          ? { capabilities: { cancel: null } }
+                          : {}),
                     ...(address === null
                         ? {}
                         : {
@@ -547,6 +562,7 @@ export default class SessionTranslator {
                     update: {
                         sessionUpdate: "terminal_update",
                         terminalId,
+                        capabilities: { cancel: status === "in_progress" ? {} : null },
                         ...(command !== undefined ? { command } : {}),
                         ...(initialOut !== undefined && initialOut.length > 0
                             ? { output: { data: Buffer.from(initialOut, "utf8").toString("base64") } }
@@ -698,6 +714,7 @@ export default class SessionTranslator {
                 update: {
                     sessionUpdate: "terminal_update",
                     terminalId,
+                    capabilities: { cancel: null },
                     exitStatus: {
                         exitCode,
                         ...(signal !== undefined ? { signal } : {}),
@@ -716,6 +733,7 @@ export default class SessionTranslator {
                     sessionUpdate: "tool_call_update",
                     toolCallId,
                     status: status < 400 ? "completed" : "failed",
+                    capabilities: { cancel: null },
                     _meta: {
                         plurnk: {
                             status,

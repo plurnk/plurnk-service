@@ -1,10 +1,11 @@
 // A person's client operations: each one an administrative loop in the workspace's runtime session with its own
 // cancellation scope, the statements it dispatches as client turns, its cancellation, and the rollback that runs as
 // one such operation. Split out of Daemon, which keeps the delegating port entry points.
-import { Validator, type PlurnkStatement, type RollbackReport } from "@plurnk/plurnk-contracts";
+import { isRecord, Validator, type PlurnkStatement, type RollbackReport } from "@plurnk/plurnk-contracts";
 import ChannelWrite from "../core/ChannelWrite.ts";
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
+import { renderAddress } from "../core/plurnk-uri.ts";
 import RuntimeSession from "../core/RuntimeSession.ts";
 import Turn from "../core/Turn.ts";
 import type WorkspaceGate from "../core/WorkspaceGate.ts";
@@ -170,6 +171,73 @@ export default class ClientOperations {
         const executions = await ChannelWrite.findOpenSubscriptionsForClientLoop(this.#db, { workspaceId, loopId });
         const reaped = await Promise.all(executions.map((subscriptionId) => this.#engine.cancelSubscription(subscriptionId)));
         return dispatching || reaped.includes(true);
+    }
+
+    // {§methods-workspace-create} Cancel a single live stream subscription owned by `sessionId`.
+    async cancelStream(args: {
+        readonly workspaceId: number;
+        readonly sessionId: number;
+        readonly entryId?: number;
+        readonly target?: string;
+        readonly coordinate?: string;
+    }): Promise<boolean> {
+        const workspaceId = ClientInput.assertId("stream.cancel", "workspaceId", args.workspaceId);
+        const sessionId = ClientInput.assertId("stream.cancel", "sessionId", args.sessionId);
+        await this.#assertSessionOwned(workspaceId, sessionId);
+        const rows = await this.#db.session_open_streams.all<{
+            id: number;
+            entry_id: number;
+            session_id: number;
+            scheme: string;
+            authority: string;
+            pathname: string;
+            source: string | null;
+        }>({ session_id: sessionId });
+        if (rows.length === 0) return false;
+        const matched = new Set<number>();
+        const fallbackTarget = args.target;
+        const fallbackCoordinate = args.coordinate;
+        for (const row of rows) {
+            const targetUri = renderAddress({ scheme: row.scheme, authority: row.authority, pathname: row.pathname });
+            if (
+                (args.entryId !== undefined && row.entry_id === args.entryId) ||
+                (fallbackTarget !== undefined && targetUri === fallbackTarget) ||
+                (fallbackCoordinate !== undefined && row.source !== null && row.source.startsWith(`log:///${fallbackCoordinate}/`))
+            ) {
+                matched.add(row.id);
+            }
+        }
+        if (matched.size === 0 && args.entryId !== undefined) {
+            const logRow = await this.#db.log_entry_by_id.get<{
+                session_id: number;
+                loop_seq: number;
+                turn_seq: number;
+                sequence: number;
+                attrs: string;
+            }>({ id: args.entryId });
+            if (logRow !== undefined && logRow.session_id === sessionId) {
+                const coord = `${logRow.loop_seq}/${logRow.turn_seq}/${logRow.sequence}`;
+                let streamTarget: string | undefined;
+                try {
+                    const parsed: unknown = JSON.parse(logRow.attrs);
+                    if (isRecord(parsed) && typeof parsed.stream === "string") streamTarget = parsed.stream;
+                } catch {
+                    // ignore
+                }
+                for (const row of rows) {
+                    const targetUri = renderAddress({ scheme: row.scheme, authority: row.authority, pathname: row.pathname });
+                    if (
+                        (streamTarget !== undefined && targetUri === streamTarget) ||
+                        (row.source !== null && row.source.startsWith(`log:///${coord}/`))
+                    ) {
+                        matched.add(row.id);
+                    }
+                }
+            }
+        }
+        if (matched.size === 0) return false;
+        const reaped = await Promise.all([...matched].map((subscriptionId) => this.#engine.cancelSubscription(subscriptionId)));
+        return reaped.includes(true);
     }
 
     async #dispatchClientStatement(args: {
