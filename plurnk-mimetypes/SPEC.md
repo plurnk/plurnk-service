@@ -23,7 +23,7 @@ The exported `BaseHandler`, `HandlerContent`, `HandlerMetadata`, and channel typ
 | `projectionConfiguration()` | `""` | Return a deterministic canonical string for effective settings that can change projections (fails hard on invalid settings). |
 | `dispose()?` | No-op when extending `BaseHandler`. | Required only when the handler retains releasable resources. |
 
-- **Authority:** The handler owns the material in each projection. The framework owns detection, handler routing, channel selection, default JSON-to-XML projection, and shared references/query engines. Consumers own storage, packet rendering, and token budgets.
+- **Authority:** The handler owns the material in each projection. The framework owns detection, handler routing, channel selection, default JSON-to-XML projection, and shared references/query engines. Consumers own storage, packet rendering, and curation budgets.
 - **Content shape (`plurnk.binary`):** A package-level `plurnk.binary: true` declaration selects `Uint8Array` rather than UTF-8 decoding when reading a filesystem path; text handlers receive a `string`. Inline callers supply `ProcessInput.content` in the declared shape; the framework does not coerce an explicitly supplied value.
 - **Metadata injection:** Handler identity (`mimetype`, `glyph`, `extensions`) is injected from the discovered package declaration at construction, and the orchestrator validates the handler surface structurally before caching it.
 

@@ -89,8 +89,9 @@ MCP is one family of workspace Functionality, managed with the verbs every famil
 definition and enabled state. Use `disable` to suppress an inherited server.
 MCP management neither installs nor deletes plugins or configuration files.
 
-An ACP client sends each as the ordinary management action via the `_plurnk/action`
-JSON-RPC 2.0 method, receiving the action result or exact RFC 9457 Problem Details:
+An ACPv2 client toggles enabled servers through `session/set_config_option` (`mcp:<alias>`)
+and sends workspace-wide family actions via `_plurnk/action`, receiving the action result or
+exact RFC 9457 Problem Details:
 
 ```json
 {
@@ -188,8 +189,8 @@ text/byte view. Listing the resource alone does not attach it.
 
 Current pagination, cache hints, unified subscriptions, progress,
 cancellation, multi-round-trip input, elicitation, and negotiated Tasks remain
-inside the owning operation. Client input uses the standard ACP interrupt and
-resume lifecycle; protocol continuation state is never exposed to the model or
+inside the owning operation. Client input uses ACPv2 `elicitation/create` and
+`session/resume`; protocol continuation state is never exposed to the model or
 client.
 
 ## Authorization

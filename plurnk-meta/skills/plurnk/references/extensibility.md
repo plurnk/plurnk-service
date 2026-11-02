@@ -30,7 +30,7 @@ before it cannot do:
   model provider or a page materializer. The operator installs and trusts it, and
   it loads when the daemon starts.
 - **A module** only when the daemon itself serves or manages something: a family
-  behind the shared management verbs, an endpoint on Plurnk's listener, or an observer of its events.
+  behind the shared management verbs, a standard listener endpoint (ACP v2 at `/acp`, OAuth 2.1 at `/.well-known/*` and `/oauth/*`), or an observer of its events.
 
 ## Plurnk uses X
 
@@ -54,7 +54,6 @@ the daemon starts.
 | --- | --- | --- | --- |
 | Application | an ACP v2 client: WebSocket or Streamable HTTP JSON-RPC 2.0 at `/acp` on the daemon's listener (`PLURNK_PORT`), authenticated via OAuth 2.1 (`/.well-known/*`, `/oauth/*`) when `PLURNK_AUTH=1` | none | `skill://plurnk/packages/@plurnk/plurnk-acp/SPEC.md`, `skill://plurnk/packages/@plurnk/plurnk-auth/SPEC.md` |
 | Command | the executable in `PLURNK_HOOKS_COMMAND`, run once per event named in `PLURNK_HOOKS_EVENTS` with one JSON line on stdin; its output and exit status change nothing | none | `skill://plurnk/packages/@plurnk/plurnk-hooks/SPEC.md` |
-| Protocol server | a module that declares mounts and serves its routes on the daemon's listener | trusted, in the daemon | `skill://plurnk/packages/@plurnk/plurnk-modules/SPEC.md` |
 
 ## Extensions
 
@@ -68,7 +67,7 @@ An extension is one package of one kind, declared once: under `plurnk` in its
 | `mimetype` | readers for media types | `handlers` | `skill://plurnk/packages/@plurnk/plurnk-mimetypes/SPEC.md` |
 | `provider` | a model provider | `name` | `skill://plurnk/packages/@plurnk/plurnk-providers/SPEC.md` |
 | `http-materializer` | page rendering for web reads | `materializers` | `skill://plurnk/packages/@plurnk/plurnk-schemes-http/SPEC.md` |
-| `module` | lifecycle membership: a definition family behind the shared management verbs, a protocol server, or an event observer | `module` | `skill://plurnk/packages/@plurnk/plurnk-modules/SPEC.md` |
+| `module` | lifecycle membership: a definition family behind the shared management verbs, a standard listener mount (`/acp`, `/.well-known/*`, `/oauth/*`), or an event observer | `module` | `skill://plurnk/packages/@plurnk/plurnk-modules/SPEC.md` |
 
 - An extension loads when the daemon starts, from the service's installed npm
   packages. A module also loads from a plugin in `$XDG_CONFIG_HOME/plurnk/plugins/`,

@@ -4,10 +4,10 @@
 
 It owns:
 
-- ACP v2 WebSocket and Streamable HTTP JSON-RPC 2.0 transport, plus HTTP entry and history routes;
-- translation between daemon events and ACP events;
-- client-facing management actions;
-- proposal delivery and resolution over the client protocol;
+- ACP v2 WebSocket and Streamable HTTP JSON-RPC 2.0 transport (`@agentclientprotocol/sdk/experimental/v2/unstable`), plus HTTP entry and history routes;
+- projection of daemon lifecycle and log evidence onto standard ACP v2 `SessionUpdate` notifications;
+- `_plurnk/action`, the shrinking residual bridge for workspace and VM operations ACP v2 cannot yet express;
+- proposal (`session/request_permission`) and elicitation (`elicitation/create`) delivery and resolution over the ACP v2 session stream;
 - authentication at the external listener.
 
 Keep model-loop scheduling, persistence, and operation policy in core. Keep

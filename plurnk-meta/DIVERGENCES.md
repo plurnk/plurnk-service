@@ -16,10 +16,10 @@ especially for smaller models.
 
 Interoperability:
 
-- PLURNK hosts current MCP servers through `@plurnk/plurnk-mcp`, exposing
+- PLURNK hosts MCP servers through `@plurnk/plurnk-mcp` (`@modelcontextprotocol/sdk`), exposing
   their tools and resources through the ordinary operation language.
-- Clients use ACP.
-- Provider adapters use established model APIs.
+- Clients connect over ACP v2 (`@agentclientprotocol/sdk`).
+- Provider adapters delegate multi-provider wire transport to `@earendil-works/pi-ai` and official provider APIs.
 
 This difference is justified only if whole-product evaluations demonstrate an
 advantage over conventional tool calling.
@@ -27,18 +27,20 @@ advantage over conventional tool calling.
 ## Internal resource addressing
 
 Agent-visible state uses URI schemes such as `workspace:///`, `session://`,
-`ops://`, `reasoning://`, `mcp:///`, `skill://`, and `plurnk:///`. The URI
+`ops://`, `reasoning://`, `mcp:///`, `skill://`, `persona://`, and `plurnk:///`. The URI
 authority identifies the relevant session namespace where the scheme supports one.
 
 This provides one address form for project content, session state, execution
 results, and external resources. The internal representation does not alter
-MCP, ACP, or provider wire protocols.
+MCP, ACP v2, or provider wire protocols.
 
-## ACP management extensions
+## ACP v2 residual bridge
 
-ACP v2 defines JSON-RPC 2.0 sessions, notifications, and client-bound gates, and
-PLURNK management actions use `_plurnk/action` and `_meta.plurnk` extension fields
-on the same authenticated endpoint.
+PLURNK converges on ACP v2 (`@agentclientprotocol/sdk/experimental/v2/unstable`) as its client
+boundary: sessions, prompts, permissions, elicitations, terminals, tool cancellations, config
+options, and `SessionUpdate` notifications use standard ACP v2 methods and shapes.
 
-These extensions must remain optional to generic ACP consumers. If ACP
-standardizes equivalent management operations, PLURNK should adopt them.
+Only workspace and virtual-machine operations that ACP v2 cannot yet express ride `_plurnk/action`,
+and Plurnk-specific provenance rides `_meta.plurnk`. Generic ACP v2 clients operate without
+`_plurnk/action`, and whenever ACP v2 standardizes an equivalent capability, PLURNK retires its
+`_plurnk/action` counterpart in one cut (`ARCHITECTURE.md` § Standards and substrate).

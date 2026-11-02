@@ -42,7 +42,7 @@ Read a persona at `READ (persona://<name>/PERSONA.md)` (or the shorthand
 session's instruction sheet:
 
 ```plurnk
-COPY (persona://reviewer/PERSONA.md) (session://worker/AGENTS.md)
+COPY (persona://reviewer/PERSONA.md) (session://child/AGENTS.md)
 ```
 
 Create or replace a workspace persona directly with `EDIT`, writing either a

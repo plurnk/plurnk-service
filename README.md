@@ -20,7 +20,7 @@ This repository owns the daemon, language contracts, and bundled extensions.
 
 ```mermaid
 flowchart LR
-    clients["Clients"] <--> acp["ACP"]
+    clients["Clients"] <--> acp["ACP v2"]
     acp <--> core["plurnk-service"]
     core <--> providers["Model providers"]
     extensions["Scheme / executor / mimetype extensions"] --> core
@@ -29,9 +29,10 @@ flowchart LR
     core --> sqlite[(SQLite)]
 ```
 
-The daemon owns durable state and orchestration. Clients submit actions and
-render events; extensions supply capabilities under their own contracts. See
-[ARCHITECTURE.md](ARCHITECTURE.md) for process boundaries and package ownership.
+The daemon owns durable state and orchestration. Clients drive sessions, prompts,
+and approval gates over ACP v2; extensions supply capabilities under their own
+contracts. See [ARCHITECTURE.md](ARCHITECTURE.md) for process boundaries and
+package ownership.
 
 ## Installation and configuration
 
