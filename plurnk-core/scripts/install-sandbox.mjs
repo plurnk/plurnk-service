@@ -8,8 +8,8 @@ import { mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { projectTarball } from "../../scripts/lib/package-projection.mjs";
 import { usage } from "../../scripts/lib/usage.mjs";
-
 usage(import.meta, `
 usage: npm run install:sandbox | npm run uninstall:sandbox   (from plurnk-core)
 Packs every workspace and installs the service into a sandbox outside the repository as a consumer would; also the engine of test:installation.
@@ -28,7 +28,7 @@ const tarballDir = resolve(tmpdir(), "plurnk-service-sandbox-tarballs");
 const sh = (cmd, args, opts = {}) => execFileSync(cmd, args, { stdio: "inherit", ...opts });
 
 // Pack every workspace (prepack builds each). Returns { packageName: tarballPath }.
-export function packAll() {
+export async function packAll() {
     rmSync(tarballDir, { recursive: true, force: true });
     mkdirSync(tarballDir, { recursive: true });
     const workspaces = JSON.parse(readFileSync(resolve(monoRoot, "package.json"), "utf8")).workspaces;
@@ -37,13 +37,15 @@ export function packAll() {
         const dir = resolve(monoRoot, w);
         const name = JSON.parse(readFileSync(resolve(dir, "package.json"), "utf8")).name;
         const out = execFileSync("npm", ["pack", "--pack-destination", tarballDir], { cwd: dir, encoding: "utf8" });
-        map[name] = resolve(tarballDir, out.trim().split("\n").pop().trim());
+        const tarball = resolve(tarballDir, out.trim().split("\n").pop().trim());
+        await projectTarball(tarball);
+        map[name] = tarball;
     }
     return map;
 }
 
-export function installSandbox() {
-    const tarballs = packAll();
+export async function installSandbox() {
+    const tarballs = await packAll();
     const core = tarballs["@plurnk/plurnk-service"];
     if (core === undefined) throw new Error("packAll produced no @plurnk/plurnk-service tarball");
     rmSync(sandbox, { recursive: true, force: true });
@@ -83,7 +85,7 @@ export function uninstallSandbox() {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const cmd = process.argv[2];
-    if (cmd === "install") { installSandbox(); process.stdout.write(`sandbox installed: ${sandbox}\n`); }
+    if (cmd === "install") { await installSandbox(); process.stdout.write(`sandbox installed: ${sandbox}\n`); }
     else if (cmd === "uninstall") { uninstallSandbox(); process.stdout.write("sandbox removed\n"); }
     else { process.stderr.write("usage: install-sandbox.mjs install|uninstall\n"); process.exit(1); }
 }
