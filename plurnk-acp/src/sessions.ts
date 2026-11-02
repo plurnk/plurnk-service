@@ -6,6 +6,8 @@ import {
     RequestError,
     isMcpServerAcp,
     type AgentContext,
+    type AuthAccount,
+    type AuthStatusResponse,
     type AvailableCommand,
     type ListSessionsResponse,
     type SessionConfigOption,
@@ -94,6 +96,7 @@ export interface BoundSession {
 
 export interface OverviewRequestOptions {
     readonly cwd?: string | null;
+    readonly archived?: "exclude" | "include" | "only";
     readonly workspaceId?: number;
     readonly workspaceName?: string;
     readonly limit?: number;
@@ -110,6 +113,7 @@ export interface AcpPeer {
     readonly sessions: Map<string, BoundSession>;
     client: AgentContext | null;
     overviewSubscription?: OverviewSubscription;
+    lastAuthStatusJson?: string;
     closeTransport?: () => void;
     closeWithProblem(problem: ProblemDetails): Promise<void>;
 }
@@ -154,7 +158,7 @@ export const buildSessionDescendants = (
     ancestorSessionId: number,
 ): readonly AcpDescendantState[] =>
     sessions
-        .filter((s) => s.hidden_at === null && isDescendantSession(sessions, s.id, ancestorSessionId))
+        .filter((s) => s.archived_at === null && isDescendantSession(sessions, s.id, ancestorSessionId))
         .map((s) => ({
             id: s.id,
             name: s.name,
@@ -414,7 +418,8 @@ export const toRequestError = (err: unknown): RequestError => {
     const problem = extractProblemFromError(err);
     if (problem !== null) {
         const slug = typeof problem.code === "string" ? problem.code : problem.type;
-        return new RequestError(-32000, `${problem.detail} (${slug})`, { ...problem, problem });
+        const code = problem.status === 404 ? -32002 : -32000;
+        return new RequestError(code, `${problem.detail} (${slug})`, { ...problem, problem });
     }
     return RequestError.internalError(err instanceof Error ? { detail: err.message } : undefined);
 };
@@ -432,6 +437,47 @@ export const tryListProviders = (
     }
 };
 
+export const buildAuthStatus = (seam: ApplicationPort): AuthStatusResponse => {
+    const { aliases } = tryListProviders(seam);
+    const aliasList = aliases ?? [];
+    const accounts: AuthAccount[] = [];
+    const seenLabels = new Set<string>();
+
+    for (const a of aliasList) {
+        if (seenLabels.has(a.alias)) continue;
+        seenLabels.add(a.alias);
+        accounts.push({
+            label: a.alias,
+            name: `${a.provider}/${a.model}`,
+            active: a.active,
+        });
+    }
+
+    const catalogItems = (() => {
+        try {
+            return seam.listModels?.({})?.items ?? [];
+        } catch {
+            return [];
+        }
+    })();
+
+    for (const entry of catalogItems) {
+        if (!entry.readiness?.ready) continue;
+        if (seenLabels.has(entry.provider)) continue;
+        seenLabels.add(entry.provider);
+        accounts.push({
+            label: entry.provider,
+            name: entry.providerName || entry.provider,
+            active: aliasList.some((a) => a.provider === entry.provider && a.active) || aliasList.length === 0,
+        });
+    }
+
+    return {
+        state: accounts.length > 0 ? "authenticated" : "unauthenticated",
+        ...(accounts.length > 0 ? { accounts } : {}),
+    };
+};
+
 export const extractPlurnkMeta = (meta: unknown): {
     readonly workspaceId?: number;
     readonly workspaceName?: string;
@@ -440,7 +486,7 @@ export const extractPlurnkMeta = (meta: unknown): {
     readonly create?: boolean;
     readonly activate?: boolean;
     readonly control?: boolean;
-    readonly hidden?: boolean;
+    readonly archived?: boolean;
     readonly messageId?: string;
     readonly projectRoot?: string | null;
     readonly settings?: Record<string, unknown>;
@@ -469,7 +515,7 @@ export const extractPlurnkMeta = (meta: unknown): {
     const create = typeof p.create === "boolean" ? p.create : undefined;
     const activate = typeof p.activate === "boolean" ? p.activate : undefined;
     const control = typeof p.control === "boolean" ? p.control : undefined;
-    const hidden = typeof p.hidden === "boolean" ? p.hidden : undefined;
+    const archived = typeof p.archived === "boolean" ? p.archived : undefined;
     const messageId = typeof p.messageId === "string" && p.messageId.trim().length > 0
         ? p.messageId.trim()
         : undefined;
@@ -492,7 +538,7 @@ export const extractPlurnkMeta = (meta: unknown): {
         ...(create !== undefined ? { create } : {}),
         ...(activate !== undefined ? { activate } : {}),
         ...(control !== undefined ? { control } : {}),
-        ...(hidden !== undefined ? { hidden } : {}),
+        ...(archived !== undefined ? { archived } : {}),
         ...(messageId !== undefined ? { messageId } : {}),
         ...(projectRoot !== undefined ? { projectRoot } : {}),
         ...(settings !== undefined ? { settings } : {}),
@@ -613,6 +659,127 @@ export const resolveWorkspace = async (
     }
 };
 
+export const throwSessionNotFound = (sessionId: string): never => {
+    const problem = Problems.create("acp", "session-not-found", 404, `Session '${sessionId}' does not exist.`);
+    throw new RequestError(
+        -32002,
+        `Session '${sessionId}' does not exist. (session-not-found)`,
+        { sessionId, ...problem, problem },
+    );
+};
+
+export const lookupSessionTarget = async (
+    seam: ApplicationPort,
+    rawSessionId: string,
+    cwd?: string,
+    meta?: unknown,
+): Promise<{
+    readonly workspaceId: number;
+    readonly workspaceName: string;
+    readonly projectRoot: string | null;
+    readonly projectLabel: string | null;
+    readonly session: ApplicationSessionProjection;
+    readonly canonicalSessionId: string;
+}> => {
+    const plurnkMeta = extractPlurnkMeta(meta);
+    let workspaceId: number;
+    let workspaceName: string;
+    let projectRoot: string | null = null;
+    let projectLabel: string | null = null;
+    let requestedSessionName: string;
+
+    if (rawSessionId.includes("#")) {
+        const parsed = parseSessionId(rawSessionId);
+        if (parsed === null) {
+            throw new RequestError(
+                -32602,
+                `Invalid session address '${rawSessionId}'. (session-address-invalid)`,
+                Problems.create("acp", "session-address-invalid", 400, `Invalid session address '${rawSessionId}'.`),
+            );
+        }
+        try {
+            const attached = await seam.attachWorkspace({ workspaceId: parsed.workspaceId });
+            workspaceId = attached.workspaceId;
+            workspaceName = attached.workspaceName;
+            projectRoot = attached.projectRoot ?? null;
+            projectLabel = attached.projectLabel ?? null;
+        } catch (err) {
+            const problem = extractProblemFromError(err);
+            if (problem !== null && problem.status === 404) {
+                return throwSessionNotFound(rawSessionId);
+            }
+            throw err;
+        }
+        requestedSessionName = parsed.sessionName;
+    } else if (rawSessionId.length > 0) {
+        const ref = await seam.readSessionReference({ namespace: "acp", reference: rawSessionId });
+        if (ref !== null) {
+            let attached: Awaited<ReturnType<ApplicationPort["attachWorkspace"]>>;
+            try {
+                attached = await seam.attachWorkspace({ workspaceId: ref.workspaceId });
+            } catch (err) {
+                const problem = extractProblemFromError(err);
+                if (problem !== null && problem.status === 404) {
+                    return throwSessionNotFound(rawSessionId);
+                }
+                throw err;
+            }
+            const session = await seam.readSession({
+                workspaceId: ref.workspaceId,
+                identity: { id: ref.sessionId },
+            });
+            if (session === null) {
+                return throwSessionNotFound(rawSessionId);
+            }
+            return {
+                workspaceId: attached.workspaceId,
+                workspaceName: attached.workspaceName,
+                projectRoot: attached.projectRoot ?? null,
+                projectLabel: attached.projectLabel ?? null,
+                session,
+                canonicalSessionId: formatSessionId(attached.workspaceId, session.name),
+            };
+        }
+        try {
+            const resolved = await resolveWorkspace(
+                seam,
+                cwd,
+                plurnkMeta.workspaceId,
+                plurnkMeta.workspaceName,
+                false,
+                plurnkMeta.projectRoot,
+                plurnkMeta.settings,
+            );
+            workspaceId = resolved.workspaceId;
+            workspaceName = resolved.workspaceName;
+            projectRoot = resolved.projectRoot;
+            projectLabel = resolved.projectLabel;
+        } catch (err) {
+            const problem = extractProblemFromError(err);
+            if (problem !== null && problem.status === 404) {
+                return throwSessionNotFound(rawSessionId);
+            }
+            throw err;
+        }
+        requestedSessionName = rawSessionId;
+    } else {
+        return throwSessionNotFound(rawSessionId);
+    }
+
+    const session = await seam.readSession({ workspaceId, identity: { name: requestedSessionName } });
+    if (session === null) {
+        return throwSessionNotFound(rawSessionId);
+    }
+    return {
+        workspaceId,
+        workspaceName,
+        projectRoot,
+        projectLabel,
+        session,
+        canonicalSessionId: formatSessionId(workspaceId, session.name),
+    };
+};
+
 export const resolveSessionBinding = async (
     seam: ApplicationPort,
     origin: string,
@@ -650,11 +817,7 @@ export const resolveSessionBinding = async (
         } catch (err) {
             const problem = extractProblemFromError(err);
             if (problem !== null && problem.status === 404) {
-                throw new RequestError(
-                    -32004,
-                    `Session '${rawSessionId}' does not exist. (session-not-found)`,
-                    Problems.create("acp", "session-not-found", 404, `Session '${rawSessionId}' does not exist.`),
-                );
+                return throwSessionNotFound(rawSessionId);
             }
             throw err;
         }
@@ -668,11 +831,7 @@ export const resolveSessionBinding = async (
                 identity: { id: ref.sessionId },
             });
             if (session === null) {
-                throw new RequestError(
-                    -32004,
-                    `Session '${rawSessionId}' does not exist. (session-not-found)`,
-                    Problems.create("acp", "session-not-found", 404, `Session '${rawSessionId}' does not exist.`),
-                );
+                return throwSessionNotFound(rawSessionId);
             }
             workspaceId = attached.workspaceId;
             workspaceName = attached.workspaceName;
@@ -697,11 +856,7 @@ export const resolveSessionBinding = async (
             } catch (err) {
                 const problem = extractProblemFromError(err);
                 if (!allowCreate && problem !== null && problem.status === 404) {
-                    throw new RequestError(
-                        -32004,
-                        `Session '${rawSessionId}' does not exist. (session-not-found)`,
-                        Problems.create("acp", "session-not-found", 404, `Session '${rawSessionId}' does not exist.`),
-                    );
+                    return throwSessionNotFound(rawSessionId);
                 }
                 throw err;
             }
@@ -743,11 +898,7 @@ export const resolveSessionBinding = async (
     if (session === null) {
         if (!allowCreate) {
             const label = rawSessionId ?? requestedSessionName ?? "unknown";
-            throw new RequestError(
-                -32004,
-                `Session '${label}' does not exist. (session-not-found)`,
-                Problems.create("acp", "session-not-found", 404, `Session '${label}' does not exist.`),
-            );
+            return throwSessionNotFound(label);
         }
         const created = await seam.createSession({
             workspaceId,
@@ -760,11 +911,11 @@ export const resolveSessionBinding = async (
         });
         if (session === null) throw new Error(`Failed to read newly created session ${created.sessionId}`);
     } else if (takeControl) {
-        if (session.hidden_at !== null) {
-            await seam.setSessionHidden({
+        if (session.archived_at !== null) {
+            await seam.setSessionArchived({
                 workspaceId,
                 sessionId: session.id,
-                hidden: false,
+                archived: false,
             });
         }
         await seam.claimSessionOwner({
@@ -1353,16 +1504,30 @@ const throwOverviewInvalid = (detail: string): never => {
 export const parseOverviewRequest = (
     cwd: string | null | undefined,
     meta: unknown,
+    archived?: string | null,
 ): OverviewRequestOptions => {
+    let resolvedArchived: "exclude" | "include" | "only" | undefined;
+    if (archived !== undefined && archived !== null) {
+        if (archived !== "exclude" && archived !== "include" && archived !== "only") {
+            return throwOverviewInvalid(
+                `Invalid overview archived filter '${archived}'; expected 'exclude', 'include', or 'only'.`,
+            );
+        }
+        resolvedArchived = archived;
+    }
+    const baseOpts: OverviewRequestOptions = {
+        ...(cwd !== undefined ? { cwd } : {}),
+        ...(resolvedArchived !== undefined ? { archived: resolvedArchived } : {}),
+    };
     if (meta === undefined || meta === null) {
-        return { ...(cwd !== undefined ? { cwd } : {}) };
+        return baseOpts;
     }
     if (!isRecord(meta)) {
         return throwOverviewInvalid("Invalid overview _meta.");
     }
     const rawPlurnk = meta.plurnk;
     if (rawPlurnk === undefined || rawPlurnk === null) {
-        return { ...(cwd !== undefined ? { cwd } : {}) };
+        return baseOpts;
     }
     if (!isRecord(rawPlurnk)) {
         return throwOverviewInvalid("Invalid overview _meta.plurnk.");
@@ -1406,7 +1571,7 @@ export const parseOverviewRequest = (
     }
     const subscribe = typeof rawPlurnk.subscribe === "boolean" ? rawPlurnk.subscribe : undefined;
     return {
-        ...(cwd !== undefined ? { cwd } : {}),
+        ...baseOpts,
         ...(workspaceId !== undefined ? { workspaceId } : {}),
         ...(workspaceName !== undefined ? { workspaceName } : {}),
         ...(limit !== undefined ? { limit } : {}),
@@ -1423,8 +1588,9 @@ export const listSessionsOverview = async (
 ): Promise<ListSessionsResponse> => {
     const effectiveLimit = query.limit ?? opts.overviewSessions;
     const effectiveExcerptChars = query.excerptChars ?? opts.excerptChars;
+    const archiveFilter = query.archived ?? "exclude";
 
-    const rawWorkspaces = await seam.listWorkspaces({ hidden: false });
+    const rawWorkspaces = await seam.listWorkspaces({ archived: false });
     let resolvedWorkspaceId = query.workspaceId;
     if (resolvedWorkspaceId === undefined && query.workspaceName !== undefined) {
         const allWs = await seam.listWorkspaces();
@@ -1437,7 +1603,7 @@ export const listSessionsOverview = async (
                 `Workspace ${JSON.stringify(query.workspaceName)} does not exist.`,
                 { name: query.workspaceName },
             );
-            throw new RequestError(-32004, `${problem.detail} (workspace-not-found)`, { ...problem, problem });
+            throw new RequestError(-32002, `${problem.detail} (workspace-not-found)`, { ...problem, problem });
         }
         resolvedWorkspaceId = foundWs.id;
     }
@@ -1471,6 +1637,18 @@ export const listSessionsOverview = async (
     if (recentOverview !== null) {
         for (const ws of recentOverview.workspaces) {
             wsById.set(ws.id, ws);
+        }
+    }
+    if (resolvedWorkspaceId !== undefined && !wsById.has(resolvedWorkspaceId)) {
+        const allWs = await seam.listWorkspaces();
+        const foundWs = allWs.find((w) => w.id === resolvedWorkspaceId);
+        if (foundWs !== undefined) {
+            wsById.set(foundWs.id, {
+                id: foundWs.id,
+                name: foundWs.name,
+                projectRoot: foundWs.project_root,
+                projectLabel: foundWs.project_label,
+            });
         }
     }
 
@@ -1508,7 +1686,10 @@ export const listSessionsOverview = async (
         );
     }
 
-    const mapSession = (s: ApplicationSessionOverview["sessions"][number]): SessionInfo => {
+    const mapSession = (
+        s: ApplicationSessionOverview["sessions"][number],
+        archived = false,
+    ): SessionInfo => {
         const ws = wsById.get(s.workspaceId);
         const wsName = ws?.name ?? String(s.workspaceId);
         const rawProjectRoot = ws?.projectRoot ?? null;
@@ -1529,12 +1710,14 @@ export const listSessionsOverview = async (
                       },
                   }
                 : null;
+        const displayTitle = typeof s.title === "string" && s.title.length > 0 ? s.title : `${wsName}#${s.name}`;
         return {
             sessionId: formatSessionId(s.workspaceId, s.name),
             cwd,
             ...(additionalDirectories !== undefined ? { additionalDirectories } : {}),
-            title: `${wsName}#${s.name}`,
+            title: displayTitle,
             updatedAt: replyAt,
+            archived,
             _meta: {
                 plurnk: {
                     workspaceId: s.workspaceId,
@@ -1547,6 +1730,8 @@ export const listSessionsOverview = async (
                     kind: s.kind,
                     lifecycle: s.lifecycle,
                     gates: s.gates,
+                    archived,
+                    ...(typeof s.title === "string" ? { title: s.title } : {}),
                     projectRoot: rawProjectRoot,
                     projectLabel: rawProjectLabel,
                     reply: replyMeta,
@@ -1555,15 +1740,51 @@ export const listSessionsOverview = async (
         };
     };
 
-    const sessions = overview.sessions
-        .filter((s) => {
-            if (!query.cwd) return true;
-            const ws = wsById.get(s.workspaceId);
-            return ws?.projectRoot === query.cwd;
-        })
-        .map(mapSession);
+    const unarchivedSessions =
+        archiveFilter === "only"
+            ? []
+            : overview.sessions
+                  .filter((s) => {
+                      if (!query.cwd) return true;
+                      const ws = wsById.get(s.workspaceId);
+                      return ws?.projectRoot === query.cwd;
+                  })
+                  .map((s) => mapSession(s, false));
 
-    const recentSessions = recentOverview !== null ? recentOverview.sessions.map(mapSession) : undefined;
+    let archivedSessions: SessionInfo[] = [];
+    if (archiveFilter === "include" || archiveFilter === "only") {
+        const targetWsIds = resolvedWorkspaceId !== undefined ? [resolvedWorkspaceId] : [...wsById.keys()];
+        const perWs = await Promise.all(
+            targetWsIds.map(async (wsId) => {
+                const ws = wsById.get(wsId);
+                if (query.cwd && ws?.projectRoot !== query.cwd) return [];
+                const rows = await seam.listSessions(wsId, { archived: true });
+                return rows
+                    .filter((r) => r.archived_at !== null)
+                    .map((r) =>
+                        mapSession(
+                            {
+                                workspaceId: wsId,
+                                id: r.id,
+                                name: r.name,
+                                parentSessionId: r.parentSessionId,
+                                kind: r.kind,
+                                lifecycle: r.lifecycle,
+                                gates: 0,
+                                ...(typeof r.title === "string" ? { title: r.title } : {}),
+                                reply: null,
+                            },
+                            true,
+                        ),
+                    );
+            }),
+        );
+        archivedSessions = perWs.flat();
+    }
+
+    const sessions = [...unarchivedSessions, ...archivedSessions].slice(0, effectiveLimit);
+
+    const recentSessions = recentOverview !== null ? recentOverview.sessions.map((s) => mapSession(s, false)) : undefined;
 
     return {
         sessions,

@@ -686,7 +686,7 @@ test("{§methods-workspace-create}: the session's own and its descendants' settl
 });
 });
 
-describe("place-hiding", () => {
+describe("place-archiving", () => {
 const refusal = async (attempt: Promise<unknown>): Promise<ProblemDetails> => {
     try {
         await attempt;
@@ -699,10 +699,10 @@ const refusal = async (attempt: Promise<unknown>): Promise<ProblemDetails> => {
 
 const sorted = (ids: readonly number[]): number[] => ids.toSorted((a, b) => a - b);
 
-type Mark = { place: "workspace" | "session"; id: number; hidden_at: string | null; hidden_by: number | null };
+type Mark = { place: "workspace" | "session"; id: number; archived_at: string | null; archived_by: number | null };
 const marks = async (db: Db, workspaceId: number): Promise<Mark[]> => db.test_place_marks.all<Mark>({ workspace_id: workspaceId });
 const groups = async (db: Db, workspaceId: number): Promise<Record<number, number | null>> =>
-    Object.fromEntries((await marks(db, workspaceId)).filter(({ place }) => place === "session").map(({ id, hidden_by }) => [id, hidden_by]));
+    Object.fromEntries((await marks(db, workspaceId)).filter(({ place }) => place === "session").map(({ id, archived_by }) => [id, archived_by]));
 
 const NO_GATES: PlaceGates = async () => ({ proposals: [], questions: [] });
 
@@ -740,7 +740,7 @@ const seedWork = async (db: Db, workspaceId: number, sessionId: number, work: Wo
 const POSITIONS = ["at", "beneath", "outside"] as const;
 
 for (const target of ["workspace", "session"] as const) {
-    test(`{§machine-processes} a ${target}'s hide is refused, naming what is live, exactly while live work sits on it or beneath it; nothing is marked by a refusal`, async () => {
+    test(`{§machine-processes} a ${target}'s archive is refused, naming what is live, exactly while live work sits on it or beneath it; nothing is marked by a refusal`, async () => {
         const db = await openMigrated();
         try {
             for (const position of POSITIONS) {
@@ -763,26 +763,26 @@ for (const target of ["workspace", "session"] as const) {
                         questions: work === "question" && id === holderWorkspace ? [{ sessionId: holder }] : [],
                     });
                     const before = await marks(db, workspaceId);
-                    const hide = target === "workspace"
-                        ? Places.setWorkspaceHidden(db, gates, workspaceId, true).then(({ hiding }) => hiding)
-                        : Places.setSessionHidden(db, gates, workspaceId, root, true);
+                    const archive = target === "workspace"
+                        ? Places.setWorkspaceArchived(db, gates, workspaceId, true).then(({ archiving }) => archiving)
+                        : Places.setSessionArchived(db, gates, workspaceId, root, true);
                     const live = position === "outside" ? null : COUNTS[work];
                     if (live === null) {
-                        assert.equal(typeof (await hide).hidden_at, "string", `${label}: hidden`);
+                        assert.equal(typeof (await archive).archived_at, "string", `${label}: archived`);
                         continue;
                     }
-                    const problem = await refusal(hide);
+                    const problem = await refusal(archive);
                     assert.equal(problem.status, 409, label);
                     assert.ok(problem.type.endsWith("/live-work"), `${label}: ${problem.type}`);
                     assert.deepEqual({ loops: problem.loops, streams: problem.streams, proposals: problem.proposals, questions: problem.questions }, live, label);
-                    assert.deepEqual(await marks(db, workspaceId), before, `${label}: a refused hide marks nothing`);
+                    assert.deepEqual(await marks(db, workspaceId), before, `${label}: a refused archive marks nothing`);
                 }
             }
         } finally { await db.close(); }
     });
 }
 
-test("{§machine-processes} a session's hide marks its subtree as one group: a group inside joins it, a session created beneath joins it, a second hide changes nothing, and showing any member shows the group", async () => {
+test("{§machine-processes} a session's archive marks its subtree as one group: a group inside joins it, a session created beneath joins it, a second archive changes nothing, and unarchiving any member unarchives the group", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `groups-${crypto.randomUUID()}`);
@@ -792,96 +792,96 @@ test("{§machine-processes} a session's hide marks its subtree as one group: a g
         const b = await insertSession(db, workspaceId, root, "b");
         const sibling = await insertSession(db, workspaceId, null, "sibling");
 
-        const inner = await Places.setSessionHidden(db, NO_GATES, workspaceId, a, true);
+        const inner = await Places.setSessionArchived(db, NO_GATES, workspaceId, a, true);
         assert.deepEqual(sorted(inner.sessionIds), sorted([a, a1]));
-        assert.deepEqual(await groups(db, workspaceId), { [root]: null, [a]: a, [a1]: a, [b]: null, [sibling]: null }, "a hide marks the session and every session beneath it");
-        const outer = await Places.setSessionHidden(db, NO_GATES, workspaceId, root, true);
+        assert.deepEqual(await groups(db, workspaceId), { [root]: null, [a]: a, [a1]: a, [b]: null, [sibling]: null }, "an archive marks the session and every session beneath it");
+        const outer = await Places.setSessionArchived(db, NO_GATES, workspaceId, root, true);
         assert.deepEqual(sorted(outer.sessionIds), sorted([root, a, a1, b]));
-        assert.deepEqual(await groups(db, workspaceId), { [root]: root, [a]: root, [a1]: root, [b]: root, [sibling]: null }, "a group hidden inside joins the outer one");
-        assert.deepEqual(await Places.setSessionHidden(db, NO_GATES, workspaceId, a1, true), { id: a1, hidden_at: outer.hidden_at, sessionIds: [] }, "hiding a hidden session changes nothing");
+        assert.deepEqual(await groups(db, workspaceId), { [root]: root, [a]: root, [a1]: root, [b]: root, [sibling]: null }, "a group archived inside joins the outer one");
+        assert.deepEqual(await Places.setSessionArchived(db, NO_GATES, workspaceId, a1, true), { id: a1, archived_at: outer.archived_at, sessionIds: [] }, "archiving an archived session changes nothing");
         const late = await insertSession(db, workspaceId, a, "late");
-        assert.equal((await groups(db, workspaceId))[late], root, "a session created beneath a hidden session joins its group");
+        assert.equal((await groups(db, workspaceId))[late], root, "a session created beneath an archived session joins its group");
 
-        const shown = await Places.setSessionHidden(db, NO_GATES, workspaceId, a1, false);
-        assert.deepEqual(shown, { id: a1, hidden_at: null, sessionIds: sorted([root, a, a1, b, late]) });
-        assert.ok((await marks(db, workspaceId)).every(({ hidden_at }) => hidden_at === null), "showing any member shows the whole group");
-        assert.deepEqual(await Places.setSessionHidden(db, NO_GATES, workspaceId, sibling, false), { id: sibling, hidden_at: null, sessionIds: [] }, "showing a shown session changes nothing");
+        const unarchived = await Places.setSessionArchived(db, NO_GATES, workspaceId, a1, false);
+        assert.deepEqual(unarchived, { id: a1, archived_at: null, sessionIds: sorted([root, a, a1, b, late]) });
+        assert.ok((await marks(db, workspaceId)).every(({ archived_at }) => archived_at === null), "unarchiving any member unarchives the whole group");
+        assert.deepEqual(await Places.setSessionArchived(db, NO_GATES, workspaceId, sibling, false), { id: sibling, archived_at: null, sessionIds: [] }, "unarchiving an unarchived session changes nothing");
 
-        const hiddenWorkspace = await Places.setWorkspaceHidden(db, NO_GATES, workspaceId, true);
-        assert.equal(hiddenWorkspace.changed, true);
-        assert.ok((await marks(db, workspaceId)).every(({ place, hidden_at }) => (place === "workspace") === (hidden_at !== null)), "a workspace's mark is its own");
-        assert.deepEqual(await Places.setWorkspaceHidden(db, NO_GATES, workspaceId, true), { hiding: hiddenWorkspace.hiding, changed: false }, "a second hide keeps the first mark");
-        assert.deepEqual(await Places.setWorkspaceHidden(db, NO_GATES, workspaceId, false), { hiding: { id: workspaceId, hidden_at: null }, changed: true });
-        assert.deepEqual(await Places.setWorkspaceHidden(db, NO_GATES, workspaceId, false), { hiding: { id: workspaceId, hidden_at: null }, changed: false });
+        const archivedWorkspace = await Places.setWorkspaceArchived(db, NO_GATES, workspaceId, true);
+        assert.equal(archivedWorkspace.changed, true);
+        assert.ok((await marks(db, workspaceId)).every(({ place, archived_at }) => (place === "workspace") === (archived_at !== null)), "a workspace's mark is its own");
+        assert.deepEqual(await Places.setWorkspaceArchived(db, NO_GATES, workspaceId, true), { archiving: archivedWorkspace.archiving, changed: false }, "a second archive keeps the first mark");
+        assert.deepEqual(await Places.setWorkspaceArchived(db, NO_GATES, workspaceId, false), { archiving: { id: workspaceId, archived_at: null }, changed: true });
+        assert.deepEqual(await Places.setWorkspaceArchived(db, NO_GATES, workspaceId, false), { archiving: { id: workspaceId, archived_at: null }, changed: false });
 
         const other = await insertWorkspace(db, `groups-other-${crypto.randomUUID()}`);
-        for (const hidden of [true, false]) {
-            assert.equal((await refusal(Places.setSessionHidden(db, NO_GATES, other, root, hidden))).status, 404, "a session of another workspace is not found");
-            assert.equal((await refusal(Places.setWorkspaceHidden(db, NO_GATES, Number.MAX_SAFE_INTEGER, hidden))).status, 404, "a workspace that does not exist is not found");
+        for (const archived of [true, false]) {
+            assert.equal((await refusal(Places.setSessionArchived(db, NO_GATES, other, root, archived))).status, 404, "a session of another workspace is not found");
+            assert.equal((await refusal(Places.setWorkspaceArchived(db, NO_GATES, Number.MAX_SAFE_INTEGER, archived))).status, 404, "a workspace that does not exist is not found");
         }
     } finally { await db.close(); }
 });
 
-test("{§machine-processes} a live loop starting on a hidden session brings back its group and its workspace; concluded history brings nothing back", async () => {
+test("{§machine-processes} a live loop starting on an archived session brings back its group and its workspace; concluded history brings nothing back", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `return-${crypto.randomUUID()}`);
         const root = await insertSession(db, workspaceId, null, "root");
         const child = await insertSession(db, workspaceId, root, "child");
         const sibling = await insertSession(db, workspaceId, null, "sibling");
-        await Places.setWorkspaceHidden(db, NO_GATES, workspaceId, true);
-        await Places.setSessionHidden(db, NO_GATES, workspaceId, root, true);
-        await Places.setSessionHidden(db, NO_GATES, workspaceId, sibling, true);
-        const hidden = await marks(db, workspaceId);
+        await Places.setWorkspaceArchived(db, NO_GATES, workspaceId, true);
+        await Places.setSessionArchived(db, NO_GATES, workspaceId, root, true);
+        await Places.setSessionArchived(db, NO_GATES, workspaceId, sibling, true);
+        const archived = await marks(db, workspaceId);
 
         await db.test_loops_insert_with_status.run({ session_id: child, sequence: 1, status: 200, prompt: "history", terminal_result: JSON.stringify({ status: 200 }) });
-        assert.deepEqual(await marks(db, workspaceId), hidden, "a concluded loop is history, never work");
+        assert.deepEqual(await marks(db, workspaceId), archived, "a concluded loop is history, never work");
 
         await db.test_insert_queued_loop.get({ session_id: child, sequence: 2, prompt: "work" });
-        assert.deepEqual((await marks(db, workspaceId)).map(({ place, id, hidden_at }) => [place, id, hidden_at !== null]), [
+        assert.deepEqual((await marks(db, workspaceId)).map(({ place, id, archived_at }) => [place, id, archived_at !== null]), [
             ["session", root, false], ["session", child, false], ["session", sibling, true], ["workspace", workspaceId, false],
-        ], "the loop's group and workspace are shown; another group stays hidden");
+        ], "the loop's group and workspace are unarchived; another group stays archived");
     } finally { await db.close(); }
 });
 
-test("{§machine-processes} {§methods-workspace-create} listings filter by the mark only when asked; the overview leaves out hidden sessions and, in the daemon's scope, every session of a hidden workspace", async () => {
+test("{§machine-processes} {§methods-workspace-create} listings filter by the mark only when asked; the overview leaves out archived sessions and, in the daemon's scope, every session of an archived workspace", async () => {
     await withDaemon(null, async (_db, daemon) => {
-        const shownWorkspace = await daemon.createWorkspace({ name: `shown-${crypto.randomUUID()}` });
-        const hiddenWorkspace = await daemon.createWorkspace({ name: `hidden-${crypto.randomUUID()}` });
-        const shown = await daemon.createSession({ workspaceId: shownWorkspace.workspaceId, name: "shown" });
-        const hidden = await daemon.createSession({ workspaceId: shownWorkspace.workspaceId, name: "hidden" });
-        const inside = await daemon.createSession({ workspaceId: hiddenWorkspace.workspaceId, name: "inside" });
-        await daemon.setSessionHidden({ workspaceId: shownWorkspace.workspaceId, sessionId: hidden.sessionId, hidden: true });
-        await daemon.setWorkspaceHidden({ workspaceId: hiddenWorkspace.workspaceId, hidden: true });
+        const unarchivedWorkspace = await daemon.createWorkspace({ name: `unarchived-${crypto.randomUUID()}` });
+        const archivedWorkspace = await daemon.createWorkspace({ name: `archived-${crypto.randomUUID()}` });
+        const unarchived = await daemon.createSession({ workspaceId: unarchivedWorkspace.workspaceId, name: "unarchived" });
+        const archived = await daemon.createSession({ workspaceId: unarchivedWorkspace.workspaceId, name: "archived" });
+        const inside = await daemon.createSession({ workspaceId: archivedWorkspace.workspaceId, name: "inside" });
+        await daemon.setSessionArchived({ workspaceId: unarchivedWorkspace.workspaceId, sessionId: archived.sessionId, archived: true });
+        await daemon.setWorkspaceArchived({ workspaceId: archivedWorkspace.workspaceId, archived: true });
 
-        const names = async (hiddenFilter?: boolean): Promise<string[]> => (await daemon.listSessions(shownWorkspace.workspaceId, {
-            origin: "model", ...(hiddenFilter === undefined ? {} : { hidden: hiddenFilter }),
+        const names = async (archivedFilter?: boolean): Promise<string[]> => (await daemon.listSessions(unarchivedWorkspace.workspaceId, {
+            origin: "model", ...(archivedFilter === undefined ? {} : { archived: archivedFilter }),
         })).map(({ name }) => name).toSorted();
-        assert.deepEqual(await names(), ["hidden", "shown"], "an unfiltered listing holds every session");
-        assert.deepEqual(await names(false), ["shown"]);
-        assert.deepEqual(await names(true), ["hidden"]);
-        const ids = async (hiddenFilter?: boolean): Promise<number[]> => (await daemon.listWorkspaces(hiddenFilter === undefined ? {} : { hidden: hiddenFilter }))
-            .map(({ id }) => id).filter((id) => id === shownWorkspace.workspaceId || id === hiddenWorkspace.workspaceId).toSorted((a, b) => a - b);
-        assert.deepEqual(await ids(), sorted([shownWorkspace.workspaceId, hiddenWorkspace.workspaceId]));
-        assert.deepEqual(await ids(false), [shownWorkspace.workspaceId]);
-        assert.deepEqual(await ids(true), [hiddenWorkspace.workspaceId]);
-        assert.equal(typeof (await daemon.readSession({ workspaceId: shownWorkspace.workspaceId, identity: { name: "hidden" } }))?.hidden_at, "string", "a direct read finds a hidden session");
-        assert.equal((await daemon.attachWorkspace({ name: hiddenWorkspace.workspaceName })).workspaceId, hiddenWorkspace.workspaceId, "an attach finds a hidden workspace");
-        assert.deepEqual(await ids(true), [hiddenWorkspace.workspaceId], "and leaves it hidden");
+        assert.deepEqual(await names(), ["archived", "unarchived"], "an unfiltered listing holds every session");
+        assert.deepEqual(await names(false), ["unarchived"]);
+        assert.deepEqual(await names(true), ["archived"]);
+        const ids = async (archivedFilter?: boolean): Promise<number[]> => (await daemon.listWorkspaces(archivedFilter === undefined ? {} : { archived: archivedFilter }))
+            .map(({ id }) => id).filter((id) => id === unarchivedWorkspace.workspaceId || id === archivedWorkspace.workspaceId).toSorted((a, b) => a - b);
+        assert.deepEqual(await ids(), sorted([unarchivedWorkspace.workspaceId, archivedWorkspace.workspaceId]));
+        assert.deepEqual(await ids(false), [unarchivedWorkspace.workspaceId]);
+        assert.deepEqual(await ids(true), [archivedWorkspace.workspaceId]);
+        assert.equal(typeof (await daemon.readSession({ workspaceId: unarchivedWorkspace.workspaceId, identity: { name: "archived" } }))?.archived_at, "string", "a direct read finds an archived session");
+        assert.equal((await daemon.attachWorkspace({ name: archivedWorkspace.workspaceName })).workspaceId, archivedWorkspace.workspaceId, "an attach finds an archived workspace");
+        assert.deepEqual(await ids(true), [archivedWorkspace.workspaceId], "and leaves it archived");
 
         const overview = async (workspaceId?: number) => {
             const read = await daemon.readSessionOverview({ ...(workspaceId === undefined ? {} : { workspaceId }), limit: 100, excerptChars: 40 });
-            return { sessions: read.sessions.map(({ id }) => id).filter((id) => [shown.sessionId, hidden.sessionId, inside.sessionId].includes(id)), workspaces: read.workspaces.map(({ id }) => id) };
+            return { sessions: read.sessions.map(({ id }) => id).filter((id) => [unarchived.sessionId, archived.sessionId, inside.sessionId].includes(id)), workspaces: read.workspaces.map(({ id }) => id) };
         };
-        assert.deepEqual(await overview(), { sessions: [shown.sessionId], workspaces: [shownWorkspace.workspaceId] }, "the daemon's overview");
-        assert.deepEqual(await overview(shownWorkspace.workspaceId), { sessions: [shown.sessionId], workspaces: [shownWorkspace.workspaceId] }, "a workspace's overview");
-        assert.deepEqual(await overview(hiddenWorkspace.workspaceId), { sessions: [inside.sessionId], workspaces: [hiddenWorkspace.workspaceId] }, "a hidden workspace's own overview holds its shown sessions");
+        assert.deepEqual(await overview(), { sessions: [unarchived.sessionId], workspaces: [unarchivedWorkspace.workspaceId] }, "the daemon's overview");
+        assert.deepEqual(await overview(unarchivedWorkspace.workspaceId), { sessions: [unarchived.sessionId], workspaces: [unarchivedWorkspace.workspaceId] }, "a workspace's overview");
+        assert.deepEqual(await overview(archivedWorkspace.workspaceId), { sessions: [inside.sessionId], workspaces: [archivedWorkspace.workspaceId] }, "an archived workspace's own overview holds its unarchived sessions");
 
         for (const attempt of [
-            () => daemon.setWorkspaceHidden({ workspaceId: shownWorkspace.workspaceId, hidden: "yes" as unknown as boolean }),
-            () => daemon.setSessionHidden({ workspaceId: shownWorkspace.workspaceId, sessionId: shown.sessionId, hidden: 1 as unknown as boolean }),
-            () => daemon.listSessions(shownWorkspace.workspaceId, { hidden: "no" as unknown as boolean }),
-            () => daemon.listWorkspaces({ hidden: null as unknown as boolean }),
+            () => daemon.setWorkspaceArchived({ workspaceId: unarchivedWorkspace.workspaceId, archived: "yes" as unknown as boolean }),
+            () => daemon.setSessionArchived({ workspaceId: unarchivedWorkspace.workspaceId, sessionId: unarchived.sessionId, archived: 1 as unknown as boolean }),
+            () => daemon.listSessions(unarchivedWorkspace.workspaceId, { archived: "no" as unknown as boolean }),
+            () => daemon.listWorkspaces({ archived: null as unknown as boolean }),
         ]) {
             const problem = await refusal(attempt());
             assert.equal(problem.status, 400);
@@ -890,49 +890,49 @@ test("{§machine-processes} {§methods-workspace-create} listings filter by the 
     });
 });
 
-test("{§methods-workspace-create} {§methods-workspace-create} {§notifications} {§notifications} {§execution-output-identity} each change is announced once in its workspace; creating by the folder selects and shows a hidden workspace; an explicit name it holds conflicts", async () => {
-    const folder = await mkdtemp(join(tmpdir(), "plurnk-hidden-"));
+test("{§methods-workspace-create} {§methods-workspace-create} {§notifications} {§notifications} {§execution-output-identity} each change is announced once in its workspace; creating by the folder selects and unarchives an archived workspace; an explicit name it holds conflicts", async () => {
+    const folder = await mkdtemp(join(tmpdir(), "plurnk-archived-"));
     try {
         await withDaemon(null, async (_db, daemon) => {
             const events: Array<[number | null, string, unknown]> = [];
             const unsubscribe = daemon.subscribeToEvents((workspaceId, method, params) => {
-                if (method === "workspace/hidden" || method === "session/hidden") events.push([workspaceId, method, params]);
+                if (method === "workspace/archived" || method === "session/archived") events.push([workspaceId, method, params]);
             });
             const created = await daemon.createWorkspace({ projectRoot: folder });
-            const hidden = await daemon.setWorkspaceHidden({ workspaceId: created.workspaceId, hidden: true });
-            assert.equal(typeof hidden.hidden_at, "string");
-            assert.deepEqual(await daemon.setWorkspaceHidden({ workspaceId: created.workspaceId, hidden: true }), hidden, "a second hide keeps the first mark");
+            const archived = await daemon.setWorkspaceArchived({ workspaceId: created.workspaceId, archived: true });
+            assert.equal(typeof archived.archived_at, "string");
+            assert.deepEqual(await daemon.setWorkspaceArchived({ workspaceId: created.workspaceId, archived: true }), archived, "a second archive keeps the first mark");
             const selected = await daemon.createWorkspace({ projectRoot: folder });
-            assert.equal(selected.workspaceId, created.workspaceId, "creating by the folder selects the hidden workspace");
-            assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === created.workspaceId)?.hidden_at, null, "and shows it");
+            assert.equal(selected.workspaceId, created.workspaceId, "creating by the folder selects the archived workspace");
+            assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === created.workspaceId)?.archived_at, null, "and unarchives it");
 
             const named = await daemon.createWorkspace({ name: `named-${crypto.randomUUID()}` });
-            const namedHidden = await daemon.setWorkspaceHidden({ workspaceId: named.workspaceId, hidden: true });
+            const namedArchived = await daemon.setWorkspaceArchived({ workspaceId: named.workspaceId, archived: true });
             const conflict = await refusal(daemon.createWorkspace({ name: named.workspaceName }));
             assert.equal(conflict.status, 409);
             assert.ok(conflict.type.endsWith("/name-conflict"), conflict.type);
-            assert.match(conflict.detail ?? "", /by a hidden workspace/u, "the conflict says the name's holder is hidden");
+            assert.match(conflict.detail ?? "", /by an archived workspace/u, "the conflict says the name's holder is archived");
 
             const session = await daemon.createSession({ workspaceId: created.workspaceId, name: "quiet" });
-            const sessionHidden = await daemon.setSessionHidden({ workspaceId: created.workspaceId, sessionId: session.sessionId, hidden: true });
-            assert.deepEqual(sessionHidden.sessionIds, [session.sessionId]);
-            await daemon.setSessionHidden({ workspaceId: created.workspaceId, sessionId: session.sessionId, hidden: true });
-            const sessionShown = await daemon.setSessionHidden({ workspaceId: created.workspaceId, sessionId: session.sessionId, hidden: false });
-            await daemon.setSessionHidden({ workspaceId: created.workspaceId, sessionId: session.sessionId, hidden: false });
+            const sessionArchived = await daemon.setSessionArchived({ workspaceId: created.workspaceId, sessionId: session.sessionId, archived: true });
+            assert.deepEqual(sessionArchived.sessionIds, [session.sessionId]);
+            await daemon.setSessionArchived({ workspaceId: created.workspaceId, sessionId: session.sessionId, archived: true });
+            const sessionUnarchived = await daemon.setSessionArchived({ workspaceId: created.workspaceId, sessionId: session.sessionId, archived: false });
+            await daemon.setSessionArchived({ workspaceId: created.workspaceId, sessionId: session.sessionId, archived: false });
             unsubscribe();
             assert.deepEqual(events, [
-                [created.workspaceId, "workspace/hidden", hidden],
-                [created.workspaceId, "workspace/hidden", { id: created.workspaceId, hidden_at: null }],
-                [named.workspaceId, "workspace/hidden", namedHidden],
-                [created.workspaceId, "session/hidden", sessionHidden],
-                [created.workspaceId, "session/hidden", { id: session.sessionId, hidden_at: null, sessionIds: [session.sessionId] }],
+                [created.workspaceId, "workspace/archived", archived],
+                [created.workspaceId, "workspace/archived", { id: created.workspaceId, archived_at: null }],
+                [named.workspaceId, "workspace/archived", namedArchived],
+                [created.workspaceId, "session/archived", sessionArchived],
+                [created.workspaceId, "session/archived", { id: session.sessionId, archived_at: null, sessionIds: [session.sessionId] }],
             ], "a call that changes nothing announces nothing");
-            assert.deepEqual(sessionShown, { id: session.sessionId, hidden_at: null, sessionIds: [session.sessionId] });
+            assert.deepEqual(sessionUnarchived, { id: session.sessionId, archived_at: null, sessionIds: [session.sessionId] });
         });
     } finally { await rm(folder, { recursive: true, force: true }); }
 });
 
-test("{§machine-processes} a hide is refused over a gate the daemon holds; a loop run on a hidden session brings it and its workspace back", async () => {
+test("{§machine-processes} an archive is refused over a gate the daemon holds; a loop run on an archived session brings it and its workspace back", async () => {
     const gated = new Mock({ contextWindow: 16384, responses: [
         // A host execution the server reviews: the loop waits on its proposal.
         makeMockResponse("\n````sh\necho pending\n````\n\n````NOTE\nproposed\n````", 10),
@@ -945,8 +945,8 @@ test("{§machine-processes} a hide is refused over a gate the daemon holds; a lo
             const { modelSessionId } = (await rpcCall(ws, 2, "loop.run", { prompt: "go" })).result as { modelSessionId: number };
             await waitFor(() => proposals(), (seen) => seen.length >= 1, { timeoutMs: 10_000 });
             for (const attempt of [
-                () => daemon.setSessionHidden({ workspaceId, sessionId: modelSessionId, hidden: true }),
-                () => daemon.setWorkspaceHidden({ workspaceId, hidden: true }),
+                () => daemon.setSessionArchived({ workspaceId, sessionId: modelSessionId, archived: true }),
+                () => daemon.setWorkspaceArchived({ workspaceId, archived: true }),
             ]) {
                 const problem = await refusal(attempt());
                 assert.equal(problem.status, 409);
@@ -962,13 +962,52 @@ test("{§machine-processes} a hide is refused over a gate the daemon holds; a lo
         try {
             const workspaceId = ((await rpcCall(ws, 1, "workspace.create", { name: `returning-${crypto.randomUUID()}` })).result as { id: number }).id;
             const { sessionId } = await daemon.createSession({ workspaceId, name: "returning" });
-            await daemon.setSessionHidden({ workspaceId, sessionId, hidden: true });
-            await daemon.setWorkspaceHidden({ workspaceId, hidden: true });
+            await daemon.setSessionArchived({ workspaceId, sessionId, archived: true });
+            await daemon.setWorkspaceArchived({ workspaceId, archived: true });
             const run = await runLoopToTerminal(ws, 2, { prompt: "go", sessionId });
             assert.equal(run.finalStatus, 200);
-            assert.ok((await daemon.listWorkspaces({ hidden: false })).some(({ id }) => id === workspaceId), "the workspace is shown");
-            assert.ok((await daemon.listSessions(workspaceId, { hidden: false })).some(({ id }) => id === sessionId), "the session is shown");
+            assert.ok((await daemon.listWorkspaces({ archived: false })).some(({ id }) => id === workspaceId), "the workspace is unarchived");
+            assert.ok((await daemon.listSessions(workspaceId, { archived: false })).some(({ id }) => id === sessionId), "the session is unarchived");
         } finally { ws.close(); }
+    });
+});
+
+test("{§machine-processes} {§methods-workspace-create} {§notifications} setSessionTitle stores normalized titles and deleteSession permanently removes a session and its subtree", async () => {
+    await withDaemon(null, async (_db, daemon) => {
+        const events: Array<[number | null, string, unknown]> = [];
+        const unsubscribe = daemon.subscribeToEvents((workspaceId, method, params) => {
+            if (method === "session/titled" || method === "session/deleted") events.push([workspaceId, method, params]);
+        });
+        const ws = await daemon.createWorkspace({ name: `title-delete-${crypto.randomUUID()}` });
+        const root = await daemon.createSession({ workspaceId: ws.workspaceId, name: "root" });
+        const child = await daemon.createSession({ workspaceId: ws.workspaceId, name: "child", parentSessionId: root.sessionId });
+        const runtimeId = await daemon.ensureRuntimeSession(ws.workspaceId);
+
+        const titled = await daemon.setSessionTitle({ workspaceId: ws.workspaceId, sessionId: root.sessionId, title: "  Investigation #1  " });
+        assert.deepEqual(titled, { id: root.sessionId, title: "Investigation #1" });
+        await daemon.setSessionTitle({ workspaceId: ws.workspaceId, sessionId: root.sessionId, title: "Investigation #1" });
+        assert.equal((await daemon.readSession({ workspaceId: ws.workspaceId, identity: { id: root.sessionId } }))?.title, "Investigation #1");
+        assert.equal((await daemon.readSessionOverview({ workspaceId: ws.workspaceId, limit: 10, excerptChars: 40 })).sessions.find(({ id }) => id === root.sessionId)?.title, "Investigation #1");
+
+        for (const bad of ["", "   ", 123 as unknown as string]) {
+            const problem = await refusal(daemon.setSessionTitle({ workspaceId: ws.workspaceId, sessionId: root.sessionId, title: bad }));
+            assert.equal(problem.status, 400);
+            assert.ok(problem.type.endsWith("/title-invalid"), problem.type);
+        }
+        assert.equal((await refusal(daemon.setSessionTitle({ workspaceId: ws.workspaceId, sessionId: runtimeId, title: "No" }))).status, 409);
+        assert.equal((await refusal(daemon.deleteSession({ workspaceId: ws.workspaceId, sessionId: runtimeId }))).status, 409);
+
+        await daemon.setSessionArchived({ workspaceId: ws.workspaceId, sessionId: root.sessionId, archived: true });
+        const deleted = await daemon.deleteSession({ workspaceId: ws.workspaceId, sessionId: root.sessionId });
+        assert.deepEqual(deleted, { id: root.sessionId, sessionIds: sorted([root.sessionId, child.sessionId]) });
+        assert.equal(await daemon.readSession({ workspaceId: ws.workspaceId, identity: { id: root.sessionId } }), null);
+        assert.equal(await daemon.readSession({ workspaceId: ws.workspaceId, identity: { id: child.sessionId } }), null);
+        assert.equal((await refusal(daemon.deleteSession({ workspaceId: ws.workspaceId, sessionId: root.sessionId }))).status, 404);
+        unsubscribe();
+        assert.deepEqual(events, [
+            [ws.workspaceId, "session/titled", { id: root.sessionId, title: "Investigation #1" }],
+            [ws.workspaceId, "session/deleted", { id: root.sessionId, sessionIds: sorted([root.sessionId, child.sessionId]) }],
+        ]);
     });
 });
 });
@@ -1121,6 +1160,11 @@ test("{§methods} a session's open streams: each lifetime, every channel written
         assert.deepEqual(await daemon.readStreams({ workspaceId, sessionId: bystander }), [], "another session holds none of them");
         await assert.rejects(daemon.readStreams({ workspaceId: elsewhere, sessionId }), (error: unknown) =>
             error instanceof OperationFailureError && error.result.problem.type.endsWith("/workspace-mismatch"), "a session is read in its own workspace");
+
+        const firstRow = rows.find(({ attrs }) => (attrs as { stream?: string } | null)?.stream === streams[0]?.target)!;
+        assert.equal(await daemon.cancelStream({ workspaceId, sessionId, entryId: firstRow.id }), true, "cancelStream cancels by log entry id");
+        assert.equal(await daemon.cancelStream({ workspaceId, sessionId, coordinate: `${streams[1].loop_seq}/${streams[1].turn_seq}/${streams[1].sequence}` }), true, "cancelStream cancels by coordinate");
+        assert.equal(await daemon.cancelStream({ workspaceId, sessionId, entryId: 999999 }), false, "unknown stream returns false");
 
         await writeFile(release, "");
         await waitForDb(() => daemon.readStreams({ workspaceId, sessionId }), (open: ApplicationStream[]) => open.length === 0,

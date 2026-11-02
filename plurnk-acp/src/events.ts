@@ -351,6 +351,7 @@ export const dispatchDaemonEvent = (
                     update: {
                         sessionUpdate: "terminal_update",
                         terminalId: `term:${entryId}`,
+                        capabilities: { cancel: {} },
                         _meta: { plurnk: streamMeta },
                     },
                 },
@@ -779,8 +780,25 @@ export const dispatchDaemonEvent = (
             applyWorkspaceRenamed(peers, notifyPeerSession, workspaceId, params.name, ctx.scheduleOverviewRefresh);
             break;
         }
-        case "workspace/hidden":
-        case "session/hidden": {
+        case "workspace/archived":
+        case "session/archived":
+        case "session/deleted": {
+            ctx.scheduleOverviewRefresh?.();
+            break;
+        }
+        case "session/titled": {
+            if (isRecord(params) && typeof params.id === "number" && typeof params.title === "string") {
+                const nextTitle = params.title;
+                broadcastSessionUpdate(workspaceId, params.id, (s) => [
+                    {
+                        sessionId: s.acpSessionId,
+                        update: {
+                            sessionUpdate: "session_info_update",
+                            title: nextTitle,
+                        },
+                    },
+                ]);
+            }
             ctx.scheduleOverviewRefresh?.();
             break;
         }

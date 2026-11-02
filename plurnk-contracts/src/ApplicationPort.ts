@@ -29,8 +29,10 @@ import type {
     ApplicationSessionOverview,
     ApplicationSessionProjection,
     ApplicationSessionQuery,
-    ApplicationSessionHiding,
-    ApplicationWorkspaceHiding,
+    ApplicationSessionArchiving,
+    ApplicationSessionDeletion,
+    ApplicationSessionTitling,
+    ApplicationWorkspaceArchiving,
     ApplicationSessionIdentity,
     ApplicationSessionCreation,
     ApplicationLoopAdmission,
@@ -165,16 +167,16 @@ export interface ApplicationPort extends HttpHost {
     ensureSessionReference(args: { readonly namespace: string; readonly reference: string }): Promise<{ readonly workspaceId: number; readonly sessionId: number }>;
     /** {§session-external-reference} Inspect the adapter's retained references to this session. */
     listSessionReferences(args: { readonly workspaceId: number; readonly sessionId: number; readonly namespace: string }): Promise<string[]>;
-    /** {§machine-processes} Omitted `hidden` lists every workspace; true only hidden ones, false only shown ones. */
-    listWorkspaces(query?: { readonly hidden?: boolean }): Promise<Array<{
+    /** {§machine-processes} Omitted `archived` lists every workspace; true only archived ones, false only unarchived ones. */
+    listWorkspaces(query?: { readonly archived?: boolean }): Promise<Array<{
         readonly id: number;
         readonly name: string;
         readonly project_root: string | null;
         /** {§execution-output-identity} */
         readonly project_label: string | null;
         readonly created_at: string;
-        /** {§machine-processes} When the workspace was hidden, or null while it is shown. */
-        readonly hidden_at: string | null;
+        /** {§machine-processes} When the workspace was archived, or null while it is unarchived. */
+        readonly archived_at: string | null;
     }>>;
     listSessions(
         workspaceId: number,
@@ -209,10 +211,22 @@ export interface ApplicationPort extends HttpHost {
     // {§share} — the workspace's share, from a consistent copy of the daemon's database, into an absolute folder.
     shareWorkspace(args: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string }>;
     renameWorkspace(workspaceId: number, name: string): Promise<{ readonly id: number; readonly name: string }>;
-    /** {§methods-workspace-create} Hide or show a workspace; a hide is refused while it holds live work. */
-    setWorkspaceHidden(args: { readonly workspaceId: number; readonly hidden: boolean }): Promise<ApplicationWorkspaceHiding>;
-    /** {§methods-workspace-create} Hide or show a session with every session beneath it; a hide is refused while they hold live work. */
-    setSessionHidden(args: { readonly workspaceId: number; readonly sessionId: number; readonly hidden: boolean }): Promise<ApplicationSessionHiding>;
+    /** {§methods-workspace-create} Archive or unarchive a workspace; an archive is refused while it holds live work. */
+    setWorkspaceArchived(args: { readonly workspaceId: number; readonly archived: boolean }): Promise<ApplicationWorkspaceArchiving>;
+    /** {§methods-workspace-create} Archive or unarchive a session with every session beneath it; an archive is refused while they hold live work. */
+    setSessionArchived(args: { readonly workspaceId: number; readonly sessionId: number; readonly archived: boolean }): Promise<ApplicationSessionArchiving>;
+    /** {§methods-workspace-create} Permanently delete a session and its descendant subtree; refused while they hold live work. */
+    deleteSession(args: { readonly workspaceId: number; readonly sessionId: number }): Promise<ApplicationSessionDeletion>;
+    /** {§methods-workspace-create} Store a normalized human-readable title on a session. */
+    setSessionTitle(args: { readonly workspaceId: number; readonly sessionId: number; readonly title: string }): Promise<ApplicationSessionTitling>;
+    /** {§methods-workspace-create} Cancel a single live stream subscription owned by a session without cancelling the whole session. */
+    cancelStream(args: {
+        readonly workspaceId: number;
+        readonly sessionId: number;
+        readonly entryId?: number;
+        readonly target?: string;
+        readonly coordinate?: string;
+    }): Promise<boolean>;
     // {§log-wire-format} — reverse `sessionId`'s settled file mutations after its log coordinate `to`, latest
     // first, as one client operation of `actor` ({§connection-lifecycle}); stops at the first file that no
     // longer holds what its mutation wrote.

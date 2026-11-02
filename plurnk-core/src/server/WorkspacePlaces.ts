@@ -6,12 +6,14 @@ import {
     type ApplicationGauge,
     type ApplicationLoopProjection,
     type ApplicationSessionCreation,
-    type ApplicationSessionHiding,
+    type ApplicationSessionArchiving,
+    type ApplicationSessionDeletion,
     type ApplicationSessionIdentity,
     type ApplicationSessionOverview,
     type ApplicationSessionProjection,
     type ApplicationSessionQuery,
-    type ApplicationWorkspaceHiding,
+    type ApplicationSessionTitling,
+    type ApplicationWorkspaceArchiving,
     type ClientEnvelope,
     type SessionOwner,
 } from "@plurnk/plurnk-contracts";
@@ -110,9 +112,9 @@ export default class WorkspacePlaces {
         return RuntimeSession.ensure(this.#db, checked);
     }
 
-    async listWorkspaces(query: { readonly hidden?: boolean } = {}): Promise<Array<WorkspaceRow & { project_label: string | null }>> {
-        const hidden = query.hidden === undefined ? undefined : ClientInput.assertFlag("workspace.list", "hidden", query.hidden);
-        return (await Envelope.listWorkspaces(this.#db, hidden)).map((row) => ({ ...row, project_label: this.#projectLabel(row.project_root) }));
+    async listWorkspaces(query: { readonly archived?: boolean } = {}): Promise<Array<WorkspaceRow & { project_label: string | null }>> {
+        const archived = query.archived === undefined ? undefined : ClientInput.assertFlag("workspace.list", "archived", query.archived);
+        return (await Envelope.listWorkspaces(this.#db, archived)).map((row) => ({ ...row, project_label: this.#projectLabel(row.project_root) }));
     }
 
     async listSessions(
@@ -134,7 +136,7 @@ export default class WorkspacePlaces {
             : query.parentSessionId === null
                 ? null
                 : ClientInput.assertId("workspace.sessions", "parentSessionId", query.parentSessionId);
-        const hidden = query.hidden === undefined ? undefined : ClientInput.assertFlag("workspace.sessions", "hidden", query.hidden);
+        const archived = query.archived === undefined ? undefined : ClientInput.assertFlag("workspace.sessions", "archived", query.archived);
         // {§methods-workspace-create} — an omitted parent filter must stay absent:
         // the envelope keys the filter on the property's presence, not its value.
         return await Envelope.listSessionsForWorkspace(
@@ -143,7 +145,7 @@ export default class WorkspacePlaces {
             {
                 ...(origin === undefined ? {} : { origin }),
                 ...(parentSessionId === undefined ? {} : { parentSessionId }),
-                ...(hidden === undefined ? {} : { hidden }) },
+                ...(archived === undefined ? {} : { archived }) },
         );
     }
 
@@ -274,10 +276,10 @@ export default class WorkspacePlaces {
         const derived = explicit === undefined && projectRoot !== null ? this.#hostPaths.abbreviateUserPath(projectRoot) : undefined;
         const selected = async (): Promise<ClientEnvelope | undefined> => {
             if (derived === undefined) return undefined;
-            const existing = await this.#db.envelope_get_workspace_by_name.get<{ id: number; hidden_at: string | null }>({ name: derived });
+            const existing = await this.#db.envelope_get_workspace_by_name.get<{ id: number; archived_at: string | null }>({ name: derived });
             if (existing === undefined) return undefined;
-            // {§machine-processes} Creating by the folder selects a hidden workspace and shows it.
-            if (existing.hidden_at !== null) await this.setWorkspaceHidden({ workspaceId: existing.id, hidden: false });
+            // {§machine-processes} Creating by the folder selects an archived workspace and unarchives it.
+            if (existing.archived_at !== null) await this.setWorkspaceArchived({ workspaceId: existing.id, archived: false });
             return this.#labelled(await Envelope.attachToWorkspace(this.#db, existing.id));
         };
         return observed( // {§observability-boundary}
@@ -358,24 +360,44 @@ export default class WorkspacePlaces {
     }
 
     // {§methods-workspace-create} {§machine-processes}
-    async setWorkspaceHidden(args: { readonly workspaceId: number; readonly hidden: boolean }): Promise<ApplicationWorkspaceHiding> {
-        const workspaceId = ClientInput.assertId("workspace.hidden", "workspaceId", args.workspaceId);
-        const hidden = ClientInput.assertFlag("workspace.hidden", "hidden", args.hidden);
-        const { hiding, changed } = await Places.setWorkspaceHidden(this.#db, (id) => this.#placeGates(id), workspaceId, hidden);
+    async setWorkspaceArchived(args: { readonly workspaceId: number; readonly archived: boolean }): Promise<ApplicationWorkspaceArchiving> {
+        const workspaceId = ClientInput.assertId("workspace.archived", "workspaceId", args.workspaceId);
+        const archived = ClientInput.assertFlag("workspace.archived", "archived", args.archived);
+        const { archiving, changed } = await Places.setWorkspaceArchived(this.#db, (id) => this.#placeGates(id), workspaceId, archived);
         // {§notifications}
-        if (changed) this.#broadcast({ workspaceId }, "workspace/hidden", hiding);
-        return hiding;
+        if (changed) this.#broadcast({ workspaceId }, "workspace/archived", archiving);
+        return archiving;
     }
 
     // {§methods-workspace-create} {§machine-processes}
-    async setSessionHidden(args: { readonly workspaceId: number; readonly sessionId: number; readonly hidden: boolean }): Promise<ApplicationSessionHiding> {
-        const workspaceId = ClientInput.assertId("session.hidden", "workspaceId", args.workspaceId);
-        const sessionId = ClientInput.assertId("session.hidden", "sessionId", args.sessionId);
-        const hidden = ClientInput.assertFlag("session.hidden", "hidden", args.hidden);
-        const hiding = await Places.setSessionHidden(this.#db, (id) => this.#placeGates(id), workspaceId, sessionId, hidden);
+    async setSessionArchived(args: { readonly workspaceId: number; readonly sessionId: number; readonly archived: boolean }): Promise<ApplicationSessionArchiving> {
+        const workspaceId = ClientInput.assertId("session.archived", "workspaceId", args.workspaceId);
+        const sessionId = ClientInput.assertId("session.archived", "sessionId", args.sessionId);
+        const archived = ClientInput.assertFlag("session.archived", "archived", args.archived);
+        const archiving = await Places.setSessionArchived(this.#db, (id) => this.#placeGates(id), workspaceId, sessionId, archived);
         // {§notifications}
-        if (hiding.sessionIds.length > 0) this.#broadcast({ workspaceId }, "session/hidden", hiding);
-        return hiding;
+        if (archiving.sessionIds.length > 0) this.#broadcast({ workspaceId }, "session/archived", archiving);
+        return archiving;
+    }
+
+    // {§methods-workspace-create} {§machine-processes}
+    async deleteSession(args: { readonly workspaceId: number; readonly sessionId: number }): Promise<ApplicationSessionDeletion> {
+        const workspaceId = ClientInput.assertId("session.delete", "workspaceId", args.workspaceId);
+        const sessionId = ClientInput.assertId("session.delete", "sessionId", args.sessionId);
+        const deletion = await Places.deleteSession(this.#db, (id) => this.#placeGates(id), workspaceId, sessionId);
+        // {§notifications}
+        if (deletion.sessionIds.length > 0) this.#broadcast({ workspaceId }, "session/deleted", deletion);
+        return deletion;
+    }
+
+    // {§methods-workspace-create} {§machine-processes}
+    async setSessionTitle(args: { readonly workspaceId: number; readonly sessionId: number; readonly title: string }): Promise<ApplicationSessionTitling> {
+        const workspaceId = ClientInput.assertId("session.title", "workspaceId", args.workspaceId);
+        const sessionId = ClientInput.assertId("session.title", "sessionId", args.sessionId);
+        const { titling, changed } = await Places.setSessionTitle(this.#db, workspaceId, sessionId, args.title);
+        // {§notifications}
+        if (changed) this.#broadcast({ workspaceId }, "session/titled", titling);
+        return titling;
     }
 
     // The gates a hide is refused over, as the overview counts them.

@@ -202,6 +202,14 @@ contract at its owning package, then update consumers. Do not introduce
 compatibility aliases, dual paths, or transitional behavior unless compatibility
 is itself an agreed requirement.
 
+**ACPv2 is the Schelling point.** Our prerogative is not to maintain a translation layer between
+PLURNK and ACPv2, but to become an ACPv2 agent paradigmatically — aggressively simplifying until the
+only things that aren't ACPv2 are either essential to PLURNK's virtual machine (the log, the OP
+language, the packet, the session graph, proposals, the cascade, the extension frameworks) or
+orthogonal to the protocol (`ARCHITECTURE.md` § Standards and substrate). When ACPv2 names or shapes
+a concept, it drives a maximal rename across `plurnk-contracts`, `plurnk-core`, SQLite, `plurnk-acp`,
+and the client so the codebase reads as if that was always our name and model for it.
+
 **A rename is total.** When a concept's name changes, it changes everywhere that names the concept, in
 one landing: types, schema, methods, Problems, knobs, wire actions, spec tags, tests, fixtures and docs.
 A surface-only rename, a new flag over old internals, is a defect, not a first step.

@@ -26,7 +26,7 @@ import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } f
 import MessageAbandonment from "./MessageAbandonment.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { Validator, isRecord, type ApplicationPersonaProjection, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionHiding, type ApplicationWorkspaceHiding, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, type ApplicationPersonaProjection, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionArchiving, type ApplicationSessionDeletion, type ApplicationSessionTitling, type ApplicationWorkspaceArchiving, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
@@ -555,6 +555,16 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#clientOperations.cancelLoop(args);
     }
 
+    cancelStream(args: {
+        readonly workspaceId: number;
+        readonly sessionId: number;
+        readonly entryId?: number;
+        readonly target?: string;
+        readonly coordinate?: string;
+    }): Promise<boolean> {
+        return this.#clientOperations.cancelStream(args);
+    }
+
     // {§methods} — the module's render surface beyond the journal. Thin delegations
     // into core's envelope / membership / provider machinery; the module fans the results into its own views.
     listProviders(): ReturnType<ApplicationPort["listProviders"]> {
@@ -587,7 +597,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return Validator.assertClientDisplayCapabilities([...schemes, ...mimetypes]);
     }
 
-    listWorkspaces(query: { readonly hidden?: boolean } = {}): Promise<Array<WorkspaceRow & { project_label: string | null }>> {
+    listWorkspaces(query: { readonly archived?: boolean } = {}): Promise<Array<WorkspaceRow & { project_label: string | null }>> {
         return this.#places.listWorkspaces(query);
     }
 
@@ -694,12 +704,20 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#places.renameWorkspace(workspaceId, name);
     }
 
-    setWorkspaceHidden(args: { readonly workspaceId: number; readonly hidden: boolean }): Promise<ApplicationWorkspaceHiding> {
-        return this.#places.setWorkspaceHidden(args);
+    setWorkspaceArchived(args: { readonly workspaceId: number; readonly archived: boolean }): Promise<ApplicationWorkspaceArchiving> {
+        return this.#places.setWorkspaceArchived(args);
     }
 
-    setSessionHidden(args: { readonly workspaceId: number; readonly sessionId: number; readonly hidden: boolean }): Promise<ApplicationSessionHiding> {
-        return this.#places.setSessionHidden(args);
+    setSessionArchived(args: { readonly workspaceId: number; readonly sessionId: number; readonly archived: boolean }): Promise<ApplicationSessionArchiving> {
+        return this.#places.setSessionArchived(args);
+    }
+
+    deleteSession(args: { readonly workspaceId: number; readonly sessionId: number }): Promise<ApplicationSessionDeletion> {
+        return this.#places.deleteSession(args);
+    }
+
+    setSessionTitle(args: { readonly workspaceId: number; readonly sessionId: number; readonly title: string }): Promise<ApplicationSessionTitling> {
+        return this.#places.setSessionTitle(args);
     }
 
     createSession(args: ApplicationSessionCreation): Promise<{ sessionId: number; sessionName: string }> {

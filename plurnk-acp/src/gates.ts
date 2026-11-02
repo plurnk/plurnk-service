@@ -130,6 +130,7 @@ const proposalToolCall = (
         title,
         kind,
         status: "pending",
+        capabilities: { cancel: {} },
         ...(locations !== undefined ? { locations } : {}),
         ...(content.length > 0 ? { content } : {}),
         rawInput: {
@@ -240,6 +241,7 @@ const interactionToolCall = (interaction: ClientInteractionProjection): SessionU
     title: interaction.request.toolName,
     kind: "other",
     status: "in_progress",
+    capabilities: { cancel: {} },
     rawInput: interaction.request,
     _meta: {
         plurnk: {
@@ -255,6 +257,7 @@ const interactionToolCallResult = (
     sessionUpdate: "tool_call_update",
     toolCallId: interactionToolCallId(interactionId),
     status: resolution.action === "accept" ? "completed" : "failed",
+    capabilities: { cancel: null },
     rawOutput: resolution,
     content: [{ type: "content", content: { type: "text", text: JSON.stringify(resolution) } }],
 });

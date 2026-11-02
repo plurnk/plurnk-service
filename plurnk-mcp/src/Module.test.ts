@@ -855,7 +855,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
             project_root: null,
             project_label: null,
             created_at: "2026-10-28T00:00:00Z",
-            hidden_at: null,
+            archived_at: null,
         })),
         createWorkspace: async ({ name }: { readonly name?: string }) => {
             const ws = { id: workspaces.length + 1, name: name ?? `ws-${workspaces.length + 1}` };

@@ -1,38 +1,63 @@
 # Architecture
 
-PLURNK is a contract-first platform with one composed daemon and multiple thin
-clients. This document owns the ecosystem map, cross-boundary flow, and the
-one rule every package shares: where a choice may live. Package specifications
-own behavior; design history belongs in Git and forge issues.
+PLURNK is an ACPv2 agent powered by a small, distinct virtual machine. We defend that virtual
+machine and treat any bespokery outside it as an unforced error — amateurish, unstable, unspecified
+behavior to be eliminated, never preserved behind a translation layer. This document owns that
+boundary, the ecosystem map, cross-boundary flow, and the one rule every package shares: where a
+choice may live. Package specifications own behavior; design history belongs in Git and forge
+issues.
 
-## Standards boundary
-
-PLURNK is an engine between standards. Nodes outside PLURNK are interface
-specifications; standards named inside PLURNK govern internal contracts.
-Boundary adapters implement their owning standards rather than restate them.
+## Standards and substrate
 
 ```mermaid
-flowchart LR
-    ACP["ACP Specification"] --- PLURNK["plurnk<br/><br/>JSON Schema · RFC 9457<br/>SARIF regions · OTel<br/>RFC 3986 · WHATWG URL<br/>IANA media types"]
-    MCP["MCP Specification"] --- PLURNK
-    SKILLS["Agent Skills Specification"] --- PLURNK
-    PLUGINS["Agent Plugins Specification"] --- PLURNK
-    OPENAI["OpenAI Specification"] --- PLURNK
-    EXTENSION["Plurnk extension<br/>(exec · scheme · mimetype · provider · http-materializer · module)<br/>plurnk-owned interface"] --- PLURNK
+flowchart TB
+    subgraph FOR["What we build FOR (Agent & Capability Standards)"]
+        ACP["ACPv2 Specification<br/>client protocol · session lifecycle"]
+        MCP["MCP Specification<br/>tools · resources · prompts · tasks"]
+        SKILLS["Agent Skills & Plugins Specifications<br/>SKILL.md · plugin.json"]
+    end
+
+    subgraph DEFEND["What we DEFEND (The PLURNK Virtual Machine)"]
+        VM["OP grammar (plurnk.md) · Curated log · Packet (chars/2)<br/>Session graph (WORK · FORK · WAIT · SEND · DONE · FAIL)<br/>Proposals · Environment cascade · Extension frameworks"]
+    end
+
+    subgraph WITH["What we build WITH (Implementation Substrates)"]
+        SUB["@earendil-works/pi-ai · @earendil-works/pi-tui<br/>@agentclientprotocol/sdk · @modelcontextprotocol/sdk<br/>@possumtech/sqlrite · ANTLR4 · Tree-sitter"]
+    end
+
+    subgraph UPON["What we build UPON (Host & Web Bedrock)"]
+        BED["POSIX / GNU / Unix (XDG · NO_COLOR · env · man · completions · signals · stdio)<br/>RFC 3986 URIs · RFC 9457 Problems · OAuth 2.1 · JSON Schema · SARIF · OTel · SQLite"]
+    end
+
+    FOR <--> DEFEND
+    DEFEND --> WITH
+    WITH --> UPON
 ```
 
-### Which standards earn a place
+| Role | Authorities | Architectural rule |
+| --- | --- | --- |
+| **What we defend** (the PLURNK VM) | The OP grammar (`plurnk.md`), the curated log, the packet (`chars/2` model-owned context curation), the session delegation graph (`WORK`, `FORK`, `WAIT`, `SEND`, `DONE`, `FAIL`), proposals as the consent gate, the cascading environment, and the extension frameworks (`scheme`, `exec`, `mimetype`, `provider`). | These organs are the product. Never conform them away or add daemon-side compaction, hidden state, or a second model operation syntax. |
+| **What we build for** (the agent & capability standards) | **ACPv2** (client protocol and session lifecycle), **MCP** (tools, resources, prompts, tasks), **Agent Skills Specification** (`SKILL.md`), and **Agent Plugins Specification** (`plugin.json`). | **ACPv2 is the Schelling point.** PLURNK is not a bespoke agent behind an ACPv2 translation layer; it is paradigmatically an ACPv2 agent whose engine is the PLURNK VM. |
+| **What we build upon** (the host & web bedrock) | **POSIX / GNU / Unix** (XDG, `NO_COLOR`, env cascade, man, completions, exit codes, signals, fd conventions) and **IETF / W3C / SQLite** (RFC 3986 URIs, RFC 9457 Problems, OAuth 2.1 / RFC 9728 / RFC 8414, JSON Schema, SARIF, OpenTelemetry, SQLite). | Host and web standards govern wherever a domain standard is silent. Where a domain standard names a cross-client location (such as `.agents/skills`), PLURNK reads it, and its XDG location beside it holds PLURNK-only entries that shadow global ones. |
+| **What we build with** (the implementation substrates) | `@earendil-works/pi-ai` (provider inference), `@earendil-works/pi-tui` (terminal UI), `@agentclientprotocol/sdk`, `@modelcontextprotocol/sdk`, `@possumtech/sqlrite`, ANTLR4, Tree-sitter. | Delegate undifferentiated heavy lifting (provider wire dialects, terminal viewport diffing, JSON-RPC framing, parsing) to proven substrates instead of hand-rolling plumbing. Keep substrate internals behind their owning package boundary. |
 
-Eight principles govern which exterior standards PLURNK conforms to:
+### Four rules against bespokery and translation layers
 
-1. **UVP first.** Never conform away what users chose Plurnk for; the OP grammar, curated log, packet, and session graph are the product, not a compatibility gap. So is one shape per concern: one operation syntax, one address shape, and one management grammar (`list | discover | add | replace | enable | disable | remove`) for every family, with proposals the gate on every choice with security or boundary implications and the cascade the home of every operator choice. Each exception to that shape is a permanent tax on the model, the client, and the product.
-2. **Right-fit.** Hobbyist-first: an enterprise-grade feature is acceptable only when its cost lands on the party that wants it, never on general adoption.
-3. **Traction.** Count running counterparties today; integration horizon must be shorter than the standard's expected half-life. Sockets stay configurable with no default until a candidate earns it.
-4. **POSIX app identity.** Decades-stable host-ecosystem conventions (XDG, NO_COLOR, man, completions, service units) govern wherever a domain standard is silent. Where a domain standard names its own location for cross-client interoperability, such as `.agents/skills`, PLURNK reads it, and its XDG location beside it holds PLURNK-only entries, which shadow the global ones.
-5. **Faces, never organs.** A standard adopts as one adapter or projection behind an existing seam; if it cannot, that is the alarm, and it goes to a design gate.
-6. **One system, multiple sources.** Standard files, the cascading environment, and scoped live changes feed the same owning contracts. Standards alignment must not withdraw environment-only configuration or turn workspace management into a global installer. Resource formats remain standard; configuration resolution, capability policy, and publication remain the shared system's responsibility.
-7. **Two arbiters.** Model-facing surfaces change only on measured model evidence; human-facing surfaces follow host-ecosystem convention without ceremony. Standards bodies get a vote on neither.
-8. **Open, never proprietary.** A vendor-owned convention (`CLAUDE.md`, `.claude/`, `.cursor/`, a vendor's configuration dialect) earns no place, whatever its traction.
+1. **Aggressive convergence on ACPv2.** Wherever ACPv2 names or structures an agent-client concept (sessions, archiving, deletion, status, titles, cancellation, gates, updates, capabilities), `plurnk-contracts`, `plurnk-core`, SQLite, `plurnk-acp`, and clients converge on ACPv2's vocabulary and semantics as if PLURNK had been designed around ACPv2 from the beginning. `ApplicationPort` exists for package dependency direction, never to shelter a competing internal dialect. `_plurnk/action` is a residual bridge for VM and workspace operations ACPv2 cannot yet express, and it shrinks whenever ACPv2 grows.
+2. **Defend the VM's organs; standardize everything else.** The model-facing virtual machine — one OP grammar, one URI address shape, the curated log, the packet, proposals, and the session graph — is non-negotiable. Outside those organs, custom protocols, custom lifecycle vocabulary, and adapter shims are tech debt.
+3. **One system, multiple standard sources.** Standard files (`SKILL.md`, `plugin.json`, `mcp.json`), ACP session admission options (`mcpServers`, `additionalDirectories`, `systemPrompt`), the cascading environment, and scoped live changes feed the same owning contracts. Standards alignment never withdraws environment-only configuration or turns workspace management into a global disk installer.
+4. **Open standards only, never vendor dialects.** A vendor-owned convention (`CLAUDE.md`, `.claude/`, `.cursor/`, or a vendor's proprietary configuration dialect) earns no place, whatever its traction.
+
+### Judgment seams: where the VM and exterior standards meet
+
+When the PLURNK VM is richer than an exterior standard's default mental model, we neither mutilate the VM nor build a silent shim. These four seams are explicit design checkpoints for collaborative resolution:
+
+| Seam | Standard assumption (ACPv2 / MCP) | PLURNK VM reality | Standing resolution & escalation rule |
+| --- | --- | --- | --- |
+| **Workspace vs. Session** | ACPv2 is session-scoped (`cwd` on `session/new`); there is no first-class workspace entity. | A workspace owns shared Functionality (MCP, skills, members, personas, capability policy) and a multi-session graph. | Bind `cwd` to workspace attachment; keep workspace-wide management in `_plurnk/action` (`list \| discover \| add \| replace \| enable \| disable \| remove`) only where ACPv2 has no native equivalent. |
+| **Context curation vs. Append-only chat** | Clients expect an append-only `session/update` stream and agent-side context compaction. | The model curates its own address space (`READ`, `EDIT`, `KILL`); bodies live at addressable entry URIs; the daemon never compacts. | Project log operations as `tool_call_update` with `resource_link` references; ignore `compaction_*`; surface any tension between in-place curation and stream replay before inventing shims. |
+| **First-class session graph vs. Opaque subagents** | Subagents are opaque child tasks (`subagent_update`) or `session/fork` clones. | Every `WORK` / `FORK` child is a full, durable session (`<workspaceId>#<sessionName>`) with its own loops and inbox (`SEND` / `WAIT`). | Emit standard `subagent_update` and `session_message` for ACPv2 clients while preserving full session addressability. |
+| **Environment cascade vs. Imperative mutation** | Tools often assume imperative global installers or direct config-file rewrites. | The cascading environment (`.env.defaults` → user → workspace → session) is the single home for choices; standard files are sources, not persistence scopes. | Ingest standard files and ACP admission options into the cascade/workspace without silently rewriting user-global or project-committed files. |
 
 ## Ecosystem
 
@@ -140,9 +165,10 @@ and verify the composed behavior.
 
 ## Extensibility
 
-Plurnk is extended at its faces, never its organs (principle 5). Each face has one seam and, where
-one exists, one open standard; the organs below are not extension points, and every integration
-composes with them. The plurnk skill's chapter, `skill://plurnk/references/extensibility.md`
+Plurnk is extended at its standard seams, never its virtual-machine organs. Each seam has one
+contract and, where one exists, one open standard; the organs below are not extension points, and
+every integration composes with them. The plurnk skill's chapter,
+`skill://plurnk/references/extensibility.md`
 ([source](./plurnk-meta/skills/plurnk/references/extensibility.md)), is the agent-facing account and
 links each kind's contract.
 
@@ -186,8 +212,8 @@ Vocabulary follows the standard of its audience.
 
 | Layer | Rule |
 | --- | --- |
-| Operator, wire, storage | Use the applicable industry term. Provider quantities follow the OpenAI vocabulary where it is standard: `contextWindow`, `reasoning`, `completion`, `finish_reason`, and usage nouns. |
-| Core lifecycle | Use the exact Workspace → Session → Loop → Turn → Op hierarchy in {§lifecycle-terms}. An ACP Run or thread is always protocol-qualified. |
+| Operator, wire, storage | Use the ACPv2 and industry term wherever ACPv2 or an exterior standard names the concept (`session`, `archive`, `unarchive`, `delete`, `title`, `status`, `tool_call`, `terminal`, `configOptions`, `contextWindow`, `reasoning`, `completion`, `finish_reason`, and usage nouns). |
+| Core lifecycle | Use the exact Workspace → Session → Loop → Turn → Op hierarchy in {§lifecycle-terms}. |
 | Model-facing packet | Use the model's training distribution: operations mirror HTTP and shell, while log records use ordinary Markdown headings, strict JSON metadata, and text coordinates. Renaming this vocabulary to internal API terminology would discard useful resonance for a standard the model never sees. |
 
 | PLURNK-native term | Why it is its own |

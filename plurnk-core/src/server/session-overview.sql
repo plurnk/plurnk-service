@@ -3,10 +3,10 @@
 -- PREP: overview_places
 -- {§application-session-observation}: the places in scope, each with its loops' observations for its lifecycle
 -- ({§application-session-observation}) and its latest finished reply ({§message-completion}), without the reply's words.
--- {§machine-processes} A hidden session is out of scope, and in the daemon's scope so is every session of a hidden workspace.
+-- {§machine-processes} An archived session is out of scope, and in the daemon's scope so is every session of an archived workspace.
 -- Unbounded by SQL LIMIT because SessionOverview.hold retains gated sessions past `limit` from in-memory gate state and
 -- computes `omitted` across the full in-scope set.
-SELECT w.id, w.workspace_id AS workspaceId, w.name, w.parent_session_id AS parentSessionId,
+SELECT w.id, w.workspace_id AS workspaceId, w.name, w.parent_session_id AS parentSessionId, w.title,
        CASE WHEN w.fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN w.parent_session_id IS NOT NULL THEN 'work'
             ELSE 'root' END AS kind,
@@ -37,9 +37,9 @@ LEFT JOIN log_entries reply ON reply.id = (
 LEFT JOIN loops reply_loop ON reply_loop.id = reply.loop_id
 LEFT JOIN turns reply_turn ON reply_turn.id = reply.turn_id
 WHERE w.origin = 'model'
-  AND w.hidden_at IS NULL
+  AND w.archived_at IS NULL
   AND (w.workspace_id = $workspace_id
-       OR ($workspace_id IS NULL AND (SELECT ws.hidden_at FROM workspaces ws WHERE ws.id = w.workspace_id) IS NULL));
+       OR ($workspace_id IS NULL AND (SELECT ws.archived_at FROM workspaces ws WHERE ws.id = w.workspace_id) IS NULL));
 
 -- PREP: overview_reply_words
 -- {§application-session-observation}: the words of the replies the overview holds, $ids a JSON array of their log rows.
