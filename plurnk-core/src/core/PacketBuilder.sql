@@ -208,8 +208,9 @@ ORDER BY m.ordinal ASC;
 -- PREP: engine_session_latest_packet
 -- {§session-model-selection}: the session's workspace, latest packet-bearing loop, and packet,
 -- so a model switch can measure the session's current curated context against the target model's budget.
-SELECT w.workspace_id, l.id AS loop_id, t.packet
+SELECT w.workspace_id, l.id AS loop_id, tp.packet
 FROM turns t
+JOIN turn_packets tp ON tp.id = t.id
 JOIN loops l ON l.id = t.loop_id
 JOIN sessions w ON w.id = l.session_id
 WHERE l.session_id = $session_id AND t.packet IS NOT NULL
@@ -221,17 +222,20 @@ LIMIT 1;
 -- `session://<session>/AGENTS.md` that populate `system-policy` alongside the
 -- global policy tier, ordered deterministically: project `AGENTS.md`, project
 -- `AGENTS.local.md`, then `session://<session>/AGENTS.md`.
+-- An outer join cannot flatten the entry_channels view, so this one reads its tables ({§content-store}).
 SELECT
     e.scheme AS scheme,
     e.pathname AS pathname,
     w.project_root AS project_root,
-    CAST(ec.content AS TEXT) AS content
+    CAST(COALESCE(ec.buffer, b.content) AS TEXT) AS content
 FROM entries e
 JOIN workspaces w
     ON w.id = e.workspace_id
-LEFT JOIN entry_channels ec
+LEFT JOIN entry_channel_rows ec
     ON ec.entry_id = e.id
    AND ec.name = e.default_channel
+LEFT JOIN contents b
+    ON b.id = ec.content_id
 WHERE e.workspace_id = $workspace_id
   AND (
       (e.scheme = 'file' AND e.authority = '' AND e.pathname IN ('AGENTS.md', '/AGENTS.md', 'AGENTS.local.md', '/AGENTS.local.md'))
