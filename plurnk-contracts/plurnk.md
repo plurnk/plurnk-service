@@ -153,7 +153,7 @@ bar
 ```READ (largeExampleFile.txt) <101,200> <!-- READing in chunks if budget constrained -->
 ```
 
-```KILL (log:///1/[1-7]/*/{READ,emission,reasoning}) <!-- old results, programs, and reasoning, in bulk; the body may survive as a NOTE -->
+```KILL (log:///1/[1-7]/*/{READ,emission}) <!-- old results, in bulk; the body may survive as a NOTE -->
 example distillation or summarization
 ```
 
