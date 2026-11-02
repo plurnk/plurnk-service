@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MimetypeInputLimitError } from "@plurnk/plurnk-mimetypes";
+import { MimetypeInputError, MimetypeInputLimitError } from "@plurnk/plurnk-mimetypes";
 import DbProjectionCaps from "./DbProjectionCaps.ts";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 
@@ -148,6 +148,27 @@ test("{§edit-result-receipt-projection} parser-recovery inspection surfaces too
         level: "warn",
         message: "Parser recovery evidence unavailable for text/x-go: parser exploded",
     }]);
+
+    const validationNotices: unknown[] = [];
+    const validationFailure = {
+        mimetypes: {
+            async process({ content }: { content: string }) {
+                if (content.includes("broken")) {
+                    throw new MimetypeInputError({
+                        mimetype: "application/json",
+                        cause: new SyntaxError("CloseBraceExpected at line 11:1"),
+                    });
+                }
+                return { mimetype: "application/json", ok: true, totalLines: 1, parseIssues: 0 };
+            },
+        },
+        pushNotice(notice: unknown) { validationNotices.push(notice); },
+    } as unknown as PlurnkSchemeContext;
+    assert.deepEqual(
+        await new DbProjectionCaps(validationFailure).parseIssueTransition("{\n\"broken\":\n", "{}\n", "application/json"),
+        { before: 1, after: 0 },
+    );
+    assert.deepEqual(validationNotices, []);
 });
 
 test("{§mimetype-binary-input} a typed mimetype input ceiling failure crosses the capability unchanged", async () => {

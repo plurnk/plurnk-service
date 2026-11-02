@@ -853,7 +853,7 @@ describe("note-continuity", () => {
 type Row = { op: string | null; origin: string };
 
 // {§operation-results} {§diagnostic-observation} — the card's command as the notice's directive, in callout form.
-const NOTICE = "> [!WARNING]\n> YOU MUST persist all new facts and ideas and emit a TODO list. The turn continued without a NOTE. [continued_without_note]";
+const NOTICE = "> [!WARNING]\n> YOU MUST persist all new facts and ideas and emit a TODO list. The turn continued without a NOTE or TODO. [continued_without_note]";
 
 const noticesOf = async (db: Db, turnId: number): Promise<string> =>
     packetSection(JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: turnId }))!.packet), "notices");
@@ -933,6 +933,26 @@ test("{§operation-results} {§op-shapes} {§child-orientation}: continuing work
         assert.equal(await noticesOf(db, final.turnId), "", "a TODO alone satisfies the continuity directive without warning");
         const work = packetSection(JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: final.turnId }))!.packet), "work");
         assert.deepEqual(JSON.parse(work).todo, ["Survey workspace", "Complete task"]);
+    } finally { await db.close(); }
+});
+
+test("{§operation-results} {§loop-completion}: a turn that emits DONE beside unobserved work continues without a continued_without_note warning", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, "done-beside-work-no-note-warning");
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Write the file and conclude.");
+        const context = { workspaceId, sessionId, loopId };
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            { assistant: { content: "```EDIT (workspace:///result.txt)\nok\n```\n\n```DONE\nDone.\n```", reasoning: null } },
+            { assistant: { content: "", reasoning: null } },
+        ] });
+        const first = await engine.runTurn({ ...context, provider, messages: [] });
+        assert.equal(first.status, 102);
+        const final = await engine.runTurn({ ...context, provider, messages: [] });
+        assert.equal(final.status, 200);
+        assert.equal(await noticesOf(db, final.turnId), "");
     } finally { await db.close(); }
 });
 

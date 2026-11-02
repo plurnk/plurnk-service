@@ -153,6 +153,12 @@ test("{§slicer-text-algebra} assert validates schemes-owned scope normalization
         scopeNormalizations: [{
             requested: [2, 1, 3] as const,
             canonical: [2, 1, 3, 6] as const,
+        }, {
+            requested: [329, 1, -1] as const,
+            canonical: [329, 1, 560, 2] as const,
+        }, {
+            requested: [1, 2, 9] as const,
+            canonical: [1, 2, 1, 4] as const,
         }],
     };
     assert.equal(Results.assert(result), result);
@@ -171,6 +177,13 @@ test("{§slicer-text-algebra} assert validates schemes-owned scope normalization
         () => Results.assert({
             status: 200,
             scopeNormalizations: [{ requested: [2, 1, 3], canonical: [2, 2, 3, 6] }],
+        } as never),
+        /must preserve the requested prefix/,
+    );
+    assert.throws(
+        () => Results.assert({
+            status: 200,
+            scopeNormalizations: [{ requested: [2, 1, 3], canonical: [2, 1, 4, 6] }],
         } as never),
         /must preserve the requested prefix/,
     );
