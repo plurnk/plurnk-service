@@ -94,7 +94,7 @@
         "@changesets/cli": "3.0.3",
         "@possumtech/sqlrite": "^6.6.1",
         "@types/node": "^26.6.6",
-        "dependency-cruiser": "18.7.0",
+        "dependency-cruiser": "18.7.1",
         "jscpd": "5.4.2",
         "knip": "6.44.1",
         "markdownlint-cli2": "^0.24.0",
