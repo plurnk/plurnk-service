@@ -917,7 +917,7 @@ test("{§operator-config-precedence}: the provider packet excludes personal XDG 
     assert.equal(await readFile(path, "utf8"), personal, "daily-driving policy remains untouched");
 });
 
-test("{§session-initialization-entry} assembled packet: PLURNK_SERVICE_POLICY materializes plurnk:///AGENTS.md for Turn 0 READ while keeping system-policy empty", async () => {
+test("{§session-initialization-entry} {§packet-assembly} assembled packet: PLURNK_SERVICE_POLICY populates system-policy and materializes plurnk:///AGENTS.md without a Turn 0 READ", async () => {
     const priorPolicy = process.env.PLURNK_SERVICE_POLICY;
     const dir = await mkdtemp(join(tmpdir(), "plurnk-policy-"));
     const db = await openMigrated();
@@ -935,10 +935,9 @@ test("{§session-initialization-entry} assembled packet: PLURNK_SERVICE_POLICY m
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
-        assert.equal(packetSection(packet, "system-policy"), "", "system-policy stays empty; global policy is materialized at plurnk:///AGENTS.md");
+        assert.equal(packetSection(packet, "system-policy"), "# House rules\nNEVER guess a file path.", "system-policy carries the authored global policy");
         const log = packetSection(packet, "log");
-        assert.match(log, /^### log:\/\/\/\S+\/READ \(plurnk:\/\/\/AGENTS\.md\) · \d+$/m, "Turn 0 reads plurnk:///AGENTS.md");
-        assert.match(log, /1:# House rules\n2:NEVER guess a file path\./, "the authored policy content rides Turn 0");
+        assert.doesNotMatch(log, /^### log:\/\/\/\S+\/READ \(plurnk:\/\/\/AGENTS\.md\) · \d+$/m, "Turn 0 does not foist a READ of plurnk:///AGENTS.md");
     } finally {
         await db.close();
         if (priorPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = priorPolicy;
@@ -946,7 +945,7 @@ test("{§session-initialization-entry} assembled packet: PLURNK_SERVICE_POLICY m
     }
 });
 
-test("{§packet-inject} {§host-path-layout} unset PLURNK_SERVICE_POLICY composes $XDG_CONFIG_HOME/agents/AGENTS(.local)?.md, ~/.agents/AGENTS(.local)?.md, and $XDG_CONFIG_HOME/plurnk/AGENTS(.local)?.md into plurnk:///AGENTS(.local).md", async (t) => {
+test("{§packet-inject} {§host-path-layout} unset PLURNK_SERVICE_POLICY composes $XDG_CONFIG_HOME/agents/AGENTS(.local)?.md, ~/.agents/AGENTS(.local)?.md, and $XDG_CONFIG_HOME/plurnk/AGENTS(.local)?.md into system-policy and plurnk:///AGENTS(.local).md", async (t) => {
     const priorPolicy = process.env.PLURNK_SERVICE_POLICY;
     const dir = await mkdtemp(join(tmpdir(), "plurnk-policy-cascade-"));
     const db = await openMigrated();
@@ -978,10 +977,12 @@ test("{§packet-inject} {§host-path-layout} unset PLURNK_SERVICE_POLICY compose
     const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
     const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
     const packet = await getPacket(db, result.turnId);
-    assert.equal(packetSection(packet, "system-policy"), "");
+    assert.equal(
+        packetSection(packet, "system-policy"),
+        "# XDG global rules\n\n# Home global rules\n\n# Plurnk rules\n\n# XDG local rules\n\n# Home local rules\n\n# Plurnk local rules",
+    );
     const log = packetSection(packet, "log");
-    assert.match(log, /1:# XDG global rules\n2:\n3:# Home global rules\n4:\n5:# Plurnk rules/);
-    assert.match(log, /1:# XDG local rules\n2:\n3:# Home local rules\n4:\n5:# Plurnk local rules/);
+    assert.doesNotMatch(log, /READ \(plurnk:\/\/\/AGENTS/);
 });
 
 test("{§child-orientation} the live things a session holds — child sessions — surface as terse pointers in the status clump", async () => {

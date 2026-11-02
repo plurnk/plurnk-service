@@ -11,8 +11,9 @@ import { renderAddress } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
-import { readGlobalAgents, readGlobalLocalAgents, readPacketInject } from "./packet-inject.ts";
+import { readGlobalAgents, readGlobalLocalAgents, readPacketInject, readSystemPolicy } from "./packet-inject.ts";
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import Paths from "../Paths.ts";
 import { readTeachingSource } from "./teaching-corpus.ts";
 import { recapLines } from "./recap-lines.ts";
@@ -228,8 +229,25 @@ export default class PacketBuilder {
         // specified at {§packet-assembly}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
         const inject = await readPacketInject(this.#hostPaths); // {§packet-inject} — per-turn; a broken configured path fails hard
-        // {§session-initialization-entry} — global AGENTS(.local).md and project AGENTS(.local).md ride
-        // turn 0 as foisted <1,-1> READs (plurnk:///AGENTS(.local).md and AGENTS(.local).md).
+        // {§packet-assembly} — global AGENTS(.local).md (or PLURNK_SERVICE_POLICY), project-root
+        // AGENTS(.local).md, and session://<session>/AGENTS.md ride the `system-policy` packet section.
+        const globalPolicy = await readSystemPolicy(this.#hostPaths);
+        const policyRows = await this.#db.engine_packet_policy_entries.all<{
+            scheme: string; pathname: string; project_root: string; content: string | null;
+        }>({ workspace_id: workspaceId, session_name: sessionName });
+        const resolvedPolicies = await Promise.all(policyRows.map(async (row) => {
+            if (row.content !== null) return row.content.trim();
+            if (row.scheme !== "file") return "";
+            try {
+                return (await readFile(resolve(row.project_root, row.pathname.replace(/^\/+/, "")), "utf8")).trim();
+            } catch {
+                return "";
+            }
+        }));
+        const systemPolicy = [
+            ...(globalPolicy !== null && globalPolicy.length > 0 ? [globalPolicy] : []),
+            ...resolvedPolicies.filter((text) => text.length > 0),
+        ].join("\n\n");
         // Child-orientation ({§child-orientation}): the live things this session holds — open streams +
         // unconcluded child sessions — surfaced every turn as `{status, path}` JSON pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of
@@ -316,9 +334,9 @@ export default class PacketBuilder {
         flush();
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
-            // Stable privileged policy slot retained for extension transforms; global AGENTS(.local).md
-            // materializes at plurnk:///AGENTS(.local).md and is read whole at turn 0.
-            { name: "system-policy", slot: "system", header: null, content: "" },
+            // {§packet-assembly} — global AGENTS(.local).md (or PLURNK_SERVICE_POLICY), project-root
+            // AGENTS(.local).md, and session://<session>/AGENTS.md ride the `system-policy` section.
+            { name: "system-policy", slot: "system", header: null, content: systemPolicy },
 
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads the user slot; nothing volatile precedes it
