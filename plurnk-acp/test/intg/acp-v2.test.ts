@@ -36,7 +36,7 @@ const AGENT_METHOD_POSTURE = {
     session_close: "supported",
     tool_call_cancel: "supported",
     terminal_cancel: "supported",
-    auth_logout: "oauth-out-of-band",
+    auth_logout: "supported",
 } as const satisfies Record<keyof typeof AGENT_METHODS, "supported" | "config-option" | "oauth-out-of-band">;
 
 const CLIENT_METHOD_POSTURE = {
@@ -109,6 +109,8 @@ test("{§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 
             const authStatus = await ctx.request(methods.agent.auth.status, {});
             assert.equal(authStatus.state, "authenticated");
             assert.ok(Array.isArray(authStatus.accounts) && authStatus.accounts.length > 0);
+            const loggedOut = await ctx.request(methods.agent.auth.logout, {});
+            assert.deepEqual(loggedOut, {});
 
             const providers = await ctx.request(methods.agent.providers.list, {});
             assert.ok(providers.providers.length > 0);

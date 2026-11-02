@@ -21,6 +21,7 @@ import {
     type InitializeResponse,
     type ListProvidersResponse,
     type ListSessionsResponse,
+    type LogoutAuthResponse,
     type NewSessionResponse,
     type PromptResponse,
     type ResumeSessionResponse,
@@ -223,6 +224,15 @@ export const createConnectionAgent = (
         const status = buildAuthStatus(seam);
         peer.lastAuthStatusJson = JSON.stringify(status);
         return status;
+    });
+
+    app.onRequest(methods.agent.auth.logout, async (ctx): Promise<LogoutAuthResponse> => {
+        peer.client = ctx.client;
+        if (peer.family !== null) {
+            const family = peer.family;
+            setImmediate(() => seam.credentials.revokeFamily(family));
+        }
+        return {};
     });
 
     app.onRequest(methods.agent.providers.list, async (ctx): Promise<ListProvidersResponse> => {
@@ -494,8 +504,10 @@ export const createConnectionAgent = (
 
             notifyPeerSession(peer, bound.acpSessionId, currentState);
 
+            const announcedSubagents = new Set<number>();
             for (const proposal of sessionProposals) {
-                if (proposal.sessionId !== bound.sessionId) {
+                if (proposal.sessionId !== bound.sessionId && !announcedSubagents.has(proposal.sessionId)) {
+                    announcedSubagents.add(proposal.sessionId);
                     const childRow = workspaceSessions.find((w) => w.id === proposal.sessionId);
                     const childName = childRow?.name ?? proposal.session ?? String(proposal.sessionId);
                     notifyPeerSession(peer, bound.acpSessionId, {
@@ -523,7 +535,8 @@ export const createConnectionAgent = (
                 gates.dispatchToPeer(gate, peer, bound, seam, peers, notifyPeerSession, broadcastSessionUpdate);
             }
             for (const interaction of sessionInteractions) {
-                if (interaction.sessionId !== bound.sessionId) {
+                if (interaction.sessionId !== bound.sessionId && !announcedSubagents.has(interaction.sessionId)) {
+                    announcedSubagents.add(interaction.sessionId);
                     const childRow = workspaceSessions.find((w) => w.id === interaction.sessionId);
                     const childName = childRow?.name ?? String(interaction.sessionId);
                     notifyPeerSession(peer, bound.acpSessionId, {
