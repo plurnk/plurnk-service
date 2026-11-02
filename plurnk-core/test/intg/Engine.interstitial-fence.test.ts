@@ -853,7 +853,7 @@ describe("note-continuity", () => {
 type Row = { op: string | null; origin: string };
 
 // {§operation-results} {§diagnostic-observation} — the card's command as the notice's directive, in callout form.
-const NOTICE = "> [!WARNING]\n> YOU MUST persist all new facts, ideas, and plans in NOTEs on every turn. The turn continued without a NOTE. [continued_without_note]";
+const NOTICE = "> [!WARNING]\n> YOU MUST persist all new facts and ideas and emit a TODO list. The turn continued without a NOTE. [continued_without_note]";
 
 const noticesOf = async (db: Db, turnId: number): Promise<string> =>
     packetSection(JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: turnId }))!.packet), "notices");
@@ -913,6 +913,28 @@ for (const parked of [false, true]) for (const location of ["absent", "content",
         } finally { await db.close(); }
     });
 }
+
+test("{§operation-results} {§op-shapes} {§child-orientation}: continuing work with a TODO satisfies the continuity directive and projects into Open Work", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, "optional-todo-continuity");
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Inspect the evidence and report the result.");
+        const context = { workspaceId, sessionId, loopId };
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            { assistant: { content: "```TODO\n- Survey workspace\n- Complete task\n```\n\n```FIND (workspace:///*)\n```", reasoning: null } },
+            { assistant: { content: "```DONE\nDone.\n```", reasoning: null } },
+        ] });
+        const first = await engine.runTurn({ ...context, provider, messages: [] });
+        assert.equal(first.status, 102);
+        const final = await engine.runTurn({ ...context, provider, messages: [] });
+        assert.equal(final.status, 200);
+        assert.equal(await noticesOf(db, final.turnId), "", "a TODO alone satisfies the continuity directive without warning");
+        const work = packetSection(JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: final.turnId }))!.packet), "work");
+        assert.deepEqual(JSON.parse(work).todo, ["Survey workspace", "Complete task"]);
+    } finally { await db.close(); }
+});
 
 test("{§outside-text} {§operation-results}: an operation-free response keeps its failure receipt and takes no notice", async () => {
     const db = await openMigrated();

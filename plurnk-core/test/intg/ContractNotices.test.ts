@@ -38,7 +38,7 @@ import { type PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 describe("contract-notices", () => {
 const UNACCOUNTED = "> [!WARNING]\n> 5000 output tokens billed; 1 visible across content and reasoning @ 2:3 [output_unaccounted]";
 // {§operation-results} — the turns under test continue without a NOTE, and the next packet says so.
-const CONTINUED = "> [!WARNING]\n> YOU MUST persist all new facts, ideas, and plans in NOTEs on every turn. The turn continued without a NOTE. [continued_without_note]";
+const CONTINUED = "> [!WARNING]\n> YOU MUST persist all new facts and ideas and emit a TODO list. The turn continued without a NOTE. [continued_without_note]";
 const scope = (requested: string, canonical: string): string =>
     `> [!WARNING]\n> YOU SHOULD write the normalized scope. Scope <${requested}> was normalized to <${canonical}>. [scope_normalized]`;
 

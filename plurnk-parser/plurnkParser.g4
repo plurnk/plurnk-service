@@ -37,6 +37,7 @@ statement
     | forkStatement
     | killStatement
     | noteStatement
+    | todoStatement
     ;
 
 midStatement
@@ -54,6 +55,7 @@ midStatement
     | forkStatement
     | killStatement
     | noteStatement
+    | todoStatement
     ;
 
 findStatement : OPEN_FIND slotModifiers? opAside? statementEnd ;
@@ -67,6 +69,7 @@ dispositionStatement
     : OPEN_WAIT execModifiers? opAside? statementEnd
     ;
 noteStatement : OPEN_NOTE opAside? statementEnd ;
+todoStatement : OPEN_TODO opAside? statementEnd ;
 sendStatement : OPEN_SEND (firstResourceSelection | metadata+)? opAside? statementEnd ;
 doneStatement : OPEN_DONE (firstResourceSelection | metadata+)? opAside? statementEnd ;
 failStatement : OPEN_FAIL (firstResourceSelection | metadata+)? opAside? statementEnd ;

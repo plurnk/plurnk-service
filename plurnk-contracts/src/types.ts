@@ -20,7 +20,7 @@ import type PlurnkParseError from "./PlurnkParseError.ts";
 // Runtime protocol alphabet; PlurnkOp is structurally derived from this tuple. {§op-shapes}
 export const PLURNK_OPS = [
     "FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "DONE", "FAIL", "BARE", "WORK", "FORK", "KILL",
-    "NOTE", "WAIT",
+    "NOTE", "TODO", "WAIT",
 ] as const;
 
 // {§operation-fences} — canonical teaching/rendering width; ingestion also accepts three.

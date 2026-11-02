@@ -102,14 +102,17 @@ export default class NativeToolCalls {
 
     // The fenced form of what a block of markup asks for, as the receipt teaches it.
     static #form(text: string, executors: readonly string[]): string {
-        const named = /\b(FIND|READ|EDIT|COPY|MOVE|KILL|SEND|DONE|FAIL|NOTE|WAIT|BARE|WORK|FORK)\b/u.exec(text)?.[1]
-            ?? /["=](find|read|edit|kill|send|done|fail|note|wait|work|fork)["\s>]/iu.exec(text)?.[1]?.toUpperCase();
+        const named = /\b(FIND|READ|EDIT|COPY|MOVE|KILL|SEND|DONE|FAIL|NOTE|TODO|WAIT|BARE|WORK|FORK)\b/u.exec(text)?.[1]
+            ?? /["=](find|read|edit|kill|send|done|fail|note|todo|wait|work|fork)["\s>]/iu.exec(text)?.[1]?.toUpperCase();
         const path = /"(?:path|file_path|filepath|file|target)"\s*:\s*"([^"]+)"/u.exec(text)?.[1]
             ?? /\b(?:path|file)="([^"]+)"/u.exec(text)?.[1]
             ?? /\b(?:FIND|READ|EDIT|COPY|MOVE|KILL)\b`?[>\s]*\(([^()\s]+)\)/u.exec(text)?.[1];
         const executor = path !== undefined && executors.some((name) => name.toLowerCase() === path.toLowerCase());
         const shell = named === undefined && (executor || /"command"|<parameter=command>|\b[Bb]ash\b/u.test(text) || executors.some((name) => text.includes(`<${name}>`)));
         if (shell) return "three backticks and `sh` on the opening line, the command on the lines below it, and three backticks to close";
+        if (named === "TODO") {
+            return "three backticks and `TODO` on the opening line, the TODO list on the lines below it, and three backticks to close";
+        }
         if (named === "NOTE" || named === undefined && /"(?:content|text|output|raw|note)"\s*:/u.test(text)) {
             return "three backticks and `NOTE` on the opening line, the note on the lines below it, and three backticks to close";
         }

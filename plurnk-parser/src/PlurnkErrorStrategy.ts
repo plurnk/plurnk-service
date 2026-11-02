@@ -35,6 +35,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.OPEN_DONE]: "operation fence header",
         [plurnkParser.OPEN_FAIL]: "operation fence header",
         [plurnkParser.OPEN_NOTE]: "operation fence header",
+        [plurnkParser.OPEN_TODO]: "operation fence header",
         [plurnkParser.OPEN_WAIT]: "operation fence header",
         [plurnkParser.OPEN_EXEC]: "operation fence header",
         [plurnkParser.OPEN_BARE]: "operation fence header",

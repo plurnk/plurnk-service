@@ -34,7 +34,7 @@ later causes that session's next turn to read the updated instructions.
 
 Parents observe a direct child's mutations, messages, executor invocations, and
 session launches, including failed actions, as rows in their own log.
-Exploration and context curation (NOTE, READ, FIND, BARE, WAIT, and log KILL)
+Exploration and context curation (NOTE, TODO, READ, FIND, BARE, WAIT, and log KILL)
 stay with the child, including READs of executor output. These observations
 never wake the parent; replies and child conclusions retain their ordinary
 delivery and wake behavior.
@@ -57,7 +57,7 @@ A wake ends the suspension, not its held work; a further WAIT waits again.
 Waking retains the loop's messages, turn allowance, and remaining execution
 time; parked time does not consume execution time. Once all Open Messages have
 completion replies, the loop settles after results are observed and held work
-finishes. Replies are delivered immediately. NOTE and successful curation do
+finishes. Replies are delivered immediately. NOTE, TODO, and successful curation do
 not require another observation turn; other results may warrant more work or a
 corrected reply. No additional operation is needed just to conclude.
 

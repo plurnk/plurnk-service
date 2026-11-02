@@ -755,10 +755,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_id: 1,
                         turn_seq: 2,
                         sequence: 3,
-                        op: "NOTE",
-                        tx: { op: "NOTE", body: "- [x] Step 1\n- [/] Step 2\n- [ ] Step 3\n" },
-                        attrs: { path: "mem:///plan" },
-                        rx: { status: 200, content: "- [x] Step 1\n- [/] Step 2\n- [ ] Step 3\n", mimetype: "text/markdown" },
+                        op: "TODO",
+                        tx: { op: "TODO", body: "- Step 1\n- Step 2\n- Step 3\n" },
+                        rx: { status: 200, content: "- Step 1\n- Step 2\n- Step 3\n", mimetype: "text/plain" },
                     }),
                 });
 
@@ -768,9 +767,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_id: 1,
                         turn_seq: 2,
                         sequence: 4,
-                        op: "KILL",
-                        attrs: { path: "log:///1/2/3" },
-                        rx: { status: 200, content: "", mimetype: "text/plain" },
+                        op: "TODO",
+                        tx: { op: "TODO", body: "- Step 2\n- Step 3\n" },
+                        rx: { status: 200, content: "- Step 2\n- Step 3\n", mimetype: "text/plain" },
                     }),
                 });
 
@@ -829,20 +828,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_id: 1,
                         turn_seq: 3,
                         sequence: 2,
-                        op: "EDIT",
-                        attrs: { path: "file:///workspace/alpha/plan.md", body: "# File Plan" },
-                        rx: { status: 200, content: "# File Plan", mimetype: "text/markdown" },
-                    }),
-                });
-                h.port.emitEvent(1, "log/entry", {
-                    entry: makeLogEntry({
-                        id: 21,
-                        session_id: 1,
-                        turn_seq: 3,
-                        sequence: 3,
-                        op: "EDIT",
-                        attrs: { path: "file:///workspace/alpha/plan.md", body: "" },
-                        rx: { status: 200, deleted: true, content: "", mimetype: "text/markdown" },
+                        op: "KILL",
+                        attrs: { path: "log:///1/2/3" },
+                        rx: { status: 200, content: "", mimetype: "text/plain" },
                     }),
                 });
 
@@ -988,32 +976,19 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         (u) =>
                             SessionUpdate.isPlanUpdate(u) &&
                             PlanUpdateContent.isItems(u.plan) &&
-                            u.plan.planId === "mem:///plan" &&
+                            u.plan.planId === "plan" &&
                             u.plan.entries.length === 3 &&
+                            u.plan.entries[0]?.content === "Step 1" &&
                             u.plan.entries[0]?.status === "completed" &&
-                            u.plan.entries[1]?.status === "in_progress" &&
+                            u.plan.entries[1]?.content === "Step 2" &&
+                            u.plan.entries[1]?.status === "pending" &&
+                            u.plan.entries[2]?.content === "Step 3" &&
                             u.plan.entries[2]?.status === "pending",
                     ),
                 );
                 assert.ok(
                     updates.some(
-                        (u) => SessionUpdate.isPlanRemoved(u) && u.planId === "mem:///plan",
-                    ),
-                );
-                assert.ok(
-                    updates.some(
-                        (u) =>
-                            SessionUpdate.isPlanUpdate(u) &&
-                            PlanUpdateContent.isFile(u.plan) &&
-                            u.plan.planId === "file:///workspace/alpha/plan.md" &&
-                            u.plan.uri === "file:///workspace/alpha/plan.md",
-                    ),
-                );
-                assert.ok(
-                    updates.some(
-                        (u) =>
-                            SessionUpdate.isPlanRemoved(u) &&
-                            u.planId === "file:///workspace/alpha/plan.md",
+                        (u) => SessionUpdate.isPlanRemoved(u) && u.planId === "plan",
                     ),
                 );
                 assert.ok(

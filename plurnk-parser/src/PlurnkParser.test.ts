@@ -302,10 +302,27 @@ test("{§slot-order}: prefix and suffix blocks retain exact bytes in authored or
     assert.deepEqual(statements, parse('READ (item) <1> [opaque] [{"x": [1,2]}]'));
 });
 
-test("{§slot-order}: metadata ordering does not add NOTE metadata", () => {
-    const parsed = PlurnkParser.parse("```NOTE [{\"keep\":1}]\nliteral body\n```");
-    assert.ok(parsed.items.some((item) => item.kind === "error" && item.error.severity === "error"));
-    assert.equal(parsed.items.some((item) => item.kind === "statement"), false);
+test("{§slot-order} {§op-shapes}: metadata ordering does not add NOTE or TODO metadata, and TODO round-trips as a body-only op", () => {
+    for (const op of ["NOTE", "TODO"] as const) {
+        const parsed = PlurnkParser.parse(`\`\`\`${op} [{"keep":1}]\nliteral body\n\`\`\``);
+        assert.ok(parsed.items.some((item) => item.kind === "error" && item.error.severity === "error"));
+        assert.equal(parsed.items.some((item) => item.kind === "statement"), false);
+    }
+    const todo = PlurnkParser.parse("```TODO <1,2> <!-- checklist -->\n- Step 1\n- Step 2\n```");
+    const statements = todo.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.equal(statements.length, 1);
+    assert.deepEqual(statements[0], {
+        op: "TODO",
+        aside: "checklist",
+        target: null,
+        metadata: null,
+        lineMarker: null,
+        body: "- Step 1\n- Step 2",
+        position: { line: 1, column: 0 },
+    });
+    assert.equal(PlurnkParser.stringify(statements), "```TODO <!-- checklist -->\n- Step 1\n- Step 2\n```");
+    const warnings = todo.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
+    assert.deepEqual(warnings, ["`TODO` takes no target or scope; the scope `<1,2>` was ignored."]);
 });
 });
 

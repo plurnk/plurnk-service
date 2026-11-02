@@ -139,6 +139,7 @@ export default class CapabilityResolver {
                 return demands(describe("KILL", control ? "control" : "mutate", statement.target));
             }
             case "NOTE":
+            case "TODO":
             case "WAIT":
             case "DONE":
             case "FAIL":

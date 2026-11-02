@@ -8,7 +8,7 @@ export default class StatementShape {
     static readonly #BODIES = {
         FIND: "annotation", READ: "annotation", EDIT: "mutation", COPY: "none", MOVE: "none",
         SEND: "prose", DONE: "prose", FAIL: "prose", BARE: "prose", WORK: "prose", FORK: "prose",
-        NOTE: "text", WAIT: "text", KILL: "text",
+        NOTE: "text", TODO: "text", WAIT: "text", KILL: "text",
     } as const satisfies Record<PlurnkOp, BodyShape>;
 
     static body(op: string, selection?: Selection): BodyShape {
@@ -40,6 +40,7 @@ export default class StatementShape {
             FORK: "`FORK (session://name)?` on the opening fence line, the child's task on the lines below, then the closing fence.",
             BARE: "`BARE (path)?` on the opening fence line, the prompt on the lines below, then the closing fence.",
             NOTE: "`NOTE` alone on the opening fence line, the note on the lines below, then the closing fence.",
+            TODO: "`TODO` alone on the opening fence line, the TODO list on the lines below, then the closing fence.",
             WAIT: "`WAIT (path)? [seconds]?` on the opening fence line, any body on the lines below, then the closing fence.",
         };
         return forms[op];

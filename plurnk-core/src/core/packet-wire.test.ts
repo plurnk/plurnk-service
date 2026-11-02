@@ -2152,6 +2152,19 @@ test("{§packet-inject} a line that opens with no directive is a configuration e
     assert.throws(() => recapLines({ PLURNK_SERVICE_RECAP_LINE_x: "Remember to take notes." }),
         (error: unknown) => error instanceof ConfigurationError && /PLURNK_SERVICE_RECAP_LINE_x/u.test(error.message));
 });
+
+test("{§child-orientation}: currentLoopTodo extracts the latest visible TODO items in the current loop and resets across loops", () => {
+    const log: LogEntryView[] = [
+        { coordinate: "1/1/1", op: "TODO", status: 200, tx: { op: "TODO", body: "- Step 1\n- Step 2" }, rx: { status: 200 } },
+        { coordinate: "1/2/1", op: "TODO", status: 200, tx: { op: "TODO", body: "- Step 2\n- Step 3" }, rx: { status: 200 } },
+    ];
+    assert.deepEqual(PacketWire.currentLoopTodo(log, 1), ["Step 2", "Step 3"]);
+    assert.deepEqual(PacketWire.currentLoopTodo(log, 2), [], "TODO items do not survive into a new loop");
+    assert.equal(
+        PacketWire.renderOpenWork([], [], [], PacketWire.currentLoopTodo(log, 1)),
+        '{"sessions":[],\n"streams":[],\n"messages":[],\n"todo":["Step 2",\n"Step 3"]}',
+    );
+});
 });
 
 

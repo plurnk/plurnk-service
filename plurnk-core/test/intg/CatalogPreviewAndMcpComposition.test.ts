@@ -230,7 +230,7 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                     "the automatic shallow map retains the nested subtree as a complete aggregate");
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 const ops = initializationRows.map(({ op }) => op);
-                assert.deepEqual([ops[0], ops.at(-1)], ["NOTE", "NOTE"], "initialization opens and closes with its NOTEs");
+                assert.deepEqual([ops[0], ops.at(-1)], ["TODO", "TODO"], "initialization opens and closes with its TODOs");
                 assert.ok(ops.length > 2 && ops.slice(1, -1).every((op) => op === "FIND" || op === "plurnk_mcp"),
                     "between them only the environment surveys: no READ of its own program, no reasoning demonstration");
                 for (const row of initializationRows.filter(({ op }) => op === "FIND")) {
@@ -346,8 +346,8 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["NOTE", "FIND", "FIND", "plurnk_mcp", "FIND", "NOTE"],
-                    "initialization contains its opening NOTE, the surveys, its closing NOTE, and nothing else",
+                    ["TODO", "FIND", "FIND", "plurnk_mcp", "FIND", "TODO"],
+                    "initialization contains its opening TODO, the surveys, its closing TODO, and nothing else",
                 );
                 assert.equal(initializationRows.some(({ scheme }) => scheme === "ops"), false,
                     "turn 0 reads none of its own program, and it announces no emission ({§turn-source-resources})");
@@ -1151,6 +1151,7 @@ test("{§child-orientation}: a quiet stream's packet reports elapsed runtime and
                 detail: "elapsed 125s; output unchanged 125s; stdout 0 lines (+0 bytes)",
             }],
             messages: [],
+            todo: [],
         });
         await packets.recordObservations(first);
         const second = await build();
@@ -1160,7 +1161,7 @@ test("{§child-orientation}: a quiet stream's packet reports elapsed runtime and
         await ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200 } });
         const terminal = await build();
         assert.deepEqual(JSON.parse(terminal.sections.find(({ name }) => name === "work")!.content),
-            { sessions: [], streams: [], messages: [] }, "closed streams leave the active inventory");
+            { sessions: [], streams: [], messages: [], todo: [] }, "closed streams leave the active inventory");
     } finally { await db.close(); }
 });
 

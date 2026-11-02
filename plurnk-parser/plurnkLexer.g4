@@ -2,7 +2,7 @@ lexer grammar plurnkLexer;
 
 tokens {
     OPEN_FIND, OPEN_READ, OPEN_EDIT, OPEN_COPY, OPEN_MOVE,
-    OPEN_SEND, OPEN_DONE, OPEN_FAIL, OPEN_NOTE, OPEN_WAIT,
+    OPEN_SEND, OPEN_DONE, OPEN_FAIL, OPEN_NOTE, OPEN_TODO, OPEN_WAIT,
     OPEN_EXEC, OPEN_BARE, OPEN_WORK, OPEN_FORK, OPEN_KILL,
     LPAREN, RPAREN, LBRACKET, RBRACKET, L_MARKER, BODY_OPEN, SECTION_END,
     TARGET_TEXT, METADATA_TEXT, BODY_TEXT, TEXT, ASIDE, ARROW_TARGET
@@ -186,7 +186,7 @@ private targetClosed(): void {
 }
 private scopeless(): boolean {
     return this.openOp === "WORK" || this.openOp === "FORK" || this.openOp === "BARE" || this.openOp === "NOTE"
-        || this.openOp === "DONE" || this.openOp === "FAIL"
+        || this.openOp === "TODO" || this.openOp === "DONE" || this.openOp === "FAIL"
         || this.openOp === "SEND" && !this.headingTarget;
 }
 private targetDepth: number = 0;
@@ -263,7 +263,7 @@ private static readonly OPERATIONS: Readonly<Record<string, number>> = {
     FIND: plurnkLexer.OPEN_FIND, READ: plurnkLexer.OPEN_READ,
     EDIT: plurnkLexer.OPEN_EDIT, COPY: plurnkLexer.OPEN_COPY, MOVE: plurnkLexer.OPEN_MOVE,
     SEND: plurnkLexer.OPEN_SEND, DONE: plurnkLexer.OPEN_DONE, FAIL: plurnkLexer.OPEN_FAIL, BARE: plurnkLexer.OPEN_BARE,
-    NOTE: plurnkLexer.OPEN_NOTE, WAIT: plurnkLexer.OPEN_WAIT,
+    NOTE: plurnkLexer.OPEN_NOTE, TODO: plurnkLexer.OPEN_TODO, WAIT: plurnkLexer.OPEN_WAIT,
     WORK: plurnkLexer.OPEN_WORK, FORK: plurnkLexer.OPEN_FORK, KILL: plurnkLexer.OPEN_KILL,
 };
 
@@ -617,7 +617,7 @@ SLOTS_ASIDE_OPEN : { this.slotReady && !this.asideClosesOnLine() }? '<!--' ~[\r\
 SLOTS_INLINE_CLOSER : { this.slotReady && this.closerWithHeadingAhead() }? FENCE [ \t]* { this.inlineCloserSeen = true; } -> skip ;
 SLOTS_END : { this.closingAt(1) }? FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 // {§parse-recovery} - `→ path`, an address as the log's receipt heading shows it, is the target slot.
-SLOTS_ARROW_TARGET : { this.slotReady && this.openOp !== "NOTE" }? '\u2192' [ \t]* ~[ \t\r\n<[(`\u00B7] ~[ \t\r\n<[`]* { this.targetClosed(); this.noteNotation("arrow"); } -> type(ARROW_TARGET) ;
+SLOTS_ARROW_TARGET : { this.slotReady && this.openOp !== "NOTE" && this.openOp !== "TODO" }? '\u2192' [ \t]* ~[ \t\r\n<[(`\u00B7] ~[ \t\r\n<[`]* { this.targetClosed(); this.noteNotation("arrow"); } -> type(ARROW_TARGET) ;
 // {§parse-recovery} - ` · N`, the token charge the log's heading shows, is no slot: skipped.
 SLOTS_CHARGE : { this.slotReady && this.chargeAhead() }? '\u00B7' [ \t]* ([0-9]+ ([ \t]+ 'tokens')?)? { this.noteNotation("charge"); } -> skip ;
 // {§parse-recovery} - ` · words` before a comment on the same line is stray text, skipped and named: the

@@ -41,6 +41,7 @@ export type {
 } from "./ApplicationNotifications.ts";
 // {§whitespace-contract} The application port is Node-bound and is its own entry, `@plurnk/plurnk-contracts/port`.
 export { formatServiceUpdateReport, parseFamilyCommand } from "./Application.ts";
+export { parseTodoItems } from "./TodoItems.ts";
 export type * from "./Application.ts";
 export type * from "./Functionality.ts";
 
