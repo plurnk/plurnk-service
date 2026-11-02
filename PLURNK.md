@@ -90,8 +90,8 @@ Each slot borrows a convention:
 - the pattern uses the usual delimiters of its dialect;
 - the aside is an HTML comment in which the model says why.
 
-Eleven workflow verbs mirror the verbs of HTTP and the shell: NOTE, FIND, READ, EDIT, COPY, MOVE, KILL,
-WORK, FORK, WAIT and SEND. Every installed runtime and every attached tool uses the same shape:
+Thirteen workflow verbs mirror the verbs of HTTP and the shell: NOTE, FIND, READ, EDIT, COPY, MOVE, KILL,
+WORK, FORK, WAIT, SEND, DONE and FAIL. Every installed runtime and every attached tool uses the same shape:
 
 ````markdown
 ```github (list_issues)
@@ -275,7 +275,7 @@ interface should be made of.
 
 This is the Unix insight restated for a stochastic operator. Unix made everything a file, provided
 small tools that each did one thing, and let pipes compose them. Plurnk makes everything an address,
-provides eleven verbs and one selection algebra, and lets every statement compose them. Statements such
+provides thirteen verbs and one selection algebra, and lets every statement compose them. Statements such
 as "retire every old READ in turns one through seven, keeping this note" or "move these lines of that
 observation to the end of this file" were never designed. They exist because the parts compose.
 
@@ -315,19 +315,20 @@ Everything a person, a tool or another agent touches is the ecosystem's own stan
 - MCP servers come from an ordinary `mcp.json`.
 - Agent Skills are discovered in `.agents/skills`.
 - Agent Plugins install as plugins.
-- Applications reach it over ACP.
+- Applications reach it over ACP v2.
 - Models are reached through the common provider APIs, hosted and local.
 - Configuration lives in plain environment files.
 
-Plurnk adopts each standard as an adapter behind an existing seam rather than inventing an
-alternative. It declines conventions that belong to a single vendor, however popular.
+Plurnk converges on ACP v2 as its client boundary and projects MCP, Agent Skills, and Agent Plugins
+directly into its address space and operation grammar rather than inventing parallel standards. It
+declines conventions that belong to a single vendor, however popular.
 
 ```mermaid
 flowchart LR
     MCP["MCP<br/>tools · resources"] --- core
     SKILLS["Agent Skills"] --- core
     PLUGINS["Agent Plugins"] --- core
-    ACP["ACP<br/>applications"] --- core
+    ACP["ACP v2<br/>applications"] --- core
     MODELS["Model APIs<br/>hosted · local"] --- core
     core["Plurnk interior<br/><br/>instruction set · address space<br/>selection · journal · processes"]
 ```
@@ -336,7 +337,7 @@ This is more than politeness toward the ecosystem. The standards and the bets oc
 territory. Each standard governs one boundary between systems:
 
 - MCP, between tools and agents;
-- ACP, between an agent and its interface;
+- ACP v2, between an agent and its interface;
 - Agent Skills and Agent Plugins, the packaging of knowledge and capability.
 
 All of them deliberately say nothing about an agent's interior: what the model sees, how it acts, how

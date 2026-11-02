@@ -51,9 +51,9 @@ flowchart LR
     K --> L["Loop<br/>queued-to-terminal work"]
     L --> T["Turn<br/>one admitted scheduling unit"]
     T --> O["Op<br/>one statement / action row"]
-    H["ACP thread<br/>names a session"] -. resolves to .-> K
-    R["ACP Run<br/>client stream envelope"] -. binds to .-> L
-    R -. or executes .-> A["Management action<br/>no core loop required"]
+    H["ACP v2 sessionId<br/>&lt;workspaceId&gt;#&lt;sessionName&gt;"] -. binds to .-> K
+    R["session/prompt &amp; session/update<br/>ACP v2 session stream"] -. drives &amp; observes .-> L
+    A["_plurnk/action<br/>workspace &amp; VM bridge"] -. executes on .-> W
 ```
 
 | Term | Layer | Meaning |
@@ -65,7 +65,7 @@ flowchart LR
 | **turn** | Core | One durable, producer-neutral batch of ordered operations (`(loop_id, sequence)`) authored by `model`, `client`, or `_plurnk`; only a model turn assembles a packet and owns an emission call. |
 | **model call** | Core/provider | One logical `provider.generate` invocation (`(turn_id, sequence)`); emission attempts and BARE inferences share this owner while retries are physical requests beneath it. |
 | **op / statement / action / dispatch** | Core | An op is one submitted DSL operation ({§turn-record}), parsed into a `PlurnkStatement` AST, dispatched to its scheme handler, and recorded as a `log_entries` action row at `log:///<L>/<T>/<S>/<op>` (or `op='error'`, {§operation-results}). |
-| **ACP Run / ACP thread** | ACP | A client stream envelope (`runId`) bound to a core loop or management action; within a workspace, `threadId` resolves to one model session. |
+| **ACP v2 session (`sessionId`)** | ACP | Qualified `<workspaceId>#<sessionName>` session address bound via `session/new`, `session/resume`, or `session/fork`, driven by `session/prompt`, and observed on `session/update` ({§acp-daemon-client}). |
 | **entry / channel** | Storage | Canonical state unit `(workspace_id, scheme, authority, pathname)` ({§db-migrations}) holding named `channels` (`body`, `stdout`, `stderr`, `headers`, `symbols` with `content`, `mimetype`, `weight`, and `state`: `static \| active \| closed \| errored`) plus scheme `attributes`. |
 | **scheme / mimetype / provider** | Extensions | Addressable namespace handler ({§scheme-surface}), content-type structural projector ({§mimetype}), and LLM transport adapter ({§provider-surface}). |
 | **status / proposal state / outcome** | Execution | Operation HTTP status on `log_entries.status_rx` ({§operation-results}); proposal lifecycle `proposed \| resolved \| failed \| cancelled` ({§proposal}); short terminal reason string (`outcome`). |
@@ -167,7 +167,7 @@ Workspace reference documents and consolidated global instructions are materiali
 - **Catalog preview (`PLURNK_SERVICE_FILES_ITEMS`)**: When non-zero (`-1` for markerless page, positive `N` to cap `*`), turn 0 foists bodyless `FIND` surveys and `plurnk_mcp (list)` in order: `skill://*/SKILL.md` (`<1,-1>`, {§skills-sources}), `persona://*/PERSONA.md` (`<1,-1>`, {§persona-discovery}), `plurnk:///*.md` (`<1,-1>`, {§tools-resource-materialization}), `plurnk_mcp (list)` ({§functionality-model-projection}), `*` (`project root member files`), `workspace:///*` (`workspace knowledgebase entries`), and `session://<session>/*` (`session knowledgebase entries`). Unregistered schemes/runtimes and non-`session://` surveys selecting zero items are omitted before recording; `session://<session>/*` always runs so the session observes its own scratch namespace.
 - **Turn-0 execution**: A model session's first loop starts with one packetless `{ producer="_plurnk", kind="initialization" }` turn (`init` rows) submitted through {§turn-record} and {§op-methods-op-dispatch}, framed by opening and closing `<!-- plan -->` `NOTE`s when any survey runs, with no fabricated emission row ({§turn-source-resources}). Initial messages arrive in the first model turn (sequence `2`, {§message-arrival}).
 
-### §machine-processes Session topology, fork, and hiding
+### §machine-processes Session topology, fork, archiving, and deletion
 
 ```mermaid
 flowchart TB
@@ -852,7 +852,7 @@ Each service knob in `plurnk-core/.env.defaults` is enforced at its owning read 
 
 ## §rpc Module seam
 
-Core implements `ApplicationPort` ({§application-session-observation}) and hosts `@plurnk/plurnk-modules` ({§module-contract}) on its single listener ({§http-host}). Client-interface modules (`plurnk-acp`) own their public wire protocol and event projection.
+Core implements `ApplicationPort` ({§application-session-observation}) as its package dependency-direction seam and hosts `@plurnk/plurnk-modules` ({§module-contract}) on its single listener ({§http-host}). `@plurnk/plurnk-acp` exposes the daemon's ACP v2 client surface ({§acp-daemon-client}).
 
 ### §module-lifecycle Module lifecycle, discovery, and setup seam
 
@@ -959,7 +959,7 @@ Model invocations of `plurnk_<family> (<verb>)` settle in authored order before 
 
 ## §methods Application interface
 
-`ApplicationPort` ({§application-session-observation}) is the in-process interface implemented by `Daemon` and consumed by exterior adapters:
+`ApplicationPort` ({§application-session-observation}) is the in-process package dependency-direction seam implemented by `Daemon` and consumed by daemon modules (`@plurnk/plurnk-acp`, `@plurnk/plurnk-auth`, `@plurnk/plurnk-schedule`, `@plurnk/plurnk-hooks`):
 
 | Area | Methods | Contract |
 |---|---|---|
@@ -1028,7 +1028,7 @@ Core publishes `plurnk_question (ask)` (`mcp:///plurnk_question.md` and `mcp:///
 
 ### §session-external-reference External session references
 
-An adapter's `(namespace, reference)` identifies one durable model session (`readSessionReference` inspects without creating; `ensureSessionReference` atomically allocates a folderless workspace and root model session under {§execution-output-identity} if absent; `listSessionReferences` lists references in a workspace). The association is immutable while the session exists and removed on session deletion.
+A module's `(namespace, reference)` identifies one durable model session (`readSessionReference` inspects without creating; `ensureSessionReference` atomically allocates a folderless workspace and root model session under {§execution-output-identity} if absent; `listSessionReferences` lists references in a workspace). The association is immutable while the session exists and removed on session deletion.
 
 ### §connection-lifecycle Client operations and their connection lifetime
 
@@ -1147,7 +1147,7 @@ sequenceDiagram
   participant Loop as Target session loop
   Caller->>Inbox: SEND / WORK (exterior path UUID + short key_path message://<session>/<key>)
   Inbox->>Loop: Publish inbound SEND row (origin="_plurnk" or "user", attrs.kind="message")
-  Loop->>Caller: SEND (message://<session>/<key>) reply delivered once to sender / adapter
+  Loop->>Caller: SEND (message://<session>/<key>) reply delivered once to sender / ACP v2 session stream
   Note over Inbox,Loop: Completion barrier: loop cannot finish 200 while unpublished arrivals or wake-revision drift remain
 ```
 
@@ -1155,7 +1155,7 @@ sequenceDiagram
 | --- | --- |
 | Dual identity (`path` vs `key_path`) | Every message keeps its exterior protocol UUID as durable `path` (`409` on address conflict) and receives a short session-local `key_path` (`message://<session>/<key>`) for packet display and model replies. |
 | Arrival log row | Publishing an inbox message appends an inbound `SEND` row to the recipient's log (`origin: "_plurnk"` with `attrs.kind: "message"` and `source: "session://<sender>"` or `acp://...`, or `origin: "user"` when operator-authored). |
-| Single reply delivery | `SEND (message://<session>/<key>)` delivers the reply once to the assigned session, original native sender, or external protocol adapter (`acp://...`); when a child session replies to a parent-delegated `WORK` prompt, conclusion delivery occurs through the parent's `ops://<child>/<loop>` termination `READ`. |
+| Single reply delivery | `SEND (message://<session>/<key>)` delivers the reply once to the assigned session, original native sender, or ACP v2 client stream (`acp://...`); when a child session replies to a parent-delegated `WORK` prompt, conclusion delivery occurs through the parent's `ops://<child>/<loop>` termination `READ`. |
 | Loop containment and completion barrier | Final loop completion (`200`) atomically requires all arrived inbox messages to be published into the session log and the loop's observed wake revision to equal the session revision; any arrival that lands after the last turn's snapshot withholds `200` and continues or opens a source-keyed recovery loop. |
 
 ### §operation-results Operation results, notices, and problem codes
