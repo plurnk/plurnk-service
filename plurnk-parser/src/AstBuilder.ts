@@ -23,6 +23,7 @@ import type {
     SendBody,
     SendStatement,
     TextLineMarker,
+    TodoStatement,
     WorkStatement,
 } from "@plurnk/plurnk-contracts";
 import type {
@@ -46,6 +47,7 @@ import type {
     StatementContext,
     TargetGroupContext,
     TargetWithMetadataContext,
+    TodoStatementContext,
     WorkStatementContext,
 } from "./generated/plurnkParser.ts";
 import {
@@ -220,6 +222,7 @@ export default class AstBuilder {
         const fork = ctx.forkStatement(); if (fork) return this.#buildFork(fork);
         const kill = ctx.killStatement(); if (kill) return this.#buildKill(kill);
         const note = ctx.noteStatement(); if (note) return this.#buildNote(note);
+        const todo = ctx.todoStatement(); if (todo) return this.#buildTodo(todo);
         if ("dispositionStatement" in ctx) {
             const disposition = ctx.dispositionStatement(); if (disposition) return this.#buildDisposition(disposition);
         }
@@ -391,6 +394,14 @@ export default class AstBuilder {
         return {
             op: "NOTE", aside: AstBuilder.#asideOf(ctx), target: null, metadata: null, lineMarker: null,
             body: this.#headingBody("NOTE", ctx, AstBuilder.#splitInlineBody(ctx, position).inline, position), position,
+        };
+    }
+
+    #buildTodo(ctx: TodoStatementContext): TodoStatement {
+        const position = AstBuilder.#positionOf(ctx);
+        return {
+            op: "TODO", aside: AstBuilder.#asideOf(ctx), target: null, metadata: null, lineMarker: null,
+            body: this.#headingBody("TODO", ctx, AstBuilder.#splitInlineBody(ctx, position).inline, position), position,
         };
     }
 

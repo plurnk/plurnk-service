@@ -14,7 +14,8 @@ body?
 
 ## Core Operations
 
-* NOTE: Working memory. Save all new facts, ideas, and plans for later turns.
+* NOTE: Working memory. Save all new facts and ideas for later turns.
+* TODO: List of remaining TODO items.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -31,18 +32,15 @@ body?
 ## Loop Protocol
 
 > [!IMPORTANT]
-> YOU MUST persist all new facts, ideas, and plans in NOTEs on every turn.
+> YOU MUST persist all new facts and ideas and emit a TODO list.
 
-```NOTE <!-- fact -->
+```NOTE
 a finding or conclusion and its evidence
 ```
 
-```NOTE <!-- idea -->
-a thought, working theory, or decision, and why
-```
-
-```NOTE <!-- plan -->
-the steps ahead and why
+```TODO
+- first step
+- second step
 ```
 
 ````SEND

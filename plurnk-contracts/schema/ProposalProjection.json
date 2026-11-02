@@ -64,6 +64,7 @@
                         "FORK",
                         "KILL",
                         "NOTE",
+                        "TODO",
                         "WAIT"
                     ]
                 },
@@ -72,7 +73,7 @@
                     "pattern": "^[a-z][a-z0-9+._-]*$"
                 }
             ],
-            "tsType": "\"FIND\" | \"READ\" | \"EDIT\" | \"COPY\" | \"MOVE\" | \"SEND\" | \"DONE\" | \"FAIL\" | \"BARE\" | \"WORK\" | \"FORK\" | \"KILL\" | \"NOTE\" | \"WAIT\" | Lowercase<string>"
+            "tsType": "\"FIND\" | \"READ\" | \"EDIT\" | \"COPY\" | \"MOVE\" | \"SEND\" | \"DONE\" | \"FAIL\" | \"BARE\" | \"WORK\" | \"FORK\" | \"KILL\" | \"NOTE\" | \"TODO\" | \"WAIT\" | Lowercase<string>"
         },
         "target": {
             "type": "object",

@@ -67,6 +67,7 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
             ],
         },
         { source: "````NOTE\ncontinue\n````", expected: [] },
+        { source: "````TODO\n- continue\n````", expected: [] },
         { source: "````WAIT\nwaiting\n````", expected: [] },
         { source: "````SEND\nupdate\n````", expected: [] },
         { source: "````DONE\ncomplete\n````", expected: [] },

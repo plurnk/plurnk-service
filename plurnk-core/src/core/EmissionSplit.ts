@@ -61,7 +61,7 @@ const comparePosition = (
 // {§diagnostic-observation} — what each notice of the model's own output asks of it: MUST where the card says MUST
 // or the output was refused, SHOULD where a near-miss was accepted.
 export const DIRECTIVE = Object.freeze({
-    note: "YOU MUST persist all new facts, ideas, and plans in NOTEs on every turn.",
+    note: "YOU MUST persist all new facts and ideas and emit a TODO list.",
     emission: "YOU MUST ONLY emit fenced operation batches; with the parameters, pattern, and terse aside on the fenced operation line.",
     advisory: "YOU SHOULD write the canonical form.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",

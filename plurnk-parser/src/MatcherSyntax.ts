@@ -75,7 +75,7 @@ const dotAsideAdvisory = (aside: string): string =>
 // {§slot-order} — the operation ran without the scope it cannot take; say which slots it has.
 const scopelessAdvisory = (statement: PlurnkStatement, scope: string): string => {
     const op = writtenOp(statement);
-    const slots = op === "NOTE" ? "`NOTE` takes no target or scope"
+    const slots = op === "NOTE" || op === "TODO" ? `\`${op}\` takes no target or scope`
         : op === "SEND" ? "`SEND` without a recipient takes no scope"
             : `\`${op}\` takes a target only`;
     return `${slots}; the scope \`${scope}\` was ignored.`;

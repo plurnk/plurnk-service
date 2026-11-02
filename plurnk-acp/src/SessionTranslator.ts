@@ -2,7 +2,6 @@
 
 import type {
     PlanEntry,
-    PlanEntryStatus,
     SessionUpdate,
     ToolCallContent,
     ToolCallStatus,
@@ -12,6 +11,7 @@ import {
     addressOf,
     isRecord,
     isSafeInteger,
+    parseTodoItems,
     toolKindOf,
     type ApplicationInboxMessage,
     type ApplicationLoopPacket,
@@ -43,31 +43,6 @@ export interface AcpSessionUpdate {
 
 export const terminalIdForEntry = (logEntryId: number): string => `term:${logEntryId}`;
 
-const TASK_ITEM_RE = /^[ \t]*[-*+]\s+\[([ xX~/-])\]\s+(.+)$/gmu;
-
-const parsePlanTaskEntries = (body: string): PlanEntry[] => {
-    const entries: PlanEntry[] = [];
-    for (const match of body.matchAll(TASK_ITEM_RE)) {
-        const marker = match[1] ?? " ";
-        const rawText = (match[2] ?? "").trim();
-        if (rawText.length === 0) continue;
-        const status: PlanEntryStatus =
-            marker === "x" || marker === "X"
-                ? "completed"
-                : marker === "/" || marker === "~"
-                  ? "in_progress"
-                  : marker === "-"
-                    ? "cancelled"
-                    : "pending";
-        entries.push({
-            content: rawText,
-            priority: "medium",
-            status,
-        });
-    }
-    return entries;
-};
-
 export default class SessionTranslator {
     readonly #acpSessionId: string;
     readonly #workspaceId: number;
@@ -81,7 +56,8 @@ export default class SessionTranslator {
     readonly #concludedStreamStatusByEntryId = new Map<number, number>();
     readonly #concludedStreamStatusByTarget = new Map<string, number>();
     readonly #planIdByCoordinate = new Map<string, string>();
-    readonly #planIdByTarget = new Map<string, string>();
+    #todoLoopSeq: number | null = null;
+    #todoHistory: string[] = [];
 
     constructor(args: {
         readonly acpSessionId: string;
@@ -146,6 +122,11 @@ export default class SessionTranslator {
 
     logEntry({ entry }: LogEntryNotification): AcpSessionUpdate[] {
         if (entry.session_id !== this.#sessionId) return [];
+        if (isSafeInteger(entry.loop_seq) && this.#todoLoopSeq !== entry.loop_seq) {
+            this.#todoLoopSeq = entry.loop_seq;
+            this.#todoHistory = [];
+            this.#planIdByCoordinate.clear();
+        }
 
         const updates: AcpSessionUpdate[] = [];
         const coordinate = SessionTranslator.coordinateOf(entry);
@@ -574,57 +555,28 @@ export default class SessionTranslator {
                 });
             }
 
-            if (entry.op === "NOTE" && status === "completed") {
-                const taskEntries = parsePlanTaskEntries(text);
-                const isExplicitPlan =
-                    (address !== null && /(?:^|\/|:)plan(?:\.md)?$/iu.test(address)) ||
-                    (comment !== null && /\bplan\b/iu.test(comment));
-                if (taskEntries.length > 0 || (isExplicitPlan && text.trim().length > 0)) {
-                    const planId = address !== null && address.length > 0 ? address : "plan";
-                    this.#planIdByCoordinate.set(coordinate, planId);
-                    if (address !== null && address.length > 0) {
-                        this.#planIdByTarget.set(address, planId);
-                    }
-                    updates.push({
-                        sessionId: this.#acpSessionId,
-                        update: {
-                            sessionUpdate: "plan_update",
-                            plan:
-                                taskEntries.length > 0
-                                    ? { type: "items", planId, entries: taskEntries }
-                                    : { type: "markdown", planId, content: text },
-                            _meta: { plurnk: opMeta },
-                        },
-                    });
+            if (entry.op === "TODO" && status === "completed") {
+                const currentItems = parseTodoItems(text);
+                const currentSet = new Set(currentItems);
+                const priorCompleted = this.#todoHistory.filter((item) => !currentSet.has(item));
+                const nextHistory: string[] = [...priorCompleted];
+                for (const item of currentItems) {
+                    if (!nextHistory.includes(item)) nextHistory.push(item);
                 }
-            } else if (
-                entry.op === "EDIT" &&
-                status === "completed" &&
-                address !== null &&
-                /^file:\/\//iu.test(address) &&
-                /(?:^|\/)plan\.md$/iu.test(address)
-            ) {
-                if (isRecord(parsedRx) && parsedRx.deleted === true) {
-                    this.#planIdByTarget.delete(address);
-                    for (const [noteCoord, pid] of [...this.#planIdByCoordinate.entries()]) {
-                        if (pid === address) this.#planIdByCoordinate.delete(noteCoord);
-                    }
-                    updates.push({
-                        sessionId: this.#acpSessionId,
-                        update: {
-                            sessionUpdate: "plan_removed",
-                            planId: address,
-                            _meta: { plurnk: opMeta },
-                        },
-                    });
-                } else {
-                    this.#planIdByCoordinate.set(coordinate, address);
-                    this.#planIdByTarget.set(address, address);
+                this.#todoHistory = nextHistory;
+                const entries: PlanEntry[] = nextHistory.map((item) => ({
+                    content: item,
+                    priority: "medium",
+                    status: currentSet.has(item) ? "pending" : "completed",
+                }));
+                if (entries.length > 0) {
+                    const planId = "plan";
+                    this.#planIdByCoordinate.set(coordinate, planId);
                     updates.push({
                         sessionId: this.#acpSessionId,
                         update: {
                             sessionUpdate: "plan_update",
-                            plan: { type: "file", planId: address, uri: address },
+                            plan: { type: "items", planId, entries },
                             _meta: { plurnk: opMeta },
                         },
                     });
@@ -632,23 +584,21 @@ export default class SessionTranslator {
             } else if (entry.op === "KILL" && status === "completed") {
                 const removedPlanIds = new Set<string>();
                 if (address !== null) {
-                    if (this.#planIdByTarget.has(address)) {
-                        const pid = this.#planIdByTarget.get(address)!;
-                        removedPlanIds.add(pid);
-                        this.#planIdByTarget.delete(address);
-                    }
                     const logPrefix = "log:///";
                     const rawCoord = address.startsWith(logPrefix)
                         ? address.slice(logPrefix.length).replace(/\/[A-Za-z_][A-Za-z0-9_]*$/u, "")
                         : null;
                     if (rawCoord !== null) {
-                        for (const [noteCoord, pid] of [...this.#planIdByCoordinate.entries()]) {
-                            if (noteCoord === rawCoord || noteCoord.startsWith(`${rawCoord}/`)) {
+                        for (const [todoCoord, pid] of [...this.#planIdByCoordinate.entries()]) {
+                            if (todoCoord === rawCoord || todoCoord.startsWith(`${rawCoord}/`)) {
                                 removedPlanIds.add(pid);
-                                this.#planIdByCoordinate.delete(noteCoord);
+                                this.#planIdByCoordinate.delete(todoCoord);
                             }
                         }
                     }
+                }
+                if (removedPlanIds.size > 0 && this.#planIdByCoordinate.size === 0) {
+                    this.#todoHistory = [];
                 }
                 for (const planId of removedPlanIds) {
                     updates.push({

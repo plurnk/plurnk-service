@@ -1,7 +1,7 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import {
     UNKNOWN_POSITION, isExecution,
-    type CapabilityPolicy, type ExecStatement, type FindStatement, type NoteStatement, type ReadStatement, type UrlPath,
+    type CapabilityPolicy, type ExecStatement, type FindStatement, type ReadStatement, type TodoStatement, type UrlPath,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -39,16 +39,16 @@ const readFilesItems = (): number | null => {
     return normalizeFilesItems(Number.parseInt(raw, 10));
 };
 
-// {§session-initialization-entry} — the two NOTEs that open and close the initialization surveys, both
-// labelled as the card's own plan example is: the session's plan in steps, then its next step.
-const INITIALIZATION_NOTE: NoteStatement = {
-    op: "NOTE", aside: "plan", metadata: null, target: null, lineMarker: null,
-    body: ["1. Survey the environment.", "2. Resolve all Open Work."].join("\n"),
+// {§session-initialization-entry} — the two TODOs that open and close the initialization surveys:
+// the session's initial steps, then the remaining step after surveying.
+const INITIALIZATION_TODO: TodoStatement = {
+    op: "TODO", aside: null, metadata: null, target: null, lineMarker: null,
+    body: ["- Survey the environment.", "- Resolve all Open Work."].join("\n"),
     position: UNKNOWN_POSITION,
 };
-const INITIALIZATION_CLOSING_NOTE: NoteStatement = {
-    op: "NOTE", aside: "plan", metadata: null, target: null, lineMarker: null,
-    body: "Resolve all Open Work.", position: UNKNOWN_POSITION,
+const INITIALIZATION_CLOSING_TODO: TodoStatement = {
+    op: "TODO", aside: null, metadata: null, target: null, lineMarker: null,
+    body: "- Resolve all Open Work.", position: UNKNOWN_POSITION,
 };
 
 export default class InitializationTurn {
@@ -115,11 +115,11 @@ export default class InitializationTurn {
             await Turn.complete(db, initializationTurn.id, 200);
             return;
         }
-        // {§session-initialization-entry} — the example turn shows the NOTE practice the card teaches:
-        // when the surveys run, one NOTE opens them and one closes them.
-        const programStatements: Array<NoteStatement | FindStatement | ReadStatement | ExecStatement> =
+        // {§session-initialization-entry} — the example turn shows the TODO practice the card teaches:
+        // when the surveys run, one TODO opens them and one closes them.
+        const programStatements: Array<TodoStatement | FindStatement | ReadStatement | ExecStatement> =
             admittedInitializationStatements.some((statement) => statement.op === "FIND" || isExecution(statement))
-                ? [INITIALIZATION_NOTE, ...admittedInitializationStatements, INITIALIZATION_CLOSING_NOTE]
+                ? [INITIALIZATION_TODO, ...admittedInitializationStatements, INITIALIZATION_CLOSING_TODO]
                 : admittedInitializationStatements;
         const program = TurnOps.renderInternal(programStatements);
         const admitted = PlurnkParser.parseStatements(program, {

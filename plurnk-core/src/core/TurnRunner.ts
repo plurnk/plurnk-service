@@ -930,7 +930,7 @@ export default class TurnRunner {
         // words. An empty turn has its own no-operation row instead.
         const ops = split.packetAssistant.ops;
         if ((executed.status === 102 || executed.status === 202) && ops.length > 0
-            && !ops.some((statement) => "op" in statement && statement.op === "NOTE")) {
+            && !ops.some((statement) => "op" in statement && (statement.op === "NOTE" || statement.op === "TODO"))) {
             this.#notices.push(workspaceId, sessionId, loopId, {
                 source: "engine:turn", kind: "continued_without_note", level: "warn", directive: DIRECTIVE.note, message: CONTINUED_WITHOUT_NOTE,
             });

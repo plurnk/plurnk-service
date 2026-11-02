@@ -9,7 +9,7 @@
 
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
 import type { ChatContentPart, ChatMessage } from "@plurnk/plurnk-providers";
-import { isRecord, isSafeInteger, type Notice } from "@plurnk/plurnk-contracts";
+import { isRecord, isSafeInteger, parseTodoItems, type Notice } from "@plurnk/plurnk-contracts";
 import GitState, { type GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
@@ -163,9 +163,35 @@ export default class PacketWire {
     // unconcluded sessions and its open streams. The model SEES them each turn and reasons for itself
     // (READ / SEND / KILL via the path). Orienting state, never an instruction; every list renders every
     // turn, `[]` when empty ({§child-orientation}).
-    static renderOpenWork(sessions: readonly OpenWorkPointer[], streams: readonly OpenWorkPointer[], messages: readonly OpenWorkPointer[] = []): string {
-        // {§message-arrival} {§loop-completion} — unclosed inbound requests and sent messages awaiting completion.
-        return `{"sessions":${PacketWire.#pointers(sessions)},\n"streams":${PacketWire.#pointers(streams)},\n"messages":${PacketWire.#pointers(messages)}}`;
+    static renderOpenWork(
+        sessions: readonly OpenWorkPointer[],
+        streams: readonly OpenWorkPointer[],
+        messages: readonly OpenWorkPointer[] = [],
+        todo: readonly string[] = [],
+    ): string {
+        // {§message-arrival} {§loop-completion} — unclosed inbound requests, sent messages awaiting completion, and active loop TODO steps.
+        const todoItems = todo.length === 0 ? "[]" : `[${todo.map((item) => JSON.stringify(item)).join(",\n")}]`;
+        return `{"sessions":${PacketWire.#pointers(sessions)},\n"streams":${PacketWire.#pointers(streams)},\n"messages":${PacketWire.#pointers(messages)},\n"todo":${todoItems}}`;
+    }
+
+    static currentLoopTodo(log: readonly LogEntryView[], currentLoopSeq: number): string[] {
+        const prefix = `${currentLoopSeq}/`;
+        for (let i = log.length - 1; i >= 0; i -= 1) {
+            const entry = log[i];
+            if (entry.op !== "TODO" || entry.status !== 200) continue;
+            if (typeof entry.coordinate !== "string" || !entry.coordinate.startsWith(prefix)) continue;
+            const fullBody = LogBody.resolve({
+                op: "TODO",
+                attrs: entry.attrs,
+                tx: entry.tx,
+                rx: entry.rx,
+                mimetypeTx: typeof entry.mimetype_tx === "string" ? entry.mimetype_tx : undefined,
+                mimetypeRx: typeof entry.mimetype_rx === "string" ? entry.mimetype_rx : undefined,
+            });
+            const visible = PacketBodyFormat.visibleBody(entry, fullBody);
+            return parseTodoItems(visible.content);
+        }
+        return [];
     }
 
     static #pointers(rows: readonly OpenWorkPointer[]): string {

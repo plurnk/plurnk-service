@@ -10,7 +10,7 @@ export default class HeadingTokens {
     static readonly OPENERS: ReadonlySet<number> = new Set([
         plurnkParser.OPEN_FIND, plurnkParser.OPEN_READ, plurnkParser.OPEN_EDIT, plurnkParser.OPEN_COPY,
         plurnkParser.OPEN_MOVE, plurnkParser.OPEN_SEND, plurnkParser.OPEN_DONE, plurnkParser.OPEN_FAIL,
-        plurnkParser.OPEN_NOTE, plurnkParser.OPEN_WAIT,
+        plurnkParser.OPEN_NOTE, plurnkParser.OPEN_TODO, plurnkParser.OPEN_WAIT,
         plurnkParser.OPEN_EXEC, plurnkParser.OPEN_BARE, plurnkParser.OPEN_WORK, plurnkParser.OPEN_FORK,
         plurnkParser.OPEN_KILL,
     ]);
