@@ -19,7 +19,7 @@ import { createConnectionAgent } from "./agent.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 import { dispatchDaemonEvent } from "./events.ts";
 import { GateTracker } from "./gates.ts";
-import type { AcpPeer, BoundSession } from "./sessions.ts";
+import { listSessionsOverview, type AcpPeer, type BoundSession } from "./sessions.ts";
 import {
     HEADER_CONNECTION_ID,
     admitRequest,
@@ -57,6 +57,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
     readonly #gates = new GateTracker();
     readonly #streamOffsets = new Map<string, number>();
     readonly #work = new Set<Promise<unknown>>();
+    #overviewDirty = false;
+    #overviewFlushScheduled = false;
     #activated = false;
     #stopped = false;
 
@@ -95,10 +97,13 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             streamOffsets: this.#streamOffsets,
             notifyPeerSession: this.#notifyPeerSession,
             broadcastSessionUpdate: this.#broadcastSessionUpdate,
+            scheduleOverviewRefresh: this.#scheduleOverviewRefresh,
         };
         this.#offEvents = seam.subscribeToEvents((workspaceId, method, params) => {
             if (workspaceId !== null) {
                 dispatchDaemonEvent(eventCtx, workspaceId, method, params);
+            } else if (method === "workspace/created") {
+                this.#scheduleOverviewRefresh();
             }
         });
         this.#offRevoked = seam.credentials.onRevoked((family) => {
@@ -150,6 +155,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             httpOrigin: () => this.#requestContext.getStore()?.origin ?? defaultOrigin ?? this.#httpOrigin(),
             notifyPeerSession: this.#notifyPeerSession,
             broadcastSessionUpdate: this.#broadcastSessionUpdate,
+            scheduleOverviewRefresh: this.#scheduleOverviewRefresh,
         };
     }
 
@@ -243,6 +249,28 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             if (req.method === "GET") {
                 req.socket.setTimeout(0);
                 this.#sseResponses.add(res);
+                const origFlushHeaders = res.flushHeaders.bind(res);
+                let initialCommentSent = false;
+                res.flushHeaders = (): void => {
+                    const isEventStream =
+                        res.statusCode === 200 &&
+                        String(res.getHeader("content-type") ?? "")
+                            .toLowerCase()
+                            .includes("text/event-stream");
+                    if (!initialCommentSent && isEventStream && !res.headersSent) {
+                        res.setHeader("X-Accel-Buffering", "no");
+                    }
+                    origFlushHeaders();
+                    if (
+                        !initialCommentSent &&
+                        isEventStream &&
+                        !res.writableEnded &&
+                        !res.destroyed
+                    ) {
+                        initialCommentSent = true;
+                        res.write(": heartbeat\n\n");
+                    }
+                };
                 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
                 if (this.#opts.heartbeatMs > 0) {
                     heartbeatTimer = setInterval(() => {
@@ -382,4 +410,46 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             }
         }
     };
+
+    #scheduleOverviewRefresh = (): void => {
+        if (this.#stopped) return;
+        const hasSubscribers = [...this.#peers].some(
+            (peer) => peer.overviewSubscription !== undefined && peer.client !== null,
+        );
+        if (!hasSubscribers) return;
+        this.#overviewDirty = true;
+        if (this.#overviewFlushScheduled) return;
+        this.#overviewFlushScheduled = true;
+        setImmediate(() => {
+            void this.#track(this.#flushOverviewSubscribers());
+        });
+    };
+
+    async #flushOverviewSubscribers(): Promise<void> {
+        try {
+            while (this.#overviewDirty && !this.#stopped) {
+                this.#overviewDirty = false;
+                const activePeers = [...this.#peers].filter(
+                    (peer) => peer.overviewSubscription !== undefined && peer.client !== null,
+                );
+                if (activePeers.length === 0) break;
+                await Promise.allSettled(
+                    activePeers.map(async (peer) => {
+                        const sub = peer.overviewSubscription;
+                        if (sub === undefined || peer.client === null || this.#stopped) return;
+                        const payload = await listSessionsOverview(
+                            this.#seam,
+                            this.#opts,
+                            sub.origin,
+                            sub,
+                        );
+                        if (peer.client === null || this.#stopped) return;
+                        await peer.client.notify("_plurnk/overview", payload);
+                    }),
+                );
+            }
+        } finally {
+            this.#overviewFlushScheduled = false;
+        }
+    }
 }

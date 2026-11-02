@@ -2525,12 +2525,59 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             assert.deepEqual(
                 (liveThoughtUpdates[0]?.update._meta as { plurnk?: unknown } | undefined)?.plurnk,
                 {
+                    sessionId: 1,
+                    sessionName: "user",
+                    loopId: 1,
+                    loopSeq: 1,
+                    turnId: 2,
+                    turnSeq: 2,
                     coordinate: "1/2",
                     body: {
                         url: "http://127.0.0.1:1066/acp/1/1/entry?target=reasoning%3A%2F%2Fuser%2F1%2F2",
                         mimeType: "text/plain",
                     },
                 },
+            );
+
+            const loggedWithReasoning = translator.logEntry({
+                entry: makeLogEntry({
+                    id: 503,
+                    session_id: 1,
+                    session_name: "user",
+                    loop_id: 2,
+                    turn_id: 4,
+                    loop_seq: 2,
+                    turn_seq: 1,
+                    sequence: 1,
+                    origin: "model",
+                    op: "NOTE",
+                    status_rx: 200,
+                    reasoning: "Logged reasoning chunk",
+                    attrs: { body: "note body" },
+                    rx: { status: 200 },
+                }),
+            });
+            const loggedThought = loggedWithReasoning.find((u) => u.update.sessionUpdate === "agent_thought_chunk");
+            assert.deepEqual(
+                (loggedThought?.update._meta as { plurnk?: unknown } | undefined)?.plurnk,
+                {
+                    sessionId: 1,
+                    sessionName: "user",
+                    loopId: 2,
+                    loopSeq: 2,
+                    turnId: 4,
+                    turnSeq: 1,
+                    coordinate: "2/1",
+                    body: {
+                        url: "http://127.0.0.1:1066/acp/1/1/entry?target=reasoning%3A%2F%2Fuser%2F2%2F1",
+                        mimeType: "text/plain",
+                    },
+                },
+            );
+            const loggedOp = loggedWithReasoning.find((u) => u.update.sessionUpdate !== "agent_thought_chunk");
+            assert.equal(
+                (loggedOp?.update._meta as { plurnk?: { sessionName?: string } } | undefined)?.plurnk?.sessionName,
+                "user",
             );
 
             const ambientWithReasoning = translator.logEntry({
@@ -2608,6 +2655,153 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             );
 
             ws.close();
+        } finally {
+            await h.close();
+        }
+    });
+
+    test("{§acp-overview} {§acp-plurnk-metadata} {§acp-http-authorization}: scoped session/list overview metadata, live _plurnk/overview notifications, immediate SSE open flush, and workspace/renamed updates (#1393 #1394 #1395)", async () => {
+        const h = await createHarness({
+            env: { PLURNK_ACP_HEARTBEAT_MS: "60000" },
+        });
+        try {
+            // 1. Immediate SSE comment flush on GET /acp stream open before heartbeatMs elapses (#1395)
+            const initRes = await fetch(h.baseUrl, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: 2 } }),
+            });
+            assert.equal(initRes.status, 200);
+            const connId = initRes.headers.get("acp-connection-id");
+            assert.ok(connId);
+            await initRes.text();
+
+            const sseAbort = new AbortController();
+            const sseRes = await fetch(h.baseUrl, {
+                method: "GET",
+                headers: {
+                    accept: "text/event-stream",
+                    "acp-connection-id": connId,
+                },
+                signal: sseAbort.signal,
+            });
+            assert.equal(sseRes.status, 200);
+            assert.equal(sseRes.headers.get("x-accel-buffering"), "no");
+            const reader = sseRes.body?.getReader();
+            assert.ok(reader);
+            const firstChunk = await reader.read();
+            assert.equal(firstChunk.done, false);
+            assert.match(new TextDecoder().decode(firstChunk.value), /: heartbeat/);
+            sseAbort.abort();
+            await reader.cancel().catch(() => undefined);
+
+            // 2. Full session/list overview contract, workspace scoping, validation, live _plurnk/overview, and workspace/renamed (#1394 #1395)
+            const updates: SessionUpdate[] = [];
+            const overviewPushes: Array<Record<string, unknown>> = [];
+            const stream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
+            const app = createAcpClient()
+                .onNotification(methods.client.session.update, ({ params }) => {
+                    updates.push(params.update);
+                })
+                .onNotification(
+                    "_plurnk/overview",
+                    (raw) => raw as Record<string, unknown>,
+                    ({ params }) => {
+                        overviewPushes.push(params);
+                    },
+                );
+
+            await app.connectWith(stream, async (ctx) => {
+                // Create an empty second workspace to verify empty workspaces are included in overview _meta.plurnk.workspaces
+                await ctx.request("_plurnk/action", {
+                    kind: "workspace.create",
+                    params: { name: "empty-ws", projectRoot: "/workspace/empty" },
+                });
+
+                // Invalid overview parameters return 400 overview-invalid
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.list, {
+                            _meta: { plurnk: { workspaceId: 0 } },
+                        }),
+                    /overview-invalid/,
+                );
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.list, {
+                            _meta: { plurnk: { limit: -1 } },
+                        }),
+                    /overview-invalid/,
+                );
+
+                // Unknown workspaceId returns 404 workspace-not-found
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.list, {
+                            _meta: { plurnk: { workspaceId: 999 } },
+                        }),
+                    /workspace-not-found/,
+                );
+
+                // Scoped session/list returns workspace sessions + top-level workspaces + cross-workspace recent feed
+                const scopedList = await ctx.request(methods.agent.session.list, {
+                    _meta: { plurnk: { workspaceId: 1 } },
+                });
+                assert.equal(scopedList.sessions.length, 1);
+                const s0Meta = (scopedList.sessions[0]?._meta as { plurnk?: Record<string, unknown> } | undefined)
+                    ?.plurnk;
+                assert.equal(s0Meta?.workspaceId, 1);
+                assert.equal(s0Meta?.workspaceName, "alpha");
+                assert.equal(s0Meta?.id, 1);
+                assert.equal(s0Meta?.sessionId, 1);
+                assert.equal(s0Meta?.name, "user");
+                assert.equal(s0Meta?.sessionName, "user");
+                assert.equal(s0Meta?.parentSessionId, null);
+                assert.equal(s0Meta?.kind, "root");
+                assert.equal(s0Meta?.lifecycle, "idle");
+                assert.equal(s0Meta?.gates, 0);
+                assert.equal(s0Meta?.projectRoot, "/workspace/alpha");
+                assert.equal(s0Meta?.projectLabel, "alpha");
+                assert.equal(
+                    ((s0Meta?.reply as { body?: { mimeType?: string } } | undefined)?.body)?.mimeType,
+                    "text/plain",
+                );
+
+                const topMeta = (scopedList._meta as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
+                assert.deepEqual(topMeta?.scope, { workspaceId: 1 });
+                assert.equal(topMeta?.omitted, 0);
+                const topWorkspaces = topMeta?.workspaces as Array<{ id: number; name: string }> | undefined;
+                assert.ok(topWorkspaces?.some((w) => w.name === "alpha"));
+                assert.ok(topWorkspaces?.some((w) => w.name === "empty-ws"), "includes empty workspaces");
+                assert.ok(Array.isArray(topMeta?.recent));
+
+                // Resume 1#user so peer is bound to workspace 1, then rename workspace 1
+                await ctx.request(methods.agent.session.resume, {
+                    sessionId: "1#user",
+                    cwd: "/workspace/alpha",
+                });
+                updates.length = 0;
+                overviewPushes.length = 0;
+
+                await ctx.request("_plurnk/action", {
+                    kind: "workspace.rename",
+                    workspaceId: 1,
+                    params: { name: "alpha-renamed" },
+                });
+
+                await waitFor(
+                    () =>
+                        updates.some((u) => u.sessionUpdate === "session_info_update") &&
+                        overviewPushes.length >= 1,
+                );
+                const infoUpdate = updates.find(
+                    (u): u is Extract<SessionUpdate, { sessionUpdate: "session_info_update" }> =>
+                        u.sessionUpdate === "session_info_update",
+                );
+                assert.equal(infoUpdate?.title, "alpha-renamed#user");
+                const pushedSessions = overviewPushes.at(-1)?.sessions as Array<{ title?: string }> | undefined;
+                assert.equal(pushedSessions?.[0]?.title, "alpha-renamed#user");
+            });
         } finally {
             await h.close();
         }

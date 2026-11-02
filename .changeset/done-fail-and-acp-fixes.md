@@ -17,5 +17,8 @@ Introduce `DONE` and `FAIL` completion verbs, retire `SEND [200]` /
 skill authoring, and align ACP v2 session projection, wildcard Host origins,
 loop epoch timestamps, cancelled inbox replay, `workspace.hide`,
 `workspace.list` `includeHidden`, entry URLs on live reasoning and inbox items,
-and active alias effort projection on fresh sessions
-(#1380 #1384 #1385 #1386 #1387 #1388 #1389 #1390 #1391 #1392).
+active alias effort projection on fresh sessions, structured reasoning and
+operation metadata, scoped `session/list` overview projection with live
+`_plurnk/overview` notifications, immediate SSE open flush, and
+`workspace/renamed` updates
+(#1380 #1384 #1385 #1386 #1387 #1388 #1389 #1390 #1391 #1392 #1393 #1394 #1395).

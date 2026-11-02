@@ -636,34 +636,59 @@ export const createHarness = async (options?: {
                 invocation: null,
             },
         ],
-        readSessionOverview: async ({ workspaceId }) => ({
-            workspaces: workspaces.map((w) => ({
-                id: w.id,
-                name: w.name,
-                projectRoot: w.project_root,
-                projectLabel: w.project_label,
-            })),
-            sessions: sessions
+        readSessionOverview: async ({ workspaceId, limit }) => {
+            if (workspaceId !== undefined && !workspaces.some((w) => w.id === workspaceId)) {
+                const err: ProblemError = new Error(`Workspace ${workspaceId} does not exist.`);
+                err.problem = {
+                    type: "https://plurnk.xyz/problems/daemon:workspace/workspace-not-found",
+                    title: "Not Found",
+                    status: 404,
+                    code: "daemon:workspace/workspace-not-found",
+                    detail: `Workspace ${workspaceId} does not exist.`,
+                };
+                throw err;
+            }
+            const matching = sessions
                 .filter((w) => w.hidden_at === null && (!workspaceId || w.workspaceId === workspaceId))
-                .map((w) => ({
-                    workspaceId: w.workspaceId,
-                    id: w.id,
-                    name: w.name,
-                    parentSessionId: w.parentSessionId,
-                    kind: w.kind,
-                    lifecycle: w.lifecycle,
-                    gates: 0,
-                    reply: {
-                        id: 1,
-                        coordinate: "1/1/1",
-                        completion: 200 as const,
-                        at: 1700000001000,
-                        excerpt: "Echo: hello",
-                        continued: false,
-                    },
-                })),
-            omitted: 0,
-        }),
+                .map((w) => {
+                    const gateCount =
+                        proposals.filter((p) => p.sessionId === w.id && p.disposition.decision === "review").length +
+                        interactions.filter((i) => i.sessionId === w.id).length;
+                    return {
+                        workspaceId: w.workspaceId,
+                        id: w.id,
+                        name: w.name,
+                        parentSessionId: w.parentSessionId,
+                        kind: w.kind,
+                        lifecycle: w.lifecycle,
+                        gates: gateCount,
+                        reply: {
+                            id: 1,
+                            coordinate: "1/1/1",
+                            completion: 200 as const,
+                            at: 1700000001000,
+                            excerpt: "Echo: hello",
+                            continued: false,
+                        },
+                    };
+                });
+            const gated = matching.filter((s) => s.gates > 0);
+            const nonGated = matching.filter((s) => s.gates === 0);
+            const keptNonGated = limit !== undefined ? nonGated.slice(0, limit) : nonGated;
+            const omitted = nonGated.length - keptNonGated.length;
+            return {
+                workspaces: workspaces
+                    .filter((w) => w.hidden_at === null || w.id === workspaceId)
+                    .map((w) => ({
+                        id: w.id,
+                        name: w.name,
+                        projectRoot: w.project_root,
+                        projectLabel: w.project_label,
+                    })),
+                sessions: [...gated, ...keptNonGated],
+                omitted,
+            };
+        },
         sessionAccounting: async () => ({
             requests: [],
             usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
@@ -682,6 +707,7 @@ export const createHarness = async (options?: {
         renameWorkspace: async (workspaceId, name) => {
             const ws = workspaces.find((w) => w.id === workspaceId);
             if (ws) ws.name = name;
+            port.emitEvent(workspaceId, "workspace/renamed", { id: workspaceId, name });
             return { id: workspaceId, name };
         },
         setWorkspaceHidden: async ({ workspaceId, hidden }) => {
