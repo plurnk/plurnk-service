@@ -42,6 +42,28 @@ registered executor, for example `js (skill://<name>/scripts/program.js)` with
 any arguments in the fence body, subject to ordinary operation approval. Skill
 resources are read-only through `skill://`.
 
+## Authoring a skill
+
+Author or revise a project skill directly in the filesystem with `EDIT` (and
+retire it with `KILL`), never `sh`:
+
+```EDIT (.agents/skills/code-review/SKILL.md)
+---
+name: code-review
+description: Check diffs for contract, test, and migration regressions.
+---
+
+Inspect changed files against the owning `SPEC.md` before approving.
+```
+
+Companion scripts, references, and assets live beside `SKILL.md` under
+`.agents/skills/<name>/` and accept normal `<@hash>` regional `EDIT`s. To author
+a user-wide skill under `~/.config/plurnk/skills/<name>/SKILL.md` (or
+`~/.agents/skills/<name>/SKILL.md`), admit the directory with
+`plurnk_members (add)` first. The service rescans standard skill roots before
+every turn and hot-loads created, edited, or removed skills into
+`skill://<name>/` automatically without `plurnk_skills (add)`.
+
 ## discover
 
 `discover` lists the skills one source carries: `{"source": "..."}` returns one

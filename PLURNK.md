@@ -176,7 +176,7 @@ Every observation becomes a row of a journal, with an address and a weight. The 
 its room and its heaviest rows, and it curates them with the same verbs it uses on everything else:
 
 ````markdown
-```KILL (log:///1/[1-7]/*/{READ,emission,reasoning}) <!-- old results and programs, in bulk -->
+```KILL (log:///1/[1-7]/*/{READ,emission}) <!-- old results and programs, in bulk -->
 exampleModule.py: exampleFunction() returns 42 on empty input (lines 12–40); both callers in exampleTest.py expect it.
 ```
 
