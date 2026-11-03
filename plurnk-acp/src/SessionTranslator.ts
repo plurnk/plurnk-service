@@ -555,6 +555,17 @@ export default class SessionTranslator {
                 });
             }
 
+            const planMeta = {
+                sessionId: entry.session_id,
+                sessionName,
+                coordinate,
+                origin: entry.origin,
+                turnId: entry.turn_id,
+                turnSeq: entry.turn_seq,
+                loopId: entry.loop_id,
+                loopSeq: entry.loop_seq,
+                sequence: entry.sequence,
+            };
             if (entry.op === "TODO" && status === "completed") {
                 const currentItems = parseTodoItems(text);
                 const currentSet = new Set(currentItems);
@@ -577,7 +588,7 @@ export default class SessionTranslator {
                         update: {
                             sessionUpdate: "plan_update",
                             plan: { type: "items", planId, entries },
-                            _meta: { plurnk: opMeta },
+                            _meta: { plurnk: planMeta },
                         },
                     });
                 }
@@ -606,7 +617,7 @@ export default class SessionTranslator {
                         update: {
                             sessionUpdate: "plan_removed",
                             planId,
-                            _meta: { plurnk: opMeta },
+                            _meta: { plurnk: planMeta },
                         },
                     });
                 }

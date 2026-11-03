@@ -15,7 +15,7 @@ body?
 ## Core Operations
 
 * NOTE: Working memory. Save all new facts and ideas for later turns.
-* TODO: List of remaining TODO items.
+* TODO: List of remaining TODO items (absent if finished).
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -26,8 +26,8 @@ body?
 * FORK: Delegate to a child session (copied log).
 * WAIT: Yield to child sessions or streams. You may include `[60]` to check in after 60 seconds.
 * SEND: Deliver a new message.
-* DONE: Deliver the final deliverable message to an Open Message (oldest when path omitted).
-* FAIL: Deliver the final failure message to an Open Message (oldest when path omitted).
+* DONE: Deliver the final deliverable message, concluding an Open Message (oldest when path omitted).
+* FAIL: Deliver the final failure message, concluding an Open Message (oldest when path omitted).
 
 ## Loop Protocol
 
@@ -39,8 +39,8 @@ a finding or conclusion and its evidence
 ```
 
 ```TODO
-- first step
-- second step
+- The first step.
+- The second step.
 ```
 
 ````SEND
@@ -116,32 +116,32 @@ Describe the child's complete task in the body.
 
 ## Editing
 
-```EDIT (example.md) <@abcde> <!-- READ showed 42<@abcde>foo bar baz; the body replaces line 42 -->
+````EDIT (example.md) <@abcde> <!-- READ showed 42<@abcde>foo bar baz; the body replaces line 42 -->
 bar
-```
+````
 
-```EDIT (example.md) <@abcde,@fghij> <!-- the body replaces lines 42 through 43 -->
+````EDIT (example.md) <@abcde,@fghij> <!-- the body replaces lines 42 through 43 -->
 bar
-```
+````
 
-```EDIT (example.md) <@abcde,5,@abcde,8> <!-- READ showed 42<@abcde>foo bar baz; "bar" becomes the body -->
+````EDIT (example.md) <@abcde,5,@abcde,8> <!-- READ showed 42<@abcde>foo bar baz; "bar" becomes the body -->
 qux
-```
+````
 
-```EDIT (example.md) <@abcde,1,@abcde,1> <!-- insert before line 42; line 42 stays -->
+````EDIT (example.md) <@abcde,1,@abcde,1> <!-- insert before line 42; line 42 stays -->
 baz
-```
+````
 
-```EDIT (example.md) <@fghij,1,@fghij,1> <!-- insert after line 42: insert before line 43; insert after the last line: <-1> -->
+````EDIT (example.md) <@fghij,1,@fghij,1> <!-- insert after line 42: insert before line 43; insert after the last line: <-1> -->
 qux
-```
+````
 
-```EDIT (src/**/*.js) /\bfoo\b/ <!-- every match in every file becomes the body -->
+````EDIT (src/**/*.js) /\bfoo\b/ <!-- every match in every file becomes the body -->
 bar
-```
+````
 
-```EDIT (books.xml) //book[price > 35.00] <!-- an empty body removes each match -->
-```
+````EDIT (books.xml) //book[price > 35.00] <!-- an empty body removes each match -->
+````
 
 > [!TIP]
 > YOU SHOULD address lines with batch-friendly `<@hash>` or `<@start,@end>` anchors to protect against stale targets.
