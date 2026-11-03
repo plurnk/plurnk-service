@@ -169,7 +169,7 @@ test("{§configuration-repair-path} a model's EDIT and same-turn list observe th
     daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
-    const { workspaceId } = await daemon.createWorkspace({ name: "same-turn-repair", projectRoot: project });
+    const { workspaceId } = await daemon.createWorkspace({ name: "same-turn-repair", projectRoot: project, settings: { filesItems: -1 } });
     await daemon.invokeModuleAction("workspace.members.add", { files: [".agents/mcp.json"] }, { scope: "workspace", workspaceId });
     const sessionId = await insertSession(db, workspaceId, null, "repairer", "model");
     const finalStatuses: number[] = [];
@@ -180,6 +180,9 @@ test("{§configuration-repair-path} a model's EDIT and same-turn list observe th
     await daemon.runLoop({ workspaceId, sessionId, prompt: "Repair the MCP file and verify its tool." });
     await waitFor(() => finalStatuses, (statuses) => statuses.length > 0, { timeoutMs: 15_000 });
     assert.deepEqual(finalStatuses, [200]);
+    const turn0Text = userText(provider.received[0]);
+    assert.match(turn0Text, /"alias":\s*"plurnk_mcp"/u, "Turn 0 plurnk_mcp (list) preserves healthy in-process MCP runtimes");
+    assert.match(turn0Text, /"problem":/u, "Turn 0 plurnk_mcp (list) reports the external MCP configuration problem alongside in-process runtimes");
     const log = await daemon.readLog({ workspaceId, sessionId, limit: 100 });
     assert.equal(await readFile(file, "utf8"), content, JSON.stringify(log.filter(({ op }) => op === "EDIT")));
     const inspected = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk_mcp" });

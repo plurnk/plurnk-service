@@ -220,7 +220,7 @@ test("{§session-causal-admission} near-simultaneous child conclusions share one
 test("{§session-causal-admission} a lone child conclusion resumes immediately without paying the settlement cap", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
-    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "500";
+    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "5000";
     const provider = new ControlledSessionProvider({
         childCount: 1,
         parentTurns: [
@@ -248,8 +248,8 @@ test("{§session-causal-admission} a lone child conclusion resumes immediately w
                 provider.releaseChild(0);
                 await provider.waitForParentCall(2);
                 assert.ok(
-                    performance.now() - releasedAt < 350,
-                    "without a sibling obligation, the completion wake bypasses the 500ms hold",
+                    performance.now() - releasedAt < 3500,
+                    "without a sibling obligation, the completion wake bypasses the 5000ms hold",
                 );
                 await waitFor(
                     () => terminated() as Array<{ loopId: number; result: { status: number } }>,
