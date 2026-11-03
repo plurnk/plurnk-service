@@ -82,8 +82,15 @@ const assertCatalogReasoningBudget = (
     }
 };
 
-const usesProviderReasoningProjection = (name: string, native: boolean): boolean =>
-    !native || name === "openrouter" || name === "deepinfra" || name === "togetherai";
+const CUSTOM_REASONING_PROVIDERS: ReadonlySet<string> = new Set([
+    "openrouter",
+    "deepinfra",
+    "togetherai",
+    "deepseek",
+    "alibaba",
+    "fireworks-ai",
+    "cloudflare-workers-ai",
+]);
 
 const supportsReasoningOff = (
     name: string,
@@ -95,32 +102,13 @@ const supportsReasoningOff = (
     if (name === "cloudflare-workers-ai") {
         return info === undefined || wireEfforts.has("none");
     }
-    if (
-        name === "openrouter"
-        || name === "deepinfra"
-        || name === "togetherai"
-        || name === "deepseek"
-        || name === "alibaba"
-        || name === "fireworks-ai"
-    ) {
+    if (CUSTOM_REASONING_PROVIDERS.has(name)) {
         return info === undefined || wireEfforts.has("none") || catalogSupportsToggle(info);
     }
     return info === undefined && declaredEfforts.length === 0
         || wireEfforts.has("none")
         || info !== undefined && catalogSupportsToggle(info);
 };
-
-const supportsFixedEfforts = (
-    name: string,
-    native: boolean,
-    declaredEfforts: readonly ModelEffort[],
-): boolean =>
-    native
-    || name === "deepseek"
-    || name === "alibaba"
-    || name === "fireworks-ai"
-    || name === "cloudflare-workers-ai"
-    || declaredEfforts.length > 0;
 
 const reasoningCapabilities = (
     name: string,
@@ -136,18 +124,13 @@ const reasoningCapabilities = (
     const declaredEfforts = declaredReasoningEfforts(name, env);
     const wireEfforts = info === undefined ? [...declaredEfforts] : catalogWireEfforts(info, declaredEfforts);
     const wireEffortSet = new Set<string>(wireEfforts);
+    const customProjection = !native || CUSTOM_REASONING_PROVIDERS.has(name);
     const needsAdaptiveWireEffort = info?.reasoning !== false && (
-        name === "openrouter"
-        || name === "deepinfra"
-        || name === "togetherai"
-        || name === "deepseek"
-        || name === "alibaba"
-        || name === "cloudflare-workers-ai" && (info !== undefined || declaredEfforts.length > 0)
-        || !native && declaredEfforts.length > 0
+        (CUSTOM_REASONING_PROVIDERS.has(name) && name !== "fireworks-ai" && (name !== "cloudflare-workers-ai" || info !== undefined || declaredEfforts.length > 0))
+        || (!native && declaredEfforts.length > 0)
     );
     const adaptiveWireEffort = needsAdaptiveWireEffort ? adaptiveEffortFromEnv(env, wireEfforts) : undefined;
-    const customProjection = usesProviderReasoningProjection(name, native);
-    const allowFixed = supportsFixedEfforts(name, native, declaredEfforts);
+    const allowFixed = native || CUSTOM_REASONING_PROVIDERS.has(name) || declaredEfforts.length > 0;
     const allowOff = supportsReasoningOff(name, info, wireEffortSet, declaredEfforts);
 
     const supported = info?.reasoning === false || info === undefined && declaredEfforts.length === 0
@@ -162,47 +145,13 @@ const reasoningCapabilities = (
     if (first === undefined) throw new TypeError(`${name} provider: no portable effort is representable`);
     const efforts = [first, ...rest] satisfies [Effort, ...Effort[]];
 
-    if (native) {
-        if (name === "openrouter" && info?.reasoning !== false) {
-            return {
-                declaredEfforts,
-                efforts,
-                reasoningRequestBody: (mode, budget) => {
-                    if (mode === "off") return { reasoning: { effort: "none" } };
-                    if (budget !== null) {
-                        if (mode !== "adaptive") {
-                            throw new TypeError(`${name} provider: reasoning effort and budget are exclusive; choose one control`);
-                        }
-                        assertCatalogReasoningBudget(name, info, budget);
-                        return { reasoning: { enabled: true, max_tokens: budget } };
-                    }
-                    if (mode !== "adaptive") {
-                        return { reasoning: { enabled: true, effort: mode } };
-                    }
-                    return {
-                        reasoning: adaptiveWireEffort === undefined
-                            ? { enabled: true }
-                            : { enabled: true, effort: adaptiveWireEffort },
-                    };
-                },
-            };
-        }
-        if ((name === "deepinfra" || name === "togetherai") && info?.reasoning !== false) {
-            return {
-                declaredEfforts,
-                efforts,
-                reasoningRequestBody: (mode, budget) => {
-                    if (budget !== null) {
-                        throw new TypeError(`${name} provider: reasoning budget is unsupported on this route`);
-                    }
-                    if (mode === "off") return { reasoning_effort: "none" };
-                    if (mode !== "adaptive") return { reasoning_effort: mode };
-                    return adaptiveWireEffort === undefined ? {} : { reasoning_effort: adaptiveWireEffort };
-                },
-            };
-        }
+    if (native && (!CUSTOM_REASONING_PROVIDERS.has(name) || info?.reasoning === false)) {
         return { declaredEfforts, efforts };
     }
+
+    const rejectBudget = (budget: number | null): void => {
+        if (budget !== null) throw new TypeError(`${name} provider: reasoning budget is unsupported on this route`);
+    };
 
     return {
         declaredEfforts,
@@ -214,8 +163,23 @@ const reasoningCapabilities = (
                 return {};
             }
             switch (name) {
+                case "openrouter":
+                    if (mode === "off") return { reasoning: { effort: "none" } };
+                    if (budget !== null) {
+                        if (mode !== "adaptive") {
+                            throw new TypeError(`${name} provider: reasoning effort and budget are exclusive; choose one control`);
+                        }
+                        assertCatalogReasoningBudget(name, info, budget);
+                        return { reasoning: { enabled: true, max_tokens: budget } };
+                    }
+                    if (mode !== "adaptive") return { reasoning: { enabled: true, effort: mode } };
+                    return {
+                        reasoning: adaptiveWireEffort === undefined
+                            ? { enabled: true }
+                            : { enabled: true, effort: adaptiveWireEffort },
+                    };
                 case "deepseek":
-                    if (budget !== null) throw new TypeError(`${name} provider: reasoning budget is unsupported on this route`);
+                    rejectBudget(budget);
                     if (mode === "off") return { thinking: { type: "disabled" } };
                     if (mode !== "adaptive") return { thinking: { type: "enabled" }, reasoning_effort: mode };
                     return {
@@ -236,21 +200,21 @@ const reasoningCapabilities = (
                         enable_thinking: true,
                         ...(adaptiveWireEffort === undefined ? {} : { reasoning_effort: adaptiveWireEffort }),
                     };
+                case "deepinfra":
+                case "togetherai":
                 case "fireworks-ai":
-                    if (budget !== null) throw new TypeError(`${name} provider: reasoning budget is unsupported on this route`);
+                case "cloudflare-workers-ai":
+                    rejectBudget(budget);
+                    if (name === "cloudflare-workers-ai" && info === undefined && declaredEfforts.length === 0) return {};
                     if (mode === "off") return { reasoning_effort: "none" };
                     if (mode !== "adaptive") return { reasoning_effort: mode };
                     if (adaptiveWireEffort !== undefined) return { reasoning_effort: adaptiveWireEffort };
-                    if (info !== undefined && catalogSupportsToggle(info)) return { reasoning_effort: true };
+                    if (name === "fireworks-ai" && info !== undefined && catalogSupportsToggle(info)) {
+                        return { reasoning_effort: true };
+                    }
                     return {};
-                case "cloudflare-workers-ai":
-                    if (budget !== null) throw new TypeError(`${name} provider: reasoning budget is unsupported on this route`);
-                    if (info === undefined && declaredEfforts.length === 0) return {};
-                    if (mode === "off") return { reasoning_effort: "none" };
-                    if (mode !== "adaptive") return { reasoning_effort: mode };
-                    return adaptiveWireEffort === undefined ? {} : { reasoning_effort: adaptiveWireEffort };
                 default:
-                    if (budget !== null) throw new TypeError(`${name} provider: reasoning budget is unsupported on this route`);
+                    rejectBudget(budget);
                     if (mode === "off") return wireEffortSet.has("none") ? { reasoning_effort: "none" } : {};
                     if (mode !== "adaptive") return { reasoning_effort: mode };
                     return declaredEfforts.length > 0 && adaptiveWireEffort !== undefined

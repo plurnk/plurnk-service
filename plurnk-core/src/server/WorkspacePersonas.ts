@@ -65,17 +65,17 @@ import type WorkspacePlugins from "./WorkspacePlugins.ts";
 
 const { isFile } = AgentPluginFiles;
 
-export const PERSONAS_FAMILY = "personas";
-export const PERSONAS_OWNER = "@plurnk/plurnk-service:personas";
+const PERSONAS_FAMILY = "personas";
+const PERSONAS_OWNER = "@plurnk/plurnk-service:personas";
 const PREFIX = "PLURNK_PERSONAS_";
 
-export interface PersonaSourceDefinition {
+interface PersonaSourceDefinition {
     readonly source: string;
     readonly model?: string;
     readonly effort?: Effort;
 }
 
-export interface PersonaInlineDefinition {
+interface PersonaInlineDefinition {
     readonly description: string;
     readonly body: string;
     readonly model?: string;
@@ -140,7 +140,7 @@ const assertContained = (root: string, candidate: string, authored: string): voi
     }
 };
 
-export const formatPersonaMarkdown = (name: string, def: PersonaInlineDefinition): string => [
+const formatPersonaMarkdown = (name: string, def: PersonaInlineDefinition): string => [
     "---",
     `name: ${name}`,
     `description: ${JSON.stringify(def.description)}`,

@@ -19,7 +19,6 @@ import { stream as streamOpenAIResponses } from "@earendil-works/pi-ai/api/opena
 import { isRecord } from "@plurnk/plurnk-contracts";
 import { outboundFetch, syncAmbientHttp } from "@plurnk/plurnk-meta";
 import { APICallError } from "./errors.ts";
-import { withoutNativeTools } from "./native-tools.ts";
 import { nativeFixedEffort } from "./reasoning-effort.ts";
 import type ModelRequestBody from "./ModelRequestBody.ts";
 import type RequestCapture from "./RequestCapture.ts";
@@ -380,12 +379,6 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             : payload;
         const params = isRecord(transformed) ? { ...transformed } : {};
         if (effectiveModel.api === "openai-completions") {
-            if (topP !== undefined) params.top_p = topP;
-            if (topK !== undefined && effectiveModel.includeTopK === true) params.top_k = topK;
-            if (presencePenalty !== undefined) params.presence_penalty = presencePenalty;
-            if (frequencyPenalty !== undefined) params.frequency_penalty = frequencyPenalty;
-            if (stopSequences !== undefined) params.stop = stopSequences;
-            if (seed !== undefined) params.seed = seed;
             if (systemCacheBreakpoint
                 || messages.some((m) => Array.isArray(m.content) && m.content.some((p) => p.type === "file" && !p.mediaType.startsWith("image/")))) {
                 params.messages = mapOpenAICompatibleMessages(messages, systemCacheBreakpoint);
@@ -395,34 +388,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                     params.messages.unshift({ role: "system", content: "" });
                 }
             }
-            if (providerModel === undefined) {
-                for (const [key, value] of Object.entries(body)) {
-                    if (value === undefined) delete params[key];
-                    else params[key] = value;
-                }
-            } else {
-                if (reasoningRequestBody !== undefined) {
-                    Object.assign(params, reasoningRequestBody(effort.mode, capacity.reasoningBudget));
-                }
-                if (cacheAffinity?.target === "body") {
-                    params[cacheAffinity.name] = sessionId;
-                }
-                if (resolvedControls.topLogprobs !== undefined) {
-                    params.logprobs = true;
-                    params.top_logprobs = resolvedControls.topLogprobs;
-                }
-                if (resolvedControls.serviceTier !== undefined) {
-                    params.service_tier = resolvedControls.serviceTier;
-                }
-            }
         } else if (effectiveModel.api === "openai-responses") {
-            if (topP !== undefined) params.top_p = topP;
-            if (cacheAffinity?.target === "body") {
-                params[cacheAffinity.name] = sessionId;
-            }
-            if (resolvedControls.serviceTier !== undefined) {
-                params.service_tier = resolvedControls.serviceTier;
-            }
             if (resolvedControls.topLogprobs !== undefined) {
                 const existingInclude = Array.isArray(params.include)
                     ? params.include.filter((item): item is string => typeof item === "string")
@@ -430,7 +396,6 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 if (!existingInclude.includes("message.output_text.logprobs")) {
                     params.include = [...existingInclude, "message.output_text.logprobs"];
                 }
-                params.top_logprobs = resolvedControls.topLogprobs;
             }
         } else if (effectiveModel.api === "anthropic-messages") {
             if (topP !== undefined) params.top_p = topP;
@@ -448,7 +413,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             if (resolvedControls.serviceTier !== undefined) {
                 config.serviceTier = resolvedControls.serviceTier;
             }
-            params.config = withoutNativeTools(config, "generate-content");
+            params.config = config;
             try {
                 capture?.record({
                     method: "POST",
@@ -470,26 +435,18 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
             if (resolvedControls.serviceTier !== undefined) {
                 params.serviceTier = { type: resolvedControls.serviceTier };
             }
-        }
-        const toolProtocol = effectiveModel.api === "bedrock-converse-stream"
-            ? "amazon-bedrock"
-            : effectiveModel.api === "anthropic-messages"
-                ? "messages"
-                : "openai";
-        const nextParams = withoutNativeTools(params, toolProtocol);
-        if (effectiveModel.api === "bedrock-converse-stream") {
             try {
                 capture?.record({
                     method: "POST",
                     origin: new URL(effectiveModel.baseUrl).origin,
-                    body: JSON.stringify(nextParams),
+                    body: JSON.stringify(params),
                 });
             } catch {
                 // ignore invalid URL
             }
         }
-        requestBodyValues = nextParams;
-        return nextParams;
+        requestBodyValues = params;
+        return params;
     };
 
     const startStream = (): AssistantMessageEventStream => {
@@ -498,6 +455,20 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 const reasoningEffort = providerModel === undefined || reasoning === "none" || reasoning === "provider-default"
                     ? undefined
                     : reasoning;
+                const samplingParams: Record<string, unknown> = providerModel === undefined
+                    ? Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined))
+                    : {
+                        ...(topP === undefined ? {} : { top_p: topP }),
+                        ...(topK !== undefined && effectiveModel.includeTopK === true ? { top_k: topK } : {}),
+                        ...(presencePenalty === undefined ? {} : { presence_penalty: presencePenalty }),
+                        ...(frequencyPenalty === undefined ? {} : { frequency_penalty: frequencyPenalty }),
+                        ...(stopSequences === undefined ? {} : { stop: stopSequences }),
+                        ...(seed === undefined ? {} : { seed }),
+                        ...(reasoningRequestBody === undefined ? {} : reasoningRequestBody(effort.mode, capacity.reasoningBudget)),
+                        ...(cacheAffinity?.target === "body" ? { [cacheAffinity.name]: sessionId } : {}),
+                        ...(resolvedControls.topLogprobs === undefined ? {} : { logprobs: true, top_logprobs: resolvedControls.topLogprobs }),
+                        ...(resolvedControls.serviceTier === undefined ? {} : { service_tier: resolvedControls.serviceTier }),
+                    };
                 return streamOpenAICompletions(
                     {
                         ...buildPiModel("openai-completions"),
@@ -509,17 +480,25 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                         fetch: customFetch,
                         apiKey: effectiveModel.apiKey ?? "plurnk-unset",
                         ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+                        ...(Object.keys(samplingParams).length === 0 ? {} : { samplingParams }),
                         onPayload,
                     },
                 );
             }
             case "openai-responses": {
                 const reasoningEffort = reasoning === "none" || reasoning === "provider-default" ? undefined : reasoning;
+                const samplingParams: Record<string, unknown> = {
+                    ...(topP === undefined ? {} : { top_p: topP }),
+                    ...(cacheAffinity?.target === "body" ? { [cacheAffinity.name]: sessionId } : {}),
+                    ...(resolvedControls.topLogprobs === undefined ? {} : { top_logprobs: resolvedControls.topLogprobs }),
+                    ...(resolvedControls.serviceTier === undefined ? {} : { service_tier: resolvedControls.serviceTier }),
+                };
                 return streamOpenAIResponses(buildPiModel("openai-responses"), context, {
                     ...commonOptions,
                     fetch: customFetch,
                     apiKey: effectiveModel.apiKey ?? "plurnk-unset",
                     ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+                    ...(Object.keys(samplingParams).length === 0 ? {} : { samplingParams }),
                     onPayload,
                 });
             }
