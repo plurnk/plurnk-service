@@ -1,5 +1,26 @@
 # @plurnk/plurnk-mimetypes-text-html
 
+## 2.0.6
+
+### Patch Changes
+
+- 4c9309c: Introduce `DONE`, `FAIL`, and `TODO` operations, retire `SEND [200]` /
+  `SEND [499]` and reasoning scraping, deliver `AGENTS(.local).md` in the
+  `system-policy` packet section, project sandbox tarballs, teach native `EDIT`
+  skill authoring, unify `PluginSources` module candidates, record the OAuth
+  credential-authority DGR, delegate provider sampling and tool-call suppression
+  directly to `@mariozechner/pi-ai`, and align ACP v2 session projection, wildcard
+  Host origins, loop epoch timestamps, cancelled inbox replay, `workspace.archive`,
+  `workspace.list` `includeArchived`, `session/archive`, `session/unarchive`,
+  `session/delete`, `session/status`, `session/set_title`, `tool_call/cancel`,
+  `terminal/cancel`, `auth/status`, `auth/status_update`, `auth/logout`,
+  `PlanFile`, `SubagentUpdate`, entry URLs on live reasoning and inbox items,
+  active alias effort projection on fresh sessions, structured reasoning and
+  operation metadata, scoped `session/list` overview projection with live
+  `_plurnk/overview` notifications, immediate SSE open flush, and
+  `workspace/renamed` updates
+  (#1305 #1380 #1384 #1385 #1386 #1387 #1388 #1389 #1390 #1391 #1392 #1393 #1394 #1395 #1396 #1398 #1399).
+
 ## 2.0.5
 
 ### Patch Changes

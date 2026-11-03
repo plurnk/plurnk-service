@@ -821,6 +821,8 @@ type BaselineChapter = { readonly version: number; readonly label: string; reado
 const V4_3_3: TaggedRelease = Object.freeze({ version: 34, release: "4.3.3", tag: "v4.3.3", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_3_0: TaggedRelease = Object.freeze({ version: 33, release: "4.3.0", tag: "v4.3.0", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_0_0: TaggedRelease = Object.freeze({ version: 32, release: "4.0.0", tag: "v4.0.0", shape: "76b1dff2af95661a15e32ebea23fddaf4b07cfdc0c06af58e6ca2640e2034263" });
+const V5_2_0: BaselineChapter = Object.freeze({ version: 13, label: "5.2.0", shape: "4dc11dc6a4c0543595b14010b10220130331f8c71e40e1c232422545fa3b3ee5" });
+const V5_2_0_CHAPTER_12: BaselineChapter = Object.freeze({ version: 12, label: "5.2.0 chapter 12", shape: "c9a50407e809a187e92ff68fc6901e0e044be8be2d2df614fe85a044776e48f7" });
 const V5_0_0: BaselineChapter = Object.freeze({ version: 11, label: "5.0.0", shape: "a623ef441160b5b730cf0ee1cdfff83780173d12e5324855ede1bb461403bec5" });
 const V5_0_0_CHAPTER_10: BaselineChapter = Object.freeze({ version: 10, label: "5.0.0 chapter 10", shape: "a623ef441160b5b730cf0ee1cdfff83780173d12e5324855ede1bb461403bec5" });
 const V5_0_0_CHAPTER_9: BaselineChapter = Object.freeze({ version: 9, label: "5.0.0 chapter 9", shape: "a623ef441160b5b730cf0ee1cdfff83780173d12e5324855ede1bb461403bec5" });
@@ -1026,7 +1028,7 @@ for (const release of [V4_3_3, V4_3_0, V4_0_0]) {
     });
 }
 
-for (const chapter of [V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
+for (const chapter of [V5_2_0, V5_2_0_CHAPTER_12, V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
     test(`{§db-migrations}: versions 1-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
         assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 1-${chapter.version}`);
     });
