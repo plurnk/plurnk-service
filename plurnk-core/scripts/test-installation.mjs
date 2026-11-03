@@ -158,7 +158,7 @@ const packedPublicSurface = () => {
         const meta = await import("@plurnk/plurnk-meta");
         process.stdout.write(JSON.stringify({
             digest: typeof digest.Digest,
-            meta: typeof meta.resolveActionRoute,
+            meta: typeof meta.Knob,
         }));
     `;
     const plain = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", program], {
