@@ -9,7 +9,9 @@ import { CONFIGURATION_ROOT_SCOPES, agentRootScopes, type ConfigurationRootScope
 export interface PluginSourceSet extends PluginDiscovery {
     readonly roots: Readonly<Record<ConfigurationRootScope, string | null>>;
     readonly packages: readonly PackageCandidate[];
+    readonly pluginRoots: ReadonlySet<string>;
     readonly pluginPackages: ReadonlySet<string>;
+    readonly moduleDirs: readonly string[];
     readonly configurationErrors: readonly ConfigurationError[];
 }
 
@@ -38,11 +40,11 @@ export default class PluginSources {
             "xdg-global": selected.has("global") && hostPaths.xdgPluginsDir !== hostPaths.globalPluginsDir ? hostPaths.xdgPluginsDir : null,
             global: selected.has("global") ? hostPaths.globalPluginsDir : null,
         };
-        const packages = (packageDirs ?? await Meta.packageDirs(nodeModules))
+        const allPackages = (packageDirs ?? await Meta.packageDirs(nodeModules))
             .toSorted((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
         const pluginPackages = new Set<string>();
         const readablePlugins: string[] = [];
-        for (const { dir } of packages) {
+        for (const { dir } of allPackages) {
             const location = join(dir, "plugin.json");
             try {
                 await lstat(location);
@@ -60,6 +62,9 @@ export default class PluginSources {
             const directory = roots[scope];
             return directory === null ? [] : [{ scope, directory }];
         }), readablePlugins.map((directory) => ({ scope: "npm", directory })));
-        return { ...discovered, roots, packages, pluginPackages, configurationErrors };
+        const packages = allPackages.filter(({ dir }) => !pluginPackages.has(dir));
+        const pluginRoots = new Set(discovered.plugins.map(({ root }) => root));
+        const moduleDirs = [...pluginRoots, ...packages.map(({ dir }) => dir)];
+        return { ...discovered, roots, packages, pluginRoots, pluginPackages, moduleDirs, configurationErrors };
     }
 }

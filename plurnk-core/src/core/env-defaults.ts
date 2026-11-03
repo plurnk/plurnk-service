@@ -85,18 +85,18 @@ export default class EnvDefaults {
         const environment = { ...own.parsed, ...process.env };
         const sources = await PluginSources.read({ hostPaths, nodeModules, environment });
         const configurationErrors = [...sources.configurationErrors];
-        const members = await EnvDefaults.#memberFiles(sources.packages.filter(({ dir }) => !sources.pluginPackages.has(dir)));
+        // {§operator-config-precedence} {§module-lifecycle} EnvDefaults.collect and
+        // discoverDaemonModules share the PluginSources candidate derivation: plain npm packages
+        // (`sources.packages`) and winning Agent Plugin roots (`sources.pluginRoots`), plus
+        // npm-only non-module plugin packages (`sources.pluginPackages`). Change them together.
+        const members = await EnvDefaults.#memberFiles(sources.packages);
         const files = [own, ...members.filter((m) => m.owner !== own.owner)];
-        const rootPackages = (await Promise.all(
-            Object.values(sources.roots).map((directory) => (directory ? Meta.packageDirs(directory) : Promise.resolve([]))),
-        )).flat().map(({ dir }) => dir);
-        const selected = new Set(sources.plugins.map(({ root }) => root));
-        const nativeDirs = new Set([...selected, ...rootPackages, ...sources.pluginPackages]);
+        const nativeDirs = new Set([...sources.pluginRoots, ...sources.pluginPackages]);
         for (const dir of nativeDirs) {
             try {
                 const native = await Meta.readManifest(dir);
                 if (native === null || native.packageName === null || !Meta.isTrusted(native.packageName)) continue;
-                if (native.plurnk.kind === "module" ? (selected.size > 0 && !selected.has(dir)) : !sources.pluginPackages.has(dir)) continue;
+                if (native.plurnk.kind === "module" ? !sources.pluginRoots.has(dir) : !sources.pluginPackages.has(dir)) continue;
                 const file = await EnvDefaults.nativeFile(dir, native.packageName);
                 if (file !== null) files.push(file);
             } catch (cause) {
