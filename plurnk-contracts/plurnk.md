@@ -161,6 +161,6 @@ example distillation or summarization
 {"alias":"PLANET","value":"world"}
 ```
 
-```sh
+```sh <!-- greet the world -->
 echo "Hello, $PLANET."
 ```
