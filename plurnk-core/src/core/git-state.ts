@@ -124,8 +124,10 @@ export default class GitState {
                 continue;
             }
             if (record.startsWith("? ")) {
+                const rawPath = record.slice(2);
+                if (rawPath.endsWith("/")) continue;
                 untracked++;
-                files.push({ path: Namespace.fromRepositoryPath(record.slice(2), workspaceRoot, repositoryRoot), status: "??" });
+                files.push({ path: Namespace.fromRepositoryPath(rawPath, workspaceRoot, repositoryRoot), status: "??" });
                 continue;
             }
             const fields = record.split(" ");
