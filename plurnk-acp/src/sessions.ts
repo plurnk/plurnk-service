@@ -104,7 +104,7 @@ export interface OverviewRequestOptions {
     readonly subscribe?: boolean;
 }
 
-export interface OverviewSubscription extends OverviewRequestOptions {
+interface OverviewSubscription extends OverviewRequestOptions {
     readonly origin: string;
 }
 
@@ -659,7 +659,7 @@ export const resolveWorkspace = async (
     }
 };
 
-export const throwSessionNotFound = (sessionId: string): never => {
+const throwSessionNotFound = (sessionId: string): never => {
     const problem = Problems.create("acp", "session-not-found", 404, `Session '${sessionId}' does not exist.`);
     throw new RequestError(
         -32002,

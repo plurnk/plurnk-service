@@ -342,8 +342,8 @@ for (const native of [false, true]) {
                 assert.deepEqual((evidence[0] as { request?: unknown }).request,
                     capture ? { method: "POST", origin, body: received.get(content) } : undefined);
                 const dispatched = JSON.parse(received.get(content)!);
-                assert.deepEqual(dispatched.tools, []);
-                assert.equal(dispatched.tool_choice, "none");
+                assert.equal("tools" in dispatched, false);
+                assert.equal("tool_choice" in dispatched, false);
                 assert.equal(dispatched.temperature, 0.25);
                 assert.doesNotMatch(JSON.stringify(evidence), /fixture-secret/u);
             }));
@@ -414,15 +414,16 @@ for (const protocol of ["google", "anthropic", "openrouter", "amazon-bedrock"] a
         assert.equal(result.assistant.content, "observed");
         if (protocol === "google") {
             assert.ok(evidence?.request?.body?.includes("Inspect the native body."));
-            assert.deepEqual(JSON.parse(evidence!.request!.body).config.toolConfig, { functionCallingConfig: { mode: "NONE" } });
+            assert.equal("toolConfig" in (JSON.parse(evidence!.request!.body).config ?? {}), false);
         } else {
             assert.equal(evidence?.request?.body, sent);
         }
         assert.ok(sent?.includes("Inspect the native body."));
         assert.doesNotMatch(JSON.stringify(evidence), /fixture-secret/u);
         const body = JSON.parse(sent!);
-        if (protocol === "google") assert.deepEqual(body.toolConfig, { functionCallingConfig: { mode: "NONE" } });
-        else if (protocol !== "amazon-bedrock") assert.deepEqual(body.tool_choice, protocol === "anthropic" ? { type: "none" } : "none");
+        for (const key of ["tools", "toolConfig", "tool_choice"]) {
+            assert.equal(key in body, false);
+        }
     });
 }
 

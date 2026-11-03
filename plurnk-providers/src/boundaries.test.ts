@@ -54,7 +54,6 @@ test("{§provider-interface} the OpenAI-compatible entrypoint excludes Node-owne
         "errors.ts",
         "LeadingReasoning.ts",
         "InferenceAdmission.ts",
-        "native-tools.ts",
         "notices.ts",
         "openai.ts",
         "pi-transport.ts",

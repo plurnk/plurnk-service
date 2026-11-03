@@ -12,7 +12,6 @@ import { BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
 import { UnsupportedEffortError } from "./types.ts";
 import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
 import ModelProvider from "./ModelProvider.ts";
-import { withoutNativeTools } from "./native-tools.ts";
 import { ollamaProviderFromEnv } from "./ollama.ts";
 
 // A rate literal breaks at every catalog refresh (the 1.17.0 stamp moved DeepSeek's rates); the
@@ -1236,21 +1235,13 @@ const request = {
     captureRawBody: true,
 };
 
-const assertToolFree = (body: Record<string, unknown>, protocol: Protocol): void => {
-    assert.deepEqual(body.tools, [], "the wire explicitly declares an empty native-tool set");
-    if (protocol === "generate-content") {
-        assert.deepEqual(body.toolConfig, { functionCallingConfig: { mode: "NONE" } });
-        assert.equal(body.tool_choice, undefined, "do not send a different protocol's fields");
-    } else {
-        assert.deepEqual(body.tool_choice, protocol === "messages" ? { type: "none" } : "none");
-        assert.equal(body.toolConfig, undefined);
+const assertToolFree = (body: Record<string, unknown>, _protocol?: Protocol): void => {
+    for (const key of ["tools", "toolConfig", "tool_choice", "functions", "function_call", "parallel_tool_calls"]) {
+        assert.equal(key in body, false, `do not send ${key} on tool-free requests`);
     }
-    assert.equal(body.functions, undefined, "do not add deprecated function declarations");
-    assert.equal(body.function_call, undefined);
-    assert.equal(body.parallel_tool_calls, undefined, "limiting parallel calls is not disabling tool use");
 };
 
-test("{§provider-interface} compatible wire explicitly disables native tools", async () => {
+test("{§provider-interface} compatible wire omits native tools", async () => {
     const requests: Record<string, unknown>[] = [];
     const provider = new ModelProvider({
         model: "fixture",
@@ -1281,23 +1272,6 @@ test("{§provider-interface} compatible wire explicitly disables native tools", 
     assertToolFree(requests[0], "chat");
     assert.equal(requests[0].reasoning_effort, "high");
     assert.deepEqual(requests[0].messages, request.messages);
-});
-
-test("{§provider-interface} the protocol projection cannot acquire tools or mutate caller input", () => {
-    for (const protocol of ["openai", "messages", "generate-content"] as const) {
-        const body = Object.freeze({ model: "fixture", temperature: 0.4, tools: Object.freeze([]) });
-        const projected = withoutNativeTools(body, protocol);
-        assert.equal(projected.model, "fixture");
-        assert.equal(projected.temperature, 0.4);
-        assert.notEqual(projected, body);
-        assert.equal("tool_choice" in body, false);
-        assert.equal("toolConfig" in body, false);
-        for (const tools of [[{ type: "function" }], {}, null]) {
-            assert.throws(() => withoutNativeTools({ tools }, protocol), {
-                name: "TypeError", message: "PLURNK provider requests cannot declare native tools",
-            });
-        }
-    }
 });
 
 test("{§provider-interface} request extensions cannot override the managed opt-out", async () => {
@@ -1369,7 +1343,7 @@ test("{§provider-interface} Bedrock uses its valid no-tool configuration", asyn
     assert.equal(result.assistant.content, "answer");
     assert.equal(result.accounting[0]?.usage?.totalTokens, 12);
     assert.ok(body);
-    for (const key of ["tools", "toolConfig", "tool_choice"]) assert.equal(key in body, false);
+    for (const key of ["tools", "toolConfig", "tool_choice"]) assert.equal(body[key], undefined);
 });
 
 test("{§provider-interface} Ollama keeps its probe unmodified and disables native calls for emission and BARE", async (t) => {

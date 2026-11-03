@@ -376,6 +376,21 @@ const openAICompletionsModel = (
     },
 });
 
+const OPENAI_COMPLETIONS_ADAPTERS: Readonly<Record<string, {
+    readonly defaultBaseUrl: string;
+    readonly serviceTier: boolean;
+    readonly logprobs: boolean;
+    readonly includeTopK?: boolean;
+}>> = {
+    openai: { defaultBaseUrl: "https://api.openai.com/v1", serviceTier: true, logprobs: true },
+    groq: { defaultBaseUrl: "https://api.groq.com/openai/v1", serviceTier: true, logprobs: false },
+    cerebras: { defaultBaseUrl: "https://api.cerebras.ai/v1", serviceTier: true, logprobs: false },
+    mistral: { defaultBaseUrl: "https://api.mistral.ai/v1", serviceTier: false, logprobs: false },
+    togetherai: { defaultBaseUrl: "https://api.together.xyz/v1", serviceTier: false, logprobs: false },
+    deepinfra: { defaultBaseUrl: "https://api.deepinfra.com/v1/openai", serviceTier: false, logprobs: false },
+    openrouter: { defaultBaseUrl: "https://openrouter.ai/api/v1", serviceTier: false, logprobs: false, includeTopK: true },
+};
+
 const modelFromAdapter = (
     provider: string,
     model: string,
@@ -387,63 +402,28 @@ const modelFromAdapter = (
     const attributionHeaders = catalog.adapter === "openrouter"
         ? openRouterAttributionHeaders(provider, env)
         : undefined;
+    const completionsSpec = OPENAI_COMPLETIONS_ADAPTERS[catalog.adapter];
+    if (completionsSpec !== undefined) {
+        return {
+            providerModel: openAICompletionsModel(model, {
+                provider: catalog.adapter,
+                baseUrl: url ?? completionsSpec.defaultBaseUrl,
+                apiKey: requireApiKey(provider, env, catalog),
+                ...(attributionHeaders && Object.keys(attributionHeaders).length > 0 ? { headers: attributionHeaders } : {}),
+                includeTopK: completionsSpec.includeTopK ?? false,
+                maxTokensField: "max_tokens",
+            }),
+            ...(normalizeCost === undefined ? {} : { normalizeCost }),
+            requestControls: {
+                namespace: catalog.adapter,
+                serviceTier: completionsSpec.serviceTier,
+                logprobs: completionsSpec.logprobs,
+            },
+            catalog,
+        };
+    }
 
     switch (catalog.adapter) {
-        case "openai":
-            return {
-                providerModel: openAICompletionsModel(model, {
-                    provider: "openai",
-                    baseUrl: url ?? "https://api.openai.com/v1",
-                    apiKey: requireApiKey(provider, env, catalog),
-                    includeTopK: false,
-                }),
-                requestControls: { namespace: "openai", serviceTier: true, logprobs: true },
-                catalog,
-            };
-        case "groq":
-            return {
-                providerModel: openAICompletionsModel(model, {
-                    provider: "groq",
-                    baseUrl: url ?? "https://api.groq.com/openai/v1",
-                    apiKey: requireApiKey(provider, env, catalog),
-                    includeTopK: false,
-                }),
-                requestControls: { namespace: "groq", serviceTier: true, logprobs: false },
-                catalog,
-            };
-        case "cerebras":
-            return {
-                providerModel: openAICompletionsModel(model, {
-                    provider: "cerebras",
-                    baseUrl: url ?? "https://api.cerebras.ai/v1",
-                    apiKey: requireApiKey(provider, env, catalog),
-                    includeTopK: false,
-                }),
-                requestControls: { namespace: "cerebras", serviceTier: true, logprobs: false },
-                catalog,
-            };
-        case "mistral":
-            return {
-                providerModel: openAICompletionsModel(model, {
-                    provider: "mistral",
-                    baseUrl: url ?? "https://api.mistral.ai/v1",
-                    apiKey: requireApiKey(provider, env, catalog),
-                    includeTopK: false,
-                }),
-                requestControls: { namespace: "mistral", serviceTier: false, logprobs: false },
-                catalog,
-            };
-        case "togetherai":
-            return {
-                providerModel: openAICompletionsModel(model, {
-                    provider: "togetherai",
-                    baseUrl: url ?? "https://api.together.xyz/v1",
-                    apiKey: requireApiKey(provider, env, catalog),
-                    includeTopK: false,
-                }),
-                requestControls: { namespace: "togetherai", serviceTier: false, logprobs: false },
-                catalog,
-            };
         case "xai":
             return {
                 providerModel: {
@@ -462,19 +442,6 @@ const modelFromAdapter = (
                     xaiPreferResponses: true,
                 },
                 requestControls: { namespace: "xai", serviceTier: true, logprobs: false },
-                catalog,
-            };
-        case "deepinfra":
-            return {
-                providerModel: openAICompletionsModel(model, {
-                    provider: "deepinfra",
-                    baseUrl: url ?? "https://api.deepinfra.com/v1/openai",
-                    apiKey: requireApiKey(provider, env, catalog),
-                    includeTopK: false,
-                    maxTokensField: "max_tokens",
-                }),
-                ...(normalizeCost === undefined ? {} : { normalizeCost }),
-                requestControls: { namespace: "deepinfra", serviceTier: false, logprobs: false },
                 catalog,
             };
         case "google":
@@ -538,20 +505,6 @@ const modelFromAdapter = (
                 catalog,
             };
         }
-        case "openrouter":
-            return {
-                providerModel: openAICompletionsModel(model, {
-                    provider: "openrouter",
-                    baseUrl: url ?? "https://openrouter.ai/api/v1",
-                    apiKey: requireApiKey(provider, env, catalog),
-                    ...(attributionHeaders && Object.keys(attributionHeaders).length > 0 ? { headers: attributionHeaders } : {}),
-                    includeTopK: true,
-                    maxTokensField: "max_tokens",
-                }),
-                ...(normalizeCost === undefined ? {} : { normalizeCost }),
-                requestControls: { namespace: "openrouter", serviceTier: false, logprobs: false },
-                catalog,
-            };
         case "openai-compatible": {
             if (url === undefined) throw new Error(`${provider} provider: Models.dev supplies no API URL and no base URL was configured`);
             const keyNames = configuredKeyNames(provider, env, catalog);
