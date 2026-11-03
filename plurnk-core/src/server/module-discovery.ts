@@ -81,18 +81,17 @@ export const discoverDaemonModules = async (
         nodeModules: join(options.cwd ?? process.cwd(), "node_modules"),
         hostPaths: options.hostPaths, packageDirs: options.packageDirs,
     });
-    const dirs = [
-        ...sources.plugins.map(({ root }) => ({ dir: root })),
-        ...sources.packages.filter(({ dir }) => !sources.pluginPackages.has(dir)),
-    ];
+    // {§module-lifecycle} {§operator-config-precedence} discoverDaemonModules and
+    // EnvDefaults.collect share the PluginSources candidate derivation (`sources.moduleDirs` =
+    // `sources.pluginRoots` + `sources.packages`). Change them together.
     const modules: Array<{ readonly module: DaemonModule<HostSetupSeam>; readonly owner: string }> = [];
     const configurationErrors: Array<{ readonly owner: string; readonly cause: ConfigurationError }> = sources.configurationErrors
         .map((cause) => ({ owner: "extensions", cause }));
     const skipped: string[] = [];
-    for (const candidate of dirs) {
+    for (const dir of sources.moduleDirs) {
         let manifest: ModuleManifest | null;
         try {
-            manifest = await readManifest(candidate.dir);
+            manifest = await readManifest(dir);
         } catch (cause) {
             if (!(cause instanceof ConfigurationError)) throw cause;
             configurationErrors.push({ owner: "extensions", cause });
@@ -105,8 +104,8 @@ export const discoverDaemonModules = async (
             continue;
         }
         try {
-            if (sources.plugins.some(({ root }) => root === candidate.dir)) {
-                await EnvDefaults.nativeFile(candidate.dir, manifest.packageName);
+            if (sources.pluginRoots.has(dir)) {
+                await EnvDefaults.nativeFile(dir, manifest.packageName);
             }
             const imported: unknown = await import(pathToFileURL(manifest.module).href);
             const exported = isRecord(imported) ? imported.default : undefined;

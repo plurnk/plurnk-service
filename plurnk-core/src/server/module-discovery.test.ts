@@ -9,6 +9,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { discoverDaemonModules } from "./module-discovery.ts";
+import EnvDefaults from "../core/env-defaults.ts";
 import HostPaths from "../core/HostPaths.ts";
 
 // These fixtures are third-party packages, so this file exercises the operator who admitted them
@@ -214,4 +215,44 @@ test("{§module-contract}: a module's own configuration error is attributed to t
     const found = await discoverDaemonModules({ packageDirs: [misconfigured, healthy] });
     assert.deepEqual(found.modules.map(({ owner }) => owner), ["@acme/healthy"], "a healthy sibling still loads");
     assert.deepEqual(found.configurationErrors.map(({ owner, cause }) => [owner, cause.key]), [["module:@acme/misconfigured", "ACME_SETTING"]]);
+});
+
+test("{§module-lifecycle} {§operator-config-precedence}: EnvDefaults.collect and discoverDaemonModules share the exact module candidate set", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-module-parity-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const hostPaths = new HostPaths({ home: join(root, "home"), env: {} });
+    const prior = process.env.PLURNK_SERVICE_ROOTS;
+    process.env.PLURNK_SERVICE_ROOTS = "project,plurnk,global";
+    t.after(() => { if (prior === undefined) delete process.env.PLURNK_SERVICE_ROOTS; else process.env.PLURNK_SERVICE_ROOTS = prior; });
+    await writeFile(join(root, ".env.defaults"), "# host\nPLURNK_ENVD_PARITY_HOST=1\n");
+    const addBundle = async (dir: string, name: string, knob: string, tag: string): Promise<void> => {
+        await mkdir(join(dir, "ai.plurnk"), { recursive: true });
+        await writeFile(join(dir, "plugin.json"), JSON.stringify({
+            $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name,
+            extensions: { "ai.plurnk": { kind: "module", module: "ai.plurnk/plugin.mjs" } },
+        }));
+        await writeFile(join(dir, "ai.plurnk/.env.defaults"), `${knob}=${tag}\n`);
+        await writeFile(join(dir, "ai.plurnk/plugin.mjs"), `export default () => ({ tag: ${JSON.stringify(tag)}, setup() {} });`);
+    };
+    await addBundle(join(root, "node_modules/published-shadowed"), "user-mod", "USER_MOD_KNOB", "npm");
+    await addBundle(join(hostPaths.globalPluginsDir, "user-mod-folder"), "user-mod", "USER_MOD_KNOB", "global");
+    await addBundle(join(root, "node_modules/npm-bundle"), "npm-bundle", "NPM_BUNDLE_KNOB", "npm");
+    await addBundle(join(hostPaths.projectPluginsDir(root), "project-only"), "project-only", "PROJECT_ONLY_KNOB", "project");
+    const pkg = await packageOf(root, "@acme/pkg-mod", { plurnk: { kind: "module", module: "./module" } }, "export default { tag: 'pkg', setup() {} };");
+    await writeFile(join(pkg.dir, ".env.defaults"), "ACME_PKG_MOD_KNOB=pkg\n");
+
+    const collected = await EnvDefaults.collect(root, join(root, "node_modules"), { hostPaths });
+    const discovered = await discoverDaemonModules({ cwd: root, hostPaths });
+    assert.deepEqual(collected.configurationErrors, []);
+    assert.deepEqual(discovered.configurationErrors, []);
+    assert.deepEqual(
+        collected.files.filter(({ owner }) => owner !== "@plurnk/plurnk-service").map(({ owner }) => owner).toSorted(),
+        discovered.modules.map(({ owner }) => owner).toSorted(),
+        "every module discovered by discoverDaemonModules contributes its .env.defaults floor, and vice versa",
+    );
+    assert.deepEqual(
+        discovered.modules.map(({ owner }) => owner).toSorted(),
+        ["@acme/pkg-mod", "npm-bundle", "user-mod"],
+    );
+    assert.deepEqual(EnvDefaults.merge(collected.files).get("USER_MOD_KNOB"), { value: "global", owner: "user-mod" });
 });
