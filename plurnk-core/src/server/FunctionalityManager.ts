@@ -250,11 +250,6 @@ export default class FunctionalityManager extends BaseExecutor {
             : "host";
     }
 
-    hasConfigurationFailure(workspaceId?: number): boolean {
-        const failure = this.#entry(workspaceId).configurationFailure;
-        return failure !== null && failure !== undefined;
-    }
-
     #entry(workspaceId?: number): FunctionalityFamilyEntry {
         const targetWorkspace = workspaceId ?? this.#workspaceId;
         return typeof this.#entrySource === "function"
@@ -409,18 +404,22 @@ export default class FunctionalityManager extends BaseExecutor {
             refusal = cause instanceof OperationFailureError ? cause.result : { status: problem.status, problem };
             result = { status: refusal.status, body: refusal };
         }
+        const inProcessServers = entry.family === "mcp"
+            ? (this.#executors?.()?.inProcessToolServers(this.#workspaceId) ?? [])
+            : [];
+        const partialMcpList = verb === "list" && entry.family === "mcp" && refusal !== null && inProcessServers.length > 0;
         args.setState(CHANNEL, "active");
-        const formatted = verb === "list" && refusal === null
+        const formatted = verb === "list" && (refusal === null || partialMcpList)
             ? FunctionalityManager.#formatListBody(
                 entry.family,
-                result.body,
-                entry.family === "mcp" ? (this.#executors?.()?.inProcessToolServers(this.#workspaceId) ?? []) : [],
+                partialMcpList ? { family: entry.family, definitions: [], problem: refusal?.problem } : result.body,
+                inProcessServers,
             )
             : JSON.stringify(result.body, null, 2);
         args.write(CHANNEL, formatted, "application/json");
         // {§functionality-model-projection} Resource readiness is the body; this invocation has settled.
-        args.setState(CHANNEL, result.status >= 400 ? "errored" : "closed");
-        return refusal ?? { status: result.status };
+        args.setState(CHANNEL, !partialMcpList && result.status >= 400 ? "errored" : "closed");
+        return partialMcpList ? { status: 200 } : (refusal ?? { status: result.status });
     }
 
     static #formatListBody(
@@ -467,6 +466,7 @@ export default class FunctionalityManager extends BaseExecutor {
             return JSON.stringify({ ...body, definitions: [] });
         }
         const lines = definitions.map((def) => `  ${JSON.stringify(def)}`);
-        return `{\n  "family": ${JSON.stringify(body.family)},\n  "definitions": [\n${lines.join(",\n")}\n  ]\n}`;
+        const problemLine = body.problem === undefined ? "" : `\n  "problem": ${JSON.stringify(body.problem)},`;
+        return `{\n  "family": ${JSON.stringify(body.family)},${problemLine}\n  "definitions": [\n${lines.join(",\n")}\n  ]\n}`;
     }
 }

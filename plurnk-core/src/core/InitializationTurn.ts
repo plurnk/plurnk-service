@@ -13,7 +13,6 @@ import type { ContextFit } from "./ContextFit.ts";
 import Turn, { type TurnRow } from "./Turn.ts";
 import TurnOps from "./TurnOps.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
-import FunctionalityManager from "../server/FunctionalityManager.ts";
 import { readExecConcurrency } from "../schemes/ExecScheduler.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
 
@@ -225,10 +224,6 @@ export default class InitializationTurn {
                     readExecConcurrency();
                     if (EffectPolicy.decide("read") !== "auto") return false;
                 } catch {
-                    return false;
-                }
-                const entry = registry.entry(statement.runtime, workspaceId);
-                if (entry?.executor instanceof FunctionalityManager && entry.executor.hasConfigurationFailure(workspaceId)) {
                     return false;
                 }
                 return true;

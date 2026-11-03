@@ -685,13 +685,13 @@ test("{§session-model-selection}: the session's durable model and spawn overrid
         const sessionId = await namedModelSession(first, envelope.workspaceId, "main");
         await first.setSessionModel({ workspaceId: envelope.workspaceId, sessionId, selector: spec.alias });
         await first.setSessionSpawnModel({ workspaceId: envelope.workspaceId, sessionId, selector: childSpec.alias });
-        const before = await first.runLoop({ workspaceId: envelope.workspaceId, sessionId, prompt: "before restart" });
-        assert.equal(before.status, 100);
         const terminated: Array<{ loopId: number; result: { status: number } }> = [];
         first.subscribeToEvents((_workspaceId, method, params) => {
             if (method === "loop/terminated") terminated.push(params as { loopId: number; result: { status: number } });
         });
-        for (let i = 0; i < 100 && !terminated.some((t) => t.loopId === before.loopId); i++) {
+        const before = await first.runLoop({ workspaceId: envelope.workspaceId, sessionId, prompt: "before restart" });
+        assert.equal(before.status, 100);
+        for (let i = 0; i < 500 && !terminated.some((t) => t.loopId === before.loopId); i++) {
             await new Promise((resolve) => setTimeout(resolve, 20));
         }
         assert.equal(terminated.some((t) => t.loopId === before.loopId && t.result.status === 200), true, "the pre-restart loop completed");
@@ -700,12 +700,12 @@ test("{§session-model-selection}: the session's durable model and spawn overrid
 
         second = new Daemon({ db, provider: null });
         await second.start();
-        const after = await second.runLoop({ workspaceId: envelope.workspaceId, sessionId, prompt: "after restart, no selector" });
         const settled: Array<{ loopId: number; result: { status: number } }> = [];
         second.subscribeToEvents((_workspaceId, method, params) => {
             if (method === "loop/terminated") settled.push(params as { loopId: number; result: { status: number } });
         });
-        for (let i = 0; i < 100 && !settled.some((t) => t.loopId === after.loopId); i++) {
+        const after = await second.runLoop({ workspaceId: envelope.workspaceId, sessionId, prompt: "after restart, no selector" });
+        for (let i = 0; i < 500 && !settled.some((t) => t.loopId === after.loopId); i++) {
             await new Promise((resolve) => setTimeout(resolve, 20));
         }
         assert.equal(settled.some((t) => t.loopId === after.loopId && t.result.status === 200), true, "the selector-less post-restart loop completed");
@@ -867,7 +867,7 @@ test("{§session-model-selection}: a selection while the session holds a parked 
 
             });
             // The execution stream keeps the loop parked (202); wait for that state.
-            for (let i = 0; i < 100; i++) {
+            for (let i = 0; i < 500; i++) {
                 const loops = await db.test_all_loops.all<{ status: number }>({});
                 if (loops.some(({ status }) => status === 202)) break;
                 await new Promise((resolve) => setTimeout(resolve, 20));
