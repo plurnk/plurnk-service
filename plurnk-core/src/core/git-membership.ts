@@ -201,6 +201,34 @@ export default class GitMembership {
         return (await GitMembership.#automaticRepository(root, signal)).repository;
     }
 
+    // {§membership} (#1400): resolve the deepest existing ancestor directory for `key` so paths inside
+    // a submodule, nested repository, or outside-root sibling repository resolve against that repository.
+    static async #governingDirectory(root: string, key: string): Promise<string> {
+        let current = dirname(resolve(root, key));
+        while (current !== root) {
+            try {
+                if ((await stat(current)).isDirectory()) return current;
+            } catch {
+                // walk up toward root or nearest existing ancestor
+            }
+            const parent = dirname(current);
+            if (parent === current) break;
+            current = parent;
+        }
+        return current;
+    }
+
+    static async #governingRepository(
+        db: Db,
+        workspaceId: number,
+        root: string,
+        key: string,
+        signal?: AbortSignal,
+    ): Promise<string | null> {
+        const dir = await GitMembership.#governingDirectory(root, key);
+        return GitMembership.#activeAutomaticRepository(db, workspaceId, dir, signal);
+    }
+
     static async #isIgnoredByRepository(
         root: string,
         repository: string,
@@ -219,6 +247,9 @@ export default class GitMembership {
             return true;
         } catch (cause) {
             if (isRecord(cause) && cause.code === 1) return false;
+            const raw = isRecord(cause) ? cause.stderr : undefined;
+            const stderr = typeof raw === "string" ? raw : Buffer.isBuffer(raw) ? raw.toString("utf8") : "";
+            if (/is in submodule/u.test(stderr)) return null;
             throw new Error(`Git ignore classification failed for '${key}'.`, { cause });
         }
     }
@@ -235,7 +266,7 @@ export default class GitMembership {
         if (await GitMembership.exclusionOf(db, workspaceId, key) !== null) return true;
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return false;
-        const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);
+        const repository = await GitMembership.#governingRepository(db, workspaceId, root, key, signal);
         if (repository === null) return false;
         return (await GitMembership.#isIgnoredByRepository(root, repository, key, signal)) === true;
     }
@@ -299,7 +330,7 @@ export default class GitMembership {
             return { ok: true, incorporation: "definition" };
         }
 
-        const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);
+        const repository = await GitMembership.#governingRepository(db, workspaceId, root, key, signal);
         if (repository !== null) {
             const ignored = await GitMembership.#isIgnoredByRepository(root, repository, key, signal);
             if (ignored === true) {
@@ -376,14 +407,14 @@ export default class GitMembership {
         // PLURNK_SERVICE_GIT_AUTO=0 disables automatic Git membership.
         // {§operator-config-workspace-settings} — git:false tightens the env ALLOWED ceiling.
         const workspaceGit = (await WorkspaceSettings.read(db, workspaceId)).git;
+        const gitAutoAllowed =
+            process.env.PLURNK_SERVICE_GIT_ALLOWED === "1"
+            && process.env.PLURNK_SERVICE_GIT_AUTO === "1"
+            && workspaceGit !== false;
         let gitMembers: string[] = [];
         let repository: string | null = null;
         let refusedFilter: string | null = null;
-        if (
-            process.env.PLURNK_SERVICE_GIT_ALLOWED === "1"
-            && process.env.PLURNK_SERVICE_GIT_AUTO === "1"
-            && workspaceGit !== false
-        ) {
+        if (gitAutoAllowed) {
             ({ repository, refusedFilter } = await GitMembership.#automaticRepository(root, signal));
             if (repository !== null) {
                 gitMembers = await GitMembership.#projectMembers(root, repository, signal);
@@ -395,8 +426,21 @@ export default class GitMembership {
         const scans = new Map<string, string[]>();
         for (const pattern of definitionGlobs) scans.set(pattern, await GitMembership.#scanIncluded(root, [pattern], signal));
         const defined = [...scans.values()].flat();
-        const ignoredBy = async (pathname: string): Promise<boolean | null> =>
-            (repository === null ? null : GitMembership.#isIgnoredByRepository(root, repository, pathname, signal));
+        const repos = new Map<string, Promise<string | null>>([[root, Promise.resolve(repository)]]);
+        const governingRepo = async (pathname: string): Promise<string | null> => {
+            if (!gitAutoAllowed) return null;
+            const dir = await GitMembership.#governingDirectory(root, pathname);
+            let cached = repos.get(dir);
+            if (cached === undefined) {
+                cached = GitMembership.#automaticRepository(dir, signal).then((r) => r.repository);
+                repos.set(dir, cached);
+            }
+            return cached;
+        };
+        const ignoredBy = async (pathname: string): Promise<boolean | null> => {
+            const targetRepo = await governingRepo(pathname);
+            return targetRepo === null ? null : GitMembership.#isIgnoredByRepository(root, targetRepo, pathname, signal);
+        };
         const admitted: string[] = [];
         const masked: string[] = [];
         for (const pathname of await GitMembership.#scanCreations(root, creationKeys, signal)) {
@@ -431,6 +475,7 @@ export default class GitMembership {
         const walk = async (relativeDir: string): Promise<void> => {
             if (signal?.aborted) return;
             const entries = await readdir(join(root, relativeDir), { withFileTypes: true }).catch(() => []);
+            if (relativeDir.length > 0 && entries.some((entry) => entry.name === ".git")) return;
             for (const entry of entries) {
                 if (signal?.aborted) return;
                 const childRelative = relativeDir.length === 0 ? entry.name : `${relativeDir}/${entry.name}`;
@@ -541,9 +586,22 @@ export default class GitMembership {
         const constraints = await db.crud_list_workspace_constraints.all<OverlayRow>({ workspace_id: workspaceId });
         const excludeGlobs = constraints.filter((c) => c.effect === "exclude").map((c) => c.glob);
         const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);
-        const files = repository === null
-            ? await GitMembership.#scanIncluded(root, [directory === "" ? "**" : `${directory}/**`], signal)
-            : await GitMembership.#gitUntrackedFiles(root, directory, signal);
+        const absDirectory = directory === "" ? root : resolve(root, directory);
+        const dirRepository = directory === "" || (await stat(absDirectory).catch(() => null))?.isDirectory() !== true
+            ? repository
+            : await GitMembership.#activeAutomaticRepository(db, workspaceId, absDirectory, signal);
+        let files: string[];
+        if (dirRepository !== null && dirRepository !== repository) {
+            const subDir = relative(dirRepository, absDirectory);
+            const tracked = await GitMembership.#projectMembers(root, dirRepository, signal);
+            const untracked = (await GitMembership.#gitUntrackedFiles(dirRepository, subDir, signal))
+                .map((file) => Namespace.fromRepositoryPath(file, root, dirRepository));
+            files = [...new Set([...tracked, ...untracked])];
+        } else if (repository === null) {
+            files = await GitMembership.#scanIncluded(root, [directory === "" ? "**" : `${directory}/**`], signal);
+        } else {
+            files = await GitMembership.#gitUntrackedFiles(root, directory, signal);
+        }
         return files
             .filter((pathname) => pathname.startsWith(literal) && !excludeGlobs.some((glob) => PathGlob.matches(pathname, glob)))
             .toSorted();
@@ -562,12 +620,7 @@ export default class GitMembership {
         }
         const constraints = await db.crud_list_workspace_constraints.all<OverlayRow>({ workspace_id: workspaceId });
         if (constraints.some((c) => c.effect === "exclude" && PathGlob.matches(key, c.glob))) return false;
-        const repository = await GitMembership.#activeAutomaticRepository(
-            db,
-            workspaceId,
-            key.startsWith("../") ? dirname(resolve(root, key)) : root,
-            signal,
-        );
+        const repository = await GitMembership.#governingRepository(db, workspaceId, root, key, signal);
         return repository === null || (await GitMembership.#isIgnoredByRepository(root, repository, key, signal)) !== true;
     }
 
@@ -620,7 +673,7 @@ export default class GitMembership {
     static async ignoreSource(db: Db, workspaceId: number, key: string, signal: AbortSignal | undefined): Promise<{ file: string; line: number } | null> {
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return null;
-        const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);
+        const repository = await GitMembership.#governingRepository(db, workspaceId, root, key, signal);
         if (repository === null) return null;
         const repositoryPath = relative(repository, resolve(root, key));
         if (repositoryPath === "" || repositoryPath.startsWith("..") || isAbsolute(repositoryPath)) return null;
@@ -637,7 +690,7 @@ export default class GitMembership {
     static async isIgnored(db: Db, workspaceId: number, key: string, signal: AbortSignal | undefined): Promise<boolean | null> {
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return null;
-        const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);
+        const repository = await GitMembership.#governingRepository(db, workspaceId, root, key, signal);
         if (repository === null) return null;
         return GitMembership.#isIgnoredByRepository(root, repository, key, signal);
     }
@@ -647,24 +700,41 @@ export default class GitMembership {
         return GitMembership.#scanIncluded(root, [pattern], signal);
     }
 
-    // Which of `paths` the active repository ignores, in one `git check-ignore` pass.
+    // Which of `paths` the active repository ignores, in one `git check-ignore` pass per governing repository.
     static async ignoredSubset(db: Db, workspaceId: number, paths: readonly string[], signal: AbortSignal | undefined): Promise<Set<string>> {
         const ignored = new Set<string>();
         if (paths.length === 0) return ignored;
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return ignored;
-        const repository = await GitMembership.#activeAutomaticRepository(db, workspaceId, root, signal);
-        if (repository === null) return ignored;
-        const keys = new Map<string, string>();
+        if (
+            process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1"
+            || process.env.PLURNK_SERVICE_GIT_AUTO !== "1"
+            || (await WorkspaceSettings.read(db, workspaceId)).git === false
+        ) return ignored;
+        const repoByDir = new Map<string, string | null>();
+        const keysByRepo = new Map<string, Map<string, string>>();
         for (const key of paths) {
+            const dir = await GitMembership.#governingDirectory(root, key);
+            let repository = repoByDir.get(dir);
+            if (repository === undefined) {
+                repository = (await GitMembership.#automaticRepository(dir, signal)).repository;
+                repoByDir.set(dir, repository);
+            }
+            if (repository === null) continue;
             const repositoryPath = relative(repository, resolve(root, key));
             if (repositoryPath === "" || repositoryPath.startsWith("..") || isAbsolute(repositoryPath)) continue;
+            let keys = keysByRepo.get(repository);
+            if (keys === undefined) {
+                keys = new Map<string, string>();
+                keysByRepo.set(repository, keys);
+            }
             keys.set(repositoryPath, key);
         }
-        if (keys.size === 0) return ignored;
-        for (const repositoryPath of (await GitMembership.#checkIgnore(repository, [...keys.keys()], false, signal)).split("\0")) {
-            const key = keys.get(repositoryPath);
-            if (key !== undefined) ignored.add(key);
+        for (const [repository, keys] of keysByRepo) {
+            for (const repositoryPath of (await GitMembership.#checkIgnore(repository, [...keys.keys()], false, signal)).split("\0")) {
+                const key = keys.get(repositoryPath);
+                if (key !== undefined) ignored.add(key);
+            }
         }
         return ignored;
     }
@@ -684,7 +754,19 @@ export default class GitMembership {
             child.once("close", settle);
         });
         // 0: some path matched; 1: none did. Anything else is a failed subprocess.
-        if (code !== 0 && code !== 1) throw new Error(`git check-ignore failed (${code}): ${Buffer.concat(err).toString("utf8").trim()}`);
+        if (code !== 0 && code !== 1) {
+            const stderr = Buffer.concat(err).toString("utf8").trim();
+            if (/is in submodule/u.test(stderr)) {
+                if (paths.length <= 1) return "";
+                const parts: string[] = [];
+                for (const p of paths) {
+                    const single = await GitMembership.#checkIgnore(repository, [p], verbose, signal);
+                    if (single.length > 0) parts.push(single);
+                }
+                return parts.join("");
+            }
+            throw new Error(`git check-ignore failed (${code}): ${stderr}`);
+        }
         return Buffer.concat(out).toString("utf8");
     }
 
@@ -700,19 +782,27 @@ export default class GitMembership {
         const matches = new Set<string>();
         const gitAuto =
             process.env.PLURNK_SERVICE_GIT_ALLOWED === "1" && process.env.PLURNK_SERVICE_GIT_AUTO === "1";
+        let rootRepository: string | null | undefined;
         for (const pattern of patterns) {
-            if (gitAuto && pattern.startsWith("../") && pattern.endsWith("/**")) {
+            if (gitAuto && pattern.endsWith("/**")) {
                 const dirKey = pattern.slice(0, -3);
                 if (dirKey.length > 0 && !PathSyntax.hasGlob(dirKey)) {
                     const absDir = resolve(root, dirKey);
-                    const { repository } = await GitMembership.#automaticRepository(absDir, signal);
-                    if (repository !== null) {
-                        for (const tracked of await GitMembership.#projectMembers(root, repository, signal)) {
-                            if (PathGlob.matches(tracked, pattern)) {
-                                matches.add(tracked);
+                    if ((await stat(absDir).catch(() => null))?.isDirectory() === true) {
+                        const { repository } = await GitMembership.#automaticRepository(absDir, signal);
+                        if (repository !== null) {
+                            if (!pattern.startsWith("../") && rootRepository === undefined) {
+                                rootRepository = (await GitMembership.#automaticRepository(root, signal)).repository;
+                            }
+                            if (pattern.startsWith("../") || repository !== rootRepository) {
+                                for (const tracked of await GitMembership.#projectMembers(root, repository, signal)) {
+                                    if (PathGlob.matches(tracked, pattern)) {
+                                        matches.add(tracked);
+                                    }
+                                }
+                                continue;
                             }
                         }
-                        continue;
                     }
                 }
             }

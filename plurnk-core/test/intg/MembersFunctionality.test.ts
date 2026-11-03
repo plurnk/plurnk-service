@@ -1,6 +1,7 @@
 import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import Daemon from "../../src/server/Daemon.ts";
+import GitMembership from "../../src/core/git-membership.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import MembersFunctionality from "../../src/server/MembersFunctionality.ts";
 import { ownSession, TEST_OWNER, serverProposals } from "./_approval.ts";
@@ -573,6 +574,92 @@ test("{§tools-resource-materialization} {§fs-write-surface}: outside-root Git 
             const created = await operate("````EDIT (../beta/created.md)\nhello beta\n````") as { status: number };
             assert.equal(created.status, 200, "creating a file inside an attached ../beta/** directory succeeds under root scope");
             assert.equal(await memberOf(db, workspaceId, "../beta/created.md"), true);
+        } finally {
+            await daemon.stop();
+            await db.close();
+        }
+    });
+});
+
+test("{§membership} {§session-initialization-entry} {§tools-resource-materialization}: a Git submodule is a repository boundary at Turn 0 and resolves ignore, auto-add, and sub/** globs against its own repository", { timeout: 60_000 }, async (t) => {
+    serverProposals(t, "accept");
+    const base = await mkdtemp(join(tmpdir(), "plurnk-members-submodule-"));
+    t.after(() => rm(base, { recursive: true, force: true }));
+    const root = join(base, "super");
+    const remoteSub = join(base, "remote-sub");
+    await Promise.all([mkdir(root, { recursive: true }), mkdir(remoteSub, { recursive: true })]);
+
+    const gitIn = (cwd: string, args: string[]) => execFileP("git", args, { cwd, env: hermeticGitEnv() });
+    await gitIn(remoteSub, ["init", "-q"]);
+    await writeFile(join(remoteSub, ".gitignore"), "*.log\n");
+    await writeFile(join(remoteSub, "AGENTS.md"), "# submodule instructions\n");
+    await writeFile(join(remoteSub, "tracked.md"), "# submodule tracked\n");
+    await gitIn(remoteSub, ["add", ".gitignore", "AGENTS.md", "tracked.md"]);
+    await gitIn(remoteSub, ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-q", "--no-verify", "-m", "chore: seed sub"]);
+
+    await gitIn(root, ["init", "-q"]);
+    await writeFile(join(root, "README.md"), "# superproject\n");
+    await gitIn(root, ["add", "README.md"]);
+    await gitIn(root, ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-q", "--no-verify", "-m", "chore: seed super"]);
+    await gitIn(root, ["-c", "protocol.file.allow=always", "submodule", "add", "-q", remoteSub, "sub"]);
+    await gitIn(root, ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-q", "--no-verify", "-m", "chore: add submodule"]);
+
+    await writeFile(join(root, "sub", "untracked.md"), "untracked in sub\n");
+    await writeFile(join(root, "sub", "ignored.log"), "ignored in sub\n");
+
+    await withEnv({
+        PLURNK_SERVICE_GIT_ALLOWED: "1",
+        PLURNK_SERVICE_GIT_AUTO: "1",
+        PLURNK_SERVICE_FILE_CREATE_SCOPE: "root",
+        PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "root",
+        PLURNK_MEMBERS_AUTO_ADD: "1",
+        PLURNK_MEMBERS_ENABLED: "1",
+    }, async () => {
+        const db = await openMigrated();
+        const workspaceId = await insertWorkspace(db, `members-submodule-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, root);
+        const model = await insertSession(db, workspaceId, null, "model", "model");
+        await ownSession(db, workspaceId, model);
+        const daemon = new Daemon({ db, provider: null });
+        await daemon.start();
+        try {
+            const overlay0 = await GitMembership.resolveOverlay(db, workspaceId, undefined, undefined);
+            assert.ok(overlay0 !== null);
+            assert.equal(overlay0.members.includes("README.md"), true, "superproject tracked file is a member");
+            assert.equal(overlay0.members.includes("sub/AGENTS.md"), false, "submodule AGENTS.md is not ambiently enrolled at Turn 0");
+            assert.equal(overlay0.members.includes("sub/tracked.md"), false, "submodule tracked file is not ambiently enrolled at Turn 0");
+
+            const rootCandidates = await GitMembership.ambientCandidates(db, workspaceId, "", undefined);
+            assert.equal(rootCandidates.some((p) => p.startsWith("sub/")), false, "root ambient candidates do not descend into submodule");
+
+            const subCandidates = await GitMembership.ambientCandidates(db, workspaceId, "sub/", undefined);
+            assert.deepEqual(subCandidates, ["sub/.gitignore", "sub/AGENTS.md", "sub/tracked.md", "sub/untracked.md"],
+                "targeting sub/ lists tracked and untracked-unignored files in the submodule while omitting sub/ignored.log");
+
+            assert.deepEqual(await GitMembership.ignoreSource(db, workspaceId, "sub/ignored.log", undefined), { file: ".gitignore", line: 1 });
+            assert.deepEqual([...await GitMembership.ignoredSubset(db, workspaceId, ["README.md", "sub/tracked.md", "sub/ignored.log"], undefined)], ["sub/ignored.log"]);
+
+            const operate = (program: string) => modelOperation(daemon, db, { workspaceId, sessionId: model, statement: parseOne(program) });
+            const readIgnored = await operate("````READ (sub/ignored.log)````") as { status: number; problem?: { type?: string } };
+            assert.equal(readIgnored.status, 404);
+            assert.equal(readIgnored.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-member");
+
+            const readTracked = await operate("````READ (sub/tracked.md)````") as { status: number; content?: string | null };
+            assert.equal(readTracked.status, 200, "READ inside submodule auto-admits tracked file under root scope");
+            assert.match(readTracked.content ?? "", /# submodule tracked/u);
+
+            const editIgnored = await operate("````EDIT (sub/created.log)\nblocked\n````") as { status: number; problem?: { type?: string } };
+            assert.equal(editIgnored.status, 403, "creating a gitignored file inside the submodule is refused by the submodule's .gitignore");
+            assert.equal(editIgnored.problem?.type, "https://problems.plurnk.xyz/scheme/file/file-create-gitignored");
+
+            const editCreated = await operate("````EDIT (sub/created.md)\nhello sub\n````") as { status: number };
+            assert.equal(editCreated.status, 200, "creating a non-ignored file inside the submodule succeeds");
+
+            await daemon.invokeModuleAction("workspace.members.add", { files: ["sub/**"] }, workspaceContext(workspaceId));
+            await daemon.settleFunctionality(workspaceId);
+            assert.equal(await memberOf(db, workspaceId, "sub/AGENTS.md"), true, "sub/** enrolls submodule tracked files");
+            assert.equal(await memberOf(db, workspaceId, "sub/untracked.md"), false, "sub/** uses git ls-files rather than blindly walking untracked files");
+            assert.equal(await memberOf(db, workspaceId, "sub/ignored.log"), false, "sub/** excludes submodule gitignored files");
         } finally {
             await daemon.stop();
             await db.close();
