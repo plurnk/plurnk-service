@@ -202,7 +202,7 @@ flowchart TB
 Every model packet includes two orienting blocks in the status clump below `## Log` ({§packet-assembly}), carrying no date, time, or timezone anywhere:
 
 - **`## Session`**: Renders `{"path": "session://<name>", "parent": <"session://..." | null>, "loop": L, "turn": T, "owner": {"address": "<owner>", "interactive": <boolean>}}`, naming the actor, its parent, the `(L, T)` coordinate this packet's response will occupy (`reasoning://<session>/L/T`, `ops://<session>/L/T`, `log:///L/T/*`), and its owner's attendance ({§session-ownership}).
-- **`## Open Work`**: Always renders (even when all lists are `[]`, as the deliberate exception to empty-section omission) as `{"sessions": [...], "streams": [...], "messages": [...], "todo": [...]}`, listing unconcluded child sessions, active stream subscriptions, unclosed inbound/outbound messages (`openMessages` owed by this loop followed by `sentMessages` awaiting completion; {§loop-completion}, {§schedule-delivery}), and the current loop's remaining `TODO` items (`[]` at the start of a new loop). Each active stream pointer carries `detail: "elapsed <E>s; output unchanged <U>s; <channel> <lines> lines (+<growth> bytes)"` (or `output timing unknown` when `output_changed_at` is null); `opened_at` is fixed at subscription open, while `output_changed_at` resets atomically only when a published channel's content actually changes ({§exec-stream}).
+- **`## Open Work`**: Always renders (even when all lists are `[]`, as the deliberate exception to empty-section omission) as `{"sessions": [...], "streams": [...], "messages": [...]}`, listing unconcluded child sessions, active stream subscriptions, and unclosed inbound/outbound messages (`openMessages` owed by this loop followed by `sentMessages` awaiting completion; {§loop-completion}, {§schedule-delivery}). Each active stream pointer carries `detail: "elapsed <E>s; output unchanged <U>s; <channel> <lines> lines (+<growth> bytes)"` (or `output timing unknown` when `output_changed_at` is null); `opened_at` is fixed at subscription open, while `output_changed_at` resets atomically only when a published channel's content actually changes ({§exec-stream}).
 
 ## §membership File membership and project roots
 
@@ -1065,7 +1065,7 @@ flowchart LR
 | 6 | `git` | `user` | `## Git Status` `> [!NOTE]` summary when workspace is a Git repository |
 | 7 | `budget` | `user` | `## Context` JSON gauge (`tokens`, `budget`, `percent`, and pressure `largest`) |
 | 8 | `session` | `user` | `## Session` JSON (`{"path": "session://<name>", "parent": <address\|null>, "owner": {"address": "<owner>", "interactive": <boolean>}, "loop": L, "turn": T}`) |
-| 9 | `work` | `user` | `## Open Work` JSON (`{"sessions": [...], "streams": [...], "messages": [...], "todo": [...]}`; always present with `[]` when empty) |
+| 9 | `work` | `user` | `## Open Work` JSON (`{"sessions": [...], "streams": [...], "messages": [...]}`; always present with `[]` when empty) |
 | 10 | `notices` | `user` | `## Notices` callout blocks drained from `notices` |
 | 11 | `errors` | `user` | `## Errors` JSON array (`{status, path}`) indexing `status_rx >= 400` rows from the current and prior turn |
 | 12 | `recap` | `user` | `## Recap` callout directives (`PLURNK_SERVICE_RECAP_LINE_<alias>`) and `PLURNK_SERVICE_RECAP` / `recap.md` |

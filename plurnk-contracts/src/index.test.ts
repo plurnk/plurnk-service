@@ -164,7 +164,7 @@ test("{§op-shapes} {§acp-plurnk-metadata} parseTodoItems extracts steps from m
     assert.deepEqual(Contracts.parseTodoItems(null), []);
     assert.deepEqual(Contracts.parseTodoItems("   \n  "), []);
     assert.deepEqual(
-        Contracts.parseTodoItems("- Survey the environment.\n* Read config\n+ Run tests\n1. Verify output\n2) Done\n- [ ] Ship"),
+        Contracts.parseTodoItems("- Survey the environment.\n* Read config\n+ Run tests\n1. Verify output\n2) Done\n- [ ] Ship\n- [x] Already finished\n- [X] Also finished\n- [done] Completed item"),
         ["Survey the environment.", "Read config", "Run tests", "Verify output", "Done", "Ship"],
     );
     assert.deepEqual(

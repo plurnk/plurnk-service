@@ -361,7 +361,7 @@ export default class PacketBuilder {
             // child-orientation: the work this session holds open — its child sessions, its open streams, the
             // messages it owes, and the messages it awaits. Terse pointers (the path is the actionable
             // address the model READs, SENDs to, or KILLs), never advice. {§child-orientation}
-            { name: "work", slot: "user", header: "Open Work", content: PacketWire.renderOpenWork(childSessions, childStreams, [...openMessages, ...sentMessages], PacketWire.currentLoopTodo(log, loopSeqRow?.sequence ?? 1)) },
+            { name: "work", slot: "user", header: "Open Work", content: PacketWire.renderOpenWork(childSessions, childStreams, [...openMessages, ...sentMessages]) },
             { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices) },
             { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures) },
             { name: "recap", slot: "user", header: "Recap", content: recapContent },
