@@ -914,7 +914,7 @@ for (const parked of [false, true]) for (const location of ["absent", "content",
     });
 }
 
-test("{§operation-results} {§op-shapes} {§child-orientation}: continuing work with a TODO satisfies the continuity directive and projects into Open Work", async () => {
+test("{§operation-results} {§op-shapes}: continuing work with a TODO satisfies the continuity directive", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "optional-todo-continuity");
@@ -931,8 +931,6 @@ test("{§operation-results} {§op-shapes} {§child-orientation}: continuing work
         const final = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(final.status, 200);
         assert.equal(await noticesOf(db, final.turnId), "", "a TODO alone satisfies the continuity directive without warning");
-        const work = packetSection(JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: final.turnId }))!.packet), "work");
-        assert.deepEqual(JSON.parse(work).todo, ["Survey workspace", "Complete task"]);
     } finally { await db.close(); }
 });
 

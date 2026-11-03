@@ -1,12 +1,26 @@
 import { isRecord } from "./guards.ts";
 
-const LIST_PREFIX = /^(?:(?:[-*+•]|(?:\d+|[A-Za-z])[.)])\s+(?:\[[ xX]\]\s+)?|\[[ xX]\]\s+|[-*+•]\s*$)/u;
+const COMPLETED_LINE_PREFIX =
+    /^(?:(?:[-*+•]|(?:\d+|[A-Za-z])[.)])\s+)?\[(?:[xX]|done|DONE|completed|COMPLETED)\](?:\s+|$)/u;
+const LIST_PREFIX = /^(?:(?:[-*+•]|(?:\d+|[A-Za-z])[.)])\s+(?:\[\s*\]\s+)?|\[\s*\]\s+|[-*+•]\s*$)/u;
 const ITEM_KEYS = ["content", "text", "title", "item", "todo", "description", "name"] as const;
 const CONTAINER_KEYS = ["todo", "todos", "items", "steps", "tasks"] as const;
 const OPEN_WORK_KEYS: ReadonlySet<string> = new Set(["sessions", "streams", "messages", "todo"]);
 
-function stripListMarker(line: string): string {
-    return line.replace(LIST_PREFIX, "").trim();
+function extractCleanItem(raw: string): string | null {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0 || COMPLETED_LINE_PREFIX.test(trimmed)) return null;
+    const cleaned = trimmed.replace(LIST_PREFIX, "").trim();
+    return cleaned.length > 0 && !COMPLETED_LINE_PREFIX.test(cleaned) ? cleaned : null;
+}
+
+function isCompletedRecord(record: Record<string, unknown>): boolean {
+    if (record.done === true || record.completed === true) return true;
+    if (typeof record.status === "string") {
+        const lower = record.status.toLowerCase();
+        if (lower === "completed" || lower === "done") return true;
+    }
+    return false;
 }
 
 function tryParseJson(raw: string): unknown {
@@ -38,15 +52,16 @@ function extractFromJsonValue(value: unknown): string[] {
         const out: string[] = [];
         for (const element of value) {
             if (typeof element === "string") {
-                const cleaned = stripListMarker(element.trim());
-                if (cleaned.length > 0) out.push(cleaned);
+                const cleaned = extractCleanItem(element);
+                if (cleaned !== null) out.push(cleaned);
             } else if (isRecord(element)) {
+                if (isCompletedRecord(element)) continue;
                 let matched = false;
                 for (const key of ITEM_KEYS) {
                     const candidate = element[key];
                     if (typeof candidate === "string") {
-                        const cleaned = stripListMarker(candidate.trim());
-                        if (cleaned.length > 0) out.push(cleaned);
+                        const cleaned = extractCleanItem(candidate);
+                        if (cleaned !== null) out.push(cleaned);
                         matched = true;
                         break;
                     }
@@ -69,12 +84,12 @@ function extractFromJsonValue(value: unknown): string[] {
         const out: string[] = [];
         for (const [key, entryValue] of entries) {
             if (typeof entryValue === "string") {
-                const cleaned = stripListMarker(entryValue.trim());
-                if (cleaned.length > 0) out.push(cleaned);
+                const cleaned = extractCleanItem(entryValue);
+                if (cleaned !== null) out.push(cleaned);
             } else if (typeof entryValue === "boolean" || entryValue === null) {
                 if (entryValue !== false) {
-                    const cleaned = stripListMarker(key.trim());
-                    if (cleaned.length > 0) out.push(cleaned);
+                    const cleaned = extractCleanItem(key);
+                    if (cleaned !== null) out.push(cleaned);
                 }
             } else if (Array.isArray(entryValue) || isRecord(entryValue)) {
                 out.push(...extractFromJsonValue(entryValue));
@@ -95,8 +110,8 @@ function parseLines(text: string): string[] {
             out.push(...extractFromJsonValue(parsedLine));
             continue;
         }
-        const cleaned = stripListMarker(trimmed);
-        if (cleaned.length > 0) {
+        const cleaned = extractCleanItem(trimmed);
+        if (cleaned !== null) {
             out.push(cleaned);
         }
     }

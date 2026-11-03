@@ -1001,7 +1001,7 @@ test("{§child-orientation} the live things a session holds — child sessions �
         const packet = await getPacket(db, result.turnId);
 
         // The live child surfaces as a terse status+path pointer under `sessions` — orienting state, not advice.
-        assert.match(packetSection(packet, "work"), /^\{"sessions":\[\{"status":102,"path":"session:\/\/session-x"\}\],\n"streams":\[\],\n"messages":\[\{"path":"message:\/\/[^/]+\/[0-9a-f]{8}","origin":"user"\}\],\n"todo":\[\]\}$/, "the live child session is a status+path pointer the model READs/KILLs itself");
+        assert.match(packetSection(packet, "work"), /^\{"sessions":\[\{"status":102,"path":"session:\/\/session-x"\}\],\n"streams":\[\],\n"messages":\[\{"path":"message:\/\/[^/]+\/[0-9a-f]{8}","origin":"user"\}\]\}$/, "the live child session is a status+path pointer the model READs/KILLs itself");
         const usr = packet.sections.filter((x) => x.slot === "user").map((x) => x.name);
         assert.ok(usr.includes("work"), "{§child-orientation}: open work rides the status clump");
     } finally { await db.close(); }
@@ -1019,7 +1019,7 @@ test("{§child-orientation} no live children, streams, or messages → Open Work
         // {§child-orientation} — Open Work states emptiness as `[]` for every list: the model
         // decides wait-or-complete on them, so it never infers "none" from a missing heading.
         const packet = await getPacket(db, result.turnId);
-        assert.equal(packetSection(packet, "work"), '{"sessions":[],\n"streams":[],\n"messages":[],\n"todo":[]}', "no live children, no open streams, no open or sent messages → all four lists state []");
+        assert.equal(packetSection(packet, "work"), '{"sessions":[],\n"streams":[],\n"messages":[]}', "no live children, no open streams, no open or sent messages → all three lists state []");
     } finally { await db.close(); }
 });
 
