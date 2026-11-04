@@ -7,7 +7,7 @@ export const TAIL_POSITIONS = /\s*(<-?[0-9]+(?:\.[0-9]+)?(?:(?:,\s?|-)-?[0-9]+(?
 export const TAIL_TEXT_SCOPE = /\s*(<(?:-?[0-9]+(?:\.[0-9]+)?|@[0-9A-Za-z]{5}|@[0-9]{1,4})(?:(?:,\s?|-)(?:-?[0-9]+(?:\.[0-9]+)?|@[0-9A-Za-z]{5}|@[0-9]{1,4}))*>)\s*$/u;
 export const TAIL_RELATIVE_SCOPE = /\s*(<[0-9]+, ?\+[0-9]+>)\s*$/u;
 
-const OFFSET_RECOVERY = "Write `<start,+offset>`, `<@abcde,+offset>`, or `<start,end>`.";
+const OFFSET_RECOVERY = "Write `<start,end>` or `<@start,@end>`.";
 
 const atLeastOne = <T>(values: T[]): values is [T, ...T[]] => values.length > 0;
 const isDigit = (c: string | undefined): boolean => c !== undefined && c >= "0" && c <= "9";

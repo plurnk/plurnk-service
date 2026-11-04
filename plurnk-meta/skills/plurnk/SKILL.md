@@ -24,5 +24,5 @@ description: Configure, customize, extend, and integrate Plurnk — settings (.e
 | Enabled MCP server invocations and schemas | `mcp:///` |
 | Built-in executors and scheme references | `plurnk:///` |
 
-READ the relevant reference; FIND selects paths and searches their bodies or symbols across `skill://plurnk/**` (for example `FIND (skill://plurnk/packages/*/SPEC.md) ~ /§tag/` or `FIND (skill://plurnk/packages/**/dist/*.d.ts) & /Symbol/`), and `KILL (log:///...)` retires read slices once applied.
+READ the relevant reference; FIND selects paths and searches their bodies or symbols across `skill://plurnk/**` (for example `FIND (skill://plurnk/packages/**/SPEC.md) /§tag/` or `FIND (skill://plurnk/packages/**/dist/*.d.ts) &Symbol`), and `KILL (log:///...)` retires read slices once applied.
 Defaults describe available settings; `plurnk-service config` and `plurnk-service config show` inspect the operator's effective configuration.

@@ -67,7 +67,7 @@ once admitted.
 | Plurnk-only Agent Skills | `$XDG_CONFIG_HOME/plurnk/skills/` |
 | Project / global MCP servers | `.agents/mcp.json` / `$XDG_CONFIG_HOME/agents/mcp.json` / `~/.agents/mcp.json` |
 | Plurnk-only MCP servers | `$XDG_CONFIG_HOME/plurnk/mcp.json` |
-| Personas | `.plurnk/personas/`, `.agents/personas/`, `$XDG_CONFIG_HOME/plurnk/personas/`, `$XDG_CONFIG_HOME/agents/personas/`, `~/.agents/personas/` |
+| Personas | `.agents/personas/`, `$XDG_CONFIG_HOME/plurnk/personas/`, `$XDG_CONFIG_HOME/agents/personas/`, `~/.agents/personas/` |
 
 Use `plurnk-service config` for daemon status, installed systemd unit scope and
 ownership, paths, precedence, non-default overrides, and template paths;
@@ -139,7 +139,7 @@ when it is taken.
 `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` selects the database's WAL durability before migrations
 or startup writes. Its shipped setting is `NORMAL` in `.env.defaults` (SQLite's recommended WAL
 posture, synchronizing at checkpoints without corruption risk on power loss); selecting `FULL`
-synchronizes every commit to storage. See `skill://plurnk/packages/@plurnk/plurnk-core/SPEC.md`
+synchronizes every commit to storage. See `skill://plurnk/packages/@plurnk/plurnk-service/SPEC.md`
 for the storage guarantees. Neither setting makes project-file writes transactional or replaces backups.
 
 ## Precedence
@@ -292,7 +292,7 @@ package's export conditions select its entry:
 ```
 
 Modules load at startup from installed npm packages and selected user roots:
-`$XDG_CONFIG_HOME/plurnk/plugins/` before `~/.agents/plugins/`, then npm. The manifest name
+`$XDG_CONFIG_HOME/plurnk/plugins/` before `$XDG_CONFIG_HOME/agents/plugins/` and `~/.agents/plugins/`, then npm. The manifest name
 identifies a plugin across those sources. Project plugins never load native code into the daemon.
 `PLURNK_SERVICE_ROOTS` selects the directory roots; `PLURNK_EXTENSIONS_TRUSTED_ONLY` governs
 extension imports, using the npm package name when present or the plugin name otherwise.

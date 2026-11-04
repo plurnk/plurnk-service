@@ -21,7 +21,6 @@
         "**/generated/**",
         "**/node_modules/**",
         "**/vendor/**",
-        "**/.plurnk/**",
         "**/coverage/**"
     ],
     "rules": {

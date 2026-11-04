@@ -143,7 +143,7 @@ Producers write `(target) <scope> [metadata] <!-- aside -->` separated by single
 | `BARE` | optional prompt resource | none | prompt text |
 | `WORK` / `FORK` | optional `session://name` or prompt resource | none | task prompt |
 | `KILL` | required target | optional text region | distillation `NOTE` on `log:///`; empty otherwise |
-| `SEND` | optional recipient | recipient-defined; none for sessions | message body |
+| `SEND` | optional recipient | none | message body |
 | `DONE` | optional `message://` target | none | final deliverable message body (optional) |
 | `FAIL` | optional `message://` target | none | final failure message body (optional) |
 | `NOTE` | none | none | literal working memory |

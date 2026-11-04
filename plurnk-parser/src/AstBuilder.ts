@@ -562,7 +562,7 @@ export default class AstBuilder {
             const written = found.map((marker) => `\`${marker.getText()}\``);
             throw new PlurnkParseError(pos.line, pos.column, "visitor",
                 `A resource selection takes one scope, and ${written.join(" and ")} both stand here.`, "error",
-                "One scope per selection, such as `<12,40>` or `<@abcde,+5>`.");
+                "One scope per selection, such as `<12,40>` or `<@abcde,@fghij>`.");
         }
         return found[0] ?? null;
     }

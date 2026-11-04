@@ -47,6 +47,11 @@ test("{§module-seam-slices} skills use the host's opaque source scopes and prec
         const folder = join(directory, "skills/review");
         await mkdir(folder, { recursive: true });
         await writeFile(join(folder, "SKILL.md"), `---\nname: review\ndescription: ${scope} review\n---\n`);
+        // Dot-directories and non-SKILL_NAME directories are ignored during root scanning
+        await mkdir(join(directory, "skills/.hidden"), { recursive: true });
+        await writeFile(join(directory, "skills/.hidden/SKILL.md"), "---\nname: hidden\ndescription: Hidden\n---\n");
+        await mkdir(join(directory, "skills/Invalid_Name"), { recursive: true });
+        await writeFile(join(directory, "skills/Invalid_Name/SKILL.md"), "---\nname: invalid\ndescription: Invalid\n---\n");
     }
     const family = new SkillsFunctionality({
         workspacePaths: async () => ({ home: root, projectRoot: null, configurationRoots }),

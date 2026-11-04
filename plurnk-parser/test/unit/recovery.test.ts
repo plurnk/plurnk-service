@@ -783,10 +783,10 @@ test("{§matcher-prefix-claims} {§parse-recovery} a glob-shaped regex is read a
 
 test("{§parse-recovery} every grammar-level refusal names its working form", () => {
     for (const [input, recovery] of [
-        ["```READ (a.py) <+1>\n```", "Write `<start,+offset>`, `<@abcde,+offset>`, or `<start,end>`."],
+        ["```READ (a.py) <+1>\n```", "Write `<start,end>` or `<@start,@end>`."],
         ["```READ (http://exa mple.com/x)\n```", "Write a local path, `(src/a.py)`, or a complete URL, `scheme://host/path`."],
         ["```sh (a) (b)\n```", "`sh (target)?` on the opening fence line, the input on the lines below, then the closing fence."],
-        ["```EDIT (a.py) <1> <2>\nx\n```", "One scope per selection, such as `<12,40>` or `<@abcde,+5>`."],
+        ["```EDIT (a.py) <1> <2>\nx\n```", "One scope per selection, such as `<12,40>` or `<@abcde,@fghij>`."],
         ["```READ (a.py) <line number>\n```", "`READ (path) <L,M>? pattern? <!-- aside -->?` on the opening fence line."],
         ["```COPY (a.py)\n```", "`COPY (from) <scope>? (to) <scope>?` on the opening fence line; COPY takes no body."],
         ["```WAIT (session://unfinished\n```", "`WAIT (path)? [seconds]?` on the opening fence line, any body on the lines below, then the closing fence."],
