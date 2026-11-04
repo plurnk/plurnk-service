@@ -1,5 +1,13 @@
 # @plurnk/plurnk-contracts
 
+## 7.2.1
+
+### Patch Changes
+
+- 8798220: Handle `/mcp oauth <alias> [callback-url]` in `parseFamilyCommand` and
+  `executeSlashCommand` via `workspace.mcp.oauth.begin` and
+  `workspace.mcp.oauth.complete` (#1402).
+
 ## 7.2.0
 
 ### Minor Changes

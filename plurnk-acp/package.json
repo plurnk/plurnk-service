@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-acp",
-    "version": "1.3.0",
+    "version": "1.3.1",
     "description": "ACP v2 WebSocket interface for the PLURNK daemon",
     "type": "module",
     "license": "MIT",
