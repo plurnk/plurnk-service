@@ -220,6 +220,7 @@ export const handleMessagesRoute = async (
 ): Promise<void> => {
     const acpSessionId = url.searchParams.get("session") ?? `${workspaceId}#user`;
     const beforeParam = url.searchParams.get("before");
+    const afterParam = url.searchParams.get("after");
     const loopParam = url.searchParams.get("loop");
     const [allEntries, inbox, streams] = await Promise.all([
         seam.readLog({ workspaceId, sessionId }),
@@ -228,6 +229,7 @@ export const handleMessagesRoute = async (
     ]);
     const targetLoop = loopParam !== null && /^\d+$/.test(loopParam) ? Number(loopParam) : undefined;
     const beforeLoop = beforeParam !== null && /^\d+$/.test(beforeParam) ? Number(beforeParam) : undefined;
+    const afterLoop = afterParam !== null && /^\d+$/.test(afterParam) ? Number(afterParam) : undefined;
     const translator = new SessionTranslator({
         acpSessionId,
         workspaceId,
@@ -241,6 +243,7 @@ export const handleMessagesRoute = async (
         openStreamTargets: new Set(streams.map((s) => s.target)),
         ...(targetLoop !== undefined ? { exactLoopSeq: targetLoop } : {}),
         ...(beforeLoop !== undefined ? { beforeLoopSeq: beforeLoop } : {}),
+        ...(afterLoop !== undefined ? { afterLoopSeq: afterLoop } : {}),
     });
     res.writeHead(200, { "content-type": "application/json" });
     res.end(

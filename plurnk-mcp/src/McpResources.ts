@@ -169,12 +169,20 @@ export default class McpResources {
         catalog: ServerCatalog,
         resolveCallerMeta?: (workspaceId: number, sessionId: number) => Promise<Readonly<Record<string, unknown>> | undefined>,
         openStreams = true,
+        previous?: McpResources,
     ) {
         this.#server = server;
         this.#connection = connection;
         this.#catalog = catalog;
         this.#resolveCallerMeta = resolveCallerMeta;
         this.#openStreams = openStreams;
+        if (previous !== undefined) {
+            for (const [uri, watcher] of previous.#resourceStreams) {
+                if (!watcher.subscription.aborted) {
+                    this.#resourceStreams.set(uri, watcher);
+                }
+            }
+        }
     }
 
     get manifest(): RuntimeSchemeFacet["manifest"] {

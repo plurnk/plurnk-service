@@ -552,9 +552,10 @@ test("{§mcp-open-work} reading a subscribable resource during an active loop op
     assert.equal(subscriptions.has(pathname), true, "active loop opens a StreamSubscription for subscribable resources");
 
     version = 2;
-    await resources.notifyResourceUpdated("fixture://live");
+    const refreshedResources = new McpResources("sub", connection, catalog, undefined, true, resources);
+    await refreshedResources.notifyResourceUpdated("fixture://live");
     assert.equal(entries.get(pathname)?.channels.body?.content, "state-v2");
-    assert.equal(subscriptions.get(pathname)?.closedWith, 200, "resource update closes the StreamSubscription with 200");
+    assert.equal(subscriptions.get(pathname)?.closedWith, 200, "resource update closes the StreamSubscription with 200 across catalog refresh");
 });
 
 test("{§mcp-open-work} server /messages/<id> targets delegate to the workspace message mailbox", async () => {
