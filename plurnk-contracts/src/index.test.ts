@@ -129,6 +129,23 @@ test("{§startup-admission} {§acp-action-binding} formatServiceUpdateReport and
             },
         },
     );
+    assert.deepEqual(Contracts.parseFamilyCommand("mcp", ["oauth", "github"]), {
+        scopePrefix: "workspace",
+        sub: "oauth",
+        rest: ["github"],
+        actionName: "workspace.mcp.oauth.begin",
+        params: { alias: "github", redirectUrl: "http://127.0.0.1/callback" },
+    });
+    assert.deepEqual(
+        Contracts.parseFamilyCommand("mcp", ["oauth", "github", "http://127.0.0.1:9999/cb?code=1&state=xyz"]),
+        {
+            scopePrefix: "workspace",
+            sub: "oauth",
+            rest: ["github", "http://127.0.0.1:9999/cb?code=1&state=xyz"],
+            actionName: "workspace.mcp.oauth.complete",
+            params: { alias: "github", callbackUrl: "http://127.0.0.1:9999/cb?code=1&state=xyz" },
+        },
+    );
 });
 
 test("{§operation-fences} isPlurnkOp admits the operation alphabet and nothing else", () => {

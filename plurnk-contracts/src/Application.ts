@@ -370,6 +370,26 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             params,
         };
     }
+    if (sub === "oauth" && family === "mcp") {
+        const alias = rest[0] ?? "";
+        const callbackUrl = rest[1];
+        if (callbackUrl !== undefined && callbackUrl.length > 0) {
+            return {
+                scopePrefix,
+                sub,
+                rest,
+                actionName: "workspace.mcp.oauth.complete",
+                params: { alias, callbackUrl },
+            };
+        }
+        return {
+            scopePrefix,
+            sub,
+            rest,
+            actionName: "workspace.mcp.oauth.begin",
+            params: { alias, redirectUrl: "http://127.0.0.1/callback" },
+        };
+    }
     if (sub === "complete" && family === "mcp") {
         let server = "";
         let ref: Record<string, string> = { type: "ref/prompt", name: "" };

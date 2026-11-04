@@ -1003,8 +1003,42 @@ export const executeSlashCommand = async (
     }
     const tokens = rest.length > 0 ? rest.split(/\s+/u) : [];
     const parsed = parseFamilyCommand(cmd, tokens);
-    const res = await invoke({ ...envelope, kind: parsed.actionName, params: parsed.params });
+    let params = parsed.params;
+    if (parsed.actionName === "workspace.mcp.oauth.begin") {
+        const alias = typeof params.alias === "string" ? params.alias : "";
+        const listed = await invoke({ ...envelope, kind: "workspace.mcp.list", params: {} }).catch(() => null);
+        if (isRecord(listed)) {
+            const defs = Array.isArray(listed.definitions)
+                ? listed.definitions
+                : Array.isArray(listed.items)
+                  ? listed.items
+                  : [];
+            const entry = defs.find((d): d is Record<string, unknown> => isRecord(d) && d.alias === alias);
+            const def = isRecord(entry?.definition) ? entry.definition : null;
+            const auth = def?.type === "streamable-http" && isRecord(def.authorization) ? def.authorization : null;
+            if (auth?.type === "oauth" && typeof auth.redirectUrl === "string" && auth.redirectUrl.length > 0) {
+                params = { ...params, redirectUrl: auth.redirectUrl };
+            }
+        }
+    }
+    const res = await invoke({ ...envelope, kind: parsed.actionName, params });
     if (isRecord(res)) {
+        if (parsed.actionName === "workspace.mcp.oauth.begin" || parsed.actionName === "workspace.mcp.oauth.complete") {
+            const alias = typeof res.alias === "string"
+                ? res.alias
+                : typeof params.alias === "string"
+                  ? params.alias
+                  : "";
+            if (isRecord(res.authorization) && typeof res.authorization.url === "string") {
+                return `${alias}: authorization required: ${res.authorization.url}`;
+            }
+            if (res.status === 202) {
+                return `${alias}: Sign-in accepted; tools awaiting activation.`;
+            }
+            if (res.status === 200) {
+                return `${alias}  active`;
+            }
+        }
         if (isRecord(res.completion) && Array.isArray(res.completion.values)) {
             const values = res.completion.values.filter((v): v is string => typeof v === "string");
             return values.length === 0 ? `${cmd} complete: none` : values.join("\n");
