@@ -42,21 +42,28 @@ export default class PluginSources {
         };
         const allPackages = (packageDirs ?? await Meta.packageDirs(nodeModules))
             .toSorted((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
-        const pluginPackages = new Set<string>();
-        const readablePlugins: string[] = [];
-        for (const { dir } of allPackages) {
+        const inspected = await Promise.all(allPackages.map(async ({ dir }) => {
             const location = join(dir, "plugin.json");
             try {
                 await lstat(location);
-                pluginPackages.add(dir);
-                readablePlugins.push(dir);
+                return { dir, readable: true, error: null };
             } catch (cause) {
                 const code = errnoCode(cause);
-                if (code !== "ENOENT" && code !== "ENOTDIR") {
-                    configurationErrors.push(new ConfigurationError(location, `${location}: plugin manifest could not be inspected.`, { cause }));
-                    pluginPackages.add(dir);
-                }
+                if (code === "ENOENT" || code === "ENOTDIR") return null;
+                return {
+                    dir,
+                    readable: false,
+                    error: new ConfigurationError(location, `${location}: plugin manifest could not be inspected.`, { cause }),
+                };
             }
+        }));
+        const pluginPackages = new Set<string>();
+        const readablePlugins: string[] = [];
+        for (const item of inspected) {
+            if (item === null) continue;
+            pluginPackages.add(item.dir);
+            if (item.readable) readablePlugins.push(item.dir);
+            if (item.error !== null) configurationErrors.push(item.error);
         }
         const discovered = await PluginRoots.discover(CONFIGURATION_ROOT_SCOPES.flatMap((scope) => {
             const directory = roots[scope];
