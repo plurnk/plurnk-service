@@ -1917,11 +1917,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     ],
                 );
 
-                // 2. URL-mode elicitation for workspace.mcp.oauth.begin / complete
-                await ctx.request("_plurnk/action", {
+                // 2. URL-mode elicitation for workspace.mcp.oauth.begin / complete (and /mcp oauth slash command)
+                await ctx.request(methods.agent.session.prompt, {
                     sessionId: "1#user",
-                    kind: "workspace.mcp.oauth.begin",
-                    params: { alias: "github" },
+                    prompt: [{ type: "text", text: "/mcp oauth github" }],
                 });
                 await waitFor(() => urlElicitations.length === 1);
                 assert.equal(urlElicitations[0]?.mode, "url");
@@ -1930,10 +1929,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     assert.equal(urlElicitations[0].elicitationId, "mcp-oauth:1:github");
                 }
 
-                await ctx.request("_plurnk/action", {
+                await ctx.request(methods.agent.session.prompt, {
                     sessionId: "1#user",
-                    kind: "workspace.mcp.oauth.complete",
-                    params: { alias: "github", callbackUrl: "http://127.0.0.1:9999/cb?code=1&state=xyz" },
+                    prompt: [{ type: "text", text: "/mcp oauth github http://127.0.0.1:9999/cb?code=1&state=xyz" }],
                 });
                 await waitFor(() => completedElicitations.includes("mcp-oauth:1:github"));
 
