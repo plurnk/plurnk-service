@@ -534,7 +534,7 @@ test("{§schedule-residency} {§schedule-delivery} archiving a workspace disarms
     const mod = Module.init({ clock: time.clock, timers: time.api, report: () => {} });
     let listener: ((workspaceId: number | null, method: string, params: unknown) => void) | null = null;
     const handle: FunctionalityFamilyHandle = {
-        refresh: async () => ({ status: 200, body: {} }),
+        refresh: async () => {},
         invoke: async () => ({
             status: 200,
             body: {
