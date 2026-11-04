@@ -1,9 +1,8 @@
 // {§persona-discovery} — workspace personas as a workspace Functionality family (`personas`,
-// `plurnk_personas`, `PLURNK_PERSONAS_*`) discovered across the 5-tier cascade
-// (<project>/.plurnk/personas, <project>/.agents/personas, $XDG_CONFIG_HOME/plurnk/personas,
-// $XDG_CONFIG_HOME/agents/personas, ~/.agents/personas), enabled workspace plugins, environment
-// definitions, and workspace overrides, exposed through `persona://<name>/PERSONA.md` (`READ`,
-// `FIND`, `EDIT`, `KILL`) and `listPersonas`.
+// `plurnk_personas`, `PLURNK_PERSONAS_*`) discovered across the 4-tier configuration cascade
+// (<project>/.agents/personas, $XDG_CONFIG_HOME/plurnk/personas, $XDG_CONFIG_HOME/agents/personas,
+// ~/.agents/personas), enabled workspace plugins, environment definitions, and workspace overrides,
+// exposed through `persona://<name>/PERSONA.md` (`READ`, `FIND`, `EDIT`, `KILL`) and `listPersonas`.
 import { createHash } from "node:crypto";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -18,6 +17,7 @@ import {
     Validator,
     type ApplicationPersonaProjection,
     type Effort,
+    type FindStatement,
     type FunctionalityCandidate,
     type FunctionalityDefinitionSource,
     type FunctionalityDiscoverQuery,
@@ -52,13 +52,15 @@ import {
     type SchemeManifest,
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
+import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import type { Db } from "../core/Db.ts";
 import type HostPaths from "../core/HostPaths.ts";
 import { entryCoordinateOf } from "../core/plurnk-uri.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import Paths from "../Paths.ts";
+import type { FindResult } from "../schemes/_entry-find.ts";
 import ResourceTreeScheme from "../schemes/ResourceTreeScheme.ts";
-import { agentRootScopes, workspacePaths } from "./AgentRoots.ts";
+import { workspacePaths } from "./AgentRoots.ts";
 import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
 import FunctionalityState from "./FunctionalityState.ts";
 import type WorkspacePlugins from "./WorkspacePlugins.ts";
@@ -489,8 +491,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
             id: workspaceId,
         });
         const projectRoot = workspace?.project_root ?? null;
-        const paths = workspacePaths(this.#hostPaths, projectRoot);
-        const selectedScopes = agentRootScopes(this.#env);
+        const paths = workspacePaths(this.#hostPaths, projectRoot, this.#env);
         const pluginSet = await this.#plugins.read(workspaceId);
         const { plugins } = pluginSet;
         const scopes = new Set([
@@ -607,9 +608,6 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
         };
 
         for (const scope of scopes) {
-            if (scope === "project" && projectRoot !== null && selectedScopes.has("project")) {
-                await scanDir(join(resolve(projectRoot), ".plurnk", "personas"));
-            }
             const root = paths.configurationRoots.find((candidate) => candidate.scope === scope);
             if (root !== undefined) {
                 await scanDir(join(root.directory, "personas"));
@@ -712,9 +710,13 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
         });
     }
 
-    async #signature(workspaceId: number, definitions: ReadonlyMap<string, PersonaDefinition>): Promise<string> {
+    async #signature(
+        workspaceId: number,
+        definitions: ReadonlyMap<string, PersonaDefinition>,
+        preScanned?: ScanResult,
+    ): Promise<string> {
         const hash = createHash("sha256");
-        const scanned = await this.#scanRootsAndPlugins(workspaceId);
+        const scanned = preScanned ?? await this.#scanRootsAndPlugins(workspaceId);
         for (const part of scanned.signatureParts) hash.update(part);
         const env = environment(this.#effectiveEnv());
         hash.update(JSON.stringify(servicePersonas(this.#effectiveEnv())));
@@ -988,7 +990,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
         const definitions = new Map(
             [...preparation.enabled].map(([alias, { definition }]) => [alias, definition]),
         );
-        const signature = await this.#signature(preparation.workspaceId, definitions);
+        const signature = await this.#signature(preparation.workspaceId, definitions, scanned);
         preparation.signal.throwIfAborted();
 
         const { previous } = preparation;
@@ -1092,10 +1094,16 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
 
     async read(workspaceId: number): Promise<readonly ApplicationPersonaProjection[]> {
         if (this.#handle !== null && this.#snapshots.has(workspaceId)) {
-            await this.refreshIfChanged({ workspaceId });
+            try {
+                await this.refreshIfChanged({ workspaceId });
+            } catch (cause) {
+                if (!(cause instanceof ConfigurationError)) throw cause;
+                await this.#handle.refresh({ workspaceId }, { gate: "none" });
+            }
             if (this.#snapshots.has(workspaceId)) {
                 return this.#projections.get(workspaceId) ?? [];
             }
+            return [];
         }
         const row = await this.#db.workspace_module_state_get?.get<{ state: string }>({
             workspace_id: workspaceId,
@@ -1304,13 +1312,13 @@ export class PersonaScheme extends ResourceTreeScheme {
         this.#invoke = invoke;
     }
 
-    static normalizeAddress(target: ParsedPath): EntryCoordinate {
+    static normalizeAddress(target: ParsedPath, options: { readonly forFind?: boolean } = {}): EntryCoordinate {
         const raw = entryCoordinateOf(target, "resource");
         let { authority, pathname } = raw;
         if (authority.endsWith(".md") && (pathname === "" || pathname === "/")) {
             authority = authority.slice(0, -".md".length);
             pathname = "/PERSONA.md";
-        } else if (authority.length > 0 && !PathSyntax.hasGlob(authority) && (pathname === "" || pathname === "/")) {
+        } else if (!options.forFind && authority.length > 0 && !PathSyntax.hasGlob(authority) && (pathname === "" || pathname === "/")) {
             pathname = "/PERSONA.md";
         } else if (authority === "") {
             const mdMatch = /^\/([^/]+)\.md$/u.exec(pathname);
@@ -1326,12 +1334,35 @@ export class PersonaScheme extends ResourceTreeScheme {
                     const bareMatch = /^\/([^/]+)$/u.exec(pathname);
                     if (bareMatch !== null) {
                         authority = bareMatch[1];
-                        pathname = PathSyntax.hasGlob(bareMatch[1]) ? "/" : "/PERSONA.md";
+                        pathname = options.forFind ? "" : PathSyntax.hasGlob(bareMatch[1]) ? "/" : "/PERSONA.md";
+                    } else if (options.forFind && (pathname === "" || pathname === "/")) {
+                        authority = "*";
+                        pathname = "/";
                     }
                 }
             }
         }
         return { authority, pathname };
+    }
+
+    override async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
+        if (statement.target?.kind === "url") {
+            const normalized = PersonaScheme.normalizeAddress(statement.target, { forFind: true });
+            return await super.find(
+                {
+                    ...statement,
+                    target: {
+                        ...statement.target,
+                        hostname: normalized.authority,
+                        port: null,
+                        pathname: PathSyntax.encodeParens(normalized.pathname),
+                        query: null,
+                    },
+                },
+                ctx,
+            );
+        }
+        return await super.find(statement, ctx);
     }
 
     override async resolveEntryAddress(

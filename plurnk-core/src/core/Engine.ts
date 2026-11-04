@@ -607,6 +607,10 @@ export default class Engine {
             opened_turn_id: opener?.turnId ?? null, opened_sequence: opener?.sequence ?? null,
         });
         if (appended === undefined) return null;
+        const execHandler = this.#schemes.get("exec");
+        if (execHandler !== undefined && "wakeTurnSettlement" in execHandler && typeof execHandler.wakeTurnSettlement === "function") {
+            execHandler.wakeTurnSettlement(loopId);
+        }
         return { loopId, turnSeq, messageId: appended.id };
     }
 

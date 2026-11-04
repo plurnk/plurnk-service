@@ -188,7 +188,7 @@ export const createConnectionAgent = (
         peer.client = ctx.client;
         peers.add(peer);
         return {
-            protocolVersion: ctx.params.protocolVersion ?? PROTOCOL_VERSION,
+            protocolVersion: PROTOCOL_VERSION,
             info: {
                 name: "@plurnk/plurnk-service",
                 title: "PLURNK Service",
@@ -660,6 +660,7 @@ export const createConnectionAgent = (
 
     const removeBoundSubtree = (workspaceId: number, subtreeIds: ReadonlySet<number>, targetPeers: Iterable<AcpPeer>): void => {
         for (const p of targetPeers) {
+            gates.removePeerSession(p, workspaceId, subtreeIds);
             for (const [key, bound] of [...p.sessions.entries()]) {
                 if (bound.workspaceId === workspaceId && subtreeIds.has(bound.sessionId)) {
                     p.sessions.delete(key);

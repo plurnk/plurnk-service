@@ -382,6 +382,10 @@ export default class DrainSupervisor {
                     currentLoopId = null;
                     continue;
                 }
+                // A message this loop ended before publishing (a wake conclusion or a
+                // runLoop-while-active arrival) is promoted to a fresh queued loop so it's
+                // never silently dropped ({§message-arrival}), before loop/terminated is emitted.
+                await this.reconcileOrphanedMessages(sessionId, loopRow.id);
                 const { loopResult, announced } = await this.#concludeLoop(scope, loopRow.id, result);
                 loopsDrained++;
                 lastResult = loopResult;
@@ -389,10 +393,6 @@ export default class DrainSupervisor {
                     first.settled = true;
                     first.resolve(loopResult);
                 }
-                // A message this loop ended before publishing (a wake conclusion or a
-                // runLoop-while-active arrival) is promoted to a fresh queued loop so it's
-                // never silently dropped ({§message-arrival}).
-                await this.reconcileOrphanedMessages(sessionId, loopRow.id);
                 if (announced) await this.#abandonUnanswered(workspaceId, sessionId, loopRow.id, result.result.status);
                 currentLoopId = null;
             }

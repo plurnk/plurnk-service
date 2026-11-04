@@ -298,7 +298,7 @@ export interface ParsedFamilyCommand {
     readonly params: Record<string, unknown>;
 }
 
-/** {§acp-action-binding} Parses a family command (`mcp`, `skills`, `members`, `env`, `schedule`) into its action kind and parameters. */
+/** {§acp-action-binding} Parses a family command (`mcp`, `skills`, `personas`, `env`, `schedule`) into its action kind and parameters. */
 export const parseFamilyCommand = (family: string, args: readonly string[]): ParsedFamilyCommand => {
     let scopePrefix: "workspace" | "session" = family === "env" ? "session" : "workspace";
     const filteredArgs: string[] = [];
@@ -317,7 +317,12 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             filteredArgs.push(tok);
         }
     }
-    const sub = filteredArgs[0] ?? "list";
+    const rawSub = filteredArgs[0] ?? "list";
+    const sub = family === "env" && rawSub === "set"
+        ? "add"
+        : family === "env" && rawSub === "unset"
+          ? "remove"
+          : rawSub;
     const rest = filteredArgs.slice(1);
     const actionName = `${scopePrefix}.${family}.${sub}`;
 
@@ -325,7 +330,45 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
         return { scopePrefix, sub, rest, actionName, params: {} };
     }
     if (sub === "discover") {
-        const query = rest.join(" ");
+        let sourceFlag: string | undefined;
+        let queryFlag: string | undefined;
+        let ruleFlag: string | undefined;
+        const posArgs: string[] = [];
+        for (let i = 0; i < rest.length; i += 1) {
+            const tok = rest[i] ?? "";
+            if (tok === "--source" && rest[i + 1] !== undefined) {
+                sourceFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--source=")) {
+                sourceFlag = tok.slice("--source=".length);
+            } else if (tok === "--query" && rest[i + 1] !== undefined) {
+                queryFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--query=")) {
+                queryFlag = tok.slice("--query=".length);
+            } else if (tok === "--rule" && rest[i + 1] !== undefined) {
+                ruleFlag = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--rule=")) {
+                ruleFlag = tok.slice("--rule=".length);
+            } else {
+                posArgs.push(tok);
+            }
+        }
+        if (sourceFlag !== undefined || queryFlag !== undefined || ruleFlag !== undefined) {
+            return {
+                scopePrefix,
+                sub,
+                rest,
+                actionName,
+                params: {
+                    ...(sourceFlag !== undefined ? { source: sourceFlag } : {}),
+                    ...(queryFlag !== undefined ? { query: queryFlag } : {}),
+                    ...(ruleFlag !== undefined ? { rule: ruleFlag } : {}),
+                },
+            };
+        }
+        const query = posArgs.join(" ");
         return {
             scopePrefix,
             sub,
@@ -368,6 +411,20 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
             rest,
             actionName: `workspace.mcp.${sub}`,
             params,
+        };
+    }
+    if (sub === "skills" && family === "mcp") {
+        const server = rest[0] ?? "";
+        const skill = rest[1];
+        return {
+            scopePrefix,
+            sub,
+            rest,
+            actionName: "workspace.mcp.skills",
+            params: {
+                server,
+                ...(skill !== undefined && skill.length > 0 ? { skill } : {}),
+            },
         };
     }
     if (sub === "oauth" && family === "mcp") {
@@ -438,10 +495,21 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
         };
     }
     if ((sub === "add" || sub === "replace") && family === "skills") {
-        const alias = rest[0] ?? "";
-        const source = rest[1] ?? "";
-        const refIdx = rest.indexOf("--ref");
-        const ref = refIdx >= 0 ? rest[refIdx + 1] : undefined;
+        let ref: string | undefined;
+        const posArgs: string[] = [];
+        for (let i = 0; i < rest.length; i += 1) {
+            const tok = rest[i] ?? "";
+            if (tok === "--ref" && rest[i + 1] !== undefined) {
+                ref = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--ref=")) {
+                ref = tok.slice("--ref=".length);
+            } else {
+                posArgs.push(tok);
+            }
+        }
+        const alias = posArgs[0] ?? "";
+        const source = posArgs[1] ?? "";
         return {
             scopePrefix,
             sub,
@@ -451,6 +519,68 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
                 alias,
                 source,
                 ...(ref !== undefined ? { ref } : {}),
+            },
+        };
+    }
+    if ((sub === "add" || sub === "replace") && family === "personas") {
+        let source: string | undefined;
+        let model: string | undefined;
+        let effort: string | undefined;
+        let description: string | undefined;
+        let body: string | undefined;
+        const posArgs: string[] = [];
+        for (let i = 0; i < rest.length; i += 1) {
+            const tok = rest[i] ?? "";
+            if (tok === "--source" && rest[i + 1] !== undefined) {
+                source = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--source=")) {
+                source = tok.slice("--source=".length);
+            } else if (tok === "--model" && rest[i + 1] !== undefined) {
+                model = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--model=")) {
+                model = tok.slice("--model=".length);
+            } else if (tok === "--effort" && rest[i + 1] !== undefined) {
+                effort = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--effort=")) {
+                effort = tok.slice("--effort=".length);
+            } else if (tok === "--description" && rest[i + 1] !== undefined) {
+                description = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--description=")) {
+                description = tok.slice("--description=".length);
+            } else if (tok === "--body" && rest[i + 1] !== undefined) {
+                body = rest[i + 1];
+                i += 1;
+            } else if (tok.startsWith("--body=")) {
+                body = tok.slice("--body=".length);
+            } else {
+                posArgs.push(tok);
+            }
+        }
+        const alias = posArgs[0] ?? "";
+        const secondArg = posArgs[1];
+        const looksLikePath = source === undefined
+            && posArgs.length === 2
+            && secondArg !== undefined
+            && (secondArg.endsWith(".md") || secondArg.includes("/") || secondArg.includes("\\"));
+        const resolvedSource = source ?? (looksLikePath ? secondArg : undefined);
+        const resolvedDescription = description ?? (resolvedSource === undefined ? secondArg : undefined);
+        const resolvedBody = body ?? (resolvedSource === undefined && posArgs.length > 2 ? posArgs.slice(2).join(" ") : undefined);
+        return {
+            scopePrefix,
+            sub,
+            rest,
+            actionName: `workspace.personas.${sub}`,
+            params: {
+                alias,
+                ...(resolvedSource !== undefined ? { source: resolvedSource } : {}),
+                ...(resolvedDescription !== undefined ? { description: resolvedDescription } : {}),
+                ...(resolvedBody !== undefined ? { body: resolvedBody } : {}),
+                ...(model !== undefined ? { model } : {}),
+                ...(effort !== undefined ? { effort } : {}),
             },
         };
     }
@@ -464,8 +594,10 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
         };
     }
     if ((sub === "add" || sub === "replace") && family === "env") {
-        const alias = rest[0] ?? "";
-        const value = rest.slice(1).join(" ");
+        const first = rest[0] ?? "";
+        const eqIdx = rest.length === 1 ? first.indexOf("=") : -1;
+        const alias = eqIdx > 0 ? first.slice(0, eqIdx) : first;
+        const value = eqIdx > 0 ? first.slice(eqIdx + 1) : rest.slice(1).join(" ");
         return {
             scopePrefix,
             sub,

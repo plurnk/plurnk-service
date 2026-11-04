@@ -165,4 +165,13 @@ test("{§skills-sources} install places a skill under its name and refuses links
     await symlink("../../secrets", join(leaky, "secrets"));
     await assert.rejects(() => SkillSource.install({ name: "leaky", description: "Use leaky.", dir: leaky }, root), problemType("source-unsafe"));
     assert.deepEqual(await readdir(root), ["kept"], "a refused install leaves nothing behind");
+
+    const outsideFile = join(base, "outside-secret.txt");
+    await writeFile(outsideFile, "secret");
+    const chained = join(base, "chained");
+    await mkdir(chained);
+    await writeFile(join(chained, "SKILL.md"), skill("chained"));
+    await symlink(outsideFile, join(chained, "hop1"));
+    await symlink("hop1", join(chained, "hop2"));
+    await assert.rejects(() => SkillSource.assertInward(chained), problemType("source-unsafe"));
 });

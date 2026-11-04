@@ -185,13 +185,13 @@ test("{§operation-fences} COPY and MOVE bind a terminal scope to the immediatel
     }
 });
 
-test("{§parse-recovery} invalid execution scopes name the supplied scope and timing constraint", () => {
+test("{§parse-recovery} invalid execution scopes name the supplied scope and report that executions take no scope", () => {
     for (const slots of [" (sh/curl submit) <30s>", " (crm/crm_query) <crm:///1/6/1>", " (pm/pm_search_issues) <poll>"]) {
         const result = PlurnkParser.parseStatements(section("sh", slots, "{}"));
         const errors = result.items.filter((item) => item.kind === "error");
         assert.ok(errors.length >= 1, slots);
         assert.equal(errors[0]?.error.source, "lexer");
-        assert.equal(errors[0]?.error.message, `invalid sh scope ${JSON.stringify(slots.slice(slots.indexOf("<")))}; use minutes, e.g. \`<5,1>\``, slots);
+        assert.equal(errors[0]?.error.message, `invalid sh scope ${JSON.stringify(slots.slice(slots.indexOf("<")))}; this operation takes no scope`, slots);
     }
     // Slot spacing does not change the meaning of an invalid scope.
     const glued = PlurnkParser.parseStatements(section("READ", " (notes.md)<foo>"));
@@ -223,7 +223,7 @@ test("{§parse-recovery} {§parse-recovery} scope diagnostics do not borrow anot
     assert.equal(firstError(section("EDIT", " (sympy/utilities/iterables.py) <@WFYC2,tXN17>", "x")).message,
         "invalid EDIT scope \"<@WFYC2,tXN17>\"; use numeric coordinates or `@hash` line anchors");
     assert.equal(firstError(section("SEND", " (session://peer) <later>")).message,
-        "invalid SEND scope \"<later>\"; use a numeric scope supported by the recipient");
+        "invalid SEND scope \"<later>\"; this operation takes no scope");
     // {§slot-order} — an operation that takes no scope drops it and runs, with one advisory naming its slots.
     for (const op of ["BARE", "WORK", "FORK"] as const) {
         const result = PlurnkParser.parse(section(op, " <result range>"));
@@ -1772,14 +1772,14 @@ test("{§parse-recovery} an EDIT's bare `@hash` or `@start,@end` is its scope, n
     const read = statements("```READ (tests/test_mock.py) @patch\n```")[0];
     assert.equal(read?.op === "READ" ? read.matcher?.raw : null, "@patch", "on READ it stays the literal search");
     assert.deepEqual(refusal("```EDIT (requests/sessions.py) <91> @HecMB\nx\n```"),
-        ["A resource selection takes one scope, and `<91>` and `<@HecMB>` both stand here. One scope per selection, such as `<12,40>` or `<@abcde,+5>`."]);
+        ["A resource selection takes one scope, and `<91>` and `<@HecMB>` both stand here. One scope per selection, such as `<12,40>` or `<@abcde,@fghij>`."]);
 });
 
 test("{§slot-order} {§diagnostic-observation} two scopes on one resource are refused with the scope's working form, never a reading of the pair", () => {
     assert.deepEqual(refusal("```READ (doc/usage.rst) <@wC8Pt> <-1>\n```"),
-        ["A resource selection takes one scope, and `<@wC8Pt>` and `<-1>` both stand here. One scope per selection, such as `<12,40>` or `<@abcde,+5>`."]);
+        ["A resource selection takes one scope, and `<@wC8Pt>` and `<-1>` both stand here. One scope per selection, such as `<12,40>` or `<@abcde,@fghij>`."]);
     assert.deepEqual(refusal("```READ (sklearn/model_selection/_split.py) <105,106> <1066,1300>\n```"),
-        ["A resource selection takes one scope, and `<105,106>` and `<1066,1300>` both stand here. One scope per selection, such as `<12,40>` or `<@abcde,+5>`."]);
+        ["A resource selection takes one scope, and `<105,106>` and `<1066,1300>` both stand here. One scope per selection, such as `<12,40>` or `<@abcde,@fghij>`."]);
 });
 });
 

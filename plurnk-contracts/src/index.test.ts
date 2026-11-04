@@ -146,6 +146,57 @@ test("{§startup-admission} {§acp-action-binding} formatServiceUpdateReport and
             params: { alias: "github", callbackUrl: "http://127.0.0.1:9999/cb?code=1&state=xyz" },
         },
     );
+    assert.deepEqual(Contracts.parseFamilyCommand("mcp", ["skills", "github", "triage"]), {
+        scopePrefix: "workspace",
+        sub: "skills",
+        rest: ["github", "triage"],
+        actionName: "workspace.mcp.skills",
+        params: { server: "github", skill: "triage" },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("env", ["set", "FOO=bar"]), {
+        scopePrefix: "session",
+        sub: "add",
+        rest: ["FOO=bar"],
+        actionName: "session.env.add",
+        params: { alias: "FOO", value: "bar" },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("env", ["unset", "FOO"]), {
+        scopePrefix: "session",
+        sub: "remove",
+        rest: ["FOO"],
+        actionName: "session.env.remove",
+        params: { alias: "FOO" },
+    });
+    assert.deepEqual(Contracts.parseFamilyCommand("personas", ["discover", "--source", "./personas"]), {
+        scopePrefix: "workspace",
+        sub: "discover",
+        rest: ["--source", "./personas"],
+        actionName: "workspace.personas.discover",
+        params: { source: "./personas" },
+    });
+    assert.deepEqual(
+        Contracts.parseFamilyCommand("personas", ["add", "reviewer", "--model", "fast", "--effort", "high", "Review code", "Check invariants."]),
+        {
+            scopePrefix: "workspace",
+            sub: "add",
+            rest: ["reviewer", "--model", "fast", "--effort", "high", "Review code", "Check invariants."],
+            actionName: "workspace.personas.add",
+            params: {
+                alias: "reviewer",
+                description: "Review code",
+                body: "Check invariants.",
+                model: "fast",
+                effort: "high",
+            },
+        },
+    );
+    assert.deepEqual(Contracts.parseFamilyCommand("skills", ["add", "--ref", "main", "my-skill", "https://example.com/repo.git"]), {
+        scopePrefix: "workspace",
+        sub: "add",
+        rest: ["--ref", "main", "my-skill", "https://example.com/repo.git"],
+        actionName: "workspace.skills.add",
+        params: { alias: "my-skill", source: "https://example.com/repo.git", ref: "main" },
+    });
 });
 
 test("{§operation-fences} isPlurnkOp admits the operation alphabet and nothing else", () => {

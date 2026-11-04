@@ -20,8 +20,12 @@ export const agentRootScopes = (environment: NodeJS.ProcessEnv = process.env): R
     return new Set(listed.filter(isScope));
 };
 
-export const workspacePaths = (paths: HostPaths, projectRoot: string | null): WorkspacePaths => {
-    const selected = agentRootScopes();
+export const workspacePaths = (
+    paths: HostPaths,
+    projectRoot: string | null,
+    environment: NodeJS.ProcessEnv = process.env,
+): WorkspacePaths => {
+    const selected = agentRootScopes(environment);
     return {
         home: paths.home,
         projectRoot,

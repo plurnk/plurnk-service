@@ -116,6 +116,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
         }
         const installed: Installed[] = [];
         for (const entry of entries.filter((candidate) => candidate.isDirectory() || candidate.isSymbolicLink())) {
+            if (entry.name.startsWith(".") || !SKILL_NAME.test(entry.name)) continue;
             const file = join(dir, entry.name, "SKILL.md");
             if (await isFile(file)) installed.push({ name: entry.name, dir: join(dir, entry.name), file });
         }

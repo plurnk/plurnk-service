@@ -213,7 +213,11 @@ export default class LoopDriver {
                 const holdCapMs = Knob.integer("PLURNK_SERVICE_EXEC_HOLD_MS", 0);
                 if (holdSet.size > 0 && holdCapMs > 0 && holdsSpawns(execHandler)) {
                     const holdStart = Date.now();
-                    while (execHandler.hasActiveHoldSpawns(sessionId, holdSet) && Date.now() - holdStart < holdCapMs) {
+                    while (
+                        execHandler.hasActiveHoldSpawns(sessionId, holdSet)
+                        && Date.now() - holdStart < holdCapMs
+                        && await this.#db.drain_has_unpublished_messages.get({ loop_id: loopId }) === undefined
+                    ) {
                         await delay(HOLD_POLL_MS, undefined, { signal: executionSignal });
                     }
                 }

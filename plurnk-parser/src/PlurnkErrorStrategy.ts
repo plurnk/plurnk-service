@@ -79,13 +79,9 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             const op = lexer.getOpenOp();
             const constraint = op === "FIND"
                 ? "use numeric result positions, e.g. `<1,16>`"
-                : lexer.isExecFence()
-                    ? "use minutes, e.g. `<5,1>`"
-                    : op === "SEND"
-                        ? "use a numeric scope supported by the recipient"
-                        : lexer.isTextCoordinateOp()
-                            ? "use numeric coordinates or `@hash` line anchors"
-                            : "this operation takes no scope";
+                : lexer.isTextCoordinateOp()
+                    ? "use numeric coordinates or `@hash` line anchors"
+                    : "this operation takes no scope";
             return `invalid ${op} scope ${JSON.stringify(PlurnkErrorStrategy.#scopeExcerpt(lexer))}; ${constraint}`;
         }
         // A backtick run in the slot region IS the closing fence; the error is the text after it

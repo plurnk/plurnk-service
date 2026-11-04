@@ -205,6 +205,16 @@ const proposalPermissionRequest = (
     };
 };
 
+const extractEditedBody = (response: Record<string, unknown>, outcome: Record<string, unknown>): string | undefined => {
+    if (isRecord(response._meta) && isRecord(response._meta.plurnk) && typeof response._meta.plurnk.body === "string") {
+        return response._meta.plurnk.body;
+    }
+    if (isRecord(outcome._meta) && isRecord(outcome._meta.plurnk) && typeof outcome._meta.plurnk.body === "string") {
+        return outcome._meta.plurnk.body;
+    }
+    return undefined;
+};
+
 const resolutionFromPermissionResponse = (
     logEntryId: number,
     response: unknown,
@@ -218,11 +228,12 @@ const resolutionFromPermissionResponse = (
     }
     if (kind === "selected") {
         const optionId = response.outcome.optionId;
+        const body = extractEditedBody(response, response.outcome);
         if (optionId === "allow_once") {
-            return { logEntryId, decision: "accept", scope: "once" };
+            return { logEntryId, decision: "accept", scope: "once", ...(body !== undefined ? { body } : {}) };
         }
         if (optionId === "allow_always") {
-            return { logEntryId, decision: "accept", scope: "always", outcome: "allow_always" };
+            return { logEntryId, decision: "accept", scope: "always", outcome: "allow_always", ...(body !== undefined ? { body } : {}) };
         }
         if (optionId === "reject_once") {
             return { logEntryId, decision: "reject", scope: "once" };
@@ -405,6 +416,18 @@ export class GateTracker {
         }
     }
 
+    removePeerSession(peer: AcpPeer, workspaceId: number, sessionIds: ReadonlySet<number>): void {
+        for (const gate of this.#activeGates.values()) {
+            if (gate.workspaceId === workspaceId && sessionIds.has(gate.sessionId)) {
+                const ctrl = gate.peerControllers.get(peer);
+                if (ctrl !== undefined) {
+                    ctrl.abort();
+                    gate.peerControllers.delete(peer);
+                }
+            }
+        }
+    }
+
     clear(): void {
         for (const gate of this.#activeGates.values()) {
             gate.settled = true;
@@ -440,7 +463,10 @@ export class GateTracker {
             }
             const req = proposalPermissionRequest(session.acpSessionId, proposal);
             void peer.client
-                .request(methods.client.session.requestPermission, req, { cancellationSignal: controller.signal })
+                .request(methods.client.session.requestPermission, req, {
+                    cancellationSignal: controller.signal,
+                    stopWaitingOnCancel: true,
+                })
                 .then(async (response) => {
                     if (gate.settled || controller.signal.aborted) return;
                     const resolution = resolutionFromPermissionResponse(proposal.logEntryId, response);
@@ -456,6 +482,7 @@ export class GateTracker {
                                     decision: resolution.decision,
                                     ...(resolution.scope !== undefined ? { scope: resolution.scope } : {}),
                                     ...(resolution.outcome !== undefined ? { outcome: resolution.outcome } : {}),
+                                    ...(resolution.body !== undefined ? { body: resolution.body } : {}),
                                 },
                                 { workspaceId: gate.workspaceId, address: OWNER_ADDRESS },
                             );
@@ -472,7 +499,10 @@ export class GateTracker {
             notifyPeerSession(peer, session.acpSessionId, interactionToolCall(interaction));
             const req = interactionElicitationRequest(session.acpSessionId, interaction);
             void peer.client
-                .request(methods.client.elicitation.create, req, { cancellationSignal: controller.signal })
+                .request(methods.client.elicitation.create, req, {
+                    cancellationSignal: controller.signal,
+                    stopWaitingOnCancel: true,
+                })
                 .then(async (response) => {
                     if (gate.settled || controller.signal.aborted) return;
                     const resolved = interactionResolutionFromResponse(interaction.interactionId, response);

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { setImmediate as nextTick } from "node:timers/promises";
 import { MAX_TIMER_MS, type FunctionalityFamilyHandle } from "@plurnk/plurnk-contracts";
 import ScheduleFunctionality, { ScheduleFunctionalityError } from "./Functionality.ts";
+import Module from "./Module.ts";
 import type { ScheduleDefinition } from "./definition.ts";
 import type { DeliveryPort, SchedulerTimers } from "./Scheduler.ts";
 
@@ -526,4 +527,56 @@ test("{§schedule-delivery} a failed delivery holds the rule unavailable with it
     replaced.publish(); await replaced.commit();
     assert.deepEqual(adapter.scheduler.armed(1), ["beat"]);
     await adapter.scheduler.close();
+});
+
+test("{§schedule-residency} {§schedule-delivery} archiving a workspace disarms its schedules until unarchived, and an archived session is not delivered to", async () => {
+    const time = new FakeTime();
+    const mod = Module.init({ clock: time.clock, timers: time.api, report: () => {} });
+    let listener: ((workspaceId: number | null, method: string, params: unknown) => void) | null = null;
+    const handle: FunctionalityFamilyHandle = {
+        refresh: async () => {},
+        invoke: async () => ({
+            status: 200,
+            body: {
+                family: "schedule",
+                definitions: [{ alias: "beat", definition: BEAT, state: "active", origin: "workspace" }],
+            },
+        }),
+    };
+    mod.setup({
+        registerFunctionalityAdapter: () => handle,
+        readWorkspaceEnvironment: async () => () => ({ TZ: "UTC" }),
+        readSessionEnvironment: async () => () => ({ TZ: "UTC" }),
+    });
+    const deliveries: object[] = [];
+    await mod.start({
+        listWorkspaces: async () => [
+            { id: 1, name: "active", project_root: null, project_label: null, settings: "{}", created_at: "", archived_at: null },
+            { id: 2, name: "archived", project_root: null, project_label: null, settings: "{}", created_at: "", archived_at: "2026-09-16T00:00:00Z" },
+        ],
+        listSessions: async () => [{ id: 7, name: "bot", archived_at: "2026-09-16T00:00:00Z" }] as never,
+        runLoop: async (args) => {
+            deliveries.push(args);
+            return { status: 200, action: "enqueued_new_loop", loopId: 1 } as never;
+        },
+        subscribeToEvents: (cb) => {
+            listener = cb;
+            return () => { listener = null; };
+        },
+    });
+    assert.deepEqual(mod.functionality.scheduler.armed(1), ["beat"]);
+    assert.deepEqual(mod.functionality.scheduler.armed(2), [], "archived workspace is not armed at start");
+
+    listener!(1, "workspace/archived", { workspaceId: 1, archived: true, archivedAt: "2026-09-16T12:00:00Z" });
+    await flush();
+    assert.deepEqual(mod.functionality.scheduler.armed(1), [], "archiving disarms workspace timers");
+
+    listener!(1, "workspace/archived", { workspaceId: 1, archived: false, archivedAt: null });
+    await flush();
+    assert.deepEqual(mod.functionality.scheduler.armed(1), ["beat"], "unarchiving re-arms workspace timers");
+
+    await time.advance(FIRST);
+    assert.deepEqual(deliveries, [], "archived target session is not delivered to");
+    assert.deepEqual(mod.functionality.scheduler.armed(1), [], "archived target session disarms the rule");
+    await mod.stop();
 });

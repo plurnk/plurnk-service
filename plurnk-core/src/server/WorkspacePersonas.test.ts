@@ -41,40 +41,39 @@ describe("WorkspacePersonas", () => {
         return { root, project, hostPaths, personas };
     };
 
-    test("{§persona-discovery} discovers directory and single-file personas across the 5-tier cascade and plugins in precedence order", async (t) => {
+    test("{§persona-discovery} discovers directory and single-file personas across the 4-tier cascade and plugins in precedence order", async (t) => {
         withRoots(t, "project,plurnk,global");
         const { project, hostPaths, personas } = await createFixture(t);
 
-        const projectPlurnkDir = join(project, ".plurnk", "personas", "reviewer");
         const projectAgentsDir = join(project, ".agents", "personas");
+        const projectReviewerDir = join(projectAgentsDir, "reviewer");
         const xdgPlurnkDir = join(hostPaths.configDir, "personas");
         const xdgAgentsDir = join(hostPaths.xdgAgentsDir, "personas");
         const homeAgentsDir = join(hostPaths.globalAgentsDir, "personas");
         const pluginDir = join(hostPaths.projectPluginsDir(project), "team-plugin");
 
-        await mkdir(projectPlurnkDir, { recursive: true });
-        await mkdir(projectAgentsDir, { recursive: true });
+        await mkdir(projectReviewerDir, { recursive: true });
         await mkdir(xdgPlurnkDir, { recursive: true });
         await mkdir(xdgAgentsDir, { recursive: true });
         await mkdir(homeAgentsDir, { recursive: true });
         await mkdir(join(pluginDir, "personas"), { recursive: true });
 
-        // Highest precedence: <project>/.plurnk/personas/reviewer/PERSONA.md
+        // Highest precedence: <project>/.agents/personas/reviewer/PERSONA.md (directory form)
         await writeFile(
-            join(projectPlurnkDir, "PERSONA.md"),
+            join(projectReviewerDir, "PERSONA.md"),
             [
                 "---",
                 "name: reviewer",
-                "description: Project plurnk reviewer",
+                "description: Project agents reviewer",
                 "model: fast",
                 "effort: high",
                 "---",
-                "Review from .plurnk/personas.",
+                "Review from .agents/personas.",
             ].join("\n"),
         );
-        await writeFile(join(projectPlurnkDir, "checklist.md"), "# Checklist\n- Security\n");
+        await writeFile(join(projectReviewerDir, "checklist.md"), "# Checklist\n- Security\n");
 
-        // Shadowed in <project>/.agents/personas/reviewer.md, plus unique architect.md
+        // Shadowed single-file in <project>/.agents/personas/reviewer.md, plus unique architect.md
         await writeFile(
             join(projectAgentsDir, "reviewer.md"),
             [
@@ -188,8 +187,8 @@ describe("WorkspacePersonas", () => {
                 },
                 {
                     name: "reviewer",
-                    description: "Project plurnk reviewer",
-                    body: "Review from .plurnk/personas.",
+                    description: "Project agents reviewer",
+                    body: "Review from .agents/personas.",
                     model: "fast",
                     effort: "high",
                 },
@@ -361,6 +360,18 @@ describe("WorkspacePersonas", () => {
         );
         assert.deepEqual(
             PersonaScheme.normalizeAddress(url("persona:///professor.md", null, "/professor.md")),
+            { authority: "professor", pathname: "/PERSONA.md" },
+        );
+        assert.deepEqual(
+            PersonaScheme.normalizeAddress(url("persona://professor", "professor", ""), { forFind: true }),
+            { authority: "professor", pathname: "" },
+        );
+        assert.deepEqual(
+            PersonaScheme.normalizeAddress(url("persona://professor.md", "professor.md", ""), { forFind: true }),
+            { authority: "professor", pathname: "/PERSONA.md" },
+        );
+        assert.deepEqual(
+            PersonaScheme.normalizeAddress(url("persona:///professor/PERSONA.md", null, "/professor/PERSONA.md"), { forFind: true }),
             { authority: "professor", pathname: "/PERSONA.md" },
         );
 

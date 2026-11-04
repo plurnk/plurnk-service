@@ -25,7 +25,6 @@
         "**/generated",
         "**/vendor",
         "**/.tmp",
-        "**/.plurnk",
         "**/coverage"
     ]
 }

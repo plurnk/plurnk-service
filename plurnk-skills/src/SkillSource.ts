@@ -365,6 +365,7 @@ export default class SkillSource {
     }
 
     static async assertInward(root: string): Promise<void> {
+        const canonicalRoot = await realpath(root);
         const walk = async (dir: string): Promise<void> => {
             for (const entry of await readdir(dir, { withFileTypes: true })) {
                 const path = join(dir, entry.name);
@@ -373,7 +374,17 @@ export default class SkillSource {
                     continue;
                 }
                 if (entry.isFile()) continue;
-                if (entry.isSymbolicLink() && AgentPluginFiles.inside(root, resolve(dir, await readlink(path)))) continue;
+                if (entry.isSymbolicLink()) {
+                    const lexical = resolve(dir, await readlink(path));
+                    if (AgentPluginFiles.inside(root, lexical)) {
+                        try {
+                            if (AgentPluginFiles.inside(canonicalRoot, await realpath(path))) continue;
+                        } catch (cause) {
+                            if (errnoCode(cause) === "ENOENT") continue;
+                            throw cause;
+                        }
+                    }
+                }
                 const what = entry.isSymbolicLink() ? "links outside its skill" : "is neither a file, a directory, nor an inward link";
                 throw actionError("source-unsafe", 422, `'${relative(root, path)}' ${what}.`, { path: relative(root, path), retryable: false });
             }

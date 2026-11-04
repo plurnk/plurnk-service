@@ -24,6 +24,7 @@ import type {
     ModelRoute,
     ProblemDetails,
     ProposalProjection,
+    ProposalResolution,
     TerminatedNotification,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
@@ -108,6 +109,7 @@ export interface Harness {
         setAuthMode(mode: "none" | "oauth"): void;
         revokeFamily(familyId: string): void;
         readonly proposals: ProposalProjection[];
+        readonly resolvedProposals: Array<{ logEntryId: number; resolution: ProposalResolution }>;
         readonly interactions: ClientInteractionProjection[];
         readonly streams: ApplicationStream[];
         readonly inbox: ApplicationInboxMessage[];
@@ -170,6 +172,7 @@ export const createHarness = async (options?: {
         },
     ];
     const proposals: ProposalProjection[] = [];
+    const resolvedProposals: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
     const interactions: ClientInteractionProjection[] = [];
     const streams: ApplicationStream[] = [];
     const inbox: ApplicationInboxMessage[] = [];
@@ -266,6 +269,7 @@ export const createHarness = async (options?: {
         workspaces,
         sessions,
         proposals,
+        resolvedProposals,
         interactions,
         streams,
         inbox,
@@ -385,7 +389,7 @@ export const createHarness = async (options?: {
             return () => eventHandlers.delete(handler);
         },
         pendingProposals: async () => proposals,
-        resolveProposal: async (logEntryId) => {
+        resolveProposal: async (logEntryId, resolution) => {
             const idx = proposals.findIndex((p) => p.logEntryId === logEntryId);
             if (idx === -1) {
                 const err: ProblemError = new Error(
@@ -400,6 +404,7 @@ export const createHarness = async (options?: {
                 };
                 throw err;
             }
+            resolvedProposals.push({ logEntryId, resolution });
             proposals.splice(idx, 1);
         },
         pendingClientInteractions: async () => interactions,

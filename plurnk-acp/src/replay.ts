@@ -28,6 +28,7 @@ export const replaySessionHistory = (
         readonly historyLoops?: number;
         readonly historyPageChars?: number;
         readonly beforeLoopSeq?: number;
+        readonly afterLoopSeq?: number;
         readonly exactLoopSeq?: number;
         readonly openStreamTargets?: ReadonlySet<string>;
     } = {},
@@ -48,6 +49,8 @@ export const replaySessionHistory = (
         candidateSeqs = allLoopSeqs.filter((seq) => seq === options.exactLoopSeq);
     } else if (typeof options.beforeLoopSeq === "number") {
         candidateSeqs = allLoopSeqs.filter((seq) => seq < options.beforeLoopSeq!);
+    } else if (typeof options.afterLoopSeq === "number") {
+        candidateSeqs = allLoopSeqs.filter((seq) => seq > options.afterLoopSeq!);
     }
 
     const selectedLoops =
@@ -55,7 +58,11 @@ export const replaySessionHistory = (
         typeof options.historyLoops === "number" &&
         options.historyLoops > 0 &&
         candidateSeqs.length > options.historyLoops
-            ? new Set(candidateSeqs.slice(-options.historyLoops))
+            ? new Set(
+                  typeof options.afterLoopSeq === "number"
+                      ? candidateSeqs.slice(0, options.historyLoops)
+                      : candidateSeqs.slice(-options.historyLoops),
+              )
             : new Set(candidateSeqs);
 
     const updatesByLoop = new Map<number, AcpSessionUpdate[]>();
@@ -99,11 +106,20 @@ export const replaySessionHistory = (
             charsByLoop.set(seq, len);
             totalChars += len;
         }
-        for (let i = 0; i < orderedSelected.length - 1 && totalChars > options.historyPageChars; i += 1) {
-            const dropSeq = orderedSelected[i];
-            selectedLoops.delete(dropSeq);
-            updatesByLoop.delete(dropSeq);
-            totalChars -= charsByLoop.get(dropSeq) ?? 0;
+        if (typeof options.afterLoopSeq === "number") {
+            for (let i = orderedSelected.length - 1; i > 0 && totalChars > options.historyPageChars; i -= 1) {
+                const dropSeq = orderedSelected[i];
+                selectedLoops.delete(dropSeq);
+                updatesByLoop.delete(dropSeq);
+                totalChars -= charsByLoop.get(dropSeq) ?? 0;
+            }
+        } else {
+            for (let i = 0; i < orderedSelected.length - 1 && totalChars > options.historyPageChars; i += 1) {
+                const dropSeq = orderedSelected[i];
+                selectedLoops.delete(dropSeq);
+                updatesByLoop.delete(dropSeq);
+                totalChars -= charsByLoop.get(dropSeq) ?? 0;
+            }
         }
     }
 
@@ -112,7 +128,13 @@ export const replaySessionHistory = (
         updates.push(...(updatesByLoop.get(seq) ?? []));
     }
 
-    if (options.beforeLoopSeq === undefined && options.exactLoopSeq === undefined) {
+    const selectedSorted = [...selectedLoops].toSorted((a, b) => a - b);
+    const oldestSelected = selectedSorted[0];
+    const newestSelected = selectedSorted.at(-1);
+    const hasOlder = oldestSelected !== undefined && allLoopSeqs.some((seq) => seq < oldestSelected);
+    const hasNewer = newestSelected !== undefined && allLoopSeqs.some((seq) => seq > newestSelected);
+
+    if (options.beforeLoopSeq === undefined && options.exactLoopSeq === undefined && !hasNewer) {
         const publishedSources = new Set<string>();
         const publishedMessageIds = new Set<string>();
         for (const row of activeRows) {
@@ -176,12 +198,6 @@ export const replaySessionHistory = (
             });
         }
     }
-
-    const selectedSorted = [...selectedLoops].toSorted((a, b) => a - b);
-    const oldestSelected = selectedSorted[0];
-    const newestSelected = selectedSorted.at(-1);
-    const hasOlder = oldestSelected !== undefined && allLoopSeqs.some((seq) => seq < oldestSelected);
-    const hasNewer = newestSelected !== undefined && allLoopSeqs.some((seq) => seq > newestSelected);
 
     const baseOrigin = translator.origin ?? "http://127.0.0.1";
     const messagesBase = `${baseOrigin}/acp/${translator.workspaceId}/${translator.sessionId}/messages?session=${encodeURIComponent(translator.acpSessionId)}`;

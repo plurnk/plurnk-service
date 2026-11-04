@@ -1179,7 +1179,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 })
                 .onRequest(methods.client.session.requestPermission, async ({ params }) => {
                     permissionRequests1.push(params);
-                    return { outcome: { outcome: "selected", optionId: "allow_once" } };
+                    return {
+                        outcome: { outcome: "selected", optionId: "allow_once" },
+                        _meta: { plurnk: { body: "rm -rf build/tmp" } },
+                    };
                 })
                 .onRequest(methods.client.elicitation.create, async ({ params }) => {
                     elicitations1.push(params);
@@ -1291,6 +1294,11 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         ],
                     );
                     assert.equal(h.port.proposals.length, 0, "proposal resolved in port");
+                    assert.equal(
+                        h.port.resolvedProposals[0]?.resolution.body,
+                        "rm -rf build/tmp",
+                        "edited proposal body forwarded to resolveProposal ({§acp-proposal-resolve})",
+                    );
                     assert.equal(peer2Cancelled, true, "second peer received $/cancel_request ({§acp-proposal-resolve})");
 
                     assert.equal(elicitations1.length, 1);
@@ -1593,8 +1601,16 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
 
                 const pageRes = await fetch(historyMeta.older);
                 assert.equal(pageRes.status, 200);
-                const page = (await pageRes.json()) as Record<string, unknown>;
+                const page = (await pageRes.json()) as {
+                    updates?: unknown[];
+                    history?: { older?: string; newer?: string };
+                };
                 assert.ok(Array.isArray(page.updates));
+                assert.ok(page.history?.newer, "older page exposes newer pagination link");
+                const newerRes = await fetch(page.history.newer);
+                assert.equal(newerRes.status, 200);
+                const newerPage = (await newerRes.json()) as { updates?: unknown[] };
+                assert.ok(Array.isArray(newerPage.updates) && newerPage.updates.length > 0);
 
                 const loopRes = await fetch(`${h.baseUrl}/1/1/messages?session=${encodeURIComponent("1#user")}&loop=1`);
                 assert.equal(loopRes.status, 200);

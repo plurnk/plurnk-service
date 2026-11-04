@@ -22,11 +22,11 @@ The module holds one armed occurrence per enabled `(workspace, alias)`. At the o
 
 - **Loop interaction**: Joins the session's live loop (waking it if parked) or starts a new loop ({§message-arrival}). Future occurrences are not live work for WAIT ({§loop-completion}).
 - **Cursor & first arming**: `add`/`replace` records the admission instant as the first arming cursor ({§functionality-adapter}), so an occurrence falling between admission and preparation still arms, fires at once, delivers once, and appears as `next` in the receipt; rejected or identical replacements do not reset the live timer. After first arming and on daemon start, the present is the cursor (a late fire delivers once and skips missed occurrences, never a backlog).
-- **Delivery failure**: A missing session or refused delivery disarms the rule and lists it `unavailable` with the Problem; `enable` or replacement retries and clears the failure on successful publication.
+- **Delivery failure**: A missing or archived session or refused delivery disarms the rule and lists it `unavailable` with the Problem; `enable` or replacement retries and clears the failure on successful publication.
 
 ## §schedule-residency 4. Residency, Environment, and Problems
 
-- **Residency**: Cooling a workspace leaves its timers armed; `disable` and `remove` disarm through the published rule set. At daemon start the module obtains each workspace's effective definitions via the coordinator's passive `list` ({§functionality-inspection}) and arms enabled rules whether resident or not.
+- **Residency**: Cooling a workspace leaves its timers armed; archiving a workspace disarms its timers until unarchived; `disable` and `remove` disarm through the published rule set. At daemon start the module obtains each unarchived workspace's effective definitions via the coordinator's passive `list` ({§functionality-inspection}) and arms enabled rules whether resident or not.
 - **Environment**: `PLURNK_SCHEDULE_<alias>` holds one complete JSON definition ({§env-knob}); `PLURNK_SCHEDULE_ENABLED=1` arms service rules by default, and `<alias>_ENABLED=0` retains a rule without arming it. Construction and offline validation ({§operator-config-precedence}) normalize and validate every definition including disabled ones. Service definitions cannot be removed in a workspace ({§functionality-coordinator}).
 
 | Problem code | Status | Contract |

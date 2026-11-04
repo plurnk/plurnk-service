@@ -139,6 +139,7 @@ export default class Module implements DaemonModule<SetupSeam> {
     // keeps it.
     readonly #grants = new Map<string, McpBinding & { readonly grant: OAuthGrant }>();
     readonly #connections = new Set<ServerConnection>();
+    readonly #resourceSchemes = new WeakMap<ServerConnection, McpResources>();
     readonly #refreshTimers = new Map<string, NodeJS.Timeout>();
     readonly #retainWorkspace = new Map<number, () => () => void>();
     readonly #residentLeases = new Map<number, () => void>();
@@ -507,7 +508,6 @@ export default class Module implements DaemonModule<SetupSeam> {
                 projectRoot,
                 stateDir,
             };
-            let schemeRef: McpResources | undefined;
             const grant = oauthRedirectUrl === undefined ? this.#grantFor(workspaceId, binding) : undefined;
             candidate ??= new ServerConnection(definition, withSyntheticEnv(workspaceEnv, syntheticContext), {
                 alias,
@@ -523,7 +523,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                     signal: reqSignal,
                 }),
                 onResourceUpdated: (uri) => {
-                    void schemeRef?.notifyResourceUpdated(uri);
+                    void this.#resourceSchemes.get(candidate!)?.notifyResourceUpdated(uri);
                 },
                 environment: withSyntheticEnv(environment(this.#operatorEnvironment()), syntheticContext),
                 onCatalogChanged: (error) => {
@@ -564,8 +564,9 @@ export default class Module implements DaemonModule<SetupSeam> {
                 executor.catalog,
                 callerMeta,
                 serverBinding.resident,
+                this.#resourceSchemes.get(candidate),
             );
-            schemeRef = scheme;
+            this.#resourceSchemes.set(candidate, scheme);
             return {
                 alias,
                 ...(context === undefined ? {} : { context }),
