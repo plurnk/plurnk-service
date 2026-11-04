@@ -143,6 +143,14 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
     #activeAborts = new Map<number, { workspaceId: number; sessionId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; detached: boolean }>();
     #activeSpawns = new Map<number, Promise<SchemeResult>>();
+    #loopWakeWaiters = new Map<number, Set<() => void>>();
+
+    wakeTurnSettlement(loopId: number): void {
+        const waiters = this.#loopWakeWaiters.get(loopId);
+        if (waiters === undefined) return;
+        this.#loopWakeWaiters.delete(loopId);
+        for (const wake of waiters) wake();
+    }
 
     async idle(): Promise<void> {
         await Promise.allSettled([...this.#activeSpawns.values()]);
@@ -176,6 +184,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         turnId: number,
         timeoutMs: number,
         signal?: AbortSignal,
+        loopId?: number,
     ): Promise<boolean> {
         signal?.throwIfAborted();
         const pending = [...this.#activeAborts.entries()]
@@ -189,10 +198,31 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             });
         if (pending.length === 0) return true;
         if (timeoutMs === 0) return false;
-        return await Promise.race([
-            Promise.allSettled(pending).then(() => true),
-            delay(timeoutMs, false, { signal, ref: false }),
-        ]);
+        let wakeListener: (() => void) | undefined;
+        const messageWake = loopId === undefined
+            ? null
+            : new Promise<false>((done) => {
+                  wakeListener = () => done(false);
+                  let set = this.#loopWakeWaiters.get(loopId);
+                  if (set === undefined) {
+                      set = new Set();
+                      this.#loopWakeWaiters.set(loopId, set);
+                  }
+                  set.add(wakeListener);
+              });
+        try {
+            return await Promise.race([
+                Promise.allSettled(pending).then(() => true),
+                delay(timeoutMs, false, { signal, ref: false }),
+                ...(messageWake === null ? [] : [messageWake]),
+            ]);
+        } finally {
+            if (loopId !== undefined && wakeListener !== undefined) {
+                const set = this.#loopWakeWaiters.get(loopId);
+                set?.delete(wakeListener);
+                if (set?.size === 0) this.#loopWakeWaiters.delete(loopId);
+            }
+        }
     }
 
     // {§exec-lifetime} — match active spawns against the

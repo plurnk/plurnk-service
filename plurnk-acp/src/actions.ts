@@ -1043,6 +1043,45 @@ export const executeSlashCommand = async (
             const values = res.completion.values.filter((v): v is string => typeof v === "string");
             return values.length === 0 ? `${cmd} complete: none` : values.join("\n");
         }
+        if (parsed.actionName === "workspace.mcp.skills") {
+            if (isRecord(res.skill) && typeof res.skill.name === "string") {
+                return `${res.skill.name}  verified`;
+            }
+            if (Array.isArray(res.skills)) {
+                if (res.skills.length === 0) return "mcp skills: none";
+                return res.skills
+                    .map((item) => {
+                        if (!isRecord(item)) return String(item);
+                        const name = typeof item.name === "string" ? item.name : "";
+                        const summary = typeof item.description === "string" && item.description.length > 0
+                            ? `  ${item.description}`
+                            : "";
+                        return `${name}${summary}`;
+                    })
+                    .join("\n");
+            }
+        }
+        if (Array.isArray(res.candidates)) {
+            if (res.candidates.length === 0) {
+                return `${cmd} discover: none`;
+            }
+            return res.candidates
+                .map((item) => {
+                    if (!isRecord(item)) return String(item);
+                    const alias = typeof item.alias === "string" && item.alias.length > 0 ? item.alias : "";
+                    const summary = typeof item.summary === "string" && item.summary.length > 0 ? item.summary : "";
+                    return alias.length > 0 && summary.length > 0
+                        ? `${alias}  ${summary}`
+                        : alias.length > 0
+                          ? alias
+                          : summary;
+                })
+                .join("\n");
+        }
+        if (isRecord(res.definition) && typeof res.definition.alias === "string") {
+            const state = typeof res.definition.state === "string" ? res.definition.state : "active";
+            return `${res.definition.alias}  ${state}`;
+        }
         const definitions = Array.isArray(res.definitions)
             ? res.definitions
             : Array.isArray(res.items)

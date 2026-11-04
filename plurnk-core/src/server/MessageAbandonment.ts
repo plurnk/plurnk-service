@@ -2,6 +2,7 @@
 // daemon's hand: one FAIL to each message's address, in a maintenance turn of the loop that ended, so the
 // sender wakes and reads the decline instead of waiting on a loop that is gone. No loop is opened: a cancelled
 // scope stays cancelled ({§session-causal-admission}); the turn belongs to the ended loop.
+import { PathSyntax } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
@@ -15,11 +16,19 @@ export default class MessageAbandonment {
 
     // The messages the ended loop still holds without a completion, each completed 499 with the fact of the
     // ending as the body. Returns how many were completed; none is the ordinary case.
-    static async complete(engine: Engine, db: Db, workspaceId: number, sessionId: number, loopId: number, status: number): Promise<number> {
+    static async complete(
+        engine: Engine,
+        db: Db,
+        workspaceId: number,
+        sessionId: number,
+        loopId: number,
+        status: number,
+        onSettled?: (logEntryId: number) => void | Promise<void>,
+    ): Promise<number> {
         const open = await db.drain_abandoned_messages.all<{ path: string }>({ loop_id: loopId });
         if (open.length === 0) return 0;
         const text = open
-            .map(({ path }) => `\`\`\`\`FAIL (${path})\n${MessageAbandonment.detail(loopId, status)}\n\`\`\`\``)
+            .map(({ path }) => `\`\`\`\`FAIL (${PathSyntax.escapeTarget(path)})\n${MessageAbandonment.detail(loopId, status)}\n\`\`\`\``)
             .join("\n\n");
         const parsed = PlurnkParser.parseStatements(text, { executors: [] });
         const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
@@ -41,6 +50,7 @@ export default class MessageAbandonment {
                 turnId,
                 fromSequence: 1,
                 failOnOperationError: true,
+                onSettled,
             });
             turnOpen = false;
         } catch (cause) {

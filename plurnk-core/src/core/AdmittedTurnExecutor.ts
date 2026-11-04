@@ -29,7 +29,7 @@ const OWNS_METADATA: ReadonlySet<string> = new Set(["SEND", "DONE", "FAIL"]);
 
 // The exec scheme's turn settlement: its own hook, read where a turn settles.
 const settlesTurnSpawns = (handler: object | undefined): handler is {
-    settleTurnSpawns(sessionId: number, turnId: number, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;
+    settleTurnSpawns(sessionId: number, turnId: number, timeoutMs: number, signal?: AbortSignal, loopId?: number): Promise<boolean>;
 } => handler !== undefined && "settleTurnSpawns" in handler && typeof handler.settleTurnSpawns === "function";
 
 // {§op-methods-op-dispatch} — the rules an EDIT batch's resolutions applied, as its result's merged fact names them.
@@ -218,9 +218,10 @@ export default class AdmittedTurnExecutor {
 
         const settleTurn = async (): Promise<void> => {
             await recordRecoverableParseErrors();
+            if (await this.#db.drain_has_unpublished_messages.get({ loop_id: loopId }) !== undefined) return;
             const execHandler = this.#schemes.get("exec");
             if (settlesTurnSpawns(execHandler)) {
-                await execHandler.settleTurnSpawns(sessionId, turnId, readOptimisticSettlementMs(), signal);
+                await execHandler.settleTurnSpawns(sessionId, turnId, readOptimisticSettlementMs(), signal, loopId);
             }
         };
 

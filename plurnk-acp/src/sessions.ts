@@ -42,7 +42,13 @@ const AVAILABLE_COMMANDS: readonly AvailableCommand[] = Object.freeze([
         type: "command",
         name: "skills",
         description: "Manage workspace skills",
-        input: { type: "text", hint: "<list|add|remove|enable|disable> ..." },
+        input: { type: "text", hint: "<list|discover|add|replace|remove|enable|disable> ..." },
+    },
+    {
+        type: "command",
+        name: "personas",
+        description: "Manage workspace personas",
+        input: { type: "text", hint: "<list|discover|add|replace|remove|enable|disable> ..." },
     },
     {
         type: "command",

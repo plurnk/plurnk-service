@@ -300,7 +300,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             engine: this.#engine,
             // {§loop-completion} — the daemon answers, 499, what an ended loop left unanswered.
             completeAbandonedMessages: (workspaceId, sessionId, loopId, status) =>
-                MessageAbandonment.complete(this.#engine, this.#db, workspaceId, sessionId, loopId, status),
+                MessageAbandonment.complete(this.#engine, this.#db, workspaceId, sessionId, loopId, status, async (logEntryId) => {
+                    const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
+                    this.#broadcast({ workspaceId }, "log/entry", { entry });
+                }),
             lifecycle: this.#lifecycle,
             assertInjectionCompatibility: (args) => this.#sessionModels.assertInjectionCompatibility(args),
             runLoop: (args) => this.#runDrainLoop(args),

@@ -17,7 +17,10 @@ export interface ScheduledRule {
 }
 
 export interface DeliveryPort {
-    listSessions(workspaceId: number): Promise<readonly { readonly id: number; readonly name: string }[]>;
+    listSessions(
+        workspaceId: number,
+        query?: { readonly archived?: boolean },
+    ): Promise<readonly { readonly id: number; readonly name: string; readonly archived_at?: string | null }[]>;
     runLoop(args: {
         readonly workspaceId: number;
         readonly sessionId: number;
@@ -229,7 +232,8 @@ export default class Scheduler {
         const port = this.#port;
         if (port === null) throw new Error("schedule Scheduler is not started");
         const name = targetSessionName(rule.definition.target);
-        const session = (await port.listSessions(workspaceId)).find((candidate) => candidate.name === name);
+        const session = (await port.listSessions(workspaceId, { archived: false }))
+            .find((candidate) => candidate.name === name && (candidate.archived_at === undefined || candidate.archived_at === null));
         if (session === undefined) {
             throw new ScheduleDeliveryError(problem("target-missing", 404, `No session named '${name}' exists in this workspace.`, {
                 alias: rule.alias,

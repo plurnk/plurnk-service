@@ -474,10 +474,39 @@ export class OpenWorkCoordinator {
         return this.#seam;
     }
 
+    #resolveFromChunks(waiter: PendingSample, extraBody = ""): void {
+        const rawText = [...waiter.chunks, ...(extraBody.length > 0 ? [extraBody] : [])].join("\n\n");
+        let text = rawText;
+        let stopReason: "endTurn" | "stopSequence" = "endTurn";
+        for (const seq of waiter.stopSequences) {
+            const idx = text.indexOf(seq);
+            if (idx >= 0) {
+                text = text.slice(0, idx);
+                stopReason = "stopSequence";
+            }
+        }
+        waiter.resolve({
+            role: "assistant",
+            content: { type: "text", text },
+            model: waiter.resolvedModel,
+            stopReason,
+        });
+    }
+
     #onEvent(workspaceId: number | null, method: string, params: unknown): void {
         if (workspaceId === null || !isRecord(params)) return;
         if (method === "log/entry") {
             const entry = isRecord(params.entry) ? params.entry : params;
+            if (entry.op === "WAIT" && (entry.status_rx === 202 || entry.status_rx === 102) && entry.origin === "model") {
+                const loopId = typeof entry.loop_id === "number" ? entry.loop_id : undefined;
+                const sessionId = typeof entry.session_id === "number" ? entry.session_id : undefined;
+                for (const waiter of this.#pending.values()) {
+                    if (waiter.settled || waiter.workspaceId !== workspaceId || waiter.chunks.length === 0) continue;
+                    if (waiter.loopId !== loopId && (waiter.loopId !== 0 || waiter.sessionId !== sessionId)) continue;
+                    this.#resolveFromChunks(waiter);
+                }
+                return;
+            }
             if ((entry.op !== "SEND" && entry.op !== "DONE" && entry.op !== "FAIL") || entry.status_rx !== 200 || !isRecord(entry.rx)) return;
             const tx = isRecord(entry.tx) ? entry.tx : {};
             const txBody = typeof tx.body === "string"
@@ -518,22 +547,7 @@ export class OpenWorkCoordinator {
                     || (waiter.keyPath !== undefined && targets.has(waiter.keyPath));
                 if (!matched) continue;
                 if (completion === 200) {
-                    const rawText = [...waiter.chunks, ...(txBody.length > 0 ? [txBody] : [])].join("\n\n");
-                    let text = rawText;
-                    let stopReason: "endTurn" | "stopSequence" = "endTurn";
-                    for (const seq of waiter.stopSequences) {
-                        const idx = text.indexOf(seq);
-                        if (idx >= 0) {
-                            text = text.slice(0, idx);
-                            stopReason = "stopSequence";
-                        }
-                    }
-                    waiter.resolve({
-                        role: "assistant",
-                        content: { type: "text", text },
-                        model: waiter.resolvedModel,
-                        stopReason,
-                    });
+                    this.#resolveFromChunks(waiter, txBody);
                 } else if (completion === 499) {
                     waiter.reject(new Error(
                         txBody.length > 0
@@ -564,6 +578,10 @@ export class OpenWorkCoordinator {
     async #checkTerminatedLoop(waiter: PendingSample, endedLoopId: number, status: number): Promise<void> {
         const seam = this.#seam;
         if (waiter.settled || seam === null) return;
+        if (status === 200 && waiter.chunks.length > 0 && (waiter.loopId === endedLoopId || waiter.loopId === 0)) {
+            this.#resolveFromChunks(waiter);
+            return;
+        }
         try {
             const inbox = await seam.readInbox({ workspaceId: waiter.workspaceId, sessionId: waiter.sessionId });
             const pending = inbox.find((msg) => msg.path === waiter.address);
