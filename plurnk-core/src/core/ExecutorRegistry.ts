@@ -1,3 +1,4 @@
+import { availableParallelism } from "node:os";
 import { discover, RuntimeInvocation } from "@plurnk/plurnk-execs";
 import type {
     RuntimeAvailability,
@@ -248,7 +249,9 @@ export default class ExecutorRegistry {
         // Probe per-TAG: one executor instance per tag (this.runtime = the tag),
         // each probed on its own merits. import() is module-cached, so
         // re-importing a package once per tag is free.
-        const probed = await Promise.all(infos.map(async (info): Promise<readonly [string, ExecutorEntry]> => {
+        const probed = Array.from<readonly [string, ExecutorEntry]>({ length: infos.length });
+        let nextIndex = 0;
+        const probeOne = async (info: (typeof infos)[number]): Promise<readonly [string, ExecutorEntry]> => {
             const declaration = {
                 namespaceOwner: { kind: "package" as const, name: info.packageName },
                 glyph: info.glyph,
@@ -267,6 +270,12 @@ export default class ExecutorRegistry {
             } catch (cause) {
                 if (!(cause instanceof ConfigurationError)) throw cause;
                 return [info.runtime, { ...declaration, executor: null, available: false, detail: cause.message, configurationError: cause }];
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(infos.length, Math.max(1, availableParallelism())) }, async () => {
+            while (nextIndex < infos.length) {
+                const index = nextIndex++;
+                probed[index] = await probeOne(infos[index]);
             }
         }));
         return new ExecutorRegistry(new Map(probed), packageAttributions);

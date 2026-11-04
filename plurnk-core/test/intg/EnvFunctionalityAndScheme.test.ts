@@ -153,6 +153,7 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
         // remove forgets a session entry; discover is inert and reads a sibling package's declaration.
         assert.equal((await invoke<FunctionalityMutationResult>(alice, "remove", { alias: "CARGO_TARGET_DIR" })).removed, true);
         assert.equal(await stateOf(alice, "CARGO_TARGET_DIR"), undefined);
+        assert.equal(daemon.workspaceDerivationStatus(workspaceId), null, "session-scoped env mutations do not activate cold workspace residency");
         const discovered = await invoke<FunctionalityDiscoverResult>(alice, "discover", { query: "PAGER" });
         assert.equal(discovered.candidates.find(({ alias }) => alias === "PAGER")?.provenance.source, "@plurnk/plurnk-execs");
         assert.equal(await stateOf(alice, "PAGER"), undefined, "discovery persisted nothing");

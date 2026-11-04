@@ -642,7 +642,7 @@ const invoke = (dir: string, args: string[], overrides: Record<string, string> =
     });
 };
 
-for (const [mode, value] of [[undefined, 2], ["OFF", 0], ["NORMAL", 1], ["FULL", 2], ["EXTRA", 3]] as const) {
+for (const [mode, value] of [[undefined, 1], ["OFF", 0], ["NORMAL", 1], ["FULL", 2], ["EXTRA", 3]] as const) {
     test(`{§db-durability}: launcher ${mode ?? "floor"} applies before migration/INIT, on every connection and reopen`, async (t) => {
         const dir = await mkdtemp(join(tmpdir(), "plurnk-durability-"));
         t.after(() => rm(dir, { recursive: true, force: true }));
@@ -683,7 +683,7 @@ test("{§db-durability}: invalid modes are diagnosed offline and refuse database
     }
     const repair = invoke(dir, ["config", "defaults"], { PLURNK_SERVICE_SQLITE_SYNCHRONOUS: "BROKEN" });
     assert.equal(repair.status, 0, repair.stderr);
-    assert.match(repair.stdout, /^PLURNK_SERVICE_SQLITE_SYNCHRONOUS=FULL$/mu);
+    assert.match(repair.stdout, /^PLURNK_SERVICE_SQLITE_SYNCHRONOUS=NORMAL$/mu);
 });
 
 test("{§db-durability}: daemon startup uses the same connection policy as migrate", async () => {
@@ -702,11 +702,11 @@ test("{§db-durability}: daemon startup uses the same connection policy as migra
 test("{§db-durability}: the built launcher applies the floor and explicit CLI policy", async (t) => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-durability-"));
     t.after(() => rm(dir, { recursive: true, force: true }));
-    const full = invoke(dir, ["migrate"], {}, BUILT_SERVICE);
-    assert.equal(full.status, 0, full.stderr);
-    assert.deepEqual(witness(full.stderr).writer, { synchronous: 2, journal_mode: "wal" });
-    const normal = invoke(dir, ["migrate", "--service-sqlite-synchronous=NORMAL"], {}, BUILT_SERVICE);
+    const normal = invoke(dir, ["migrate"], {}, BUILT_SERVICE);
     assert.equal(normal.status, 0, normal.stderr);
-    assert.deepEqual(witness(normal.stderr).history.map(({ synchronous }) => synchronous), [2, 2, 2, 1, 1]);
+    assert.deepEqual(witness(normal.stderr).writer, { synchronous: 1, journal_mode: "wal" });
+    const full = invoke(dir, ["migrate", "--service-sqlite-synchronous=FULL"], {}, BUILT_SERVICE);
+    assert.equal(full.status, 0, full.stderr);
+    assert.deepEqual(witness(full.stderr).history.map(({ synchronous }) => synchronous), [1, 1, 1, 2, 2]);
 });
 });

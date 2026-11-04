@@ -277,7 +277,7 @@ export default class Functionality {
                 this.#host.registerModuleAction({
                     name: `${scope}.${family}.${verb}`,
                     scope,
-                    residency: verb === "list" || verb === "discover" ? "none" : "required",
+                    residency: scope === "session" || verb === "list" || verb === "discover" ? "none" : "required",
                     inputSchema,
                     outputSchema: verb === "list" ? LIST_RESULT : verb === "discover" ? DISCOVER_RESULT : MUTATION_RESULT,
                     handler: async (params, context) => {

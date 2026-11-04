@@ -137,10 +137,10 @@ too. This is not content erasure. A share contains only what remains
 when it is taken.
 
 `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` selects the database's WAL durability before migrations
-or startup writes. Its shipped setting is in `.env.defaults`. `FULL` synchronizes every commit
-to storage; selecting `NORMAL` explicitly trades power-loss durability for fewer synchronizations.
-See `skill://plurnk/packages/@plurnk/plurnk-core/SPEC.md` for the storage guarantees. Neither setting makes
-project-file writes transactional or replaces backups.
+or startup writes. Its shipped setting is `NORMAL` in `.env.defaults` (SQLite's recommended WAL
+posture, synchronizing at checkpoints without corruption risk on power loss); selecting `FULL`
+synchronizes every commit to storage. See `skill://plurnk/packages/@plurnk/plurnk-core/SPEC.md`
+for the storage guarantees. Neither setting makes project-file writes transactional or replaces backups.
 
 ## Precedence
 

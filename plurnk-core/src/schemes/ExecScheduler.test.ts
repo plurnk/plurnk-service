@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
+import { availableParallelism } from "node:os";
 import test from "node:test";
 import ExecScheduler, { readExecConcurrency } from "./ExecScheduler.ts";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 
-test("{§exec-lifetime}: configuration accepts only a positive bound or -1", () => {
-    for (const [raw, expected] of [["1", 1], ["12", 12], [" 32 ", 32], ["-1", -1]] as const) {
+test("{§exec-lifetime}: configuration defaults empty to availableParallelism() and accepts a positive bound or -1", () => {
+    const defaultConcurrency = Math.max(1, availableParallelism());
+    for (const [raw, expected] of [["", defaultConcurrency], [" ", defaultConcurrency], ["1", 1], ["12", 12], [" 32 ", 32], ["-1", -1]] as const) {
         assert.equal(readExecConcurrency({ PLURNK_SERVICE_EXEC_CONCURRENCY: raw }), expected);
     }
-    for (const raw of ["", " ", "0", "-2", "1.5", "Infinity", "oops"]) {
+    for (const raw of ["0", "-2", "1.5", "Infinity", "oops"]) {
         assert.throws(
             () => readExecConcurrency({ PLURNK_SERVICE_EXEC_CONCURRENCY: raw }),
             (cause: unknown) => cause instanceof ConfigurationError && cause.key === "PLURNK_SERVICE_EXEC_CONCURRENCY",

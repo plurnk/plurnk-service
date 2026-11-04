@@ -1,3 +1,4 @@
+import { availableParallelism } from "node:os";
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 
 type Release = () => void;
@@ -25,10 +26,12 @@ const isConcurrency = (value: number): boolean =>
 
 export const readExecConcurrency = (env: NodeJS.ProcessEnv = process.env): number => {
     const key = "PLURNK_SERVICE_EXEC_CONCURRENCY";
-    const value = Knob.integer(key, -1, env);
+    const raw = Knob.text(key, env).trim();
+    if (raw.length === 0) return Math.max(1, availableParallelism());
+    const value = Number(raw);
     if (isConcurrency(value)) return value;
     throw new ConfigurationError(
-        key, `${key} must be -1 (unbounded) or a positive safe integer.`,
+        key, `${key} must be empty (availableParallelism()), -1 (unbounded), or a positive safe integer.`,
     );
 };
 

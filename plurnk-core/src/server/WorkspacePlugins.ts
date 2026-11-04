@@ -16,6 +16,7 @@ export default class WorkspacePlugins {
     readonly #hostPaths: HostPaths;
     readonly #nodeModules: string;
     readonly #notices = new Map<number, readonly Notice[]>();
+    readonly #inFlight = new Map<number, Promise<WorkspacePluginSet<ConfigurationRootScope>>>();
 
     constructor({ db, hostPaths, nodeModules = join(process.cwd(), "node_modules") }: {
         readonly db: Db; readonly hostPaths: HostPaths; readonly nodeModules?: string;
@@ -25,7 +26,17 @@ export default class WorkspacePlugins {
         this.#nodeModules = nodeModules;
     }
 
-    async read(workspaceId: number): Promise<WorkspacePluginSet<ConfigurationRootScope>> {
+    read(workspaceId: number): Promise<WorkspacePluginSet<ConfigurationRootScope>> {
+        const existing = this.#inFlight.get(workspaceId);
+        if (existing !== undefined) return existing;
+        const pending = this.#read(workspaceId).finally(() => {
+            if (this.#inFlight.get(workspaceId) === pending) this.#inFlight.delete(workspaceId);
+        });
+        this.#inFlight.set(workspaceId, pending);
+        return pending;
+    }
+
+    async #read(workspaceId: number): Promise<WorkspacePluginSet<ConfigurationRootScope>> {
         const workspace = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const projectRoot = workspace?.project_root ?? null;
         const { plugins, reports, roots, configurationErrors } = await PluginSources.read({

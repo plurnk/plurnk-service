@@ -462,15 +462,17 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
     async prepare(preparation: FunctionalityPreparation<MembersDefinition, MembersSnapshot>): Promise<FunctionalityPrepared<never, MembersSnapshot>> {
         preparation.signal.throwIfAborted();
         const { workspaceId, enabled } = preparation;
-        const rows = this.#projection(enabled, await GitMembership.workspaceRoot(this.#db, workspaceId));
-        const overlay = await GitMembership.resolveOverlay(this.#db, workspaceId, rows, undefined);
-        preparation.signal.throwIfAborted();
+        const rows = enabled.size === 0 ? [] : this.#projection(enabled, await GitMembership.workspaceRoot(this.#db, workspaceId));
         const outcomes = new Map<string, FunctionalityOutcome>();
         const documents: Array<{ pathname: string; content: string }> = [];
-        for (const [alias, { definition }] of enabled) {
-            const resolution = resolutionOf(definition, overlay);
-            outcomes.set(alias, { state: "active", detail: resolution });
-            documents.push(membersDocument(definition, resolution));
+        if (enabled.size > 0) {
+            const overlay = await GitMembership.resolveOverlay(this.#db, workspaceId, rows, undefined);
+            preparation.signal.throwIfAborted();
+            for (const [alias, { definition }] of enabled) {
+                const resolution = resolutionOf(definition, overlay);
+                outcomes.set(alias, { state: "active", detail: resolution });
+                documents.push(membersDocument(definition, resolution));
+            }
         }
         return {
             documents,
