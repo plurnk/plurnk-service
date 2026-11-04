@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-service",
-    "version": "5.2.0",
+    "version": "5.2.1",
     "description": "Plurnk agent runtime — the server / engine / core. Implements the @plurnk/plurnk-contracts contract.",
     "keywords": [
         "plurnk",
