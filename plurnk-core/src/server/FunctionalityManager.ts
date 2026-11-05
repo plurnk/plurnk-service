@@ -1,10 +1,9 @@
-// {§functionality-model-projection} — the model-facing `plurnk_<family>` runtime
-// executors: one runtime per workspace Functionality family (`plurnk_env`,
-// `plurnk_mcp`, `plurnk_skills`, `plurnk_schedule`, `plurnk_members`) whose
-// tools are its lifecycle verbs (`list`, `discover`, `add`, `replace`,
-// `enable`, `disable`, `remove`), alongside `plurnk_question (ask)`
-// ({§question-tool}), published under `mcp:///plurnk_*.md`.
-import { BaseExecutor, ToolInputSchema } from "@plurnk/plurnk-execs";
+// {§functionality-model-projection} — the model-facing `plurnk` runtime
+// executor: one in-process tool server whose tools are the workspace
+// Functionality families (`env`, `mcp`, `skills`, `personas`, `schedule`,
+// `members`) plus `question` ({§question-tool}), published at
+// `mcp:///plurnk.md` and `mcp:///plurnk/<tool>.json`.
+import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type {
     ChannelDecl,
     Effect,
@@ -16,14 +15,14 @@ import type {
     RuntimeToolRegistry,
 } from "@plurnk/plurnk-execs";
 import type { FunctionalityDiscovery } from "@plurnk/plurnk-modules";
+import { OutputScheme, type SchemeManifest } from "@plurnk/plurnk-schemes";
 import { Problems, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import type ExecutorRegistry from "../core/ExecutorRegistry.ts";
-import type { RegistryEntry, RuntimeRegistryRegistration } from "../core/ExecutorRegistry.ts";
+import type { RuntimeRegistryRegistration } from "../core/ExecutorRegistry.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
-import QuestionTool, { plurnkQuestionRuntimeDecl } from "../schemes/QuestionTool.ts";
-export { plurnkQuestionRuntimeDecl };
+import QuestionTool, { questionRegisteredTool } from "../schemes/QuestionTool.ts";
 import type Functionality from "./Functionality.ts";
 import type { FunctionalityConfigurationFailure } from "./Functionality.ts";
 
@@ -31,37 +30,6 @@ const CHANNEL = "results";
 export const FUNCTIONALITY_VERBS = Object.freeze(["list", "discover", "add", "replace", "enable", "disable", "remove"] as const);
 export type FunctionalityVerb = (typeof FUNCTIONALITY_VERBS)[number];
 const READ_VERBS: ReadonlySet<FunctionalityVerb> = new Set(["list", "discover"]);
-
-const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; details: string }>> = Object.freeze({
-    list: {
-        summary: "Inspect definitions, ownership, configuration sources, and readiness.",
-        details: "Read-only. Unavailable definitions carry their exact Problem. Provenance identifies the winning configuration input, not a runtime or shadowed definition.",
-    },
-    discover: {
-        summary: "Return inert candidates for the input its schema accepts.",
-        details: "Read-only. Discovery never installs, persists, enables, or executes a candidate; add one explicitly.",
-    },
-    add: {
-        summary: "Validate each definition the body names, persist it at the selected scope, prepare it, and enable it atomically.",
-        details: "A host effect: it proposes and runs only on acceptance. The body must conform to the verb's input schema.",
-    },
-    replace: {
-        summary: "Assign a complete definition to a named alias, retaining its enabledness.",
-        details: "A host effect. A new alias is enabled. Rejection preserves the preceding definition and attachment; disabled definitions are saved without preparation.",
-    },
-    enable: {
-        summary: "Prepare and publish one already-available definition.",
-        details: "A host effect. Re-enabling an unavailable definition retries its preparation.",
-    },
-    disable: {
-        summary: "Withdraw the effective capability while keeping the definition available.",
-        details: "A host effect. The definition remains inspectable.",
-    },
-    remove: {
-        summary: "Forget the local definition and restore inheritance.",
-        details: "A host effect. Any inherited definition resumes with its inherited enabledness. Inherited definitions cannot be removed at this scope.",
-    },
-});
 
 // {§functionality-replacement} The family's verbs are exactly those with an input schema.
 type FunctionalityTeaching = {
@@ -84,6 +52,15 @@ export type FunctionalityManagerOptions =
         readonly workspaceId?: number;
         readonly sessionId?: number;
         readonly executors?: () => ExecutorRegistry | undefined;
+        readonly includeQuestion?: boolean | ((workspaceId?: number) => boolean);
+        readonly entries: readonly FunctionalityFamilyEntry[] | ((workspaceId?: number) => readonly FunctionalityFamilyEntry[]);
+    }
+    | {
+        readonly coordinator: Functionality;
+        readonly workspaceId?: number;
+        readonly sessionId?: number;
+        readonly executors?: () => ExecutorRegistry | undefined;
+        readonly includeQuestion?: boolean | ((workspaceId?: number) => boolean);
         readonly entry: FunctionalityFamilyEntry | ((workspaceId?: number) => FunctionalityFamilyEntry);
     }
     | ({
@@ -91,125 +68,93 @@ export type FunctionalityManagerOptions =
         readonly workspaceId?: number;
         readonly sessionId?: number;
         readonly executors?: () => ExecutorRegistry | undefined;
+        readonly includeQuestion?: boolean | ((workspaceId?: number) => boolean);
     } & FunctionalityFamilyEntry);
-
-const isFunctionalityVerb = (value: unknown): value is FunctionalityVerb =>
-    typeof value === "string" && (FUNCTIONALITY_VERBS as readonly string[]).includes(value);
 
 const stripLeadingHeading = (markdown: string): string =>
     markdown.trim().replace(/^# [^\n]*\n+/u, "").trim();
 
-export const plurnkFamilyRuntimeDecl = (entry: FunctionalityFamilyEntry): RuntimeDecl & { readonly glyph: string } => {
-    const firstVerb = FUNCTIONALITY_VERBS.find((verb) => entry.inputSchemas[verb] !== undefined) ?? "list";
-    return {
-        name: `plurnk_${entry.family}`,
-        glyph: "🔌",
-        summary: {
-            from: "tools",
-            description: FunctionalityManager.familySummary(entry),
-        },
-        resourcesPath: "/tools",
-        invocation: {
-            body: { role: "JSON arguments", required: false, mimetype: "application/json" },
-            target: { role: `${entry.family} lifecycle verb`, required: true, kind: "literal" },
-            example: { target: firstVerb, body: "{}" },
-        },
-        details: FunctionalityManager.familyDetails(entry),
-    };
+export const plurnkRuntimeDecl: RuntimeDecl & { readonly glyph: string } = {
+    name: "plurnk",
+    glyph: "🔌",
+    summary: {
+        from: "tools",
+        description: "Manage workspace capabilities and ask the user questions.",
+    },
+    resourcesPath: "/tools",
+    invocation: {
+        body: { role: "JSON arguments", required: false, mimetype: "application/json" },
+        target: { role: "Plurnk tool", required: true, kind: "literal" },
+        example: { target: "members", body: "{}" },
+    },
+    details: [
+        "Pass an empty body (or `{\"scope\": \"session\" | \"workspace\"}`) to list current definitions.",
+        "Pass `{\"discover\": \"...\"}` (or `{\"discover\": {...}}`) to search for candidates without installing them.",
+        "Pass a definition object to add or update it (`add` / `replace` automatically).",
+        "Pass `{\"alias\": \"...\", \"enabled\": true | false}` (or `\"file\"` for `members`) to enable or disable a definition.",
+        "Pass `{\"alias\": \"...\", \"remove\": true}` (or `\"file\"` for `members`) to remove the local definition and restore inheritance.",
+    ].join("\n\n"),
 };
-
-export const questionRuntimeEntry = (): RegistryEntry => ({
-    executor: new QuestionTool(),
-    namespaceOwner: { kind: "module", name: "core" },
-    glyph: plurnkQuestionRuntimeDecl.glyph,
-    summary: plurnkQuestionRuntimeDecl.summary,
-    invocation: plurnkQuestionRuntimeDecl.invocation,
-    details: plurnkQuestionRuntimeDecl.details ?? "",
-    ...(plurnkQuestionRuntimeDecl.resourcesPath === undefined ? {} : { resourcesPath: plurnkQuestionRuntimeDecl.resourcesPath }),
-    available: true,
-    detail: "in-process",
-});
 
 export default class FunctionalityManager extends BaseExecutor {
     readonly #coordinator: Functionality;
     readonly #workspaceId: number;
     readonly #sessionId: number | undefined;
-    readonly #family: string;
-    readonly #entrySource: FunctionalityFamilyEntry | ((workspaceId?: number) => FunctionalityFamilyEntry);
+    readonly #entriesSource: readonly FunctionalityFamilyEntry[] | ((workspaceId?: number) => readonly FunctionalityFamilyEntry[]);
+    readonly #includeQuestionSource: boolean | ((workspaceId?: number) => boolean);
     readonly #executors: (() => ExecutorRegistry | undefined) | undefined;
+    readonly #question: QuestionTool;
 
     constructor(args: FunctionalityManagerOptions) {
-        const entrySource = "entry" in args ? args.entry : args;
-        const initial = typeof entrySource === "function" ? entrySource(args.workspaceId) : entrySource;
-        super({ runtime: `plurnk_${initial.family}`, glyph: "🔌" });
+        super({ runtime: plurnkRuntimeDecl.name, glyph: plurnkRuntimeDecl.glyph });
         this.#coordinator = args.coordinator;
         this.#workspaceId = args.workspaceId ?? 1;
         this.#sessionId = args.sessionId;
-        this.#family = initial.family;
-        this.#entrySource = entrySource;
         this.#executors = args.executors;
-    }
-
-    get family(): string {
-        return this.#family;
-    }
-
-    runtimeDecl(workspaceId?: number): RuntimeDecl & { readonly glyph: string } {
-        return plurnkFamilyRuntimeDecl(this.#entry(workspaceId));
-    }
-
-    static forFamily(args: FunctionalityManagerOptions): FunctionalityManager {
-        return new FunctionalityManager(args);
-    }
-
-    static forQuestion(): QuestionTool {
-        return new QuestionTool();
+        this.#question = new QuestionTool({ runtime: plurnkRuntimeDecl.name, glyph: plurnkRuntimeDecl.glyph });
+        if ("entries" in args) {
+            this.#entriesSource = args.entries;
+            this.#includeQuestionSource = args.includeQuestion ?? true;
+        } else if ("entry" in args) {
+            const entrySource = args.entry;
+            this.#entriesSource = typeof entrySource === "function"
+                ? (workspaceId) => [entrySource(workspaceId)]
+                : [entrySource];
+            this.#includeQuestionSource = args.includeQuestion ?? false;
+        } else {
+            this.#entriesSource = [args];
+            this.#includeQuestionSource = args.includeQuestion ?? false;
+        }
     }
 
     static runtimeRegistrations(
         coordinator: Functionality,
         options: { readonly includeQuestion?: boolean; readonly executors?: () => ExecutorRegistry | undefined } = {},
     ): RuntimeRegistryRegistration[] {
-        const entries = coordinator.familyEntries();
-        const families: RuntimeRegistryRegistration[] = entries.map((initial) => {
-            const decl = plurnkFamilyRuntimeDecl(initial);
-            return {
-                tag: decl.name,
-                entry: {
-                    executor: new FunctionalityManager({
-                        coordinator,
-                        ...(options.executors === undefined ? {} : { executors: options.executors }),
-                        entry: (workspaceId) =>
-                            coordinator.familyEntries(workspaceId).find((candidate) => candidate.family === initial.family) ?? initial,
-                    }),
-                    namespaceOwner: { kind: "module", name: "core" },
-                    glyph: decl.glyph,
-                    summary: decl.summary,
-                    invocation: decl.invocation,
-                    details: decl.details ?? "",
-                    ...(decl.resourcesPath === undefined ? {} : { resourcesPath: decl.resourcesPath }),
-                    available: true,
-                    detail: "in-process",
-                    workspaceDecl: (workspaceId) => {
-                        const current = coordinator.familyEntries(workspaceId).find((candidate) => candidate.family === initial.family) ?? initial;
-                        const currentDecl = plurnkFamilyRuntimeDecl(current);
-                        return { summary: currentDecl.summary, details: currentDecl.details ?? "" };
-                    },
-                },
-            };
-        });
-        if (options.includeQuestion !== false) {
-            families.push({
-                tag: plurnkQuestionRuntimeDecl.name,
-                entry: questionRuntimeEntry(),
-            });
-        }
-        return families;
+        return [{
+            tag: plurnkRuntimeDecl.name,
+            entry: {
+                executor: new FunctionalityManager({
+                    coordinator,
+                    ...(options.executors === undefined ? {} : { executors: options.executors }),
+                    entries: (workspaceId) => coordinator.familyEntries(workspaceId),
+                    includeQuestion: options.includeQuestion ?? true,
+                }),
+                namespaceOwner: { kind: "module", name: "core" },
+                glyph: plurnkRuntimeDecl.glyph,
+                summary: plurnkRuntimeDecl.summary,
+                invocation: plurnkRuntimeDecl.invocation,
+                details: plurnkRuntimeDecl.details ?? "",
+                ...(plurnkRuntimeDecl.resourcesPath === undefined ? {} : { resourcesPath: plurnkRuntimeDecl.resourcesPath }),
+                available: true,
+                detail: "in-process",
+            },
+        }];
     }
 
     // {§functionality-model-projection} — the published manager closes over the coordinator; Core binds
     // the invoking workspace and Session at the operation ({§functionality-coordinator}), so a session-scoped family's
-    // verbs act for that Session. A bound instance is per operation, never retained on the published one.
+    // operations act for that Session. A bound instance is per operation, never retained on the published one.
     forSession(sessionId: number): FunctionalityManager {
         return this.forContext(this.#workspaceId, sessionId);
     }
@@ -219,7 +164,8 @@ export default class FunctionalityManager extends BaseExecutor {
             coordinator: this.#coordinator,
             workspaceId,
             sessionId,
-            entry: this.#entrySource,
+            entries: this.#entriesSource,
+            includeQuestion: this.#includeQuestionSource,
             ...(this.#executors === undefined ? {} : { executors: this.#executors }),
         });
     }
@@ -232,29 +178,75 @@ export default class FunctionalityManager extends BaseExecutor {
         return CHANNEL;
     }
 
+    override get manifest(): SchemeManifest {
+        return {
+            ...OutputScheme.manifestFromRuntime({
+                name: this.runtime,
+                glyph: this.glyph,
+                channels: {
+                    readable: "text/markdown",
+                    [CHANNEL]: "application/json",
+                },
+                defaultChannel: "body",
+                traits: this.traits,
+            }),
+            writableBy: ["_plurnk"],
+            folderScopes: true,
+            textEditScopes: true,
+        };
+    }
+
     override async probe(): Promise<RuntimeAvailability> {
         return { available: true, detail: "workspace Functionality manager" };
     }
 
-    // {§functionality-model-projection} — `list` and `discover` are `read`;
+    // {§functionality-model-projection} — `list`, `discover`, and `question` are `read`;
     // lifecycle mutations (`add`, `replace`, `enable`, `disable`, `remove`) are `host`.
     override effect(target: string | null): Effect {
         return this.effectForInvocation(target, "", this.#workspaceId);
     }
 
-    effectForInvocation(target: string | null, _body = "", workspaceId?: number): Effect {
-        const entry = this.#entry(workspaceId);
-        const verb = target === null || target.length === 0 ? "list" : target;
-        return isFunctionalityVerb(verb) && READ_VERBS.has(verb) && entry.inputSchemas[verb] !== undefined
-            ? "read"
-            : "host";
+    effectForInvocation(target: string | null, body = "", workspaceId?: number): Effect {
+        if (target === "question" && this.#includeQuestion(workspaceId)) {
+            return "read";
+        }
+        const entry = this.#resolveEntry(target, workspaceId);
+        if (entry === undefined) return "host";
+        const verbs = FunctionalityManager.#verbsFor(entry);
+        const trimmed = body.trim();
+        if (trimmed.length === 0) {
+            return verbs.includes("list") ? "read" : "host";
+        }
+        try {
+            const parsed: unknown = JSON.parse(trimmed);
+            if (!isRecord(parsed)) return "host";
+            const { verb } = FunctionalityManager.#resolveInvocation(entry, verbs, parsed);
+            return READ_VERBS.has(verb) && verbs.includes(verb) ? "read" : "host";
+        } catch {
+            return "host";
+        }
     }
 
-    #entry(workspaceId?: number): FunctionalityFamilyEntry {
+    #entries(workspaceId?: number): readonly FunctionalityFamilyEntry[] {
         const targetWorkspace = workspaceId ?? this.#workspaceId;
-        return typeof this.#entrySource === "function"
-            ? this.#entrySource(targetWorkspace)
-            : this.#entrySource;
+        return typeof this.#entriesSource === "function"
+            ? this.#entriesSource(targetWorkspace)
+            : this.#entriesSource;
+    }
+
+    #includeQuestion(workspaceId?: number): boolean {
+        const targetWorkspace = workspaceId ?? this.#workspaceId;
+        return typeof this.#includeQuestionSource === "function"
+            ? this.#includeQuestionSource(targetWorkspace)
+            : this.#includeQuestionSource;
+    }
+
+    #resolveEntry(target: string | null, workspaceId?: number): FunctionalityFamilyEntry | undefined {
+        const entries = this.#entries(workspaceId);
+        if (target === null || target.length === 0) {
+            return entries.length === 1 && !this.#includeQuestion(workspaceId) ? entries[0] : undefined;
+        }
+        return entries.find((candidate) => candidate.family === target);
     }
 
     static #verbsFor(entry: FunctionalityFamilyEntry): FunctionalityVerb[] {
@@ -264,8 +256,110 @@ export default class FunctionalityManager extends BaseExecutor {
     static familySummary(entry: FunctionalityFamilyEntry): string {
         const base = entry.summary ?? `Manage ${entry.family} definitions.`;
         return entry.configurationFailure !== null && entry.configurationFailure !== undefined
-            ? `${base.replace(/\.$/u, "")} — configuration unavailable; inspect with list`
+            ? `${base.replace(/\.$/u, "")} — configuration unavailable; inspect with {}`
             : base;
+    }
+
+    static #mergeProperty(properties: Record<string, JsonSchema>, key: string, prop: JsonSchema): void {
+        if (typeof prop.const === "string") {
+            const existing = properties[key];
+            if (isRecord(existing) && Array.isArray(existing.enum)) {
+                if (!existing.enum.includes(prop.const)) {
+                    properties[key] = { ...existing, enum: [...existing.enum, prop.const] };
+                }
+                return;
+            }
+            const { const: constValue, ...rest } = prop;
+            properties[key] = {
+                ...rest,
+                type: "string",
+                enum: [constValue],
+            };
+            return;
+        }
+        if (!Object.hasOwn(properties, key)) {
+            properties[key] = prop;
+        }
+    }
+
+    static #collectSchemaProperties(
+        schema: JsonSchema | undefined,
+        properties: Record<string, JsonSchema>,
+        defs: Record<string, JsonSchema>,
+    ): void {
+        if (!isRecord(schema)) return;
+        if (isRecord(schema.$defs)) {
+            for (const [defKey, defSchema] of Object.entries(schema.$defs)) {
+                if (isRecord(defSchema) && !Object.hasOwn(defs, defKey)) {
+                    defs[defKey] = defSchema;
+                }
+            }
+        }
+        if (isRecord(schema.properties)) {
+            for (const [key, prop] of Object.entries(schema.properties)) {
+                if (isRecord(prop)) {
+                    FunctionalityManager.#mergeProperty(properties, key, prop);
+                }
+            }
+        }
+        for (const keyword of ["oneOf", "anyOf"] as const) {
+            const branches = schema[keyword];
+            if (Array.isArray(branches)) {
+                for (const branch of branches) {
+                    if (isRecord(branch)) {
+                        FunctionalityManager.#collectSchemaProperties(branch, properties, defs);
+                    }
+                }
+            }
+        }
+    }
+
+    static #familyInputSchema(entry: FunctionalityFamilyEntry, verbs: readonly FunctionalityVerb[]): JsonSchema {
+        const properties: Record<string, JsonSchema> = {};
+        const defs: Record<string, JsonSchema> = {};
+        for (const verb of ["add", "replace", "enable", "disable", "remove", "list"] as const) {
+            if (verbs.includes(verb)) {
+                FunctionalityManager.#collectSchemaProperties(entry.inputSchemas[verb], properties, defs);
+            }
+        }
+        if (verbs.includes("enable") || verbs.includes("disable")) {
+            properties.enabled = {
+                type: "boolean",
+                description: "Enable (true) or disable (false) the definition.",
+            };
+        }
+        if (verbs.includes("remove")) {
+            properties.remove = {
+                type: "boolean",
+                description: "Set true to remove the local definition and restore inheritance.",
+            };
+        }
+        if (verbs.includes("discover") && isRecord(entry.inputSchemas.discover)) {
+            const rawDiscoverProps: Record<string, JsonSchema> = {};
+            FunctionalityManager.#collectSchemaProperties(entry.inputSchemas.discover, rawDiscoverProps, defs);
+            const { scope: _scope, ...discoverProps } = rawDiscoverProps;
+            if (!Object.hasOwn(properties, "scope") && rawDiscoverProps.scope !== undefined) {
+                properties.scope = rawDiscoverProps.scope;
+            }
+            const primaryInput = entry.discovery?.inputs[0] ?? "query";
+            const allowsEmpty = entry.discovery?.emptyListsAll === true;
+            properties.discover = {
+                type: allowsEmpty ? ["string", "object", "boolean"] : ["string", "object"],
+                description: allowsEmpty
+                    ? `Search or list candidates without installing them. Pass a ${primaryInput} string, true / "" to list all, or an object.`
+                    : `Search or inspect candidates without installing them. Pass a ${primaryInput} string or an object.`,
+                ...(Object.keys(discoverProps).length === 0 ? {} : {
+                    properties: discoverProps,
+                    additionalProperties: false,
+                }),
+            };
+        }
+        return {
+            type: "object",
+            additionalProperties: false,
+            properties,
+            ...(Object.keys(defs).length === 0 ? {} : { $defs: defs }),
+        };
     }
 
     static familyDetails(entry: FunctionalityFamilyEntry): string {
@@ -278,7 +372,7 @@ export default class FunctionalityManager extends BaseExecutor {
             sections.push(entry.discovery.details);
         }
         if (verbs.includes("add") && entry.example !== undefined) {
-            sections.push(PlurnkParser.frame(`plurnk_${entry.family} (add)`, JSON.stringify(entry.example)));
+            sections.push(PlurnkParser.frame(`plurnk (${entry.family})`, JSON.stringify(entry.example)));
         }
         const docBody = entry.documentBody === undefined ? "" : stripLeadingHeading(entry.documentBody);
         if (docBody.length > 0) {
@@ -287,42 +381,24 @@ export default class FunctionalityManager extends BaseExecutor {
         return sections.join("\n\n");
     }
 
-    static #verbTool(entry: FunctionalityFamilyEntry, verb: FunctionalityVerb): RuntimeRegisteredTool {
-        const inputSchema = entry.inputSchemas[verb]!;
-        const base = VERB_TEACHING[verb];
-        const summary = verb === "list" && entry.configurationFailure !== null && entry.configurationFailure !== undefined
-            ? `${base.summary.replace(/\.$/u, "")} — configuration unavailable`
-            : base.summary;
-        const detailParts: string[] = [];
-        if (verb === "list" && entry.configurationFailure !== null && entry.configurationFailure !== undefined) {
-            detailParts.push(`> [!WARNING]\n> ${entry.configurationFailure.error.message}`);
-        }
-        detailParts.push(base.details);
-        if (verb === "discover" && entry.discovery?.details !== undefined) {
-            detailParts.push(entry.discovery.details);
-        }
-        if (verb === "add" && entry.example !== undefined) {
-            detailParts.push(PlurnkParser.frame(`plurnk_${entry.family} (add)`, JSON.stringify(entry.example)));
-        }
-        if (verb === "add" && entry.documentBody !== undefined) {
-            const docBody = stripLeadingHeading(entry.documentBody);
-            if (docBody.length > 0) detailParts.push(docBody);
-        }
-        const details = detailParts.join("\n\n");
+    static #familyTool(entry: FunctionalityFamilyEntry): RuntimeRegisteredTool {
+        const verbs = FunctionalityManager.#verbsFor(entry);
+        const summary = FunctionalityManager.familySummary(entry);
+        const inputSchema = FunctionalityManager.#familyInputSchema(entry, verbs);
+        const details = FunctionalityManager.familyDetails(entry);
         const description = [summary, details].filter((part) => part.length > 0).join("\n\n");
-        const bodyRequired = ToolInputSchema.requiredFields(inputSchema).length > 0;
         return {
-            target: verb,
+            target: entry.family,
             summary,
             ...(entry.traits === undefined ? {} : { traits: entry.traits }),
             invocation: {
-                body: { role: "JSON arguments", required: bodyRequired, mimetype: "application/json" },
-                target: { role: `${entry.family} lifecycle verb`, required: true, kind: "literal" },
+                body: { role: "JSON arguments", required: false, mimetype: "application/json" },
+                target: { role: "Plurnk tool", required: true, kind: "literal" },
                 inputSchema,
             },
             ...(details.length === 0 ? {} : { details }),
             definition: {
-                name: verb,
+                name: entry.family,
                 description,
                 inputSchema,
             },
@@ -330,52 +406,119 @@ export default class FunctionalityManager extends BaseExecutor {
     }
 
     toolRegistry(workspaceId?: number): RuntimeToolRegistry {
-        const entry = this.#entry(workspaceId);
-        const tools = FunctionalityManager.#verbsFor(entry)
-            .map((verb) => FunctionalityManager.#verbTool(entry, verb));
+        const familyTools = this.#entries(workspaceId)
+            .filter((entry) => FunctionalityManager.#verbsFor(entry).length > 0)
+            .map((entry) => FunctionalityManager.#familyTool(entry));
+        const tools = this.#includeQuestion(workspaceId)
+            ? [...familyTools, questionRegisteredTool]
+            : familyTools;
         return { tools };
     }
 
+    static #resolveInvocation(
+        entry: FunctionalityFamilyEntry,
+        verbs: readonly FunctionalityVerb[],
+        parsed: Record<string, unknown> | null,
+    ): { verb: FunctionalityVerb; params: Record<string, unknown> } {
+        if (parsed === null) {
+            return { verb: "list", params: {} };
+        }
+        const keys = Object.keys(parsed);
+        const nonScopeKeys = keys.filter((key) => key !== "scope");
+        if (nonScopeKeys.length === 0) {
+            return { verb: "list", params: parsed };
+        }
+        if (Object.hasOwn(parsed, "discover")) {
+            const { discover: rawDiscover, ...rest } = parsed;
+            if (typeof rawDiscover === "string") {
+                if (rawDiscover.trim().length === 0 && entry.discovery?.emptyListsAll === true) {
+                    return { verb: "discover", params: rest };
+                }
+                const primaryInput = entry.discovery?.inputs[0] ?? "query";
+                return { verb: "discover", params: { ...rest, [primaryInput]: rawDiscover } };
+            }
+            if (rawDiscover === true) {
+                return { verb: "discover", params: rest };
+            }
+            if (isRecord(rawDiscover)) {
+                return { verb: "discover", params: { ...rest, ...rawDiscover } };
+            }
+            return { verb: "discover", params: parsed };
+        }
+        if (Object.hasOwn(parsed, "remove")) {
+            if (parsed.remove === true) {
+                const { remove: _remove, ...rest } = parsed;
+                return { verb: "remove", params: rest };
+            }
+            return { verb: "remove", params: parsed };
+        }
+        if (
+            Object.hasOwn(parsed, "enabled")
+            && nonScopeKeys.every((key) => key === "enabled" || key === "alias" || key === "file")
+        ) {
+            if (typeof parsed.enabled === "boolean") {
+                const verb: FunctionalityVerb = parsed.enabled ? "enable" : "disable";
+                const { enabled: _enabled, ...rest } = parsed;
+                return { verb, params: rest };
+            }
+            return { verb: "enable", params: parsed };
+        }
+        const upsertVerb: FunctionalityVerb = verbs.includes("add") ? "add" : (verbs.includes("replace") ? "replace" : "add");
+        if (parsed.enabled === true) {
+            const { enabled: _enabled, ...rest } = parsed;
+            return { verb: upsertVerb, params: rest };
+        }
+        return { verb: upsertVerb, params: parsed };
+    }
+
     override async run(args: ExecArgs): Promise<ExecResult> {
-        const entry = this.#entry(this.#workspaceId);
-        const verbs = FunctionalityManager.#verbsFor(entry);
-        const rawTarget = args.target === null || args.target.length === 0
-            ? (args.body.trim().length === 0 && verbs.includes("list") ? "list" : "")
-            : args.target;
-        if (!isFunctionalityVerb(rawTarget) || !verbs.includes(rawTarget)) {
-            return Results.failure("functionality", "verb-unknown", 400, `'${rawTarget}' is not a ${entry.family} lifecycle verb.`, {}, {
-                recovery: `Select one of ${verbs.join(", ")}.`,
+        const target = args.target;
+        if (target === "question" && this.#includeQuestion(this.#workspaceId)) {
+            return this.#question.run(args);
+        }
+        const entry = this.#resolveEntry(target, this.#workspaceId);
+        if (entry === undefined) {
+            const available = this.toolRegistry(this.#workspaceId).tools.map((tool) => tool.target);
+            return Results.failure("functionality", "verb-unknown", 400, `'${target ?? ""}' is not a plurnk tool.`, {}, {
+                recovery: `Select one of ${available.join(", ")}.`,
                 retryable: false,
             });
         }
-        const verb: FunctionalityVerb = rawTarget;
-        let params: unknown = {};
+        const verbs = FunctionalityManager.#verbsFor(entry);
+        let parsedBody: Record<string, unknown> | null = null;
         if (args.body.trim().length > 0) {
             let parsed: unknown;
             try {
                 parsed = JSON.parse(args.body);
             } catch (cause) {
-                return Results.failure("functionality", "arguments-not-json", 400, `The ${entry.family} ${verb} body must be a JSON object.`, {}, {
+                return Results.failure("functionality", "arguments-not-json", 400, `The ${entry.family} body must be a JSON object.`, {}, {
                     recovery: "Supply a JSON object body.",
                     retryable: false,
                     cause: ErrorDetail.preview(cause),
                 });
             }
             if (!isRecord(parsed)) {
-                return Results.failure("functionality", "arguments-invalid", 400, `The ${entry.family} ${verb} body must be a JSON object.`, {}, {
+                return Results.failure("functionality", "arguments-invalid", 400, `The ${entry.family} body must be a JSON object.`, {}, {
                     recovery: "Supply a JSON object body.",
                     retryable: false,
                 });
             }
-            params = parsed;
+            parsedBody = parsed;
+        }
+        const resolved = FunctionalityManager.#resolveInvocation(entry, verbs, parsedBody);
+        let verb = resolved.verb;
+        const params = resolved.params;
+        if (!verbs.includes(verb)) {
+            return Results.failure("functionality", "verb-unknown", 400, `'${verb}' is not a ${entry.family} lifecycle verb.`, {}, {
+                recovery: `Select one of ${verbs.join(", ")}.`,
+                retryable: false,
+            });
         }
         const identity = { workspaceId: this.#workspaceId, ...(this.#sessionId === undefined ? {} : { sessionId: this.#sessionId }) };
-        let result: { status: number; body: unknown };
-        let refusal: ExecResult | null = null;
-        try {
-            result = await this.#coordinator.invoke(
+        const invokeVerb = async (candidateVerb: FunctionalityVerb) =>
+            this.#coordinator.invoke(
                 entry.family,
-                verb,
+                candidateVerb,
                 params,
                 identity,
                 "operation",
@@ -395,6 +538,25 @@ export default class FunctionalityManager extends BaseExecutor {
                 },
                 args.signal,
             );
+        let result: { status: number; body: unknown };
+        let refusal: ExecResult | null = null;
+        try {
+            try {
+                result = await invokeVerb(verb);
+            } catch (firstCause) {
+                const firstProblem = Problems.fromError(firstCause);
+                if (
+                    verb === "add"
+                    && verbs.includes("replace")
+                    && firstProblem !== null
+                    && firstProblem.type.endsWith("/alias-exists")
+                ) {
+                    verb = "replace";
+                    result = await invokeVerb("replace");
+                } else {
+                    throw firstCause;
+                }
+            }
         } catch (cause) {
             // {§functionality-model-projection} — a coordinator refusal (alias taken, scope, admission) is the
             // verb's own outcome with its own status, never an executor fault: it streams as the result,

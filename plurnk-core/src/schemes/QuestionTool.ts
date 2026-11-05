@@ -6,15 +6,13 @@ import type {
     ExecResult,
     ExecutorMetadata,
     RuntimeAvailability,
-    RuntimeDecl,
     RuntimeRegisteredTool,
-    RuntimeToolRegistry,
 } from "@plurnk/plurnk-execs";
 import { Validator, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
 import { OperationFailureError } from "../core/results.ts";
 
-// {§question-tool} — the native request-user-input runtime `plurnk_question`.
-// The model asks the human through `plurnk_question (ask)`, wired directly against the
+// {§question-tool} — the native request-user-input tool on the `plurnk` runtime.
+// The model asks the human through `plurnk (question)`, wired directly against the
 // standard client-interaction lifecycle (no loopback MCP, no proposal masquerade).
 // The body is the MCP2 2026-07-28 form-elicitation shape verbatim —
 // `{ message, requestedSchema }` — and the result is the standard
@@ -51,36 +49,24 @@ const QUESTION_DETAILS = `## Inputs
 The result is \`{ "action": "accept", "content": <answer> }\`, \`{ "action": "decline" }\`, or \`{ "action": "cancel" }\`; a waiting loop resumes when the answer arrives.`;
 
 export const questionRegisteredTool: RuntimeRegisteredTool = {
-    target: "ask",
+    target: "question",
     summary: QUESTION_SUMMARY,
     traits: ["interaction"],
     invocation: {
-        target: { role: "Question tool", kind: "literal", required: true },
+        target: { role: "Plurnk tool", kind: "literal", required: true },
         body: { role: "MCP2 form-elicitation object", required: true, mimetype: "application/json" },
         inputSchema: QUESTION_INPUT_SCHEMA,
     },
     details: QUESTION_DETAILS,
     definition: {
-        name: "ask",
+        name: "question",
         description: `${QUESTION_SUMMARY}\n\n${QUESTION_DETAILS}`,
         inputSchema: QUESTION_INPUT_SCHEMA,
     },
 };
 
-export const plurnkQuestionRuntimeDecl: RuntimeDecl & { readonly glyph: string } = {
-    name: "plurnk_question",
-    glyph: "🔌",
-    summary: { from: "tools", description: QUESTION_SUMMARY },
-    resourcesPath: "/tools",
-    invocation: {
-        target: { role: "Question tool", kind: "literal", required: true },
-        body: { role: "MCP2 form-elicitation object", required: true, mimetype: "application/json" },
-        example: { target: "ask", body: '{"message": "Which branch?", "requestedSchema": {"type": "object"}}' },
-    },
-};
-
 export default class QuestionTool extends BaseExecutor {
-    constructor(metadata: ExecutorMetadata = { runtime: "plurnk_question", glyph: "🔌" }) {
+    constructor(metadata: ExecutorMetadata = { runtime: "plurnk", glyph: "🔌" }) {
         super(metadata);
     }
 
@@ -90,10 +76,6 @@ export default class QuestionTool extends BaseExecutor {
 
     get channels(): Readonly<Record<string, ChannelDecl>> {
         return { results: { mimetype: "application/json" } };
-    }
-
-    toolRegistry(): RuntimeToolRegistry {
-        return { tools: [questionRegisteredTool] };
     }
 
     override effect(_target: string | null): Effect {

@@ -186,10 +186,10 @@ export default class InitializationTurn {
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                runtime: "plurnk_mcp",
+                runtime: "plurnk",
                 aside: null,
                 metadata: null,
-                target: { kind: "local", raw: "list" },
+                target: { kind: "local", raw: "mcp" },
                 lineMarker: null,
                 body: null,
                 position: UNKNOWN_POSITION,

@@ -223,7 +223,7 @@ export default class FunctionalityState {
                             retryable: false,
                         });
                     }
-                    definitions[alias] = { origin: local, definition: admission.definition, enabled: verb === "replace" ? current?.enabled ?? true : true };
+                    definitions[alias] = { origin: local, definition: admission.definition, enabled: verb === "replace" || caller === "operation" ? current?.enabled ?? true : true };
                     if (current?.origin !== local) status = 201;
                     aliases.push(alias);
                 }
