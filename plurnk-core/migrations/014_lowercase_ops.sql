@@ -10,7 +10,7 @@ END;
 INSERT INTO _support_floor_probe (id) VALUES (1);
 DROP TABLE _support_floor_probe;
 
--- {§db-migrations} {§op-dispatch} {§env-delta} Lowercase the 15 core operation tokens across schema constraints, triggers, views, and persisted rows.
+-- {§db-migrations} {§op-methods-op-dispatch} {§env-delta} Lowercase the 15 core operation tokens across schema constraints, triggers, views, and persisted rows.
 DROP TRIGGER IF EXISTS log_entries_ambient_event_once;
 DROP TRIGGER IF EXISTS log_entries_immutable_core;
 
