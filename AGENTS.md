@@ -76,7 +76,7 @@ extensions included in the default installation. The terminal client is a separa
 - `plurnk-mcp` owns MCP server configuration, connections, OAuth continuation,
   tool and resource projection (`mcp://`), and MCP runtime execution.
 - `plurnk-skills` and `plurnk-agent-skills` own the skill contract, `skill://`
-  and `plurnk:///skills/` projection, and conventional `SKILL.md` discovery.
+  projection, and conventional `SKILL.md` discovery.
 - `plurnk-agent-plugins` owns `plugin.json` discovery and
   containment across operator plugin roots.
 - `plurnk-schedule` owns durable cron and one-shot `schedule` Functionality.

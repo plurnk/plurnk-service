@@ -20,7 +20,7 @@ A `project` persona shadows a `plurnk` one of the same name, which shadows an
 `xdg-global` one, which shadows a `global` one. Plugin personas join their
 installation's scope after standalone personas; npm bundles follow global roots.
 The cascading environment can define or replace a persona above them;
-`plurnk (personas)` or `EDIT (persona://<name>/PERSONA.md)` creates a
+`plurnk.personas` or `await plurnk.edit({ path: "persona://<name>/PERSONA.md", content });` creates a
 workspace override above that. Declared personas are enabled by default. A
 disabled persona remains listed but has no resource tree.
 
@@ -37,7 +37,7 @@ empty definition is invalid.
 
 ## Reading, applying, and editing a persona
 
-Read a persona at `READ (persona://<name>/PERSONA.md)` (or the shorthand
+Read a persona at `await plurnk.read({ path: "persona://<name>/PERSONA.md" });` (or the shorthand
 `persona://<name>.md`). Apply a persona to a session by copying it to that
 session's instruction sheet:
 

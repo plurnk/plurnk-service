@@ -149,7 +149,7 @@ flowchart LR
 - **Session isolation & attribution**: A packet renders only the assembling session's log alongside shared workspace state ({§packet}, {§membership}). `origin` (`model \| client \| _plurnk`, {§scheme-surface}) records provenance ({§env-delta}) and never filters rows. Client management commands mutate workspace Functionality ({§module-lifecycle}) while client ops journal in `_plurnk` ({§connection-lifecycle}).
 - **Two cross-session doors**:
   1. *Environment door*: Direct child durable activity ({§env-delta}) enters only the direct parent's log (never republished to grandparents), and successful mutations of `workspace:///` emit one broadcast occurrence to every existing session (unioned with parent lineage so a parent never gets duplicate rows). Intermediate child activity and commons broadcasts never wake; only a child's terminal disposition wakes a parked parent ({§session-loop-lifecycle}).
-  2. *Voice door*: Directed `runLoop` (`session/prompt`), `SEND (session://name)`, or exact-message replies ({§message-arrival}) enter the addressed session's log and wake idle or waiting work.
+  2. *Voice door*: Directed `runLoop` (`session/prompt`), `plurnk.send({ target: "session://name", text })`, or exact-message replies ({§message-arrival}) enter the addressed session's log and wake idle or waiting work.
 - **No mutex & self-hosting**: Sessions share workspace state without session locks; stale writes reject at anchor or revision boundaries ({§line-anchors}, {§file-snapshot-revision}). Work with an operation runs as the unmintable `_plurnk` session (`DispatchAsPlurnk` for reference materialization), while git membership ingestion, disk-divergence `source=file` narration, search derivation, and packet/budget rails stay in the kernel.
 
 ### §session-ownership Session ownership and client interaction routing
@@ -164,7 +164,7 @@ Every session has one durable workspace-scoped approval owner (`session_owners`)
 Workspace reference documents and consolidated global instructions are materialized into `plurnk:///` and `mcp:///` through `_plurnk` maintenance turns whose loops are excluded from `work_loops` ({§application-session-observation}) and emit no ambient broadcasts.
 
 - **Global, project, and session instructions**: LoopDocs materializes consolidated global XDG `AGENTS.md` and `AGENTS.local.md` ({§packet-inject}) at `plurnk:///AGENTS.md` and `plurnk:///AGENTS.local.md`. Root `<projectRoot>/AGENTS.md` and `<projectRoot>/AGENTS.local.md` (regardless of git ignore status, unless excluded) and nested `<projectRoot>/<subtree>/AGENTS.md` (unless ignored or excluded) and `<projectRoot>/<subtree>/AGENTS.local.md` (regardless of git ignore status, unless excluded) within the root repository (stopping at any nested `.git` repository or submodule boundary, #1400) are admitted at their real project paths (#1350, #1353). Global `plurnk:///AGENTS.md` and `plurnk:///AGENTS.local.md`, root `<projectRoot>/AGENTS.md` and `<projectRoot>/AGENTS.local.md`, and `session://<session>/AGENTS.md` ride the `system-policy` packet section on every turn ({§packet-assembly}) rather than turn-0 `READ`s (#1392). Absent files produce no entry and no `404`.
-- **Catalog preview (`PLURNK_SERVICE_FILES_ITEMS`)**: When non-zero (`-1` for markerless page, positive `N` to cap `*`), turn 0 foists bodyless `FIND` surveys, `plurnk (mcp)`, and `READ (mcp:///plurnk.md)` in order: `skill://*/SKILL.md` (`<1,-1>`, {§skills-sources}), `persona://*/PERSONA.md` (`<1,-1>`, {§persona-discovery}), `plurnk:///*.md` (`<1,-1>`, {§tools-resource-materialization}), `plurnk (mcp)` ({§functionality-model-projection}), `READ (mcp:///plurnk.md) <1,-1>` ({§functionality-model-projection}), `*` (`project root member files`), `workspace:///*` (`workspace knowledgebase entries`), and `session://<session>/*` (`session knowledgebase entries`). Unregistered schemes/runtimes and non-`session://` surveys selecting zero items are omitted before recording; `session://<session>/*` always runs so the session observes its own scratch namespace.
+- **Catalog preview (`PLURNK_SERVICE_FILES_ITEMS`)**: When non-zero (`-1` for markerless page, positive `N` to cap `*`), turn 0 foists bodyless `FIND` surveys, `plurnk.mcp`, and `READ`s in order: `skill://*/SKILL.md` (`1,-1`, {§skills-sources}), `plurnk.read({ path: "skill://plurnk/SKILL.md", range: "1,-1" })` ({§tools-resource-materialization}), `persona://*/PERSONA.md` (`1,-1`, {§persona-discovery}), `plurnk.mcp({})` ({§functionality-model-projection}), `plurnk.read({ path: "mcp:///plurnk.md", range: "1,-1" })` ({§functionality-model-projection}), `plurnk.read({ path: "mcp:///plurnk/todo.json" })` ({§functionality-model-projection}), `plurnk:///*.md` (`1,-1`, {§tools-resource-materialization}), `*` (`project root member files`), `workspace:///*` (`workspace knowledgebase entries`), and `session://<session>/*` (`session knowledgebase entries`). Unregistered schemes/runtimes and non-`session://` surveys selecting zero items are omitted before recording; `session://<session>/*` always runs so the session observes its own scratch namespace.
 - **Turn-0 execution**: A model session's first loop starts with one packetless `{ producer="_plurnk", kind="initialization" }` turn (`init` rows) submitted through {§turn-record} and {§op-methods-op-dispatch}, framed by opening and closing `TODO`s when any survey runs, with no fabricated emission row ({§turn-source-resources}). Initial messages arrive in the first model turn (sequence `2`, {§message-arrival}).
 
 ### §machine-processes Session topology, fork, archiving, and deletion
@@ -190,12 +190,12 @@ flowchart TB
 ### §session-scheme Session scheme addressing, delegation, and collection
 
 - **Authority & scratch scope**: `session://<name>/<path>` keys workspace entries by literal `authority = <name>` (`workspace:///<path>` has `authority = ""`; `session:///<path>` is refused with `400 named-session-required` pointing to `workspace:///`). Any session in the workspace can `READ`, `FIND`, `EDIT`, `COPY`, `MOVE`, or `KILL` any `session://<name>/<path>` entry without ancestry checks ({§execution-output-identity}, {§scheme-address}), and entries outlive their namesake session. `plurnk:///` and `mcp:///` are read-only reference schemes reconciled by `_plurnk` ({§tools-resource-materialization}, {§skills-sources}).
-- **Minting & control addressing**: Minted session names must match `SESSION_NAME` ({§path-syntax}, `^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$`, case-sensitive; `_plurnk` is unmintable, though readable by `readLog` / {§methods-workspace-create}). Session control addresses (`WORK`, `FORK`, `SEND`, `READ`, `KILL`) must be authority-only `session://<name>` with no userinfo, port, pathname, query, or fragment (`400 control-address-invalid`), `~` is never an alias, and `EDIT (session://<name>)` fails with `400 session-entity-not-editable`.
+- **Minting & control addressing**: Minted session names must match `SESSION_NAME` ({§path-syntax}, `^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$`, case-sensitive; `_plurnk` is unmintable, though readable by `readLog` / {§methods-workspace-create}). Session control addresses (`WORK`, `FORK`, `SEND`, `READ`, `KILL`) must be authority-only `session://<name>` with no userinfo, port, pathname, query, or fragment (`400 control-address-invalid`), `~` is never an alias, and `plurnk.edit` on `session://<name>` fails with `400 session-entity-not-editable`.
 - **Delegation (`WORK`, `FORK`) and messaging (`SEND`, `KILL`)**:
-  - `WORK (session://<name>)` spawns a fresh child if `<name>` is unused ({§connection-lifecycle}), or delivers its non-empty body as a message to the existing session `<name>` (`attrs.delivered = "message"`). Omitting `(session://<name>)` auto-allocates an 8-hex-character name ({§execution-output-identity}). Passing a non-`session://` resource path on `WORK (<path>)` reads that resource whole (`<1,-1>`) as the prompt (composed with any inline body, {§op-methods-op-dispatch}) and auto-names the child.
-  - `FORK (session://<name>)` (or addressless `FORK`) branches the calling session into a fresh name; if `<name>` already exists, `FORK` fails with `409 session-name-conflict` naming `WORK or SEND (session://<name>)`. Inherited loops are terminal so {§loop-completion} sees only the branch's new loop. Both `WORK` and `FORK` enforce `PLURNK_SERVICE_WORKSPACE_SESSIONS_MAX_ACTIVE` (`508`) and require a non-empty prompt (`422 spawn-prompt-empty`).
-  - `SEND (session://<name>)` delivers a non-empty message or attachment ({§op-methods-op-dispatch}; `422 message-empty` when blank, `404` when absent) to `<name>`, folded into a running loop or queued as a new loop (`202` parked loops re-queue to `100` without firing terminal hooks). `KILL (session://<name>)` cancels the session's active tree (`404` when absent).
-- **Collection (`READ (session://<name>)` and `ops://<name>/<L>`)**: Each concluded child loop reaches its direct parent as an `_plurnk` `READ` of `ops://<name>/<L>` ({§message-completion}, {§message-arrival}, {§env-delta}), and `READ (session://<name>)` (or `ops://<name>/<L>`) collects that same terminal result on demand without `lineAnchors` ({§session-loop-lifecycle}): `404` if absent, `425 loop-running` (`resource: "ops://<name>/<L>"`) while unresolved, `200` with answer content on completion, or the child's exact failure status and Problem on error.
+  - `plurnk.work({ target: "session://<name>", prompt })` spawns a fresh child if `<name>` is unused ({§connection-lifecycle}), or delivers its non-empty prompt as a message to the existing session `<name>` (`attrs.delivered = "message"`). Omitting `target` auto-allocates an 8-hex-character name ({§execution-output-identity}). Passing a non-`session://` resource path on `plurnk.work({ path: "<path>" })` reads that resource whole (`1,-1`) as the prompt (composed with any inline prompt, {§op-methods-op-dispatch}) and auto-names the child.
+  - `plurnk.fork({ target: "session://<name>", prompt })` (or addressless `plurnk.fork`) branches the calling session into a fresh name; if `<name>` already exists, `FORK` fails with `409 session-name-conflict` naming `plurnk.work` and `plurnk.send` on `session://<name>`. Inherited loops are terminal so {§loop-completion} sees only the branch's new loop. Both `WORK` and `FORK` enforce `PLURNK_SERVICE_WORKSPACE_SESSIONS_MAX_ACTIVE` (`508`) and require a non-empty prompt (`422 spawn-prompt-empty`).
+  - `plurnk.send({ target: "session://<name>", text })` delivers a non-empty message or attachment ({§op-methods-op-dispatch}; `422 message-empty` when blank, `404` when absent) to `<name>`, folded into a running loop or queued as a new loop (`202` parked loops re-queue to `100` without firing terminal hooks). `plurnk.kill({ path: "session://<name>" })` cancels the session's active tree (`404` when absent).
+- **Collection (`plurnk.read({ path: "session://<name>" })` and `ops://<name>/<L>`)**: Each concluded child loop reaches its direct parent as an `_plurnk` `READ` of `ops://<name>/<L>` ({§message-completion}, {§message-arrival}, {§env-delta}), and `plurnk.read({ path: "session://<name>" })` (or `ops://<name>/<L>`) collects that same terminal result on demand without `lineAnchors` ({§session-loop-lifecycle}): `404` if absent, `425 loop-running` (`resource: "ops://<name>/<L>"`) while unresolved, `200` with answer content on completion, or the child's exact failure status and Problem on error.
 
 ### §child-orientation Open-work orientation and Session footer
 
@@ -278,7 +278,7 @@ stateDiagram-v2
 | Invariant | Contract |
 | --- | --- |
 | State machine and terminal result | Only `100 → 102`, `102 → 202`, `202 → 100`, and unresolved-to-terminal transitions are admitted; terminal rows are immutable and must carry `loops.terminal_result` (exact status and RFC 9457 Problem Details), while active rows have `terminal_result = NULL`. Completion and cancellation never borrow the last reply's body. |
-| Independent collection (`425`) | Reading an unfinished child (`READ (session://<running-child>)`) returns `425 Too Early` without a strike or scheduler side effect; `WAIT` joins live obligations ({§loop-completion}). |
+| Independent collection (`425`) | Reading an unfinished child (`plurnk.read({ path: "session://<running-child>" })`) returns `425 Too Early` without a strike or scheduler side effect; `WAIT` joins live obligations ({§loop-completion}). |
 | Stream and child wake matrices | Streams are durable session subscriptions (`[0].stream: { state, ... }`, {§subscriptions}). At `WAIT`, open streams or live children park the loop (`202`); closed streams or terminated children with undelivered results continue immediately (`102`) to observe the terminal delta; `[0]` or `[{"lifetime":"turn"}]` streams reap at the next pre-turn boundary. |
 
 ### §session-wait-timing Durable waits, wake identity, and execution allowance
@@ -366,7 +366,7 @@ Core decomposes targets via RFC 3986 / WHATWG URL parsing ({§path-syntax}): nam
 | `<runtime>` (`sh`, etc.) | `streaming` | `<runtime>:///<id>`; workspace-owned execution output | Created by runtime invocation; `READ`/`FIND` streams (`lineAnchors: true`), `SEND` stdin, `KILL` process |
 | `log` | `data` | `log:///<loop>/<turn>/<seq>/<op>`; session-owned log receipts | `READ`, `FIND`, and context-curation `KILL` |
 | `message`, `ops`, `reasoning`, `note` | `data` | `<scheme>://[<session>]/<coordinate>`; session-owned turn sources | Immutable turn-source evidence; `READ` and `FIND` (`lineAnchors: true`) |
-| `plurnk` | `control` | `plurnk (<family>\|question)`; control target | Administers `env`, `members`, `mcp`, `personas`, `skills`, `schedule`, or owner questions |
+| `plurnk` | `control` | `plurnk.<family\|question>`; control target | Administers `env`, `members`, `mcp`, `personas`, `skills`, `schedule`, or owner questions |
 
 ### §fs-namespace Filesystem Namespace, Canonical Naming, and Refusals
 
@@ -376,8 +376,8 @@ All `file` operations resolve targets through `Namespace` and `plurnk-uri` befor
 | --- | --- |
 | Name resolution & home expansion | Local paths and `file://` URLs (decoded once from percent-encoding; rejecting `%00`, `%2F`, invalid UTF-8, or non-empty hostnames with `400 invalid-file-url`) resolve against `project_root` (or `os.homedir()` for `~` / `~/...`). A literal in-root `~` segment is written `./~`. |
 | Canonical key & wire canon | Inside `project_root`, the stored `entries.pathname` and wire address are the normalized relative path (`src/a.ts`); outside `project_root`, the stored key is the relative climb (`../sibling/a.ts`) while model-facing wire/problem rendering spells the absolute path. Model-authored non-canonical spellings (`/abs/in/root` or `~/...`) resolve to the canonical key and emit a `path_normalized` notice. |
-| Visibility & directory targets | Only paths granted by `git` or `constraint` (`members` / `create`) exist in `file`. Addressing a directory on `READ` or `KILL` returns `404 path-is-directory` with recovery `FIND (<dir>/)`; on `EDIT` it returns `403 path-is-directory`; on `FIND (<dir>)` (with or without trailing `/` for in-root directories) it surveys member descendants. |
-| Read/miss refusals | Inside `project_root`, a missing path returns `404 entry-not-found` naming `FIND`, `EDIT`, and `plurnk (members)`, while outside `project_root` a missing path returns `404 entry-not-found` naming the absolute address and the `namespace` scope requirement; an on-disk non-member file (inside or outside `project_root`) returns `404 entry-not-member` naming either the active exclusion rule, the ignoring Git file and line (`.gitignore`, `.git/info/exclude`, user excludes), or `plurnk (members)`. |
+| Visibility & directory targets | Only paths granted by `git` or `constraint` (`members` / `create`) exist in `file`. Addressing a directory on `READ` or `KILL` returns `404 path-is-directory` with recovery `await plurnk.find({ path: "<dir>/" });`; on `EDIT` it returns `403 path-is-directory`; on `plurnk.find({ path: "<dir>" })` (with or without trailing `/` for in-root directories) it surveys member descendants. |
+| Read/miss refusals | Inside `project_root`, a missing path returns `404 entry-not-found` naming `FIND`, `EDIT`, and `plurnk.members`, while outside `project_root` a missing path returns `404 entry-not-found` naming the absolute address and the `namespace` scope requirement; an on-disk non-member file (inside or outside `project_root`) returns `404 entry-not-member` naming either the active exclusion rule, the ignoring Git file and line (`.gitignore`, `.git/info/exclude`, user excludes), or `plurnk.members`. |
 
 ### §fs-write-surface Filesystem Write Surface and Creation Incorporation
 
@@ -403,7 +403,7 @@ Core executes admitted statements sequentially in authored order within a turn:
 
 | Mechanism | Contract |
 | --- | --- |
-| Sequential execution & cancellation | Each statement observes the resource and log state committed by earlier statements in the same turn (except `log` `KILL`, which snapshots pre-program log rows so a turn cannot curate its own in-flight receipts). Runtime `plurnk (mcp)` mutations update parser executor tags for subsequent statements in the same turn. Aborting the loop signal stops dispatch after the current settled effect and marks the turn `499`. |
+| Sequential execution & cancellation | Each statement observes the resource and log state committed by earlier statements in the same turn (except `log` `KILL`, which snapshots pre-program log rows so a turn cannot curate its own in-flight receipts). Runtime `plurnk.mcp` mutations update parser executor tags for subsequent statements in the same turn. Aborting the loop signal stops dispatch after the current settled effect and marks the turn `499`. |
 | `EDIT` batches & anchor continuity | Multiple `EDIT`s to the same resource or a single `EDIT` with multiple regions execute against successive states, carrying forward untouched `@hash` line anchors across numeric splices ({§line-anchors}), tolerating `@hash+N`/`@hash-N` offsets, and merging adjacent rendered prefix echoes when uniquely evidenced. |
 | Bulk resource targeting (globs) | A glob target on `READ`, `EDIT`, or `KILL` expands against the full unpaged `FIND` match set in deterministic path order, subject to `maxCommands` (`PLURNK_SERVICE_MAX_COMMANDS`). Empty `EDIT`/`KILL` globs produce one `204` receipt. `COPY` and `MOVE` require each glob operand to match exactly one resource (`400 target-cardinality` otherwise). |
 | `BARE` inference & `SEND` attachments | `BARE` resolves its prompt (inline body or single-resource target), selects the loop's child provider policy (`spawn_model_route_id`, `PLURNK_MODEL_CHILD`, or parent route), and runs one toolless, historyless inference call. `SEND` on entry schemes without a `send` handler returns `501`; `SEND` with `[path]` metadata attaches resolved resource snapshots into durable `message_envelopes`. |
@@ -456,7 +456,7 @@ URL fragments (`#channel`) select channels across `READ`, `FIND`, `EDIT`, `COPY`
 
 | Rule | Contract |
 | --- | --- |
-| Default vs. named fragment | Fragment-less targets select `manifest.defaultChannel` (`body` for data schemes, `stdout` for `exec`). A `#channel` fragment selects that named channel; `EDIT` with a fragment on a non-existent entry returns `404`, and `KILL (path#channel)` deletes only that channel. Unknown channels return `404 channel-not-found` listing `availableChannels` (and naming the execution stream URI when a `log` execution receipt is addressed with `#stdout`/`#stderr`). |
+| Default vs. named fragment | Fragment-less targets select `manifest.defaultChannel` (`body` for data schemes, `stdout` for `exec`). A `#channel` fragment selects that named channel; `EDIT` with a fragment on a non-existent entry returns `404`, and `plurnk.kill({ path: "path#channel" })` deletes only that channel. Unknown channels return `404 channel-not-found` listing `availableChannels` (and naming the execution stream URI when a `log` execution receipt is addressed with `#stdout`/`#stderr`). |
 | `#readable` sibling channel | When an HTML or rich-text source is written or fetched into `body`, core derives its Markdown projection into the sibling `#readable` channel (`text/markdown`), refreshing or removing `#readable` whenever `body` changes. `#readable` is read-only (`400 channel-derived` on `EDIT`, `COPY`/`MOVE` destination, or `MOVE` source; `COPY` from `#readable` is allowed). |
 | Decision-time visibility | Catalog `FIND` emits a resource's channel group with the default channel first and non-empty siblings (`#readable`, `#stderr`) beside it; channel-scoped `FIND` matches and ranks in the addressed channel's coordinates (omitting `channel` on match locations only when it is the default channel); and `READ` on a multi-channel entry returns sibling channel token weights in `channels` (e.g., `{"#readable": 420}`). |
 
@@ -481,9 +481,8 @@ token      = base62( sha256(utf8(hash_input))[0..4] )   // 5 base62 chars from f
 
 ## §edit EDIT
 
-```text
-EDIT (<target>) [<scope>] [<pattern>] [<!-- aside -->]
-<body>
+```ts
+await plurnk.edit({ path: "<target>", range: "<scope>", pattern: "<pattern>", content: "<body>" }); // aside
 ```
 
 | Form | Behavior |
@@ -497,7 +496,7 @@ EDIT (<target>) [<scope>] [<pattern>] [<!-- aside -->]
 
 ### §edit-pattern Pattern EDIT
 
-An `EDIT (<target>) [<scope>] <pattern>` selects matching spans within the canonical source (bounded by `<scope>` when present) and replaces each matched span literally with `body` (no capture-group interpolation):
+An `await plurnk.edit({ path: "<target>", range?: "<scope>", pattern: "<pattern>", content: "<body>" })` selects matching spans within the canonical source (bounded by `<scope>` when present) and replaces each matched span literally with `body` (no capture-group interpolation):
 
 - **Regex / literal / FTS5 / structural (JSONPath, XPath, `&graph`)**: replaces each matched character region; a glob with metacharacters replaces each matched whole line.
 - **Zero matches**: returns `204` with `matched: 0` and leaves the resource unchanged.
@@ -506,8 +505,8 @@ An `EDIT (<target>) [<scope>] <pattern>` selects matching spans within the canon
 
 ## §read READ
 
-```text
-READ (<target>) [<scope>] [<pattern>] [<!-- aside -->]
+```ts
+await plurnk.read({ path: "<target>", range: "<scope>", pattern: "<pattern>" }); // aside
 ```
 
 | Form | Behavior |
@@ -532,12 +531,12 @@ The session log (`log:///<L>/<T>/<A>[/<leaf>]`) is an append-only SQLite ledger 
 
 - **Coordinates**: `L` (1-indexed loop sequence), `T` (1-indexed turn sequence within loop), `A` (1-indexed action sequence within turn). The optional `/<leaf>` suffix names the op or kind (`READ`, `EDIT`, `emission`, `reasoning`) and aliases the same row. Foreign session authorities (`log://other/...`) are refused `400`.
 - **Immutability & redaction**: Core `log_entries` columns and `log_curation_effects` rows are protected by SQLite triggers and cascade only when containing history is deleted. Before any durable persistence, Packet assembly, fork hydration, or Digest export, URL `username`/`password` and `metadata` slots are replaced with `"__redacted__"` while query strings remain visible; packet log rendering omits redacted `metadata` slots.
-- **Direct curation**: `KILL (log:///...)` is an active-context meta-operation; a successful `log:///` `KILL` never renders its own receipt in the packet, whereas non-log `KILL` receipts (e.g., workspace/file deletions) render and remain visible.
+- **Direct curation**: `plurnk.kill` on `log:///...` is an active-context meta-operation; a successful `log:///` `KILL` never renders its own receipt in the packet, whereas non-log `KILL` receipts (e.g., workspace/file deletions) render and remain visible.
 
 ### §log-kill-scope Scoped curation, distillation & readable projection
 
-- **Row retirement vs. line trimming**: An unscoped `KILL (log:///<target>)` (including globs, folder scopes `log:///1/`, and brace sets `{READ,NOTE}`) retires matched rows (`active = 0`). A scoped `KILL (log:///<L>/<T>/<A>) <range|pattern>` folds the selected 1-indexed body lines into canonical merged intervals in `log_entry_projection.folded`. Scope `<0,-1>` fails `416` with recovery guidance.
-- **Distillation**: A `KILL (log:///...)` with a non-whitespace body writes a model `NOTE` row at the next sequence with `attrs.distilled` naming the target as written (even if the `KILL` missed with `404`), retaining the note as a `note://` turn source.
+- **Row retirement vs. line trimming**: An unscoped `plurnk.kill({ path: "log:///<target>" })` (including globs, folder scopes `log:///1/`, and brace sets `{READ,NOTE}`) retires matched rows (`active = 0`). A scoped `plurnk.kill({ path: "log:///<L>/<T>/<A>", range, pattern })` folds the selected 1-indexed body lines into canonical merged intervals in `log_entry_projection.folded`. Scope `<0,-1>` fails `416` with recovery guidance.
+- **Distillation**: A `plurnk.kill` on `log:///...` with a non-whitespace body writes a model `NOTE` row at the next sequence with `attrs.distilled` naming the target as written (even if the `KILL` missed with `404`), retaining the note as a `note://` turn source.
 - **Readable projection**: `READ`, `FIND`, `COPY`, and `MOVE` against `log:///` operate on the curated projection in original physical line coordinates—omitting folded lines, pricing only visible lines, invalidating stale search derivations on trim, and decomposing `MOVE` from `log:///` into `COPY` + `KILL`.
 
 ### §log-wire-format Wire format, patch, extent & native attachments
@@ -551,7 +550,7 @@ The session log (`log:///<L>/<T>/<A>[/<leaf>]`) is an append-only SQLite ledger 
 Every turn records immutable source evidence in `turn_sources`, addressable across the workspace by session name:
 
 - `ops://<session>/<L>/<T>`: the turn's admitted operation program (including `_plurnk` initialization surveys). For model turns with admitted content operations, the engine records one born-folded `_plurnk` announcement row (`### log:///<L>/<T>/<A>/emission (ops://<session>/<L>/<T>)`) before the turn's operations; retained content operations replay as `assistant` messages. Rejected emission attempts record an actionless `emissionAttempt` row.
-- `reasoning://<session>/<L>/<T>`: the turn's final exposed provider reasoning (`204` when the turn had none, `404` when the turn does not exist), shared as the canonical durable reasoning source across `READ (reasoning://...)`, `readLog` / `log/entry` hydration ({§methods-invocation}), and forensic digests. Reasoning is never parsed for operations. When `PLURNK_SERVICE_REASONING_ROWS=1` and context budget permits after required results, the engine inserts a `_plurnk` `reasoning` preview row (bounded by `PLURNK_SERVICE_REASONING_TRAILING_LINES` or the shared page) immediately before the emission row.
+- `reasoning://<session>/<L>/<T>`: the turn's final exposed provider reasoning (`204` when the turn had none, `404` when the turn does not exist), shared as the canonical durable reasoning source across `plurnk.read({ path: "reasoning://..." })`, `readLog` / `log/entry` hydration ({§methods-invocation}), and forensic digests. Reasoning is never parsed for operations. When `PLURNK_SERVICE_REASONING_ROWS=1` and context budget permits after required results, the engine inserts a `_plurnk` `reasoning` preview row (bounded by `PLURNK_SERVICE_REASONING_TRAILING_LINES` or the shared page) immediately before the emission row.
 - `note://<session>/<L>/<T>/<A>`: each admitted `NOTE` body, distillation, or interstitial outside-text note. All three schemes (`ops`, `reasoning`, `note`) are read-only (`403` on write/kill), hash-free (`400` on line anchors), indexed for `FIND`, and preserved under local coordinates on `FORK`.
 - **`log_entries.attrs` `kind` discriminator (`LogEntryKind`)**: `log_entries.attrs` is an opaque JSON object (`json_type(attrs) = 'object'` in SQLite, {§db-migrations}) whose optional `kind` property belongs to the closed `LogEntryKind` union (`"emission" | "reasoning" | "message" | "loop_termination" | "entry_materialized" | "emissionAttempt"` in `@plurnk/plurnk-contracts`), enforced at the TypeScript writer/contract boundary so schema evolution does not require a table-rebuild migration.
 
@@ -599,7 +598,7 @@ await plurnk.find({ path: "<target>", range: "<scope>", pattern: "<pattern>" });
 
 SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metadata, lineMarker }`; DONE / FAIL AST: `{ op: "DONE" | "FAIL", target: ParsedPath | null, body: SendBody | null, metadata, lineMarker: null }`.
 
-- **Message:** SEND delivers to an actor (`session://<name>`), a scheme that implements SEND (`https://` POST), or an exact message address. Targetless SEND, DONE, and FAIL select the oldest published Open Message; `DONE (<path>)` and `FAIL (<path>)` select the Open Message at `<path>`. A SEND to a non-recipient scheme (e.g., `log://`) is refused `400 send-target-not-a-recipient`; a scheme without SEND returns `501`.
+- **Message:** SEND delivers to an actor (`session://<name>`), a scheme that implements SEND (`https://` POST), or an exact message address. Targetless SEND, DONE, and FAIL select the oldest published Open Message; `plurnk.done({ target: "<path>", text })` and `plurnk.fail({ target: "<path>", text })` select the Open Message at `<path>`. A SEND to a non-recipient scheme (e.g., `log://`) is refused `400 send-target-not-a-recipient`; a scheme without SEND returns `501`.
 - **Workflow:** WAIT yields. The loop concludes from resolved messages, settled work, and observed results ({§loop-completion}). NOTE retains memory without parking or creating an observation obligation; KILL names something to cancel or curate.
 
 ### §message-completion Reply delivery and message completion
@@ -736,7 +735,7 @@ Streams are static content at turn boundaries: chunks accumulate as they arrive 
 
 ### §stream-control Stream control and writes
 
-- **Cancel / Kill:** `KILL (<stream-uri>)` aborts the active subscription or queued execution ({§exec-lifetime}). A stream already terminated returns `200` with `terminalStatus`; an unknown address returns `404` ({§execution-output-identity}). When the holding session itself asks to stop the stream via model `KILL`, the subscription settles `200` (preserving any `exitCode`) rather than `499`, adding nothing to Errors ({§operation-results}). External/peer `KILL`, loop/session teardown, and daemon stop keep `499`; lifetime expiry keeps `504`.
+- **Cancel / Kill:** `plurnk.kill({ path: "<stream-uri>" })` aborts the active subscription or queued execution ({§exec-lifetime}). A stream already terminated returns `200` with `terminalStatus`; an unknown address returns `404` ({§execution-output-identity}). When the holding session itself asks to stop the stream via model `KILL`, the subscription settles `200` (preserving any `exitCode`) rather than `499`, adding nothing to Errors ({§operation-results}). External/peer `KILL`, loop/session teardown, and daemon stop keep `499`; lifetime expiry keeps `504`.
 - **Stream writes:** `EDIT` or `SEND` on `wss://` sends a text frame through the active owner; other stream writes (`SEND`, exec stdin) follow the scheme contract ({§op-methods-op-dispatch}).
 
 ---
@@ -945,17 +944,17 @@ The `env` scheme projects every effective name for the dispatching Session at `e
 
 ### §persona-discovery Workspace persona discovery, Functionality family, and persona scheme
 
-Workspace personas are a workspace-scoped Functionality family (`personas`, `plurnk (personas)`, `workspace.personas.*`, `mcp:///plurnk/personas.json`) discovered across the `PLURNK_SERVICE_ROOTS`-filtered configuration cascade (`<project>/.agents/personas`, `$XDG_CONFIG_HOME/plurnk/personas`, `$XDG_CONFIG_HOME/agents/personas`, `~/.agents/personas`), enabled workspace Agent Plugins (`<pluginRoot>/personas`, contained within the canonical plugin root per {§agent-plugins-containment}), `PLURNK_PERSONAS_<alias>` environment definitions (gated by `PLURNK_PERSONAS_ENABLED` and `PLURNK_PERSONAS_<alias>_ENABLED`), and workspace overrides:
+Workspace personas are a workspace-scoped Functionality family (`personas`, `plurnk.personas`, `workspace.personas.*`, `mcp:///plurnk/personas.json`) discovered across the `PLURNK_SERVICE_ROOTS`-filtered configuration cascade (`<project>/.agents/personas`, `$XDG_CONFIG_HOME/plurnk/personas`, `$XDG_CONFIG_HOME/agents/personas`, `~/.agents/personas`), enabled workspace Agent Plugins (`<pluginRoot>/personas`, contained within the canonical plugin root per {§agent-plugins-containment}), `PLURNK_PERSONAS_<alias>` environment definitions (gated by `PLURNK_PERSONAS_ENABLED` and `PLURNK_PERSONAS_<alias>_ENABLED`), and workspace overrides:
 
 - **Forms & precedence**: Each root scans `<name>/PERSONA.md` directories before `<name>.md` single files (`name` matching `SKILL_NAME`; first discovered persona per `name` wins across precedence order). `PLURNK_PERSONAS_<alias>` overrides discovered definitions, and workspace overrides (`add` / `replace` / `EDIT`) override service definitions. Definitions may be source-backed (`{ source, model?, effort? }`) or inline (`{ description, body, model?, effort? }`).
 - **Frontmatter & body**: `PERSONA.md` / `<name>.md` requires YAML frontmatter (`name` matching `<name>`, non-empty `description`, optional non-empty string `model` selector and optional `effort` in `EFFORTS`) and a non-empty trimmed Markdown instruction `body`. Malformed persona files record `personas` `configuration_invalid` warnings without failing healthy siblings.
-- **`persona://` scheme, mutations & `listPersonas`**: Validated personas are exposed via `ApplicationPort.listPersonas({ workspaceId })` (`ApplicationPersonaProjection[]`) and the `persona` `PersonaScheme` (`persona://<name>/PERSONA.md`, shorthand `persona://<name>.md` / `persona://<name>`, and contained supporting files for directory personas; `404 entry-not-found` on missing resources, `403 resource-outside-root` on path traversal). `EDIT (persona://<name>/PERSONA.md)` sets a whole workspace persona definition from Markdown (injecting `name: <name>` when omitted from frontmatter) or a JSON definition object (`400 value-whole` on line/pattern scopes); `KILL (persona://<name>/PERSONA.md)` removes a workspace override or disables an inherited service persona. Turn 0 surveys `persona://*/PERSONA.md` (`<1,-1>`, {§session-initialization-entry}) when at least one persona exists.
+- **`persona://` scheme, mutations & `listPersonas`**: Validated personas are exposed via `ApplicationPort.listPersonas({ workspaceId })` (`ApplicationPersonaProjection[]`) and the `persona` `PersonaScheme` (`persona://<name>/PERSONA.md`, shorthand `persona://<name>.md` / `persona://<name>`, and contained supporting files for directory personas; `404 entry-not-found` on missing resources, `403 resource-outside-root` on path traversal). `plurnk.edit({ path: "persona://<name>/PERSONA.md", content })` sets a whole workspace persona definition from Markdown (injecting `name: <name>` when omitted from frontmatter) or a JSON definition object (`400 value-whole` on line/pattern scopes); `plurnk.kill({ path: "persona://<name>/PERSONA.md" })` removes a workspace override or disables an inherited service persona. Turn 0 surveys `persona://*/PERSONA.md` (`1,-1`, {§session-initialization-entry}) when at least one persona exists.
 
 ### §functionality-model-projection Model projection, documents, and mutation settlement
 
-Core registers one in-process `plurnk` runtime at boot (`resourcesPath: "/tools"`), publishing the workspace-admitted Core VM operations (`note`, `todo`, `find`, `read`, `edit`, `copy`, `move`, `kill`, `work`, `fork`, `bare`, `wait`, `send`, `done`, `fail`), one declarative flat-state tool per Functionality family (`env`, `mcp`, `skills`, `personas`, `schedule`, `members`), and `question` ({§question-tool}), backed by generated docs at `mcp:///plurnk.md`, `mcp:///plurnk/<tool>.json`, and `mcp:///plurnk.json` (incorporating `docs/<family>.md` description body and boot-validated examples). `plurnk (mcp)` with an empty body includes in-process tool runtimes (`plurnk`) alongside configured MCP servers (or alongside `problem` when external MCP configuration fails). Enabled, active definitions project generated session documents ({§session-scheme}); disabled, unavailable, or capability-denied families project none.
+Core registers one in-process `plurnk` runtime at boot (`resourcesPath: "/tools"`), publishing the workspace-admitted Core VM operations (`note`, `todo`, `find`, `read`, `edit`, `copy`, `move`, `kill`, `work`, `fork`, `bare`, `wait`, `send`, `done`, `fail`), one declarative flat-state tool per Functionality family (`env`, `mcp`, `skills`, `personas`, `schedule`, `members`), and `question` ({§question-tool}), backed by generated docs at `mcp:///plurnk.md`, `mcp:///plurnk/<tool>.json`, and `mcp:///plurnk.json` (incorporating `docs/<family>.md` description body and boot-validated examples). `plurnk.mcp({})` with an empty body includes in-process tool runtimes (`plurnk`) alongside configured MCP servers (or alongside `problem` when external MCP configuration fails). Enabled, active definitions project generated session documents ({§session-scheme}); disabled, unavailable, or capability-denied families project none.
 
-Model invocations of `plurnk (<family>)` settle in authored order before dispatch proceeds (an empty/`scope`-only body runs `list` and a `discover` body runs `discover` as read effects; definition upserts (`add`/`replace`), `enabled: boolean` (`enable`/`disable`), and `remove: true` (`remove`) are host effects using normal proposals and the lease handoff in {§module-workspace-residency}). When a model mutation publishes `authorization-required`, it holds at the workspace boundary until sign-in resolves the alias, then streams the settled outcome.
+Model invocations of `plurnk.<family>` settle in authored order before dispatch proceeds (an empty/`scope`-only body runs `list` and a `discover` body runs `discover` as read effects; definition upserts (`add`/`replace`), `enabled: boolean` (`enable`/`disable`), and `remove: true` (`remove`) are host effects using normal proposals and the lease handoff in {§module-workspace-residency}). When a model mutation publishes `authorization-required`, it holds at the workspace boundary until sign-in resolves the alias, then streams the settled outcome.
 
 ## §methods Application interface
 
@@ -992,7 +991,7 @@ Core derives `CapabilityDescriptor` demands from each statement and evaluates se
 
 ### §question-tool Structured owner questions and interaction ring
 
-Core publishes `plurnk (question)` (`mcp:///plurnk.md` and `mcp:///plurnk/question.json`, `read` effect, `interaction` trait -> access class `interact`, governed by `PLURNK_EXECS_PLURNK` under {§executor-policy}):
+Core publishes `plurnk.question` (`mcp:///plurnk.md` and `mcp:///plurnk/question.json`, `read` effect, `interaction` trait -> access class `interact`, governed by `PLURNK_EXECS_PLURNK` under {§executor-policy}):
 
 - **Form elicitation & lifecycle**: takes MCP2 `2026-07-28` `{ message, requestedSchema }`, submits `ClientInteractionRequest` (`{ toolName: "question", mode: "form", message, requestedSchema }`), pauses on {§proposal-projection}, and writes the settled `ElicitResult` (`{ action: "accept", content? }`, `{ action: "decline" }`, or `{ action: "cancel" }`) verbatim to `results`.
 - **Shared tool admission & owner interaction ring**: `FIND`/`READ` of the reserved tool tree, Turn 0 surveys, and operation dispatch share the capability resolver. An asking session adds a live owner ring ({§session-ownership}) that withholds from Turn 0/directory `FIND` and denies at dispatch (`403 capability-denied` with scope `owner`, {§operation-results}) any interaction tool whose owner does not support it (exact-path `FIND`/`READ` and sessionless workspace projections are unaffected).
@@ -1136,7 +1135,7 @@ Before building each turn's packet, the engine performs a lossless pull over the
 | --- | --- |
 | Content-addressed packet storage | Each distinct rendered block is stored once in `packet_items` by SHA-256 hash; turn composition lives in `turn_sections` and `turn_section_items`, written atomically through the `turn_inference_evidence` view (`INSTEAD OF` trigger) and read through the `turn_packets` view as `StoredPacket` (`{ weight, attributions, assistant?, assistantRaw? }`). Unreferenced items are reclaimed by `retention_collect_packet_items`. |
 | `definition` table normalization | When projecting `plurnk-contracts/plurnk.md` into the `definition` system section, Markdown table cells strip padding whitespace and normalize separator cells to `---`. |
-| First-page preview rule (`PLURNK_SERVICE_PREVIEW_LINES`, `PLURNK_SERVICE_PREVIEW_CHARS`) | Unasked sizes—unscoped `READ` or `FIND`, closed stream outputs, arrived peer messages, and passive environment deltas—render their first page (`<1,N> of <total> lines` or character preview) without line-edit hash prefixes; model-authored bodies (`NOTE`, `TODO`, `WAIT`, `SEND`, `WORK`, `FORK`, exec stdin/body) and explicitly scoped reads (`<a,b>`, `<1,-1>`, or `<pattern>`) render their full requested span. |
+| First-page preview rule (`PLURNK_SERVICE_PREVIEW_LINES`, `PLURNK_SERVICE_PREVIEW_CHARS`) | Unasked sizes—unscoped `READ` or `FIND`, closed stream outputs, arrived peer messages, and passive environment deltas—render their first page (`"1,N"` of `<total>` lines or character preview) without line-edit hash prefixes; model-authored bodies (`NOTE`, `TODO`, `WAIT`, `SEND`, `WORK`, `FORK`, exec stdin/body) and explicitly scoped reads (`"a,b"`, `"1,-1"`, or `pattern`) render their full requested span. |
 
 ### §message-arrival Message arrival, reply delivery, and containment
 
@@ -1147,7 +1146,7 @@ sequenceDiagram
   participant Loop as Target session loop
   Caller->>Inbox: SEND / WORK (exterior path UUID + short key_path message://<session>/<key>)
   Inbox->>Loop: Publish inbound SEND row (origin="_plurnk" or "user", attrs.kind="message")
-  Loop->>Caller: SEND (message://<session>/<key>) reply delivered once to sender / ACP v2 session stream
+  Loop->>Caller: await plurnk.send({ target: "message://<session>/<key>", ... }) reply delivered once to sender / ACP v2 session stream
   Note over Inbox,Loop: Completion barrier: loop cannot finish 200 while unpublished arrivals or wake-revision drift remain
 ```
 
@@ -1155,7 +1154,7 @@ sequenceDiagram
 | --- | --- |
 | Dual identity (`path` vs `key_path`) | Every message keeps its exterior protocol UUID as durable `path` (`409` on address conflict) and receives a short session-local `key_path` (`message://<session>/<key>`) for packet display and model replies. |
 | Arrival log row | Publishing an inbox message appends an inbound `SEND` row to the recipient's log (`origin: "_plurnk"` with `attrs.kind: "message"` and `source: "session://<sender>"` or `acp://...`, or `origin: "user"` when operator-authored). |
-| Single reply delivery | `SEND (message://<session>/<key>)` delivers the reply once to the assigned session, original native sender, or ACP v2 client stream (`acp://...`); when a child session replies to a parent-delegated `WORK` prompt, conclusion delivery occurs through the parent's `ops://<child>/<loop>` termination `READ`. |
+| Single reply delivery | `await plurnk.send({ target: "message://<session>/<key>", ... })` delivers the reply once to the assigned session, original native sender, or ACP v2 client stream (`acp://...`); when a child session replies to a parent-delegated `WORK` prompt, conclusion delivery occurs through the parent's `ops://<child>/<loop>` termination `READ`. |
 | Loop containment and completion barrier | Final loop completion (`200`) atomically requires all arrived inbox messages to be published into the session log and the loop's observed wake revision to equal the session revision; any arrival that lands after the last turn's snapshot withholds `200` and continues or opens a source-keyed recovery loop. |
 
 ### §operation-results Operation results, notices, and problem codes
@@ -1173,10 +1172,10 @@ sequenceDiagram
 
 | Code | Status | Contract |
 | --- | ---: | --- |
-| `target-required` | 400 | *OP* requires a target path. Recovery: Write the target in parentheses on the opening fence line: `OP (path)`. |
+| `target-required` | 400 | *OP* requires a target path. Recovery: Provide the target path: `await plurnk.<op>({ path: "..." });`. |
 | `target-cardinality` | 400 | *OP* *operand* matched *n* resources; expected one. Recovery: Name one source and one destination per pair. |
 | `scheme-not-found` | 501 | Scheme '*name*' is not registered. Recovery: `Registered schemes: *names*.` |
-| `scheme-metadata-unsupported` | 400 | *OP* on '*scheme*' does not accept the `[metadata]` modifier. |
+| `scheme-metadata-unsupported` | 400 | *OP* on '*scheme*' does not accept metadata. |
 | `operation-not-implemented` | 501 | Scheme '*name*' does not implement *OP* (or exec). |
 | `entry-read-not-implemented` | 501 | The '*scheme*' scheme does not provide entry reads. |
 | `entry-write-not-implemented` | 501 | The '*scheme*' scheme does not provide entry writes. |
@@ -1186,7 +1185,7 @@ sequenceDiagram
 | `exec-source-not-data` | 501 | Scheme '*name*' is not a data source for an execution. |
 | `writer-forbidden` | 403 | Writer '*origin*' cannot modify scheme '*name*'. |
 | `capability-denied` | 403 | Capability '*route*' is denied by *scope* policy. |
-| `spawn-prompt-empty` | 422 | *OP* has no prompt text. Recovery: Write the prompt on the lines beneath the *OP* fence line, or name a resource that holds it. |
+| `spawn-prompt-empty` | 422 | *OP* has no prompt text. Recovery: Provide the prompt text or a resource path: `await plurnk.work({ name: "...", prompt: "..." });`. |
 | `message-not-found` | 404 | No accepted message exists at *address*. |
 | `send-target-required` | 400 | *OP* has no recipient and its loop has no published message. Recovery: Name a recipient address. |
 | `edit-collision` | 409 | EDIT collided with the current resource state ({§edit}). Recovery: *n* of *m* edits applied. READ the target for current coordinates. |
@@ -1202,7 +1201,7 @@ sequenceDiagram
 | `channel-required` | 400 | The '*scheme*' scheme has no default channel. Recovery: Address a named channel with a URI fragment. |
 | `binary-source-unsupported` | 415 | Channel #*name* is binary and its scheme keeps no bytes to transfer. |
 | `fork-unaddressed` | 404 | This client operation acts for no session, so FORK has no log to branch ({§connection-lifecycle}). |
-| `session-name-conflict` | 409 | Session '*name*' already exists in this workspace. Recovery: WORK or SEND (`session://*name*`) delivers a message to the live session; FORK with a name no session holds ({§session-scheme}). |
+| `session-name-conflict` | 409 | Session '*name*' already exists in this workspace. Recovery: `await plurnk.work({ name: "*name*", prompt: "..." });` or `await plurnk.send({ target: "session://*name*", text: "..." });` delivers a message to the live session; FORK with a name no session holds ({§session-scheme}). |
 | `no-operation` | 422 | The turn performed no operation ({§engine-rails}). |
 | `send-target-not-a-recipient` | 400 | The addressed scheme is not a SEND recipient. Recovery: Name a message address or a recipient that implements SEND. |
 | `invalid-operation-syntax` | 400 | The parser's diagnostic for an invalid operation in an admitted turn. |
@@ -1230,7 +1229,7 @@ sequenceDiagram
 | Code | Status | Contract |
 | --- | ---: | --- |
 | `handler-crashed` | 415 | The *mimetype* content handler failed on *key*: *cause*. |
-| `line-anchor-unsupported` | 400 | The byte view of *target* publishes no anchors. Recovery: Use byte coordinates: `<first,last>`. |
+| `line-anchor-unsupported` | 400 | The byte view of *target* publishes no anchors. Recovery: Use byte coordinates: `range: "first,last"`. |
 | `line-anchor-invalid` | 400 | A line anchor in the marker is malformed or names no current line ({§line-anchors}). |
 | `channel-not-found` | 404 | The addressed channel does not exist at *target*. Recovery: Use one of the available channels: #*a*, #*b*. |
 | `binary-read-unsupported` | 415 | The representation at *target* is binary and cannot be rendered. |
@@ -1244,7 +1243,7 @@ sequenceDiagram
 | `invalid-file-url` | 400 | The native file-URL diagnostic, or `File URL path must not include NUL characters.` ({§scheme-address}). |
 | `edit-empty` | 400 | EDIT requires at least one statement. Recovery: Provide an EDIT statement. |
 | `edit-batch-mismatch` | 400 | The EDIT batch spans multiple resources. Recovery: Submit a separate EDIT batch for each resource. |
-| `line-marker-required` | 400 | EDIT of an existing file requires a line marker ({§edit}). Recovery: Name the lines to replace with `<@hash>` or `<@start,@end>` from a READ of the file; `<L,1,L,1>` inserts before line L, and `<1,-1>` replaces the whole file. |
+| `line-marker-required` | 400 | EDIT of an existing file requires a line marker ({§edit}). Recovery: Name the lines to replace with `range: "@hash"` or `range: "@start,@end"` from a READ of the file; `range: "L,1,L,1"` inserts before line L, and `range: "1,-1"` replaces the whole file. |
 | `creation-batch-conflict` | 409 | Multiple EDIT operations attempted to create the same file. Recovery: Create the file with one EDIT before applying additional edits. |
 | `member-read-only` | 403 | The mounted member '*path*' is read-only. |
 | `path-names-no-file` | 403 | The spelling '*path*' does not name a file: it is empty, or it names a directory. |
@@ -1254,7 +1253,7 @@ sequenceDiagram
 | `file-create-excluded` | 403 | A members exclusion (`!_glob_`) covers '*path*'. Recovery: Remove or disable the excluding members definition, or choose another path. |
 | `file-create-gitignored` | 403 | Active Git policy ignores '*path*', and no members definition includes it. Recovery: Choose a Git-admitted path or add a members definition that includes it. |
 | `file-materialization-limit` | 413 | The file exceeds the materialization byte limit and is not read into the workspace. |
-| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: FIND lists paths. EDIT creates files; `plurnk (members)` admits existing files with a `{"files": ["<path>"]}` body. |
+| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: FIND lists paths. EDIT creates files; `await plurnk.members({ files: ["<path>"] });` admits existing files. |
 | `body-channel-required` | 400 | A file write requires a body channel. |
 | `write-failed` | 500 | Publication or its settlement failed; distinguishes an unpublished write from an already-published one. |
 | `creation-rollback-failed` | 500 | Incorporating a newly created file failed, and rollback was incomplete. |
@@ -1287,7 +1286,7 @@ sequenceDiagram
 | `session-target-required` / `workspace-target-required` | 400 | EDIT requires a `session://` or `workspace:///` target. |
 | `workspace-authority-unsupported` | 400 | A `workspace:///` address takes no authority. Recovery: Use `workspace:///path` for shared workspace entries or `session://<name>/path` for session scratch. |
 | `binary-edit-unsupported` | 415 | The #*channel* channel is binary and cannot be edited. |
-| `message-not-implemented` | 501 | SEND does not deliver messages to *scheme* entries. Recovery: To reply, SEND to an Open Message address or omit the target. `SEND (session://<name>)` sends a new message. |
+| `message-not-implemented` | 501 | SEND does not deliver messages to *scheme* entries. Recovery: To reply, SEND to an Open Message address or omit the target. `await plurnk.send({ target: "session://<name>", text: "..." });` sends a new message. |
 | `session-entity-not-editable` / `workspace-entity-not-editable` | 400 | A session or workspace entity is not an editable entry. Recovery: EDIT requires an entry path, such as `workspace:///example.md`. |
 | `message-empty` | 400 | SEND has no message text or attachments. |
 | `scope-unsupported` | 400 | A session SEND takes no scope. |
@@ -1353,9 +1352,9 @@ The workspace Functionality Coordinator materializes self-documentation, skills,
 
 | Surface | Materialized URIs & contract |
 | --- | --- |
-| Executable tools | Materializes built-in runtime reference pages at `plurnk:///<runtime>.md` (or `mcp:///<runtime>.md` when the executor declares `resourcesPath: "/tools"`, along with `<runtime>/<percent-encoded-target>.json`, `<runtime>/input.md`, and `<runtime>.json` catalog). At Turn 0, the engine seeds `FIND (plurnk:///*.md) <1,-1>` and `plurnk (mcp)`. Header-only runtimes end their summary aside with `(invocation only)`. |
-| Scheme reference pages | Materializes each active scheme's reference card at `plurnk:///<scheme>.md`; listing a scheme in `PLURNK_SERVICE_DOCS_EXCLUDE` omits its reference `.md` without disabling the scheme. |
-| Bundled `plurnk` skill | Served through the `skill://` scheme at `skill://plurnk/SKILL.md`, with companion reference files at `skill://plurnk/.env.defaults`, `skill://plurnk/plurnk.service`, `skill://plurnk/plurnk.nginx.conf`, `skill://plurnk/packages/<package>/SPEC.md`, and `skill://plurnk/packages/<package>/dist/**/*.d.ts`. |
+| Executable tools | Materializes `plurnk` tool and execution operation (`sh`, `js`, `python3`) summaries on `mcp:///plurnk.md` (with `<percent-encoded-target>.json` schemas and `mcp:///plurnk.json` catalog) and MCP/external runtime reference pages at `mcp:///<runtime>.md` (or `plurnk:///<runtime>.md` when the executor omits `resourcesPath: "/tools"`). At Turn 0, the engine seeds `await plurnk.mcp();`, `await plurnk.read({ path: "mcp:///plurnk.md", range: "1,-1" });`, and `await plurnk.read({ path: "mcp:///plurnk/todo.json" });`. Header-only runtimes end their summary aside with `(invocation only)`. |
+| Scheme reference pages | Materializes third-party scheme reference cards at `plurnk:///<scheme>.md`; listing a scheme in `PLURNK_SERVICE_DOCS_EXCLUDE` omits its reference `.md` without disabling the scheme. |
+| Bundled `plurnk` skill | Served through the `skill://` scheme at `skill://plurnk/SKILL.md`, with flat reference chapters at `skill://plurnk/{configuration,copy-move,delegation,extensibility,https,models,pattern,session,wss}.md`, configuration artifacts at `skill://plurnk/configuration/{.env.defaults,plurnk.service,plurnk.nginx.conf}`, and package specifications/types at `skill://plurnk/packages/<package>/SPEC.md` and `skill://plurnk/packages/<package>/dist/**/*.d.ts`. |
 | File membership (`members` Functionality family) | Configured via `PLURNK_MEMBERS_<alias>=<glob>` (`!glob` excludes; gated by `PLURNK_MEMBERS_ENABLED` and `PLURNK_MEMBERS_<alias>_ENABLED`), operated via `workspace.members.<verb>`, `await plurnk.members(...)` (`list`, `discover`, `add`, `enable`, `disable`, `remove`), or `members:///<glob>` (`READ`, `EDIT`, `KILL`), bounded for model `add` by `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (`none < root < namespace`; violations fail `403 https://problems.plurnk.xyz/members/functionality/model-scope`), persisted in `workspace_constraints` (`source: "members" \| "model"`, preserving `source: "create"`), and materialized as `plurnk:///members/<percent-encoded-glob>.md`. Outside-root directory globs (`../<dir>/**`) and nested repository / submodule globs (`<dir>/**`, #1400) resolve tracked files via `git ls-files` and respect `.gitignore` for ambient candidates when `<dir>` is a Git working tree. |
 
 ### §packet-inject System injections, git status, and recap
@@ -1374,7 +1373,7 @@ The workspace Functionality Coordinator materializes self-documentation, skills,
 
 ```mermaid
 flowchart LR
-  Op["READ / FIND / EDIT / COPY / MOVE / KILL <pattern>"] --> Kind{"Pattern dialect"}
+  Op["READ / FIND / EDIT / COPY / MOVE / KILL with pattern"] --> Kind{"Pattern dialect"}
   Kind -->|"/regex/, glob, $.jsonpath, //xpath"| Mime["@plurnk/plurnk-mimetypes -> @plurnk/plurnk-schemes/Matcher -> Core Matcher.matchCandidates"]
   Kind -->|"~full-text (FTS5 BM25) / &symbol, &<symbol, &>symbol"| Idx["Workspace search/graph index (settles derivations once)"]
   Mime --> Out["200 MatchEvidence[] | 204 empty | 203 raw-text fallback | 400 malformed | 415 unsupported"]
@@ -1385,15 +1384,15 @@ flowchart LR
 | --- | --- |
 | Content matchers (`/regex/`, `glob`, `$.jsonpath`, `//xpath`) | Dispatched through `@plurnk/plurnk-mimetypes` $\to$ `@plurnk/plurnk-schemes/Matcher` $\to$ Core `Matcher.matchCandidates`. Returns `200` with `MatchEvidence[]`, `204` when nothing matched, `400` with bounded `diagnostic` when the pattern is malformed, `203` with `reason` when an unparseable structured source falls back to raw text, or `415` when the target mimetype does not support the dialect (omitted silently during multi-resource `FIND` if at least one candidate supports the dialect). |
 | Indexed relation dialects (`~full-text`, `&symbol`, `&<symbol`, `&>symbol`) | `~full-text` queries the FTS5 BM25 index; `&symbol` (definitions), `&<symbol` (incoming references), and `&>symbol` (outgoing referenced definitions) query the symbol graph. The engine settles pending derivations once before querying and returns `503 search-index-incomplete` (retryable) if indexing is still in flight or `422 search-unavailable` when the target is excluded or derivation failed. |
-| `MatchEvidence` and exact-span requirement | Each match carries `{ channel?, locator?, region?, enclosingRegion? }` using 4-coordinate `TextRegion` (`<startLine,startColumn,endLine,endColumn>`). Mutations and scoped transfers (`EDIT`, `COPY`, `MOVE`, scoped `KILL`) require an exact `region` and fail `422 pattern-source-unlocated` on locator-only or enclosing-only matches. |
+| `MatchEvidence` and exact-span requirement | Each match carries `{ channel?, locator?, region?, enclosingRegion? }` using 4-coordinate `TextRegion` (`"startLine,startColumn,endLine,endColumn"`). Mutations and scoped transfers (`EDIT`, `COPY`, `MOVE`, scoped `KILL`) require an exact `region` and fail `422 pattern-source-unlocated` on locator-only or enclosing-only matches. |
 
 ### §zero-width-column-one-insert Text scopes, pattern composition, and rendering
 
 | Mechanism | Contract |
 | --- | --- |
-| Scope forms | `<N>` (single line), `<N,M>` (inclusive line span), `<SL,SC,EL,EC>` (1-based line/column span), `<0>` (prepend before line 1), `<-1>` (append after final line), and `<1,-1>` (entire textual body). |
-| 3-coordinate normalization | A 3-coordinate scope `<startLine,startColumn,endLine>` lowers to `<startLine,startColumn,endLine,endCol>` (through the end of `endLine`) and emits a `scope_normalized` notice. |
-| Zero-width column-1 insert (`wholeLineBody`) | An authored zero-width column-1 `EDIT` scope (`<L,1,L,1>`, `<@hash,1,@hash,1>`, or `L = finalLine + 1` immediately after a trailing newline) sets `wholeLineBody`: a non-empty replacement body that does not end in a newline automatically receives the target content's line separator (`\n` or `\r\n`) so it inserts as whole lines before line `L`. Zero-width scopes at columns `> 1` and pattern-generated regions insert byte-exact without appending a newline. |
+| Scope forms | `"N"` (single line), `"N,M"` (inclusive line span), `"SL,SC,EL,EC"` (1-based line/column span), `"0"` (prepend before line 1), `"-1"` (append after final line), and `"1,-1"` (entire textual body). |
+| 3-coordinate normalization | A 3-coordinate scope `"startLine,startColumn,endLine"` lowers to `"startLine,startColumn,endLine,endCol"` (through the end of `endLine`) and emits a `scope_normalized` notice. |
+| Zero-width column-1 insert (`wholeLineBody`) | An authored zero-width column-1 `EDIT` scope (`"L,1,L,1"`, `"@hash,1,@hash,1"`, or `L = finalLine + 1` immediately after a trailing newline) sets `wholeLineBody`: a non-empty replacement body that does not end in a newline automatically receives the target content's line separator (`\n` or `\r\n`) so it inserts as whole lines before line `L`. Zero-width scopes at columns `> 1` and pattern-generated regions insert byte-exact without appending a newline. |
 | Line-navigable prefix rendering | Textual bodies with a `startLine` render `@hash N:` prefixes (space-padded before `N`) when `lineAnchors` or model-writable `textEditScopes` apply, result ordinals on multi-match `FIND`, and plain `N:` otherwise. |
 | `text/plain` normalization | Auto-derived text mimetypes normalize `text/plain` to `text/markdown` (`PathMimetype.resolve`). |
 
@@ -1401,8 +1400,8 @@ flowchart LR
 
 | Operation | Invariant |
 | --- | --- |
-| Scoped `COPY` and `MOVE` | A source scope or pattern on `COPY`/`MOVE` extracts canonical source text (without rendered `@hash N:` prefixes or first-page log trims) or binary channel bytes; `MOVE` removes the selected source span or channel after transfer; destination scopes lower through `editBatch`; receipt `effects` order the destination effect before the source effect. |
-| Scoped entry `KILL` | `KILL (entry) <scope>` or `KILL (entry) <pattern>` dispatches as an empty-body `EDIT` over the same scope or pattern (`204` with `matched: 0` when a pattern matches nothing; `400 kill-pattern-unsupported` when applied to a stream `KILL`). |
+| Scoped `COPY` and `MOVE` | A source `range` or `pattern` on `COPY`/`MOVE` extracts canonical source text (without rendered `@hash N:` prefixes or first-page log trims) or binary channel bytes; `MOVE` removes the selected source span or channel after transfer; destination ranges lower through `editBatch`; receipt `effects` order the destination effect before the source effect. |
+| Scoped entry `KILL` | `await plurnk.kill({ path, range })` or `await plurnk.kill({ path, pattern })` dispatches as an empty-body `EDIT` over the same `range` or `pattern` (`204` with `matched: 0` when a pattern matches nothing; `400 kill-pattern-unsupported` when applied to a stream `KILL`). |
 
 ---
 

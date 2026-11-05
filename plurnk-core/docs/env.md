@@ -44,20 +44,20 @@ await plurnk.sh({ command: "npm run e2e" });
 
 await plurnk.sh({ command: "npm run dev" });
 
-WAIT's duration (`seconds`) bounds the wait for inspection while a command or child session runs.
+`plurnk.wait`'s duration (`seconds`) bounds the wait for inspection while a command or child session runs.
 
 ## Names managed elsewhere
 
 `PLURNK_*` and provider credential names are reserved in `env` entries.
 Plurnk configuration belongs in the environment cascade;
-READ `skill://plurnk/.env.defaults` for its reference. An MCP definition can
+read `skill://plurnk/configuration/.env.defaults` for its reference. An MCP definition can
 explicitly bind an operator credential without adding it to every command's
-environment; READ `mcp:///plurnk/mcp.json` for that setup.
+environment; read `mcp:///plurnk/mcp.json` for that setup.
 
 ## Finding a name
 
 `discover` lists the names installed packages declare that `env` may set, with
 the declaring package as provenance and its comment as the summary. Undeclared,
 non-reserved names are also allowed. Plurnk's own configuration and provider
-credential names are excluded; READ `skill://plurnk/.env.defaults` for the full
+credential names are excluded; read `skill://plurnk/configuration/.env.defaults` for the full
 configuration reference. Discovery shows declarations, not effective values.

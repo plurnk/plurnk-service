@@ -43,7 +43,7 @@ glob previews what `add` would resolve to.
 
 ## When a file you need is not a member
 
-`plurnk (members)` with `{"discover": "build/report.json"}` answers with one
+`await plurnk.members({ discover: "build/report.json" });` answers with one
 candidate: its `provenance.kind` is the verdict and its `summary` the reason.
 
 | kind | summary |

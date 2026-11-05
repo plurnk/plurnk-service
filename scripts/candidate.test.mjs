@@ -431,7 +431,7 @@ test("{§turn-source-resources} orientation verdict counts only the model's own 
     harnessOnly.turns = [
         { turn: 1, ops: [
             { op: "READ", target: "ops://meta/1/1", status: 200, origin: "_plurnk" },
-            ...Array.from({ length: 8 }, () => ({ op: "FIND", target: "plurnk:///*.md", status: 200, origin: "_plurnk" })),
+            ...Array.from({ length: 8 }, () => ({ op: "FIND", target: "skill://*/SKILL.md", status: 200, origin: "_plurnk" })),
             { op: "READ", target: "reasoning://meta/1/1", status: 200, origin: "_plurnk" },
         ] },
         { turn: 2, ops: [

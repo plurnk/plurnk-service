@@ -2,8 +2,8 @@
 
 Each package's `.env.defaults` is its authoritative configuration reference.
 `plurnk-service config defaults` prints the complete installed catalog, including
-comments and optional examples. Inside Plurnk, READ
-`skill://plurnk/.env.defaults` for the same catalog. Neither exposes effective
+comments and optional examples. Inside Plurnk, read
+`skill://plurnk/configuration/.env.defaults` for the same catalog. Neither exposes effective
 environment values or creates another configuration file.
 
 ## Install and locate
@@ -22,7 +22,7 @@ First start seeds the user's configuration once. No model ships active;
 [choose a model route](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model) before starting a model loop.
 
 To run a supervised daemon on Linux, the npm package ships a
-[systemd user unit template](./plurnk.service) (`skill://plurnk/plurnk.service`; its
+[systemd user unit template](./plurnk.service) (`skill://plurnk/configuration/plurnk.service`; its
 installed template path and any installed user or system units are reported by
 `plurnk-service config`). Installing the package never installs or enables a unit.
 
@@ -51,7 +51,7 @@ systemctl --user daemon-reload && systemctl --user enable --now plurnk
 To reach the daemon from other machines on your network, set `PLURNK_HOST=0.0.0.0`
 and browse to any of its addresses; nothing else is required. To serve it beyond
 a network you trust, put it behind the example [nginx front](./plurnk.nginx.conf)
-(`skill://plurnk/plurnk.nginx.conf`), which carries TLS, security headers, sign-in
+(`skill://plurnk/configuration/plurnk.nginx.conf`), which carries TLS, security headers, sign-in
 throttling and an optional allow-list and says which two settings the daemon needs
 behind it. Unauthenticated `GET` and `HEAD` requests to `/health` or `/healthz`
 return `503` while starting and `200 OK` (`application/health+json`, `{"status":"pass"}`)
@@ -202,7 +202,7 @@ outside the package.
 
 The [`@plurnk/plurnk-providers` README](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model) covers alias tuning, reasoning and output
 budgets, local endpoints, caching, and connectivity; the
-[model chapter](skill://plurnk/references/models.md) is what a model is told.
+[model chapter](skill://plurnk/models.md) is what a model is told.
 The defaults catalog groups the remaining settings by their owning subsystem:
 permissions, loop limits, residency, execution, context, indexing, MCP,
 hooks, HTTP, and content handling. Search the catalog for that subsystem instead
@@ -221,11 +221,11 @@ skills; npm bundles follow user-global roots. These are read-only configuration 
 external edits appear at the next turn. Plurnk's own skill uses the same READ,
 discovery, and workspace enablement as other skills.
 
-`plurnk (skills)` binds a source to this workspace, never installs into those roots.
+`plurnk.skills` binds a source to this workspace, never installs into those roots.
 Local folders and `SKILL.md` files stay live references, with supporting files in
 place. Git/archive sources become workspace-owned copies retained across enable
 and restart until the source definition changes. `remove` forgets the workspace
-binding without deleting its source. READ is not execution; running a skill's
+binding without deleting its source. `plurnk.read` is not execution; running a skill's
 script follows ordinary proposal policy. The [skills tool contract](mcp:///plurnk/skills.json)
 covers discovery, source forms, and Git refs.
 
@@ -303,5 +303,5 @@ A module exports a lifecycle object or a no-argument factory: `setup` registers 
 contributes, `start` opens its ingress, `stop` drains its producers, and `close` releases its
 registrations and observers. Extension files and the optional configuration panel live under
 `ai.plurnk/`; its `.env.defaults` joins the ordinary floor. npm owns dependencies and delivery,
-not a second extension declaration. [Extending Plurnk](skill://plurnk/references/extensibility.md)
+not a second extension declaration. [Extending Plurnk](skill://plurnk/extensibility.md)
 covers every integration surface and links each kind's contract.

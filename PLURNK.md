@@ -51,9 +51,9 @@ outside, entirely ordinary.
 ### 2.1 The native instruction set
 
 Every model already has an instruction set. It is documented nowhere, but it is unmistakable: the
-conventions the model has read billions of times. Fenced code blocks. URIs. JSON. Shell commands. HTTP
-status codes. HTML comments as notes to the reader. A model that sees `404` does not need to be told
-what happened.
+conventions the model has read billions of times. JavaScript statements. URIs. JSON objects. Shell
+commands. HTTP status codes. Line comments as notes to the reader. A model that sees `404` does not
+need to be told what happened.
 
 An interface designed for a model can either teach it something new or recognize what it already
 knows. Teaching costs twice: once in the instructions, and again in every response, where the model
@@ -61,53 +61,45 @@ spends capacity translating its intent into an unfamiliar form. Recognition cost
 question for an agentic instruction set is therefore not "what is the cleanest syntax?" but "what does
 the model already write, and how do we give it meaning?"
 
-Minimal harnesses have found half of the answer already. They ask the model for one shell command in
-a fenced block, and the model obliges fluently, because that is how shell commands appear in
-everything it has read. Research on code as action makes the same point from the other side: models
-act better through executable code than through JSON tool calls. Plurnk accepts the same fenced block:
+Research on code as action makes the point directly: models act better through executable code than
+through ad-hoc tool envelopes. Plurnk's Code Mode makes every operation one declarative `await` statement
+shaped like the three things the model knows best: JavaScript calls, URIs and JSON:
 
-````markdown
-```sh
-echo "Hello, world!"
+```js
+await plurnk.sh({ command: "echo \"Hello, world!\"" });
 ```
-````
 
-It then generalizes it. Every Plurnk statement is one fenced block. Its extensible formalization is
-shaped like the three things the model knows best: Markdown, URIs and JSON.
+Every Plurnk statement shares one calling convention:
 
-````text
-```VERB (path) <scope> [metadata] pattern <!-- aside -->
-body
+```js
+await plurnk.<op>({ path, range, pattern, metadata, content }); // aside
 ```
-````
 
-Each slot borrows a convention:
+Each field borrows a convention:
 
-- the fence and body are a Markdown code block;
-- the path is a URI;
-- the metadata is JSON;
-- the scope uses the line-and-column coordinates of every editor and stack trace;
-- the pattern uses the usual delimiters of its dialect;
-- the aside is an HTML comment in which the model says why.
+- the statement is a declarative `await <service>.<tool>({ ... });` call;
+- `path` and `target` are URIs or workspace-relative paths;
+- the argument object is JSON;
+- `range` uses the line-and-column coordinates (`"L,M"`, `"SL,SC,EL,EC"`, or content hash `"@abcde"`) of editors and receipts;
+- `pattern` uses the usual delimiters of its dialect;
+- the trailing `// aside` comment is where the model says why.
 
-Thirteen workflow verbs mirror the verbs of HTTP and the shell: NOTE, FIND, READ, EDIT, COPY, MOVE, KILL,
-WORK, FORK, WAIT, SEND, DONE and FAIL. Every installed runtime and every attached tool uses the same shape:
+Fifteen workflow operations mirror the verbs of HTTP, the shell, and task management: `note`, `find`, `read`, `edit`, `copy`, `move`, `kill`,
+`work`, `fork`, `wait`, `send`, `done`, `fail`, `todo`, and `question`. Every installed runtime and every attached MCP tool uses the same shape:
 
-````markdown
-```github (list_issues)
-{ "repo": "owner/repo", "state": "open" }
+```js
+await github.list_issues({ repo: "owner/repo", state: "open" });
 ```
-````
 
 There is no second calling convention for tools. Results come back the way the web returns them, with
 status codes the model reads without instruction: 404 for a missing path, 409 for an edit aimed at
 text that has changed, 413 for a result too large for the room it was requested into.
 
-Plurnk is a complete instruction set rather than a complete programming language, and the distinction
-matters. A Plurnk program is straight-line: its statements execute in order, without variables or
+Plurnk is a complete instruction set rather than a general-purpose programming language, and the distinction
+matters. A Plurnk turn is straight-line: its `await` statements execute in order, without variables or
 branches. Branching belongs to the control unit, which decides between turns what to do with what it
-has read. When a step needs computation, an executor's body is a program in a complete language:
-shell, Python, JavaScript or SQL. The programs are deterministic in execution and stochastic in
+has read. When a step needs computation, an executor's input is a program in a complete language:
+shell, Python or JavaScript. The programs are deterministic in execution and stochastic in
 authorship, which is exactly the division of labor between a machine and a model.
 
 The entire language is taught by one short card, [`plurnk.md`](plurnk-contracts/plurnk.md). It is less
@@ -137,13 +129,11 @@ In Plurnk everything has one:
 
 Once things have addresses, the ordinary verbs reach them:
 
-````markdown
-```COPY (sh:///ab3d5678) (build.log) <!-- the output lands in a file, never in my context -->
-```
+```js
+await plurnk.copy({ from: "sh:///ab3d5678", to: "build.log" }); // the output lands in a file, never in my context
 
-```READ (reasoning://cc2b614d/1/7) /hypothesis/ <!-- what I was thinking then -->
+await plurnk.read({ path: "reasoning://cc2b614d/1/7", pattern: "/hypothesis/" }); // what I was thinking then
 ```
-````
 
 Two consequences follow. First, memory becomes random-access instead of sequential: the model's past
 is not a tape to rewind but a space to navigate. Second, authority can attach to names. Reading is
@@ -152,9 +142,9 @@ that the session's owner accepts or rejects: a subprocess that touches the host,
 that writes, a file created outside policy. Consent becomes a property of addresses and effects
 rather than a list of tools.
 
-Processes are addresses too. Sessions persist beyond any client session. WORK starts a child with a
-fresh journal, and FORK starts one with a copy of the parent's. SEND writes to a session or to a running
-process, and WAIT yields until a child or a stream has something to say. A machine with a stochastic
+Processes are addresses too. Sessions persist beyond any client session. `plurnk.work` starts a child with a
+fresh journal, and `plurnk.fork` starts one with a copy of the parent's. `plurnk.send` writes to a session or to a running
+process, and `plurnk.wait` yields until a child or a stream has something to say. A machine with a stochastic
 control unit can still be a multiprocessing machine, as long as every process can be named.
 
 ### 2.3 Memory belongs to the program
@@ -175,18 +165,16 @@ Plurnk moves memory management into the program, where the knowledge of what is 
 Every observation becomes a row of a journal, with an address and a weight. The model sees the size of
 its room and its heaviest rows, and it curates them with the same verbs it uses on everything else:
 
-````markdown
-```KILL (log:///1/[1-7]/*/{READ,emission}) <!-- old results and programs, in bulk -->
-exampleModule.py: exampleFunction() returns 42 on empty input (lines 12–40); both callers in exampleTest.py expect it.
+```js
+await plurnk.kill({ path: "log:///1/[1-7]/*/{READ,emission}" }); // old results and programs, in bulk
+await plurnk.note({ text: "exampleModule.py: exampleFunction() returns 42 on empty input (lines 12–40); both callers in exampleTest.py expect it." });
+
+await plurnk.move({ from: { path: "log:///1/4/2/READ", range: "12,40" }, to: { path: "notes/excerpt.py", range: "-1" } }); // keep these lines, but in a file
 ```
 
-```MOVE (log:///1/4/2/READ) <12,40> (notes/excerpt.py) <-1> <!-- keep these lines, but in a file -->
-```
-````
-
-A KILL retires rows by address or glob, and a scope trims lines instead. A KILL's body becomes the
-model's own note about what it is keeping, so even a summary is the model's decision, in the model's
-words. MOVE and COPY carry text between the journal and files. READ brings back any range.
+A `plurnk.kill` retires rows by address or glob, and a `range` trims lines instead. A `plurnk.note` records the
+model's own distillation of what it is keeping, so even a summary is the model's decision, in the model's
+words. `plurnk.move` and `plurnk.copy` carry text between the journal and files. `plurnk.read` brings back any range.
 
 Nothing is lost. Curation changes what the model sees, never the record. Every observation, program
 and line of reasoning stays at its address, readable again if the model needs it. Forgetting becomes
@@ -204,7 +192,7 @@ Plurnk offers instead of imposing, and what arrives is sized by what the model a
 
 - **A precise request,** such as a range of lines or a pattern, is answered exactly.
 - **A loose request, or none at all,** is answered with a preview: the first page, plus one line stating
-  the whole, such as `<1,100> of 4812 lines`. This covers an unscoped READ of a large file, a command's
+  the whole, such as `<1,100> of 4812 lines`. This covers an unscoped `plurnk.read` of a large file, a command's
   output, or a message from another session.
 - **Anything too large for the room** arrives as a receipt: its size, its address, and the verbs that
   will fetch it.
@@ -233,7 +221,7 @@ A harness that offers only "read the file" forces the model to spend attention j
 deserves attention. A harness with a dozen specialized search tools spends the model's instructions
 teaching each one, and still cannot search a build log with the tool that searches code.
 
-Plurnk gives selection one slot in every statement, with six dialects behind it:
+Plurnk gives selection one `pattern` field in every statement, with six dialects behind it:
 
 | Prefix | Dialect | Selects |
 |---|---|---|
@@ -244,18 +232,16 @@ Plurnk gives selection one slot in every statement, with six dialects behind it:
 | `~` | Full text | Indexed tokens |
 | `&` | Symbol graph | Definitions, references and dependencies |
 
-A selection means the same thing in every verb: FIND reports it, READ shows it, EDIT replaces it, COPY
-and MOVE carry it, and KILL removes it. It also means the same thing on every resource. The regular
+A selection means the same thing in every verb: `plurnk.find` reports it, `plurnk.read` shows it, `plurnk.edit` replaces it, `plurnk.copy`
+and `plurnk.move` carry it, and `plurnk.kill` removes it. It also means the same thing on every resource. The regular
 expression that filters a source file also filters a build log, a web page, or the model's own
 history.
 
-````markdown
-```READ (sh:///ab3d5678#stdout) /FAILED|Error/ <!-- only the failing lines -->
-```
+```js
+await plurnk.read({ path: "sh:///ab3d5678#stdout", pattern: "/FAILED|Error/" }); // only the failing lines
 
-```READ (src/**/*.py) &<handle_request <!-- every call site, across the tree -->
+await plurnk.read({ path: "src/**/*.py", pattern: "&<handle_request" }); // every call site, across the tree
 ```
-````
 
 Programmable selection is programmable attention. The model stops reading the world and starts
 querying it.
@@ -349,7 +335,7 @@ applied outward:
 
 | Standard object | In Plurnk |
 |---|---|
-| An MCP tool | A statement: a fence with the tool's name and a JSON body |
+| An MCP tool | A statement: `await <server>.<tool>({ ... });` |
 | An MCP resource | An address, reachable by every verb and every pattern |
 | An Agent Skill | A tree of files at `skill://`, searchable and readable by pattern |
 | An ACP client | A view of a durable session that outlives the connection |
@@ -381,17 +367,13 @@ Each turn, the model receives a packet with four parts:
 
 It answers with a program:
 
-````markdown
-```FIND (src/**/*.py) &handle_request <!-- where it is defined -->
-```
+```js
+await plurnk.find({ path: "src/**/*.py", pattern: "&handle_request" }); // where it is defined
 
-```READ (src/**/*.py) &<handle_request <!-- every call site -->
-```
+await plurnk.read({ path: "src/**/*.py", pattern: "&<handle_request" }); // every call site
 
-```sh
-python -m pytest tests/test_server.py -x -q
+await plurnk.sh({ command: "python -m pytest tests/test_server.py -x -q" });
 ```
-````
 
 The machine executes the three statements in order. The definition and every call site arrive as
 journal rows, each at an address of its own. The test run starts, and its output streams to
@@ -399,26 +381,22 @@ journal rows, each at an address of its own. The test run starts, and its output
 
 By the next turn the run has finished. Its output was long, so it arrived as a preview: the first page,
 plus one line stating the whole, `<1,100> of 4812 lines`. The model was never obliged to read the rest.
-It pulls only the failures, then repairs the line it saw, using the anchor its earlier READ published:
+It pulls only the failures, then repairs the line it saw, using the anchor its earlier `plurnk.read` published:
 
-````markdown
-```READ (sh:///ab3d5678#stdout) /FAILED|Error/ <!-- only the failing lines -->
-```
+```js
+await plurnk.read({ path: "sh:///ab3d5678#stdout", pattern: "/FAILED|Error/" }); // only the failing lines
 
-```EDIT (src/server.py) <@k3x9a> <!-- READ showed 88<@k3x9a>; the body replaces line 88 -->
-        return response
+await plurnk.edit({ path: "src/server.py", range: "@k3x9a", content: "        return response" }); // READ showed 88<@k3x9a>; content replaces line 88
 ```
-````
 
 Had the file changed since the model read it, the anchor would no longer match, and the edit would be
 refused rather than applied to the wrong line. With the fix verified, the model keeps what it learned
 and retires the exploration:
 
-````markdown
-```KILL (log:///1/[1-2]/*/READ) <!-- exploration done; keep what was learned -->
-handle_request is called only from router.dispatch and its tests; the fix is the early return in src/server.py.
+```js
+await plurnk.kill({ path: "log:///1/[1-2]/*/READ" }); // exploration done; keep what was learned
+await plurnk.note({ text: "handle_request is called only from router.dispatch and its tests; the fix is the early return in src/server.py." });
 ```
-````
 
 Every statement in this sequence draws on several claims at once:
 

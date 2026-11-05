@@ -168,8 +168,8 @@ and verify the composed behavior.
 Plurnk is extended at its standard seams, never its virtual-machine organs. Each seam has one
 contract and, where one exists, one open standard; the organs below are not extension points, and
 every integration composes with them. The plurnk skill's chapter,
-`skill://plurnk/references/extensibility.md`
-([source](./plurnk-meta/skills/plurnk/references/extensibility.md)), is the agent-facing account and
+`skill://plurnk/extensibility.md`
+([source](./plurnk-meta/skills/plurnk/extensibility.md)), is the agent-facing account and
 links each kind's contract.
 
 ```mermaid
