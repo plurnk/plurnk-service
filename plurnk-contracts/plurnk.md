@@ -2,9 +2,9 @@
 
 YOU MUST ONLY emit unfenced Code Mode statements: `await <server>.<tool>() // aside`
 
+YOU MUST persist all new decisions, hypotheses, and facts as `plurnk.note` entries.
+
 ## Loop Protocol
 
-YOU MUST persist all new decisions, hypotheses, and facts as `note`s and emit a `todo` list.
-
-* The loop continues until all Open Work is resolved, with all Open Messages `done` or `fail`.
-* Statements that return results continue the loop; emit the final `done` on a separate turn.
+* The loop continues until all Open Work is resolved.
+* A turn containing only `plurnk.done` concludes the loop iff all other Open Work is resolved.
