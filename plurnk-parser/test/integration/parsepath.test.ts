@@ -44,7 +44,7 @@ for (const item of corpus.tests) {
             assert.deepEqual(errors, []);
             assert.equal(statements.length, 1);
             const [statement] = statements;
-            if (statement.op !== "READ" || statement.matcher?.dialect !== "unreadable") assert.fail(item.name);
+            if (statement.op !== "read" || statement.matcher?.dialect !== "unreadable") assert.fail(item.name);
             assert.match(statement.matcher.message, /^pattern leads with `\$` but is not a valid jsonpath/u);
             assert.ok(statement.matcher.recovery.length > 0);
             return;
@@ -52,7 +52,7 @@ for (const item of corpus.tests) {
         assert.deepEqual(errors, []);
         assert.equal(statements.length, 1);
         const [statement] = statements;
-        assert.equal(statement.op, "READ");
+        assert.equal(statement.op, "read");
         assert.ok("matcher" in statement);
         assert.deepEqual(statement.matcher, {
             dialect: item.selector.startsWith("$") ? "jsonpath" : "glob",
@@ -128,7 +128,7 @@ for (const [index, item] of cases.entries()) {
         assert.deepEqual(parsePath(target), expected);
         assert.deepEqual(errors, []);
         assert.equal(statements.length, 1);
-        assert.equal(statements[0].op, "READ");
+        assert.equal(statements[0].op, "read");
         assert.ok("target" in statements[0]);
         assert.deepEqual(statements[0].target, expected);
     });

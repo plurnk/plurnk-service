@@ -71,6 +71,30 @@ const CORE_OP_MAP: ReadonlyMap<string, PlurnkOp> = new Map(
     PLURNK_OPS.map((op) => [op.toLowerCase(), op]),
 );
 
+const buildExecutorSpellings = (executors?: readonly string[]): Map<string, RuntimeTag> => {
+    const map = new Map<string, RuntimeTag>();
+    for (const builtin of BUILTIN_STANDALONE_EXECUTORS) {
+        if (isExecutionOp(builtin)) {
+            map.set(builtin, builtin);
+        }
+    }
+    map.set("plurnk", "plurnk");
+    for (const name of executors ?? []) {
+        const lower = name.toLowerCase();
+        if (isExecutionOp(lower)) {
+            map.set(lower, lower);
+        }
+    }
+    if (map.has("js")) {
+        for (const alias of JS_ALIAS_SPELLINGS) {
+            if (!map.has(alias)) {
+                map.set(alias, "js");
+            }
+        }
+    }
+    return map;
+};
+
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/u;
 
 export const propAccess = (name: string): string =>
@@ -154,9 +178,9 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
     }
 
     switch (statement.op) {
-        case "READ":
-        case "FIND": {
-            const method = statement.op.toLowerCase();
+        case "read":
+        case "find": {
+            const method = statement.op;
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.path = spelledTarget(statement.target);
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
@@ -164,7 +188,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.metadata !== null) args.metadata = statement.metadata;
             return `await plurnk.${method}(${JSON.stringify(args)});${formatAside(statement.aside)}`;
         }
-        case "EDIT": {
+        case "edit": {
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.path = spelledTarget(statement.target);
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
@@ -173,9 +197,9 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.body !== null && statement.body.length > 0) args.content = statement.body;
             return `await plurnk.edit(${JSON.stringify(args)});${formatAside(statement.aside)}`;
         }
-        case "COPY":
-        case "MOVE": {
-            const method = statement.op.toLowerCase();
+        case "copy":
+        case "move": {
+            const method = statement.op;
             const formatSel = (sel: ResourceSelection): unknown => {
                 if (sel.lineMarker === null && sel.matcher === null && sel.metadata === null) {
                     return spelledTarget(sel.target);
@@ -189,7 +213,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             const args = { from: formatSel(statement.source), to: formatSel(statement.destination) };
             return `await plurnk.${method}(${JSON.stringify(args)});${formatAside(statement.aside)}`;
         }
-        case "KILL": {
+        case "kill": {
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.path = spelledTarget(statement.target);
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
@@ -198,24 +222,27 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.body !== null && statement.body.length > 0) args.note = statement.body;
             return `await plurnk.kill(${JSON.stringify(args)});${formatAside(statement.aside)}`;
         }
-        case "NOTE":
-        case "TODO": {
-            const method = statement.op.toLowerCase();
+        case "note": {
             const args: Record<string, unknown> = {};
             if (statement.body !== null && statement.body.length > 0) args.text = statement.body;
-            return `await plurnk.${method}(${JSON.stringify(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.note(${JSON.stringify(args)});${formatAside(statement.aside)}`;
         }
-        case "WORK":
-        case "FORK":
-        case "BARE": {
-            const method = statement.op.toLowerCase();
+        case "todo": {
+            const args: Record<string, unknown> = {};
+            if (statement.body !== null && statement.body.length > 0) args.items = statement.body.split(/\r?\n/gu);
+            return `await plurnk.todo(${JSON.stringify(args)});${formatAside(statement.aside)}`;
+        }
+        case "work":
+        case "fork":
+        case "bare": {
+            const method = statement.op;
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);
             if (statement.metadata !== null) args.metadata = statement.metadata;
             args.prompt = statement.body;
             return `await plurnk.${method}(${JSON.stringify(args)});${formatAside(statement.aside)}`;
         }
-        case "SEND": {
+        case "send": {
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
@@ -223,16 +250,16 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;
             return `await plurnk.send(${JSON.stringify(args)});${formatAside(statement.aside)}`;
         }
-        case "DONE":
-        case "FAIL": {
-            const method = statement.op.toLowerCase();
+        case "done":
+        case "fail": {
+            const method = statement.op;
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);
             if (statement.metadata !== null) args.metadata = statement.metadata;
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;
             return `await plurnk.${method}(${JSON.stringify(args)});${formatAside(statement.aside)}`;
         }
-        case "WAIT": {
+        case "wait": {
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);
             if (statement.seconds !== null) args.seconds = statement.seconds;
@@ -338,7 +365,7 @@ const oldTextToMatcher = (oldText: string, pos: Position): MatcherBody => {
 
 const parseSelectionInput = (
     input: unknown,
-    op: "COPY" | "MOVE",
+    op: "copy" | "move",
     role: "from" | "to",
     pos: Position,
     advise?: Advise,
@@ -347,7 +374,7 @@ const parseSelectionInput = (
         const target = parsePath(input, pos);
         if (target === null) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a non-empty '${role}' target.`, "error",
-                `await plurnk.${op.toLowerCase()}({ from: "source", to: "destination" });`);
+                `await plurnk.${op}({ from: "source", to: "destination" });`);
         }
         return { target, lineMarker: null, matcher: null, metadata: null };
     }
@@ -355,7 +382,7 @@ const parseSelectionInput = (
         const rawPath = input.path ?? input.target ?? input.uri;
         if (typeof rawPath !== "string" || rawPath.length === 0) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a '${role}.path' target.`, "error",
-                `await plurnk.${op.toLowerCase()}({ from: "source", to: "destination" });`);
+                `await plurnk.${op}({ from: "source", to: "destination" });`);
         }
         const target = parsePath(rawPath, pos);
         if (target === null) {
@@ -367,7 +394,7 @@ const parseSelectionInput = (
         return { target, lineMarker, matcher, metadata };
     }
     throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires both from and to targets.`, "error",
-        `await plurnk.${op.toLowerCase()}({ from: "source", to: "destination" });`);
+        `await plurnk.${op}({ from: "source", to: "destination" });`);
 };
 
 type Chunk =
@@ -424,12 +451,279 @@ const CODE_LINE_START = /^ {0,3}(?:await\s+[A-Za-z_$]|plurnk\b|[A-Za-z_$][A-Za-z
 const CODE_CONTINUATION_START = /^[ \t]*(?:await\s+[A-Za-z_$]|plurnk\b|[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\(|(?:const|let|var|for|while|if|switch|try|function)\b|\/\/|\/\*)/u;
 const CONTAINS_CALL = /\bplurnk\s*(?:\.|\[|\()|\bawait\s+[A-Za-z_$][A-Za-z0-9_$-]*\s*\(|(?:await\s+)?[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\(/u;
 
+const padNewlines = (replacement: string, original: string): string => {
+    const origLines = (original.match(/\n/gu) ?? []).length;
+    const replLines = (replacement.match(/\n/gu) ?? []).length;
+    return origLines > replLines ? `${replacement}${"\n".repeat(origLines - replLines)}` : replacement;
+};
+
+const resolveToolCallTarget = (rawName: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string | null => {
+    const trimmed = rawName.trim();
+    if (trimmed.length === 0) return null;
+    const canonicalPlurnkMember = (member: string): string => {
+        const lower = member.toLowerCase();
+        if (CORE_OP_MAP.has(lower) || PLURNK_RUNTIME_TOOLS.has(lower)) return lower;
+        const runtime = executorSpellings.get(lower);
+        if (runtime !== undefined) return runtime;
+        return member;
+    };
+    const dotIdx = trimmed.indexOf(".");
+    if (dotIdx !== -1) {
+        const service = trimmed.slice(0, dotIdx).trim();
+        const tool = trimmed.slice(dotIdx + 1).trim();
+        if (!/^[A-Za-z_$][A-Za-z0-9_$-]*$/u.test(service) || tool.length === 0) return null;
+        if (service.toLowerCase() === "plurnk") {
+            return `await plurnk${propAccess(canonicalPlurnkMember(tool))}`;
+        }
+        return `await ${service.toLowerCase()}${propAccess(tool)}`;
+    }
+    const mcpMatch = /^(?:mcp__)?([A-Za-z0-9_-]+)__(.+)$/iu.exec(trimmed);
+    if (mcpMatch !== null) {
+        const service = mcpMatch[1].toLowerCase();
+        const tool = mcpMatch[2].trim();
+        if (tool.length === 0) return null;
+        if (service === "plurnk") {
+            return `await plurnk${propAccess(canonicalPlurnkMember(tool))}`;
+        }
+        if (!isExecutionOp(service)) return null;
+        return `await ${service}${propAccess(tool)}`;
+    }
+    const plurnkPrefixMatch = /^plurnk[_-](.+)$/iu.exec(trimmed);
+    if (plurnkPrefixMatch !== null) {
+        const tool = plurnkPrefixMatch[1].trim();
+        if (tool.length === 0) return null;
+        return `await plurnk${propAccess(canonicalPlurnkMember(tool))}`;
+    }
+    const lower = trimmed.toLowerCase();
+    if (CORE_OP_MAP.has(lower) || PLURNK_RUNTIME_TOOLS.has(lower)) {
+        return `await plurnk.${lower}`;
+    }
+    const runtime = executorSpellings.get(lower);
+    if (runtime !== undefined) {
+        return `await plurnk${propAccess(runtime)}`;
+    }
+    return null;
+};
+
+const formatTranslatedCall = (target: string, rawArgs: unknown): string => {
+    if (rawArgs === undefined || rawArgs === null) {
+        return `${target}();`;
+    }
+    if (typeof rawArgs === "string") {
+        const trimmed = rawArgs.trim();
+        if (trimmed.length === 0) return `${target}();`;
+        try {
+            const parsed: unknown = JSON.parse(trimmed);
+            return formatTranslatedCall(target, parsed);
+        } catch {
+            return `${target}(${JSON.stringify(rawArgs)});`;
+        }
+    }
+    if (Array.isArray(rawArgs)) {
+        return `${target}(${rawArgs.map((item) => JSON.stringify(item)).join(", ")});`;
+    }
+    return `${target}(${JSON.stringify(rawArgs)});`;
+};
+
+const parseXmlToolCallBody = (body: string): unknown => {
+    const paramRe = /<(?:antml:)?parameter(?:\s+name=["']([^"']+)["']|=([A-Za-z0-9_.-]+))[^>]*>([\s\S]*?)<\/(?:antml:)?parameter>/giu;
+    const params: Record<string, unknown> = {};
+    let matchedParam = false;
+    let m: RegExpExecArray | null;
+    while ((m = paramRe.exec(body)) !== null) {
+        matchedParam = true;
+        const key = (m[1] ?? m[2] ?? "").trim();
+        if (key.length === 0) continue;
+        const rawVal = (m[3] ?? "").replace(/^\r?\n/u, "").replace(/\r?\n$/u, "");
+        const trimmedVal = rawVal.trim();
+        if (/^(?:\[[\s\S]*\]|\{[\s\S]*\}|true|false|null)$/u.test(trimmedVal)) {
+            try {
+                params[key] = JSON.parse(trimmedVal);
+                continue;
+            } catch {
+                // Keep literal string when not valid JSON.
+            }
+        }
+        params[key] = rawVal;
+    }
+    if (matchedParam) return params;
+    const trimmed = body.trim();
+    if (trimmed.length === 0) return {};
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+        try {
+            return JSON.parse(trimmed);
+        } catch {
+            return trimmed;
+        }
+    }
+    return trimmed;
+};
+
+const translateXmlToolCalls = (text: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string | null => {
+    const xmlCallRe = /<function=([A-Za-z0-9_.:-]+)>([\s\S]*?)<\/function>|<(?:antml:)?invoke\b[^>]*\bname=["']([^"']+)["'][^>]*>([\s\S]*?)<\/(?:antml:)?invoke>/giu;
+    const calls: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = xmlCallRe.exec(text)) !== null) {
+        const name = (m[1] ?? m[3] ?? "").trim();
+        const body = m[2] ?? m[4] ?? "";
+        const target = resolveToolCallTarget(name, executorSpellings);
+        if (target === null) return null;
+        calls.push(formatTranslatedCall(target, parseXmlToolCallBody(body)));
+    }
+    return calls.length > 0 ? calls.join("\n") : null;
+};
+
+const extractToolCallDescriptors = (val: unknown): Array<{ readonly name: string; readonly args: unknown }> | null => {
+    if (Array.isArray(val)) {
+        if (val.length === 0) return null;
+        const all: Array<{ readonly name: string; readonly args: unknown }> = [];
+        for (const item of val) {
+            const sub = extractToolCallDescriptors(item);
+            if (sub === null) return null;
+            all.push(...sub);
+        }
+        return all;
+    }
+    if (!isRecord(val)) return null;
+    if (isRecord(val.function) && typeof val.function.name === "string") {
+        return [{
+            name: val.function.name,
+            args: val.function.arguments ?? val.function.parameters ?? val.function.input ?? val.function.args ?? {},
+        }];
+    }
+    const rawName = val.name ?? val.tool ?? val.tool_name;
+    if (typeof rawName === "string") {
+        return [{
+            name: rawName,
+            args: val.arguments ?? val.parameters ?? val.input ?? val.args ?? {},
+        }];
+    }
+    return null;
+};
+
+const translateJsonToolCalls = (rawJson: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string | null => {
+    const trimmed = rawJson.trim();
+    if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
+    const parsedValues: unknown[] = [];
+    try {
+        parsedValues.push(JSON.parse(trimmed));
+    } catch {
+        const lines = trimmed.split(/\r?\n/u).map((l) => l.trim()).filter((l) => l.length > 0);
+        if (lines.length <= 1) return null;
+        try {
+            for (const line of lines) parsedValues.push(JSON.parse(line));
+        } catch {
+            return null;
+        }
+    }
+    const calls: string[] = [];
+    for (const val of parsedValues) {
+        const descriptors = extractToolCallDescriptors(val);
+        if (descriptors === null || descriptors.length === 0) return null;
+        for (const { name, args } of descriptors) {
+            const target = resolveToolCallTarget(name, executorSpellings);
+            if (target === null) return null;
+            calls.push(formatTranslatedCall(target, args));
+        }
+    }
+    return calls.length > 0 ? calls.join("\n") : null;
+};
+
+const translateSegmentToolCalls = (segment: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string => {
+    let out = segment.replace(
+        /<(?:antml:)?(tool_call|function_calls)\b[^>]*>([\s\S]*?)<\/(?:antml:)?\1>|<\|tool_call[^>]*>([\s\S]*?)<\|\/tool_call\|>|\[TOOL_CALLS\]([\s\S]*?)\[\/TOOL_CALLS\]/giu,
+        (fullMatch, _tag, inner1: string | undefined, inner2: string | undefined, inner3: string | undefined) => {
+            const inner = inner1 ?? inner2 ?? inner3 ?? "";
+            const xmlTranslated = translateXmlToolCalls(inner, executorSpellings);
+            if (xmlTranslated !== null) {
+                return padNewlines(xmlTranslated, fullMatch);
+            }
+            const jsonTranslated = translateJsonToolCalls(inner, executorSpellings);
+            if (jsonTranslated !== null) {
+                return padNewlines(jsonTranslated, fullMatch);
+            }
+            if (CONTAINS_CALL.test(inner)) {
+                return padNewlines(inner.replace(/^\r?\n/u, "\n"), fullMatch);
+            }
+            return fullMatch;
+        },
+    );
+
+    out = out.replace(
+        /<function=([A-Za-z0-9_.:-]+)>([\s\S]*?)<\/function>|<(?:antml:)?invoke\b[^>]*\bname=["']([^"']+)["'][^>]*>([\s\S]*?)<\/(?:antml:)?invoke>/giu,
+        (fullMatch) => {
+            const xmlTranslated = translateXmlToolCalls(fullMatch, executorSpellings);
+            return xmlTranslated !== null ? padNewlines(xmlTranslated, fullMatch) : fullMatch;
+        },
+    );
+
+    out = out.replace(
+        /^[ \t]*(?:<tool_call\b[^>]*>|<\|python_tag\|>|<\|tool_call[^>]*>|\[TOOL_CALLS\])[ \t]*(\r?\n)?([ \t]*(?:[[{][\s\S]*?|(?:await\s+)?[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\([\s\S]*?))(?=\r?\n\r?\n|$)/gmu,
+        (fullMatch, nl: string | undefined, payload: string) => {
+            const prefixNewline = nl ?? "";
+            const cleanedPayload = payload.replace(/[ \t]*(?:<\/tool_call>|<\|\/tool_call\|>|\[\/TOOL_CALLS\])[ \t]*$/iu, "");
+            const jsonTranslated = translateJsonToolCalls(cleanedPayload, executorSpellings);
+            if (jsonTranslated !== null) {
+                return padNewlines(`${prefixNewline}${jsonTranslated}`, fullMatch);
+            }
+            if (CONTAINS_CALL.test(cleanedPayload)) {
+                return padNewlines(`${prefixNewline}${cleanedPayload}`, fullMatch);
+            }
+            return fullMatch;
+        },
+    );
+
+    return out;
+};
+
+const translateToolCallsOutsideFences = (input: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string => {
+    const lines = input.split("\n");
+    const out: string[] = [];
+    let nonFenceStart = 0;
+    let i = 0;
+    while (i < lines.length) {
+        const openMatch = /^( {0,3})(`{3,}|~{3,})([^\n`~]*)\r?$/u.exec(lines[i]);
+        if (openMatch === null) {
+            i += 1;
+            continue;
+        }
+        const fence = openMatch[2];
+        const fenceChar = fence[0];
+        const closeRe = new RegExp(`^ {0,3}${fenceChar}{${fence.length},}[ \\t]*\\r?$`, "u");
+        let closeIdx = -1;
+        for (let j = i + 1; j < lines.length; j += 1) {
+            if (closeRe.test(lines[j])) {
+                closeIdx = j;
+                break;
+            }
+        }
+        if (closeIdx === -1) break;
+        if (nonFenceStart < i) {
+            out.push(translateSegmentToolCalls(lines.slice(nonFenceStart, i).join("\n"), executorSpellings));
+        }
+        out.push(lines.slice(i, closeIdx + 1).join("\n"));
+        i = closeIdx + 1;
+        nonFenceStart = i;
+    }
+    if (nonFenceStart < lines.length) {
+        out.push(translateSegmentToolCalls(lines.slice(nonFenceStart).join("\n"), executorSpellings));
+    }
+    return out.join("\n");
+};
+
 // Split input into top-level Code Mode statement chunks, outside text paragraphs, and any truncated EOF tail.
-const scanChunks = (rawInput: string): {
+const scanChunks = (
+    rawInput: string,
+    tier: "model" | "statements" = "model",
+    executorSpellings: ReadonlyMap<string, RuntimeTag> = buildExecutorSpellings(),
+): {
     readonly chunks: readonly Chunk[];
     readonly unparsedTail?: { readonly from: Position; readonly reason: string };
 } => {
-    const { source, advisories } = unwrapCodeModeFences(rawInput);
+    const { source: unwrappedSource, advisories } = unwrapCodeModeFences(rawInput);
+    const source = tier === "model"
+        ? translateToolCallsOutsideFences(unwrappedSource, executorSpellings)
+        : unwrappedSource;
     const chunks: Chunk[] = [];
     const lines = source.split("\n");
     const lineOffsets: number[] = [];
@@ -1227,30 +1521,10 @@ export const parseCodeMode = (
     options: CodeModeOptions = {},
     tier: "model" | "statements" = "model",
 ): ParseResult => {
-    const { chunks, unparsedTail } = scanChunks(input);
-    const items: ParseItem[] = [];
-
     const hasExplicitExecutors = options.executors !== undefined;
-    const executorSpellings = new Map<string, RuntimeTag>();
-    for (const builtin of BUILTIN_STANDALONE_EXECUTORS) {
-        if (isExecutionOp(builtin)) {
-            executorSpellings.set(builtin, builtin);
-        }
-    }
-    executorSpellings.set("plurnk", "plurnk");
-    for (const name of options.executors ?? []) {
-        const lower = name.toLowerCase();
-        if (isExecutionOp(lower)) {
-            executorSpellings.set(lower, lower);
-        }
-    }
-    if (executorSpellings.has("js")) {
-        for (const alias of JS_ALIAS_SPELLINGS) {
-            if (!executorSpellings.has(alias)) {
-                executorSpellings.set(alias, "js");
-            }
-        }
-    }
+    const executorSpellings = buildExecutorSpellings(options.executors);
+    const { chunks, unparsedTail } = scanChunks(input, tier, executorSpellings);
+    const items: ParseItem[] = [];
 
     let activePosition: Position = { line: 1, column: 0 };
     let activeDefaultAside: string | null = null;
@@ -1277,15 +1551,15 @@ export const parseCodeMode = (
         return activeDefaultAside;
     };
 
-    const buildReadOrFind = (op: "READ" | "FIND", args: readonly unknown[]): PlurnkStatement | PlurnkStatement[] => {
+    const buildReadOrFind = (op: "read" | "find", args: readonly unknown[]): PlurnkStatement | PlurnkStatement[] => {
         const pos = activePosition;
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null))) {
-            if (op === "READ") {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "READ requires a target.", "error",
+            if (op === "read") {
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error",
                     'await plurnk.read({ path: "path/to/file" });');
             }
             return emitStatement({
-                op: "FIND",
+                op: "find",
                 aside: activeDefaultAside,
                 target: null,
                 lineMarker: null,
@@ -1297,8 +1571,8 @@ export const parseCodeMode = (
         }
         const first = args[0];
         if (Array.isArray(first)) {
-            if (first.length === 0 && op === "READ") {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "READ requires a target.", "error",
+            if (first.length === 0 && op === "read") {
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error",
                     'await plurnk.read({ path: "path/to/file" });');
             }
             const results: PlurnkStatement[] = [];
@@ -1311,8 +1585,8 @@ export const parseCodeMode = (
         }
         if (typeof first === "string") {
             const parsed = parsePath(first, pos);
-            if (parsed === null && op === "READ") {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "READ requires a target.", "error",
+            if (parsed === null && op === "read") {
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error",
                     'await plurnk.read({ path: "path/to/file" });');
             }
             const targets = parsed === null ? [null] : targetMembers(parsed);
@@ -1320,8 +1594,8 @@ export const parseCodeMode = (
             const aside = resolveAside(second);
             const matcher = toMatcherBody(second?.pattern ?? second?.matcher ?? second?.query, op, pos, advise);
             const metadata = toMetadataArray(second?.metadata ?? (second?.headers !== undefined ? { headers: second.headers } : undefined));
-            return targets.map((target) => emitStatement(op === "READ" ? {
-                op: "READ",
+            return targets.map((target) => emitStatement(op === "read" ? {
+                op: "read",
                 aside,
                 target,
                 lineMarker: toTextLineMarker(second?.range ?? second?.lines ?? second?.scope, pos, advise),
@@ -1330,7 +1604,7 @@ export const parseCodeMode = (
                 body: null,
                 position: pos,
             } : {
-                op: "FIND",
+                op: "find",
                 aside,
                 target,
                 lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.scope ?? second?.limit, pos, true, advise),
@@ -1344,10 +1618,10 @@ export const parseCodeMode = (
             const aside = resolveAside(first);
             const matcher = toMatcherBody(first.pattern ?? first.matcher ?? first.query, op, pos, advise);
             const metadata = toMetadataArray(first.metadata ?? (first.headers !== undefined ? { headers: first.headers } : undefined));
-            const rawPaths = first.paths ?? first.targets ?? first.path ?? first.target ?? first.uri;
+            const rawPaths = first.paths ?? first.targets ?? first.path ?? first.target ?? first.uri ?? first.file_path ?? first.filepath ?? first.file;
             if (Array.isArray(rawPaths)) {
-                if (rawPaths.length === 0 && op === "READ") {
-                    throw new PlurnkParseError(pos.line, pos.column, "parser", "READ requires a target.", "error",
+                if (rawPaths.length === 0 && op === "read") {
+                    throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error",
                         'await plurnk.read({ path: "path/to/file" });');
                 }
                 const results: PlurnkStatement[] = [];
@@ -1356,8 +1630,8 @@ export const parseCodeMode = (
                         const parsed = parsePath(item, pos);
                         const members = parsed === null ? [null] : targetMembers(parsed);
                         for (const target of members) {
-                            results.push(emitStatement(op === "READ" ? {
-                                op: "READ",
+                            results.push(emitStatement(op === "read" ? {
+                                op: "read",
                                 aside,
                                 target,
                                 lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.scope, pos, advise),
@@ -1366,7 +1640,7 @@ export const parseCodeMode = (
                                 body: null,
                                 position: pos,
                             } : {
-                                op: "FIND",
+                                op: "find",
                                 aside,
                                 target,
                                 lineMarker: toLineMarker(first.range ?? first.lines ?? first.scope ?? first.limit, pos, true, advise),
@@ -1388,13 +1662,13 @@ export const parseCodeMode = (
                 throw new PlurnkParseError(pos.line, pos.column, "visitor", `${op} path must be a string`, "error");
             }
             const parsed = typeof rawPaths === "string" ? parsePath(rawPaths, pos) : null;
-            if (parsed === null && op === "READ") {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "READ requires a target.", "error",
+            if (parsed === null && op === "read") {
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error",
                     'await plurnk.read({ path: "path/to/file" });');
             }
             const targets = parsed === null ? [null] : targetMembers(parsed);
-            return targets.map((target) => emitStatement(op === "READ" ? {
-                op: "READ",
+            return targets.map((target) => emitStatement(op === "read" ? {
+                op: "read",
                 aside,
                 target,
                 lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.scope, pos, advise),
@@ -1403,7 +1677,7 @@ export const parseCodeMode = (
                 body: null,
                 position: pos,
             } : {
-                op: "FIND",
+                op: "find",
                 aside,
                 target,
                 lineMarker: toLineMarker(first.range ?? first.lines ?? first.scope ?? first.limit, pos, true, advise),
@@ -1413,7 +1687,7 @@ export const parseCodeMode = (
                 position: pos,
             }));
         }
-        throw new PlurnkParseError(pos.line, pos.column, "parser", `Invalid arguments to plurnk.${op.toLowerCase()}.`, "error");
+        throw new PlurnkParseError(pos.line, pos.column, "parser", `Invalid arguments to plurnk.${op}.`, "error");
     };
 
     const buildEdit = (args: readonly unknown[]): EditStatement | EditStatement[] => {
@@ -1422,12 +1696,12 @@ export const parseCodeMode = (
         if (typeof first === "string" && args.length >= 2) {
             const parsed = parsePath(first, pos);
             if (parsed === null) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "EDIT requires a target.", "error",
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error",
                     'await plurnk.edit({ path: "path/to/file", content: "..." });');
             }
             const body = args[1] === null || args[1] === undefined || args[1] === "" ? null : toStringValue(args[1]);
             return targetMembers(parsed).map((target) => emitStatement({
-                op: "EDIT",
+                op: "edit",
                 aside: activeDefaultAside,
                 target,
                 lineMarker: null,
@@ -1438,17 +1712,17 @@ export const parseCodeMode = (
             }));
         }
         if (!isRecord(first)) {
-            throw new PlurnkParseError(pos.line, pos.column, "parser", "EDIT requires an options object with `path`.", "error",
+            throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires an options object with `path`.", "error",
                 'await plurnk.edit({ path: "path/to/file", content: "..." });');
         }
-        const rawPath = first.path ?? first.target ?? first.uri;
+        const rawPath = first.path ?? first.target ?? first.uri ?? first.file_path ?? first.filepath ?? first.file;
         if (typeof rawPath !== "string" || rawPath.length === 0) {
-            throw new PlurnkParseError(pos.line, pos.column, "parser", "EDIT requires a target.", "error",
+            throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error",
                 'await plurnk.edit({ path: "path/to/file", content: "..." });');
         }
         const parsed = parsePath(rawPath, pos);
         if (parsed === null) {
-            throw new PlurnkParseError(pos.line, pos.column, "parser", "EDIT requires a target.", "error",
+            throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error",
                 'await plurnk.edit({ path: "path/to/file", content: "..." });');
         }
         const targets = targetMembers(parsed);
@@ -1457,7 +1731,7 @@ export const parseCodeMode = (
 
         if (Array.isArray(first.edits)) {
             if (first.edits.length === 0) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", "EDIT `edits` array cannot be empty.", "error");
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", "edit `edits` array cannot be empty.", "error");
             }
             const statements: EditStatement[] = [];
             for (const target of targets) {
@@ -1466,13 +1740,14 @@ export const parseCodeMode = (
                         throw new PlurnkParseError(pos.line, pos.column, "visitor", "Each entry in `edits` must be an object.", "error");
                     }
                     const itemLineMarker = toTextLineMarker(item.range ?? item.lines ?? item.scope ?? first.range ?? first.lines ?? first.scope, pos, advise);
-                    const itemMatcher = typeof item.oldText === "string"
-                        ? oldTextToMatcher(item.oldText, pos)
-                        : toMatcherBody(item.pattern ?? item.matcher, "EDIT", pos, advise);
-                    const rawContent = item.newText ?? item.content ?? item.body ?? item.text;
+                    const rawItemOld = item.oldText ?? item.old_string ?? item.old_text;
+                    const itemMatcher = typeof rawItemOld === "string"
+                        ? oldTextToMatcher(rawItemOld, pos)
+                        : toMatcherBody(item.pattern ?? item.matcher, "edit", pos, advise);
+                    const rawContent = item.newText ?? item.new_string ?? item.new_text ?? item.content ?? item.body ?? item.text;
                     const body = rawContent === undefined || rawContent === null || rawContent === "" ? null : toStringValue(rawContent);
                     statements.push(emitStatement({
-                        op: "EDIT",
+                        op: "edit",
                         aside,
                         target,
                         lineMarker: itemLineMarker,
@@ -1487,13 +1762,14 @@ export const parseCodeMode = (
         }
 
         const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.scope, pos, advise);
-        const matcher = typeof first.oldText === "string"
-            ? oldTextToMatcher(first.oldText, pos)
-            : toMatcherBody(first.pattern ?? first.matcher, "EDIT", pos, advise);
-        const rawBody = first.newText ?? first.content ?? first.body ?? first.text;
+        const rawOld = first.oldText ?? first.old_string ?? first.old_text;
+        const matcher = typeof rawOld === "string"
+            ? oldTextToMatcher(rawOld, pos)
+            : toMatcherBody(first.pattern ?? first.matcher, "edit", pos, advise);
+        const rawBody = first.newText ?? first.new_string ?? first.new_text ?? first.content ?? first.body ?? first.text;
         const body = rawBody === undefined || rawBody === null || rawBody === "" ? null : toStringValue(rawBody);
         return targets.map((target) => emitStatement({
-            op: "EDIT",
+            op: "edit",
             aside,
             target,
             lineMarker,
@@ -1504,7 +1780,7 @@ export const parseCodeMode = (
         }));
     };
 
-    const buildTransfer = (op: "COPY" | "MOVE", args: readonly unknown[]): CopyStatement | MoveStatement => {
+    const buildTransfer = (op: "copy" | "move", args: readonly unknown[]): CopyStatement | MoveStatement => {
         const pos = activePosition;
         if (typeof args[0] === "string" && typeof args[1] === "string") {
             const source = parseSelectionInput(args[0], op, "from", pos, advise);
@@ -1514,7 +1790,7 @@ export const parseCodeMode = (
         const first = args[0];
         if (!isRecord(first)) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires both from and to targets.`, "error",
-                `await plurnk.${op.toLowerCase()}({ from: "source", to: "destination" });`);
+                `await plurnk.${op}({ from: "source", to: "destination" });`);
         }
         const rawFrom = first.from ?? first.source ?? first.src;
         const rawTo = first.to ?? first.destination ?? first.dest;
@@ -1546,8 +1822,8 @@ export const parseCodeMode = (
         const first = args[0];
         if (Array.isArray(first)) {
             if (first.length === 0) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "KILL requires a target.", "error",
-                    'await plurnk.kill({ path: "log:///1/1/1/READ" });');
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error",
+                    'await plurnk.kill({ path: "log:///1/1/1/read" });');
             }
             const results: KillStatement[] = [];
             for (const item of first) {
@@ -1560,18 +1836,18 @@ export const parseCodeMode = (
         if (typeof first === "string") {
             const parsed = parsePath(first, pos);
             if (parsed === null) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "KILL requires a target.", "error",
-                    'await plurnk.kill({ path: "log:///1/1/1/READ" });');
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error",
+                    'await plurnk.kill({ path: "log:///1/1/1/read" });');
             }
             const second = isRecord(args[1]) ? args[1] : null;
             const rawNote = typeof args[1] === "string" ? args[1] : (second?.note ?? second?.distillation ?? second?.body ?? second?.content ?? second?.text);
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
             const lineMarker = toTextLineMarker(second?.range ?? second?.lines ?? second?.scope, pos, advise);
-            const matcher = toMatcherBody(second?.pattern ?? second?.matcher, "KILL", pos, advise);
+            const matcher = toMatcherBody(second?.pattern ?? second?.matcher, "kill", pos, advise);
             const metadata = toMetadataArray(second?.metadata ?? second?.signal);
             const aside = resolveAside(second);
             return targetMembers(parsed).map((target, idx) => emitStatement({
-                op: "KILL",
+                op: "kill",
                 aside,
                 target,
                 lineMarker,
@@ -1582,29 +1858,29 @@ export const parseCodeMode = (
             }));
         }
         if (isRecord(first)) {
-            const rawPaths = first.paths ?? first.targets ?? first.path ?? first.target ?? first.uri;
+            const rawPaths = first.paths ?? first.targets ?? first.path ?? first.target ?? first.uri ?? first.file_path ?? first.filepath ?? first.file;
             const aside = resolveAside(first);
             const rawNote = first.note ?? first.distillation ?? first.body ?? first.content ?? first.text;
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
             const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.scope, pos, advise);
-            const matcher = toMatcherBody(first.pattern ?? first.matcher, "KILL", pos, advise);
+            const matcher = toMatcherBody(first.pattern ?? first.matcher, "kill", pos, advise);
             const metadata = toMetadataArray(first.metadata ?? first.signal);
 
             if (Array.isArray(rawPaths)) {
                 if (rawPaths.length === 0) {
-                    throw new PlurnkParseError(pos.line, pos.column, "parser", "KILL requires a target.", "error",
-                        'await plurnk.kill({ path: "log:///1/1/1/READ" });');
+                    throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error",
+                        'await plurnk.kill({ path: "log:///1/1/1/read" });');
                 }
                 const results: KillStatement[] = [];
                 for (const [idx, item] of rawPaths.entries()) {
                     if (typeof item === "string") {
                         const parsed = parsePath(item, pos);
                         if (parsed === null) {
-                            throw new PlurnkParseError(pos.line, pos.column, "parser", "KILL requires a target.", "error");
+                            throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error");
                         }
                         for (const [mIdx, target] of targetMembers(parsed).entries()) {
                             results.push(emitStatement({
-                                op: "KILL",
+                                op: "kill",
                                 aside,
                                 target,
                                 lineMarker,
@@ -1623,16 +1899,16 @@ export const parseCodeMode = (
                 return results;
             }
             if (typeof rawPaths !== "string" || rawPaths.length === 0) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "KILL requires a target.", "error",
-                    'await plurnk.kill({ path: "log:///1/1/1/READ" });');
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error",
+                    'await plurnk.kill({ path: "log:///1/1/1/read" });');
             }
             const parsed = parsePath(rawPaths, pos);
             if (parsed === null) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "KILL requires a target.", "error",
-                    'await plurnk.kill({ path: "log:///1/1/1/READ" });');
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error",
+                    'await plurnk.kill({ path: "log:///1/1/1/read" });');
             }
             return targetMembers(parsed).map((target, idx) => emitStatement({
-                op: "KILL",
+                op: "kill",
                 aside,
                 target,
                 lineMarker,
@@ -1642,30 +1918,30 @@ export const parseCodeMode = (
                 position: pos,
             }));
         }
-        throw new PlurnkParseError(pos.line, pos.column, "parser", "KILL requires a target.", "error",
-            'await plurnk.kill({ path: "log:///1/1/1/READ" });');
+        throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error",
+            'await plurnk.kill({ path: "log:///1/1/1/read" });');
     };
 
     const buildNote = (args: readonly unknown[]): NoteStatement => {
         const pos = activePosition;
         const first = args[0];
         if (first === undefined || first === null || first === "") {
-            return emitStatement({ op: "NOTE", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: null, position: pos });
+            return emitStatement({ op: "note", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: null, position: pos });
         }
         if (typeof first === "string") {
-            return emitStatement({ op: "NOTE", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: first, position: pos });
+            return emitStatement({ op: "note", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: first, position: pos });
         }
         if (isRecord(first)) {
             const rawText = first.text ?? first.content ?? first.body ?? first.note ?? first.message;
             const body = rawText === undefined || rawText === null || rawText === "" ? null : toStringValue(rawText);
-            return emitStatement({ op: "NOTE", aside: resolveAside(first), target: null, metadata: null, lineMarker: null, body, position: pos });
+            return emitStatement({ op: "note", aside: resolveAside(first), target: null, metadata: null, lineMarker: null, body, position: pos });
         }
-        return emitStatement({ op: "NOTE", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: toStringValue(first), position: pos });
+        return emitStatement({ op: "note", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: toStringValue(first), position: pos });
     };
 
     const formatTodoItem = (item: unknown): string => {
         if (typeof item === "string") {
-            return /^\s*[-*]\s*\[[ xX~]\]/u.test(item) ? item : `- [ ] ${item}`;
+            return item;
         }
         if (isRecord(item)) {
             const text = toStringValue(item.text ?? item.content ?? item.title ?? item.task ?? "");
@@ -1677,36 +1953,36 @@ export const parseCodeMode = (
                     : "[ ]";
             return `- ${box} ${text}`;
         }
-        return `- [ ] ${toStringValue(item)}`;
+        return toStringValue(item);
     };
 
     const buildTodo = (args: readonly unknown[]): TodoStatement => {
         const pos = activePosition;
         const first = args[0];
         if (first === undefined || first === null || first === "") {
-            return emitStatement({ op: "TODO", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: null, position: pos });
+            return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: null, position: pos });
         }
         if (typeof first === "string") {
-            return emitStatement({ op: "TODO", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: first, position: pos });
+            return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: first, position: pos });
         }
         if (Array.isArray(first)) {
             const body = first.length === 0 ? null : first.map(formatTodoItem).join("\n");
-            return emitStatement({ op: "TODO", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body, position: pos });
+            return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body, position: pos });
         }
         if (isRecord(first)) {
             const rawItems = Array.isArray(first.items) ? first.items : (Array.isArray(first.todos) ? first.todos : null);
             if (rawItems !== null) {
                 const body = rawItems.length === 0 ? null : rawItems.map(formatTodoItem).join("\n");
-                return emitStatement({ op: "TODO", aside: resolveAside(first), target: null, metadata: null, lineMarker: null, body, position: pos });
+                return emitStatement({ op: "todo", aside: resolveAside(first), target: null, metadata: null, lineMarker: null, body, position: pos });
             }
             const rawText = first.text ?? first.content ?? first.body;
             const body = rawText === undefined || rawText === null || rawText === "" ? null : toStringValue(rawText);
-            return emitStatement({ op: "TODO", aside: resolveAside(first), target: null, metadata: null, lineMarker: null, body, position: pos });
+            return emitStatement({ op: "todo", aside: resolveAside(first), target: null, metadata: null, lineMarker: null, body, position: pos });
         }
-        return emitStatement({ op: "TODO", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: toStringValue(first), position: pos });
+        return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: toStringValue(first), position: pos });
     };
 
-    const buildDelegation = (op: "WORK" | "FORK" | "BARE", args: readonly unknown[]): WorkStatement | ForkStatement | BareStatement => {
+    const buildDelegation = (op: "work" | "fork" | "bare", args: readonly unknown[]): WorkStatement | ForkStatement | BareStatement => {
         const pos = activePosition;
         if (typeof args[0] === "string" && typeof args[1] === "string") {
             const target = parsePath(args[0], pos);
@@ -1739,12 +2015,12 @@ export const parseCodeMode = (
     const buildSend = (args: readonly unknown[]): SendStatement => {
         const pos = activePosition;
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
-            return emitStatement({ op: "SEND", aside: activeDefaultAside, target: null, lineMarker: null, metadata: null, body: null, position: pos });
+            return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, metadata: null, body: null, position: pos });
         }
         if (typeof args[0] === "string" && args.length >= 2 && (typeof args[1] === "string" || isRecord(args[1]))) {
             const target = parsePath(args[0], pos);
             if (typeof args[1] === "string") {
-                return emitStatement({ op: "SEND", aside: activeDefaultAside, target, lineMarker: null, metadata: null, body: args[1].length === 0 ? null : toSendBody(args[1]), position: pos });
+                return emitStatement({ op: "send", aside: activeDefaultAside, target, lineMarker: null, metadata: null, body: args[1].length === 0 ? null : toSendBody(args[1]), position: pos });
             }
             const second = args[1];
             const rawText = second.text ?? second.content ?? second.body ?? second.message;
@@ -1752,7 +2028,7 @@ export const parseCodeMode = (
                 ? { raw: JSON.stringify(second.json), json: second.json }
                 : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(toStringValue(rawText)));
             return emitStatement({
-                op: "SEND",
+                op: "send",
                 aside: resolveAside(second),
                 target,
                 lineMarker: toLineMarker(second.range ?? second.lines ?? second.scope, pos),
@@ -1762,7 +2038,7 @@ export const parseCodeMode = (
             });
         }
         if (typeof args[0] === "string") {
-            return emitStatement({ op: "SEND", aside: activeDefaultAside, target: null, lineMarker: null, metadata: null, body: toSendBody(args[0]), position: pos });
+            return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, metadata: null, body: toSendBody(args[0]), position: pos });
         }
         if (isRecord(args[0])) {
             const first = args[0];
@@ -1776,12 +2052,12 @@ export const parseCodeMode = (
             const body = first.json !== undefined
                 ? { raw: JSON.stringify(first.json), json: first.json }
                 : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(toStringValue(rawText)));
-            return emitStatement({ op: "SEND", aside: resolveAside(first), target, lineMarker, metadata, body, position: pos });
+            return emitStatement({ op: "send", aside: resolveAside(first), target, lineMarker, metadata, body, position: pos });
         }
-        return emitStatement({ op: "SEND", aside: activeDefaultAside, target: null, lineMarker: null, metadata: null, body: toSendBody(toStringValue(args[0])), position: pos });
+        return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, metadata: null, body: toSendBody(toStringValue(args[0])), position: pos });
     };
 
-    const buildConclusion = (op: "DONE" | "FAIL", args: readonly unknown[]): DoneStatement | FailStatement => {
+    const buildConclusion = (op: "done" | "fail", args: readonly unknown[]): DoneStatement | FailStatement => {
         const pos = activePosition;
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
             return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, metadata: null, body: null, position: pos });
@@ -1810,15 +2086,15 @@ export const parseCodeMode = (
     const buildWait = (args: readonly unknown[]): DispositionStatement => {
         const pos = activePosition;
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
-            return emitStatement({ op: "WAIT", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, seconds: null, body: null, position: pos });
+            return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, seconds: null, body: null, position: pos });
         }
         if (typeof args[0] === "number") {
             const seconds = Number.isFinite(args[0]) && args[0] >= 0 ? args[0] : null;
             const body = typeof args[1] === "string" && args[1].length > 0 ? args[1] : null;
-            return emitStatement({ op: "WAIT", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, seconds, body, position: pos });
+            return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, seconds, body, position: pos });
         }
         if (typeof args[0] === "string") {
-            return emitStatement({ op: "WAIT", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, seconds: null, body: args[0], position: pos });
+            return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, seconds: null, body: args[0], position: pos });
         }
         if (isRecord(args[0])) {
             const first = args[0];
@@ -1828,16 +2104,21 @@ export const parseCodeMode = (
             const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
             const rawSeconds = first.seconds ?? first.duration;
             let seconds: number | null = null;
-            if (typeof rawSeconds === "number" && Number.isFinite(rawSeconds) && rawSeconds >= 0) {
-                seconds = rawSeconds;
+            const parsedSeconds = typeof rawSeconds === "number"
+                ? rawSeconds
+                : typeof rawSeconds === "string" && rawSeconds.trim().length > 0
+                    ? Number(rawSeconds)
+                    : Number.NaN;
+            if (Number.isFinite(parsedSeconds) && parsedSeconds >= 0) {
+                seconds = parsedSeconds;
             } else if (rawSeconds !== undefined && rawSeconds !== null) {
-                advise(pos, `Ignored WAIT duration ${JSON.stringify(rawSeconds)}.`);
+                advise(pos, `Ignored wait duration ${JSON.stringify(rawSeconds)}.`);
             }
             const rawText = first.text ?? first.body ?? first.content ?? first.message ?? first.reason;
             const body = rawText === undefined || rawText === null || rawText === "" ? null : toStringValue(rawText);
-            return emitStatement({ op: "WAIT", aside: resolveAside(first), target, metadata: null, lineMarker: null, seconds, body, position: pos });
+            return emitStatement({ op: "wait", aside: resolveAside(first), target, metadata: null, lineMarker: null, seconds, body, position: pos });
         }
-        return emitStatement({ op: "WAIT", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, seconds: null, body: toStringValue(args[0]), position: pos });
+        return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, seconds: null, body: toStringValue(args[0]), position: pos });
     };
 
     const buildPlurnkTool = (toolName: string, args: readonly unknown[]): ExecStatement => {
@@ -1997,39 +2278,39 @@ export const parseCodeMode = (
                 advise(activePosition, `\`plurnk.${prop}\` was read as \`plurnk.${lower}\`.`);
             }
             switch (coreOp) {
-                case "READ":
-                case "FIND":
+                case "read":
+                case "find":
                     buildReadOrFind(coreOp, args);
                     return;
-                case "EDIT":
+                case "edit":
                     buildEdit(args);
                     return;
-                case "COPY":
-                case "MOVE":
+                case "copy":
+                case "move":
                     buildTransfer(coreOp, args);
                     return;
-                case "KILL":
+                case "kill":
                     buildKill(args);
                     return;
-                case "NOTE":
+                case "note":
                     buildNote(args);
                     return;
-                case "TODO":
+                case "todo":
                     buildTodo(args);
                     return;
-                case "WORK":
-                case "FORK":
-                case "BARE":
+                case "work":
+                case "fork":
+                case "bare":
                     buildDelegation(coreOp, args);
                     return;
-                case "SEND":
+                case "send":
                     buildSend(args);
                     return;
-                case "DONE":
-                case "FAIL":
+                case "done":
+                case "fail":
                     buildConclusion(coreOp, args);
                     return;
-                case "WAIT":
+                case "wait":
                     buildWait(args);
                     return;
             }
@@ -2146,44 +2427,7 @@ export const parseCodeMode = (
                     });
                     continue;
                 }
-                const keptLines: string[] = [];
-                const cLines = chunk.text.split("\n");
-                for (let lIdx = 0; lIdx < cLines.length; lIdx += 1) {
-                    const cLine = cLines[lIdx];
-                    const markupMatch = /(<tool_call\b[^>]*>|<function=[A-Za-z0-9_.-]+>|<function_calls>|<invoke\b[^>]*>|\[TOOL_CALLS\]|<\|python_tag\|>|<\|tool_call[^>]*>)/u.exec(cLine);
-                    if (markupMatch !== null) {
-                        items.push({
-                            kind: "error",
-                            error: new PlurnkParseError(
-                                chunk.position.line + lIdx,
-                                0,
-                                "parser",
-                                `\`${markupMatch[1]}\` is tool-call markup and was not executed. Use \`await plurnk.<op>({ ... });\`.`,
-                                "warning",
-                                undefined,
-                                true,
-                            ),
-                        });
-                    }
-                    const unfencedMatch = /^([A-Z]+)[ \t]*[(<[]/u.exec(cLine);
-                    if (unfencedMatch !== null && isPlurnkOp(unfencedMatch[1])) {
-                        items.push({
-                            kind: "error",
-                            error: new PlurnkParseError(
-                                chunk.position.line + lIdx,
-                                0,
-                                "parser",
-                                `Unfenced \`${unfencedMatch[1]}\` ignored.`,
-                                "warning",
-                                undefined,
-                                true,
-                            ),
-                        });
-                        continue;
-                    }
-                    keptLines.push(cLine);
-                }
-                const keptText = keptLines.join("\n").trim();
+                const keptText = chunk.text.trim();
                 if (keptText.length > 0) {
                     items.push({
                         kind: "text",

@@ -35,7 +35,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal(propAccess("issue_read"), ".issue_read");
         assert.equal(propAccess("a|b"), '["a|b"]');
         assert.equal(propAccess("my-tool"), '["my-tool"]');
-        assert.equal(isPlurnkOp("READ"), true);
+        assert.equal(isPlurnkOp("read"), true);
         assert.equal(isPlurnkOp("not_an_op"), false);
     });
 
@@ -46,9 +46,9 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.edit({"path":"src/index.ts","range":"@abcde,@fghij","pattern":"/old/","metadata":["{\\"encoding\\":\\"utf8\\"}"],"content":"export const x = 1;\\n"}); // update export',
             'await plurnk.copy({"from":"a.txt","to":"b.txt"}); // copy file',
             'await plurnk.move({"from":{"path":"src/old.ts","range":"1,10","pattern":"/foo/","metadata":["m1"]},"to":{"path":"src/new.ts","range":"5,15","pattern":"/bar/","metadata":["m2"]}}); // move slice',
-            'await plurnk.kill({"path":"log:///1/1/1/READ","range":"1,5","pattern":"/secret/","metadata":["9"],"note":"distilled summary"}); // prune log',
+            'await plurnk.kill({"path":"log:///1/1/1/read","range":"1,5","pattern":"/secret/","metadata":["9"],"note":"distilled summary"}); // prune log',
             'await plurnk.note({"text":"Remember the invariant."}); // working note',
-            'await plurnk.todo({"text":"- [ ] Step 1\\n- [x] Step 2"}); // update todo',
+            'await plurnk.todo({"items":["Step 1","Step 2"]}); // update todo',
             'await plurnk.work({"target":"session://worker_1","metadata":["{\\"model\\":\\"fast\\"}"],"prompt":"Audit the module."}); // delegate work',
             'await plurnk.fork({"target":"session://branch_a","prompt":"Try alternative."});',
             'await plurnk.bare({"prompt":"Summarize concisely."});',
@@ -71,7 +71,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal(PlurnkParser.stringify(reparsed), canonical);
     });
 
-    test("{§op-shapes}: READ and FIND support string shorthands, array targets, and options objects", () => {
+    test("{§op-shapes}: read and find support string shorthands, array targets, and options objects", () => {
         const ops = statementsOf([
             'await plurnk.find();',
             'await plurnk.find("src/**/*.ts", { range: [1, 10], pattern: /test/i, headers: { Accept: "text/plain" }, aside: "with regex" });',
@@ -91,7 +91,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.deepEqual((ops[6] as ReadStatement).lineMarker, { marks: [12] });
     });
 
-    test("{§op-shapes}: EDIT supports whole-file content, range replacement, oldText/newText, and multi-hunk edits array", () => {
+    test("{§op-shapes}: edit supports whole-file content, range replacement, oldText/newText, and multi-hunk edits array", () => {
         const ops = statementsOf([
             'await plurnk.edit("src/a.ts", "const a = 1;");',
             'await plurnk.edit({ path: "src/b.ts", oldText: "const old = 1;", newText: "const next = 2;" });',
@@ -108,13 +108,13 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[4] as EditStatement).body, null);
     });
 
-    test("{§op-shapes}: COPY, MOVE, and KILL support positional and object forms", () => {
+    test("{§op-shapes}: copy, move, and kill support positional and object forms", () => {
         const ops = statementsOf([
             'await plurnk.copy("src/a.ts", "src/b.ts");',
             'await plurnk.move({ from: "src/b.ts", to: "src/c.ts", range: "1,5", toRange: "10,15" });',
-            'await plurnk.kill("log:///1/1/1/READ", "Distilled note.");',
-            'await plurnk.kill(["log:///1/1/2/READ", "log:///1/1/3/READ"]);',
-            'await plurnk.kill({ paths: ["log:///1/1/4/READ", { path: "log:///1/1/5/READ" }], note: "Once." });',
+            'await plurnk.kill("log:///1/1/1/read", "Distilled note.");',
+            'await plurnk.kill(["log:///1/1/2/read", "log:///1/1/3/read"]);',
+            'await plurnk.kill({ paths: ["log:///1/1/4/read", { path: "log:///1/1/5/read" }], note: "Once." });',
         ].join("\n"));
         assert.equal(ops.length, 7);
         assert.equal((ops[0] as CopyStatement).source.target.raw, "src/a.ts");
@@ -125,7 +125,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[6] as KillStatement).body, null);
     });
 
-    test("{§op-shapes}: NOTE, TODO, WORK, FORK, BARE, SEND, DONE, FAIL, and WAIT support all argument shapes", () => {
+    test("{§op-shapes}: note, todo, work, fork, bare, send, done, fail, and wait support all argument shapes", () => {
         const ops = statementsOf([
             'await plurnk.note();',
             'await plurnk.note("Quick note.");',
@@ -155,9 +155,9 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[0] as NoteStatement).body, null);
         assert.equal((ops[1] as NoteStatement).body, "Quick note.");
         assert.equal((ops[2] as TodoStatement).body, null);
-        assert.equal((ops[3] as TodoStatement).body, "- [ ] First task\n- [x] Second task\n- [~] Third task");
-        assert.equal((ops[4] as TodoStatement).body, "- [ ] Item A");
-        assert.equal((ops[5] as TodoStatement).body, "- [ ] Item B");
+        assert.equal((ops[3] as TodoStatement).body, "First task\n- [x] Second task\n- [~] Third task");
+        assert.equal((ops[4] as TodoStatement).body, "Item A");
+        assert.equal((ops[5] as TodoStatement).body, "Item B");
         assert.equal((ops[6] as WorkStatement).target?.raw, "session://helper");
         assert.equal((ops[7] as WorkStatement).body, "Run checks in new session.");
         assert.equal((ops[8] as ForkStatement).target?.raw, "session://branch_1");
@@ -198,19 +198,19 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal(PlurnkParser.stringify([ops[8]]), 'await gitea.issue_read({"owner":"plurnk","repo":"service"}, {"range":"1,10","metadata":["m"]});');
     });
 
-    test("{§slot-order}: comma, pipe, and URI lists in READ, FIND, and KILL expand in member order", () => {
+    test("{§slot-order}: comma, pipe, and URI lists in read, find, and kill expand in member order", () => {
         const ops = statementsOf([
             'await plurnk.read({ path: "workspace:///a workspace:///b" });',
             'await plurnk.find({ path: "src/a.py, src/b.py", pattern: "/needle/" });',
-            'await plurnk.kill({ path: "log:///1/1/1/READ, log:///1/1/2/READ", note: "Both read." });',
+            'await plurnk.kill({ path: "log:///1/1/1/read, log:///1/1/2/read", note: "Both read." });',
         ].join("\n"));
         assert.deepEqual(ops.map((op) => ("target" in op ? op.target?.raw : null)), [
             "workspace:///a",
             "workspace:///b",
             "src/a.py",
             "src/b.py",
-            "log:///1/1/1/READ",
-            "log:///1/1/2/READ",
+            "log:///1/1/1/read",
+            "log:///1/1/2/read",
         ]);
         assert.equal((ops[4] as KillStatement).body, "Both read.");
         assert.equal((ops[5] as KillStatement).body, null);
@@ -243,7 +243,7 @@ describe("PlurnkParser Code Mode", () => {
         ].join("\n");
         const parsed = PlurnkParser.parse(fenced, { executors: ["gitea"] });
         const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [writtenOp(item.statement)] : []);
-        assert.deepEqual(statements, ["READ", "gitea"]);
+        assert.deepEqual(statements, ["read", "gitea"]);
         const warnings = parsed.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
         assert.equal(warnings.length, 4);
     });
@@ -273,7 +273,42 @@ describe("PlurnkParser Code Mode", () => {
 
         const refused = PlurnkParser.parse('await plurnk.read();\nawait plurnk.unknownOp();');
         const errors = refused.items.filter((item): item is Extract<typeof item, { kind: "error" }> => item.kind === "error" && item.error.severity === "error");
-        assert.equal(errors[0]?.attempt?.verb, "READ");
+        assert.equal(errors[0]?.attempt?.verb, "read");
         assert.equal(errors[1]?.attempt?.verb, "unknownOp");
+    });
+
+    test("{§fence-pairing}: wrapped and structured tool calls translate silently into canonical Code Mode without advisories", () => {
+        const turn = [
+            "<tool_call>",
+            'await plurnk.read({ path: "mcp:///plurnk/sh.json" });',
+            "</tool_call>",
+            '<tool_call>{"name": "read", "arguments": {"file_path": "src/a.ts", "range": "1,20"}}</tool_call>',
+            "<tool_call><function=EDIT><parameter=path>src/a.ts</parameter><parameter=old_string>old</parameter><parameter=new_string>new</parameter></function></tool_call>",
+            '<function_calls><invoke name="mcp__gitea__issue_read"><parameter name="owner">plurnk</parameter><parameter name="number">1414</parameter></invoke></function_calls>',
+            '[TOOL_CALLS] [{"name": "plurnk.done", "arguments": {"text": "Finished."}}]',
+        ].join("\n\n");
+        const parsed = PlurnkParser.parse(turn, { executors: ["gitea"] });
+        assert.deepEqual(
+            parsed.items.map((item) => item.kind),
+            ["statement", "statement", "statement", "statement", "statement"],
+        );
+        const rendered = PlurnkParser.stringify(
+            parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []),
+        );
+        assert.equal(rendered, [
+            'await plurnk.read({"path":"mcp:///plurnk/sh.json"});',
+            'await plurnk.read({"path":"src/a.ts","range":"1,20"});',
+            'await plurnk.edit({"path":"src/a.ts","pattern":"old","content":"new"});',
+            'await gitea.issue_read({"owner":"plurnk","number":"1414"});',
+            'await plurnk.done({"text":"Finished."});',
+        ].join("\n\n"));
+
+        const foreign = '<tool_call>\n{"name": "read_file", "arguments": {"path": "workspace:///notes.md"}}\n</tool_call>';
+        const foreignParsed = PlurnkParser.parse(foreign);
+        assert.equal(foreignParsed.items.filter((item) => item.kind === "statement").length, 0);
+        assert.equal(
+            foreignParsed.items.find((item) => item.kind === "text")?.content,
+            foreign,
+        );
     });
 });

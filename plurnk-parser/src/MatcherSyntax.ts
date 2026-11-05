@@ -125,7 +125,7 @@ const tryParseSlashRegex = (raw: string, pos: Position, advise?: Advise):
     return { ok: true, pattern, flags };
 };
 
-// {§parse-recovery} — on FIND and READ, comma-separated `/pattern/flags` literals fold into alternation.
+// {§parse-recovery} — on `find` and `read`, comma-separated `/pattern/flags` literals fold into alternation.
 const readRegexList = (raw: string, pos: Position, advise?: Advise): { pattern: string; flags: string } | null => {
     const items: string[] = [];
     let rest = raw;
@@ -159,7 +159,7 @@ const readRegexList = (raw: string, pos: Position, advise?: Advise): { pattern: 
 };
 
 // {§matcher-prefix-claims}
-export const parseMatcher = (body: string, op = "READ", pos: Position = { line: 0, column: 0 }, advise?: Advise): MatcherBody => {
+export const parseMatcher = (body: string, op = "read", pos: Position = { line: 0, column: 0 }, advise?: Advise): MatcherBody => {
     const raw = body.replace(/(?:\r\n|\r|\n)$/u, "");
     const lineCount = raw.split(/\r\n|\r|\n/u).length;
     if (lineCount !== 1) {
@@ -188,7 +188,7 @@ export const parseMatcher = (body: string, op = "READ", pos: Position = { line: 
     if (raw.startsWith("/")) {
         const regex = tryParseSlashRegex(raw, pos, advise);
         if (regex.ok) return { dialect: "regex", raw, pattern: regex.pattern, flags: regex.flags };
-        if (op === "FIND" || op === "READ") {
+        if (op === "find" || op === "read") {
             const list = readRegexList(raw, pos, advise);
             if (list !== null) return { dialect: "regex", raw, pattern: list.pattern, flags: list.flags };
         }
