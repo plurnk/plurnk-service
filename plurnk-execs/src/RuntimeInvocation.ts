@@ -1,5 +1,5 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { PathSyntax, isExecution, isRecord } from "@plurnk/plurnk-contracts";
+import { UNKNOWN_POSITION, isExecution, isExecutionOp, isRecord } from "@plurnk/plurnk-contracts";
 import type {
     RuntimeBodyDecl,
     RuntimeInvocationExample,
@@ -109,13 +109,14 @@ const exampleLineOf = (
 
 // {§operation-fences} — the runtime's own tag is the known executor while its example parses.
 const oneExecSection = (source: string, runtime: string, expectedTarget?: string): boolean => {
+    if (expectedTarget !== undefined && /[<>]/u.test(expectedTarget)) return false;
     const parsed = PlurnkParser.parseStatements(source, { executors: [runtime] });
     const statements = parsed.items.filter((item) => item.kind === "statement");
     const errors = parsed.items.filter((item) => item.kind === "error");
     const statement = statements[0]?.statement;
     return statements.length === 1
         && statement !== undefined && isExecution(statement)
-        && (expectedTarget === undefined || statement.target?.raw === expectedTarget)
+        && (expectedTarget === undefined || (statement.target?.raw === expectedTarget && (statement.target.fragment === undefined || statement.target.fragment === null)))
         && errors.length === 0
         && parsed.unparsedTail === undefined;
 };
@@ -203,9 +204,17 @@ export default class RuntimeInvocation {
         if (target?.required === true && !hasTarget) fail("invocation.example must provide the required target");
         if (exclusive && hasBody && hasTarget) fail("invocation.example must provide exactly one exclusive input");
 
-        const exampleTarget = example.target === undefined ? "" : ` (${PathSyntax.escapeTarget(example.target)})`;
-        const source = PlurnkParser.frame(`${runtime}${exampleTarget}`, example.body ?? null);
-        if (!oneExecSection(source, runtime)) {
+        const runtimeTag = isExecutionOp(runtime) ? runtime : "plurnk";
+        const source = PlurnkParser.stringify([{
+            runtime: runtimeTag,
+            aside: null,
+            target: example.target === undefined ? null : { kind: "local", raw: example.target },
+            lineMarker: null,
+            metadata: null,
+            body: example.body ?? null,
+            position: UNKNOWN_POSITION,
+        }]);
+        if (!oneExecSection(source, runtime, example.target)) {
             fail("invocation.example must render one valid executor fence");
         }
 
@@ -239,8 +248,17 @@ export default class RuntimeInvocation {
                         : fail(`tool registry.tools[${index}].traits must be an array`)
                 )
                 : undefined;
-            const escapedTarget = PathSyntax.escapeTarget(exactTarget);
-            if (!oneExecSection(PlurnkParser.frame(`${runtime} (${escapedTarget})`, null), runtime, exactTarget)) {
+            const runtimeTag = isExecutionOp(runtime) ? runtime : "plurnk";
+            const targetCheckSource = PlurnkParser.stringify([{
+                runtime: runtimeTag,
+                aside: null,
+                target: { kind: "local", raw: exactTarget },
+                lineMarker: null,
+                metadata: null,
+                body: null,
+                position: UNKNOWN_POSITION,
+            }]);
+            if (!oneExecSection(targetCheckSource, runtime, exactTarget)) {
                 fail(`tool registry.tools[${index}] target '${exactTarget}' must render one valid executor fence`);
             }
             const invocation = RuntimeInvocation.assert(tool.invocation, packageName, runtime);
