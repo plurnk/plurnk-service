@@ -398,7 +398,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
                     source: definition.source,
                     commit: definition.commit,
                     current: res.skill.commit,
-                    recovery: "Use plurnk_skills (replace) with the complete source definition to take the current commit.",
+                    recovery: "Use plurnk (skills) with the complete source definition to take the current commit.",
                     retryable: false,
                 });
             }
