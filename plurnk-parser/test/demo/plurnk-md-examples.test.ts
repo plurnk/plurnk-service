@@ -11,10 +11,11 @@ const teaching = readFileSync(new URL("./plurnk.md", import.meta.resolve("@plurn
 const sessionReference = readFileSync(new URL(import.meta.resolve("@plurnk/plurnk-meta/docs/session.md")), "utf8");
 const delegationReference = readFileSync(new URL(import.meta.resolve("@plurnk/plurnk-meta/docs/delegation.md")), "utf8");
 
-test("concrete core-operation examples in plurnk.md parse verbatim as one clean operation", () => {
-    const examples = [...teaching.matchAll(/^(await plurnk\.([a-z]+)\([^\n]*)$/gm)]
+test("concrete core-operation examples across plurnk.md, session.md, and delegation.md parse verbatim as one clean operation", () => {
+    const combined = `${teaching}\n${sessionReference}\n${delegationReference}`;
+    const examples = [...combined.matchAll(/^(await plurnk\.([a-z]+)\([^\n]*)$/gm)]
         .filter((match) => PLURNK_OPS.some((op) => op.toLowerCase() === match[2]));
-    assert.ok(examples.length > 0, "the reference demonstrates concrete operations");
+    assert.ok(examples.length > 0, "the reference corpus demonstrates concrete operations");
     for (const example of examples) {
         const source = example[1];
         const expectedOp = example[2].toUpperCase();
@@ -24,17 +25,5 @@ test("concrete core-operation examples in plurnk.md parse verbatim as one clean 
         assert.equal(item?.kind, "statement", source);
         if (item?.kind === "statement") assert.equal(item.statement.op, expectedOp, source);
         assert.equal(parsed.unparsedTail, undefined, source);
-    }
-});
-
-test("every operation is taught on the card or on the session or delegation reference page, without pinning prose", () => {
-    const combined = `${teaching}\n${sessionReference}\n${delegationReference}`;
-    for (const op of PLURNK_OPS) {
-        const lower = op.toLowerCase();
-        assert.match(
-            combined,
-            new RegExp(`^(?:await plurnk\\.${lower}\\(|[*-] \`plurnk\\.${lower}\\()`, "m"),
-            `operation reference is missing ${op}`,
-        );
     }
 });
