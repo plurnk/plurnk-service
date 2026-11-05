@@ -48,13 +48,11 @@ creation, child observations, waiting, completion, and reply routing.
 
 ## BARE inference
 
-BARE makes one isolated call to the model, not a persistent session. Nothing
-reaches it but the fence body: no log, no files, no web, no tools, no memory of
-this loop. It answers from the body and the model's own knowledge alone.
+`plurnk.bare({ prompt })`: makes one isolated call to the model, not a persistent session. Nothing
+reaches it but `prompt`: no log, no files, no web, no tools, no memory of
+this loop. It answers from `prompt` and the model's own knowledge alone.
 
-```BARE
-A self-contained prompt, with everything it needs pasted in.
-```
+await plurnk.bare({ prompt: "A self-contained prompt, with everything it needs pasted in." });
 
 The prompt is not truncated to fit; provider capacity still applies.
 Consecutive BARE calls run concurrently and settle before the turn continues.
@@ -72,8 +70,8 @@ The session name is required. Any session in the workspace can READ these
 sources; `log:///` remains your own context. READ brings the selected source
 into your log, and KILL of that READ curates only its log projection, never the
 original evidence. The current turn's reasoning exists when its OPs execute, so
-`READ (reasoning://exampleSessionName/1/3) <1,-1>` from `session://exampleSessionName` on loop 1,
+`await plurnk.read({ path: "reasoning://exampleSessionName/1/3", range: "1,-1" });` from `session://exampleSessionName` on loop 1,
 turn 3 retains it; a turn that produced no reasoning reads empty, and a turn
 that has not happened returns a missing-source result. READ never requests
 inference. Notes are ordinary log items whose read-only sources stay searchable
-(`FIND (note://exampleSessionName/**) /parser/`) and READable after curation or a FORK.
+(`await plurnk.find({ path: "note://exampleSessionName/**", pattern: "/parser/" });`) and READable after curation or a FORK.

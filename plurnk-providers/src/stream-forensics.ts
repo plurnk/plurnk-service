@@ -96,41 +96,96 @@ export const RETRYABLE_MALFORMED_FINISH_REASONS: ReadonlySet<string> = new Set([
 ]);
 
 const LEADING_THINK_ENVELOPE = /^(?:\s*<think>[\s\S]*?<\/think>\s*)+/;
-const SINGLE_LINE_FENCE = /^[ \t]*(`{3,}|~{3,})[ \t]*([^`~\s].*?)[ \t]*\1[ \t]*$/;
-const OPEN_FENCE = /^[ \t]*(`{3,}|~{3,})[ \t]*([^`~\s].*)$/;
-const CLOSE_FENCE = /^[ \t]*(`{3,}|~{3,})[^\w\s`~]?[ \t]*$/;
+const CALL_HEAD = /^(?:await\s+)?[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\(/u;
 
 // {§provider-failure-normalization} A response whose visible content consists entirely of one or more
-// balanced, closed operation fences (with no unclosed fence and no trailing unfenced text) has already
+// balanced, closed Code Mode statements (with no unclosed statement and no trailing prose) has already
 // delivered its complete operational emission before any trailing vendor finish reason.
-const hasCompleteFencedContent = (rawContent: string): boolean => {
-    const content = rawContent.replace(LEADING_THINK_ENVELOPE, "");
-    if (content.trim().length === 0) return false;
-    const lines = content.split(/\r?\n/);
-    let openFence: { readonly char: string; readonly length: number } | null = null;
-    let closedBlocks = 0;
-    for (const line of lines) {
-        if (openFence === null) {
-            if (line.trim().length === 0) continue;
-            const single = SINGLE_LINE_FENCE.exec(line);
-            if (single !== null && !single[2].includes(single[1][0])) {
-                closedBlocks += 1;
+const hasCompleteCodeModeContent = (rawContent: string): boolean => {
+    const content = rawContent.replace(LEADING_THINK_ENVELOPE, "").trim();
+    if (content.length === 0) return false;
+    let i = 0;
+    let statements = 0;
+    const skipWsAndComments = (): boolean => {
+        while (i < content.length) {
+            const ch = content[i];
+            const next = content[i + 1];
+            if (/\s/u.test(ch)) {
+                i += 1;
                 continue;
             }
-            const opened = OPEN_FENCE.exec(line);
-            if (opened !== null) {
-                openFence = { char: opened[1][0], length: opened[1].length };
+            if (ch === "/" && next === "/") {
+                i += 2;
+                while (i < content.length && content[i] !== "\n") i += 1;
                 continue;
             }
+            if (ch === "/" && next === "*") {
+                i += 2;
+                while (i < content.length && !(content[i] === "*" && content[i + 1] === "/")) i += 1;
+                if (i >= content.length) return false;
+                i += 2;
+                continue;
+            }
+            break;
+        }
+        return true;
+    };
+    while (i < content.length) {
+        if (!skipWsAndComments()) return false;
+        if (i >= content.length) break;
+        const head = CALL_HEAD.exec(content.slice(i));
+        if (head === null) return false;
+        i += head[0].length;
+        let parenDepth = 1;
+        let braceDepth = 0;
+        let bracketDepth = 0;
+        let inString: '"' | "'" | "`" | null = null;
+        while (i < content.length && parenDepth > 0) {
+            const ch = content[i];
+            const next = content[i + 1];
+            if (inString !== null) {
+                if (ch === "\\") {
+                    i += 2;
+                    continue;
+                }
+                if (ch === inString) inString = null;
+                i += 1;
+                continue;
+            }
+            if (ch === "/" && next === "/") {
+                i += 2;
+                while (i < content.length && content[i] !== "\n") i += 1;
+                continue;
+            }
+            if (ch === "/" && next === "*") {
+                i += 2;
+                while (i < content.length && !(content[i] === "*" && content[i + 1] === "/")) i += 1;
+                if (i >= content.length) return false;
+                i += 2;
+                continue;
+            }
+            if (ch === '"' || ch === "'" || ch === "`") {
+                inString = ch;
+                i += 1;
+                continue;
+            }
+            if (ch === "(") parenDepth += 1;
+            else if (ch === ")") parenDepth -= 1;
+            else if (ch === "{") braceDepth += 1;
+            else if (ch === "}") braceDepth -= 1;
+            else if (ch === "[") bracketDepth += 1;
+            else if (ch === "]") bracketDepth -= 1;
+            if (parenDepth < 0 || braceDepth < 0 || bracketDepth < 0) return false;
+            i += 1;
+        }
+        if (inString !== null || parenDepth !== 0 || braceDepth !== 0 || bracketDepth !== 0) {
             return false;
         }
-        const closed = CLOSE_FENCE.exec(line);
-        if (closed !== null && closed[1][0] === openFence.char && closed[1].length >= openFence.length) {
-            openFence = null;
-            closedBlocks += 1;
-        }
+        if (!skipWsAndComments()) return false;
+        if (content[i] === ";") i += 1;
+        statements += 1;
     }
-    return openFence === null && closedBlocks > 0;
+    return statements > 0;
 };
 
 const normalizeStopReason = (
@@ -248,7 +303,7 @@ export const extractFromAssistantMessage = (message: AssistantMessage | undefine
     const normalized = normalizeStopReason(message.stopReason, message.rawStopReason);
     const finishReason = (normalized.finishReason === "error" || normalized.finishReason === "length")
         && toolCalls.length === 0
-        && hasCompleteFencedContent(content)
+        && hasCompleteCodeModeContent(content)
         ? "stop"
         : normalized.finishReason;
     const rawFinishReason = normalized.rawFinishReason

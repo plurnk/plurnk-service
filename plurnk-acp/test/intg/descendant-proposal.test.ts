@@ -30,17 +30,17 @@ test(
             contextWindow: 32768,
             responses: [
                 makeMockResponse(
-                    "````WORK (session://guesser1)\nCreate child.txt and conclude.\n````\n" +
-                        "````WAIT\nWaiting for guesser1.\n````",
+                    'await plurnk.work({ target: "session://guesser1", prompt: "Create child.txt and conclude." });\n' +
+                        'await plurnk.wait({ text: "Waiting for guesser1." });',
                     10,
                 ),
                 makeMockResponse(
-                    "````EDIT (child.txt)\ncreated by child\n````\n" +
-                        "````NOTE\nConfirming the write.\n````",
+                    'await plurnk.edit({ path: "child.txt", content: "created by child" });\n' +
+                        'await plurnk.note({ text: "Confirming the write." });',
                     10,
                 ),
-                makeMockResponse("````DONE\nChild work complete.\n````", 10),
-                makeMockResponse("````DONE\nDelegated work confirmed.\n````", 10),
+                makeMockResponse('await plurnk.done({ text: "Child work complete." });', 10),
+                makeMockResponse('await plurnk.done({ text: "Delegated work confirmed." });', 10),
             ],
         });
         const db = await openTestDatabase();

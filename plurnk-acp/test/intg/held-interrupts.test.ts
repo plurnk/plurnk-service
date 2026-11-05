@@ -32,9 +32,9 @@ test(
             provider: new Mock({
                 contextWindow: 32768,
                 responses: [
-                    makeMockResponse("````sh\necho held-once\n````"),
-                    makeMockResponse("````DONE\nDone.\n````"),
-                    makeMockResponse("````sh\necho cancelled-gate\n````"),
+                    makeMockResponse('await plurnk.sh({ command: "echo held-once" });'),
+                    makeMockResponse('await plurnk.done({ text: "Done." });'),
+                    makeMockResponse('await plurnk.sh({ command: "echo cancelled-gate" });'),
                 ],
             }),
         });
