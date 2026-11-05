@@ -14,7 +14,7 @@ The package owns the authored defaults and exact membership below. Consumers own
 | `docs/delegation.md` | Required | Session delegation, lifecycle, and messaging | Pull-doc materialization with the session scheme |
 | `docs/pattern.md` | Required | Operation-neutral pattern selection and literal source editing | Pull-doc materialization independent of schemes |
 | `skills/plurnk/SKILL.md` | Required | Standard Plurnk skill entry and chapter directory | Service-provided skill {§tools-resource-materialization} |
-| `skills/plurnk/references/extensibility.md` | Required | How integrations and extensions reach the model, and each kind's contract | Skill chapter {§tools-resource-materialization} |
+| `skills/plurnk/extensibility.md` | Required | How integrations and extensions reach the model, and each kind's contract | Skill chapter {§tools-resource-materialization} |
 
 - **Exact membership**: Each source is read only at its consuming boundary; missing required sources or read errors fail that boundary with the original cause. Consumers resolve exported membership without scanning `docs/` or inferring capabilities from filenames.
 - **Scheme-bound vs language docs**: Exported documents declare their source and optional owning scheme. Plugin `documentation` is manifest-owned and serves as fallback only when meta owns no document of that name. Document exclusions apply to the document and its owning scheme.

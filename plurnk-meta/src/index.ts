@@ -100,7 +100,7 @@ export const TEACHING_CORPUS = Object.freeze({
     policy: "POLICY.md",
     recap: "recap.md",
     skill: "skills/plurnk/SKILL.md",
-    skillChapters: Object.freeze({ extensibility: "skills/plurnk/references/extensibility.md" } as const),
+    skillChapters: Object.freeze({ extensibility: "skills/plurnk/extensibility.md" } as const),
     docs: REFERENCE_TEACHING,
 } as const);
 

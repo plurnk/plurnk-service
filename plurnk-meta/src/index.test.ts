@@ -19,7 +19,7 @@ test("{§teaching-corpus} teaching corpus: the meta owner publishes one exact im
         policy: "POLICY.md",
         recap: "recap.md",
         skill: "skills/plurnk/SKILL.md",
-        skillChapters: { extensibility: "skills/plurnk/references/extensibility.md" },
+        skillChapters: { extensibility: "skills/plurnk/extensibility.md" },
         docs: {
             session: { source: "docs/session.md", scheme: "session" },
             delegation: { source: "docs/delegation.md", scheme: "session" },

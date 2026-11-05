@@ -10,8 +10,8 @@ Authored defaults published by `@plurnk/plurnk-meta` and consumed by
 | ------------------------------- | ---------------------------------------------------------------------------- |
 | `POLICY.md`                     | Read before the first-run seed of the user-owned XDG config `AGENTS.md`.     |
 | `recap.md`                       | Read for an optional Recap rendered last when its content is nonempty.       |
-| `docs/*.md`                     | Built-in reference pages (`session.md`, `delegation.md`, `pattern.md`) read when registered pull docs are materialized. |
-| `skills/plurnk/**`              | Standard skill entry (`SKILL.md`) and reference chapters (`references/configuration.md`, `references/extensibility.md`); Core composes its package-owned and generated resources (`copy-move.md`, `models.md`, `plurnk.service`, `plurnk.nginx.conf`, `.env.defaults`). |
+| `docs/*.md`                     | Built-in reference pages (`session.md`, `delegation.md`, `pattern.md`) composed into `skill://plurnk/`. |
+| `skills/plurnk/**`              | Standard skill entry (`SKILL.md`) and reference chapters (`extensibility.md`); Core composes its package-owned and generated resources (`configuration.md`, `copy-move.md`, `delegation.md`, `https.md`, `models.md`, `pattern.md`, `session.md`, `wss.md`, `configuration/plurnk.service`, `configuration/plurnk.nginx.conf`, `configuration/.env.defaults`). |
 
 Core materializes eligible scheme and runtime pull docs at
 `plurnk:///<name>.md` or `<scheme>:///<name>.md` and exposes them through turn-0 FIND surveys. Merely

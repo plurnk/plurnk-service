@@ -15,7 +15,7 @@ before it cannot do:
   the cascade, or a definition in `mcp.json`, a skill root, or a persona root.
 - **Operating policy** (`AGENTS.md` / `AGENTS.local.md`) when standing instructions
   apply to every turn in a user environment, project, or session (`session://<session>/AGENTS.md`).
-- **A persona** (`persona://<name>/PERSONA.md`, managed via `plurnk (personas)` or `EDIT`)
+- **A persona** (`persona://<name>/PERSONA.md`, managed via `plurnk.personas` or `plurnk.edit`)
   when a reusable operating identity, optional model/effort route, and instruction body
   can be selected per session or copied to `session://<session>/AGENTS.md`.
 - **A skill** when the model needs knowledge, or a script it runs with its existing
@@ -43,7 +43,7 @@ before it cannot do:
 | Extension | a package declaring one kind | a runtime, an address scheme, a media-type reader, a model provider, a page materializer, or what a module contributes | trusted, in the daemon |
 
 Personas, skills, and MCP servers are definitions. The `plurnk` runtime
-(`personas`, `skills`, and `mcp` tools; personas also accept `EDIT` and `KILL` on `persona://`) manages them in the current workspace,
+(`personas`, `skills`, and `mcp` tools; personas also accept `plurnk.edit` and `plurnk.kill` on `persona://`) manages them in the current workspace,
 and `mcp:///plurnk.md` and `mcp:///plurnk/<tool>.json` show each
 definition's form. A definition needs no restart; an extension loads only when
 the daemon starts.
@@ -159,5 +159,5 @@ export default () => ({
 `skill://plurnk/packages/` holds the `SPEC.md` of every installed package that
 ships one, at `skill://plurnk/packages/<package name>/SPEC.md`, and beside it the
 package's type declarations under `dist/`: `dist/index.d.ts` is the package root's,
-and a relative import names a sibling file. FIND searches them by tag or term; each
+and a relative import names a sibling file. `plurnk.find` searches them by tag or term; each
 contract's examples, tables and declarations are authoritative.

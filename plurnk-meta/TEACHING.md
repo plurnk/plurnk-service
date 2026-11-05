@@ -11,7 +11,7 @@ as a second authority.
 | Rule | Form |
 | --- | --- |
 | Mechanism, not advice | State what happens and what a shape does. No "prefer", "reach for", "when to use", no adjective that grades an option, no imperative aimed at the model. A guard is stated as the mechanism that makes the wrong move fail or names where the right thing goes. The exceptions are the two rows below. |
-| One decision list | The `plurnk` skill's `references/extensibility.md` exists to choose an integration surface, so its "Choosing a surface" section alone says when each surface applies: one item per surface, ordered from least to most code and trust, each naming the condition that requires it. |
+| One decision list | The `plurnk` skill's `extensibility.md` exists to choose an integration surface, so its "Choosing a surface" section alone says when each surface applies: one item per surface, ordered from least to most code and trust, each naming the condition that requires it. |
 | What NOTE and TODO hold | The card's NOTE and TODO lines name what a session records there: working memory for facts and ideas in NOTE, and remaining steps in TODO. |
 | One claim, one owner | Every sentence agrees with the owning contract tag; a claim that no tag backs is deleted, or the tag is written first. Configurable behavior is stated as policy-dependent, never as absolute. |
 | Numbers by name | A value that is a knob is cited by the knob's name, never by its shipped value. |

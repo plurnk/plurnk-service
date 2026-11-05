@@ -155,7 +155,7 @@ test("{§packed-projection} package artifact projection requires runtime-loaded 
         "plurnk-mimetypes-application-pdf: test-only artifact leaked into package: dist/buildPdf.js",
     ]);
     for (const [owner, paths] of [
-        ["plurnk-meta", ["skills/plurnk/SKILL.md", "skills/plurnk/references/extensibility.md", "docs/session.md", "docs/pattern.md", "docs/delegation.md"]],
+        ["plurnk-meta", ["skills/plurnk/SKILL.md", "skills/plurnk/extensibility.md", "docs/session.md", "docs/pattern.md", "docs/delegation.md"]],
         ["plurnk-skills", ["docs/skills.md"]],
         ["plurnk-providers", ["docs/models.md"]],
     ]) {
