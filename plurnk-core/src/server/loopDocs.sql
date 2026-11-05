@@ -10,4 +10,5 @@ LEFT JOIN contents b ON b.id = ec.content_id
 WHERE e.workspace_id = $workspace_id
   AND e.scheme IN ('plurnk', 'mcp')
   AND e.authority = ''
+  AND e.output = 0
 ORDER BY e.scheme, e.pathname;

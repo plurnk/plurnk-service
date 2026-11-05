@@ -33,6 +33,16 @@ export const executionAddress = async (db: Db, turnId: number, sequence = 1): Pr
     return stream;
 };
 
+// {§exec-stream} — only 8-hex-digit stream paths under a runtime scheme are execution output entries;
+// reference documents under `plurnk:///` (`output = 0`) are excluded.
+export const execOutputEntries = async (
+    db: Db,
+    workspaceId: number,
+    scheme: string,
+): Promise<Array<{ id: number; pathname: string }>> =>
+    (await db.test_entries_by_scheme_prefix.all<{ pathname: string; id: number }>({ workspace_id: workspaceId, scheme, prefix: "/%" }))
+        .filter(({ pathname }) => /^\/[0-9a-f]{8}$/u.test(pathname));
+
 // {§exec-stream} — the verb's outcome settles its durable output channel.
 // Await the newest settled output for one runtime scheme and parse its JSON.
 // A refusal travels on the operation's log row, never in the channel.
@@ -50,7 +60,7 @@ export const awaitExecOutcome = async (
 ): Promise<Record<string, unknown>> => {
     const start = Date.now();
     for (;;) {
-        const outputs = (await db.test_entries_by_scheme_prefix.all<{ pathname: string; id: number }>({ workspace_id: workspaceId, scheme, prefix: "/%" })).toSorted((a, b) => b.id - a.id);
+        const outputs = (await execOutputEntries(db, workspaceId, scheme)).toSorted((a, b) => b.id - a.id);
         for (const { pathname } of outputs.length > after ? outputs : []) {
             const settled = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname, scheme, name: channel });
             // closed or errored — the two terminal channel states ({§stream-control}); a refused verb ends errored.

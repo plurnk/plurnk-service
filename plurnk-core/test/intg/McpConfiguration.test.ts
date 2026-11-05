@@ -161,7 +161,7 @@ test("{§configuration-repair-path} a model's EDIT and same-turn list observe th
     const content = JSON.stringify({ mcpServers: { repaired: stdioEntry("echo-server.mjs") } });
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse(`\`\`\`\`EDIT (.agents/mcp.json) <1,-1>\n${content}\n\`\`\`\`\n\n\`\`\`\`plurnk_mcp (list)\n\`\`\`\``),
+        makeMockResponse(`\`\`\`\`EDIT (.agents/mcp.json) <1,-1>\n${content}\n\`\`\`\`\n\n\`\`\`\`plurnk (mcp)\n\`\`\`\``),
         makeMockResponse("````repaired (echo)\n{\"message\":\"same-turn-repair\"}\n````"),
         makeMockResponse("````DONE\nConfiguration repaired.\n````"),
     ] });
@@ -181,12 +181,12 @@ test("{§configuration-repair-path} a model's EDIT and same-turn list observe th
     await waitFor(() => finalStatuses, (statuses) => statuses.length > 0, { timeoutMs: 15_000 });
     assert.deepEqual(finalStatuses, [200]);
     const turn0Text = userText(provider.received[0]);
-    assert.match(turn0Text, /"alias":\s*"plurnk_mcp"/u, "Turn 0 plurnk_mcp (list) preserves healthy in-process MCP runtimes");
-    assert.match(turn0Text, /"problem":/u, "Turn 0 plurnk_mcp (list) reports the external MCP configuration problem alongside in-process runtimes");
+    assert.match(turn0Text, /"alias":\s*"plurnk"/u, "Turn 0 plurnk (mcp) preserves healthy in-process MCP runtimes");
+    assert.match(turn0Text, /"problem":/u, "Turn 0 plurnk (mcp) reports the external MCP configuration problem alongside in-process runtimes");
     const log = await daemon.readLog({ workspaceId, sessionId, limit: 100 });
     assert.equal(await readFile(file, "utf8"), content, JSON.stringify(log.filter(({ op }) => op === "EDIT")));
-    const inspected = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk_mcp" });
-    assert.deepEqual((inspected.definitions as FunctionalityListResult["definitions"]).filter(({ alias }) => !alias.startsWith("plurnk_")).map(({ alias, state }) => [alias, state]),
+    const inspected = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk" });
+    assert.deepEqual((inspected.definitions as FunctionalityListResult["definitions"]).filter(({ alias }) => alias !== "plurnk").map(({ alias, state }) => [alias, state]),
         [["repaired", "dormant"]], "the manager's own same-turn result observes fresh configuration without premature publication");
     const echoed = await awaitExecOutcome(db, { workspaceId, scheme: "repaired", channel: "json" });
     assert.deepEqual(echoed.content, [{ type: "text", text: "same-turn-repair" }]);
@@ -231,14 +231,15 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
     assert.equal((await listed())[0]?.state, "active");
     // {§functionality-replacement} With no registry the manager teaches no discover.
     const references = await daemon.engine.referenceEntries(workspaceId);
-    const mcpDoc = references.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk_mcp.md")?.content ?? "";
-    for (const verb of ["list", "add", "replace", "enable", "disable", "remove"]) {
-        assert.ok(mcpDoc.includes(`(${verb})`), `the tool doc names ${verb}`);
+    const mcpToolDoc = references.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk/mcp.json")?.content ?? "";
+    const mcpSchema = JSON.parse(mcpToolDoc) as { properties: Record<string, unknown> };
+    for (const field of ["alias", "enabled", "remove"]) {
+        assert.ok(Object.hasOwn(mcpSchema.properties, field), `the tool schema names ${field}`);
     }
-    assert.doesNotMatch(mcpDoc, /\(discover\)/u, "with no registry the tool doc has no discover");
-    const [unserved] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne("````plurnk_mcp (discover)\n{\"query\": \"echo\"}\n````")] });
+    assert.equal(Object.hasOwn(mcpSchema.properties, "discover"), false, "with no registry the tool schema has no discover");
+    const [unserved] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne("````plurnk (mcp)\n{\"discover\": \"echo\"}\n````")] });
     assert.ok(unserved !== undefined);
-    assert.equal(unserved.status, 404, "a discover the family does not serve is refused as an unknown tool");
+    assert.equal(unserved.status, 400, "a discover the family does not serve is refused by the family tool");
     assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: "fixture" })).definition.state, "disabled");
     assert.ok((await call("fixture", "echo")).status >= 400, "a disabled server's tool is absent");
     assert.equal((await invoke<{ definition: { state: string } }>("enable", { alias: "fixture" })).definition.state, "active");

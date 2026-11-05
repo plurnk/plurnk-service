@@ -931,8 +931,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // {§module-lifecycle} — discovery composes beside the service's explicit modules, then every module sets
         // up against this daemon as the seam ({§module-lifecycle}).
         await this.#modules.setup(this, { cwd: this.#discoveryCwd, hostPaths: this.#hostPaths });
-        // {§functionality-model-projection} {§question-tool} — the model-facing `plurnk_<family>`
-        // and `plurnk_question` runtimes expose workspace Functionality families and `ask` under `mcp:///plurnk_*.md`.
+        // {§functionality-model-projection} {§question-tool} — the model-facing `plurnk`
+        // runtime exposes workspace Functionality families and `question` under `mcp:///plurnk.md`.
         await this.#functionality.ready();
         this.#engine.registerRuntimes(FunctionalityManager.runtimeRegistrations(this.#functionality, {
             executors: () => this.#engine.executors,

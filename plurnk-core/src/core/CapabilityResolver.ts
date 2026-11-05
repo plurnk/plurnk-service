@@ -158,14 +158,13 @@ export default class CapabilityResolver {
         const executors = this.#executors();
         const candidates: Array<{ readonly runtime: string; readonly tool?: string; readonly name: string }> = [];
         for (const runtime of executors?.availableRuntimes(workspaceId) ?? []) {
-            const runtimeName = runtime === "plurnk_question" ? "question" : runtime;
             if (this.#runtimeDescriptor(runtime, null, workspaceId).access === "interact") {
-                candidates.push({ runtime, name: runtimeName });
+                candidates.push({ runtime, name: runtime });
                 continue;
             }
             for (const registered of executors?.toolRegistry(runtime, workspaceId)?.tools ?? []) {
                 if (this.#runtimeDescriptor(runtime, registered.target, workspaceId).access === "interact") {
-                    candidates.push({ runtime, tool: registered.target, name: runtime === "plurnk_question" ? "question" : registered.target });
+                    candidates.push({ runtime, tool: registered.target, name: registered.target });
                 }
             }
         }

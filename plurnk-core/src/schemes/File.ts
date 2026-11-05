@@ -94,7 +94,7 @@ export default class File extends CoreSchemeAdapterBase {
             "# file",
             "## Summary",
             "Project workspace files, addressed as bare paths relative to the project root.",
-            "READ and FIND inspect member files; EDIT proposes a diff for review and writes to disk once accepted. Existing non-members are invisible (`mcp:///plurnk_members.md`); admitted absent paths are created by EDIT, COPY, or MOVE.",
+            "READ and FIND inspect member files; EDIT proposes a diff for review and writes to disk once accepted. Existing non-members are invisible (`mcp:///plurnk/members.json`); admitted absent paths are created by EDIT, COPY, or MOVE.",
             PlurnkParser.frame("EDIT (src/greet.mjs) <!-- create the file from the body -->", "export const greet = (name) => `hello ${name}`;\n\nconsole.log(greet(\"world\"));"),
             "A scoped EDIT replaces the addressed lines with the replacement text in its body.",
         ].join("\n\n"),
@@ -240,7 +240,7 @@ export default class File extends CoreSchemeAdapterBase {
                         : ignoredBy !== null
                             // {§membership}
                             ? `Git ignores it (\`${ignoredBy.file}\` line ${ignoredBy.line}): a client or operator members definition can include it, a model definition cannot.`
-                            : "Admit it with `plurnk_members (add)` and a `{\"files\": [\"<path>\"]}` body."
+                            : "Admit it with `plurnk (members)` and a `{\"files\": [\"<path>\"]}` body."
                     : fileMissRecovery(named),
                 retryable: false,
             },

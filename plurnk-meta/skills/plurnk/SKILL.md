@@ -14,9 +14,9 @@ description: Configure, customize, extend, and integrate Plurnk — settings (.e
 | Model routes, reasoning, output and context limits, cost | [Models](references/models.md) |
 | Every installed package's settings and defaults | [Complete .env.defaults](.env.defaults) |
 | Operating policy (`AGENTS.md` / `AGENTS.local.md`) and session instructions | `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, `<project>/AGENTS.md` (`.local.md`), `session://<session>/AGENTS.md` |
-| Personas (`persona://` and `plurnk_personas`) | [Personas](mcp:///plurnk_personas.md), `persona://<name>/PERSONA.md` |
-| Agent Skills, MCP servers, environment variables, and schedules | `mcp:///plurnk_skills.md`, `mcp:///plurnk_mcp.md`, `mcp:///plurnk_env.md`, `mcp:///plurnk_schedule.md` |
-| Which project files you can see, and why a file is missing | [Membership](mcp:///plurnk_members.md) |
+| Personas (`persona://` and `plurnk (personas)`) | `mcp:///plurnk.md`, `mcp:///plurnk/personas.json`, `persona://<name>/PERSONA.md` |
+| Agent Skills, MCP servers, environment variables, and schedules | `mcp:///plurnk.md`, `mcp:///plurnk/skills.json`, `mcp:///plurnk/mcp.json`, `mcp:///plurnk/env.json`, `mcp:///plurnk/schedule.json` |
+| Which project files you can see, and why a file is missing | `mcp:///plurnk/members.json` |
 | Plugins, extensions, clients and hooks: what each reaches and how it loads | [Extending Plurnk](references/extensibility.md) |
 | Each installed package's contract and type declarations | `packages/<package name>/SPEC.md`, `dist/*.d.ts` |
 | Session hierarchy, messaging, and delegation | [Session reference](plurnk:///session.md) |

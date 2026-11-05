@@ -9,14 +9,14 @@ the loop without a rule.
 
 ## discover: read the time, preview a rule
 
-`discover` with `{}` tells the current time in the effective zone. With
-`{"rule": "<rule text>"}` it returns one inert candidate whose summary opens
+`discover` with `{"discover": true}` tells the current time in the effective zone. With
+`{"discover": "<rule text>"}` it returns one inert candidate whose summary opens
 with the current time in the effective zone and previews the first occurrences,
 and whose definition carries the rule as it would be stored. Nothing is
 persisted.
 
-```plurnk_schedule (discover) <!-- what time is it, and when would this fire -->
-{"rule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20"}
+```plurnk (schedule) <!-- what time is it, and when would this fire -->
+{"discover": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20"}
 ```
 
 ## add
@@ -24,7 +24,7 @@ persisted.
 `add` persists the rule for this workspace and arms its next occurrence, if any.
 It is a host effect and requires approval.
 
-```plurnk_schedule (add)
+```plurnk (schedule)
 {"alias": "daily", "rule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20", "target": "session://exampleSessionName", "prompt": "Text delivered at each occurrence."}
 ```
 

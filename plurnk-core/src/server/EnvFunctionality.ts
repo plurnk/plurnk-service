@@ -36,7 +36,7 @@ const actionError = (code: string, status: number, detail: string, extensions: R
 const reservedNameError = (alias: string): OperationFailureError => actionError("name-reserved", 400,
     `'${alias}' is reserved in env entries.`, {
         alias,
-        recovery: "READ mcp:///plurnk_env.md for supported configuration paths.",
+        recovery: "READ mcp:///plurnk/env.json for supported configuration paths.",
     });
 
 // POSIX-ish, and deliberately narrow: a name the shell can actually export. This is the family's

@@ -231,7 +231,7 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 const ops = initializationRows.map(({ op }) => op);
                 assert.deepEqual([ops[0], ops.at(-1)], ["TODO", "TODO"], "initialization opens and closes with its TODOs");
-                assert.ok(ops.length > 2 && ops.slice(1, -1).every((op) => op === "FIND" || op === "plurnk_mcp"),
+                assert.ok(ops.length > 2 && ops.slice(1, -1).every((op) => op === "FIND" || op === "plurnk"),
                     "between them only the environment surveys: no READ of its own program, no reasoning demonstration");
                 for (const row of initializationRows.filter(({ op }) => op === "FIND")) {
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
@@ -346,7 +346,7 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["TODO", "FIND", "FIND", "plurnk_mcp", "FIND", "TODO"],
+                    ["TODO", "FIND", "FIND", "plurnk", "FIND", "TODO"],
                     "initialization contains its opening TODO, the surveys, its closing TODO, and nothing else",
                 );
                 assert.equal(initializationRows.some(({ scheme }) => scheme === "ops"), false,

@@ -141,8 +141,13 @@ const flatDefinitionInput = (
         : undefined;
     const resolved: JsonSchema = isRecord(deref) ? deref : definitionSchema;
     const defs = isRecord(resolved.$defs) ? resolved.$defs : undefined;
-    if (Array.isArray(resolved.oneOf)) {
-        const branches = resolved.oneOf.map((rawBranch: unknown): JsonSchema => {
+    const branchEntry = Array.isArray(resolved.oneOf)
+        ? { key: "oneOf" as const, rawBranches: resolved.oneOf }
+        : Array.isArray(resolved.anyOf)
+            ? { key: "anyOf" as const, rawBranches: resolved.anyOf }
+            : null;
+    if (branchEntry !== null) {
+        const branches = branchEntry.rawBranches.map((rawBranch: unknown): JsonSchema => {
             const branch = isRecord(rawBranch) ? rawBranch : {};
             const ref = typeof branch.$ref === "string" && branch.$ref.startsWith("#/$defs/")
                 ? defs?.[branch.$ref.slice("#/$defs/".length)]
@@ -165,7 +170,7 @@ const flatDefinitionInput = (
             };
         });
         return Object.freeze({
-            oneOf: branches,
+            [branchEntry.key]: branches,
             ...(defs === undefined ? {} : { $defs: defs }),
         });
     }

@@ -727,7 +727,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
         // {§functionality-model-projection} Configuration is an ordered core operation,
         // not a background job competing for an external-execution slot.
-        if (resolved.executor instanceof FunctionalityManager) {
+        if (resolved.executor instanceof FunctionalityManager && target !== "question") {
             const tail = run();
             this.#activeSpawns.set(subscriptionId, tail);
             return await tail;

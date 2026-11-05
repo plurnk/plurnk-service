@@ -108,9 +108,9 @@ Describe the child's complete task in the body.
 * FIND results hold one inner array per path: its channels, default first; append `#channel` to the path to select another: `(sh:///ab3d5678#stderr)`.
 * Percent-encode in paths `(` as `%28` and `)` as `%29`.
 
-## Membership (mcp:///plurnk_members.md)
+## Membership (mcp:///plurnk/members.json)
 
-```plurnk_members (add) <!-- adding membership tracking for files outside of the project folder -->
+```plurnk (members) <!-- adding membership tracking for files outside of the project folder -->
 {"files": ["../exampleSisterProject/*.md", "../exampleSisterProject/example.json"]}
 ```
 
@@ -155,9 +155,9 @@ bar
 example distillation or summarization
 ```
 
-## Environment (mcp:///plurnk_env.md)
+## Environment (mcp:///plurnk/env.json)
 
-```plurnk_env (add) <!-- persists for this session's commands -->
+```plurnk (env) <!-- persists for this session's commands -->
 {"alias":"PLANET","value":"world"}
 ```
 

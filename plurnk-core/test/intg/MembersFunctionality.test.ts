@@ -19,7 +19,7 @@ import { makeMockResponse, fixtureExecutors, makeRawMockResponse } from "./_mock
 import { waitForDb } from "./_rpc.ts";
 import { modelOperation } from "./_sessions.ts";
 import { type Db } from "../../src/core/Db.ts";
-import { awaitExecOutcome } from "./_execs.ts";
+import { awaitExecOutcome, execOutputEntries } from "./_execs.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 
 describe("members-functionality", () => {
@@ -85,7 +85,7 @@ for (const decision of ["auto", "accept", "reject"] as const) test(`{§op-method
         const db = await openMigrated();
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeRawMockResponse([
-                PlurnkParser.frame("plurnk_members (add)", JSON.stringify({ files: ["loose.md"] })),
+                PlurnkParser.frame("plurnk (members)", JSON.stringify({ files: ["loose.md"] })),
                 PlurnkParser.frame("READ (loose.md)", ""),
                 PlurnkParser.frame("NOTE", "Review the admitted file."),
             ].join("\n\n")),
@@ -249,7 +249,7 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
             if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
         });
         // The dispatched result and the completed JSON output report the same settlement.
-        const outputs = async () => (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "plurnk_members", prefix: "/%" })).length;
+        const outputs = async () => (await execOutputEntries(db, workspaceId, "plurnk")).length;
         const accepted = async (program: string) => {
             const seen = proposals.length;
             const before = await outputs();
@@ -257,10 +257,10 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
             while (proposals.length === seen) await new Promise((resolve) => setTimeout(resolve, 5));
             await daemon.resolveProposal(proposals[seen], { decision: "accept" }, { workspaceId, address: TEST_OWNER });
             const result = await pending;
-            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk_members", after: before, timeoutMs: 60_000 }) as Receipt & { problem?: { type?: string; recovery?: string } };
+            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after: before, timeoutMs: 60_000 }) as Receipt & { problem?: { type?: string; recovery?: string } };
             return { result, outcome };
         };
-        const modelAdd = (...files: string[]) => accepted(`\`\`\`\`plurnk_members (add)\n${JSON.stringify({ files })}\n\`\`\`\``);
+        const modelAdd = (...files: string[]) => accepted(`\`\`\`\`plurnk (members)\n${JSON.stringify({ files })}\n\`\`\`\``);
         try {
             // {§functionality-replacement} — the surface: no replace, and the add and select inputs are the family's own.
             assert.deepEqual(
@@ -284,20 +284,18 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
             assert.deepEqual((await definitions() as Array<{ provenance?: object }>)[0]?.provenance, { kind: "environment", source: "PLURNK_MEMBERS_docs" });
             await daemon.settleFunctionality(workspaceId);
             // {§functionality-model-projection} — the tool doc and schema teach tracked-or-picked and the scope
-            // lattice alongside the generated verb tools, from plurnk-core/docs/members.md.
+            // lattice alongside the generated family tool, from plurnk-core/docs/members.md.
             const refs = await daemon.engine.referenceEntries(workspaceId);
-            const membersDoc = refs.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk_members.md");
-            const membersAddDoc = refs.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk_members/add.json");
-            const membersEnableDoc = refs.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk_members/enable.json");
-            assert.ok(membersDoc && membersAddDoc && membersEnableDoc, "the members tool doc and verb schemas are reference entries");
-            assert.match(membersDoc.content, /## When a file you need is not a member/u, "the body teaches the recovery when a file is not a member");
-            assert.match(membersDoc.content, /PLURNK_SERVICE_MEMBERS_MODEL_SCOPE/u, "the body names the scope ceiling");
-            assert.doesNotMatch(membersDoc.content, /git add/u, "no recovery asks the model to change the repository");
-            const membersAddSchema = JSON.parse(membersAddDoc.content) as { properties: Record<string, unknown> };
-            const membersEnableSchema = JSON.parse(membersEnableDoc.content) as { properties: Record<string, unknown> };
-            assert.ok(Object.hasOwn(membersAddSchema.properties, "files"), "the add schema teaches the family's own add input");
-            assert.ok(Object.hasOwn(membersEnableSchema.properties, "file"), "and its select input");
-            assert.doesNotMatch(membersDoc.content, /plurnk_members \(replace\)/u, "the family serves no replace, so nothing teaches one");
+            const plurnkDoc = refs.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk.md");
+            const membersToolDoc = refs.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk/members.json");
+            assert.ok(plurnkDoc && membersToolDoc, "the plurnk runtime doc and members tool schema are reference entries");
+            const membersSchema = JSON.parse(membersToolDoc.content) as { description?: string; properties: Record<string, unknown> };
+            assert.match(String(membersSchema.description), /## When a file you need is not a member/u, "the body teaches the recovery when a file is not a member");
+            assert.match(String(membersSchema.description), /PLURNK_SERVICE_MEMBERS_MODEL_SCOPE/u, "the body names the scope ceiling");
+            assert.doesNotMatch(String(membersSchema.description), /git add/u, "no recovery asks the model to change the repository");
+            assert.ok(Object.hasOwn(membersSchema.properties, "files"), "the tool schema teaches the family's own add input");
+            assert.ok(Object.hasOwn(membersSchema.properties, "file"), "and its select input");
+            assert.doesNotMatch(String(membersSchema.description), /\breplace\b/iu, "the family serves no replace, so nothing teaches one");
 
             assert.equal(await memberOf(db, workspaceId, "docs/guide.md"), true, "an enabled service definition projects onto the overlay");
             assert.ok((await rows(db, workspaceId)).includes("include docs/** members"), "a human-authored definition projects with source members");
@@ -513,8 +511,8 @@ test("{§tools-resource-materialization} {§fs-namespace} a glob spelled absolut
         try {
             const operate = (program: string) => modelOperation(daemon, db, { workspaceId, sessionId: model, statement: parseOne(program) });
             const files = places.flatMap(({ dir, key }) => [`${key}/relative.md`, join(dir, "absolute.md"), `${key}/excluded.md`, `!${join(dir, "excluded.md")}`]);
-            await operate(`\`\`\`\`plurnk_members (add)\n${JSON.stringify({ files })}\n\`\`\`\``);
-            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk_members", after: 0, timeoutMs: 30_000 }) as Receipt;
+            await operate(`\`\`\`\`plurnk (members)\n${JSON.stringify({ files })}\n\`\`\`\``);
+            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after: 0, timeoutMs: 30_000 }) as Receipt;
             assert.equal(outcome.status, 201);
             await daemon.settleFunctionality(workspaceId);
             for (const { dir, key } of places) {

@@ -4,7 +4,7 @@ import ToolResources from "./ToolResources.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Lexer } from "marked";
-import { plurnkFamilyRuntimeDecl } from "../server/FunctionalityManager.ts";
+import { plurnkRuntimeDecl } from "../server/FunctionalityManager.ts";
 import { isExecution, Validator, type JsonSchema } from "@plurnk/plurnk-contracts";
 
 describe("ToolResources", () => {
@@ -209,21 +209,16 @@ test("{§tools-resource-materialization} a registry-less runtime with no details
     assert.ok(taught.content.endsWith("Set `scale` first."), "the body closes the document");
 });
 
-test("{§functionality-model-projection} plurnk_<family> runtime summary advertises effective verbs in registration order", () => {
-    for (const verbs of [["list", "discover", "add", "replace", "enable", "disable", "remove"], ["list", "add", "remove"]] as const) {
-        const decl = plurnkFamilyRuntimeDecl({
-            family: "members",
-            summary: "Manage file membership.",
-            inputSchemas: Object.fromEntries(verbs.map((verb) => [verb, { type: "object" }])),
-        });
+test("{§functionality-model-projection} plurnk runtime summary advertises effective tools in registration order", () => {
+    for (const tools of [["env", "mcp", "skills", "personas", "schedule", "members", "question"], ["env", "members"]] as const) {
         const [resource] = ToolResources.render({
-            runtime: decl.name, ...decl, details: "",
-            registry: { tools: verbs.map((target) => ({
-                target, summary: target, invocation: decl.invocation,
+            runtime: plurnkRuntimeDecl.name, ...plurnkRuntimeDecl, details: "",
+            registry: { tools: tools.map((target) => ({
+                target, summary: target, invocation: plurnkRuntimeDecl.invocation,
             })) },
         });
         const summary = resource.content.split("## Summary\n\n")[1].split("\n\n")[0];
-        assert.equal(summary, `\`\`\`plurnk_members (${verbs.join("|")}) <!-- Manage file membership. -->\n\`\`\``);
+        assert.equal(summary, `\`\`\`plurnk (${tools.join("|")}) <!-- Manage workspace capabilities and ask the user questions. -->\n\`\`\``);
     }
 });
 

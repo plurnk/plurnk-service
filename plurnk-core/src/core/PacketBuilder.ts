@@ -456,13 +456,8 @@ export default class PacketBuilder {
         // {§tools-resource-materialization} — a family's generated documents follow its tool's admission:
         // a denied family is a door the model is never shown.
         out.push(...this.#functionalityDocuments(workspaceId)
-            .filter(({ family }) => {
-                const runtime = `plurnk_${family}`;
-                const tools = executors?.toolRegistry(runtime, workspaceId)?.tools;
-                return tools !== undefined && tools.length > 0
-                    ? tools.some((tool) => this.#capabilities.allowsRuntimeAcross(runtime, tool.target, workspaceId, policies))
-                    : this.#capabilities.allowsRuntimeAcross(runtime, null, workspaceId, policies);
-            })
+            .filter(({ family }) =>
+                this.#capabilities.allowsRuntimeAcross("plurnk", family, workspaceId, policies))
             .map(({ pathname, content }) => ({ scheme: "plurnk" as const, pathname, content })));
         return out.toSorted((left, right) =>
             left.scheme.localeCompare(right.scheme) || left.pathname.localeCompare(right.pathname));

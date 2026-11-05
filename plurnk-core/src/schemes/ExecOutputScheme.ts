@@ -108,6 +108,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
     #isDocumentResource(target: ParsedPath | null): boolean {
         return target?.kind === "url"
             && !this.claimsLiveResource(target)
+            && !/^\/[0-9a-f]{8}(?:[/#]|$)/u.test(target.pathname ?? "")
             && this.#manifest.writableBy.includes("_plurnk");
     }
 

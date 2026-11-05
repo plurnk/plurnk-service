@@ -11,7 +11,7 @@ import { join, resolve } from "node:path";
 import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
 import { type FunctionalityListResult, type PlurnkStatement, type FunctionalityDiscoverResult, type FunctionalityMutationResult } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { awaitExecOutcome } from "./_execs.ts";
+import { awaitExecOutcome, execOutputEntries } from "./_execs.ts";
 import { fixtureExecutors, makeRawMockResponse } from "./_mock.ts";
 import { insertWorkspace, insertSession, openMigrated } from "./_db.ts";
 import { type Db } from "../../src/core/Db.ts";
@@ -32,7 +32,7 @@ for (const scope of ["session", "workspace"] as const) {
         const db = await openMigrated();
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeRawMockResponse([
-                PlurnkParser.frame("plurnk_env (add)", JSON.stringify({ scope, alias: "SETTLEMENT_WITNESS", value: "settled" })),
+                PlurnkParser.frame("plurnk (env)", JSON.stringify({ scope, alias: "SETTLEMENT_WITNESS", value: "settled" })),
                 PlurnkParser.frame("sh", 'printf "%s" "$SETTLEMENT_WITNESS"'),
                 PlurnkParser.frame("NOTE", "Review the shell output."),
             ].join("\n\n")),
@@ -47,7 +47,7 @@ for (const scope of ["session", "workspace"] as const) {
         const lifecycle = new LoopLifecycle(db);
         await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
         const rows = await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER });
-        assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk_env")?.status_rx, 201);
+        assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk")?.status_rx, 201);
         assert.ok(rows.some((row) => row.op === "READ" && row.scheme === "sh" && row.status_rx === 200 && JSON.stringify(row.rx).includes("settled")), "the command receives the just-published environment value");
     });
 }
@@ -192,21 +192,21 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
         assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:disabled", "the child's change never reaches the parent");
         assert.equal(await stateOf(alice, "CAROL_ONLY"), undefined);
 
-        // The model's projection: `plurnk_env` is published on the `plurnk_env` manager, and Core binds it to the invoking
+        // The model's projection: `plurnk (env)` is published on the `plurnk` manager, and Core binds it to the invoking
         // session at the operation, so alice's `list` is alice's and bob's is bob's.
         const outputs = async (): Promise<number> =>
-            (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "plurnk_env", prefix: "/%" })).length;
+            (await execOutputEntries(db, workspaceId, "plurnk")).length;
         const exec = async (sessionId: number, program: string) => {
             const after = await outputs();
             const { status } = await modelOperation(daemon, db, { workspaceId, sessionId, statement: parseOne(program) });
-            return { status, result: () => awaitExecOutcome(db, { workspaceId, scheme: "plurnk_env", after, timeoutMs: 10_000 }) };
+            return { status, result: () => awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after, timeoutMs: 10_000 }) };
         };
-        const aliceList = await exec(alice, "````plurnk_env (list)````");
+        const aliceList = await exec(alice, "````plurnk (env)````");
         assert.equal(aliceList.status, 200);
         const aliceView = await aliceList.result() as unknown as FunctionalityListResult;
         assert.equal(aliceView.definitions.find(({ alias }) => alias === "CARGO_TARGET_DIR")?.origin, "session");
         assert.equal(aliceView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "disabled");
-        const bobView = await (await exec(bob, "````plurnk_env (list)````")).result() as unknown as FunctionalityListResult;
+        const bobView = await (await exec(bob, "````plurnk (env)````")).result() as unknown as FunctionalityListResult;
         assert.equal(bobView.definitions.some(({ alias }) => alias === "CARGO_TARGET_DIR"), false, "the binding is per operation: bob's list is bob's");
         assert.equal(bobView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "active");
 
@@ -239,9 +239,9 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
         };
         try {
             const before = await outputs();
-            const bobAdded = await accepted(bob, `\`\`\`\`plurnk_env (add)\n${JSON.stringify({ alias: "BOB_ONLY", value: "1" })}\n\`\`\`\``);
+            const bobAdded = await accepted(bob, `\`\`\`\`plurnk (env)\n${JSON.stringify({ alias: "BOB_ONLY", value: "1" })}\n\`\`\`\``);
             assert.equal(bobAdded.status, 201, "the accepted add settled inside the operation");
-            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk_env", after: before, timeoutMs: 10_000 }) as unknown as FunctionalityMutationResult;
+            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after: before, timeoutMs: 10_000 }) as unknown as FunctionalityMutationResult;
             assert.equal(outcome.definition?.origin, "session");
             assert.equal(await stateOf(bob, "BOB_ONLY"), "session:active", "an accepted model add persisted for the invoking session");
             assert.equal(await stateOf(alice, "BOB_ONLY"), undefined);

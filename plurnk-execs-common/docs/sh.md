@@ -22,7 +22,7 @@ ordinary executable-bit rules. The same applies to local, `session://`, and
 The command receives a scoped environment: provider keys and every `PLURNK_*`
 setting are stripped before the child starts, so `printenv` cannot read
 plurnk's credentials, and the project's environment passes through, overlaid
-with the `env` registry (`mcp:///plurnk_env.md`).
+with the `env` registry (`mcp:///plurnk/env.json`).
 
 ## Working directory
 
@@ -63,4 +63,4 @@ npm test
 
 Expiry closes the stream with status 504. By contrast, `WAIT [30]` limits one
 wait to 30 seconds without stopping the command. Without `lifetime`,
-the command is loop-bound; see `mcp:///plurnk_env.md` for other `lifetime` values (`detached`, `turn`).
+the command is loop-bound; see `mcp:///plurnk/env.json` for other `lifetime` values (`detached`, `turn`).
