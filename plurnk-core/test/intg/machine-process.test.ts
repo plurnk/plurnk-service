@@ -988,21 +988,39 @@ test(`{§db-migrations}: a ${V5_2_0.label} database upgrades uppercase operation
     try {
         before.exec(`
             PRAGMA foreign_keys = ON;
+            CREATE VIEW unobserved_session_completions AS SELECT id FROM ambient_events;
+            CREATE TRIGGER log_entries_deliver_replies AFTER INSERT ON log_entries WHEN 0 BEGIN SELECT id FROM ambient_events; END;
             INSERT INTO workspaces (id, name, settings) VALUES (1, 'lowercaseOps', '{"capabilities":{"deny":[{"operation":"EDIT","scheme":"file"}]}}');
             INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
             INSERT INTO sessions (id, workspace_id, name, origin) VALUES (1, 1, 'root', 'model');
             INSERT INTO loops (id, session_id, sequence, prompt, max_turns) VALUES (1, 1, 1, 'Ask', -1);
-            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 200);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status, packet) VALUES (
+                1, 1, 1, 'model', 'inference', 200,
+                '{"weight":0,"attributions":[],"assistant":{"content":"","ops":[{"op":"KILL","target":{"kind":"url","raw":"log:///1/1/2/FAIL","scheme":"log","pathname":"/1/1/2/FAIL"}}],"reasoning":null},"assistantRaw":{}}'
+            );
+            INSERT INTO turn_sources (turn_id, kind, sequence, content) VALUES (1, 'ops', 0, 'await plurnk.fail({ target: "x" });');
             INSERT INTO log_entries (
                 session_id, loop_id, turn_id, sequence, origin, op,
-                scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, attrs
+                scheme, hostname, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, attrs, initial_folded
             ) VALUES (
-                1, 1, 1, 1, 'model', 'FAIL',
-                'log', '1/1/1/FAIL',
-                '{"op":"FAIL","target":{"kind":"url","raw":"log:///1/1/1/FAIL","scheme":"log","username":null,"password":null,"hostname":null,"port":null,"pathname":"1/1/1/FAIL","query":null,"fragment":null}}',
+                1, 1, 1, 1, '_plurnk', 'READ',
+                'ops', 'root', '/1/1', '{"op":"READ"}',
+                'application/json', '{"status":200,"content":"await plurnk.fail({ target: \\"x\\" });"}',
+                'application/json', 200, 1, 'resolved', '{"kind":"emission"}', '[[1,-1]]'
+            ), (
+                1, 1, 1, 2, 'model', 'FAIL',
+                'log', null, '1/1/2/FAIL',
+                '{"op":"FAIL","target":{"kind":"url","raw":"log:///1/1/2/FAIL","scheme":"log","username":null,"password":null,"hostname":null,"port":null,"pathname":"1/1/2/FAIL","query":null,"fragment":null}}',
                 'application/json',
-                '{"status":404,"problem":{"type":"https://problems.plurnk.xyz/schemes/message/not-found","title":"Message not found","status":404,"detail":"Message not found.","instance":"log:///1/1/1/FAIL"}}',
-                'application/json', 404, 1, 'resolved', '{}'
+                '{"status":404,"problem":{"type":"https://problems.plurnk.xyz/schemes/message/not-found","title":"Message not found","status":404,"detail":"Message not found.","instance":"log:///1/1/2/FAIL"}}',
+                'application/json', 404, 1, 'resolved', '{}', '[]'
+            ), (
+                1, 1, 1, 3, 'model', 'NOTE',
+                null, null, null,
+                '{"op":"NOTE","body":"Retired fail."}',
+                'application/json',
+                '{"attrs":{"distilled":"log:///1/1/2/FAIL"},"status":200,"resource":"note://root/1/1/3"}',
+                'application/json', 200, 1, 'resolved', '{"distilled":"log:///1/1/2/FAIL"}', '[]'
             );
         `);
     } finally { before.close(); }
@@ -1012,11 +1030,22 @@ test(`{§db-migrations}: a ${V5_2_0.label} database upgrades uppercase operation
     try {
         const ws = after.prepare("SELECT settings FROM workspaces WHERE id = 1").get() as { settings: string };
         assert.deepEqual(JSON.parse(ws.settings), { capabilities: { deny: [{ operation: "edit", scheme: "file" }] } });
-        const entry = after.prepare("SELECT op, pathname, tx, rx FROM log_entries WHERE id = 1").get() as { op: string; pathname: string; tx: string; rx: string };
+        const emission = after.prepare("SELECT op, tx FROM log_entries WHERE id = 1").get() as { op: string; tx: string };
+        assert.equal(emission.op, "read");
+        assert.equal((JSON.parse(emission.tx) as { op: string }).op, "read");
+        const entry = after.prepare("SELECT op, pathname, tx, rx FROM log_entries WHERE id = 2").get() as { op: string; pathname: string; tx: string; rx: string };
         assert.equal(entry.op, "fail");
-        assert.equal(entry.pathname, "1/1/1/fail");
+        assert.equal(entry.pathname, "1/1/2/fail");
         assert.equal((JSON.parse(entry.tx) as { op: string }).op, "fail");
-        assert.equal((JSON.parse(entry.rx) as { problem: { instance: string } }).problem.instance, "log:///1/1/1/fail");
+        assert.equal((JSON.parse(entry.rx) as { problem: { instance: string } }).problem.instance, "log:///1/1/2/fail");
+        const distilled = after.prepare("SELECT op, rx, attrs FROM log_entries WHERE id = 3").get() as { op: string; rx: string; attrs: string };
+        assert.equal(distilled.op, "note");
+        assert.equal((JSON.parse(distilled.rx) as { attrs: { distilled: string } }).attrs.distilled, "log:///1/1/2/fail");
+        assert.equal((JSON.parse(distilled.attrs) as { distilled: string }).distilled, "log:///1/1/2/fail");
+        const turn = after.prepare("SELECT packet FROM turns WHERE id = 1").get() as { packet: string };
+        assert.deepEqual((JSON.parse(turn.packet) as { assistant: { ops: unknown[] } }).assistant.ops, [
+            { op: "kill", target: { kind: "url", raw: "log:///1/1/2/fail", scheme: "log", pathname: "/1/1/2/fail" } },
+        ]);
     } finally { after.close(); }
 });
 

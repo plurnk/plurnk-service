@@ -11,8 +11,18 @@ INSERT INTO _support_floor_probe (id) VALUES (1);
 DROP TABLE _support_floor_probe;
 
 -- {§db-migrations} {§op-methods-op-dispatch} {§env-delta} Lowercase the 15 core operation tokens across schema constraints, triggers, views, and persisted rows.
+DROP VIEW IF EXISTS unobserved_session_completions;
+DROP TRIGGER IF EXISTS ambient_child_wake_revision;
+DROP TRIGGER IF EXISTS log_entries_deliver_replies;
+DROP TRIGGER IF EXISTS sessions_capture_ambient_baseline;
+DROP TRIGGER IF EXISTS loops_append_ambient_event;
+DROP TRIGGER IF EXISTS log_entries_append_ambient_event_insert;
+DROP TRIGGER IF EXISTS log_entries_append_ambient_event_resolve;
+DROP TRIGGER IF EXISTS ambient_events_retire_log_refs;
 DROP TRIGGER IF EXISTS log_entries_ambient_event_once;
 DROP TRIGGER IF EXISTS log_entries_immutable_core;
+DROP TRIGGER IF EXISTS log_entries_immutable_attrs;
+DROP TRIGGER IF EXISTS log_entries_emission_frozen;
 
 CREATE TEMP TABLE _ambient_event_links AS
 SELECT id, ambient_event_id FROM log_entries WHERE ambient_event_id IS NOT NULL;
@@ -88,9 +98,8 @@ SELECT
     id, workspace_id, producer_session_id, recipient_session_id, workspace_broadcast,
     kind, source_record_id, at,
     CASE
-        WHEN source GLOB 'log:///*/*'
-         AND substr(source, length(source) - 4) IN ('/FIND','/READ','/EDIT','/COPY','/MOVE','/SEND','/DONE','/FAIL','/BARE','/WORK','/FORK','/KILL','/NOTE','/TODO','/WAIT')
-        THEN substr(source, 1, length(source) - 4) || lower(substr(source, length(source) - 3))
+        WHEN source GLOB 'log:///*[A-Z]*'
+        THEN lower(source)
         ELSE source
     END,
     CASE
@@ -99,14 +108,56 @@ SELECT
         ELSE op
     END,
     signal, scheme, username, password,
-    hostname, port, pathname, query, fragment, line_marker,
+    hostname, port,
+    CASE
+        WHEN scheme = 'log' AND pathname GLOB '*[A-Z]*'
+        THEN lower(pathname)
+        ELSE pathname
+    END,
+    query, fragment, line_marker,
     CASE
         WHEN json_valid(tx)
          AND json_extract(tx, '$.op') IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
-        THEN json_set(tx, '$.op', lower(json_extract(tx, '$.op')))
+        THEN json_set(
+            CASE
+                WHEN json_extract(tx, '$.target.raw') GLOB 'log:///*[A-Z]*'
+                THEN json_set(
+                    tx,
+                    '$.target.raw', lower(json_extract(tx, '$.target.raw')),
+                    '$.target.pathname', lower(json_extract(tx, '$.target.pathname'))
+                )
+                ELSE tx
+            END,
+            '$.op',
+            lower(json_extract(tx, '$.op'))
+        )
+        WHEN json_valid(tx)
+         AND json_extract(tx, '$.target.raw') GLOB 'log:///*[A-Z]*'
+        THEN json_set(
+            tx,
+            '$.target.raw', lower(json_extract(tx, '$.target.raw')),
+            '$.target.pathname', lower(json_extract(tx, '$.target.pathname'))
+        )
         ELSE tx
     END,
-    mimetype_tx, rx, mimetype_rx, status_rx, state, outcome, attrs, terminated_by
+    mimetype_tx,
+    CASE
+        WHEN json_valid(rx)
+         AND json_extract(rx, '$.problem.instance') GLOB 'log:///*[A-Z]*'
+        THEN json_set(rx, '$.problem.instance', lower(json_extract(rx, '$.problem.instance')))
+        WHEN json_valid(rx)
+         AND json_extract(rx, '$.attrs.distilled') GLOB '*[A-Z]*'
+        THEN json_set(rx, '$.attrs.distilled', lower(json_extract(rx, '$.attrs.distilled')))
+        ELSE rx
+    END,
+    mimetype_rx, status_rx, state, outcome,
+    CASE
+        WHEN json_valid(attrs)
+         AND json_extract(attrs, '$.distilled') GLOB '*[A-Z]*'
+        THEN json_set(attrs, '$.distilled', lower(json_extract(attrs, '$.distilled')))
+        ELSE attrs
+    END,
+    terminated_by
 FROM ambient_events;
 
 DROP TABLE ambient_events;
@@ -163,9 +214,8 @@ SET op = CASE
     END,
     pathname = CASE
         WHEN scheme = 'log'
-         AND pathname IS NOT NULL
-         AND substr(pathname, length(pathname) - 4) IN ('/FIND','/READ','/EDIT','/COPY','/MOVE','/SEND','/DONE','/FAIL','/BARE','/WORK','/FORK','/KILL','/NOTE','/TODO','/WAIT')
-        THEN substr(pathname, 1, length(pathname) - 4) || lower(substr(pathname, length(pathname) - 3))
+         AND pathname GLOB '*[A-Z]*'
+        THEN lower(pathname)
         ELSE pathname
     END,
     tx = CASE
@@ -173,44 +223,64 @@ SET op = CASE
          AND json_extract(tx, '$.op') IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
         THEN json_set(
             CASE
-                WHEN json_extract(tx, '$.target.raw') GLOB 'log:///*/*'
-                 AND substr(json_extract(tx, '$.target.raw'), length(json_extract(tx, '$.target.raw')) - 4) IN ('/FIND','/READ','/EDIT','/COPY','/MOVE','/SEND','/DONE','/FAIL','/BARE','/WORK','/FORK','/KILL','/NOTE','/TODO','/WAIT')
+                WHEN json_extract(tx, '$.target.raw') GLOB 'log:///*[A-Z]*'
                 THEN json_set(
                     tx,
-                    '$.target.raw',
-                    substr(json_extract(tx, '$.target.raw'), 1, length(json_extract(tx, '$.target.raw')) - 4) || lower(substr(json_extract(tx, '$.target.raw'), length(json_extract(tx, '$.target.raw')) - 3)),
-                    '$.target.pathname',
-                    substr(json_extract(tx, '$.target.pathname'), 1, length(json_extract(tx, '$.target.pathname')) - 4) || lower(substr(json_extract(tx, '$.target.pathname'), length(json_extract(tx, '$.target.pathname')) - 3))
+                    '$.target.raw', lower(json_extract(tx, '$.target.raw')),
+                    '$.target.pathname', lower(json_extract(tx, '$.target.pathname'))
                 )
                 ELSE tx
             END,
             '$.op',
             lower(json_extract(tx, '$.op'))
         )
+        WHEN json_valid(tx)
+         AND json_extract(tx, '$.target.raw') GLOB 'log:///*[A-Z]*'
+        THEN json_set(
+            tx,
+            '$.target.raw', lower(json_extract(tx, '$.target.raw')),
+            '$.target.pathname', lower(json_extract(tx, '$.target.pathname'))
+        )
         ELSE tx
     END,
     rx = CASE
         WHEN json_valid(rx)
-         AND json_extract(rx, '$.problem.instance') GLOB 'log:///*/*'
-         AND substr(json_extract(rx, '$.problem.instance'), length(json_extract(rx, '$.problem.instance')) - 4) IN ('/FIND','/READ','/EDIT','/COPY','/MOVE','/SEND','/DONE','/FAIL','/BARE','/WORK','/FORK','/KILL','/NOTE','/TODO','/WAIT')
+         AND json_extract(rx, '$.problem.instance') GLOB 'log:///*[A-Z]*'
         THEN json_set(
             rx,
             '$.problem.instance',
-            substr(json_extract(rx, '$.problem.instance'), 1, length(json_extract(rx, '$.problem.instance')) - 4) || lower(substr(json_extract(rx, '$.problem.instance'), length(json_extract(rx, '$.problem.instance')) - 3))
+            lower(json_extract(rx, '$.problem.instance'))
+        )
+        WHEN json_valid(rx)
+         AND json_extract(rx, '$.attrs.distilled') GLOB '*[A-Z]*'
+        THEN json_set(
+            rx,
+            '$.attrs.distilled',
+            lower(json_extract(rx, '$.attrs.distilled'))
         )
         ELSE rx
     END,
+    attrs = CASE
+        WHEN json_valid(attrs)
+         AND json_extract(attrs, '$.distilled') GLOB '*[A-Z]*'
+        THEN json_set(
+            attrs,
+            '$.distilled',
+            lower(json_extract(attrs, '$.distilled'))
+        )
+        ELSE attrs
+    END,
     source = CASE
-        WHEN source GLOB 'log:///*/*'
-         AND substr(source, length(source) - 4) IN ('/FIND','/READ','/EDIT','/COPY','/MOVE','/SEND','/DONE','/FAIL','/BARE','/WORK','/FORK','/KILL','/NOTE','/TODO','/WAIT')
-        THEN substr(source, 1, length(source) - 4) || lower(substr(source, length(source) - 3))
+        WHEN source GLOB 'log:///*[A-Z]*'
+        THEN lower(source)
         ELSE source
     END
 WHERE op IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
-   OR (scheme = 'log' AND pathname IS NOT NULL AND substr(pathname, length(pathname) - 4) IN ('/FIND','/READ','/EDIT','/COPY','/MOVE','/SEND','/DONE','/FAIL','/BARE','/WORK','/FORK','/KILL','/NOTE','/TODO','/WAIT'))
-   OR (json_valid(tx) AND json_extract(tx, '$.op') IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT'))
-   OR (json_valid(rx) AND json_extract(rx, '$.problem.instance') GLOB 'log:///*/*' AND substr(json_extract(rx, '$.problem.instance'), length(json_extract(rx, '$.problem.instance')) - 4) IN ('/FIND','/READ','/EDIT','/COPY','/MOVE','/SEND','/DONE','/FAIL','/BARE','/WORK','/FORK','/KILL','/NOTE','/TODO','/WAIT'))
-   OR (source GLOB 'log:///*/*' AND substr(source, length(source) - 4) IN ('/FIND','/READ','/EDIT','/COPY','/MOVE','/SEND','/DONE','/FAIL','/BARE','/WORK','/FORK','/KILL','/NOTE','/TODO','/WAIT'));
+   OR (scheme = 'log' AND pathname GLOB '*[A-Z]*')
+   OR (json_valid(tx) AND (json_extract(tx, '$.op') IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT') OR json_extract(tx, '$.target.raw') GLOB 'log:///*[A-Z]*'))
+   OR (json_valid(rx) AND (json_extract(rx, '$.problem.instance') GLOB 'log:///*[A-Z]*' OR json_extract(rx, '$.attrs.distilled') GLOB '*[A-Z]*'))
+   OR (json_valid(attrs) AND json_extract(attrs, '$.distilled') GLOB '*[A-Z]*')
+   OR (source GLOB 'log:///*[A-Z]*');
 
 CREATE TRIGGER log_entries_immutable_core
 BEFORE UPDATE OF
@@ -222,6 +292,23 @@ BEFORE UPDATE OF
 ON log_entries
 BEGIN
     SELECT RAISE(ABORT, 'log_entries core fields are immutable; only lifecycle outcome and derived attachments may change');
+END;
+
+CREATE TRIGGER log_entries_immutable_attrs
+BEFORE UPDATE OF attrs ON log_entries
+WHEN COALESCE((
+    json_type(OLD.attrs, '$.__plurnk_curation') = 'object'
+    AND NEW.attrs = json_remove(OLD.attrs, '$.__plurnk_curation')
+), 0) = 0
+BEGIN
+    SELECT RAISE(ABORT, 'log_entries attrs are immutable outside curation payload removal');
+END;
+
+CREATE TRIGGER log_entries_emission_frozen
+BEFORE UPDATE OF rx, status_rx, state, outcome, weight ON log_entries
+WHEN json_extract(OLD.attrs, '$.kind') = 'emission'
+BEGIN
+    SELECT RAISE(ABORT, 'an emission row is frozen');
 END;
 
 CREATE TRIGGER log_entries_ambient_event_once
@@ -243,7 +330,30 @@ SET packet = json_set(
             CASE
                 WHEN json_type(item.value) = 'object'
                  AND json_extract(item.value, '$.op') IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
-                THEN json(json_set(item.value, '$.op', lower(json_extract(item.value, '$.op'))))
+                THEN json(
+                    json_set(
+                        CASE
+                            WHEN json_extract(item.value, '$.target.raw') GLOB 'log:///*[A-Z]*'
+                            THEN json_set(
+                                item.value,
+                                '$.target.raw', lower(json_extract(item.value, '$.target.raw')),
+                                '$.target.pathname', lower(json_extract(item.value, '$.target.pathname'))
+                            )
+                            ELSE item.value
+                        END,
+                        '$.op',
+                        lower(json_extract(item.value, '$.op'))
+                    )
+                )
+                WHEN json_type(item.value) = 'object'
+                 AND json_extract(item.value, '$.target.raw') GLOB 'log:///*[A-Z]*'
+                THEN json(
+                    json_set(
+                        item.value,
+                        '$.target.raw', lower(json_extract(item.value, '$.target.raw')),
+                        '$.target.pathname', lower(json_extract(item.value, '$.target.pathname'))
+                    )
+                )
                 ELSE json(item.value)
             END
         )
@@ -257,7 +367,10 @@ WHERE packet IS NOT NULL
       SELECT 1
       FROM json_each(turns.packet, '$.assistant.ops') item
       WHERE json_type(item.value) = 'object'
-        AND json_extract(item.value, '$.op') IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
+        AND (
+            json_extract(item.value, '$.op') IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
+            OR json_extract(item.value, '$.target.raw') GLOB 'log:///*[A-Z]*'
+        )
   );
 
 UPDATE workspaces
