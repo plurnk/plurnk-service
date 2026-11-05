@@ -52,7 +52,9 @@ export default class TextMarkdown extends BaseHandler {
     override deepJson(content: HandlerContent): unknown {
         if (typeof content !== "string") return null;
         const source = new MarkdownSource(content);
-        const children = source.tokens.map((token) => tokenToDeep(token, source.region(token)));
+        const children = source.tokens
+            .filter((token) => token.type !== "space")
+            .map((token) => tokenToDeep(token, source.region(token)));
         const region = TextCoordinates.regionFromOffsets(content, 0, content.length)!;
         return { type: "document", ...coordinates(region), children };
     }

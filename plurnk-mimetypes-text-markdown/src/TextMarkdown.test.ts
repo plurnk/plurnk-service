@@ -320,7 +320,7 @@ describe("{§mimetype-query} structural dialects query the tree, regex the raw b
             "",
             "After table.",
         ].join("\n");
-        const xpathMatches = await h.query(withTable, "xpath", "//table");
+        const xpathMatches = await h.query(withTable, "xpath", "//heading[text='Table Section']/following-sibling::*[1]");
         assert.equal(xpathMatches.length, 1);
         assert.deepEqual(xpathMatches[0].regions, [{ startLine: 5, startColumn: 1, endLine: 8, endColumn: 10 }]);
         const jsonpathMatches = await h.query(withTable, "jsonpath", "$.children[?(@.type=='table')]");

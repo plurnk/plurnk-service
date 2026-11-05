@@ -28,7 +28,7 @@ refused target does not undo successful siblings. No matching path changes
 nothing. `copy`/`move` require one resolved resource per operand; use explicit
 source/destination pairs for multiple transfers.
 
-## What a pattern selects
+## Pattern Dialects
 
 | Prefix | Dialect | Pattern | Selection |
 | --- | --- | --- | --- |

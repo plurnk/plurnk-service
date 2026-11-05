@@ -200,6 +200,12 @@ export default class InitializationTurn {
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
+                op: "read", aside: null,
+                target: { kind: "url", raw: "skill://plurnk/pattern.md", scheme: "skill", username: null, password: null, hostname: "plurnk", port: null, pathname: "/pattern.md", query: null, fragment: null },
+                metadata: null,
+                matcher: { dialect: "xpath", raw: "//heading[text='Pattern Dialects']/following-sibling::*[1]" }, body: null, lineMarker: null, position: UNKNOWN_POSITION,
+            },
+            {
                 op: "find", aside: null,
                 target: { kind: "url", raw: "persona://*/PERSONA.md", scheme: "persona", username: null, password: null, hostname: "*", port: null, pathname: "/PERSONA.md", query: null, fragment: null },
                 metadata: null,

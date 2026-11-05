@@ -316,6 +316,9 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 assert.ok(skillItems[0]?.[0]?.aside, "the skill arrives with its standard description");
                 const skillRead = rows.find((row) => row.op === "read" && row.scheme === "skill" && row.hostname === "plurnk" && row.pathname === "/SKILL.md");
                 assert.ok(skillRead !== undefined && skillRead.status_rx === 200, "Turn 0 reads skill://plurnk/SKILL.md");
+                const patternTableRead = rows.find((row) => row.op === "read" && row.scheme === "skill" && row.hostname === "plurnk" && row.pathname === "/pattern.md");
+                assert.ok(patternTableRead !== undefined && patternTableRead.status_rx === 200, "Turn 0 reads the Pattern Dialects table from skill://plurnk/pattern.md");
+                assert.match((JSON.parse(patternTableRead.rx) as { content: string }).content, /\| Prefix \| Dialect \| Pattern \| Selection \|/u);
                 const plurnkRead = rows.find((row) => row.op === "read" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk.md");
                 assert.ok(plurnkRead !== undefined && plurnkRead.status_rx === 200, "Turn 0 introspects mcp:///plurnk.md");
                 const plurnkContent = (JSON.parse(plurnkRead.rx) as { content: string }).content;
@@ -345,7 +348,7 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["todo", "find", "read", "plurnk", "read", "read", "find", "todo"],
+                    ["todo", "find", "read", "read", "plurnk", "read", "read", "find", "todo"],
                     "initialization contains its opening TODO, the surveys, its closing TODO, and nothing else",
                 );
                 assert.equal(initializationRows.some(({ scheme }) => scheme === "ops"), false,
