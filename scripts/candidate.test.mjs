@@ -388,10 +388,10 @@ was available, so the current stabilization goal is unverified; that missing con
     turns: [{
         turn: 1,
         ops: [
-            { op: "FIND", target: "**", status: 200, origin: "model" },
-            { op: "READ", target: "plurnk-service/plurnk-core/src/service.ts", status: 200, origin: "model" },
-            { op: "READ", target: "plurnk-service/plurnk-contracts/README.md", status: 200, origin: "model" },
-            { op: "READ", target: "outside-client/README.md", status: 200, origin: "model" },
+            { op: "find", target: "**", status: 200, origin: "model" },
+            { op: "read", target: "plurnk-service/plurnk-core/src/service.ts", status: 200, origin: "model" },
+            { op: "read", target: "plurnk-service/plurnk-contracts/README.md", status: 200, origin: "model" },
+            { op: "read", target: "outside-client/README.md", status: 200, origin: "model" },
         ],
     }],
 };
@@ -404,8 +404,8 @@ const orientationDigest = {
         { id: 2, loop_id: 2, model: "endpoint/model" },
     ],
     log_entries: [
-        { turn_id: 1, op: "EDIT", status_rx: 201 },
-        { turn_id: 2, op: "READ", status_rx: 200 },
+        { turn_id: 1, op: "edit", status_rx: 201 },
+        { turn_id: 2, op: "read", status_rx: 200 },
     ],
 };
 
@@ -419,7 +419,7 @@ test("{§environment-layers} orientation verdict accepts a terminal, inspected, 
 
 test("{§environment-layers} orientation verdict rejects a plausible answer that did not inspect its evidence", () => {
     const shallow = structuredClone(orientationRecord);
-    shallow.turns = [{ turn: 1, ops: [{ op: "FIND", target: "**", status: 200, origin: "model" }] }];
+    shallow.turns = [{ turn: 1, ops: [{ op: "find", target: "**", status: 200, origin: "model" }] }];
     const verdict = evaluateOrientation(shallow, orientationDigest);
     assert.equal(verdict.pass, false);
     assert.ok(verdict.failed.includes("inspection"));
@@ -430,13 +430,13 @@ test("{§turn-source-resources} orientation verdict counts only the model's own 
     const harnessOnly = structuredClone(orientationRecord);
     harnessOnly.turns = [
         { turn: 1, ops: [
-            { op: "READ", target: "ops://meta/1/1", status: 200, origin: "_plurnk" },
-            ...Array.from({ length: 8 }, () => ({ op: "FIND", target: "skill://*/SKILL.md", status: 200, origin: "_plurnk" })),
-            { op: "READ", target: "reasoning://meta/1/1", status: 200, origin: "_plurnk" },
+            { op: "read", target: "ops://meta/1/1", status: 200, origin: "_plurnk" },
+            ...Array.from({ length: 8 }, () => ({ op: "find", target: "skill://*/SKILL.md", status: 200, origin: "_plurnk" })),
+            { op: "read", target: "reasoning://meta/1/1", status: 200, origin: "_plurnk" },
         ] },
         { turn: 2, ops: [
-            { op: "READ", target: "ops://meta/1/2", status: 200, origin: "_plurnk" },
-            { op: "DONE", target: null, status: 200, origin: "model" },
+            { op: "read", target: "ops://meta/1/2", status: 200, origin: "_plurnk" },
+            { op: "done", target: null, status: 200, origin: "model" },
         ] },
     ];
     const verdict = evaluateOrientation(harnessOnly, orientationDigest);
@@ -459,7 +459,7 @@ test("{§environment-layers} orientation verdict does not count archived issue U
 
 test("{§environment-layers} orientation verdict rejects failed documentation publication independently of model success", () => {
     const broken = structuredClone(orientationDigest);
-    broken.log_entries.push({ turn_id: 1, op: "EDIT", status_rx: 400 });
+    broken.log_entries.push({ turn_id: 1, op: "edit", status_rx: 400 });
     const verdict = evaluateOrientation(orientationRecord, broken);
     assert.equal(verdict.pass, false);
     assert.ok(verdict.failed.includes("workspacePublication"));

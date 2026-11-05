@@ -2,6 +2,9 @@
 
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
+import { PLURNK_OPS } from "@plurnk/plurnk-contracts";
+
+const CORE_OPS = new Set(PLURNK_OPS);
 
 const flattenOps = (record) =>
     Array.isArray(record?.turns)
@@ -15,7 +18,7 @@ const evidenceNames = (response) => {
 
 const inspectedEvidence = (ops, evidence) => {
     const targets = ops
-        .filter((op) => ["READ", "FIND"].includes(op?.op) && Number(op?.status) < 400)
+        .filter((op) => ["read", "find"].includes(op?.op) && Number(op?.status) < 400)
         .map((op) => String(op?.target ?? ""));
     return evidence.filter((name) => targets.some((target) =>
         target.endsWith(name)
@@ -44,7 +47,7 @@ export const evaluateOrientation = (record, digest) => {
     // {§turn-source-resources}: harness rows, turn zero's survey and every emission's announcement, are not inspection.
     const ops = flattenOps(record).filter((op) => op?.origin === "model");
     const inspectionOps = ops.filter((op) =>
-        (["READ", "FIND"].includes(op?.op) || /^[a-z][a-z0-9+._-]*$/.test(op?.op ?? "")) && Number(op?.status) < 400);
+        (["read", "find"].includes(op?.op) || (!CORE_OPS.has(op?.op) && /^[a-z][a-z0-9+._-]*$/.test(op?.op ?? ""))) && Number(op?.status) < 400);
     const evidence = evidenceNames(response);
     const verifiedEvidence = inspectedEvidence(ops, evidence);
     const publicationErrors = setupErrors(digest);
@@ -70,7 +73,7 @@ export const evaluateOrientation = (record, digest) => {
         },
         inspection: {
             pass: inspectionOps.length >= 3
-                && inspectionOps.some((op) => op.op === "READ"),
+                && inspectionOps.some((op) => op.op === "read"),
             detail: {
                 successfulRetrievals: inspectionOps.length,
                 operations: [...new Set(inspectionOps.map((op) => op.op))],

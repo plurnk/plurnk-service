@@ -308,7 +308,7 @@ try {
         || cliRecord.finalStatus !== 200
         || cliRecord.workspace?.name !== "installed-cli"
         || cliRecord.turnCount !== 2
-        || JSON.stringify(modelOps) !== JSON.stringify(["DONE"])) {
+        || JSON.stringify(modelOps) !== JSON.stringify(["done"])) {
         throw new Error(`installed CLI returned the wrong semantic record\n${cli.stdout}`);
     }
     const envInspected = await runClient(process.execPath, [
@@ -358,7 +358,7 @@ try {
     const fileRecord = JSON.parse(files.stdout);
     const fileOps = fileRecord.turns?.flatMap(({ ops }) => ops).filter(({ origin }) => origin === "model").map(({ op }) => op);
     if (fileRecord.finalStatus !== 200 || fileRecord.response !== "The installed file journey is complete."
-        || JSON.stringify(fileOps) !== JSON.stringify(["EDIT", "EDIT", "DONE"])
+        || JSON.stringify(fileOps) !== JSON.stringify(["edit", "edit", "done"])
         || await readFile(join(project, "integrity.txt"), "utf8") !== "after") {
         throw new Error(`installed file publication failed\n${files.stdout}\n${files.stderr}`);
     }
