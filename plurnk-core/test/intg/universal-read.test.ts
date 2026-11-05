@@ -707,7 +707,7 @@ test("{§tools-resource-materialization} the module example loads from its expor
 
 test("{§tools-resource-materialization} the definition pages' add examples conform to their families' definition schemas", async () => {
     for (const [packageName, docName, fence, schema] of [
-        ["@plurnk/plurnk-mcp", "mcp.md", "plurnk_mcp (add)", "https://schemas.plurnk.xyz/v0/McpServerDefinition.json"],
+        ["@plurnk/plurnk-mcp", "mcp.md", "plurnk (mcp)", "https://schemas.plurnk.xyz/v0/McpServerDefinition.json"],
     ] as const) {
         const examples = fences(await page(packageName, docName)).filter(({ info }) => info === fence);
         assert.ok(examples.length > 0, `${docName} shows an add example`);

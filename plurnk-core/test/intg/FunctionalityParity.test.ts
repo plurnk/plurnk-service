@@ -10,7 +10,7 @@ import { join, resolve } from "node:path";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type FunctionalityListResult, type PlurnkStatement, type ProblemDetails, Validator } from "@plurnk/plurnk-contracts";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
-import { awaitExecOutcome } from "./_execs.ts";
+import { awaitExecOutcome, execOutputEntries } from "./_execs.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { insertWorkspace, insertSession, openMigrated } from "./_db.ts";
 import { type Db } from "../../src/core/Db.ts";
@@ -263,11 +263,10 @@ const matrix = async (family: Family): Promise<void> => {
         return LIVE.has(status);
     };
     const document = (alias: string) => documentPresent(context(), family.documentOf(alias));
-    // Model verbs: the model's own operations through the plurnk_<family> execution manager, which streams JSON
+    // Model verbs: the model's own operations through the plurnk execution manager, which streams JSON
     // into its output entry; its owner reviews what they propose.
-    const familyRuntime = `plurnk_${family.family}`;
     const exec = (program: string) => modelOperation(daemon, db, { workspaceId, sessionId: model, statement: parseOne(program) });
-    const verbResult = () => awaitExecOutcome(db, { workspaceId, scheme: familyRuntime, timeoutMs: 10_000 });
+    const verbResult = () => awaitExecOutcome(db, { workspaceId, scheme: "plurnk", timeoutMs: 10_000 });
     const proposals: number[] = [];
     const events: Array<{ method: string; params: unknown }> = [];
     let unsubscribe = daemon.subscribeToEvents((_w, method, params) => {
@@ -279,13 +278,13 @@ const matrix = async (family: Family): Promise<void> => {
     // mutation's publication settles at the turn boundary.
     const proposed = async (program: string, decision: "accept" | "reject") => {
         const seen = proposals.length;
-        const outputsBefore = (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: familyRuntime, prefix: "/%" })).length;
+        const outputsBefore = (await execOutputEntries(db, workspaceId, "plurnk")).length;
         const pending = exec(program);
         await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10_000 });
         await daemon.resolveProposal(proposals[seen], { decision }, { workspaceId, address: TEST_OWNER });
         const result = await pending;
         if (decision === "accept") {
-            await waitForDb(async () => (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: familyRuntime, prefix: "/%" })).length, (count) => count > outputsBefore, { timeoutMs: 10_000 });
+            await waitForDb(async () => (await execOutputEntries(db, workspaceId, "plurnk")).length, (count) => count > outputsBefore, { timeoutMs: 10_000 });
             await verbResult();
             await daemon.settleFunctionality(workspaceId);
         }
@@ -316,15 +315,15 @@ const matrix = async (family: Family): Promise<void> => {
         assert.equal(await document(family.service.alias), 200, "the active definition has its generated document");
         // {§functionality-model-projection} — real installed managers use the same schema documents as attached tools.
         const references = await daemon.engine.referenceEntries(workspaceId);
-        const managerDoc = references.find(({ scheme, pathname }) => scheme === "mcp" && pathname === `/${familyRuntime}.md`)!;
-        const toolSchemaPath = `/${familyRuntime}/add.json`;
+        const managerDoc = references.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk.md")!;
+        const toolSchemaPath = `/plurnk/${family.family}.json`;
         const toolDoc = references.find(({ scheme, pathname }) => scheme === "mcp" && pathname === toolSchemaPath)!;
         assert.ok(managerDoc && toolDoc, "the manager catalog links to a materialized input schema");
         assert.ok(managerDoc.content.includes(`Schema: mcp://${toolSchemaPath}`));
-        const toolSchema = JSON.parse(toolDoc.content);
-        assert.ok(toolSchema.properties?.alias !== undefined || Array.isArray(toolSchema.oneOf), "the add schema includes the flat definition schema");
-        // {§functionality-model-projection} — the adapter package's docs/<family>.md rides inside the runtime doc.
-        assert.match(managerDoc.content, family.teaching, `${familyRuntime}.md carries its authored teaching body`);
+        const toolSchema = JSON.parse(toolDoc.content) as { description?: string; properties?: Record<string, unknown> };
+        assert.ok(toolSchema.properties?.alias !== undefined, "the tool schema includes the flat definition schema");
+        // {§functionality-model-projection} — the adapter package's docs/<family>.md rides inside the family tool schema description.
+        assert.match(String(toolSchema.description), family.teaching, `${toolSchemaPath} carries its authored teaching body`);
         assert.equal(await documentPresent(context(), toolSchemaPath), 200,
             "the full schema is materialized in the workspace's generated subtree");
         if (family.family === "mcp") {
@@ -332,7 +331,7 @@ const matrix = async (family: Family): Promise<void> => {
             type McpDefinition = { readonly description?: string; readonly properties?: Readonly<Record<string, Property>> };
             const schema = Validator.schemaByRef("https://schemas.plurnk.xyz/v0/McpServerDefinition.json") as { readonly $defs: Readonly<Record<string, McpDefinition>> } | undefined;
             assert.ok(schema);
-            assert.equal(Array.isArray(toolSchema.oneOf), true, "both transport branches reach the model");
+            assert.ok(toolSchema.properties?.command !== undefined && toolSchema.properties?.url !== undefined, "both transport branches reach the model");
             const described = (property: Property): boolean => typeof property.description === "string"
                 || (property.$ref !== undefined && typeof schema.$defs[property.$ref.split("/").at(-1)!]?.description === "string");
             for (const branch of ["stdio", "streamableHttp"]) {
@@ -371,9 +370,9 @@ const matrix = async (family: Family): Promise<void> => {
         assert.equal(await live(family.addable), true);
         // 6. Enabled-unavailable: an accepted model add of an unreachable peer publishes unavailable with its exact Problem;
         //    the explicit client retry rejects with the same Problem; remove recovers.
-        const viaModel = await proposed(PlurnkParser.frame(`${familyRuntime} (add)`, JSON.stringify({ alias: family.unreachable.alias, ...family.unreachable.definition })), "accept");
+        const viaModel = await proposed(PlurnkParser.frame(`plurnk (${family.family})`, JSON.stringify({ alias: family.unreachable.alias, ...family.unreachable.definition })), "accept");
         assert.equal(viaModel.status, 201, "the accepted add reports creation, with resource readiness in its body");
-        await exec(PlurnkParser.frame(`${familyRuntime} (list)`, ""));
+        await exec(PlurnkParser.frame(`plurnk (${family.family})`, ""));
         const downListed = (await listed()).find((entry) => entry.alias === family.unreachable.alias);
         assert.equal(downListed?.state, "unavailable");
         assert.ok((downListed?.problem?.status ?? 0) >= 400, "the enabled definition keeps its exact Problem");
@@ -384,13 +383,13 @@ const matrix = async (family: Family): Promise<void> => {
         assert.equal((await invoke<{ removed: boolean }>("remove", { alias: family.unreachable.alias })).removed, true);
         assert.equal(await stateOf(family.unreachable.alias), undefined);
         // 7. Model verbs through the generated manager: read ungated, host verbs propose, rejection performs nothing.
-        assert.equal((await exec(PlurnkParser.frame(`${familyRuntime} (list)`, ""))).status, 200);
+        assert.equal((await exec(PlurnkParser.frame(`plurnk (${family.family})`, ""))).status, 200);
         assert.equal((await verbResult()).family, family.family);
-        const rejected = await proposed(PlurnkParser.frame(`${familyRuntime} (remove)`, JSON.stringify({ alias: family.addable.alias })), "reject");
+        const rejected = await proposed(PlurnkParser.frame(`plurnk (${family.family})`, JSON.stringify({ alias: family.addable.alias, remove: true })), "reject");
         assert.equal(rejected.status, 400, "a rejected proposal settles 400");
         assert.equal(await stateOf(family.addable.alias), "active", "rejection changed nothing");
         assert.equal(await live(family.addable), true);
-        const viaModelDisable = await proposed(PlurnkParser.frame(`${familyRuntime} (disable)`, JSON.stringify({ alias: family.addable.alias })), "accept");
+        const viaModelDisable = await proposed(PlurnkParser.frame(`plurnk (${family.family})`, JSON.stringify({ alias: family.addable.alias, enabled: false })), "accept");
         assert.equal(viaModelDisable.status, 200);
         assert.equal(await live(family.addable), false, "an accepted model mutation is published before the next operation");
         await invoke("enable", { alias: family.addable.alias });
@@ -422,7 +421,7 @@ const matrix = async (family: Family): Promise<void> => {
             let problem: ProblemDetails;
             if (caller === "action") problem = await problemOf(() => invoke("replace", params));
             else {
-                await proposed(PlurnkParser.frame(`${familyRuntime} (replace)`, JSON.stringify(params)), "accept");
+                await proposed(PlurnkParser.frame(`plurnk (${family.family})`, JSON.stringify(params)), "accept");
                 problem = (await verbResult()).problem as ProblemDetails;
             }
             assert.equal(problem.type, refused.type, "the failed replacement reports its preparation problem");
@@ -432,7 +431,7 @@ const matrix = async (family: Family): Promise<void> => {
                 "a failed replacement preserves the actual server process, not just a re-created configuration");
         }
         const replacement = { alias: family.addable.alias, ...family.conflicting.definition };
-        await proposed(PlurnkParser.frame(`${familyRuntime} (replace)`, JSON.stringify(replacement)), "accept");
+        await proposed(PlurnkParser.frame(`plurnk (${family.family})`, JSON.stringify(replacement)), "accept");
         assert.equal((await verbResult()).status, 200);
         assert.deepEqual((await listed()).find(({ alias }) => alias === family.addable.alias)?.definition, family.conflicting.definition);
         if (family.family === "mcp") {

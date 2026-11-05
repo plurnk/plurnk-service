@@ -8,7 +8,7 @@ import DbNotifyCaps from "../../src/core/caps/DbNotifyCaps.ts";
 import Engine from "../../src/core/Engine.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import CapabilityResolver from "../../src/core/CapabilityResolver.ts";
-import FunctionalityManager, { plurnkFamilyRuntimeDecl, plurnkQuestionRuntimeDecl } from "../../src/server/FunctionalityManager.ts";
+import FunctionalityManager, { plurnkRuntimeDecl } from "../../src/server/FunctionalityManager.ts";
 import type Functionality from "../../src/server/Functionality.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
@@ -860,10 +860,10 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         assert.ok(streamEvents.some((event) => event.result === undefined), "MCP output streams through ACP before its conclusion");
         assert.ok(streamEvents.every((event) => event.sessionId === producer.id), "stream provenance identifies the producing session, not a storage owner");
         assert.ok(streamEvents.every((event) => !Object.hasOwn(event, "producerSessionId")), "the wire carries one causal actor identity");
-        assert.ok(streamEvents.every((event) => /^(?:fixture|plurnk_mcp):\/\/\/[a-f0-9]{8}$/u.test(event.target)));
+        assert.ok(streamEvents.every((event) => /^(?:fixture|plurnk):\/\/\/[a-f0-9]{8}$/u.test(event.target)));
         assert.ok(streamEvents.some((event) => /^fixture:\/\/\/[a-f0-9]{8}$/u.test(event.target)));
         const firstPacket = packet(provider.requests, 0);
-        assert.match(firstPacket, /"alias":\s*"plurnk_mcp"/,
+        assert.match(firstPacket, /"alias":\s*"plurnk"/,
             "the initial survey lists the MCP manager alongside active servers");
         assert.match(firstPacket, /Echo tools for transport testing\./);
         assert.doesNotMatch(firstPacket, /Pass the message field unchanged/, "full server instructions are not pushed into turn0");
@@ -1096,7 +1096,7 @@ const findStatement = (scheme: "plurnk" | "mcp"): FindStatement => ({
 
 const execStatement = (): ExecStatement => ({
     metadata: null,
-    runtime: "plurnk_question", aside: null, target: localPath("ask"), lineMarker: null,
+    runtime: "plurnk", aside: null, target: localPath("question"), lineMarker: null,
     body: JSON.stringify({ message: "Which branch?", requestedSchema: { type: "object" } }),
     position: { line: 1, column: 1 },
 });
@@ -1106,41 +1106,27 @@ const boot = async (capabilities: CapabilityPolicy = {}) => {
     const schemes = new SchemeRegistry();
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     engine.setExecutors(await ExecutorRegistry.build({ cwd: process.cwd() }));
-    const membersEntry = {
-        family: "members",
-        summary: "Manage workspace members.",
-        inputSchemas: { list: { type: "object", properties: {} } },
-    };
-    const membersDecl = plurnkFamilyRuntimeDecl(membersEntry);
-    const questionDecl = plurnkQuestionRuntimeDecl;
+    const manager = new FunctionalityManager({
+        coordinator: {} as unknown as Functionality,
+        entries: [{
+            family: "members",
+            summary: "Manage workspace members.",
+            inputSchemas: { list: { type: "object", properties: {} } },
+        }],
+        includeQuestion: true,
+    });
+    const decl = plurnkRuntimeDecl;
     engine.registerRuntimes([
         {
-            tag: "plurnk_members",
+            tag: "plurnk",
             entry: {
-                executor: FunctionalityManager.forFamily({
-                    coordinator: {} as unknown as Functionality,
-                    entry: membersEntry,
-                }),
+                executor: manager,
                 namespaceOwner: { kind: "module", name: "core" },
-                glyph: membersDecl.glyph,
-                summary: membersDecl.summary,
-                invocation: membersDecl.invocation,
-                details: membersDecl.details ?? "",
-                ...(membersDecl.resourcesPath === undefined ? {} : { resourcesPath: membersDecl.resourcesPath }),
-                available: true,
-                detail: "in-process",
-            },
-        },
-        {
-            tag: "plurnk_question",
-            entry: {
-                executor: FunctionalityManager.forQuestion(),
-                namespaceOwner: { kind: "module", name: "core" },
-                glyph: questionDecl.glyph,
-                summary: questionDecl.summary,
-                invocation: questionDecl.invocation,
-                details: questionDecl.details ?? "",
-                ...(questionDecl.resourcesPath === undefined ? {} : { resourcesPath: questionDecl.resourcesPath }),
+                glyph: decl.glyph,
+                summary: decl.summary,
+                invocation: decl.invocation,
+                details: decl.details ?? "",
+                ...(decl.resourcesPath === undefined ? {} : { resourcesPath: decl.resourcesPath }),
                 available: true,
                 detail: "in-process",
             },
@@ -1179,9 +1165,9 @@ test("{§question-tool}: an interaction-denied workspace omits the question tool
     try {
         await ownSession(db, workspaceId, sessionId);
         const { paths, content } = await catalog();
-        assert.ok(paths.some((path) => path.endsWith("/plurnk_members.md")), "noninteractive plurnk tools remain discoverable");
-        assert.ok(!paths.some((path) => path.endsWith("/plurnk_question.md") || path.endsWith("/plurnk_question/ask.json")), "the question tool schema does not exist for the workspace");
-        assert.ok(!content.includes("plurnk_question"), "the rendered catalog agrees with the location list");
+        assert.ok(paths.some((path) => path.endsWith("/plurnk/members.json")), "noninteractive plurnk tools remain discoverable");
+        assert.ok(!paths.some((path) => path.endsWith("/plurnk/question.json")), "the question tool schema does not exist for the workspace");
+        assert.ok(!content.includes("plurnk (question)"), "the rendered catalog agrees with the location list");
     } finally {
         await db.close();
     }
@@ -1192,7 +1178,7 @@ test("{§question-tool}: a session whose interactive owner declares question see
     try {
         await ownSession(db, workspaceId, sessionId);
         const { paths } = await catalog();
-        assert.ok(paths.some((path) => path.endsWith("/plurnk_question/ask.json")), "the interactive session sees the question tool");
+        assert.ok(paths.some((path) => path.endsWith("/plurnk/question.json")), "the interactive session sees the question tool");
     } finally {
         await db.close();
     }
@@ -1208,14 +1194,14 @@ for (const [label, owner] of [
         if (owner !== null) await ownSession(db, workspaceId, sessionId, [...owner.tools], owner.interactive);
         const { paths, content } = await catalog();
         assert.ok(paths.some((path) => path.endsWith("/sh.md")), "noninteractive tools remain discoverable");
-        assert.ok(paths.some((path) => path.endsWith("/plurnk_members.md")), "noninteractive plurnk tools remain discoverable");
-        assert.ok(!paths.some((path) => path.endsWith("/plurnk_question.md") || path.endsWith("/plurnk_question/ask.json")), "the shared reference set hides the tool from this session");
-        assert.ok(!content.includes("plurnk_question"), "the rendered catalog agrees with the location list");
+        assert.ok(paths.some((path) => path.endsWith("/plurnk/members.json")), "noninteractive plurnk tools remain discoverable");
+        assert.ok(!paths.some((path) => path.endsWith("/plurnk/question.json")), "the shared reference set hides the tool from this session");
+        assert.ok(!content.includes("plurnk (question)"), "the rendered catalog agrees with the location list");
         const result = await engine.dispatch({ ...dispatch, sequence: 2, statement: execStatement() });
         assert.equal(result.status, 403);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
-        assert.equal(result.problem?.runtime, "plurnk_question");
-        assert.equal(result.problem?.tool, "ask");
+        assert.equal(result.problem?.runtime, "plurnk");
+        assert.equal(result.problem?.tool, "question");
         assert.equal(result.problem?.access, "interact");
         assert.equal(result.problem?.policyScope, "owner");
         assert.equal(result.problem?.recovery, CapabilityResolver.UNATTENDED_RECOVERY);
@@ -1236,8 +1222,8 @@ test("{§question-tool}: execution dispatch refuses an interaction-denied questi
         const result = await engine.dispatch({ ...dispatch, sequence: 1, statement: execStatement() });
         assert.equal(result.status, 403);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
-        assert.equal(result.problem?.runtime, "plurnk_question");
-        assert.equal(result.problem?.tool, "ask");
+        assert.equal(result.problem?.runtime, "plurnk");
+        assert.equal(result.problem?.tool, "question");
         assert.deepEqual(result.problem?.traits, ["interaction"]);
         assert.equal(result.problem?.policyScope, "workspace");
         assert.equal(result.problem?.recovery, undefined, "operator configuration speaks for itself");
@@ -1253,42 +1239,42 @@ test("{§question-tool}: the interaction access class gates known interactive to
         const result = await engine.dispatch({ ...dispatch, sequence: 1, statement: execStatement() });
         assert.equal(result.status, 403);
         assert.equal(result.problem?.access, "interact");
-        assert.equal(result.problem?.runtime, "plurnk_question");
-        assert.equal(result.problem?.tool, "ask");
+        assert.equal(result.problem?.runtime, "plurnk");
+        assert.equal(result.problem?.tool, "question");
         assert.equal(result.problem?.policyScope, "workspace");
     } finally {
         await db.close();
     }
 });
 
-test("{§question-tool}: neither the shipped defaults nor the real-model profile switch plurnk_question off", () => {
+test("{§question-tool}: neither the shipped defaults nor the real-model profile switch plurnk off", () => {
     for (const path of ["../../../plurnk-execs/.env.defaults", "../../.env.test"]) {
         const profile = parseEnv(readFileSync(new URL(path, import.meta.url), "utf8"));
-        assert.equal(profile.PLURNK_EXECS_PLURNK_QUESTION, undefined, `${path} leaves the tool to the owner ring`);
+        assert.equal(profile.PLURNK_EXECS_PLURNK, undefined, `${path} leaves the tool to the owner ring`);
     }
 });
 
-test("{§question-tool}: the executor switch removes plurnk_question and its teaching", async () => {
-    const previous = process.env.PLURNK_EXECS_PLURNK_QUESTION;
-    process.env.PLURNK_EXECS_PLURNK_QUESTION = "0";
+test("{§question-tool}: the executor switch removes plurnk and its teaching", async () => {
+    const previous = process.env.PLURNK_EXECS_PLURNK;
+    process.env.PLURNK_EXECS_PLURNK = "0";
     try {
-        const { db, engine, schemes, workspaceId, sessionId, dispatch, catalog } = await boot();
+        const { db, engine, workspaceId, sessionId, dispatch, catalog } = await boot();
         try {
             await ownSession(db, workspaceId, sessionId);
-            assert.equal(schemes.has("plurnk_question", sessionId), false);
+            assert.equal(engine.executors?.entry("plurnk", workspaceId), undefined);
             const { paths } = await catalog();
             assert.ok(paths.some((path) => path.endsWith("/sh.md")), "noninteractive tools remain discoverable");
-            assert.ok(!paths.some((path) => path.endsWith("/plurnk_question/ask.json")));
+            assert.ok(!paths.some((path) => path.endsWith("/plurnk.md") || path.endsWith("/plurnk/question.json")));
             const result = await engine.dispatch({ ...dispatch, sequence: 2, statement: execStatement() });
             assert.equal(result.status, 400);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/executor-not-registered");
-            assert.equal(result.problem?.requestedRuntime, "plurnk_question");
+            assert.equal(result.problem?.requestedRuntime, "plurnk");
         } finally {
             await db.close();
         }
     } finally {
-        if (previous === undefined) delete process.env.PLURNK_EXECS_PLURNK_QUESTION;
-        else process.env.PLURNK_EXECS_PLURNK_QUESTION = previous;
+        if (previous === undefined) delete process.env.PLURNK_EXECS_PLURNK;
+        else process.env.PLURNK_EXECS_PLURNK = previous;
     }
 });
 });

@@ -803,7 +803,7 @@ ok(
     "the packed daemon discovers the skill and description through ordinary FIND",
 );
 ok(
-    packedSkills.get("mcp:///plurnk_skills.md")?.includes("plurnk_skills (add)") === true,
+    packedSkills.get("mcp:///plurnk/skills.json")?.includes("plurnk (skills)") === true,
     "the packed Session learns Skills management from the generated family tool, not a bundled skill",
 );
 const startsAfterActivation = markerCount(mcpStartMarker);

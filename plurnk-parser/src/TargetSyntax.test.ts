@@ -233,9 +233,9 @@ for (const authority of ["!", "a.b", "a+b"]) test(`{§path-syntax}: URL authorit
 });
 
 test("{§path-syntax}: underscore-bearing runtime schemes decompose as UrlPath and preserve lowercase scheme", () => {
-    const p = parsePath("PLURNK_SCHEDULE:///12345678#results");
+    const p = parsePath("CUSTOM_RUNTIME:///12345678#results");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
-    assert.equal(p.scheme, "plurnk_schedule");
+    assert.equal(p.scheme, "custom_runtime");
     assert.equal(p.hostname, null);
     assert.equal(p.pathname, "/12345678");
     assert.equal(p.fragment, "results");

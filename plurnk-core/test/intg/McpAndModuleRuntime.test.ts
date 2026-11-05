@@ -11,7 +11,7 @@ import EnvFunctionality from "../../src/server/EnvFunctionality.ts";
 import { ownSession, serverProposals, TEST_OWNER } from "./_approval.ts";
 import { type ReadStatement, Validator, type FunctionalityListResult, type CapabilityPolicy } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
-import { executionAddress, awaitExecOutcome } from "./_execs.ts";
+import { executionAddress, awaitExecOutcome, execOutputEntries } from "./_execs.ts";
 import { type Executor } from "@plurnk/plurnk-execs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -54,7 +54,7 @@ test("{§functionality-model-projection} MCP replacement precedes a tool invocat
     const { hostPaths, env } = await mcpFixture(t, { fixture: environmentEntry({ ENV_WITNESS: "original" }) });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeRawMockResponse([
-            PlurnkParser.frame("plurnk_mcp (replace)", JSON.stringify({ alias: "fixture", ...environmentEntry({ ENV_WITNESS: "replacement" }) })),
+            PlurnkParser.frame("plurnk (mcp)", JSON.stringify({ alias: "fixture", ...environmentEntry({ ENV_WITNESS: "replacement" }) })),
             PlurnkParser.frame("fixture (environment)", "{}"),
             PlurnkParser.frame("NOTE", "Observe the new server's reply."),
         ].join("\n\n")),
@@ -71,7 +71,7 @@ test("{§functionality-model-projection} MCP replacement precedes a tool invocat
     const lifecycle = new LoopLifecycle(db);
     await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
     const rows = await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER });
-    assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk_mcp")?.status_rx, 201, "replacement creates the workspace override before invoking its tool");
+    assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk")?.status_rx, 201, "replacement creates the workspace override before invoking its tool");
     assert.equal(rows.find((row) => row.origin === "model" && row.op === "fixture")?.status_rx, 200);
     const output = await awaitExecOutcome(db, { workspaceId, scheme: "fixture", channel: "body" });
     assert.equal(output.witness, "replacement", "the tool runs on the new attachment, not the old server");
@@ -138,7 +138,7 @@ test("{§mcp-module} a configured stdio server starts with the operator's enviro
             const op = parsed.items[0];
             assert.equal(op?.kind, "statement");
             if (op?.kind !== "statement") throw new Error("Expected one operation");
-            const after = (await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: runtime, prefix: "/%" })).length;
+            const after = (await execOutputEntries(db, workspaceId, runtime)).length;
             const seen = proposals.length;
             // The session's own verb, reviewed by its owner.
             const pending = modelOperation(daemon, db, { workspaceId, sessionId, statement: op.statement });
@@ -150,7 +150,7 @@ test("{§mcp-module} a configured stdio server starts with the operator's enviro
             return awaitExecOutcome(db, { workspaceId, scheme: runtime, after, channel, timeoutMs: 10000 });
         };
         try {
-            const changed = await run("plurnk_env", "plurnk_env (add)", { scope: "workspace", alias: "REF_VALUE", value: "workspace-reference" }, true, 201);
+            const changed = await run("plurnk", "plurnk (env)", { scope: "workspace", alias: "REF_VALUE", value: "workspace-reference" }, true, 201);
             assert.equal((changed.definition as { origin: string }).origin, "workspace", "the accepted model verb uses the same workspace layer as client actions");
             await invoke("mcp", "disable", { alias: "explicit" });
             await invoke("mcp", "enable", { alias: "explicit" });
@@ -274,7 +274,7 @@ for (const { policy, decision } of [
             await ownSession(db, workspaceId, sessionId);
             const list = () => daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as Promise<FunctionalityListResult>;
             const definition = environmentEntry({ MCP_ENV_MARKER: marker, BOUND_VALUE: "${BOUND_VALUE}" });
-            const source = PlurnkParser.frame("plurnk_mcp (add)", JSON.stringify({ alias: "credential", ...definition }));
+            const source = PlurnkParser.frame("plurnk (mcp)", JSON.stringify({ alias: "credential", ...definition }));
             const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
             const op = parsed.items[0];
             assert.ok(op?.kind === "statement");
@@ -300,7 +300,7 @@ for (const { policy, decision } of [
                 return;
             }
             assert.equal(result.status, 201);
-            const added = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk_mcp", timeoutMs: 10000 });
+            const added = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", timeoutMs: 10000 });
             assert.equal((added.definition as { state: string }).state, "active");
             const starts = (await readFile(marker, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as Start);
             assert.ok(starts.length > 0);
@@ -1080,7 +1080,7 @@ test("{§execution-output-identity} workspace defaults, session overrides and ma
             assert.equal(cause.result.status, 400);
             assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/env/functionality/name-reserved");
             assert.equal(cause.result.problem.detail, "'PLURNK_BAD' is reserved in env entries.");
-            assert.equal(cause.result.problem.recovery, "READ mcp:///plurnk_env.md for supported configuration paths.");
+            assert.equal(cause.result.problem.recovery, "READ mcp:///plurnk/env.json for supported configuration paths.");
             return true;
         });
         await assert.rejects(shared("list", { scope: "session" }), /scope does not match/u);

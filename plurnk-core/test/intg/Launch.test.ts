@@ -312,13 +312,13 @@ test("{§observability-boundary} live workspaces expose a model session's refere
             assert.equal(result.status, 200, `${reference}.md is READ-able in the session's actual generated tree`);
             assert.match(String(result.content), /\S/, `${reference}.md contains its contract`);
         }
+        const plurnkDoc = await read("mcp:///plurnk.md");
+        assert.equal(plurnkDoc.status, 200, "plurnk.md is READ-able in the session's actual generated tree");
+        assert.match(String(plurnkDoc.content), /\S/, "plurnk.md contains its contract");
         for (const family of ["members", "skills", "mcp", "schedule"]) {
-            const doc = await read(`mcp:///plurnk_${family}.md`);
-            assert.equal(doc.status, 200, `plurnk_${family}.md is READ-able in the session's actual generated tree`);
-            assert.match(String(doc.content), /\S/, `plurnk_${family}.md contains its contract`);
-            const result = await read(`mcp:///plurnk_${family}/add.json`);
-            assert.equal(result.status, 200, `plurnk_${family}/add.json is READ-able in the session's actual generated tree`);
-            assert.match(String(result.content), /\S/, `plurnk_${family}/add.json contains its contract`);
+            const result = await read(`mcp:///plurnk/${family}.json`);
+            assert.equal(result.status, 200, `plurnk/${family}.json is READ-able in the session's actual generated tree`);
+            assert.match(String(result.content), /\S/, `plurnk/${family}.json contains its contract`);
         }
         for (const family of ["skills", "mcp", "members", "schedule"]) {
             const result = Validator.assertFunctionalityListResult(
@@ -997,7 +997,7 @@ test("{§observability-boundary} observe: a real loop emits the loop → turn �
             assert.ok(ops.includes("FIND"), "initialization's surveys use ordinary dispatch");
             assert.equal(ops.filter((op) => op === "DONE").length, 1, "the model's completion has its own dispatch span");
             assert.ok(
-                ops.filter((op) => op !== "DONE" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "NOTE" || op === "TODO" || op === "FIND" || op === "READ" || op === "plurnk_mcp"),
+                ops.filter((op) => op !== "DONE" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "NOTE" || op === "TODO" || op === "FIND" || op === "READ" || op === "plurnk"),
                 `initialization dispatches only orientation operations; got ${ops.join(", ")}`,
             );
             for (const d of dispatches) {
