@@ -146,8 +146,8 @@ const windowOverflowFailure = (overflow: WindowOverflow): SchemeResult => Result
 // {§tokenomics} — the row is the mandate; the gauge is the one home for the numbers
 // ({§tokenomics}), which the row's own charge would otherwise put out of agreement.
 const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn.";
-// {§operation-results} — said once, in the next packet, of a continuing turn that carried no NOTE or TODO.
-const CONTINUED_WITHOUT_NOTE = "The turn continued without a NOTE or TODO.";
+// {§operation-results} — said once, in the next packet, of a continuing turn that carried no `note`, `kill`, or `todo`.
+const CONTINUED_WITHOUT_NOTE = "The turn continued without a `plurnk.note`.";
 const overBudgetFailure = (): SchemeResult => Results.failure("engine:context", "packet-exceeds-budget", 413, OVER_BUDGET_DETAIL);
 
 const INVALID_EMISSION_RECOVERY_MESSAGE = "Response rejected before dispatch; no operations were performed.";
@@ -930,7 +930,7 @@ export default class TurnRunner {
         // words. An empty turn has its own no-operation row instead.
         const ops = split.packetAssistant.ops;
         if ((executed.status === 102 || executed.status === 202) && ops.length > 0
-            && !ops.some((statement) => "op" in statement && (statement.op === "note" || statement.op === "todo" || statement.op === "done" || statement.op === "fail"))) {
+            && !ops.some((statement) => "op" in statement && (statement.op === "note" || statement.op === "kill" || statement.op === "todo" || statement.op === "done" || statement.op === "fail"))) {
             this.#notices.push(workspaceId, sessionId, loopId, {
                 source: "engine:turn", kind: "continued_without_note", level: "warn", directive: DIRECTIVE.note, message: CONTINUED_WITHOUT_NOTE,
             });

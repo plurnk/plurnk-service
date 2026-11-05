@@ -269,6 +269,10 @@ test("{§slicer-text-algebra} lineMarkerEdit implements line replacement, deleti
         Slicer.lineMarkerEdit(TEXT, { marks: [-1] }, "OMEGA").result,
         "alpha\nbeta\ngamma\ndelta\nOMEGA\n",
     );
+    assert.equal(
+        Slicer.lineMarkerEdit("alpha\nbeta\ngamma\ndelta", { marks: [-1] }, "omega\n").result,
+        "alpha\nbeta\ngamma\ndelta\nomega",
+    );
 });
 
 test("{§slicer-text-algebra} lineMarkerEdit preserves the source newline convention", () => {

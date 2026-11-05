@@ -740,7 +740,7 @@ describe("note-continuity", () => {
 type Row = { op: string | null; origin: string };
 
 // {§operation-results} {§diagnostic-observation} — the card's command as the notice's directive, in callout form.
-const NOTICE = "> [!WARNING]\n> YOU MUST persist all new facts and ideas and emit a TODO list. The turn continued without a NOTE or TODO. [continued_without_note]";
+const NOTICE = "> [!WARNING]\n> YOU MUST persist all new decisions, hypotheses, and facts as `plurnk.note` entries. The turn continued without a `plurnk.note`. [continued_without_note]";
 
 const noticesOf = async (db: Db, turnId: number): Promise<string> =>
     packetSection(JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: turnId }))!.packet), "notices");
@@ -801,23 +801,28 @@ for (const parked of [false, true]) for (const location of ["absent", "content",
     });
 }
 
-test("{§operation-results} {§op-shapes}: continuing work with a TODO satisfies the continuity directive", async () => {
+test("{§operation-results} {§op-shapes}: continuing work with a TODO or KILL satisfies the continuity directive", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, "optional-todo-continuity");
-        const sessionId = await insertSession(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, sessionId, 1, "Inspect the evidence and report the result.");
-        const context = { workspaceId, sessionId, loopId };
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "await plurnk.todo({\"text\":\"- Survey workspace\\n- Complete task\"});\n\nawait plurnk.find({\"path\":\"workspace:///*\"});", reasoning: null } },
-            { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
-        ] });
-        const first = await engine.runTurn({ ...context, provider, messages: [] });
-        assert.equal(first.status, 102);
-        const final = await engine.runTurn({ ...context, provider, messages: [] });
-        assert.equal(final.status, 200);
-        assert.equal(await noticesOf(db, final.turnId), "", "a TODO alone satisfies the continuity directive without warning");
+        for (const [label, op] of [
+            ["todo", "await plurnk.todo({\"text\":\"- Survey workspace\\n- Complete task\"});"],
+            ["kill", "await plurnk.kill({\"path\":\"log:///1/1/1\"});"],
+        ] as const) {
+            const workspaceId = await insertWorkspace(db, `optional-${label}-continuity`);
+            const sessionId = await insertSession(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, sessionId, 1, "Inspect the evidence and report the result.");
+            const context = { workspaceId, sessionId, loopId };
+            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const provider = new Mock({ contextWindow: 100_000, responses: [
+                { assistant: { content: `${op}\n\nawait plurnk.find({"path":"workspace:///*"});`, reasoning: null } },
+                { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
+            ] });
+            const first = await engine.runTurn({ ...context, provider, messages: [] });
+            assert.equal(first.status, 102);
+            const final = await engine.runTurn({ ...context, provider, messages: [] });
+            assert.equal(final.status, 200);
+            assert.equal(await noticesOf(db, final.turnId), "", `a ${label} alone satisfies the continuity directive without warning`);
+        }
     } finally { await db.close(); }
 });
 

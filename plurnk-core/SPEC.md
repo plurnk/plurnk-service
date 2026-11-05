@@ -1331,7 +1331,7 @@ sequenceDiagram
 | `Nothing is in flight. Continuing.` | A `WAIT` (or premature terminal) with no live work ({§session-wait-timing}). |
 | `All Open Messages resolved. Review new results; emit no OPs if finished.` | Resolved messages with unobserved results ({§loop-completion}). |
 | `Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn.` | Over-budget turn row ({§tokenomics}). |
-| `YOU MUST persist all new facts and ideas and emit a TODO list. The turn continued without a NOTE or TODO.` | Continuing or parked model turn without a `NOTE`, `TODO`, `DONE`, or `FAIL` ({§operation-results}). |
+| `YOU MUST persist all new decisions, hypotheses, and facts as \`plurnk.note\` entries. The turn continued without a \`plurnk.note\`.` | Continuing or parked model turn without a `note`, `kill`, `todo`, `done`, or `fail` ({§operation-results}). |
 | `Context window overflow: the packet exceeds the model's window.` | Context wall ({§tokenomics}). |
 | `No recipient implements the requested interaction.` | Session owner is not interactive or does not declare the required client tool ({§proposal-projection}). |
 | `Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve.` | Dispatch of an interaction tool the session's owner would not receive ({§question-tool}). |

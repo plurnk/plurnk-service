@@ -288,16 +288,19 @@ export default class Slicer {
             return { start: 0, end: 0, body: inserted, startLine: 1, endLine: 1 };
         }
         if (norm.kind === "after-last") {
-            const prefix = body.length > 0 && content.length > 0 && !/[\r\n]$/.test(content)
+            const stripped = content.length > 0 && !/[\r\n]$/.test(content)
+                ? body.replace(/(?:\r\n|\r|\n)$/, "")
+                : body;
+            const prefix = stripped.length > 0 && content.length > 0 && !/[\r\n]$/.test(content)
                 ? separator
                 : "";
-            const suffix = body.length > 0 && /[\r\n]$/.test(content) && !/[\r\n]$/.test(body)
+            const suffix = stripped.length > 0 && /[\r\n]$/.test(content) && !/[\r\n]$/.test(stripped)
                 ? separator
                 : "";
             return {
                 start: content.length,
                 end: content.length,
-                body: `${prefix}${body}${suffix}`,
+                body: `${prefix}${stripped}${suffix}`,
                 startLine: Math.max(lines.length, 1),
                 endLine: Math.max(lines.length, 1),
             };
