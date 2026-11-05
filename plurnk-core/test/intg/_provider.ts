@@ -2,7 +2,10 @@
 
 import { readFile } from "node:fs/promises";
 import Paths from "../../src/Paths.ts";
+import ToolResources from "../../src/core/ToolResources.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
+import { ALL_CORE_OPERATION_TOOLS } from "../../src/schemes/CoreOperationTools.ts";
+import { plurnkRuntimeDecl } from "../../src/server/FunctionalityManager.ts";
 import { assessRequestCapacity, resolveGenerationEnvelopeFromEnv, type ChatMessage, type ProviderRequestCapacity } from "@plurnk/plurnk-providers";
 
 export const testProviderCapacity = (
@@ -43,7 +46,16 @@ export const testDeferredProviderCapacity = (source = "core:test-fixture"): Prov
 // output policy. Conclusion fixtures stay viable as teaching grows; pressure
 // tests pin their own envelopes. Resolve the shipped percentage or an operator's
 // absolute through the production contract instead of reproducing its syntax.
-const _testInputCapacity = contentWeight(await readFile(Paths.instructionsSystem, "utf8")) * 3;
+const [plurnkToolsDoc] = ToolResources.render({
+    runtime: plurnkRuntimeDecl.name,
+    ...plurnkRuntimeDecl,
+    details: plurnkRuntimeDecl.details ?? "",
+    registry: { tools: [...ALL_CORE_OPERATION_TOOLS] },
+});
+const _testInputCapacity = (
+    contentWeight(await readFile(Paths.instructionsSystem, "utf8"))
+    + contentWeight(plurnkToolsDoc?.content ?? "")
+) * 3;
 
 let _viableWindow: number | undefined;
 

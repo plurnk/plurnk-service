@@ -11,7 +11,6 @@ interface CoreOperationToolSpec {
 }
 
 const METADATA_SCHEMA = {
-    type: ["string", "array"],
     oneOf: [
         { type: "string" },
         { type: "array", items: { type: "string" } },
