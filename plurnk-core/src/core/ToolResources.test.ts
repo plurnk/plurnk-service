@@ -218,7 +218,7 @@ test("{§functionality-model-projection} plurnk runtime summary advertises effec
             })) },
         });
         const summary = resource.content.split("## Summary\n\n")[1].split("\n\n")[0];
-        assert.equal(summary, `\`\`\`plurnk (${tools.join("|")}) <!-- Manage workspace capabilities and ask the user questions. -->\n\`\`\``);
+        assert.equal(summary, `\`\`\`plurnk (${tools.join("|")}) <!-- Manage env, mcp, members, personas, schedule, and skills; ask the user questions. -->\n\`\`\``);
     }
 });
 
