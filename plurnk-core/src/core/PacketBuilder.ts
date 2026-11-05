@@ -9,6 +9,7 @@ import type { GitStatus } from "./git-state.ts";
 import SessionName from "./SessionName.ts";
 import { renderAddress } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
+import { coreOperationTools } from "../schemes/CoreOperationTools.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 import { readGlobalAgents, readGlobalLocalAgents, readPacketInject, readSystemPolicy } from "./packet-inject.ts";
@@ -436,9 +437,15 @@ export default class PacketBuilder {
                 const entry = executors.entry(tag, workspaceId);
                 if (entry === undefined) continue;
                 const registry = executors.toolRegistry(tag, workspaceId);
+                const coreTools = tag === "plurnk"
+                    ? coreOperationTools(this.#capabilities, workspaceId, policies)
+                    : [];
                 const filteredRegistry = registry === null ? null : {
-                    tools: registry.tools.filter((tool) =>
-                        this.#capabilities.allowsRuntimeAcross(tag, tool.target, workspaceId, policies)),
+                    tools: [
+                        ...coreTools,
+                        ...registry.tools.filter((tool) =>
+                            this.#capabilities.allowsRuntimeAcross(tag, tool.target, workspaceId, policies)),
+                    ],
                 };
                 if (registry === null) {
                     if (!this.#capabilities.allowsRuntimeAcross(tag, null, workspaceId, policies)) continue;

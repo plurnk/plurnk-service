@@ -189,4 +189,12 @@ test("{§tools-resource-materialization} scheme references follow supported capa
     assert.equal(scoped.allowsSchemeAcross("session", 1, [{ only: [] }]), false);
     assert.equal(scoped.allowsSchemeAcross("session", 1, [{ only: [{ operation: "READ" }] }, { deny: [{ scheme: "session" }] }]), false);
     assert.equal(scoped.allowsSchemeAcross("missing", 1, [{}]), false);
+
+    for (const op of PLURNK_OPS) {
+        assert.equal(scoped.allowsCoreOperationAcross(op, 1, [{}]), true, `${op} is admitted under default policy`);
+    }
+    assert.equal(scoped.allowsCoreOperationAcross("BARE", 1, [{ deny: [{ operation: "BARE" }] }]), false);
+    assert.equal(scoped.allowsCoreOperationAcross("WORK", 1, [{ deny: [{ operation: "WORK" }] }]), false);
+    assert.equal(scoped.allowsCoreOperationAcross("EDIT", 1, [{ deny: [{ access: "mutate" }] }]), false);
+    assert.equal(scoped.allowsCoreOperationAcross("NOTE", 1, [{ only: [] }]), true);
 });

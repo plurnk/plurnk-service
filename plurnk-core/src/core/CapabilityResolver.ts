@@ -3,6 +3,7 @@ import {
     type CapabilityDescriptor,
     type CapabilityPolicy,
     type CapabilityProjection,
+    type PlurnkOp,
     type PlurnkStatement,isExecution,isExecutionOp,type RuntimeTag,type ParsedPath
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
@@ -287,6 +288,51 @@ export default class CapabilityResolver {
             if (readable && allows("MOVE", "observe") && allows("MOVE", "mutate")) return true;
         }
         return scheme === "session" && (allows("WORK", "control") || allows("FORK", "control"));
+    }
+
+    allowsCoreOperationAcross(
+        op: PlurnkOp,
+        workspaceId: number,
+        policies: readonly CapabilityPolicy[],
+    ): boolean {
+        const schemes = this.#schemes.list(workspaceId);
+        const allowsScheme = (operation: CapabilityDescriptor["operation"], access: CapabilityDescriptor["access"], scheme: string): boolean =>
+            CapabilityAdmission.allowsAcross(policies, this.#schemeDescriptor(operation, access, scheme, workspaceId));
+        switch (op) {
+            case "NOTE":
+            case "TODO":
+            case "WAIT":
+            case "SEND":
+            case "KILL":
+            case "DONE":
+            case "FAIL":
+                return true;
+            case "BARE":
+                return CapabilityAdmission.allowsAcross(policies, { operation: "BARE", access: "execute", traits: [] });
+            case "WORK":
+            case "FORK":
+                return this.#schemes.has("session", workspaceId) && allowsScheme(op, "control", "session");
+            case "FIND":
+            case "READ":
+                return schemes.some((scheme) => allowsScheme(op, "observe", scheme));
+            case "EDIT":
+                return schemes.some((scheme) =>
+                    this.#schemes.manifestFor(scheme, workspaceId)?.writableBy.includes("model") === true
+                    && allowsScheme("EDIT", "mutate", scheme));
+            case "COPY":
+                return schemes.some((scheme) => allowsScheme("COPY", "observe", scheme))
+                    && schemes.some((scheme) =>
+                        this.#schemes.manifestFor(scheme, workspaceId)?.writableBy.includes("model") === true
+                        && allowsScheme("COPY", "mutate", scheme));
+            case "MOVE":
+                return schemes.some((scheme) =>
+                    this.#schemes.manifestFor(scheme, workspaceId)?.writableBy.includes("model") === true
+                    && allowsScheme("MOVE", "observe", scheme)
+                    && allowsScheme("MOVE", "mutate", scheme))
+                    && schemes.some((scheme) =>
+                        this.#schemes.manifestFor(scheme, workspaceId)?.writableBy.includes("model") === true
+                        && allowsScheme("MOVE", "mutate", scheme));
+        }
     }
 
     #schemeDescriptor(

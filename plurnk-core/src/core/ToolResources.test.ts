@@ -5,7 +5,8 @@ import EntryManifest from "../schemes/_entry-manifest.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Lexer } from "marked";
 import { plurnkRuntimeDecl } from "../server/FunctionalityManager.ts";
-import { isExecution, Validator, type JsonSchema } from "@plurnk/plurnk-contracts";
+import { ALL_CORE_OPERATION_TOOLS } from "../schemes/CoreOperationTools.ts";
+import { isExecution, PLURNK_OPS, Validator, type JsonSchema } from "@plurnk/plurnk-contracts";
 
 describe("ToolResources", () => {
 test("{§tools-resource-materialization} renders a general runtime as one self-describing resource", () => {
@@ -466,5 +467,37 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
         }] },
     })[0].content;
     assert.match(noOptions, /await gitea\.search\(\{"query": ""\}\); \/\/ Search repos\. Schema: mcp:\/\/\/gitea\/search\.json/);
+});
+
+test("{§functionality-model-projection} {§tools-resource-materialization} renders all 15 Core VM operations on mcp:///plurnk.md with parseable examples", () => {
+    assert.deepEqual(
+        ALL_CORE_OPERATION_TOOLS.map(({ target }) => target.toUpperCase()).toSorted(),
+        [...PLURNK_OPS].toSorted(),
+        "every Core VM operation is registered as a plurnk tool",
+    );
+    const rendered = ToolResources.render({
+        runtime: plurnkRuntimeDecl.name,
+        ...plurnkRuntimeDecl,
+        details: plurnkRuntimeDecl.details ?? "",
+        registry: { tools: [...ALL_CORE_OPERATION_TOOLS] },
+    });
+    const indexDoc = rendered.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk.md");
+    assert.ok(indexDoc);
+    for (const tool of ALL_CORE_OPERATION_TOOLS) {
+        assert.ok(indexDoc.content.includes(`await plurnk.${tool.target}(`), `mcp:///plurnk.md includes ${tool.target}`);
+        assert.ok(indexDoc.content.includes(`Schema: mcp:///plurnk/${tool.target}.json`), `mcp:///plurnk.md links to ${tool.target}.json`);
+        const schemaDoc = rendered.find(({ scheme, pathname }) => scheme === "mcp" && pathname === `/plurnk/${tool.target}.json`);
+        assert.ok(schemaDoc, `mcp:///plurnk/${tool.target}.json is materialized`);
+        const parsedSchema = JSON.parse(schemaDoc.content) as { title: string; description: string };
+        assert.equal(parsedSchema.title, `plurnk: ${tool.target}`);
+        const examples = (tool.details ?? "").split("\n").filter((line) => line.startsWith("await plurnk."));
+        assert.ok(examples.length > 0, `${tool.target} carries at least one Code Mode example`);
+        for (const example of examples) {
+            const parsed = PlurnkParser.parseStatements(example);
+            assert.equal(parsed.unparsedTail, undefined, `${tool.target}: ${example}`);
+            const errors = parsed.items.filter((item) => item.kind === "error");
+            assert.deepEqual(errors, [], `${tool.target} example parses cleanly: ${example}`);
+        }
+    }
 });
 });
