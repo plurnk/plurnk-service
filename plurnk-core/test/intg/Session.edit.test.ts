@@ -466,8 +466,8 @@ for (const fixture of [
 
         const pending: { batch: string | null } = { batch: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````READ (doc.md) <1,-1>````\n````NOTE\nreading\n````", 50),
-            makeMockResponse("````DONE\nread\n````", 50),
+            makeMockResponse("await plurnk.read({\"path\":\"doc.md\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"reading\"});", 50),
+            makeMockResponse("await plurnk.done({\"text\":\"read\"});", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
@@ -475,10 +475,8 @@ for (const fixture of [
             calls += 1;
             if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`${pending.batch}
 
-\`\`\`\`NOTE
-editing
-\`\`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````DONE\nedited\n````", 50)] }).generate(args);
+await plurnk.note({"text":"editing"});`, 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("await plurnk.done({\"text\":\"edited\"});", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -494,12 +492,8 @@ editing
                 if (fixture.name === "repeated") assert.notEqual(anchors[fixture.first - 1], anchors[fixture.first + 5], "the two copies have distinct handles");
                 await writeFile(join(root, "doc.md"), `zero-a\nzero-b\n${fixture.source}`);
                 pending.batch = [
-                    `\`\`\`\`EDIT (doc.md) <${anchors[fixture.first - 1]},${anchors[fixture.first]}>
-THREE-FOUR
-\`\`\`\``,
-                    `\`\`\`\`EDIT (doc.md) <${anchors[fixture.first + 1]}>
-FIVE
-\`\`\`\``,
+                    `await plurnk.edit({"path":"doc.md","range":"${anchors[fixture.first - 1]},${anchors[fixture.first]}","content":"THREE-FOUR"});`,
+                    `await plurnk.edit({"path":"doc.md","range":"${anchors[fixture.first + 1]}","content":"FIVE"});`,
                 ].join("\n\n");
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit" });
                 assert.equal(second.result.status, 200);
@@ -606,8 +600,8 @@ for (const fixture of cases) test(`{§op-methods-op-dispatch} ${fixture.name}`, 
         // mock's third response is filled in once those anchors are known.
         const pending: { batch: string | null } = { batch: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````READ (doc.md) <1,-1>````\n````NOTE\nreading\n````", 50),
-            makeMockResponse("````DONE\nread\n````", 50),
+            makeMockResponse("await plurnk.read({\"path\":\"doc.md\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"reading\"});", 50),
+            makeMockResponse("await plurnk.done({\"text\":\"read\"});", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
@@ -615,10 +609,8 @@ for (const fixture of cases) test(`{§op-methods-op-dispatch} ${fixture.name}`, 
             calls += 1;
             if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`${pending.batch}
 
-\`\`\`\`NOTE
-editing
-\`\`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````DONE\nedited\n````", 50)] }).generate(args);
+await plurnk.note({"text":"editing"});`, 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("await plurnk.done({\"text\":\"edited\"});", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -636,16 +628,10 @@ editing
                 await writeFile(join(root, "doc.md"), fixture.current);
                 const unresolved = fixture.unresolved(anchors);
                 const statements = [
-                    `\`\`\`\`EDIT (doc.md) <${anchors[0]}>
-ONE
-\`\`\`\``,
-                    `\`\`\`\`EDIT (doc.md) <${anchors[1]}>
-TWO
-\`\`\`\``,
-                    "````EDIT (doc.md) <3>\nTHREE\n````",
-                    ...fixture.scopes(anchors).map((marks) => `\`\`\`\`EDIT (doc.md) <${marks.join(",")}>
-replacement
-\`\`\`\``),
+                    `await plurnk.edit({"path":"doc.md","range":"${anchors[0]}","content":"ONE"});`,
+                    `await plurnk.edit({"path":"doc.md","range":"${anchors[1]}","content":"TWO"});`,
+                    "await plurnk.edit({\"path\":\"doc.md\",\"range\":\"3\",\"content\":\"THREE\"});",
+                    ...fixture.scopes(anchors).map((marks) => `await plurnk.edit({"path":"doc.md","range":"${marks.join(",")}","content":"replacement"});`),
                 ];
                 pending.batch = statements.join("\n\n");
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit" });
@@ -712,21 +698,17 @@ test("{§edit-result-receipt-projection} the EDIT row renders the landed lines w
 
         const pending: { anchor: string | null } = { anchor: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````EDIT (f.go) <1>\nvar x int64\n````\n\n````NOTE\nfirst\n````", 50),
-            makeMockResponse("````DONE\ndone\n````", 50),
+            makeMockResponse("await plurnk.edit({\"path\":\"f.go\",\"range\":\"1\",\"content\":\"var x int64\"});\n\nawait plurnk.note({\"text\":\"first\"});", 50),
+            makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
         mock.generate = async (args) => {
             calls += 1;
-            if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`\`\`\`\`EDIT (f.go) <${pending.anchor}>
-func requireFn(a int) int { // anchored
-\`\`\`\`
+            if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`await plurnk.edit({"path":"f.go","range":"${pending.anchor}","content":"func requireFn(a int) int { // anchored"});
 
-\`\`\`\`NOTE
-second
-\`\`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````DONE\ndone\n````", 50)] }).generate(args);
+await plurnk.note({"text":"second"});`, 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {

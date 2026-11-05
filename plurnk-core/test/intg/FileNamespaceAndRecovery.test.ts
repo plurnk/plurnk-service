@@ -42,10 +42,9 @@ test("{§fs-namespace} file URLs preserve native filename identity through reads
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
         for (const name of names) await writeFile(join(root, name), `Content of ${name}\n`);
         await execFileP("git", ["add", "--", ...names], { cwd: root, env: hermeticGitEnv() });
-        const frame = PlurnkParser.frame;
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            makeMockResponse(names.map((name) => frame(`READ (${pathToFileURL(join(root, name)).href})`, null)).join("\n\n"), 50),
-            makeMockResponse(frame("DONE", "Finished."), 50),
+            makeMockResponse(names.map((name) => `await plurnk.read({"path":"${pathToFileURL(join(root, name)).href}"});`).join("\n\n"), 50),
+            makeMockResponse("await plurnk.done({\"text\":\"Finished.\"});", 50),
         ] });
         await withDaemon(provider, async (db, daemon, addr) => {
             const client = await connect(addr);
@@ -60,7 +59,7 @@ test("{§fs-namespace} file URLs preserve native filename identity through reads
                 for (const row of rows) {
                     const target = renderTarget(row, root);
                     assert.ok(target);
-                    const read = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: loop.modelSessionId!, statements: [parseDsl(frame(`READ (${target})`, null))[0]] }))[0];
+                    const read = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: loop.modelSessionId!, statements: [parseDsl(`await plurnk.read({"path":"${target}"});`)[0]] }))[0];
                     assert.equal(read.status, 200, `reuse ${target}`);
                     assert.equal(read.content, `Content of ${row.pathname}\n`, `identity of ${target}`);
                 }
@@ -81,17 +80,16 @@ test("{§fs-namespace} encoded file operands compose across mutations, attachmen
         await mkdir(join(root, directory));
         for (const name of names) await writeFile(join(root, key(name)), `Original ${name}\n`);
         await execFileP("git", ["add", "--", directory], { cwd: root, env: hermeticGitEnv() });
-        const frame = PlurnkParser.frame;
         const glob = `${pathToFileURL(join(root, directory)).href}/*.txt`;
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            makeMockResponse(names.map((name) => frame(`FIND (${uri(name)})`, null)).join("\n\n"), 50),
-            makeMockResponse(names.map((name) => frame(`EDIT (${uri(name)}) <1,-1>`, `Revised ${name}\n`)).join("\n\n"), 50),
-            makeMockResponse(names.map((name) => frame(`COPY (${uri(name)}) (${uri(`copy-${name}`)})`, null)).join("\n\n"), 50),
-            makeMockResponse(names.map((name) => frame(`MOVE (${uri(`copy-${name}`)}) (${uri(`moved-${name}`)})`, null)).join("\n\n"), 50),
-            makeMockResponse([frame(`FIND (${glob})`, null), frame(`READ (${glob})`, null)].join("\n\n"), 50),
-            makeMockResponse([...names.map((name) => frame(`KILL (${uri(`moved-${name}`)})`, null)), frame("FIND (*)", null)].join("\n\n"), 50),
-            makeMockResponse(frame(`FIND (${pathToFileURL(join(root, directory)).href}/**)`, null), 50),
-            makeMockResponse(frame("DONE", "Finished."), 50),
+            makeMockResponse(names.map((name) => `await plurnk.find(${JSON.stringify({ path: uri(name) })});`).join("\n\n"), 50),
+            makeMockResponse(names.map((name) => `await plurnk.edit(${JSON.stringify({ path: uri(name), range: "1,-1", content: `Revised ${name}\n` })});`).join("\n\n"), 50),
+            makeMockResponse(names.map((name) => `await plurnk.copy(${JSON.stringify({ from: uri(name), to: uri(`copy-${name}`) })});`).join("\n\n"), 50),
+            makeMockResponse(names.map((name) => `await plurnk.move(${JSON.stringify({ from: uri(`copy-${name}`), to: uri(`moved-${name}`) })});`).join("\n\n"), 50),
+            makeMockResponse([`await plurnk.find(${JSON.stringify({ path: glob })});`, `await plurnk.read(${JSON.stringify({ path: glob })});`].join("\n\n"), 50),
+            makeMockResponse([...names.map((name) => `await plurnk.kill(${JSON.stringify({ path: uri(`moved-${name}`) })});`), "await plurnk.find({\"path\":\"*\"});"].join("\n\n"), 50),
+            makeMockResponse(`await plurnk.find(${JSON.stringify({ path: `${pathToFileURL(join(root, directory)).href}/**` })});`, 50),
+            makeMockResponse("await plurnk.done({\"text\":\"Finished.\"});", 50),
         ] });
         await withDaemon(provider, async (db, daemon, addr) => {
             const client = await connect(addr);
@@ -116,7 +114,7 @@ test("{§fs-namespace} encoded file operands compose across mutations, attachmen
                     await assert.rejects(readFile(join(root, key(`copy-${name}`))), { code: "ENOENT" });
                     await assert.rejects(readFile(join(root, key(`moved-${name}`))), { code: "ENOENT" });
                     const address = renderTarget({ scheme: null, pathname: key(name) }, root)!;
-                    const read = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: loop.modelSessionId!, statements: [parseDsl(frame(`READ (${address})`, null))[0]] }))[0];
+                    const read = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: loop.modelSessionId!, statements: [parseDsl(`await plurnk.read(${JSON.stringify({ path: address })});`)[0]] }))[0];
                     assert.equal(read.status, 200, address);
                     assert.equal(read.content, `Revised ${name}\n`);
                     assert.ok(userText(provider.received[1]).includes(address), "the exact FIND advertised a reusable address");
@@ -145,7 +143,6 @@ test("{§fs-namespace} digest addresses retain literal identities and authored s
     const root = join(dir, "project");
     const dbPath = join(dir, "evidence.db");
     const names = ["literal%28.txt", "hash#name.txt", "wild*.txt"];
-    const frame = PlurnkParser.frame;
     const glob = `${pathToFileURL(root).href}/*.txt`;
     try {
         await mkdir(root);
@@ -159,9 +156,9 @@ test("{§fs-namespace} digest addresses retain literal identities and authored s
             }
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             let sequence = 0;
-            for (const header of [...names.map((name) => `READ (${renderTarget({ scheme: null, pathname: name }, root)})`), `FIND (${glob})`]) {
-                const result = await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: parseDsl(frame(header, null))[0] });
-                assert.equal(result.status, 200, header);
+            for (const source of [...names.map((name) => `await plurnk.read(${JSON.stringify({ path: renderTarget({ scheme: null, pathname: name }, root) })});`), `await plurnk.find(${JSON.stringify({ path: glob })});`]) {
+                const result = await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: parseDsl(source)[0] });
+                assert.equal(result.status, 200, source);
             }
         } finally { await db.close(); }
         const evidence = EvidenceReader.open(dbPath);
@@ -178,10 +175,9 @@ test("{§fs-namespace} malformed URLs refuse only their operation and preserve d
     const root = await mkdtemp(join(tmpdir(), "plurnk-file-url-refusal-"));
     const invalid = [`file://${root}/bad%2Fname`, `file://${root}/bad%00name`, `file://${root}/bad%xy`, `file://${root}/%FF`, `file://remote${root}/file`];
     try {
-        const frame = PlurnkParser.frame;
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            makeMockResponse(invalid.map((target) => frame(`READ (${target})`, null)).join("\n\n"), 50),
-            makeMockResponse(frame("DONE", "The addresses were refused."), 50),
+            makeMockResponse(invalid.map((target) => `await plurnk.read({"path":"${target}"});`).join("\n\n"), 50),
+            makeMockResponse("await plurnk.done({\"text\":\"The addresses were refused.\"});", 50),
         ] });
         await withDaemon(provider, async (db, _daemon, addr) => {
             const client = await connect(addr);
@@ -218,22 +214,21 @@ for (const form of ["absolute", "home", "literal"] as const) test(`{§fs-namespa
         const source = join(root, key("source.txt"));
         const copied = join(root, key("copied.txt"));
         const moved = join(root, key("moved.txt"));
-        const frame = PlurnkParser.frame;
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            makeMockResponse(frame("sh", `printf "%s/${key("source.txt")}\\n" "$PWD"`), 50),
-            makeMockResponse(frame(`READ (${spelling("source.txt")})`, null), 50),
+            makeMockResponse(`await plurnk.sh({"command":"printf \\"%s/${key("source.txt")}\\\\n\\" \\"$PWD\\""});`, 50),
+            makeMockResponse(`await plurnk.read({"path":"${spelling("source.txt")}"});`, 50),
             makeMockResponse([
-                frame(`EDIT (${spelling("source.txt")}) <1,-1>`, "revised\n"),
-                frame(`COPY (${spelling("source.txt")}) (${spelling("copied.txt")})`, null),
-                frame(`MOVE (${spelling("copied.txt")}) (${spelling("moved.txt")})`, null),
+                `await plurnk.edit({"path":"${spelling("source.txt")}","range":"1,-1","content":"revised\\n"});`,
+                `await plurnk.copy({"from":"${spelling("source.txt")}","to":"${spelling("copied.txt")}"});`,
+                `await plurnk.move({"from":"${spelling("copied.txt")}","to":"${spelling("moved.txt")}"});`,
             ].join("\n\n"), 50),
             makeMockResponse([
-                frame(`READ (${pathToFileURL(moved).href})`, null),
-                frame(`FIND (${spelling("*.txt")})`, null),
-                frame(`READ (${spelling("*.txt")})`, null),
+                `await plurnk.read({"path":"${pathToFileURL(moved).href}"});`,
+                `await plurnk.find({"path":"${spelling("*.txt")}"});`,
+                `await plurnk.read({"path":"${spelling("*.txt")}"});`,
             ].join("\n\n"), 50),
-            makeMockResponse(frame(`KILL (${spelling("moved.txt")})`, null), 50),
-            makeMockResponse(frame("DONE", "Finished."), 50),
+            makeMockResponse(`await plurnk.kill({"path":"${spelling("moved.txt")}"});`, 50),
+            makeMockResponse("await plurnk.done({\"text\":\"Finished.\"});", 50),
         ] });
         await withDaemon(provider, async (db, daemon, addr) => {
             const client = await connect(addr);
@@ -279,7 +274,7 @@ for (const form of ["absolute", "home", "literal"] as const) test(`{§fs-namespa
                 }
 
                 for (const target of [relativeSource, spelling("source.txt"), source, pathToFileURL(source).href]) {
-                    const result = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: loop.modelSessionId!, statements: [parseDsl(frame(`READ (${target})`, null))[0]] }))[0];
+                    const result = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: loop.modelSessionId!, statements: [parseDsl(`await plurnk.read({"path":"${target}"});`)[0]] }))[0];
                     assert.equal(result.status, 200, target);
                     assert.equal(result.content, "revised\n", target);
                 }
@@ -309,7 +304,7 @@ test("{§fs-namespace} {§fs-namespace} normalization notices follow authored op
             for (const [target, origin] of [["probe.txt", "model"], [absolute, "_plurnk"], [absolute, "model"], ["./~/literal.txt", "model"]] as const) {
                 const result = await engine.dispatch({
                     ...ids, sequence: ++sequence, origin,
-                    statement: parseDsl(PlurnkParser.frame(`READ (${target})`, null))[0],
+                    statement: parseDsl(`await plurnk.read({"path":"${target}"});`)[0],
                 });
                 assert.equal(result.status, projectRoot === null && target === absolute ? 404 : 200, `${projectRoot}: ${origin} ${target}`);
             }
@@ -320,7 +315,7 @@ test("{§fs-namespace} {§fs-namespace} normalization notices follow authored op
             for (const origin of ["_plurnk", "model"] as const) {
                 const result = await engine.dispatch({
                     ...ids, sequence: ++sequence, origin,
-                    statement: parseDsl(PlurnkParser.frame("READ (~/probe.txt)", null))[0],
+                    statement: parseDsl("await plurnk.read({\"path\":\"~/probe.txt\"});")[0],
                 });
                 assert.equal(result.status, projectRoot === homedir() ? 200 : 404, `${projectRoot}: ${origin} ~/probe.txt`);
             }
@@ -333,7 +328,7 @@ test("{§fs-namespace} {§fs-namespace} normalization notices follow authored op
             notices.length = 0;
             // An absolute spelling of a path beyond the root is already its canonical address: no notice.
             const beyond = join(projectRoot === homedir() ? "/" : homedir(), `plurnk-beyond-${crypto.randomUUID()}.md`);
-            const miss = await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: parseDsl(PlurnkParser.frame(`READ (${beyond})`, null))[0] });
+            const miss = await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: parseDsl(`await plurnk.read({"path":"${beyond}"});`)[0] });
             assert.equal(miss.status, 404, `${projectRoot}: ${beyond}`);
             assert.deepEqual(notices.filter(({ kind }) => kind === "path_normalized"), [], `${projectRoot}: an absolute spelling beyond the root earns no notice`);
         }
@@ -789,7 +784,7 @@ const runtime = async (t: TestContext) => {
 
 test("{§fs-namespace} every file miss names its member key and carries the miss recovery", async (t) => {
     const { dispatch } = await runtime(t);
-    for (const source of ["````FIND (missing.py)````", "````KILL (missing.py)````", "````EDIT (missing.py) /alpha/\nomega\n````", "````READ (missing.py)````"]) {
+    for (const source of ["await plurnk.find({\"path\":\"missing.py\"});", "await plurnk.kill({\"path\":\"missing.py\"});", "await plurnk.edit({\"path\":\"missing.py\",\"pattern\":\"/alpha/\",\"content\":\"omega\"});", "await plurnk.read({\"path\":\"missing.py\"});"]) {
         const { status, problem } = await dispatch(source);
         assert.equal(status, 404, source);
         assert.equal(problem.detail, "No member of this workspace is at 'missing.py'.", `${source}: the key, never a file:// URI`);
@@ -800,7 +795,7 @@ test("{§fs-namespace} every file miss names its member key and carries the miss
 test("{§fs-namespace} {§fs-namespace} a key beyond the root is told it is outside the root, by its absolute address, never offered FIND, EDIT or admission", async (t) => {
     const { dispatch, root } = await runtime(t);
     const address = resolve(root, "../outside/delete_tests.log");
-    for (const source of ["````READ (../outside/delete_tests.log)````", "````FIND (../outside/delete_tests.log)````", "````KILL (../outside/delete_tests.log)````", `\`\`\`\`READ (${address})\`\`\`\``]) {
+    for (const source of ["await plurnk.read({\"path\":\"../outside/delete_tests.log\"});", "await plurnk.find({\"path\":\"../outside/delete_tests.log\"});", "await plurnk.kill({\"path\":\"../outside/delete_tests.log\"});", `await plurnk.read({"path":"${address}"});`]) {
         const { status, problem } = await dispatch(source);
         assert.equal(status, 404, source);
         assert.equal(problem.detail, `No member of this workspace is at '${address}'.`, `${source}: the address's membership, nothing about the disk`);
@@ -813,7 +808,7 @@ test("{§fs-namespace} {§fs-namespace} home, literal and absolute misses retain
     const { dispatch, root } = await runtime(t);
     const homeKey = relative(root, homedir());
     for (const [spelling, key] of [["~/plurnk-missing.md", `${homeKey}/plurnk-missing.md`], ["~", homeKey], ["~/", homeKey]]) {
-        const miss = await dispatch(PlurnkParser.frame(`READ (${spelling})`, null));
+        const miss = await dispatch(`await plurnk.read({"path":"${spelling}"});`);
         // {§fs-namespace} The home directory lies beyond this root, so its address is absolute.
         const address = key.startsWith("../") ? resolve(root, key) : key;
         assert.equal(miss.status, 404, spelling);
@@ -822,7 +817,7 @@ test("{§fs-namespace} {§fs-namespace} home, literal and absolute misses retain
         assert.equal(miss.problem.recovery, `'${address}' is outside the project root: only a members definition under the operator's namespace scope admits it.`);
     }
     for (const [spelling, key] of [["./~/missing.md", "~/missing.md"], ["./~", "~"], ["~someone/notes.md", "~someone/notes.md"]]) {
-        const miss = await dispatch(PlurnkParser.frame(`READ (${spelling})`, null));
+        const miss = await dispatch(`await plurnk.read({"path":"${spelling}"});`);
         assert.equal(miss.status, 404, spelling);
         assert.equal(miss.problem.detail, `No member of this workspace is at '${key}'.`);
         assert.equal(miss.problem.target, spelling, "the literal member address can be reused");
@@ -831,12 +826,12 @@ test("{§fs-namespace} {§fs-namespace} home, literal and absolute misses retain
     // An absolute path beyond the root is spelled back as itself and carries the outside-root recovery.
     const outsideName = `plurnk-outside-${crypto.randomUUID()}.md`;
     const outsideAddress = resolve(root, "..", outsideName);
-    const outside = await dispatch(`\`\`\`\`READ (${join(root, "..", outsideName)})\`\`\`\``);
+    const outside = await dispatch(`await plurnk.read({"path":"${join(root, "..", outsideName)}"});`);
     assert.equal(outside.status, 404);
     assert.equal(outside.problem.detail, `No member of this workspace is at '${outsideAddress}'.`, "the absolute address, never a climb");
     assert.equal(outside.problem.recovery, `'${outsideAddress}' is outside the project root: only a members definition under the operator's namespace scope admits it.`);
     // An absolute path inside the root is its in-root key and keeps the in-root recovery.
-    const inside = await dispatch(`\`\`\`\`READ (${join(root, "missing.py")})\`\`\`\``);
+    const inside = await dispatch(`await plurnk.read({"path":"${join(root, "missing.py")}"});`);
     assert.equal(inside.status, 404);
     assert.equal(inside.problem.detail, "No member of this workspace is at 'missing.py'.");
     assert.equal(inside.problem.recovery, FILE_MISS_RECOVERY, "inside the root the listing, creation and admission doors stand");
@@ -844,14 +839,14 @@ test("{§fs-namespace} {§fs-namespace} home, literal and absolute misses retain
 
 test("{§fs-namespace} a non-member an exclusion covers or the repository ignores is not offered an admission no model definition can make", async (t) => {
     const { db, ids, root, dispatch } = await runtime(t);
-    const ignored = await dispatch("````READ (generated.log)````");
+    const ignored = await dispatch("await plurnk.read({\"path\":\"generated.log\"});");
     assert.equal(ignored.problem.detail, "'generated.log' exists on disk but is not a member of this workspace.");
     assert.equal(ignored.problem.recovery, "Git ignores it (`.gitignore` line 1): a client or operator members definition can include it, a model definition cannot.");
-    const untracked = await dispatch("````READ (loose.md)````");
+    const untracked = await dispatch("await plurnk.read({\"path\":\"loose.md\"});");
     assert.equal(untracked.problem.recovery, "Admit it with `plurnk (members)` and a `{\"files\": [\"<path>\"]}` body.", "an untracked file is still admitted");
     await writeFile(join(root, "secret.md"), "hidden\n");
     await db.crud_insert_family_workspace_constraint.run({ workspace_id: ids.workspaceId, effect: "exclude", glob: "secret.md", source: "members" });
-    const excluded = await dispatch("````READ (secret.md)````");
+    const excluded = await dispatch("await plurnk.read({\"path\":\"secret.md\"});");
     assert.equal(excluded.problem.detail, "'secret.md' exists on disk but is not a member of this workspace.", "an excluded file on disk says so");
     assert.doesNotMatch(excluded.problem.recovery ?? "", /plurnk \(members\)/u, "an exclusion no add lifts is not offered one");
     assert.match(excluded.problem.recovery ?? "", /!secret\.md/u, "the refusal names the exclusion");
@@ -886,7 +881,7 @@ test("{§membership} an ignored file's refusal names the rule's file and line, w
     await mkdir(join(root, ".git", "info"), { recursive: true });
     await appendFile(exclude, "info.md\n");
     for (const name of ["default.md", "configured.md", "info.md", "drop.tmp", "keep.tmp"]) await writeFile(join(root, name), "x\n");
-    const named = async (path: string): Promise<string | undefined> => (await dispatch(`\`\`\`\`READ (${path})\`\`\`\``)).problem.recovery;
+    const named = async (path: string): Promise<string | undefined> => (await dispatch(`await plurnk.read({"path":"${path}"});`)).problem.recovery;
 
     await asHome("default", { ".config/git/ignore": "default.md\n" });
     for (const [path, file, line] of [["default.md", "~/.config/git/ignore", 1], ["info.md", ".git/info/exclude", excludeLine], ["drop.tmp", ".gitignore", 2]] as const) {
@@ -900,46 +895,46 @@ test("{§membership} an ignored file's refusal names the rule's file and line, w
 
 test("{§log-history-projection} a log miss beside real rows names them", async (t) => {
     const { dispatch } = await runtime(t);
-    await dispatch("````READ (a.md)````");
-    await dispatch("````FIND (a.md) /alpha/````");
-    const wrongLeaf = await dispatch("````READ (log:///1/1/1/sh)````");
+    await dispatch("await plurnk.read({\"path\":\"a.md\"});");
+    await dispatch("await plurnk.find({\"path\":\"a.md\",\"pattern\":\"/alpha/\"});");
+    const wrongLeaf = await dispatch("await plurnk.read({\"path\":\"log:///1/1/1/sh\"});");
     assert.equal(wrongLeaf.status, 404);
     assert.equal(wrongLeaf.problem.recovery, "The entry at log:///1/1/1 is `log:///1/1/1/READ`.");
-    assert.equal((await dispatch("````FIND (log:///1/1/2/READ)````")).problem.recovery, "Turn 1/1's READ rows are `log:///1/1/1/READ`, `log:///1/1/3/READ`; the entry at log:///1/1/2 is `log:///1/1/2/FIND`.", "the leaf asked for first, then what the guessed sequence holds");
-    assert.equal((await dispatch("````KILL (log:///1/1/1/sh)````")).problem.recovery, "The entry at log:///1/1/1 is `log:///1/1/1/READ`.", "the curation a 413 demands is told the same");
+    assert.equal((await dispatch("await plurnk.find({\"path\":\"log:///1/1/2/READ\"});")).problem.recovery, "Turn 1/1's READ rows are `log:///1/1/1/READ`, `log:///1/1/3/READ`; the entry at log:///1/1/2 is `log:///1/1/2/FIND`.", "the leaf asked for first, then what the guessed sequence holds");
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/1/sh\"});")).problem.recovery, "The entry at log:///1/1/1 is `log:///1/1/1/READ`.", "the curation a 413 demands is told the same");
     // The rtx5070 benchlet's shape (run393): a turn's row asked for at the sequence another row holds.
-    assert.equal((await dispatch("````KILL (log:///1/1/1/FIND)````")).problem.recovery, "Turn 1/1's FIND rows are `log:///1/1/2/FIND`, `log:///1/1/4/FIND`; the entry at log:///1/1/1 is `log:///1/1/1/READ`.");
-    assert.equal((await dispatch("````READ (log:///1/1/9/FIND)````")).problem.recovery, "Turn 1/1's FIND rows are `log:///1/1/2/FIND`, `log:///1/1/4/FIND`.", "a sequence off names the turn's rows that carry the leaf");
-    assert.equal((await dispatch("````READ (log:///1/4/1/READ)````")).problem.recovery, "Turn 1/4 has no entries; loop 1's latest turn is 1/1.");
-    assert.equal((await dispatch("````READ (log:///7/1/1/READ)````")).problem.recovery, undefined, "a loop with no rows has nothing to name");
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/1/FIND\"});")).problem.recovery, "Turn 1/1's FIND rows are `log:///1/1/2/FIND`, `log:///1/1/4/FIND`; the entry at log:///1/1/1 is `log:///1/1/1/READ`.");
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///1/1/9/FIND\"});")).problem.recovery, "Turn 1/1's FIND rows are `log:///1/1/2/FIND`, `log:///1/1/4/FIND`.", "a sequence off names the turn's rows that carry the leaf");
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///1/4/1/READ\"});")).problem.recovery, "Turn 1/4 has no entries; loop 1's latest turn is 1/1.");
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///7/1/1/READ\"});")).problem.recovery, undefined, "a loop with no rows has nothing to name");
 });
 
 test("{§operation-results} {§diagnostic-observation} an unregistered scheme names what is registered, whatever its authority", async (t) => {
     const { dispatch } = await runtime(t);
-    const executorAuthority = await dispatch("````WORK (tool://sh/run)\nls\n````");
+    const executorAuthority = await dispatch("await plurnk.work({\"target\":\"tool://sh/run\",\"prompt\":\"ls\"});");
     assert.equal(executorAuthority.status, 501);
     assert.equal(executorAuthority.problem.detail, "Scheme 'tool' is not registered.");
-    const listed = await dispatch("````READ (nosuch://x/y)````");
+    const listed = await dispatch("await plurnk.read({\"path\":\"nosuch://x/y\"});");
     for (const refused of [executorAuthority, listed]) assert.match(refused.problem.recovery ?? "", /^Registered schemes: .*\bfile\b.*\blog\b.*\.$/u);
 });
 
 test("{§find-result-projection} {§diagnostic-observation} a full-text query FTS5 refuses carries FTS5's message and the dialect's form", async (t) => {
     const { engine, ids, dispatch } = await runtime(t);
-    assert.equal((await dispatch("````EDIT (workspace:///notes.md)\nif all(flags):\n````")).status, 201);
+    assert.equal((await dispatch("await plurnk.edit({\"path\":\"workspace:///notes.md\",\"content\":\"if all(flags):\"});")).status, 201);
     await engine.warmWorkspaceDerivations(ids.workspaceId);
-    const refused = await dispatch("````FIND (workspace:///notes.md) ~all(````");
+    const refused = await dispatch("await plurnk.find({\"path\":\"workspace:///notes.md\",\"pattern\":\"~all(\"});");
     assert.equal(refused.status, 400);
     assert.equal(refused.problem.recovery, "An FTS5 query is barewords, \"quoted phrases\", and AND, OR, NOT and NEAR between them.");
 });
 
 test("{§exec-lifetime} {§diagnostic-observation} an execution that outlives its lifetime says so, and nothing more", async (t) => {
     const { db, ids, dispatch, sequence } = await runtime(t);
-    assert.equal((await dispatch("````sh [{\"lifetime\": \"1s\"}]\nsleep 5\n````")).status, 200);
+    assert.equal((await dispatch("await plurnk.sh({\"metadata\":[\"{\\\"lifetime\\\": \\\"1s\\\"}\"],\"command\":\"sleep 5\"});")).status, 200);
     const stream = await executionAddress(db, ids.turnId, sequence());
     let ended: { status: number; problem: Problem } | undefined;
     for (let attempt = 0; attempt < 60 && ended === undefined; attempt++) {
         await new Promise((settle) => setTimeout(settle, 250));
-        const read = await dispatch(`\`\`\`\`READ (${stream})\`\`\`\``);
+        const read = await dispatch(`await plurnk.read({"path":"${stream}"});`);
         if (read.status === 504) ended = read;
     }
     assert.ok(ended, "the deadline closes the stream with 504");
@@ -949,10 +944,10 @@ test("{§exec-lifetime} {§diagnostic-observation} an execution that outlives it
 
 test("{§exec-target-routing} an execution id written under another runtime names the address it holds", async (t) => {
     const { db, ids, dispatch, sequence } = await runtime(t);
-    assert.equal((await dispatch("````python3\nprint(1)\n````")).status, 200);
+    assert.equal((await dispatch("await plurnk.python3({\"code\":\"print(1)\"});")).status, 200);
     const stream = await executionAddress(db, ids.turnId, sequence());
     const id = stream.replace(/^python3:\/\/\//u, "");
-    const killed = await dispatch(`\`\`\`\`KILL (sh:///${id})\`\`\`\``);
+    const killed = await dispatch(`await plurnk.kill({"path":"sh:///${id}"});`);
     assert.equal(killed.status, 404);
     assert.equal(killed.problem.detail, `No stream exists at sh:///${id}.`);
     assert.equal(killed.problem.recovery, `The execution at /${id} is \`${stream}\`.`);

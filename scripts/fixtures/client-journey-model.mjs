@@ -11,20 +11,20 @@ const journeys = Object.freeze({
         marker: "Exercise the installed one-shot interface.",
         programs: [{
             reasoning: "I will complete the installed one-shot request through the shared protocol.",
-            content: "````DONE\nThe installed one-shot journey is complete.\n````",
+            content: "await plurnk.done({ text: \"The installed one-shot journey is complete.\" });",
         }],
     },
     files: {
         marker: "Exercise installed file publication and persistence.",
         programs: [{
             reasoning: "Create the project file.",
-            content: "```EDIT (integrity.txt)\nbefore\n```",
+            content: "await plurnk.edit({ path: \"integrity.txt\", content: \"before\" });",
         }, {
             reasoning: "Replace the observed file through its normal proposal path.",
-            content: "```EDIT (integrity.txt) <1,-1>\nafter\n```",
+            content: "await plurnk.edit({ path: \"integrity.txt\", range: \"1,-1\", content: \"after\" });",
         }, {
             reasoning: "The file operations have settled.",
-            content: "```DONE\nThe installed file journey is complete.\n```",
+            content: "await plurnk.done({ text: \"The installed file journey is complete.\" });",
         }],
     },
     tui: {
@@ -32,18 +32,18 @@ const journeys = Object.freeze({
         programs: [{
             reasoning: "I will complete the request through the interactive terminal.\n",
             content: [
-                "````READ (log:///1/2/1/SEND)````",
-                "````READ (plurnk:///session.md) <1,-1>````",
-                "````READ (plurnk:///pattern.md) ~quotes````",
-                "````READ (plurnk:///delegation.md) <1,16>````",
-                "````READ (plurnk:///js.md) <1,-1>````",
-                "````READ (skill://plurnk/SKILL.md) <1,-1>````",
-                "````READ (skill://plurnk/.env.defaults) <1,16>````",
-                "````NOTE <!-- Confirm the packed interactive terminal path. -->\nThe shared protocol is available.\n````",
+                "await plurnk.read({ path: \"log:///1/2/1/SEND\" });",
+                "await plurnk.read({ path: \"plurnk:///session.md\", range: \"1,-1\" });",
+                "await plurnk.read({ path: \"plurnk:///pattern.md\", pattern: \"~quotes\" });",
+                "await plurnk.read({ path: \"plurnk:///delegation.md\", range: \"1,16\" });",
+                "await plurnk.read({ path: \"plurnk:///js.md\", range: \"1,-1\" });",
+                "await plurnk.read({ path: \"skill://plurnk/SKILL.md\", range: \"1,-1\" });",
+                "await plurnk.read({ path: \"skill://plurnk/.env.defaults\", range: \"1,16\" });",
+                "await plurnk.note({ text: \"The shared protocol is available.\" }); // Confirm the packed interactive terminal path.",
             ].join("\n"),
         }, {
             reasoning: "The message was retrieved from its log address, so the journey can conclude.\n",
-            content: "````DONE\nThe installed interactive journey is complete.\n````",
+            content: "await plurnk.done({ text: \"The installed interactive journey is complete.\" });",
         }],
     },
     rejected: {
@@ -56,10 +56,10 @@ const journeys = Object.freeze({
         marker: "Exercise the failed stream finalization.",
         programs: [{
             reasoning: "The stream will finish before its durable close can commit.",
-            content: "````sh\nprintf 'retained-stream-output\\n'\n````\n\n````WAIT\nAwait the command.\n````",
+            content: "await plurnk.sh({ command: \"printf 'retained-stream-output\\\\n'\" });\nawait plurnk.wait({ text: \"Await the command.\" });",
         }, {
             reasoning: "The additional message reached the parked session.",
-            content: "````NOTE <!-- Follow-up accepted while parked. -->\nThe unresolved stream remains an obligation.\n````\n\n````WAIT\nAwait settlement.\n````",
+            content: "await plurnk.note({ text: \"The unresolved stream remains an obligation.\" }); // Follow-up accepted while parked.\nawait plurnk.wait({ text: \"Await settlement.\" });",
         }],
     },
     zeroconfig: {
@@ -67,7 +67,7 @@ const journeys = Object.freeze({
         model: "deepseek-v4-flash",
         programs: [{
             reasoning: "I will complete the zero-config onboarding request.",
-            content: "````DONE\nThe zero-config onboarding journey is complete.\n````",
+            content: "await plurnk.done({ text: \"The zero-config onboarding journey is complete.\" });",
         }],
     },
 });
@@ -87,10 +87,15 @@ const textOf = (message) => typeof message?.content === "string" ? message.conte
 const pairedReceipts = (messages) => messages.flatMap((message, index) => {
     if (message.role !== "assistant") return [];
     const receipts = parseLogRecords(textOf(messages[index + 1]).split(/\n## /u)[0].trim());
-    return [...textOf(message).matchAll(/^`{3,}([A-Za-z]\w*)(?: (.*))?$/gmu)].map(([, op, request = ""]) => {
+    return [...textOf(message).matchAll(/^await plurnk\.([A-Za-z]\w*)\((.*)\);/gmu)].map(([, rawOp, request = ""]) => {
+        const op = ["sh", "js", "python3", "env", "mcp", "members", "personas", "schedule", "skills", "question"].includes(rawOp)
+            ? rawOp
+            : rawOp.toUpperCase();
         const at = receipts.findIndex((row) => row.logPath.endsWith(`/${op}`));
         assert.notEqual(at, -1, `the replayed ${op} is followed by its receipt`);
-        return { ...receipts.splice(at, 1)[0], op, request, path: /^\((\S+)\)/u.exec(request)?.[1] };
+        let parsedArgs = null;
+        try { parsedArgs = JSON.parse(request); } catch { /* ignore */ }
+        return { ...receipts.splice(at, 1)[0], op, request, path: parsedArgs?.path ?? parsedArgs?.target };
     });
 });
 
@@ -182,7 +187,7 @@ export const startClientJourneyModel = async () => {
                 const patternRead = reads.find((row) => row.path === "plurnk:///pattern.md");
                 assert.ok(patternRead, "the installed runtime exposes the pattern reference");
                 assert.equal(patternRead.status ?? 200, 200);
-                assert.match(patternRead.request, / ~quotes$/u, "the pattern rides the replayed READ");
+                assert.match(patternRead.request, /"pattern":"~quotes"/u, "the pattern rides the replayed READ");
                 assert.match(String(patternRead.body ?? ""), /quotes and escapes, not the property name or colon\./u,
                     "full-text READ returns the selected source line from the installed reference");
                 assert.ok(Array.isArray(patternRead.matches) && patternRead.matches.length > 0);
@@ -193,8 +198,8 @@ export const startClientJourneyModel = async () => {
                 assert.equal(delegationRead.status ?? 200, 200);
                 assert.match(String(delegationRead.body ?? ""), /WORK starts a fresh log/u);
                 for (const witness of [
-                    /(?:^|\n) *\d+:```BARE\n *\d+:A self-contained prompt, with everything it needs pasted in\./u,
-                    /(?:^|\n) *\d+:```js <!--/u,
+                    /(?:^|\n) *\d+:await plurnk\.bare\(\{ prompt: "A self-contained prompt, with everything it needs pasted in\." \}\);/u,
+                    /(?:^|\n) *\d+:await plurnk\.js\(/u,
                     /(?:^|\n) *\d+:.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u,
                 ]) {
                     if (!witness.test(text)) throw new Error(`installed reference READ omitted ${witness}`);

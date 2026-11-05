@@ -24,7 +24,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeMockResponse } from "./_mock.ts";
 import { lastReply } from "./_packet.ts";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { completeStmt, sendStmt, killStmt, noteStmt } from "./_dsl.ts";
 import { type EditStatement, type PlurnkStatement, type UrlPath } from "@plurnk/plurnk-contracts";
 import { viableWindow } from "./_provider.ts";
@@ -222,7 +221,7 @@ test("{§engine-rails}: an unsuccessful park does not create a new cycle window"
 describe("Daemon.wait-rails", () => {
 // A contract violation that strikes: a third COPY operand ({§matcher-prefix-claims}); a fumbled matcher
 // would not ({§matcher-prefix-claims}).
-const extraSlotCopy = "````COPY (workspace:///a) (workspace:///b) (workspace:///c)````";
+const extraSlotCopy = 'await plurnk.copy({"from":"workspace:///a"});';
 const response = (dsl: string) => ({
     assistant: { content: dsl, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
@@ -234,16 +233,15 @@ for (const wake of ["message", "same-drain", "restart"] as const) {
             // The waits park on live work the fixture holds; a restart wakes them through recovery.
             const provider = new Mock({ contextWindow: 100000, responses: [
                 response(`${extraSlotCopy}
-\`\`\`\`WAIT
-Await results.
-\`\`\`\``),
+
+await plurnk.wait({"text":"Await results."});`),
                 response(`${extraSlotCopy}
-\`\`\`\`WAIT
-Await results.
-\`\`\`\``),
+
+await plurnk.wait({"text":"Await results."});`),
                 response(`${extraSlotCopy}
-\`\`\`\`${last}\`\`\`\``),
-                response("````DONE\nMust not reach a fourth model call.\n````"),
+
+await plurnk.${last.toLowerCase()}({});`),
+                response("await plurnk.done({\"text\":\"Must not reach a fourth model call.\"});"),
             ] });
             const seen: Array<number | undefined> = [];
             const generate = provider.generate.bind(provider);
@@ -314,8 +312,8 @@ Await results.
 
 test("{§engine-rails}: actual parks end repetition windows even when wakes stay in one drain", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        ...Array.from({ length: 6 }, () => response("````READ (workspace:///missing)````\n````WAIT\nAwait results.\n````")),
-        response("````DONE\nObservation complete.\n````"),
+        ...Array.from({ length: 6 }, () => response("await plurnk.read({\"path\":\"workspace:///missing\"});\n\nawait plurnk.wait({\"text\":\"Await results.\"});")),
+        response("await plurnk.done({\"text\":\"Observation complete.\"});"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "wait-cycle-windows" });
@@ -356,8 +354,8 @@ test("{§engine-rails}: actual parks end repetition windows even when wakes stay
 describe("Engine.cycles", () => {
 const turn = (operation: string, op: string | null = "NOTE") => ({
     assistant: { content: op === null ? operation : `${operation}
-\`\`\`\`${op}
-\`\`\`\``, reasoning: null },
+
+await plurnk.${op.toLowerCase()}({});`, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 
@@ -371,10 +369,8 @@ for (const identical of [false, true]) {
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const lines = Array.from({ length: 6 }, (_, index) => `completed step ${identical ? "same" : index + 1}`);
             const provider = new Mock({ contextWindow: 100000, responses: [
-                ...lines.map((line) => turn(`\`\`\`\`EDIT (workspace:///journal) <-1>
-${line}
-\`\`\`\``)),
-                turn("````DONE\nAppended all six lines.\n````", null),
+                ...lines.map((line) => turn(`await plurnk.edit({"path":"workspace:///journal","range":"-1","content":"${line}"});`)),
+                turn("await plurnk.done({\"text\":\"Appended all six lines.\"});", null),
             ] });
             const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 10 });
             assert.equal(result.result.status, 200, JSON.stringify(result.result));
@@ -417,8 +413,8 @@ for (const changing of [false, true]) {
             schemes.register("observed-content", source);
             const engine = new Engine({ db, schemes });
             const provider = new Mock({ contextWindow: 100000, responses: [
-                ...Array.from({ length: 6 }, () => turn("````READ (observed-content:///latest)````", status)),
-                turn("````DONE\nObserved all six results.\n````", null),
+                ...Array.from({ length: 6 }, () => turn("await plurnk.read({\"path\":\"observed-content:///latest\"});", status)),
+                turn("await plurnk.done({\"text\":\"Observed all six results.\"});", null),
             ] });
             const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 10 });
             assert.equal(result.result.status, changing ? 200 : 508, JSON.stringify(result.result));
@@ -439,7 +435,7 @@ test("{§engine-rails} repeated misses cycle despite unique Problem occurrence a
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "Read a missing resource.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 7 }, () => turn("````READ (workspace:///missing)````")) });
+        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 7 }, () => turn("await plurnk.read({\"path\":\"workspace:///missing\"});")) });
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 10 });
         assert.equal(result.result.status, 508, JSON.stringify(result.result));
         const misses = (await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId }))
@@ -468,18 +464,14 @@ test("{§send} NOTE-only turns continue with or without a stream; only waiting p
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "100";
     try {
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse(`\`\`\`\`sh
-while [ ! -f '${releasePath}' ]; do sleep 0.05; done; printf finished
-\`\`\`\`
+            makeMockResponse(`await plurnk.sh({"command":"while [ ! -f '${releasePath}' ]; do sleep 0.05; done; printf finished"});
 
-\`\`\`\`NOTE
-started
-\`\`\`\``, 50),
-            makeMockResponse("````NOTE\nReview the independent work\n````", 50),
-            makeMockResponse("````WAIT\nAwait the command\n````", 50),
-            makeMockResponse("````DONE\ndone\n````", 50),
-            makeMockResponse("````NOTE\nnothing to wait on\n````", 50),
-            makeMockResponse("````DONE\nconcluded\n````", 50),
+await plurnk.note({"text":"started"});`, 50),
+            makeMockResponse("await plurnk.note({\"text\":\"Review the independent work\"});", 50),
+            makeMockResponse("await plurnk.wait({\"text\":\"Await the command\"});", 50),
+            makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50),
+            makeMockResponse("await plurnk.note({\"text\":\"nothing to wait on\"});", 50),
+            makeMockResponse("await plurnk.done({\"text\":\"concluded\"});", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -526,10 +518,10 @@ const response = (content: string) => ({
     assistant: { content, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
-const collect = "````READ (session://child)````\n````WAIT\nCollect the child result.\n````";
-// A contract violation that strikes: a third COPY operand ({§matcher-prefix-claims}); a fumbled matcher
+const collect = "await plurnk.read({\"path\":\"session://child\"});\n\nawait plurnk.wait({\"text\":\"Collect the child result.\"});";
+// A contract violation that strikes: a missing COPY operand ({§matcher-prefix-claims}); a fumbled matcher
 // would not ({§matcher-prefix-claims}).
-const extraSlotCopy = "````COPY (workspace:///a) (workspace:///b) (workspace:///c)````";
+const extraSlotCopy = 'await plurnk.copy({"from":"workspace:///a"});';
 
 for (const priorStrike of [false, true]) {
     test(`{§session-loop-lifecycle} a complete-loop collect parks without a strike${priorStrike ? " after prior failure" : " at maxStrikes=1"}`, async (t) => {
@@ -542,13 +534,12 @@ for (const priorStrike of [false, true]) {
         const childLoop = await insertLoop(db, childId, 1, "Compute the answer.");
         const provider = new Mock({ contextWindow: 100000, responses: [
             ...(priorStrike ? [response(`${extraSlotCopy}
-\`\`\`\`WAIT
-Await results.
-\`\`\`\``)] : []),
+
+await plurnk.wait({"text":"Await results."});`)] : []),
             response(collect),
             response(collect),
             response(collect),
-            response("````DONE\n42\n````"),
+            response("await plurnk.done({\"text\":\"42\"});"),
         ] });
         const run = () => new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 8, maxStrikes: priorStrike ? 2 : 1,
@@ -609,10 +600,10 @@ test("{§engine-rails} a valid join does not excuse another operation's contract
 
 test("{§session-loop-lifecycle} the daemon wakes a collecting parent on actual child completion without consuming a strike", async () => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response("````WAIT\nAwait instructions.\n````"),
+        response("await plurnk.wait({\"text\":\"Await instructions.\"});"),
         response(collect),
-        response("````DONE\nChild answer: 42.\n````\n\n````DONE\nFollow-up acknowledged.\n````"),
-        response("````DONE\nChild answer received: 42.\n````"),
+        response("await plurnk.done({\"text\":\"Child answer: 42.\"});\n\nawait plurnk.done({\"text\":\"Follow-up acknowledged.\"});"),
+        response("await plurnk.done({\"text\":\"Child answer received: 42.\"});"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "join-wake-rails" });
@@ -662,16 +653,15 @@ test("{§session-loop-lifecycle} the daemon wakes a collecting parent on actual 
 });
 
 describe("Engine.rail-lifecycle", () => {
-const response = (operation: string, op: string, timing = "") => ({
+const response = (operation: string, op: string, seconds?: number) => ({
     assistant: { content: [
         operation,
-        PlurnkParser.frame(`${op}${timing}`, ""),
+        `await plurnk.${op.toLowerCase()}(${seconds === undefined ? "{}" : JSON.stringify({ seconds })});`,
     ].join("\n"), reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
-// A contract violation that strikes: a third COPY operand ({§matcher-prefix-claims}); a fumbled matcher
-// would not ({§matcher-prefix-claims}).
-const extraSlotCopy = "````COPY (workspace:///a) (workspace:///b) (workspace:///c)````";
+// A contract violation that strikes: a missing COPY destination.
+const extraSlotCopy = 'await plurnk.copy({"from":"workspace:///a"});';
 
 test("{§engine-rails}: a resumed task retains its strike streak across a wait and engine reconstruction", async (t) => {
     const db = await openMigrated();
@@ -799,7 +789,7 @@ test(`{§session-wait-timing}: ${kind} completion ${phase} is acknowledged only 
             });
         }
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            contentResponse("````DONE\nThe answer is 42.\n````"),
+            contentResponse("await plurnk.done({\"text\":\"The answer is 42.\"});"),
             contentResponse(""),
         ] });
         if (phase === "during inference") {
@@ -903,7 +893,7 @@ test("{§engine-rails} Engine.runLoop: repeated identical NOTE-only turns remain
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 5 }, () => contentResponse(
-                "\n````NOTE\nidling\n````",
+                "await plurnk.note({\"text\":\"idling\"});",
             )),
         });
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
@@ -1076,10 +1066,9 @@ test("{§operation-results}: a strike-threshold abandonment names itself in its 
         // A bounded heading failure, a third COPY operand, is a hard 400 ({§matcher-prefix-claims}); a fumbled
         // matcher would not strike ({§matcher-prefix-claims}). Distinct paths keep the failures out of cycle detection.
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, (_, i) => contentResponse(
-            `\`\`\`\`COPY (workspace:///note-${i}) (workspace:///b) (workspace:///c)\`\`\`\`
-\`\`\`\`NOTE
-going
-\`\`\`\``,
+            `await plurnk.copy({"from":"workspace:///note-${i}"});
+
+await plurnk.note({"text":"going"});`,
         )) });
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
         assert.equal(result.result.status, 500, "struck out to the engine's 500");
@@ -1125,14 +1114,10 @@ test("{§engine-rails} {§executor-results} consecutive nonzero exits never stri
     assert.ok(Number.isInteger(maxStrikes) && maxStrikes > 0, "PLURNK_SERVICE_MAX_STRIKES must be set for the witness");
     const failing = maxStrikes + 2;
     const mock = new Mock({ contextWindow: 100000, responses: [
-        ...Array.from({ length: failing }, (_, i) => makeMockResponse(`\`\`\`\`sh
-echo attempt-${i} >&2; exit 1
-\`\`\`\`
+        ...Array.from({ length: failing }, (_, i) => makeMockResponse(`await plurnk.sh({"command":"echo attempt-${i} >&2; exit 1"});
 
-\`\`\`\`NOTE
-fixing the tests
-\`\`\`\``, 10)),
-        makeMockResponse("````DONE\ngreen\n````", 10),
+await plurnk.note({"text":"fixing the tests"});`, 10)),
+        makeMockResponse("await plurnk.done({\"text\":\"green\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1172,8 +1157,8 @@ class Flaky extends Mock {
         super({
             contextWindow: viableWindow() * 4,
             responses: signals.map((signal) => makeMockResponse(signal === 102
-                ? "\n````FIND (workspace:///**)````\n````NOTE\ncontinue\n````"
-                : "````DONE\ndone\n````", 20)),
+                ? "await plurnk.find({\"path\":\"workspace:///**\"});\n\nawait plurnk.note({\"text\":\"continue\"});"
+                : "await plurnk.done({\"text\":\"done\"});", 20)),
         });
         this.failures = failures;
     }
@@ -1268,8 +1253,8 @@ test("{§engine-rails} a whole-call deadline recovers through the real provider 
                     init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
                 });
                 const content = requests.length === 2
-                    ? "````FIND (workspace:///**)\n````"
-                    : "````DONE\nRecovered.\n````";
+                    ? "await plurnk.find({\"path\":\"workspace:///**\"});"
+                    : "await plurnk.done({\"text\":\"Recovered.\"});";
                 return new Response(`data: ${JSON.stringify({
                     id: `response-${requests.length}`, model: "deadline-recovery",
                     choices: [{ index: 0, delta: { content }, finish_reason: "stop" }],
@@ -1377,8 +1362,8 @@ for (const cancel of [false, true]) {
     test(`{§loop-completion}: a failed operation is observed before ${cancel ? "scope cancellation" : "explicit completion"}`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
         const mock = new Mock({ contextWindow: 16384, responses: [
-            makeMockResponse("\n````KILL (workspace:///no-such-entry)\n````\n````SEND\nThe requested entry does not exist.\n````"),
-            makeMockResponse(cancel ? "````KILL (session://alice)\n````" : "````DONE\n````"),
+            makeMockResponse("await plurnk.kill({\"path\":\"workspace:///no-such-entry\"});\n\nawait plurnk.send({\"text\":\"The requested entry does not exist.\"});"),
+            makeMockResponse(cancel ? "await plurnk.kill({\"path\":\"session://alice\"});" : "await plurnk.done({});"),
         ] });
         await withDaemon(mock, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: "failed-op-observation" });
@@ -1413,10 +1398,10 @@ const response = (content: string) => ({
     assistant: { content, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
-// A contract violation that strikes: a third COPY operand ({§matcher-prefix-claims}); a fumbled matcher
+// A contract violation that strikes: a missing COPY operand ({§matcher-prefix-claims}); a fumbled matcher
 // would not ({§matcher-prefix-claims}).
-const extraSlotCopy = "````COPY (workspace:///a) (workspace:///b) (workspace:///c)````";
-const read = "````READ (workspace:///answer) <1,-1>````";
+const extraSlotCopy = 'await plurnk.copy({"from":"workspace:///a"});';
+const read = "await plurnk.read({\"path\":\"workspace:///answer\",\"range\":\"1,-1\"});";
 
 const loop = async (responses: string[], maxStrikes: number) => {
     const db = await openMigrated();
@@ -1432,7 +1417,7 @@ const loop = async (responses: string[], maxStrikes: number) => {
 // The recorded shape (#853, glm): a turn whose READ succeeded beside a hard 400 struck, and two such
 // turns ended productive loops.
 test("{§engine-rails}: a hard 400 beside a successful READ neither strikes nor survives into the streak", async () => {
-    const { db, loopId, result } = await loop([`${extraSlotCopy}\n${read}`, extraSlotCopy, `${extraSlotCopy}\n${read}`, "````DONE\n42\n````"], 2);
+    const { db, loopId, result } = await loop([`${extraSlotCopy}\n${read}`, extraSlotCopy, `${extraSlotCopy}\n${read}`, "await plurnk.done({\"text\":\"42\"});"], 2);
     try {
         assert.equal(result.result.status, 200, "no productive turn struck, and the lone failing turn was forgiven by the next productive one");
         assert.equal(await new StrikeRail(db).streak(loopId), 0);
@@ -1440,7 +1425,9 @@ test("{§engine-rails}: a hard 400 beside a successful READ neither strikes nor 
 });
 
 test("{§engine-rails}: failures beside only NOTE and WAIT still strike", async () => {
-    const { db, result } = await loop([`${extraSlotCopy}\n\`\`\`\`NOTE\nthinking\n\`\`\`\``, `${extraSlotCopy}\nprose outside the fence`], 2);
+    const { db, result } = await loop([`${extraSlotCopy}
+
+await plurnk.note({"text":"thinking"});`, `${extraSlotCopy}\nprose outside the fence`], 2);
     try {
         assert.equal(result.result.status, 500);
         assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");

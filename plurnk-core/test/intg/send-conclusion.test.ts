@@ -6,7 +6,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import StrikeRail from "../../src/core/StrikeRail.ts";
 import { type Notice } from "@plurnk/plurnk-contracts";
-import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
+import { parsePath } from "@plurnk/plurnk-parser";
 import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { holdChild, insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel, sendingOperation, seedEnvelope } from "./_db.ts";
@@ -18,9 +18,9 @@ import { completeStmt, noteStmt, sendStmt, urlPath } from "./_dsl.ts";
 describe("send-conclusion", () => {
 const said = (content: string, reasoning: string | null = null): MockResponse => ({ assistant: { content, reasoning } });
 const message = "message://alice/assignment";
-const send = (content = "") => PlurnkParser.frame("SEND", content);
-const conclude = (content = "") => PlurnkParser.frame("DONE", content);
-const correct = (content: string) => PlurnkParser.frame(`DONE (${message})`, content);
+const send = (content = "") => `await plurnk.send({"text":${JSON.stringify(content)}});`;
+const conclude = (content = "") => `await plurnk.done({"text":${JSON.stringify(content)}});`;
+const correct = (content: string) => `await plurnk.done({"target":"${message}","text":${JSON.stringify(content)}});`;
 
 const setup = async (responses: MockResponse[]) => {
     const db = await openMigrated();
@@ -42,7 +42,7 @@ const setup = async (responses: MockResponse[]) => {
     return {
         db, engine, provider, ids, parentId, leadLoop, notices,
         turn: () => engine.runTurn({ provider, ...ids, messages: [] }),
-        answer: () => clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement("````READ (ops://alice/1)````") }),
+        answer: () => clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement("await plurnk.read({\"path\":\"ops://alice/1\"});") }),
     };
 };
 
@@ -75,7 +75,7 @@ for (const final of ["Four, precisely.", "", " \n\t"]) {
 
             const loopId = leadLoop;
             await engine.runTurn({ workspaceId: ids.workspaceId, sessionId: parentId, loopId, messages: [],
-                provider: new Mock({ contextWindow: 100_000, responses: [said(PlurnkParser.frame("NOTE", "Observed."))] }),
+                provider: new Mock({ contextWindow: 100_000, responses: [said("await plurnk.note({\"text\":\"Observed.\"});")] }),
             });
             const parentRows = await db.engine_render_log.all<{ source: string; op: string; rx: string }>({ session_id: parentId });
             const childRows = parentRows.filter(({ source }) => source === "session://alice");
@@ -88,8 +88,8 @@ for (const final of ["Four, precisely.", "", " \n\t"]) {
 test("{§slot-order} {§message-completion}: addressed completion resolves only its addressed Open Message", async () => {
     const followup = "message://alice/followup";
     const { db, engine, turn, answer, ids, leadLoop } = await setup([
-        said(PlurnkParser.frame(`DONE (${followup})`, "Follow-up deliverable.")),
-        said(PlurnkParser.frame(`DONE (${message})`, "Four.")),
+        said(`await plurnk.done({"target":"${followup}","text":"Follow-up deliverable."});`),
+        said(`await plurnk.done({"target":"${message}","text":"Four."});`),
     ]);
     try {
         await engine.injectIntoLoop(ids.loopId, "Also answer this follow-up.", [], "session://lead", {}, followup, await sendingOperation(db, leadLoop));
@@ -123,7 +123,7 @@ test("{§message-completion} {§message-completion}: an empty completion succeed
         assert.deepEqual(events.map(({ rx }) => JSON.parse(rx)), [{ status: 200 }]);
         const loopId = leadLoop;
         await engine.runTurn({ workspaceId: ids.workspaceId, sessionId: parentId, loopId, messages: [],
-            provider: new Mock({ contextWindow: 100_000, responses: [said(PlurnkParser.frame("NOTE", "Observed."))] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [said("await plurnk.note({\"text\":\"Observed.\"});")] }),
         });
         const rows = await db.engine_render_log.all<{ source: string; op: string; rx: string }>({ session_id: parentId });
         const conclusions = rows.filter(({ source }) => source === "session://alice");
@@ -162,19 +162,19 @@ test("{§message-completion}: FIFO targeting cannot acknowledge an unpublished a
 
 for (const [label, response, reasoning, expected] of [
     ["only SEND", send("Four."), null, 102],
-    ["SEND with a reasoning NOTE", send("Four."), PlurnkParser.frame("NOTE", "Arithmetic checked."), 102],
+    ["SEND with a reasoning NOTE", send("Four."), "await plurnk.note({\"text\":\"Arithmetic checked.\"});", 102],
     ["only final reply", conclude("Four."), null, 200],
-    ["final reply with a reasoning NOTE", conclude("Four."), PlurnkParser.frame("NOTE", "Arithmetic checked."), 200],
-    ["final reply with a response NOTE", `${conclude("Four.")}\n\n${PlurnkParser.frame("NOTE", "Arithmetic checked.")}`, null, 200],
+    ["final reply with a reasoning NOTE", conclude("Four."), "await plurnk.note({\"text\":\"Arithmetic checked.\"});", 200],
+    ["final reply with a response NOTE", `${conclude("Four.")}\n\nawait plurnk.note({"text":"Arithmetic checked."});`, null, 200],
     ["SEND before final reply", `${send("Four.")}\n\n${conclude()}`, null, 200],
-    ["addressed SEND after final reply", `${conclude()}\n\n${PlurnkParser.frame(`SEND (${message})`, "Four.")}`, null, 200],
+    ["addressed SEND after final reply", `${conclude()}\n\nawait plurnk.send({"target":"${message}","text":"Four."});`, null, 200],
     ["text before final reply", `Preface.\n\n${conclude("Four.")}`, null, 200],
     ["text after final reply", `${conclude("Four.")}\n\nPostscript.`, null, 200],
-    ["SEND with a response NOTE", `${send("Four.")}\n\n${PlurnkParser.frame("NOTE", "Arithmetic checked.")}`, null, 102],
+    ["SEND with a response NOTE", `${send("Four.")}\n\nawait plurnk.note({"text":"Arithmetic checked."});`, null, 102],
     ["two SENDs", `${send("Four.")}\n\n${send("Precisely four.")}`, null, 102],
     ["text before SEND", `Preface.\n\n${send("Four.")}`, null, 102],
     ["text after SEND", `${send("Four.")}\n\nPostscript.`, null, 102],
-    ["NOTE only", PlurnkParser.frame("NOTE", "Still thinking."), null, 102],
+    ["NOTE only", "await plurnk.note({\"text\":\"Still thinking.\"});", null, 102],
 ] as const) {
     test(`{§message-completion}: ${label}`, async () => {
         const { db, turn } = await setup([said(response, reasoning)]);
@@ -198,7 +198,7 @@ test("{§message-completion}: sequential final replies both deliver and the late
 });
 
 test("{§message-completion}: a NOTE after progress delivery leaves messages unresolved", async () => {
-    const { db, turn } = await setup([said(send("Four.")), said(PlurnkParser.frame("NOTE", "Arithmetic checked.")), said(conclude())]);
+    const { db, turn } = await setup([said(send("Four.")), said("await plurnk.note({\"text\":\"Arithmetic checked.\"});"), said(conclude())]);
     try {
         assert.equal((await turn()).status, 102);
         assert.equal((await turn()).status, 102);
@@ -210,12 +210,12 @@ test("{§message-completion}: a NOTE after progress delivery leaves messages unr
     for (const obligation of ["child", "stream"] as const) {
         for (const park of ["WAIT", "DONE"] as const) {
             test(`{§loop-completion}: an earlier reply does not park ordinary work before ${park} with a live ${obligation}`, async () => {
-                const first = `${send("Working on it.")}\n\n${PlurnkParser.frame("NOTE", "Continue the work.")}`;
+                const first = `${send("Working on it.")}\n\nawait plurnk.note({"text":"Continue the work."});`;
                 const { db, turn, ids } = await setup([
                     said(first),
-                    said(PlurnkParser.frame("NOTE", "Check the saved input.")),
-                    said(PlurnkParser.frame("READ (workspace:///input.txt)", null)),
-                    said(PlurnkParser.frame(park, null)),
+                    said("await plurnk.note({\"text\":\"Check the saved input.\"});"),
+                    said("await plurnk.read({\"path\":\"workspace:///input.txt\"});"),
+                    said(`await plurnk.${park.toLowerCase()}({});`),
                 ]);
                 try {
                     await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "workspace", pathname: "/input.txt",
@@ -243,7 +243,7 @@ test("{§message-completion}: a NOTE after progress delivery leaves messages unr
     }
 }
 
-for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````"]) {
+for (const response of ["200", "```markdown\nFour.\n```", "```md\nFour.\n```"]) {
     test(`{§message-completion}: ${JSON.stringify(response)} cannot confirm a previous free response`, async () => {
         const { db, turn, answer, ids } = await setup([said(send("Four.")), said(response), said(conclude("Four, precisely."))]);
         try {
@@ -265,7 +265,7 @@ for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````
 }
 
 test("{§outside-text}: each span beside the operations is one NOTE at its position, and siblings run without a strike", async () => {
-    const source = `Before.\n\n${PlurnkParser.frame("NOTE", "remember")}\n\nBetween.\n\n${send("Four.")}\n\nAfter.`;
+    const source = `Before.\n\nawait plurnk.note({"text":"remember"});\n\nBetween.\n\n${send("Four.")}\n\nAfter.`;
     const { db, engine, provider, ids, notices } = await setup([said(source), said(conclude())]);
     try {
         const result = await engine.runLoop({ ...ids, provider, maxTurns: 4, maxStrikes: 1, messages: [] });
@@ -285,7 +285,7 @@ test("{§outside-text}: each span beside the operations is one NOTE at its posit
 
 test("{§outside-text}: a mixed turn's text becomes its NOTEs, replayed in the model's voice, with no notice and no outside source", async () => {
     const prose = ["Let me check the input first.", "That settles it."];
-    const source = `${prose[0]}\n\n${PlurnkParser.frame("READ (workspace:///input.txt)", null)}\n\n${prose[1]}`;
+    const source = `${prose[0]}\n\nawait plurnk.read({"path":"workspace:///input.txt"});\n\n${prose[1]}`;
     const { db, turn, ids, notices } = await setup([said(source), said(conclude())]);
     try {
         await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "workspace", pathname: "/input.txt",
@@ -309,7 +309,7 @@ test("{§outside-text}: a mixed turn's text becomes its NOTEs, replayed in the m
 // The recorded shape (#853, run286 pytest-5103): a length-cut response repeating `Proceeding.` beside a
 // fence minted 2,858 NOTE rows in one turn, one per fragment.
 test("{§outside-text}: a repetitive response beside operations is one NOTE per span between them, and a prose-only repetition is one outside source", async () => {
-    const fragments = Array.from({ length: 400 }, () => `Proceeding.\n\n${PlurnkParser.frame("NOTE", "waiting")}`).join("\n\n");
+    const fragments = Array.from({ length: 400 }, () => `Proceeding.\n\nawait plurnk.note({"text":"waiting"});`).join("\n\n");
     const proseOnly = Array.from({ length: 400 }, () => "Proceeding.").join("\n\n");
     const { db, engine, provider, ids } = await setup([said(`${fragments}\n\n${send("Four.")}\n\nProceeding`), said(proseOnly), said(conclude())]);
     try {
@@ -330,7 +330,7 @@ test("{§outside-text}: a repetitive response beside operations is one NOTE per 
 test("{§outside-text}: operations beside stray text reset the no-operation strike streak", async () => {
     const { db, engine, provider, ids } = await setup([
         said("Thinking."),
-        said(`Checking the arithmetic.\n\n${PlurnkParser.frame("NOTE", "Two plus two is four.")}`),
+        said(`Checking the arithmetic.\n\nawait plurnk.note({"text":"Two plus two is four."});`),
         said("Four."),
         said(conclude("Four.")),
     ]);
@@ -379,11 +379,11 @@ for (const preview of ["0", "1"]) for (const [label, response, reasoning, notes,
 }
 
 for (const [failure, operation, failedOp] of [
-    ["parser", "````EDIT (workspace:///broken.md) <bad>\nnot a message\n````", "error"],
-    ["operation", PlurnkParser.frame("SEND (reasoning://alice/1/1)", "Not a recipient."), "SEND"],
+    ["parser", 'await plurnk.edit({"path":"workspace:///broken.md","range":"bad","content":"not a message"});', "error"],
+    ["operation", "await plurnk.send({\"target\":\"reasoning://alice/1/1\",\"text\":\"Not a recipient.\"});", "SEND"],
 ] as const) {
     test(`{§outside-text}: stray text stored outside the turn does not mask an actual ${failure} failure`, async () => {
-        const source = `Working.\n\n${PlurnkParser.frame("NOTE", "Checking.")}\n\n${operation}`;
+        const source = `Working.\n\nawait plurnk.note({"text":"Checking."});\n\n${operation}`;
         const { db, engine, provider, ids, notices } = await setup([said(source)]);
         try {
             const result = await engine.runLoop({ ...ids, provider, maxTurns: 3, maxStrikes: 1, messages: [] });
@@ -398,7 +398,7 @@ for (const [failure, operation, failedOp] of [
 
 for (const op of ["NOTE", "WAIT"] as const) {
     test(`{§loop-completion}: stray text beside ${op} is the turn's NOTE, and ${op === "WAIT" ? "the explicit park holds" : "work continues before automatic parking"}`, async () => {
-        const { db, turn, ids, notices } = await setup([said(`Working.\n\n${PlurnkParser.frame(op, "Await the child.")}`)]);
+        const { db, turn, ids, notices } = await setup([said(`Working.\n\nawait plurnk.${op.toLowerCase()}(${JSON.stringify({ text: "Await the child." })});`)]);
         try {
             await holdChild(db, ids.workspaceId, ids.sessionId);
             const result = await turn();
@@ -423,7 +423,7 @@ test("{§message-completion}: SEND bodies that resemble operations remain litera
 });
 
 test("{§outside-text}: bounded malformed operations consume one turn and expose their diagnostics without resampling", async () => {
-    const source = "````EDIT (workspace:///broken.md) <bad>\nnot a message\n````";
+    const source = 'await plurnk.edit({"path":"workspace:///broken.md","range":"bad","content":"not a message"});';
     const { db, turn, provider } = await setup([said(source), said(conclude("Recovered."))]);
     try {
         const failed = await turn();
@@ -455,9 +455,9 @@ test("{§message-completion}: a provider output cutoff cannot certify a final re
 
 test("{§loop-completion}: WAIT on a turn with a reply SEND or non-final DONE concludes when no work or unobserved result remains", async () => {
     for (const [label, extraMessage, emission, withRead, expected] of [
-        ["SEND + WAIT concludes single message", false, `${send("Four.")}\n\n${PlurnkParser.frame("WAIT [60]", "Waiting for reply.")}`, false, 200],
-        ["non-final DONE + WAIT concludes remaining message", true, `${conclude("Four.")}\n\n${PlurnkParser.frame("WAIT", null)}`, false, 200],
-        ["SEND + READ + WAIT continues to observe READ result", false, `${send("Checking.")}\n\n${PlurnkParser.frame("READ (workspace:///input.txt)", null)}\n\n${PlurnkParser.frame("WAIT", null)}`, true, 102],
+        ["SEND + WAIT concludes single message", false, `${send("Four.")}\n\nawait plurnk.wait({"seconds":60,"text":"Waiting for reply."});`, false, 200],
+        ["non-final DONE + WAIT concludes remaining message", true, `${conclude("Four.")}\n\nawait plurnk.wait({});`, false, 200],
+        ["SEND + READ + WAIT continues to observe READ result", false, `${send("Checking.")}\n\nawait plurnk.read({"path":"workspace:///input.txt"});\n\nawait plurnk.wait({});`, true, 102],
     ] as const) {
         const { db, engine, turn, answer, ids, leadLoop } = await setup([said(emission)]);
         try {
@@ -483,18 +483,17 @@ test("{§loop-completion}: WAIT on a turn with a reply SEND or non-final DONE co
 });
 
 describe("Engine.lifecycle", () => {
-const frame = PlurnkParser.frame;
 const response = (content: string, reasoning: string | null = null) => ({
     assistant: { content, reasoning },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 
 for (const [name, first, detail] of [
-    ["note-only continuation", frame("NOTE", "Consider the next step."), null],
-    ["empty wait", frame("WAIT", ""), "Nothing is in flight. Continuing."],
-    ["empty note", frame("NOTE", ""), null],
-    ["scoped wait", frame("WAIT [60]", ""), "Nothing is in flight. Continuing."],
-    ["decorated wait", frame("WAIT (sh:///missing) <60,60> [{\"timeout\":42}]", ""), "Nothing is in flight. Continuing."],
+    ["note-only continuation", "await plurnk.note({\"text\":\"Consider the next step.\"});", null],
+    ["empty wait", "await plurnk.wait({});", "Nothing is in flight. Continuing."],
+    ["empty note", "await plurnk.note({});", null],
+    ["scoped wait", "await plurnk.wait({\"seconds\":60});", "Nothing is in flight. Continuing."],
+    ["decorated wait", "await plurnk.wait({\"target\":\"sh:///missing\"});", "Nothing is in flight. Continuing."],
 ] as const) {
     test(`{§op-shapes} {§loop-completion} ${name} continues without losing its operations`, async (t) => {
         const db = await openMigrated();
@@ -502,7 +501,7 @@ for (const [name, first, detail] of [
         const workspaceId = await insertWorkspace(db, "explicit-lifecycle");
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "Answer.");
-        const provider = new Mock({ contextWindow: 100000, responses: [response(first), response(frame("DONE", "Answer."))] });
+        const provider = new Mock({ contextWindow: 100000, responses: [response(first), response("await plurnk.done({\"text\":\"Answer.\"});")] });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3, maxStrikes: 2,
         });
@@ -520,7 +519,7 @@ for (const [name, first, detail] of [
             assert.match(JSON.stringify(provider.received[1]), new RegExp(detail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
         }
         assert.equal(rows.filter(({ op, origin }) => origin === "model" && op === "DONE").length, 1);
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), [/^`+(\w+)/u.exec(first)![1], "DONE"],
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), [/plurnk\.(\w+)/u.exec(first)![1].toUpperCase(), "DONE"],
             "the model's rows are exactly its program and its conclusion");
     });
 }
@@ -534,7 +533,7 @@ test("{§session-loop-lifecycle} a not-ready READ continues until an explicit WA
     const childId = await insertSession(db, workspaceId, sessionId, "child");
     await insertLoop(db, childId, 1, "Child work.");
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response(frame("READ (session://child)", "")), response(frame("WAIT", "Await the child.")),
+        response("await plurnk.read({\"path\":\"session://child\"});"), response("await plurnk.wait({\"text\":\"Await the child.\"});"),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
         workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3, maxStrikes: 1,
@@ -553,9 +552,9 @@ for (const [cancel, status] of [[false, 200], [true, 499]] as const) {
         const sessionId = await insertSession(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, sessionId, 1, "Answer, then tidy up.");
         const provider = new Mock({ contextWindow: 100000, responses: [
-            response(`${frame("FIND (workspace:///*)", "")}\n${frame("SEND", "The answer.")}`),
-            response(`${frame("KILL (log:///1/2/*/SEND)", "")}\n${cancel ? frame("KILL (session://alice)", "") : frame("NOTE", "Result observed.")}`),
-            response(frame("DONE", "")),
+            response(`await plurnk.find({"path":"workspace:///*"});\nawait plurnk.send({"text":"The answer."});`),
+            response(`await plurnk.kill({"path":"log:///1/2/*/SEND"});\n${cancel ? "await plurnk.kill({\"path\":\"session://alice\"});" : "await plurnk.note({\"text\":\"Result observed.\"});"}`),
+            response("await plurnk.done({});"),
         ] });
         const lifecycle = new LoopLifecycle(db);
         const result = await new Engine({ db, schemes: new SchemeRegistry(), cancelSession: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
@@ -578,8 +577,8 @@ test("{§message-completion} a terminal response supersedes earlier delivered SE
     const sessionId = await insertSession(db, workspaceId);
     const loopId = await insertLoop(db, sessionId, 1, "What is the codename?");
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response(`${frame("SEND", "The codename is Bumblebee.")}\n${frame("SEND", "The codename is phoenix.")}`),
-        response(frame("DONE", "")),
+        response(`await plurnk.send({"text":"The codename is Bumblebee."});\nawait plurnk.send({"text":"The codename is phoenix."});`),
+        response("await plurnk.done({});"),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);
@@ -598,8 +597,8 @@ test("{§loop-completion} an observed cleanup failure does not invalidate comple
     const loopId = await insertLoop(db, sessionId, 1, "Deliver the project brief.");
     const brief = "Codename: phoenix. Host: db.internal. TODO: add error handling.";
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response(`${frame("SEND", brief)}\n${frame("KILL (reasoning://alice/1/2) <1,-1>", "")}`, "The requested project brief is ready."),
-        response(frame("DONE", "")),
+        response(`await plurnk.send({"text":${JSON.stringify(brief)}});\nawait plurnk.kill({"path":"reasoning://alice/1/2","range":"1,-1"});`, "The requested project brief is ready."),
+        response("await plurnk.done({});"),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
     const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId });
@@ -622,7 +621,7 @@ test("{§message-completion} cancellation preserves delivered messages but not W
     const loopId = await insertLoop(db, sessionId, 1, "Wait after the update.");
     const childId = await insertSession(db, workspaceId, sessionId, "child");
     await insertLoop(db, childId, 1, "Live child work the wait joins.");
-    const provider = new Mock({ contextWindow: 100000, responses: [response(`${frame("SEND", "Update delivered.")}\n${frame("WAIT", "Await the child.")}`)] });
+    const provider = new Mock({ contextWindow: 100000, responses: [response(`await plurnk.send({"text":"Update delivered."});\nawait plurnk.wait({"text":"Await the child."});`)] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 2 });
     assert.equal(result.result.status, 202);
     const lifecycle = new LoopLifecycle(db);
@@ -647,7 +646,7 @@ for (const [cancel, parentStatus, childStatus] of [[false, 202, 102], [true, 499
         const childLoopId = await insertLoop(db, childId, 1, "Finish delegated work.");
         const lifecycle = new LoopLifecycle(db);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelSession: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } });
-        const provider = new Mock({ contextWindow: 100000, responses: [response(frame(cancel ? "KILL (session://alice)" : "DONE", cancel ? "" : "Waiting for the delegated result."))] });
+        const provider = new Mock({ contextWindow: 100000, responses: [response(cancel ? 'await plurnk.kill({"path":"session://alice"});' : 'await plurnk.done({"text":"Waiting for the delegated result."});')] });
         const result = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
         assert.equal(result.status, parentStatus);
         assert.equal(await lifecycle.status(loopId), parentStatus);
@@ -661,7 +660,7 @@ test("{§message-completion} an empty SEND leaves an open message unanswered", a
     const workspaceId = await insertWorkspace(db, "silent-completion");
     const sessionId = await insertSession(db, workspaceId);
     const loopId = await insertLoop(db, sessionId, 1, "Do the work.");
-    const provider = new Mock({ contextWindow: 100000, responses: [response(frame("SEND", ""))] });
+    const provider = new Mock({ contextWindow: 100000, responses: [response("await plurnk.send({});")] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
     assert.equal(result.status, 102);
     assert.equal((await db.message_unanswered_count.get({ loop_id: loopId }))?.count, 1);
@@ -676,8 +675,8 @@ test("{§op-shapes} writing about failure in NOTE does not declare failure", asy
     const sessionId = await insertSession(db, workspaceId);
     const loopId = await insertLoop(db, sessionId, 1, "Try both approaches.");
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response(frame("NOTE", "First approach failed.\nTry the second approach.")),
-        response(frame("DONE", "Second approach succeeded.")),
+        response("await plurnk.note({\"text\":\"First approach failed.\\nTry the second approach.\"});"),
+        response("await plurnk.done({\"text\":\"Second approach succeeded.\"});"),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);
@@ -751,7 +750,6 @@ test("{§tokenomics} a later cancellation cannot overwrite a successful conclusi
 });
 
 describe("message-completion", () => {
-const frame = (heading: string, body: string | null = null) => PlurnkParser.frame(heading, body);
 const setup = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `message-completion-${crypto.randomUUID()}`);
@@ -781,10 +779,10 @@ const setup = async () => {
 
 test("{§message-completion}: progress delivers without resolving; explicit completion concludes", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
-    assert.equal((await f.turn(frame(`SEND (${f.message("first")})`, "Working."))).status, 102);
+    assert.equal((await f.turn(`await plurnk.send({"target":"${f.message("first")}","text":"Working."});`)).status, 102);
     assert.deepEqual(await f.replies(), ["Working."]);
     assert.equal(await f.remaining(), 1);
-    assert.equal((await f.turn(frame("DONE", "Finished."))).status, 200);
+    assert.equal((await f.turn("await plurnk.done({\"text\":\"Finished.\"});")).status, 200);
     assert.equal(await f.remaining(), 0);
     assert.deepEqual(await f.replies(), ["Working.", "Finished."]);
 });
@@ -794,11 +792,12 @@ for (const verb of ["SEND", "DONE", "FAIL"] as const) {
         const f = await setup(); t.after(() => f.db.close());
         await f.add("second");
         const body = verb === "SEND" ? "Sign-in is required." : "The request is settled.";
-        const result = await f.turn(frame(verb, body));
+        const rendered = `await plurnk.${verb.toLowerCase()}(${JSON.stringify({ text: body })});`;
+        const result = await f.turn(rendered);
         assert.equal(result.outcomes.find(({ op }) => op === verb)?.status, 200, "delivery still reports success");
         assert.equal(await f.remaining(), verb === "SEND" ? 2 : 1);
 
-        const observation = await f.turn(frame("NOTE", "The second request remains open."));
+        const observation = await f.turn("await plurnk.note({\"text\":\"The second request remains open.\"});");
         const storedPacket = await f.db.test_get_packet.get<{ packet: string }>({ id: observation.turnId });
         const packet = JSON.parse(storedPacket!.packet);
         const receipts = logEntries(packet);
@@ -807,7 +806,7 @@ for (const verb of ["SEND", "DONE", "FAIL"] as const) {
         assert.equal(Object.hasOwn(reply, "status"), false, "delivery success cannot masquerade as message completion");
         assert.equal(Object.hasOwn(reply, "metadata"), false, "the paired operation supplies authored metadata");
         assert.equal(reply.body, undefined, "the answer appears once, in the complete operation");
-        assert.equal(packetSection(packet, "emission-history"), frame(verb, body));
+        assert.equal(packetSection(packet, "emission-history"), rendered);
         const arrivals = receipts.filter(({ origin }) => origin === "user");
         assert.equal(arrivals.length, 2);
         for (const arrival of arrivals) assert.equal(Object.hasOwn(arrival, "status"), false);
@@ -825,8 +824,8 @@ test("{§message-completion}: two independent final replies execute in one turn"
     const f = await setup(); t.after(() => f.db.close());
     await f.add("second");
     const completed = await f.turn([
-        frame(`DONE (${f.message("first")})`, "First answer."),
-        frame(`DONE (${f.message("second")})`, "Second answer."),
+        `await plurnk.done({"target":"${f.message("first")}","text":"First answer."});`,
+        `await plurnk.done({"target":"${f.message("second")}","text":"Second answer."});`,
     ].join("\n\n"));
     assert.equal(completed.status, 200);
     assert.equal(await f.remaining(), 0);
@@ -838,10 +837,10 @@ for (const count of [0, 1, 2]) {
         test(`{§message-completion}: targetless ${verb} with ${count} Open Messages`, async (t) => {
             const f = await setup(); t.after(() => f.db.close());
             await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, pathname: "/evidence.txt", content: "Evidence." });
-            if (count === 0) await f.turn(`${frame("READ (workspace:///evidence.txt)")}\n\n${frame(`DONE (${f.message("first")})`, "First answer.")}`);
+            if (count === 0) await f.turn(`await plurnk.read({"path":"workspace:///evidence.txt"});\n\nawait plurnk.done({"target":"${f.message("first")}","text":"First answer."});`);
             if (count === 2) await f.add("second");
             const before = await f.replies();
-            const result = await f.turn(frame(verb, "Implicit reply."));
+            const result = await f.turn(`await plurnk.${verb.toLowerCase()}({"text":"Implicit reply."});`);
             const delivery = result.outcomes.find(({ op }) => op === verb);
             assert.equal(delivery?.status, 200);
             assert.equal(await f.remaining(), count > 0 && verb !== "SEND" ? count - 1 : count);
@@ -865,7 +864,7 @@ test("{§message-completion}: a targetless SEND in a loop with no published mess
     const loopId = await insertLoop(db, sessionId, 1);
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     const result = await engine.runTurn({ workspaceId, sessionId, loopId, messages: [],
-        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("SEND", "Hello?"), reasoning: null, finishReason: "stop" } }] }) });
+        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.send({\"text\":\"Hello?\"});", reasoning: null, finishReason: "stop" } }] }) });
     const delivery = result.outcomes.find(({ op }) => op === "SEND");
     assert.equal(delivery?.status, 400);
     assert.equal(delivery?.problemType, "https://problems.plurnk.xyz/engine/dispatcher/send-target-required");
@@ -875,10 +874,10 @@ test("{§message-completion}: progress and consecutive completions consume the q
     const f = await setup(); t.after(() => f.db.close());
     await f.add("second");
     const result = await f.turn([
-        frame("SEND", "First progress."),
-        frame("DONE", "First answer."),
-        frame("SEND", "Second progress."),
-        frame("FAIL", "Second cancelled."),
+        "await plurnk.send({\"text\":\"First progress.\"});",
+        "await plurnk.done({\"text\":\"First answer.\"});",
+        "await plurnk.send({\"text\":\"Second progress.\"});",
+        "await plurnk.fail({\"text\":\"Second cancelled.\"});",
     ].join("\n\n"));
     assert.equal(result.status, 200);
     assert.equal(await f.remaining(), 0);
@@ -890,17 +889,17 @@ test("{§message-completion}: progress and consecutive completions consume the q
 test("{§message-completion}: corrections name an already-resolved message explicitly", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
     await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, pathname: "/evidence.txt", content: "New evidence." });
-    assert.equal((await f.turn(`${frame("READ (workspace:///evidence.txt)")}\n\n${frame("DONE", "Initial answer.")}`)).status, 102);
-    assert.equal((await f.turn(frame(`DONE (${f.message("first")})`, "Corrected answer."))).status, 200);
+    assert.equal((await f.turn(`await plurnk.read({"path":"workspace:///evidence.txt"});\n\nawait plurnk.done({"text":"Initial answer."});`)).status, 102);
+    assert.equal((await f.turn(`await plurnk.done({"target":"${f.message("first")}","text":"Corrected answer."});`)).status, 200);
     assert.deepEqual(await f.replies(), ["Initial answer.", "Corrected answer."]);
 });
 
-for (const tail of ["", frame("NOTE", "The result is sufficient."), frame("KILL (log:///**/READ)", "Retired inspected evidence.")]) {
+for (const tail of ["", "await plurnk.note({\"text\":\"The result is sufficient.\"});", "await plurnk.kill({\"path\":\"log:///**/READ\",\"note\":\"Retired inspected evidence.\"});"]) {
     test(`{§loop-completion}: late results retain the answer and settle after ${tail || "no further operations"}`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
         await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, scheme: "workspace", pathname: "/evidence.txt",
             channel: "body", content: "Late evidence.", mimetype: "text/plain", state: "static" });
-        const first = await f.turn([frame("READ (workspace:///evidence.txt)"), frame("DONE", "The deliverable.")].join("\n\n"));
+        const first = await f.turn(["await plurnk.read({\"path\":\"workspace:///evidence.txt\"});", "await plurnk.done({\"text\":\"The deliverable.\"});"].join("\n\n"));
         assert.equal(first.status, 102, "the READ receipt requires an observation turn");
         assert.equal(await f.remaining(), 0, "the delivered final reply resolved its messages already");
         assert.deepEqual(await f.replies(), ["The deliverable."], "the answer is not withheld");
@@ -919,8 +918,8 @@ test("{§loop-completion}: empty output with an unresolved message is recovery",
 
 test("{§message-completion}: empty completion resolves without replacing earlier speech", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
-    await f.turn(frame(`SEND (${f.message("first")})`, "Delivered answer."));
-    assert.equal((await f.turn(frame("DONE"))).status, 200);
+    await f.turn(`await plurnk.send({"target":"${f.message("first")}","text":"Delivered answer."});`);
+    assert.equal((await f.turn("await plurnk.done({});")).status, 200);
     assert.equal(await f.remaining(), 0);
     assert.deepEqual((await f.replies()).filter(Boolean), ["Delivered answer."]);
 });
@@ -929,8 +928,8 @@ test("{§loop-completion}: new operations after final replies create new observa
     const f = await setup(); t.after(() => f.db.close());
     await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, scheme: "workspace", pathname: "/evidence.txt",
         channel: "body", content: "Inspect again.", mimetype: "text/plain", state: "static" });
-    const read = frame("READ (workspace:///evidence.txt)");
-    assert.equal((await f.turn(`${frame("DONE", "Answer.")}\n\n${read}`)).status, 102);
+    const read = "await plurnk.read({\"path\":\"workspace:///evidence.txt\"});";
+    assert.equal((await f.turn(`await plurnk.done({"text":"Answer."});\n\n${read}`)).status, 102);
     assert.equal((await f.turn(read)).status, 102);
     assert.equal((await f.turn("")).status, 200);
 });
@@ -938,7 +937,7 @@ test("{§loop-completion}: new operations after final replies create new observa
 test("{§loop-completion}: final replies join held work without cancelling it", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
     const childLoop = await holdChild(f.db, f.ids.workspaceId, f.ids.sessionId);
-    assert.equal((await f.turn(frame("DONE", "Answer while the child finishes."))).status, 202);
+    assert.equal((await f.turn("await plurnk.done({\"text\":\"Answer while the child finishes.\"});")).status, 202);
     assert.equal(await f.remaining(), 0);
     assert.equal((await f.db.lifecycle_loop_status.get<{ status: number }>({ loop_id: childLoop }))!.status, 102);
 });
@@ -951,7 +950,7 @@ for (const [verb, code] of [["DONE", 200], ["FAIL", 499]] as const) {
         const stream = await f.db.open_subscription.get<{ id: number }>({ session_id: f.ids.sessionId, entry_id: entry, scheme: "sh", handle: "fixture-live" });
         assert.ok(stream);
         const held = () => f.db.session_live_obligations.get<{ streams: number; sessions: number }>({ session_id: f.ids.sessionId });
-        assert.equal((await f.turn(frame(verb, "Outcome delivered."))).status, 202);
+        assert.equal((await f.turn(`await plurnk.${verb.toLowerCase()}({"text":"Outcome delivered."});`)).status, 202);
         assert.deepEqual(await held(), { streams: 1, sessions: 1 }, "message resolution cancels neither obligation");
         const lifecycle = new LoopLifecycle(f.db);
         await lifecycle.finish(childLoop, { status: 200 });
@@ -967,7 +966,7 @@ for (const [verb, code] of [["DONE", 200], ["FAIL", 499]] as const) {
 test("{§message-completion}: an attachment-only completion retains its deliverable", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
     await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, pathname: "/report.txt", content: "Final report." });
-    assert.equal((await f.turn(frame('DONE [{"attachments":["workspace:///report.txt"]}]'))).status, 200);
+    assert.equal((await f.turn("await plurnk.done({\"metadata\":[\"{\\\"attachments\\\":[\\\"workspace:///report.txt\\\"]}\"]});")).status, 200);
     assert.equal(await f.remaining(), 0);
     const history = await f.db.message_history.all<{ direction: string; body: string; evidence: string }>({
         workspace_id: f.ids.workspaceId, session_id: f.ids.sessionId, loop_id: f.ids.loopId,
@@ -982,10 +981,10 @@ test("{§message-completion}: an attachment-only completion retains its delivera
 test("{§message-completion}: a later request stays open after an earlier final reply", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
     await f.add("second");
-    assert.equal((await f.turn(frame(`DONE (${f.message("first")})`, "First answer."))).status, 102);
+    assert.equal((await f.turn(`await plurnk.done({"target":"${f.message("first")}","text":"First answer."});`)).status, 102);
     assert.equal(await f.remaining(), 1);
     assert.equal((await f.turn("")).status, 102);
-    assert.equal((await f.turn(frame(`DONE (${f.message("second")})`, "Second answer."))).status, 200);
+    assert.equal((await f.turn(`await plurnk.done({"target":"${f.message("second")}","text":"Second answer."});`)).status, 200);
 });
 
 for (const [verbs, expected] of [[["FAIL", "FAIL"], 499], [["FAIL", "DONE"], 200], [["DONE", "FAIL"], 200]] as const) {
@@ -993,8 +992,8 @@ for (const [verbs, expected] of [[["FAIL", "FAIL"], 499], [["FAIL", "DONE"], 200
         const f = await setup(); t.after(() => f.db.close());
         await f.add("second");
         const result = await f.turn([
-            frame(`${verbs[0]} (${f.message("first")})`, "First outcome."),
-            frame(`${verbs[1]} (${f.message("second")})`, "Second outcome."),
+            `await plurnk.${verbs[0].toLowerCase()}(${JSON.stringify({ target: f.message("first"), text: "First outcome." })});`,
+            `await plurnk.${verbs[1].toLowerCase()}(${JSON.stringify({ target: f.message("second"), text: "Second outcome." })});`,
         ].join("\n\n"));
         assert.equal(result.status, expected);
         assert.equal(await f.remaining(), 0);
@@ -1005,17 +1004,23 @@ for (const [verbs, expected] of [[["FAIL", "FAIL"], 499], [["FAIL", "DONE"], 200
 test("{§message-completion}: a corrected completion wins without ordinary progress reopening it", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
     await f.add("second");
-    await f.turn(frame(`FAIL (${f.message("first")})`, "Cannot yet deliver."));
-    await f.turn(frame(`DONE (${f.message("first")})`, "Found the answer."));
-    await f.turn(frame(`SEND (${f.message("first")})`, "Additional context."));
+    await f.turn(`await plurnk.fail({"target":"${f.message("first")}","text":"Cannot yet deliver."});`);
+    await f.turn(`await plurnk.done({"target":"${f.message("first")}","text":"Found the answer."});`);
+    await f.turn(`await plurnk.send({"target":"${f.message("first")}","text":"Additional context."});`);
     assert.equal(await f.remaining(), 1);
-    assert.equal((await f.turn(frame(`FAIL (${f.message("second")})`, "Cancelled."))).status, 200);
+    assert.equal((await f.turn(`await plurnk.fail({"target":"${f.message("second")}","text":"Cancelled."});`)).status, 200);
 });
 
-for (const invalid of ["SEND [42]", "DONE [42]", "FAIL [42]", 'DONE ["unexpected"]', 'DONE [{"attachments":["workspace:///missing.pdf"]}]']) {
-    test(`{§message-completion}: failed reply ${invalid} leaves its message unresolved`, async (t) => {
+for (const [label, invalid] of [
+    ["SEND [42]", 'await plurnk.send({"metadata":["42"],"text":"Not delivered."});'],
+    ["DONE [42]", 'await plurnk.done({"metadata":["42"],"text":"Not delivered."});'],
+    ["FAIL [42]", 'await plurnk.fail({"metadata":["42"],"text":"Not delivered."});'],
+    ['DONE ["unexpected"]', 'await plurnk.done({"metadata":["\\"unexpected\\""],"text":"Not delivered."});'],
+    ['DONE [{"attachments":["workspace:///missing.pdf"]}]', 'await plurnk.done({"metadata":["{\\"attachments\\":[\\"workspace:///missing.pdf\\"]}"],"text":"Not delivered."});'],
+] as const) {
+    test(`{§message-completion}: failed reply ${label} leaves its message unresolved`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
-        const result = await f.turn(frame(invalid, "Not delivered."));
+        const result = await f.turn(invalid);
         assert.equal(result.status, 102);
         assert.ok(result.outcomes.some(({ status }) => status >= 400));
         assert.equal(await f.remaining(), 1);
@@ -1028,7 +1033,7 @@ for (const finishReason of ["length", "content_filter", "tool_calls"] as const) 
         const f = await setup(); t.after(() => f.db.close());
         await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, scheme: "workspace", pathname: "/evidence.txt",
             channel: "body", content: "Evidence.", mimetype: "text/plain", state: "static" });
-        await f.turn(`${frame("READ (workspace:///evidence.txt)")}\n\n${frame("DONE", "Answer.")}`);
+        await f.turn(`await plurnk.read({"path":"workspace:///evidence.txt"});\n\nawait plurnk.done({"text":"Answer."});`);
         assert.equal((await f.turn("", "", finishReason)).status, 102);
         assert.equal((await f.turn("")).status, 200);
     });
@@ -1037,13 +1042,13 @@ for (const finishReason of ["length", "content_filter", "tool_calls"] as const) 
 for (const content of [
     "READ (workspace:///evidence.txt)",
     '<tool_call><function=READ><parameter=unknown>evidence.txt</parameter></function></tool_call>',
-    frame("reed (workspace:///evidence.txt)"),
-    `${frame("NOTE", "Inspect more evidence.")}\n\nREAD (workspace:///evidence.txt)`,
+    "await reed[\"workspace:///evidence.txt\"]();",
+    `await plurnk.note({"text":"Inspect more evidence."});\n\nREAD (workspace:///evidence.txt)`,
 ]) {
     test(`{§loop-completion}: omitted operation cannot certify settlement: ${content}`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
         await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, pathname: "/evidence.txt", content: "Evidence." });
-        assert.equal((await f.turn(`${frame("READ (workspace:///evidence.txt)")}\n\n${frame("DONE", "Answer.")}`)).status, 102);
+        assert.equal((await f.turn(`await plurnk.read({"path":"workspace:///evidence.txt"});\n\nawait plurnk.done({"text":"Answer."});`)).status, 102);
         assert.equal((await f.turn(content)).status, 102, "omitted work requires another opportunity to act");
         assert.equal((await f.turn("")).status, 200, "the diagnostic does not create a lasting acknowledgement state");
     });
@@ -1051,14 +1056,13 @@ for (const content of [
 
 test("{§loop-completion}: an admitted syntax recovery does not withhold completion", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
-    const result = await f.turn("````\nDONE\nAnswer.\n````");
+    const result = await f.turn("await plurnk.done({\"text\":\"Answer.\"});");
     assert.equal(result.status, 200);
     assert.deepEqual(await f.replies(), ["Answer."]);
 });
 });
 
 describe("reply-completion", () => {
-const frame = (heading: string, body: string | null = null) => PlurnkParser.frame(heading, body);
 const response = (content: string, reasoning: string | null = null): MockResponse => ({ assistant: { content, reasoning } });
 const setup = async (responses: MockResponse[]) => {
     const db = await openMigrated();
@@ -1079,9 +1083,9 @@ const speech = async (f: Awaited<ReturnType<typeof setup>>) => (await f.history(
 
 test("{§operation-fences}: ordinary EDIT, progress SEND and final DONE execute without framing notices", async (t) => {
     const f = await setup([
-        response(frame("EDIT (workspace:///kept.md)", "Retained.")),
-        response(frame("SEND", "Progress delivered.")),
-        response(frame("DONE", "Verified.")),
+        response("await plurnk.edit({\"path\":\"workspace:///kept.md\",\"content\":\"Retained.\"});"),
+        response("await plurnk.send({\"text\":\"Progress delivered.\"});"),
+        response("await plurnk.done({\"text\":\"Verified.\"});"),
     ]);
     t.after(() => f.db.close());
     for (const status of [102, 102, 200]) {
@@ -1098,11 +1102,11 @@ test("{§operation-fences}: ordinary EDIT, progress SEND and final DONE execute 
 
 for (const shape of ["nested", "indented"] as const) {
     test(`{§fence-pairing}: a ${shape} deletion example is not executed`, async (t) => {
-        const example = frame("KILL (workspace:///kept.md)");
+        const example = "await plurnk.kill({\"path\":\"workspace:///kept.md\"});";
         const answer = `Example only:\n${example}\nNothing was deleted.`;
-        const content = shape === "nested" ? frame("DONE", answer)
-            : example.split("\n").map((line) => `\t${line}`).join("\n") + "\n\n" + frame("DONE", "Done.");
-        const f = await setup([response(frame("EDIT (workspace:///kept.md)", "Retained.")), response(content)]);
+        const content = shape === "nested" ? `await plurnk.done({"text":${JSON.stringify(answer)}});`
+            : `${example.split("\n").map((line) => `\t${line}`).join("\n")}\n\nawait plurnk.done({"text":"Done."});`;
+        const f = await setup([response("await plurnk.edit({\"path\":\"workspace:///kept.md\",\"content\":\"Retained.\"});"), response(content)]);
         t.after(() => f.db.close());
         assert.equal((await f.turn()).status, 102);
         const final = await f.turn();
@@ -1114,7 +1118,7 @@ for (const shape of ["nested", "indented"] as const) {
 }
 
 test("{§outside-text}: rejected prose is not silently promoted by a later completion", async (t) => {
-    const f = await setup([response("42."), response(frame("DONE"))]);
+    const f = await setup([response("42."), response("await plurnk.done({});")]);
     t.after(() => f.db.close());
     const first = await f.turn();
     assert.equal(first.status, 102);
@@ -1125,8 +1129,8 @@ test("{§outside-text}: rejected prose is not silently promoted by a later compl
 
 for (const completionFirst of [false, true]) {
     test(`{§loop-completion}: EDIT ${completionFirst ? "after" : "before"} a final reply still runs and requires observation`, async (t) => {
-        const edit = frame("EDIT (workspace:///answer)", "42");
-        const reply = frame("DONE", "Delivered answer.");
+        const edit = "await plurnk.edit({\"path\":\"workspace:///answer\",\"content\":\"42\"});";
+        const reply = "await plurnk.done({\"text\":\"Delivered answer.\"});";
         const f = await setup([response((completionFirst ? [reply, edit] : [edit, reply]).join("\n\n")), response("")]);
         t.after(() => f.db.close());
         const first = await f.turn();
@@ -1139,9 +1143,9 @@ for (const completionFirst of [false, true]) {
     });
 
     test(`{§loop-completion}: curation ${completionFirst ? "after" : "before"} completion runs without extending the loop`, async (t) => {
-        const curate = frame("KILL (log:///**/NOTE)");
-        const reply = frame("DONE", "42.");
-        const f = await setup([response(frame("NOTE", "Disposable scratch.")), response((completionFirst ? [reply, curate] : [curate, reply]).join("\n\n"))]);
+        const curate = "await plurnk.kill({\"path\":\"log:///**/NOTE\"});";
+        const reply = "await plurnk.done({\"text\":\"42.\"});";
+        const f = await setup([response("await plurnk.note({\"text\":\"Disposable scratch.\"});"), response((completionFirst ? [reply, curate] : [curate, reply]).join("\n\n"))]);
         t.after(() => f.db.close());
         assert.equal((await f.turn()).status, 102);
         assert.equal((await f.turn()).status, 200);
@@ -1152,7 +1156,7 @@ for (const completionFirst of [false, true]) {
 
 for (const body of [null, "", " \n\t"]) {
     test(`{§message-completion}: empty reply ${JSON.stringify(body)} resolves without inventing speech`, async (t) => {
-        const f = await setup([response(frame("DONE", body))]);
+        const f = await setup([response(`await plurnk.done({"text":${JSON.stringify(body)}});`)]);
         t.after(() => f.db.close());
         const turn = await f.turn();
         assert.equal(turn.status, 200);
@@ -1167,7 +1171,7 @@ for (const body of [null, "", " \n\t"]) {
 
 for (const stage of ["inference", "terminal transition"] as const) {
     test(`{§message-arrival}: a reply cannot resolve an unseen message arriving during ${stage}`, async (t) => {
-        const f = await setup([response(frame("DONE")), response(frame("DONE"))]);
+        const f = await setup([response("await plurnk.done({});"), response("await plurnk.done({});")]);
         t.after(() => f.db.close());
         let injected = false;
         const inject = async () => {
@@ -1194,15 +1198,18 @@ for (const stage of ["inference", "terminal transition"] as const) {
 }
 
 test("{§loop-completion}: a reasoning NOTE does not extend a resolved loop", async (t) => {
-    const f = await setup([response(frame("DONE", "42."), frame("NOTE", "Arithmetic verified."))]);
+    const f = await setup([response("await plurnk.done({\"text\":\"42.\"});", "await plurnk.note({\"text\":\"Arithmetic verified.\"});")]);
     t.after(() => f.db.close());
     assert.equal((await f.turn()).status, 200);
     assert.deepEqual(await speech(f), ["42."]);
 });
 
-for (const [header, status] of [["SEND (reasoning://alice/1/1)", 400], ["KILL (log:///9/9/9)", 404]] as const) {
+for (const [header, call, status] of [
+    ["SEND (reasoning://alice/1/1)", 'await plurnk.send({"target":"reasoning://alice/1/1"});', 400],
+    ["KILL (log:///9/9/9)", 'await plurnk.kill({"path":"log:///9/9/9"});', 404],
+] as const) {
     test(`{§loop-completion}: failure of ${header} requires observation but never withholds a successful reply`, async (t) => {
-        const f = await setup([response(`${frame(header)}\n\n${frame("DONE", "Answer.")}`), response("")]);
+        const f = await setup([response(`${call}\n\nawait plurnk.done({"text":"Answer."});`), response("")]);
         t.after(() => f.db.close());
         const first = await f.turn();
         assert.equal(first.status, 102);
@@ -1216,7 +1223,7 @@ test("{§loop-completion}: omitted operations prevent settlement and an omitted 
     const previous = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     process.env.PLURNK_SERVICE_MAX_COMMANDS = "1";
     t.after(() => { if (previous === undefined) delete process.env.PLURNK_SERVICE_MAX_COMMANDS; else process.env.PLURNK_SERVICE_MAX_COMMANDS = previous; });
-    const f = await setup([response([frame("NOTE", "Kept."), frame("NOTE", "Omitted."), frame("DONE", "Not delivered.")].join("\n\n")), response(frame("DONE", "Reviewed."))]);
+    const f = await setup([response(["await plurnk.note({\"text\":\"Kept.\"});", "await plurnk.note({\"text\":\"Omitted.\"});", "await plurnk.done({\"text\":\"Not delivered.\"});"].join("\n\n")), response("await plurnk.done({\"text\":\"Reviewed.\"});")]);
     t.after(() => f.db.close());
     const first = await f.turn();
     assert.equal(first.status, 102);

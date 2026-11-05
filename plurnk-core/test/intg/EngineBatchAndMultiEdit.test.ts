@@ -47,8 +47,9 @@ const runtime = async (t: TestContext) => {
         return engine.executeAdmittedTurn({ ...env, statements: ops, source: null, emission: null, fromSequence, origin: "model" });
     };
     const read = async (path: string, scope = "1,-1") =>
-        Results.assertReadResult(await run(`\`\`\`READ (${path}) <${scope}>\n\`\`\``)) as AnchoredReadResult;
-    const write = (path: string, body: string, scope = "") => run(`\`\`\`EDIT (${path}) ${scope}\n${body}\n\`\`\``);
+        Results.assertReadResult(await run(`await plurnk.read({"path":"${path}","range":"${scope}"});`)) as AnchoredReadResult;
+    const write = (path: string, body: string, scope = "") =>
+        run(`await plurnk.edit(${JSON.stringify({ path, ...(scope ? { range: scope.replace(/^<|>$/g, "") } : {}), content: body })});`);
     return { run, batch, read, write };
 };
 
@@ -84,10 +85,10 @@ for (const op of ["EDIT", "KILL", "COPY", "MOVE"] as const) {
         assert.equal((await write(destination, "prefix\nhead-0", "<1>")).status, 200);
         assert.equal((await read(source, anchor)).content, "source-target");
         const program = op === "EDIT"
-            ? `\`\`\`EDIT (${source}) <${anchor}>\nchanged\n\`\`\``
+            ? `await plurnk.edit({"path":"${source}","range":"${anchor}","content":"changed"});`
             : op === "KILL"
-                ? `\`\`\`KILL (${source}) <${anchor}>\n\`\`\``
-                : `\`\`\`${op} (${source}) <${anchor}> (${destination}) <${destinationAnchor}>\n\`\`\``;
+                ? `await plurnk.kill({"path":"${source}","range":"${anchor}"});`
+                : `await plurnk.${op.toLowerCase()}({"from":{"path":"${source}","range":"${anchor}"},"to":{"path":"${destination}","range":"${destinationAnchor}"}});`;
         const result = await run(program);
         assert.equal(result.status, 200, JSON.stringify(result));
 
@@ -110,14 +111,14 @@ test("{§line-anchors}: changed extended context refuses EDIT without changing e
     const anchor = (await read(path, String(target + 1))).lineAnchors![0];
     assert.equal((await write(path, "changed section", `<${target - 2}>`)).status, 200);
     const changed = lines.with(target - 3, "changed section").join("\n");
-    const refused = await run(`\`\`\`EDIT (${path}) <${anchor}>\nwrong\n\`\`\``);
+    const refused = await run(`await plurnk.edit({"path":"${path}","range":"${anchor}","content":"wrong"});`);
     assert.equal(refused.status, 409);
     assert.equal(refused.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
     assert.equal(refused.problem?.retryable, false);
     assert.equal((await read(path)).content, changed);
     const current = (await read(path, String(target + 1))).lineAnchors![0];
     assert.notEqual(current, anchor);
-    assert.equal((await run(`\`\`\`EDIT (${path}) <${current}>\ncorrect\n\`\`\``)).status, 200);
+    assert.equal((await run(`await plurnk.edit({"path":"${path}","range":"${current}","content":"correct"});`)).status, 200);
     assert.equal((await read(path)).content, lines.with(target - 3, "changed section").with(target, "correct").join("\n"));
 });
 
@@ -126,18 +127,9 @@ test("{§op-methods-op-dispatch}: introducing a twin in one program retains the 
     const path = "workspace:///continuity.md";
     assert.equal((await write(path, "one\ntwo\nthree\nfour\nfive\nsix")).status, 201);
     const anchor = (await read(path, "3")).lineAnchors![0];
-    const result = await batch(`\`\`\`EDIT (${path}) <6>
-six
-one
-two
-three
-four
-five
-\`\`\`
+    const result = await batch(`await plurnk.edit({"path":"${path}","range":"6","content":"six\\none\\ntwo\\nthree\\nfour\\nfive"});
 
-\`\`\`EDIT (${path}) <${anchor}>
-THREE
-\`\`\``);
+await plurnk.edit({"path":"${path}","range":"${anchor}","content":"THREE"});`);
     assert.deepEqual(result.outcomes.map(({ status }) => status), [200, 200]);
     assert.equal((await read(path)).content, "one\ntwo\nTHREE\nfour\nfive\nsix\none\ntwo\nthree\nfour\nfive");
 });
@@ -179,8 +171,8 @@ test("{§op-methods-op-dispatch} separate numeric EDITs never negotiate a shared
     try {
         await seeded(root);
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````EDIT (f.go) <2,3>\nfunc resolve() string {\n\treturn \"\"\n}\n\n````\n\n````EDIT (f.go) <3,5>\nfunc requireFn(a int) int {\n\treturn a + 1\n}\n````\n\n````NOTE\nediting\n````", 50),
-            makeMockResponse("````DONE\ndone\n````", 50),
+            makeMockResponse("await plurnk.edit({\"path\":\"f.go\",\"range\":\"2,3\",\"content\":\"func resolve() string {\\n\\treturn \\\"\\\"\\n}\\n\"});\n\nawait plurnk.edit({\"path\":\"f.go\",\"range\":\"3,5\",\"content\":\"func requireFn(a int) int {\\n\\treturn a + 1\\n}\"});\n\nawait plurnk.note({\"text\":\"editing\"});", 50),
+            makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -205,25 +197,19 @@ test("{§op-methods-op-dispatch} a READ rendering pasted back as a body is strip
         await seeded(root);
         const pending: { body: string | null; fake: string | null } = { body: null, fake: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````READ (f.go) <1,-1>````\n````NOTE\nreading\n````", 50),
-            makeMockResponse("````DONE\nread\n````", 50),
+            makeMockResponse("await plurnk.read({\"path\":\"f.go\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"reading\"});", 50),
+            makeMockResponse("await plurnk.done({\"text\":\"read\"});", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
         mock.generate = async (args) => {
             calls += 1;
-            if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`\`\`\`\`EDIT (f.go) <1,2>
-${pending.body}
-\`\`\`\`
+            if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`await plurnk.edit({"path":"f.go","range":"1,2","content":${JSON.stringify(pending.body)}});
 
-\`\`\`\`EDIT (f.go) <7>
-${pending.fake}
-\`\`\`\`
+await plurnk.edit({"path":"f.go","range":"7","content":${JSON.stringify(pending.fake)}});
 
-\`\`\`\`NOTE
-editing
-\`\`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````DONE\nedited\n````", 50)] }).generate(args);
+await plurnk.note({"text":"editing"});`, 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("await plurnk.done({\"text\":\"edited\"});", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -258,21 +244,17 @@ test("{§op-methods-op-dispatch} a paste from an older READ still verifies, agai
         await seeded(root);
         const pending: { body: string | null } = { body: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````READ (f.go) <1,-1>````\n````NOTE\nreading\n````", 50),
-            makeMockResponse("````DONE\nread\n````", 50),
+            makeMockResponse("await plurnk.read({\"path\":\"f.go\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"reading\"});", 50),
+            makeMockResponse("await plurnk.done({\"text\":\"read\"});", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
         mock.generate = async (args) => {
             calls += 1;
-            if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`\`\`\`\`EDIT (f.go) <1,2>
-${pending.body}
-\`\`\`\`
+            if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`await plurnk.edit({"path":"f.go","range":"1,2","content":${JSON.stringify(pending.body)}});
 
-\`\`\`\`NOTE
-editing
-\`\`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````DONE\nedited\n````", 50)] }).generate(args);
+await plurnk.note({"text":"editing"});`, 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("await plurnk.done({\"text\":\"edited\"});", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -304,8 +286,8 @@ test("{§op-methods-op-dispatch} an identical subsequent EDIT reports its own or
     try {
         await seeded(root);
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````EDIT (f.go) <1>\nvar x int64\n````\n\n````EDIT (f.go) <1>\nvar x int64\n````\n\n````NOTE\nediting\n````", 50),
-            makeMockResponse("````DONE\ndone\n````", 50),
+            makeMockResponse("await plurnk.edit({\"path\":\"f.go\",\"range\":\"1\",\"content\":\"var x int64\"});\n\nawait plurnk.edit({\"path\":\"f.go\",\"range\":\"1\",\"content\":\"var x int64\"});\n\nawait plurnk.note({\"text\":\"editing\"});", 50),
+            makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -331,8 +313,8 @@ test("{§op-methods-op-dispatch} a numeric EDIT can modify content introduced by
         await seeded(root);
         // The outer rewrites requireFn but keeps its return line verbatim; the inner edits that line.
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````EDIT (f.go) <3,5>\nfunc requireFn(a int, debug bool) int {\n\treturn a\n}\n````\n\n````EDIT (f.go) <4>\n\treturn a * 2\n````\n\n````NOTE\nediting\n````", 50),
-            makeMockResponse("````DONE\ndone\n````", 50),
+            makeMockResponse("await plurnk.edit({\"path\":\"f.go\",\"range\":\"3,5\",\"content\":\"func requireFn(a int, debug bool) int {\\n\\treturn a\\n}\"});\n\nawait plurnk.edit({\"path\":\"f.go\",\"range\":\"4\",\"content\":\"\\treturn a * 2\"});\n\nawait plurnk.note({\"text\":\"editing\"});", 50),
+            makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -356,8 +338,8 @@ test("{§op-methods-op-dispatch} a shortened region does not secretly relocate a
     try {
         await seeded(root);
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````EDIT (f.go) <3,5>\nfunc requireFn(a int) int { return a }\n````\n\n````EDIT (f.go) <4>\n\treturn a * 2\n````\n\n````NOTE\nediting\n````", 50),
-            makeMockResponse("````DONE\ndone\n````", 50),
+            makeMockResponse("await plurnk.edit({\"path\":\"f.go\",\"range\":\"3,5\",\"content\":\"func requireFn(a int) int { return a }\"});\n\nawait plurnk.edit({\"path\":\"f.go\",\"range\":\"4\",\"content\":\"\\treturn a * 2\"});\n\nawait plurnk.note({\"text\":\"editing\"});", 50),
+            makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -391,7 +373,7 @@ describe("Engine.manifest", () => {
 
 const indexingTurn = {
     assistant: {
-        content: "\n````SEND\ndone\n````",
+        content: "await plurnk.send({\"text\":\"done\"});",
         reasoning: null,
     },
 };
@@ -806,7 +788,7 @@ const withProject = async <T>(fn: (ctx: Ctx) => Promise<T>): Promise<T> => {
     }
 };
 
-const edit = (file: string, scope: string, body: string | null): string => PlurnkParser.frame(`EDIT (${file}) <${scope}>`, body ?? "");
+const edit = (file: string, scope: string, body: string | null): string => `await plurnk.edit({"path":"${file}","range":"${scope}","content":${JSON.stringify(body ?? "")}});`;
 
 // The anchors the model's latest READ of each file published, indexed by one-based line: the packet is the
 // only place a model learns an anchor, so the program takes them from there and nowhere else.
@@ -831,7 +813,7 @@ const anchorsFromLog = async ({ db, sessionId }: Ctx): Promise<[Anchors, Anchors
 const program = async (ctx: Ctx, sequence: number, frames: (a: Anchors, b: Anchors) => string[]): Promise<{ edits: EditRow[]; published: [Anchors, Anchors] }> => {
     const { db, engine, workspaceId, sessionId } = ctx;
     const loopId = await insertLoop(db, sessionId, sequence, "Apply the fix.");
-    const reads = [DEBUG, HELPERS].map((file) => PlurnkParser.frame(`READ (${file}) <1,-1>`, null)).join("\n\n");
+    const reads = [DEBUG, HELPERS].map((file) => `await plurnk.read({"path":"${file}","range":"1,-1"});`).join("\n\n");
     const respond = async (content: string, args: Parameters<Mock["generate"]>[0]) =>
         await new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] }).generate(args);
     let calls = 0;
@@ -844,7 +826,7 @@ const program = async (ctx: Ctx, sequence: number, frames: (a: Anchors, b: Ancho
             published = await anchorsFromLog(ctx);
             return await respond(frames(...published).join("\n\n"), args);
         }
-        return await respond(PlurnkParser.frame("DONE", "Done."), args);
+        return await respond("await plurnk.done({\"text\":\"Done.\"});", args);
     };
     const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Apply the fix." }] });
     assert.equal(result.result.status, 200, JSON.stringify(result.result).slice(0, 300));

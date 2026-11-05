@@ -92,7 +92,7 @@ const dispatch = async (context: Context, statement: PlurnkStatement) => (await 
 // leaving the model session's packets to the loops under test.
 const documentPresent = async (context: Context, pathname: string): Promise<number> => {
     const target = pathname.includes("://") ? pathname : `mcp://${pathname}`;
-    return (await dispatch(context, parseOne(`\`\`\`\`READ (${target})\`\`\`\``))).status;
+    return (await dispatch(context, parseOne(`await plurnk.read({"path":"${target}"});`))).status;
 };
 
 const problemOf = async (run: () => Promise<unknown>): Promise<ProblemDetails> => {
@@ -106,7 +106,7 @@ const problemOf = async (run: () => Promise<unknown>): Promise<ProblemDetails> =
 
 const mockProvider = (): PacketCapturingMock => new PacketCapturingMock({
     contextWindow: viableWindow() * 2,
-    responses: Array.from({ length: 12 }, () => makeMockResponse("````DONE\ndone\n````", 20)),
+    responses: Array.from({ length: 12 }, () => makeMockResponse("await plurnk.done({\"text\":\"done\"});", 20)),
 });
 
 const packetLogRecords = (source: string): Array<Record<string, unknown>> => {
@@ -176,9 +176,7 @@ const mcpFamily = async (): Promise<Family> => {
     // channel to close so a following mutation meets a quiescent server.
     const exec = (alias: string, tool: string) => async (context: Context) => {
         const before = (await context.db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: context.workspaceId, scheme: alias, prefix: "/%" })).length;
-        const { status } = await dispatch(context, parseOne(`\`\`\`\`${alias} (${tool})
-{"message":"parity"}
-\`\`\`\``));
+        const { status } = await dispatch(context, parseOne(`await ${alias}.${tool}({"message":"parity"});`));
         if (status !== 200) return status;
         await waitForDb(async () => {
             const outputs = await context.db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: context.workspaceId, scheme: alias, prefix: "/%" });
@@ -204,7 +202,7 @@ const mcpFamily = async (): Promise<Family> => {
         replacementUnavailable: server(join(tmpdir(), "no-such-mcp-server.mjs")),
         attachmentIdentity: async (context) => {
             const after = (await context.db.test_entries_by_scheme_prefix.all({ workspace_id: context.workspaceId, scheme: "extra", prefix: "/%" })).length;
-            assert.equal((await dispatch(context, parseOne(PlurnkParser.frame("extra (launch)", "{}")))).status, 200);
+            assert.equal((await dispatch(context, parseOne("await extra.launch({});"))).status, 200);
             const result = await awaitExecOutcome(context.db, { workspaceId: context.workspaceId, scheme: "extra", channel: "body", after });
             assert.equal(typeof result.pid, "number");
             return result.pid as number;
@@ -370,9 +368,9 @@ const matrix = async (family: Family): Promise<void> => {
         assert.equal(await live(family.addable), true);
         // 6. Enabled-unavailable: an accepted model add of an unreachable peer publishes unavailable with its exact Problem;
         //    the explicit client retry rejects with the same Problem; remove recovers.
-        const viaModel = await proposed(PlurnkParser.frame(`plurnk (${family.family})`, JSON.stringify({ alias: family.unreachable.alias, ...family.unreachable.definition })), "accept");
+        const viaModel = await proposed(`await plurnk.${family.family}(${JSON.stringify({ alias: family.unreachable.alias, ...family.unreachable.definition })});`, "accept");
         assert.equal(viaModel.status, 201, "the accepted add reports creation, with resource readiness in its body");
-        await exec(PlurnkParser.frame(`plurnk (${family.family})`, ""));
+        await exec(`await plurnk.${family.family}();`);
         const downListed = (await listed()).find((entry) => entry.alias === family.unreachable.alias);
         assert.equal(downListed?.state, "unavailable");
         assert.ok((downListed?.problem?.status ?? 0) >= 400, "the enabled definition keeps its exact Problem");
@@ -383,13 +381,13 @@ const matrix = async (family: Family): Promise<void> => {
         assert.equal((await invoke<{ removed: boolean }>("remove", { alias: family.unreachable.alias })).removed, true);
         assert.equal(await stateOf(family.unreachable.alias), undefined);
         // 7. Model verbs through the generated manager: read ungated, host verbs propose, rejection performs nothing.
-        assert.equal((await exec(PlurnkParser.frame(`plurnk (${family.family})`, ""))).status, 200);
+        assert.equal((await exec(`await plurnk.${family.family}();`)).status, 200);
         assert.equal((await verbResult()).family, family.family);
-        const rejected = await proposed(PlurnkParser.frame(`plurnk (${family.family})`, JSON.stringify({ alias: family.addable.alias, remove: true })), "reject");
+        const rejected = await proposed(`await plurnk.${family.family}(${JSON.stringify({ alias: family.addable.alias, remove: true })});`, "reject");
         assert.equal(rejected.status, 400, "a rejected proposal settles 400");
         assert.equal(await stateOf(family.addable.alias), "active", "rejection changed nothing");
         assert.equal(await live(family.addable), true);
-        const viaModelDisable = await proposed(PlurnkParser.frame(`plurnk (${family.family})`, JSON.stringify({ alias: family.addable.alias, enabled: false })), "accept");
+        const viaModelDisable = await proposed(`await plurnk.${family.family}(${JSON.stringify({ alias: family.addable.alias, enabled: false })});`, "accept");
         assert.equal(viaModelDisable.status, 200);
         assert.equal(await live(family.addable), false, "an accepted model mutation is published before the next operation");
         await invoke("enable", { alias: family.addable.alias });
@@ -421,7 +419,7 @@ const matrix = async (family: Family): Promise<void> => {
             let problem: ProblemDetails;
             if (caller === "action") problem = await problemOf(() => invoke("replace", params));
             else {
-                await proposed(PlurnkParser.frame(`plurnk (${family.family})`, JSON.stringify(params)), "accept");
+                await proposed(`await plurnk.${family.family}(${JSON.stringify(params)});`, "accept");
                 problem = (await verbResult()).problem as ProblemDetails;
             }
             assert.equal(problem.type, refused.type, "the failed replacement reports its preparation problem");
@@ -431,14 +429,14 @@ const matrix = async (family: Family): Promise<void> => {
                 "a failed replacement preserves the actual server process, not just a re-created configuration");
         }
         const replacement = { alias: family.addable.alias, ...family.conflicting.definition };
-        await proposed(PlurnkParser.frame(`plurnk (${family.family})`, JSON.stringify(replacement)), "accept");
+        await proposed(`await plurnk.${family.family}(${JSON.stringify(replacement)});`, "accept");
         assert.equal((await verbResult()).status, 200);
         assert.deepEqual((await listed()).find(({ alias }) => alias === family.addable.alias)?.definition, family.conflicting.definition);
         if (family.family === "mcp") {
             assert.equal(await documentPresent(context(), "mcp:///extra/echo.json"), 404, "the old tool schema is withdrawn");
             assert.equal(await documentPresent(context(), "mcp:///extra/legacy_echo.json"), 200, "the new server's tool schema is published");
             const seen = proposals.length;
-            const execution = exec(PlurnkParser.frame("extra (legacy_echo)", JSON.stringify({ text: "replacement works" })));
+            const execution = exec(`await extra.legacy_echo(${JSON.stringify({ text: "replacement works" })});`);
             await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10_000 });
             await daemon.resolveProposal(proposals[seen], { decision: "accept" }, { workspaceId, address: TEST_OWNER });
             assert.equal((await execution).status, 200);
@@ -557,12 +555,12 @@ test("{§module-workspace-residency}: MCP definitions belong to the workspace, n
     const bob = await insertSession(db, workspaceId, null, "bob", "model");
     assert.deepEqual((await action(workspaceId, "list") as FunctionalityListResult).definitions, listed.definitions,
         "creating sessions neither copies nor redefines the shared environment");
-    const read = PlurnkParser.parseStatements(PlurnkParser.frame("READ (shared:///resources) <1,-1>", null), { executors: fixtureExecutors(PlurnkParser.frame("READ (shared:///resources) <1,-1>", null)) }).items[0];
+    const read = PlurnkParser.parseStatements("await plurnk.read({\"path\":\"shared:///resources\",\"range\":\"1,-1\"});", { executors: fixtureExecutors("await plurnk.read({\"path\":\"shared:///resources\",\"range\":\"1,-1\"});") }).items[0];
     assert.equal(read?.kind, "statement");
     if (read?.kind !== "statement") throw new Error("Expected one READ");
     for (const sessionId of [alice, bob]) {
         const docs = await daemon.engine.referenceEntries(workspaceId);
-        assert.ok(docs.some(({ content }) => content.includes("shared (echo)")), "every session discovers the same enabled tool");
+        assert.ok(docs.some(({ content }) => content.includes("await shared.echo(")), "every session discovers the same enabled tool");
         // The session's own READ.
         const catalog = await modelOperation(daemon, db, { workspaceId, sessionId, statement: read.statement });
         assert.equal(catalog.status, 200, JSON.stringify(catalog));
@@ -571,7 +569,7 @@ test("{§module-workspace-residency}: MCP definitions belong to the workspace, n
     await action(workspaceId, "disable", { alias: "shared" });
     assert.equal((await action(workspaceId, "list") as FunctionalityListResult).definitions[0]?.state, "disabled");
     const docs = await daemon.engine.referenceEntries(workspaceId);
-    assert.equal(docs.some(({ content }) => content.includes("shared (echo)")), false, "disable changes the one shared discovery surface");
+    assert.equal(docs.some(({ content }) => content.includes("await shared.echo(")), false, "disable changes the one shared discovery surface");
     assert.equal((await action(other.workspaceId, "list") as FunctionalityListResult).definitions[0]?.state, "dormant",
         "disabling a server in one workspace leaves it enabled in another");
     assert.equal(provider.received.length, 0, "environment management never invokes a model");

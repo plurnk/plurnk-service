@@ -21,7 +21,7 @@ export const recordGenAiSpans = async (): Promise<GenAiSpanRecording[]> => {
         const samples = [];
         for (const providerId of ["openai", "anthropic", "deepseek", "google", "amazon-bedrock", "moonshotai", "moonshotai-cn", "xai", "mistral", "custom-endpoint", undefined]) {
             const provider = new Mock({ contextWindow: 32_768, responses: [{
-                assistant: { content: "````BARE\nprivate question\n````\n\n````BARE\nprivate failure\n````", reasoning: null },
+                assistant: { content: "await plurnk.bare({\"prompt\":\"private question\"});\n\nawait plurnk.bare({\"prompt\":\"private failure\"});", reasoning: null },
                 usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
             }] });
             const child = new Mock({ contextWindow: 16_384, responses: [{

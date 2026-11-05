@@ -7,7 +7,6 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import type Exec from "../../src/schemes/Exec.ts";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { isLogEntryKind } from "@plurnk/plurnk-contracts";
 import LogEntry, { type LogEntryRow } from "../../src/server/logEntry.ts";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
@@ -29,8 +28,8 @@ import { testExecutors } from "./_execs.ts";
 describe("turn-source-resources", () => {
 const program = (message: string) => [
     "An interstitial sentence retained as evidence.",
-    PlurnkParser.frame("SEND", message),
-    PlurnkParser.frame("NOTE", "Review the evidence."),
+    `await plurnk.send({"text":${JSON.stringify(message)}});`,
+    "await plurnk.note({\"text\":\"Review the evidence.\"});",
 ].join("\n\n");
 
 test("{§turn-source-resources}: the initialization program and later content sources remain distinct and survive curation", async () => {
@@ -50,8 +49,8 @@ test("{§turn-source-resources}: the initialization program and later content so
         const first = await engine.runTurn({ ...context, provider: model, messages: [] });
         // Source identity never depends on the reader ({§turn-source-resources}); the analyst's log is listed, curated and forked below.
         const observer = await insertSession(db, workspaceId, null, "observer");
-        const read = (target: string, scope = "<1,-1>", reader = observer) =>
-            clientRead(engine, db, { workspaceId, sessionId: reader, statement: statement(`\`\`\`\`READ (${target}) ${scope}\`\`\`\``) });
+        const read = (target: string, scope = "1,-1", reader = observer) =>
+            clientRead(engine, db, { workspaceId, sessionId: reader, statement: statement(`await plurnk.read({"path":"${target}","range":"${scope}"});`) });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet);
         const records = logEntries(packet);
         assert.deepEqual(records.filter((row: Record<string, unknown>) => String(row.logPath).endsWith("/emission")), [],
@@ -64,7 +63,7 @@ test("{§turn-source-resources}: the initialization program and later content so
         assert.ok("content" in ops);
         assert.equal(ops.content, source, "source is verbatim, including ignored interstitial text");
         assert.ok(!Object.hasOwn(ops, "lineAnchors"));
-        const reason = await read(`reasoning://analyst/${coordinate}`, "<2>");
+        const reason = await read(`reasoning://analyst/${coordinate}`, "2");
         assert.equal(reason.status, 200);
         assert.ok("content" in reason);
         assert.equal(reason.content, "Second finding.");
@@ -73,7 +72,7 @@ test("{§turn-source-resources}: the initialization program and later content so
         const rows = await db.test_log_entries_by_session.all<{ op: string | null }>({ session_id: sessionId });
         assert.ok(!rows.some(({ op }) => op === null), "admitted programs produce no actionless log artifacts");
         const killed = await engine.dispatch({ ...context, turnId: next.turnId, sequence: 50, origin: "model",
-            statement: statement("````KILL (log:///**/READ)````"),
+            statement: statement("await plurnk.kill({\"path\":\"log:///**/READ\"});"),
         });
         assert.ok(killed.status < 400);
         for (const [scheme, expected] of [["ops", source], ["reasoning", reasoning]]) {
@@ -141,24 +140,24 @@ test("{§turn-source-resources}: every producer reads the same named sources wit
             const dispatch = (source: string) => engine.dispatch({ ...context, turnId: turn.id, sequence: sequence++, origin, statement: statement(source) });
             for (const kind of ["ops", "reasoning"] as const) {
                 const target = `${kind}://analyst/1/${sourceTurn.sequence}`;
-                const read = await dispatch(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``);
+                const read = await dispatch(`await plurnk.read({"path":"${target}","range":"1,-1"});`);
                 assert.equal(read.status, 200);
                 assert.ok("content" in read);
                 assert.equal(read.content, sources[kind]);
                 for (const operation of [
-                    `\`\`\`\`EDIT (${target})\nReplacement.\n\`\`\`\``,
-                    `\`\`\`\`KILL (${target})\`\`\`\``,
-                    `\`\`\`\`COPY (${target}) (${target})\`\`\`\``,
-                    `\`\`\`\`MOVE (${target}) (workspace:///moved-${kind}.md)\`\`\`\``,
+                    `await plurnk.edit({"path":"${target}","content":"Replacement."});`,
+                    `await plurnk.kill({"path":"${target}"});`,
+                    `await plurnk.copy({"from":"${target}","to":"${target}"});`,
+                    `await plurnk.move({"from":"${target}","to":"workspace:///moved-${kind}.md"});`,
                 ]) {
                     const result = await dispatch(operation);
                     assert.equal(result.status, 403, `${origin}: ${operation}`);
                     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
                 }
-                const unqualified = await dispatch(`\`\`\`\`READ (${kind}:///1/${sourceTurn.sequence})\`\`\`\``);
+                const unqualified = await dispatch(`await plurnk.read({"path":"${kind}:///1/${sourceTurn.sequence}"});`);
                 assert.equal(unqualified.status, 400);
                 assert.equal(unqualified.problem?.type, `https://problems.plurnk.xyz/scheme/${kind}/coordinate-malformed`);
-                const absent = await dispatch(`\`\`\`\`READ (${kind}://analyst/99/99)\`\`\`\``);
+                const absent = await dispatch(`await plurnk.read({"path":"${kind}://analyst/99/99"});`);
                 assert.equal(absent.status, 404);
                 assert.equal(absent.problem?.type, `https://problems.plurnk.xyz/scheme/${kind}/entry-not-found`);
             }
@@ -190,12 +189,12 @@ test("{§turn-source-resources}: FIND uses ordinary folder, page and indexed-con
             assert.ok("results" in result);
             return result as FindResult;
         };
-        assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/1/2) <1,-1>````")), ["ops://analyst/1/2"]);
-        assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/1/) <1,-1>````")), ["ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
-        assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/1) <1,-1>````")), ["ops://analyst/1", "ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
-        assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/*/*) <2,2>````")), ["ops://analyst/1/2"]);
-        assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/1/*) <1,-1> ~needle````")), ["ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
-        assert.deepEqual(resourcePaths(await query("````FIND (reasoning://analyst/1/*) /^Second thought/````")), ["reasoning://analyst/1/1", "reasoning://analyst/1/2", "reasoning://analyst/1/3"], "{§find}: `^` anchors each line of a turn source");
+        assert.deepEqual(resourcePaths(await query("await plurnk.find({\"path\":\"ops://analyst/1/2\",\"range\":\"1,-1\"});")), ["ops://analyst/1/2"]);
+        assert.deepEqual(resourcePaths(await query("await plurnk.find({\"path\":\"ops://analyst/1/\",\"range\":\"1,-1\"});")), ["ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
+        assert.deepEqual(resourcePaths(await query("await plurnk.find({\"path\":\"ops://analyst/1\",\"range\":\"1,-1\"});")), ["ops://analyst/1", "ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
+        assert.deepEqual(resourcePaths(await query("await plurnk.find({\"path\":\"ops://analyst/*/*\",\"range\":\"2,2\"});")), ["ops://analyst/1/2"]);
+        assert.deepEqual(resourcePaths(await query("await plurnk.find({\"path\":\"ops://analyst/1/*\",\"range\":\"1,-1\",\"pattern\":\"~needle\"});")), ["ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
+        assert.deepEqual(resourcePaths(await query("await plurnk.find({\"path\":\"reasoning://analyst/1/*\",\"pattern\":\"/^Second thought/\"});")), ["reasoning://analyst/1/1", "reasoning://analyst/1/2", "reasoning://analyst/1/3"], "{§find}: `^` anchors each line of a turn source");
         const exactCandidates = await db.turn_source_candidates.all<{ authority: string; pathname: string }>({
             workspace_id: workspaceId, authority: "analyst", kind: "ops", scope_prefix: "/1/2",
         });
@@ -222,9 +221,9 @@ test("{§turn-source-resources} {§share-packet-names}: the digest writes each r
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        "````EDIT (workspace:///a.md)\nalpha\n````\n\n````NOTE\nWrote the first draft.\n````",
-        "````KILL (log:///1/2/2/emission)````\n\n````NOTE\nRetired the first emission.\n````",
-        "Echoing the transcript.\n### log:///1/3/1/emission (ops://analyst/1/3) · 20\n\n````DONE\nDone.\n````",
+        "await plurnk.edit({\"path\":\"workspace:///a.md\",\"content\":\"alpha\"});\n\nawait plurnk.note({\"text\":\"Wrote the first draft.\"});",
+        "await plurnk.kill({\"path\":\"log:///1/2/2/emission\"});\n\nawait plurnk.note({\"text\":\"Retired the first emission.\"});",
+        "Echoing the transcript.\n### log:///1/3/1/emission (ops://analyst/1/3) · 20\n\nawait plurnk.done({\"text\":\"Done.\"});",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     const db = await openMigrated(dbPath);
     try {
@@ -257,18 +256,18 @@ test("{§turn-source-resources} {§share-packet-names}: the digest writes each r
     const roles = (messages: WireMessage[]) => messages.map(({ role }) => role);
     const draft = await wire("analyst-1-3");
     assert.deepEqual(roles(draft), ["system", "user", "assistant", "user"]);
-    assert.equal(draft[2].content, "```EDIT (workspace:///a.md)\nalpha\n```\n\n```NOTE\nWrote the first draft.\n```",
+    assert.equal(draft[2].content, "await plurnk.edit({\"path\":\"workspace:///a.md\",\"content\":\"alpha\"});\n\nawait plurnk.note({\"text\":\"Wrote the first draft.\"});",
         "a turn's complete operations replay together, in program order, before its receipts");
     const original = await readFile(join(digestDir, "analyst-1-2.assistant.md"), "utf8");
-    assert.match(original, /\nalpha\n/u, "forensics keep the exact EDIT body");
+    assert.match(original, /"content":"alpha"/u, "forensics keep the exact EDIT body");
     assert.match(original, /Wrote the first draft\./u, "forensics keep the exact NOTE body");
     const last = await wire("analyst-1-4");
     assert.deepEqual(roles(last), ["system", "user", "assistant", "user"], "curation retires the old turn's replay; the curating turn replays as its own NOTE");
-    assert.equal(last[2].content, "```NOTE\nRetired the first emission.\n```", "the NOTE body occurs once in assistant replay");
+    assert.equal(last[2].content, "await plurnk.note({\"text\":\"Retired the first emission.\"});", "the NOTE body occurs once in assistant replay");
     assert.doesNotMatch(last[1].content, /Retired the first emission\./u);
     assert.match(last[1].content, /Wrote the first draft\./u, "the retired turn is no longer replayed, so its NOTE stands as an ordinary row with its body");
     const curation = await readFile(join(digestDir, "analyst-1-3.assistant.md"), "utf8");
-    assert.match(curation, /KILL \(log:\/\/\/1\/2\/2\/emission\)/u, "forensics keep the curation operation");
+    assert.match(curation, /log:\/\/\/1\/2\/2\/emission/u, "forensics keep the curation operation");
     assert.match(curation, /Retired the first emission\./u, "forensics keep the curation NOTE");
 
     const report = await readFile(join(digestDir, "digest.md"), "utf8");
@@ -303,9 +302,9 @@ test("{§turn-source-resources} {§digest-forensic-fidelity}: the digest counts 
         const dbPath = join(dir, "plurnk.db");
         const digestDir = join(dir, "digest");
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "````READ (workspace:///test.txt)````", reasoning: "First turn thinking." } },
-            { assistant: { content: "````KILL (log:///1/2/2/reasoning)````", reasoning: "Second turn thinking." } },
-            { assistant: { content: "````DONE\nDone.\n````", reasoning: "Third turn thinking." } },
+            { assistant: { content: "await plurnk.read({\"path\":\"workspace:///test.txt\"});", reasoning: "First turn thinking." } },
+            { assistant: { content: "await plurnk.kill({\"path\":\"log:///1/2/2/reasoning\"});", reasoning: "Second turn thinking." } },
+            { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: "Third turn thinking." } },
         ] });
         const db = await openMigrated(dbPath);
         try {
@@ -337,7 +336,7 @@ test("{§turn-source-resources} {§digest-forensic-fidelity}: when reasoning row
         const dbPath = join(dir, "plurnk.db");
         const digestDir = join(dir, "digest");
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "````DONE\nDone.\n````", reasoning: "Thinking occurred." } },
+            { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: "Thinking occurred." } },
         ] });
         const db = await openMigrated(dbPath);
         try {
@@ -383,8 +382,7 @@ test("{§turn-source-resources} {§digest-forensic-fidelity}: when reasoning row
 });
 
 describe("history-addressing", () => {
-const frame = PlurnkParser.frame;
-const program = (name: string) => `${frame("NOTE", `${name} source`)}\n\n${frame(`READ (note://${name}/1/1/1)`, null)}`;
+const program = (name: string) => `await plurnk.note({"text":"${name} source"});\n\nawait plurnk.read({"path":"note://${name}/1/1/1"});`;
 
 test("{§env-delta}: file deletion, session cancellation and stream cancellation remain observable", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-ambient-kill-"));
@@ -417,19 +415,19 @@ test("{§env-delta}: file deletion, session cancellation and stream cancellation
             if (review) engine.resolveProposal(await announced.promise, { decision: "accept" });
             return pending;
         };
-        assert.equal((await dispatch(frame("EDIT (obsolete.txt)", "Temporary content."), true)).status, 200);
+        assert.equal((await dispatch("await plurnk.edit({\"path\":\"obsolete.txt\",\"content\":\"Temporary content.\"});", true)).status, 200);
         assert.equal(await readFile(join(root, "obsolete.txt"), "utf8"), "Temporary content.");
-        assert.equal((await dispatch(frame("KILL (obsolete.txt)", null), true)).status, 200);
+        assert.equal((await dispatch("await plurnk.kill({\"path\":\"obsolete.txt\"});", true)).status, 200);
         await assert.rejects(readFile(join(root, "obsolete.txt")), { code: "ENOENT" });
-        assert.equal((await dispatch(frame("KILL (session://descendant)", null))).status, 200);
+        assert.equal((await dispatch("await plurnk.kill({\"path\":\"session://descendant\"});")).status, 200);
         assert.equal(await lifecycle.status(descendantLoop), 499, "the descendant really stopped");
-        assert.equal((await dispatch(frame("sh", "sleep 10"), true)).status, 200);
+        assert.equal((await dispatch("await plurnk.sh({\"command\":\"sleep 10\"});", true)).status, 200);
         const childRows = await db.test_log_entries_by_loop.all<{ op: string; attrs: string }>({ loop_id: childLoop });
         const invocation = childRows.find(({ op }) => op === "sh");
         assert.ok(invocation);
         const { pathname } = JSON.parse(invocation.attrs);
         const target = `sh://${pathname}`;
-        assert.equal((await dispatch(frame(`KILL (${target})`, null))).status, 200);
+        assert.equal((await dispatch(`await plurnk.kill({"path":"${target}"});`)).status, 200);
         await exec.idle();
         const stream = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
         assert.ok(stream);
@@ -437,7 +435,7 @@ test("{§env-delta}: file deletion, session cancellation and stream cancellation
         assert.equal(subscription?.close_status, 200, "{§stream-control}: the stream stopped as its holder asked");
         await Turn.complete(db, turn.id, 102);
         await engine.runTurn({ workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("NOTE", "Observe."), reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.note({\"text\":\"Observe.\"});", reasoning: null } }] }),
         });
         const observations = (await db.test_log_entries_by_loop.all<{ op: string; source: string; tx: string; status_rx: number }>({ loop_id: parentLoop }))
             .filter(({ op, source }) => op === "KILL" && source === "session://child");
@@ -464,7 +462,7 @@ test("{§turn-source-resources}: shared addresses retain identity across session
             await Turn.recordSource(db, turn.id, "ops", program(name));
             await Turn.recordSource(db, turn.id, "reasoning", `${name} reasoning`);
             const result = await engine.dispatch({ workspaceId, sessionId, loopId, turnId: turn.id, sequence: 1,
-                origin: "model", statement: statement(frame("NOTE", `${name} note`)) });
+                origin: "model", statement: statement(`await plurnk.note({"text":"${name} note"});`) });
             assert.equal(result.status, 200);
             assert.equal("resource" in result && result.resource, `note://${name}/1/1/1`);
             await Turn.complete(db, turn.id, 200);
@@ -484,49 +482,49 @@ test("{§turn-source-resources}: shared addresses retain identity across session
             ["reasoning", "1/1", "child_A reasoning"],
             ["note", "1/1/1", "child_A note"],
         ]) {
-            const result = await perform(frame(`READ (${scheme}://child_A/${path}) <1,-1>`, null));
+            const result = await perform(`await plurnk.read({"path":"${scheme}://child_A/${path}","range":"1,-1"});`);
             assert.equal(result.status, 200, JSON.stringify(result));
             assert.equal("content" in result && result.content, expected);
         }
-        const found = await perform(frame("FIND (note://*/1/1/*) <1,-1>", null)) as FindResult;
+        const found = await perform("await plurnk.find({\"path\":\"note://*/1/1/*\",\"range\":\"1,-1\"});") as FindResult;
         assert.equal(found.status, 200);
         assert.deepEqual(resourcePaths(found).toSorted(), ["note://child_A/1/1/1", "note://parent/1/1/1"]);
-        const searched = await perform(frame("FIND (note://*/1/1/1) <1,-1> /child_A/", null)) as FindResult;
+        const searched = await perform("await plurnk.find({\"path\":\"note://*/1/1/1\",\"range\":\"1,-1\",\"pattern\":\"/child_A/\"});") as FindResult;
         assert.equal(searched.status, 200, JSON.stringify(searched));
         assert.deepEqual(resourcePaths(searched), ["note://child_A/1/1/1"], "authority glob with an exact path retains a resource catalog");
-        const indexed = await perform(frame("FIND (ops://*/1/1) <1,-1> ~source", null)) as FindResult;
+        const indexed = await perform("await plurnk.find({\"path\":\"ops://*/1/1\",\"range\":\"1,-1\",\"pattern\":\"~source\"});") as FindResult;
         assert.equal(indexed.status, 200, JSON.stringify(indexed));
         assert.deepEqual(resourcePaths(indexed).toSorted(), ["ops://child_A/1/1", "ops://parent/1/1"], "indexed matches retain both sessions at identical coordinates");
         for (const address of ["note:///1/1/1", "note://child_A:80/1/1/1", "note://child_A/1/1/1?q=x"]) {
-            const invalid = await perform(frame(`READ (${address})`, null));
+            const invalid = await perform(`await plurnk.read({"path":"${address}"});`);
             assert.equal(invalid.status, 400, address);
             assert.equal(invalid.problem?.type, "https://problems.plurnk.xyz/scheme/note/coordinate-malformed");
         }
         for (const address of ["note://child_a/1/1/1", "note://missing/1/1/1"]) {
-            const absent = await perform(frame(`READ (${address})`, null));
+            const absent = await perform(`await plurnk.read({"path":"${address}"});`);
             assert.equal(absent.status, 404, "session authorities are exact, not silently case-folded");
         }
-        const copied = await perform(frame("COPY (note://child_A/1/1/1) (workspace:///shared-note.md)", null));
+        const copied = await perform("await plurnk.copy({\"from\":\"note://child_A/1/1/1\",\"to\":\"workspace:///shared-note.md\"});");
         assert.equal(copied.status, 201, JSON.stringify(copied));
-        const copy = await perform(frame("READ (workspace:///shared-note.md) <1,-1>", null));
+        const copy = await perform("await plurnk.read({\"path\":\"workspace:///shared-note.md\",\"range\":\"1,-1\"});");
         assert.equal("content" in copy && copy.content, "child_A note");
-        const trimmed = await perform(frame("KILL (log:///1/1/1/NOTE)", null), child, childLoop);
+        const trimmed = await perform("await plurnk.kill({\"path\":\"log:///1/1/1/NOTE\"});", child, childLoop);
         assert.equal(trimmed.status, 200);
-        const retained = await perform(frame("READ (note://child_A/1/1/1) <1,-1>", null));
+        const retained = await perform("await plurnk.read({\"path\":\"note://child_A/1/1/1\",\"range\":\"1,-1\"});");
         assert.equal("content" in retained && retained.content, "child_A note");
         const fork = await Fork.fork(db, child, "branch");
-        const inherited = await perform(frame("READ (note://branch/1/1/1) <1,-1>", null));
+        const inherited = await perform("await plurnk.read({\"path\":\"note://branch/1/1/1\",\"range\":\"1,-1\"});");
         assert.equal("content" in inherited && inherited.content, "child_A note");
-        const original = await perform(frame("READ (ops://child_A/1/1) <1,-1>", null), fork);
+        const original = await perform("await plurnk.read({\"path\":\"ops://child_A/1/1\",\"range\":\"1,-1\"});", fork);
         assert.equal("content" in original && original.content, program("child_A"));
-        const forkProgram = await perform(frame("READ (ops://branch/1/1) <1,-1>", null));
+        const forkProgram = await perform("await plurnk.read({\"path\":\"ops://branch/1/1\",\"range\":\"1,-1\"});");
         assert.equal("content" in forkProgram && forkProgram.content, program("child_A"), "embedded explicit source references are not rewritten by FORK");
         for (const op of ["READ", "FIND", "KILL"]) {
-            const qualifiedLog = await perform(frame(`${op} (log://child_A/1/1/1/NOTE) <1,-1>`, null));
+            const qualifiedLog = await perform(`await plurnk.${op.toLowerCase()}(${JSON.stringify({ path: "log://child_A/1/1/1/NOTE", range: "1,-1" })});`);
             assert.equal(qualifiedLog.status, 400, `${op} must not silently substitute the caller's log`);
             assert.equal(qualifiedLog.problem?.type, "https://problems.plurnk.xyz/scheme/log/coordinate-malformed");
         }
-        const parentNote = await perform(frame("READ (log:///1/1/1/NOTE) <1,-1>", null));
+        const parentNote = await perform("await plurnk.read({\"path\":\"log:///1/1/1/NOTE\",\"range\":\"1,-1\"});");
         assert.equal("content" in parentNote && parentNote.content, "parent note", "rejected foreign curation leaves local context intact");
     } finally { await db.close(); }
 });
@@ -551,14 +549,14 @@ test("{§turn-source-resources}: a SEND shares a note; the recipient deliberatel
         });
         const turn = await Turn.open(db, { loopId: childLoop, producer: "model", kind: "inference" });
         const context = { workspaceId, sessionId: child, loopId: childLoop, turnId: turn.id, origin: "model" as const };
-        const note = await engine.dispatch({ ...context, sequence: 1, statement: statement(frame("NOTE", "The retry condition is idempotent.")) });
+        const note = await engine.dispatch({ ...context, sequence: 1, statement: statement("await plurnk.note({\"text\":\"The retry condition is idempotent.\"});") });
         assert.equal(note.status, 200);
         assert.equal("resource" in note && note.resource, "note://child/1/1/1");
-        const send = await engine.dispatch({ ...context, sequence: 2, statement: statement(frame("SEND (session://parent)", "See note://child/1/1/1")) });
+        const send = await engine.dispatch({ ...context, sequence: 2, statement: statement("await plurnk.send({\"target\":\"session://parent\",\"text\":\"See note://child/1/1/1\"});") });
         assert.equal(send.status, 200, JSON.stringify(send));
         await Turn.complete(db, turn.id, 102);
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: {
-            content: frame("READ (note://child/1/1/1) <1,-1>", null), reasoning: null,
+            content: "await plurnk.read({\"path\":\"note://child/1/1/1\",\"range\":\"1,-1\"});", reasoning: null,
         } }] });
         await engine.runTurn({ workspaceId, sessionId: parent, loopId: parentLoop, provider, messages: [] });
         const history = await db.test_log_entries_by_loop.all<{ op: string; source: string; rx: string; tx: string }>({ loop_id: parentLoop });
@@ -568,7 +566,7 @@ test("{§turn-source-resources}: a SEND shares a note; the recipient deliberatel
         const otherWorkspace = await insertWorkspace(db, "other-note-sharing");
         const otherSession = await insertSession(db, otherWorkspace, null, "parent");
         const isolated = await clientRead(engine, db, { workspaceId: otherWorkspace, sessionId: otherSession,
-            statement: statement(frame("READ (note://child/1/1/1)", null)) });
+            statement: statement("await plurnk.read({\"path\":\"note://child/1/1/1\"});") });
         assert.equal(isolated.status, 404, "an explicit authority never crosses the workspace boundary");
     } finally { await db.close(); }
 });
@@ -592,15 +590,15 @@ for (const exitCode of [0, 7]) test(`{§env-delta}: executor exit ${exitCode} is
         const proposed = Promise.withResolvers<number>();
         const started = engine.dispatch({ workspaceId, sessionId: child, loopId: childLoop, turnId: turn.id,
             sequence: 1, origin: "model", onDispatch: proposed.resolve,
-            statement: statement(frame("sh", `printf 'child output\\n'; exit ${exitCode}`)),
+            statement: statement(`await plurnk.sh({"command":"printf 'child output\\\\n'; exit ${exitCode}"});`),
         });
         engine.resolveProposal(await proposed.promise, { decision: "accept" });
         assert.equal((await started).status, 200);
         await exec.idle();
         await Turn.complete(db, turn.id, 102);
-        const continuation = () => new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("NOTE", "Observe."), reasoning: null } }] });
+        const continuation = () => new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.note({\"text\":\"Observe.\"});", reasoning: null } }] });
         await engine.runTurn({ workspaceId, sessionId: child, loopId: childLoop,
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("DONE", "Executor result observed."), reasoning: null } }] }), messages: [] });
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.done({\"text\":\"Executor result observed.\"});", reasoning: null } }] }), messages: [] });
         const childRows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; attrs: string }>({ loop_id: childLoop });
         const output = childRows.filter(({ op, rx }) => op === "READ" && JSON.parse(rx).terminal === true);
         assert.ok(output.length > 0, "the owner's terminal observation was actually materialized");
@@ -632,9 +630,9 @@ test("{§env-delta}: WORK, FORK and outgoing SEND are observable; BARE, WAIT and
             },
         });
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: {
-            content: [frame("WORK (session://research)", "Research the question."), frame("FORK (session://review)", "Review the evidence."),
-                frame("SEND (session://research)", "Use the retained evidence."),
-                frame("BARE", "Is the task clear?"), frame("WAIT", "Await both children.")].join("\n\n"), reasoning: null,
+            content: ["await plurnk.work({\"target\":\"session://research\",\"prompt\":\"Research the question.\"});", "await plurnk.fork({\"target\":\"session://review\",\"prompt\":\"Review the evidence.\"});",
+                "await plurnk.send({\"target\":\"session://research\",\"text\":\"Use the retained evidence.\"});",
+                "await plurnk.bare({\"prompt\":\"Is the task clear?\"});", "await plurnk.wait({\"text\":\"Await both children.\"});"].join("\n\n"), reasoning: null,
         } }] });
         const childProvider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "Yes.", reasoning: null } }] });
         const result = await engine.runTurn({ workspaceId, sessionId: child, loopId: childLoop, provider, childProvider, messages: [] });
@@ -643,7 +641,7 @@ test("{§env-delta}: WORK, FORK and outgoing SEND are observable; BARE, WAIT and
         assert.deepEqual(childRows.filter(({ op, origin }) => origin === "model" && ["WORK", "FORK", "SEND", "BARE", "WAIT"].includes(op))
             .map(({ op, status_rx }) => [op, status_rx]), [["WORK", 200], ["FORK", 200], ["SEND", 200], ["BARE", 200], ["WAIT", 202]]);
         await engine.runTurn({ workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("NOTE", "Observe."), reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.note({\"text\":\"Observe.\"});", reasoning: null } }] }),
         });
         const observations = (await db.engine_render_log.all<{ op: string; source: string; tx: string }>({ session_id: parent }))
             .filter(({ source }) => source === "session://child");
@@ -666,14 +664,14 @@ test("{§env-delta}: parent receives actions, never child exploration or log cur
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         let sequence = 0;
         for (const [source, status] of [
-            [frame("NOTE", "A tentative hypothesis, not a parent instruction."), 200],
-            [frame("EDIT (session://child/scratch.md)", "A real change."), 201],
-            [frame("READ (session://child/scratch.md)", null), 200],
-            [frame("FIND (session://child/*)", null), 200],
-            [frame("KILL (log:///1/1/1/NOTE)", null), 200],
-            [frame("KILL (log:///9/9/9)", null), 404],
-            [frame("KILL (session://child/scratch.md)", null), 200],
-            [frame("EDIT (missing:///file)", "A failed action."), 501],
+            ["await plurnk.note({\"text\":\"A tentative hypothesis, not a parent instruction.\"});", 200],
+            ["await plurnk.edit({\"path\":\"session://child/scratch.md\",\"content\":\"A real change.\"});", 201],
+            ["await plurnk.read({\"path\":\"session://child/scratch.md\"});", 200],
+            ["await plurnk.find({\"path\":\"session://child/*\"});", 200],
+            ["await plurnk.kill({\"path\":\"log:///1/1/1/NOTE\"});", 200],
+            ["await plurnk.kill({\"path\":\"log:///9/9/9\"});", 404],
+            ["await plurnk.kill({\"path\":\"session://child/scratch.md\"});", 200],
+            ["await plurnk.edit({\"path\":\"missing:///file\",\"content\":\"A failed action.\"});", 501],
         ] as const) {
             const result = await engine.dispatch({ workspaceId, sessionId: child, loopId: childLoop, turnId: turn.id,
                 sequence: ++sequence, origin: "model", statement: statement(source) });
@@ -681,7 +679,7 @@ test("{§env-delta}: parent receives actions, never child exploration or log cur
         }
         await Turn.complete(db, turn.id, 102);
         await engine.runTurn({ workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("NOTE", "Continue."), reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.note({\"text\":\"Continue.\"});", reasoning: null } }] }),
         });
         const observed = (await db.test_log_entries_by_session.all<{ op: string; source: string; status_rx: number }>({ session_id: parent }))
             .filter(({ source }) => source === "session://child");

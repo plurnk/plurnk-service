@@ -353,15 +353,11 @@ test("{§exec-lifetime} a detached spawn is observed once, then outlives its loo
     try {
         const mock = new Mock({
             contextWindow: viableWindow(),
-            responses: [mockTurn(`\`\`\`\`sh [{"lifetime": "detached"}]
-${heartbeat(file)}
-\`\`\`\`
+            responses: [mockTurn(`await plurnk.sh({"metadata":["{\\"lifetime\\": \\"detached\\"}"],"command":"${heartbeat(file)}"});
 
-\`\`\`\`SEND
-the server stays up
-\`\`\`\`
-\`\`\`\`SEND
-\`\`\`\``), mockTurn("````DONE\n````")],
+await plurnk.send({"text":"the server stays up"});
+
+await plurnk.send({});`), mockTurn("await plurnk.done({});")],
         });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -789,8 +785,8 @@ describe("exec-lifetime", () => {
 
 const refusal = async (fence: string, name: string): Promise<{ status: number; problem: { type: string; detail: string; recovery?: string } }> => {
     const mock = new Mock({ contextWindow: 100_000, responses: [
-        makeRawMockResponse(`${fence}\nsleep 0\n\`\`\`\`\n\n\`\`\`\`WAIT\nObserve the refusal.\n\`\`\`\``, 10),
-        makeRawMockResponse("````DONE\nRefused; done.\n````", 10),
+        makeRawMockResponse(`${fence}\n\nawait plurnk.wait({"text":"Observe the refusal."});`, 10),
+        makeRawMockResponse("await plurnk.done({\"text\":\"Refused; done.\"});", 10),
     ] });
     let row: { status: number; problem: { type: string; detail: string; recovery?: string } } | undefined;
     await withDaemon(mock, async (db, daemon, addr) => {
@@ -811,7 +807,7 @@ const refusal = async (fence: string, name: string): Promise<{ status: number; p
 };
 
 test("{§exec-lifetime} {§diagnostic-observation}: a scope on an execution is refused, saying only that", { timeout: 120_000 }, async () => {
-    const { status, problem } = await refusal("````sh <30,5>", "exec-scope");
+    const { status, problem } = await refusal("await plurnk.sh({\"command\":\"sleep 0\",\"range\":\"30,5\"});", "exec-scope");
     assert.equal(status, 400);
     assert.match(problem.type, /scheme\/exec\/scope-unsupported$/u);
     assert.equal(problem.detail, "An execution takes no scope.");
@@ -819,7 +815,7 @@ test("{§exec-lifetime} {§diagnostic-observation}: a scope on an execution is r
 });
 
 test("{§exec-lifetime}: an unreadable lifetime is refused before the spawn, with every form it could take", { timeout: 120_000 }, async () => {
-    const { status, problem } = await refusal('````sh [{"lifetime": "30"}]', "exec-lifetime-invalid");
+    const { status, problem } = await refusal("await plurnk.sh({\"command\":\"sleep 0\",\"metadata\":[\"{\\\"lifetime\\\": \\\"30\\\"}\"]});", "exec-lifetime-invalid");
     assert.equal(status, 400);
     assert.match(problem.type, /scheme\/exec\/lifetime-invalid$/u);
     assert.match(problem.detail, /'30' is not a lifetime/u);
@@ -829,7 +825,7 @@ test("{§exec-lifetime}: an unreadable lifetime is refused before the spawn, wit
 test("{§exec-lifetime}: a tool's opaque metadata is still its own — the service reads no lifetime from it", { timeout: 120_000 }, async () => {
     // {§executor-contract} — `sh` takes the option-array shape, so a block that is not that shape is
     // the tool's to refuse. The service must not refuse it first in the name of `lifetime`.
-    const { status, problem } = await refusal("````sh [ custom syntax ]", "exec-lifetime-opaque");
+    const { status, problem } = await refusal("await plurnk.sh({\"command\":\"sleep 0\",\"metadata\":[\" custom syntax \"]});", "exec-lifetime-opaque");
     assert.equal(status, 400);
     assert.match(problem.type, /executor\/metadata\/metadata-invalid$/u, "the executor's own refusal, not the service's");
     assert.doesNotMatch(problem.detail, /lifetime/u);
@@ -838,9 +834,9 @@ test("{§exec-lifetime}: a tool's opaque metadata is still its own — the servi
 test("{§exec-lifetime}: a turn-scoped run is reaped at the next pre-turn; a loop-bound one at the loop's end", { timeout: 120_000 }, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 100_000, responses: [
-        makeRawMockResponse('````sh [{"lifetime": "turn"}]\nsleep 45\n````\n\n````NOTE\nBackgrounded for this turn only.\n````', 10),
-        makeRawMockResponse("````NOTE\nThe next turn begins; the turn-scoped run is gone.\n````", 10),
-        makeRawMockResponse("````DONE\nDone.\n````", 10),
+        makeRawMockResponse("await plurnk.sh({\"metadata\":[\"{\\\"lifetime\\\": \\\"turn\\\"}\"],\"command\":\"sleep 45\"});\n\nawait plurnk.note({\"text\":\"Backgrounded for this turn only.\"});", 10),
+        makeRawMockResponse("await plurnk.note({\"text\":\"The next turn begins; the turn-scoped run is gone.\"});", 10),
+        makeRawMockResponse("await plurnk.done({\"text\":\"Done.\"});", 10),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const client = await connect(addr);
@@ -869,8 +865,10 @@ for (const spawnedBy of ["the ending segment", "a segment before a park"] as con
         });
         const parks = spawnedBy === "a segment before a park";
         const mock = new Mock({ contextWindow: 100_000, responses: [
-            makeRawMockResponse(`\`\`\`\`sh\nsleep 45\n\`\`\`\`\n\n${parks ? "````WAIT [1]\nWaiting on it.\n````" : "````NOTE\nWorking on.\n````"}`, 10),
-            makeRawMockResponse("````NOTE\nWorking on.\n````", 10),
+            makeRawMockResponse(`await plurnk.sh({"command":"sleep 45"});
+
+${parks ? "await plurnk.wait({\"seconds\":1,\"text\":\"Waiting on it.\"});" : "await plurnk.note({\"text\":\"Working on.\"});"}`, 10),
+            makeRawMockResponse("await plurnk.note({\"text\":\"Working on.\"});", 10),
         ] });
         await withDaemon(mock, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `exec-lifetime-${parks ? "parked" : "ending"}` });
@@ -912,8 +910,8 @@ test("{§exec-lifetime} a bounded lifetime kills the spawn at its deadline and c
     // `sleep 30` under a 2-second lifetime: the spawn MUST be killed at its deadline, never run to completion.
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         // Park on the stream: its only conclusion is the reap, so turn 2 sees the 504 close.
-        makeMockResponse("````sh [{\"lifetime\": \"2s\"}]\nsleep 30\n````\n\n````WAIT\nwaiting for the reap\n````", 10),
-        makeMockResponse("````DONE\nthe spawn timed out; done\n````", 10),
+        makeMockResponse("await plurnk.sh({\"metadata\":[\"{\\\"lifetime\\\": \\\"2s\\\"}\"],\"command\":\"sleep 30\"});\n\nawait plurnk.wait({\"text\":\"waiting for the reap\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"the spawn timed out; done\"});", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

@@ -24,7 +24,6 @@ import { testProviderCapacity, viableWindow } from "./_provider.ts";
 import { rm, readFile, mkdtemp, writeFile } from "node:fs/promises";
 import { liveWorkspace, seedEntry } from "../_live-harness.ts";
 import { namedModelSession } from "./_sessions.ts";
-import { Lexer } from "marked";
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
 import { testExecutors } from "./_execs.ts";
 import { fixtureExecutors } from "./_mock.ts";
@@ -54,13 +53,13 @@ const contentResponse = (content: string): MockResponse => ({
 
 // A complete, admitted draining turn. Its only job is to run so the model's
 // next packet drains the notices buffer on read.
-const drainTurn = contentResponse("````DONE\ndrained\n````");
+const drainTurn = contentResponse("await plurnk.done({\"text\":\"drained\"});");
 
 // A provider transport anomaly notice: the provider notice path carries observations
 // such as a decode escaping into a discarded channel ({§provider-instantiation} grades nothing).
 // `extraDrains` clean turns follow so the buffer can be observed draining.
-const NOTICE_CONTENT = "\n````SEND\nnoted\n````";
-const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("````SEND") + 3)).length;
+const NOTICE_CONTENT = "await plurnk.send(\n   {\"text\":\"noted\"}\n);";
+const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("{\"text\""))).length;
 const noticeProvider = (extraDrains: number) => {
     const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
     const real = provider.generate.bind(provider);
@@ -174,7 +173,7 @@ for (const fail of [false, true]) {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_workspaceId, { notice }) => {
             if (fail && notice.kind === "parse_advisory") throw cause;
         } });
-        const provider = new Mock({ contextWindow: 100_000, responses: [contentResponse("````NOTE remember\n````\n\n````DONE\ndone\n````")] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [contentResponse("await plurnk.NOTE({\"text\":\"remember\"});\n\nawait plurnk.done({\"text\":\"done\"});")] });
         const running = engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [] });
         if (fail) await assert.rejects(running, (error) => error === cause);
         else assert.equal((await running).result.status, 200);
@@ -428,7 +427,7 @@ test("{§operation-results} a parser warning remains advisory while the independ
                 broadcasts.push({ payload: payload });
             },
         });
-        const emission = "\n````EDIT (src/example.ts<1,-1>)\nbody\n````\n\n````SEND\ndone\n````";
+        const emission = "\n await plurnk.EDIT({\"path\":\"workspace://host/example.ts\",\"range\":\"1,-1\",\"content\":\"body\"});\n\nawait plurnk.send({\"text\":\"done\"});";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
@@ -447,10 +446,10 @@ test("{§operation-results} a parser warning remains advisory while the independ
         const advisories = broadcasts.filter(({ payload }) => payload.notice.kind === "parse_advisory");
         assert.equal(advisories.length, 1, "the recoverable parser diagnosis is emitted once");
         assert.equal(advisories[0].payload.notice.level, "warn");
-        assert.match(String(advisories[0].payload.notice.message), /The scope was inside the target slot; it was applied as the operation scope\./);
+        assert.match(String(advisories[0].payload.notice.message), /`plurnk\.EDIT` was read as `plurnk\.edit`\./);
         assert.deepEqual(
             advisories[0].payload.notice.position,
-            { type: "content-offset", line: 2, column: 24 },
+            { type: "content-offset", line: 2, column: 1 },
             "the Notice retains the parser's typed source position",
         );
         const [failedEdit] = await db.test_log_entries_by_session_op_full.all<{
@@ -509,8 +508,8 @@ test("{§packet} a notice broadcasts structured and drains as its terse model-fa
 test("{§operation-fences}: literal programs inside a longer fence produce no spurious parse advisory", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
-        const emission = "`````EDIT (workspace:///a.md) <!-- first note -->\nalpha\n````EDIT (workspace:///b.md) <!-- literal example -->\nbeta\n````\n````EDIT (workspace:///c.md)\ngamma\n````\n`````\n````NOTE\ncontinue\n````";
-        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("````DONE\ndone\n````")] });
+        const emission = "await plurnk.edit({\"path\":\"workspace:///a.md\",\"content\":\"alpha\\n````EDIT (workspace:///b.md) <!-- literal example -->\\nbeta\\n````\\n````EDIT (workspace:///c.md)\\ngamma\\n````\"}); // first note\n\nawait plurnk.note({\"text\":\"continue\"});";
+        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("await plurnk.done({\"text\":\"done\"});")] });
         const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(t1.emissionAttempts, 1);
         const edits = t1.outcomes.filter(({ op }) => op === "EDIT");
@@ -766,8 +765,8 @@ for (const runtime of ["sh", "js", "python3"]) test(`{§op-shapes}: installed ${
         });
         assert.ok(doc, "the installed executor's documentation reaches the session");
         const readme = await readFile(new URL("README.md", import.meta.resolve("@plurnk/plurnk-execs-common/package.json")), "utf8");
-        const examples = [doc.content, readme].flatMap((content) => Lexer.lex(content)
-            .filter((token) => token.type === "code" && token.lang?.split(/[ \t]/)[0] === runtime));
+        const pattern = new RegExp(`await\\s+plurnk\\.${runtime}\\(\\{[^\\n]+\\}\\);`, "g");
+        const examples = [doc.content, readme].flatMap((content) => [...content.matchAll(pattern)].map((m) => ({ raw: m[0] })));
         assert.ok(examples.length > 0, `${runtime} has executable examples`);
         const execs = examples.flatMap(({ raw }) => {
             const parsed = PlurnkParser.parseStatements(raw, { executors: fixtureExecutors(raw) });
@@ -822,8 +821,7 @@ test("{§exec-stream}: materialized shell documentation demonstrates scoped READ
             pathname: "/sh.md", scheme: "plurnk", name: "body",
         });
         assert.ok(doc, "the installed shell's documentation reaches the session");
-        const examples = Lexer.lex(doc.content).flatMap((token) =>
-            token.type === "code" && token.lang?.startsWith("READ ") ? [token.raw] : []);
+        const examples = [...doc.content.matchAll(/^await\s+plurnk\.read\(\{[^\n]+\}\);$/gm)].map((m) => m[0]);
         const reads = examples.flatMap((source) => {
             const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
             assert.equal(parsed.unparsedTail, undefined, source);
@@ -868,10 +866,9 @@ test("{§test-artifact-retention} soak: N turn boundaries with per-turn membersh
         const TURNS = 6;
         const responses = Array.from({ length: TURNS }, (_, i) => ({
             assistant: {
-                content: `${i % 2 === 0 ? "````READ (a.md)````" : "````FIND (**)````"}
-\`\`\`\`NOTE
-continue
-\`\`\`\``,
+                content: `${i % 2 === 0 ? "await plurnk.read({\"path\":\"a.md\"});" : "await plurnk.find({\"path\":\"**\"});"}
+
+await plurnk.note({"text":"continue"});`,
                 reasoning: null,
             },
         }));

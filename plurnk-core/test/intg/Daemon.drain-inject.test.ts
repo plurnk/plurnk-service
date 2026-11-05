@@ -32,9 +32,9 @@ const arrivalBody = (row: { tx: string }): string => (JSON.parse(row.tx) as { bo
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
 test("{§loop-completion} loop.run: enqueues + drains + returns first loop's result", async () => {
-    const dsl = "````EDIT (workspace:///x)\nhello\n````\n\n````SEND\ndone\n````";
+    const dsl = "await plurnk.edit({\"path\":\"workspace:///x\",\"content\":\"hello\"});\n\nawait plurnk.send({\"text\":\"done\"});";
     // {§loop-completion} — observe the EDIT receipt before the final SEND.
-    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl), makeMockResponse("````DONE\ndone\n````", 0)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl), makeMockResponse("await plurnk.done({\"text\":\"done\"});", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -55,8 +55,8 @@ test("{§session-causal-admission}: concurrent admissions before the first claim
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("````DONE\nfirst concurrent loop\n````"),
-            sendOnly("````DONE\nsecond concurrent loop\n````"),
+            sendOnly("await plurnk.done({\"text\":\"first concurrent loop\"});"),
+            sendOnly("await plurnk.done({\"text\":\"second concurrent loop\"});"),
         ],
     });
 
@@ -105,7 +105,7 @@ test("{§session-causal-admission}: concurrent admissions before the first claim
 test("{§session-ownership}: a fresh injection preserves the session owner", async () => {
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [sendOnly("````DONE\ndone\n````")],
+        responses: [sendOnly("await plurnk.done({\"text\":\"done\"});")],
     });
     await withDaemon(mock, async (db, daemon) => {
         const workspace = await daemon.createWorkspace({ name: `fresh-loop-${crypto.randomUUID()}` });
@@ -137,9 +137,9 @@ test("{§executor-subprocess} loop.cancel terminates a backgrounded exec; the st
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
-            sendOnly("````DONE\ndone\n````"),
-            sendOnly("````DONE\ndone\n````"),
+            sendOnly("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.note({\"text\":\"running\"});"),
+            sendOnly("await plurnk.done({\"text\":\"done\"});"),
+            sendOnly("await plurnk.done({\"text\":\"done\"});"),
         ],
     });
 
@@ -185,7 +185,7 @@ test("{§executor-subprocess} loop.cancel terminates a backgrounded exec; the st
 });
 
 test("{§actor-boundary} loop.cancel: no active drain → cancelled=false", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("````DONE\ndone\n````")] });
+    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("await plurnk.done({\"text\":\"done\"});")] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -206,10 +206,10 @@ test("{§actor-boundary} loop.run: post-cancel, a fresh loop.run starts a new dr
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
-            sendOnly("````DONE\ndone\n````"),
-            sendOnly("````DONE\ndone\n````"),
-            sendOnly("````DONE\ndone\n````"),
+            sendOnly("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.note({\"text\":\"running\"});"),
+            sendOnly("await plurnk.done({\"text\":\"done\"});"),
+            sendOnly("await plurnk.done({\"text\":\"done\"});"),
+            sendOnly("await plurnk.done({\"text\":\"done\"});"),
         ],
     });
 
@@ -261,8 +261,8 @@ test("{§methods-workspace-create}: an active-loop prompt carries its paths into
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("````sh\ntrue\n````\n\n````NOTE\ncontinue after review\n````"), // proposal pauses before the required disposition
-            sendOnly("````DONE\nOriginal request done.\n````\n\n````DONE\nFollow-up done.\n````"),
+            sendOnly("await plurnk.sh({\"command\":\"true\"});\n\nawait plurnk.note({\"text\":\"continue after review\"});"), // proposal pauses before the required disposition
+            sendOnly("await plurnk.done({\"text\":\"Original request done.\"});\n\nawait plurnk.done({\"text\":\"Follow-up done.\"});"),
         ],
     });
 
@@ -331,8 +331,8 @@ test("{§methods-workspace-create}: a parked-loop prompt carries its paths into 
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("````sh\nsleep 30\n````\n\n````WAIT\npark\n````"),
-            sendOnly("````SEND\ndone with the parked work\n````\n````KILL (session://parked)\n````"),
+            sendOnly("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.wait({\"text\":\"park\"});"),
+            sendOnly("await plurnk.send({\"text\":\"done with the parked work\"});\n\nawait plurnk.kill({\"path\":\"session://parked\"});"),
         ],
     });
     const parkedBoundary = Promise.withResolvers<void>();
@@ -410,8 +410,8 @@ test("{§message-arrival}: an injection crossing the park transition is not stra
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("````sh\nsleep 30\n````\n\n````WAIT\npark\n````"),
-            sendOnly("````SEND\ndone with the injected prompt\n````\n````KILL (session://parked)\n````"),
+            sendOnly("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.wait({\"text\":\"park\"});"),
+            sendOnly("await plurnk.send({\"text\":\"done with the injected prompt\"});\n\nawait plurnk.kill({\"path\":\"session://parked\"});"),
         ],
     });
     const parking = Promise.withResolvers<void>();
@@ -483,8 +483,8 @@ test("{§message-arrival}: every orphaned message is recovered in order", async 
             // The frames arrive during turn 1, so a model terminal over them defers
             // ({§message-arrival}); loop 1 ends turn 1 at its turn ceiling instead
             // (maxTurns 1 → 429), which no barrier gates: the orphan premise holds.
-            sendOnly("````sh\ntrue\n````\n\n````SEND\nloop 1 reaches its turn ceiling\n````"),
-            sendOnly("````DONE\nFirst recovered request done.\n````\n\n````DONE\nSecond recovered request done.\n````"),
+            sendOnly("await plurnk.sh({\"command\":\"true\"});\n\nawait plurnk.send({\"text\":\"loop 1 reaches its turn ceiling\"});"),
+            sendOnly("await plurnk.done({\"text\":\"First recovered request done.\"});\n\nawait plurnk.done({\"text\":\"Second recovered request done.\"});"),
         ],
     });
 
@@ -585,8 +585,8 @@ test("{§actor-boundary} loop.cancel reaps the session's open streams by the sub
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("````sh\nsleep 30\n````\n\n````WAIT\nbackgrounded\n````"),
-            sendOnly("````DONE\ndone\n````"),
+            sendOnly("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.wait({\"text\":\"backgrounded\"});"),
+            sendOnly("await plurnk.done({\"text\":\"done\"});"),
         ],
     });
 
@@ -626,8 +626,8 @@ test("{§message-arrival} a cancelled session is not revived by its straggler st
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("````sh\nsleep 30\n````\n\n````WAIT\nbackgrounded\n````"),
-            sendOnly("````DONE\nshould never run\n````"),
+            sendOnly("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.wait({\"text\":\"backgrounded\"});"),
+            sendOnly("await plurnk.done({\"text\":\"should never run\"});"),
         ],
     });
 
@@ -695,9 +695,9 @@ for (const silent of [false, true]) {
         const mock = new GatedMock(gate, {
             contextWindow: 16384,
             responses: [
-                sendOnly(silent ? "````DONE\n````" : "````DONE\nfirst answer, before the follow-ups\n````"),
-                sendOnly(silent ? "````DONE\n````\n\n````DONE\n````"
-                    : "````DONE\nAnswered the first follow-up.\n````\n\n````DONE\nAnswered the second follow-up.\n````"),
+                sendOnly(silent ? "await plurnk.done({});" : "await plurnk.done({\"text\":\"first answer, before the follow-ups\"});"),
+                sendOnly(silent ? "await plurnk.done({});\n\nawait plurnk.done({});"
+                    : "await plurnk.done({\"text\":\"Answered the first follow-up.\"});\n\nawait plurnk.done({\"text\":\"Answered the second follow-up.\"});"),
             ],
         });
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -750,18 +750,14 @@ for (const scheme of ["file", "session"]) for (const anchored of [false, true]) 
         const target = scheme === "file" ? "notes.md" : "workspace:///notes.md";
         try {
             const mock = new Mock({ contextWindow: 32768, responses: [
-                makeMockResponse(`\`\`\`\`EDIT (${target})
-${source}
-\`\`\`\`
-\`\`\`\`NOTE
-Continue the task.
-\`\`\`\``, 10),
-                makeMockResponse(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\`
-\`\`\`\`NOTE
-Continue the task.
-\`\`\`\``, 10),
-                makeMockResponse("````NOTE\ncontinue\n````", 10),
-                makeMockResponse("````DONE\ndone\n````", 10),
+                makeMockResponse(`await plurnk.edit({"path":"${target}","content":${JSON.stringify(source)}});
+
+await plurnk.note({"text":"Continue the task."});`, 10),
+                makeMockResponse(`await plurnk.read({"path":"${target}","range":"1,-1"});
+
+await plurnk.note({"text":"Continue the task."});`, 10),
+                makeMockResponse("await plurnk.note({\"text\":\"continue\"});", 10),
+                makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
             ] });
             await withDaemon(mock, async (db, daemon, addr) => {
                 const generate = mock.generate.bind(mock);
@@ -773,10 +769,9 @@ Continue the task.
                         const end = packet.match(/^ *11<(@[A-Za-z0-9]{5})>line 11$/m)?.[1];
                         assert.ok(start && end, "the preceding READ published the coordinates used by KILL");
                         const scope = anchored ? `${start},${end}` : "10,11";
-                        return new Mock({ contextWindow: 32768, responses: [makeMockResponse(`\`\`\`\`KILL (${target}) <${scope}>\`\`\`\`
-\`\`\`\`NOTE
-Continue the task.
-\`\`\`\``, 10)] }).generate(args);
+                        return new Mock({ contextWindow: 32768, responses: [makeMockResponse(`await plurnk.kill({"path":"${target}","range":"${scope}"});
+
+await plurnk.note({"text":"Continue the task."});`, 10)] }).generate(args);
                     }
                     return generate(args);
                 };
@@ -821,9 +816,9 @@ Continue the task.
 test("{§op-invariants} whole-entry KILL has a bodyless result, not an invented text mutation receipt", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("````EDIT (workspace:///doomed)\ncontent\n````\n````NOTE\nContinue the task.\n````", 10),
-        makeMockResponse("````KILL (workspace:///doomed)````\n````NOTE\nContinue the task.\n````", 10),
-        makeMockResponse("````DONE\ndone\n````", 10),
+        makeMockResponse("await plurnk.edit({\"path\":\"workspace:///doomed\",\"content\":\"content\"});\n\nawait plurnk.note({\"text\":\"Continue the task.\"});", 10),
+        makeMockResponse("await plurnk.kill({\"path\":\"workspace:///doomed\"});\n\nawait plurnk.note({\"text\":\"Continue the task.\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -907,10 +902,10 @@ const attrs = (row: LogEntryWire): Record<string, unknown> => row.attrs as Recor
 
 test("{§methods-invocation} a stream's observation names its execution, and a FORK's copy names the same one", async (t) => {
     await run(t, [
-        "````sh\nprintf 'hello\\n'\n````\n````WAIT\n````",
-        "````FORK (session://branch)\nConfirm the greeting.\n````\n````WAIT\n````",
-        "````DONE\nConfirmed.\n````",
-        "````DONE\nDone.\n````",
+        "await plurnk.sh({\"command\":\"printf 'hello\\\\n'\"});\n\nawait plurnk.wait({});",
+        "await plurnk.fork({\"target\":\"session://branch\",\"prompt\":\"Confirm the greeting.\"});\n\nawait plurnk.wait({});",
+        "await plurnk.done({\"text\":\"Confirmed.\"});",
+        "await plurnk.done({\"text\":\"Done.\"});",
     ], [], async (logs, announced) => {
         const main = await logs("main");
         const execution = main.find(({ op }) => op === "sh")!;
@@ -926,11 +921,11 @@ test("{§methods-invocation} a stream's observation names its execution, and a F
 
 test("{§methods-invocation} {§loop-completion} a delegation is answered by its child's conclusion, and a message by its completion reply", async (t) => {
     await run(t, [
-        "````WORK (session://helper)\nSay hello.\n````\n````WAIT\n````",
-        "````DONE\nhello from the helper\n````",
-        "````SEND (session://peer)\nWhat is the answer?\n````\n````WAIT\n````",
-        "````DONE\nforty-two\n````",
-        "````DONE\nThe helper said hello; the answer is forty-two.\n````",
+        "await plurnk.work({\"target\":\"session://helper\",\"prompt\":\"Say hello.\"});\n\nawait plurnk.wait({});",
+        "await plurnk.done({\"text\":\"hello from the helper\"});",
+        "await plurnk.send({\"target\":\"session://peer\",\"text\":\"What is the answer?\"});\n\nawait plurnk.wait({});",
+        "await plurnk.done({\"text\":\"forty-two\"});",
+        "await plurnk.done({\"text\":\"The helper said hello; the answer is forty-two.\"});",
     ], ["peer"], async (logs, _announced, session) => {
         const main = await logs("main");
         const work = main.find(({ op }) => op === "WORK")!;
@@ -959,9 +954,9 @@ test("{§methods-invocation} {§loop-completion} a delegation is answered by its
 
 test("{§methods-invocation} a peer's progress and its completion each name the SEND they answer; only the completion discharges it", async (t) => {
     await run(t, [
-        "````SEND (session://peer)\nWhat is the answer?\n````\n````WAIT\n````",
-        "````SEND\nStill looking.\n````\n````DONE\nforty-two\n````",
-        "````DONE\nThe answer is forty-two.\n````",
+        "await plurnk.send({\"target\":\"session://peer\",\"text\":\"What is the answer?\"});\n\nawait plurnk.wait({});",
+        "await plurnk.send({\"text\":\"Still looking.\"});\n\nawait plurnk.done({\"text\":\"forty-two\"});",
+        "await plurnk.done({\"text\":\"The answer is forty-two.\"});",
     ], ["peer"], async (logs, announced) => {
         const main = await logs("main");
         const send = main.find(({ op, attrs: opened }) => op === "SEND" && typeof (opened as { message?: unknown }).message === "string")!;
@@ -1074,13 +1069,13 @@ type Ending = "cancellation" | "timeout" | "shutdown" | "turn ceiling";
 type Holder = "turn" | "parked" | "stream";
 type Ends = { daemon: Daemon; workspaceId: number; sessionId: number; expire: () => void };
 
-const QUESTION = "````plurnk (question)\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n````";
-const WAIT = "````WAIT\nAwaiting an answer.\n````";
+const QUESTION = "await plurnk.question({\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}});";
+const WAIT = "await plurnk.wait({\"text\":\"Awaiting an answer.\"});";
 
 // A parked loop neither executes nor ends at shutdown: cancellation is the way it ends. A loop that left its interaction
 // open works on, so its next call is held while it ends; the turn ceiling ends it before that call.
 const CASES: ReadonlyArray<{ gate: "proposal" | "interaction"; op: string; holder: Holder; emission: string; endings: readonly Ending[] }> = [
-    { gate: "proposal", op: "sh", holder: "turn", emission: "````sh\necho held\n````", endings: ["cancellation", "timeout", "shutdown"] },
+    { gate: "proposal", op: "sh", holder: "turn", emission: "await plurnk.sh({\"command\":\"echo held\"});", endings: ["cancellation", "timeout", "shutdown"] },
     { gate: "interaction", op: "plurnk", holder: "turn", emission: `${QUESTION}\n${WAIT}`, endings: ["cancellation", "timeout", "shutdown"] },
     { gate: "interaction", op: "plurnk", holder: "parked", emission: `${QUESTION}\n${WAIT}`, endings: ["cancellation"] },
     { gate: "interaction", op: "plurnk", holder: "stream", emission: QUESTION, endings: ["cancellation", "timeout", "shutdown", "turn ceiling"] },
@@ -1114,7 +1109,7 @@ for (const { gate, op, holder, emission, endings } of CASES) {
                 return startExecution.call(this, loopId, budgetMs, onTimeout);
             });
             const provider = new StreamMock({ contextWindow: 100_000, responses: [
-                makeMockResponse(emission), makeMockResponse("````NOTE\nWorking on.\n````"),
+                makeMockResponse(emission), makeMockResponse("await plurnk.note({\"text\":\"Working on.\"});"),
             ] });
             // The working loop's next call is held until its ending is under way.
             const generate = provider.generate.bind(provider);
@@ -1204,8 +1199,8 @@ for (const { gate, op, holder, emission, endings } of CASES) {
 });
 
 describe("readlog-paging", () => {
-const work = "````NOTE\nPlan the notes.\n````\n````EDIT (workspace:///a.md)\nfirst\n````\n````READ (workspace:///a.md)\n````";
-const done = "````DONE\nDone.\n````";
+const work = "await plurnk.note({\"text\":\"Plan the notes.\"});\n\nawait plurnk.edit({\"path\":\"workspace:///a.md\",\"content\":\"first\"});\n\nawait plurnk.read({\"path\":\"workspace:///a.md\"});";
+const done = "await plurnk.done({\"text\":\"Done.\"});";
 
 const streamed = (frames: readonly object[]): Response => new Response(new ReadableStream<Uint8Array>({
     start(controller) {

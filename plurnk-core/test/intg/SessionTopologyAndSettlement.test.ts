@@ -138,9 +138,7 @@ class ControlledSessionProvider implements Provider {
         await this.#childReleases[index].promise;
         signal?.throwIfAborted();
         await settle?.(requestAccounting);
-        return response(`\`\`\`\`DONE
-child ${index + 1} done
-\`\`\`\``, capacity);
+        return response(`await plurnk.done({"text":"child ${index + 1} done"});`, capacity);
     }
 
     releaseChild(index: number): void {
@@ -159,10 +157,10 @@ test("{§session-causal-admission} near-simultaneous child conclusions share one
     const provider = new ControlledSessionProvider({
         childCount: 2,
         parentTurns: [
-            "````WORK (session://first)\nfinish first\n\n````\n"
-            + "````WORK (session://second)\nfinish second\n\n````\n"
-            + "````WAIT\nwaiting for both\n````",
-            "````DONE\nboth children landed\n````",
+            "await plurnk.work({\"target\":\"session://first\",\"prompt\":\"finish first\\n\"});"
+            + "await plurnk.work({\"target\":\"session://second\",\"prompt\":\"finish second\\n\"});"
+            + "await plurnk.wait({\"text\":\"waiting for both\"});",
+            "await plurnk.done({\"text\":\"both children landed\"});",
         ],
     });
     try {
@@ -224,8 +222,8 @@ test("{§session-causal-admission} a lone child conclusion resumes immediately w
     const provider = new ControlledSessionProvider({
         childCount: 1,
         parentTurns: [
-            "````WORK (session://only)\nfinish the only job\n````\n\n````WAIT\nwaiting\n````",
-            "````DONE\nonly child landed\n````",
+            "await plurnk.work({\"target\":\"session://only\",\"prompt\":\"finish the only job\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});",
+            "await plurnk.done({\"text\":\"only child landed\"});",
         ],
     });
     try {
@@ -276,11 +274,11 @@ test("{§session-causal-admission} stream conclusions coalesce across the same s
         contextWindow: 100_000,
         responses: [
             makeMockResponse(
-                "````sh\nsleep 0.25; echo first-stream\n\n````\n"
-                + "````sh\nsleep 0.40; echo second-stream\n\n````\n"
-                + "````WAIT\nwaiting for both streams\n````",
+                "await plurnk.sh({\"command\":\"sleep 0.25; echo first-stream\\n\"});"
+                + "await plurnk.sh({\"command\":\"sleep 0.40; echo second-stream\\n\"});"
+                + "await plurnk.wait({\"text\":\"waiting for both streams\"});",
             ),
-            makeMockResponse("````DONE\nboth streams landed\n````"),
+            makeMockResponse("await plurnk.done({\"text\":\"both streams landed\"});"),
         ],
     });
     try {
@@ -310,10 +308,10 @@ test("{§session-causal-admission} a child and stream conclusion share the same 
     const provider = new ControlledSessionProvider({
         childCount: 1,
         parentTurns: [
-            "````WORK (session://child)\nfinish independently\n\n````\n"
-            + "````sh\nsleep 0.50; echo stream-done\n\n````\n"
-            + "````WAIT\nwaiting for child and stream\n````",
-            "````DONE\nchild and stream landed\n````",
+            "await plurnk.work({\"target\":\"session://child\",\"prompt\":\"finish independently\\n\"});"
+            + "await plurnk.sh({\"command\":\"sleep 0.50; echo stream-done\\n\"});"
+            + "await plurnk.wait({\"text\":\"waiting for child and stream\"});",
+            "await plurnk.done({\"text\":\"child and stream landed\"});",
         ],
     });
     try {
@@ -361,12 +359,12 @@ test("{§session-causal-admission} the settlement deadline is bounded and does n
     const provider = new ControlledSessionProvider({
         childCount: 3,
         parentTurns: [
-            "````WORK (session://first)\nfinish first\n\n````\n"
-            + "````WORK (session://second)\nfinish second\n\n````\n"
-            + "````WORK (session://third)\nfinish third\n\n````\n"
-            + "````WAIT\nwaiting for all three\n````",
-            "````WAIT\ntwo landed; still waiting\n````",
-            "````DONE\nall three landed\n````",
+            "await plurnk.work({\"target\":\"session://first\",\"prompt\":\"finish first\\n\"});"
+            + "await plurnk.work({\"target\":\"session://second\",\"prompt\":\"finish second\\n\"});"
+            + "await plurnk.work({\"target\":\"session://third\",\"prompt\":\"finish third\\n\"});"
+            + "await plurnk.wait({\"text\":\"waiting for all three\"});",
+            "await plurnk.wait({\"text\":\"two landed; still waiting\"});",
+            "await plurnk.done({\"text\":\"all three landed\"});",
         ],
     });
     const windowOpened = Promise.withResolvers<void>();
@@ -528,8 +526,8 @@ test("{§schedule-residency} restart arms the coordinator's complete definitions
 test("{§schedule-delivery}: an occurrence after conclusion starts a successor loop", { timeout: 30_000 }, async () => {
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 65536, responses: [
-        "````DONE\nDone for now; the reminder will start its own loop.\n````",
-        "````DONE\nReceived scheduled-proof.\n````",
+        "await plurnk.done({\"text\":\"Done for now; the reminder will start its own loop.\"});",
+        "await plurnk.done({\"text\":\"Received scheduled-proof.\"});",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     let now = INITIAL;
     let serial = 0;
@@ -574,8 +572,8 @@ test("{§schedule-delivery}: an occurrence after conclusion starts a successor l
 test("{§schedule-delivery} {§session-wait-timing}: an occurrence wakes a genuinely parked loop and arrives there exactly once", { timeout: 30_000 }, async () => {
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 65536, responses: [
-        { assistant: { content: "```WAIT [600]\nWaiting for the child.\n```", reasoning: null } },
-        { assistant: { content: "```NOTE\nReceived the scheduled message.\n```\n\n```WAIT [600]\nThe child is still running.\n```", reasoning: null } },
+        { assistant: { content: "await plurnk.wait({\"seconds\":600,\"text\":\"Waiting for the child.\"});", reasoning: null } },
+        { assistant: { content: "await plurnk.note({\"text\":\"Received the scheduled message.\"});\n\nawait plurnk.wait({\"seconds\":600,\"text\":\"The child is still running.\"});", reasoning: null } },
     ] });
     let now = INITIAL;
     let serial = 0;
@@ -653,11 +651,11 @@ test("{§session-loop-lifecycle} a child session concluding wakes a parent parke
     // and grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the wake topology, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Parent turn 1: spawn a child session, then hibernate awaiting it.
-        makeMockResponse("````WORK (session://session)\ncompute the thing and finish\n````\n\n````WAIT\nspawned session; waiting on it\n````", 10),
+        makeMockResponse("await plurnk.work({\"target\":\"session://session\",\"prompt\":\"compute the thing and finish\"});\n\nawait plurnk.wait({\"text\":\"spawned session; waiting on it\"});", 10),
         // Child turn 1: do its part and conclude → this is the wake edge for the parent.
-        makeMockResponse("````DONE\nsession done\n````", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"session done\"});", 10),
         // Parent turn 2 (only reached if the child's conclusion woke it): conclude.
-        makeMockResponse("````DONE\nsession finished; all done\n````", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"session finished; all done\"});", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -685,9 +683,9 @@ test("{§session-loop-lifecycle} a child cancelling itself (499) also wakes the 
     // 8192 edge; execs-common 0.2.21's second sh teaching line consumed the last margin (the same
     // budget-edge class as the grammar 0.76.4 bumps above). Headroom for the wake, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````WORK (session://doomed)\ntry the risky thing\n````\n\n````WAIT\nwaiting on doomed\n````", 10),
-        makeMockResponse("````SEND\ndoomed gave up\n````\n````KILL (session://doomed)\n````", 10),
-        makeMockResponse("````DONE\ndoomed is done (failed); concluding\n````", 10),
+        makeMockResponse("await plurnk.work({\"target\":\"session://doomed\",\"prompt\":\"try the risky thing\"});\n\nawait plurnk.wait({\"text\":\"waiting on doomed\"});", 10),
+        makeMockResponse("await plurnk.send({\"text\":\"doomed gave up\"});\n\nawait plurnk.kill({\"path\":\"session://doomed\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"doomed is done (failed); concluding\"});", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -703,11 +701,11 @@ test("{§session-causal-admission}: one completed child task wakes its parent wh
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("````WAIT\nFirst task waits.\n````"),
-        makeMockResponse("````WAIT\nSecond task waits.\n````"),
-        makeMockResponse("````WAIT\nParent awaits results.\n````"),
-        makeMockResponse("````DONE\nFirst task result: 42.\n````\n\n````DONE\nFirst task result: 42.\n````"),
-        makeMockResponse("````WAIT\nFirst result observed; second task remains.\n````"),
+        makeMockResponse("await plurnk.wait({\"text\":\"First task waits.\"});"),
+        makeMockResponse("await plurnk.wait({\"text\":\"Second task waits.\"});"),
+        makeMockResponse("await plurnk.wait({\"text\":\"Parent awaits results.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"First task result: 42.\"});\n\nawait plurnk.done({\"text\":\"First task result: 42.\"});"),
+        makeMockResponse("await plurnk.wait({\"text\":\"First result observed; second task remains.\"});"),
     ] });
     try {
         await withDaemon(provider, async (db, daemon) => {
@@ -758,9 +756,9 @@ test("{§session-causal-admission}: one completed child task wakes its parent wh
 
 test("{§session-causal-admission}: cancelling a parked child notifies its waiting parent without a live child drain", async () => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("````WAIT\nChild waits.\n````"),
-        makeMockResponse("````WAIT\nParent awaits child.\n````"),
-        makeMockResponse("````DONE\nChild cancellation observed.\n````"),
+        makeMockResponse("await plurnk.wait({\"text\":\"Child waits.\"});"),
+        makeMockResponse("await plurnk.wait({\"text\":\"Parent awaits child.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"Child cancellation observed.\"});"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-parked-child" });
@@ -787,10 +785,10 @@ test("{§session-causal-admission}: cancelling a parked child notifies its waiti
 test("{§session-loop-lifecycle} an empty failed child stream is observed by the child before its terminal result reaches the parent", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````WORK (session://stream-child)\nrun the empty failing stream and report its outcome\n````\n\n````WAIT\nwaiting on stream-child\n````", 10),
-        makeMockResponse("````sh (emptyfail)\ngo\n````\n\n````WAIT\nwaiting for emptyfail\n````", 10),
-        makeMockResponse("````SEND\nemptyfail failed with no output\n````\n````KILL (session://stream-child)\n````", 10),
-        makeMockResponse("````DONE\nthe child reported the empty stream failure\n````", 10),
+        makeMockResponse("await plurnk.work({\"target\":\"session://stream-child\",\"prompt\":\"run the empty failing stream and report its outcome\"});\n\nawait plurnk.wait({\"text\":\"waiting on stream-child\"});", 10),
+        makeMockResponse("await plurnk.sh({\"cwd\":\"emptyfail\",\"command\":\"go\"});\n\nawait plurnk.wait({\"text\":\"waiting for emptyfail\"});", 10),
+        makeMockResponse("await plurnk.send({\"text\":\"emptyfail failed with no output\"});\n\nawait plurnk.kill({\"path\":\"session://stream-child\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"the child reported the empty stream failure\"});", 10),
     ] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         await daemon.registerRuntime({
@@ -867,8 +865,8 @@ test("{§session-causal-admission}: abandonment survives child activation finish
     });
     // Cancellation reaps the subtree even before the child's activation finishes.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````WORK (session://child)\nkeep working until cancelled\n````\n\n````SEND\nabandon this scope\n````\n````KILL (session://root)\n````", 10),
-        makeMockResponse("````NOTE\nstill working\n````", 10),
+        makeMockResponse("await plurnk.work({\"target\":\"session://child\",\"prompt\":\"keep working until cancelled\"});\n\nawait plurnk.send({\"text\":\"abandon this scope\"});\n\nawait plurnk.kill({\"path\":\"session://root\"});", 10),
+        makeMockResponse("await plurnk.note({\"text\":\"still working\"});", 10),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -900,11 +898,11 @@ test("{§session-loop-lifecycle} wake propagates UP a grandchild chain (parent�
     // 16384: a 2-deep chain piles grandchild→child→parent results into the parent's final resume, cresting at the
     // 8192 edge; grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the wake recursion, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````WORK (session://child)\ndo subwork\n````\n\n````WAIT\nawaiting child\n````", 10),       // parent t1
-        makeMockResponse("````WORK (session://grandchild)\ndo leaf work\n````\n\n````WAIT\nawaiting grandchild\n````", 10), // child t1
-        makeMockResponse("````DONE\nleaf done\n````", 10),                                                   // grandchild
-        makeMockResponse("````DONE\nchild done\n````", 10),                                                  // child t2 (woken)
-        makeMockResponse("````DONE\nall done\n````", 10),                                                    // parent t2 (woken)
+        makeMockResponse("await plurnk.work({\"target\":\"session://child\",\"prompt\":\"do subwork\"});\n\nawait plurnk.wait({\"text\":\"awaiting child\"});", 10),       // parent t1
+        makeMockResponse("await plurnk.work({\"target\":\"session://grandchild\",\"prompt\":\"do leaf work\"});\n\nawait plurnk.wait({\"text\":\"awaiting grandchild\"});", 10), // child t1
+        makeMockResponse("await plurnk.done({\"text\":\"leaf done\"});", 10),                                                   // grandchild
+        makeMockResponse("await plurnk.done({\"text\":\"child done\"});", 10),                                                  // child t2 (woken)
+        makeMockResponse("await plurnk.done({\"text\":\"all done\"});", 10),                                                    // parent t2 (woken)
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -921,11 +919,11 @@ test("{§session-loop-lifecycle} a parent wakes across SEQUENTIAL children (mult
     // 16384: the parent's woken turn carries the whole child history; generous headroom over the
     // static packet so the wake budget edge is the subtree, not the tool teaching.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````WORK (session://w1)\nfirst job\n````\n\n````WAIT\nawaiting w1\n````", 10), // parent t1
-        makeMockResponse("````DONE\nw1 done\n````", 10),                                       // w1
-        makeMockResponse("````WORK (session://w2)\nsecond job\n````\n\n````WAIT\nawaiting w2\n````", 10),// parent t2 (woken by w1)
-        makeMockResponse("````DONE\nw2 done\n````", 10),                                       // w2
-        makeMockResponse("````DONE\nboth done\n````", 10),                                     // parent t3 (woken by w2)
+        makeMockResponse("await plurnk.work({\"target\":\"session://w1\",\"prompt\":\"first job\"});\n\nawait plurnk.wait({\"text\":\"awaiting w1\"});", 10), // parent t1
+        makeMockResponse("await plurnk.done({\"text\":\"w1 done\"});", 10),                                       // w1
+        makeMockResponse("await plurnk.work({\"target\":\"session://w2\",\"prompt\":\"second job\"});\n\nawait plurnk.wait({\"text\":\"awaiting w2\"});", 10),// parent t2 (woken by w1)
+        makeMockResponse("await plurnk.done({\"text\":\"w2 done\"});", 10),                                       // w2
+        makeMockResponse("await plurnk.done({\"text\":\"both done\"});", 10),                                     // parent t3 (woken by w2)
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -953,11 +951,11 @@ test("{§session-causal-admission} an irc (SEND session://name) wakes a CONCLUDE
     // message as its prompt (the same wake `loop.inject` proves for the operator voice), never a
     // resume-in-place of a slept loop — there is no slept loop to resume.
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("````DONE\nstanding by for the entry code\n````", 10), // loop 1 — idle actor concludes
+        makeMockResponse("await plurnk.done({\"text\":\"standing by for the entry code\"});", 10), // loop 1 — idle actor concludes
     ] });
     const directRoute: ProviderSpec = { provider: "mocktest", model: `irc-${crypto.randomUUID()}` };
     const selected = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("````DONE\nreceived the entry code and confirmed\n````", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"received the entry code and confirmed\"});", 10),
     ] });
     ProviderInstantiate.registerInstance(selected, directRoute);
     await withDaemon(mock, async (db, daemon, addr) => {
@@ -998,8 +996,8 @@ test("{§session-causal-admission} an irc (SEND session://name) wakes a CONCLUDE
 test("{§session-loop-lifecycle} an empty wait continues through the real loop until the assignment is answered", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("````WAIT\nnothing running; done for now\n````", 10),
-        makeMockResponse("````DONE\nNo work remains.\n````", 10),
+        makeMockResponse("await plurnk.wait({\"text\":\"nothing running; done for now\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"No work remains.\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1021,14 +1019,14 @@ test("{§session-ownership} server auto-approval settles both WORK and FORK chil
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Parent turn 1: spawn a session AND fork self, then park awaiting them.
-        makeMockResponse("````WORK (session://session)\nedit something and finish\n````\n\n````FORK (session://mirror)\nedit something and finish\n````\n\n````WAIT\ndelegated; waiting\n````", 10),
+        makeMockResponse("await plurnk.work({\"target\":\"session://session\",\"prompt\":\"edit something and finish\"});\n\nawait plurnk.fork({\"target\":\"session://mirror\",\"prompt\":\"edit something and finish\"});\n\nawait plurnk.wait({\"text\":\"delegated; waiting\"});", 10),
         // Session turn 1: a SIDE-EFFECTING op (proposes unless auto), then conclude.
-        makeMockResponse("````EDIT (workspace:///from-session)\npayload\n````\n\n````SEND\nsession done\n````", 10),
+        makeMockResponse("await plurnk.edit({\"path\":\"workspace:///from-session\",\"content\":\"payload\"});\n\nawait plurnk.send({\"text\":\"session done\"});", 10),
         // Fork turn 1: same shape.
-        makeMockResponse("````EDIT (workspace:///from-fork)\npayload\n````\n\n````SEND\nfork done\n````", 10),
+        makeMockResponse("await plurnk.edit({\"path\":\"workspace:///from-fork\",\"content\":\"payload\"});\n\nawait plurnk.send({\"text\":\"fork done\"});", 10),
         // {§loop-completion}: the children observe their EDIT receipts
         // before completing. A parent claim remains gated on its child results.
-        ...Array.from({ length: 4 }, () => makeMockResponse("````DONE\nDelegated edits observed.\n````", 10)),
+        ...Array.from({ length: 4 }, () => makeMockResponse("await plurnk.done({\"text\":\"Delegated edits observed.\"});", 10)),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1055,11 +1053,11 @@ test("{§loop-completion} a wake re-queue (100) mid-drain is re-claimed and cont
     // REAL child-wake: the parent blocks on a spawned child, the child's conclusion re-queues the parent
     // (202→100) and the drain re-claims it (100→102). Exactly one terminal must fire for the parent, 200.
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("````WORK (session://helper)\ndo a quick thing\n````\n\n````WAIT\nawaiting helper\n````", 10), // parent — blocks on its child
-        makeMockResponse("````DONE\nhelper done\n````", 10),                    // helper — concludes, waking the parent
-        makeMockResponse("````DONE\nhelper delivered; concluding\n````", 10),   // parent — re-queued by the wake, concludes
-        makeMockResponse("````DONE\ndone\n````", 10),                           // buffer
-        makeMockResponse("````DONE\ndone\n````", 10),                           // buffer
+        makeMockResponse("await plurnk.work({\"target\":\"session://helper\",\"prompt\":\"do a quick thing\"});\n\nawait plurnk.wait({\"text\":\"awaiting helper\"});", 10), // parent — blocks on its child
+        makeMockResponse("await plurnk.done({\"text\":\"helper done\"});", 10),                    // helper — concludes, waking the parent
+        makeMockResponse("await plurnk.done({\"text\":\"helper delivered; concluding\"});", 10),   // parent — re-queued by the wake, concludes
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),                           // buffer
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),                           // buffer
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1085,10 +1083,10 @@ test("{§log-history-projection} log-targeted KILL is recorded in the DB, and a 
     // Successful meta-operations are forensic but render-free; failures remain
     // visible error signals. {§log-history-projection}
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````EDIT (workspace:///note)\nsome content worth folding\n````\n\n````NOTE\nwrote\n````", 10),
+        makeMockResponse("await plurnk.edit({\"path\":\"workspace:///note\",\"content\":\"some content worth folding\"});\n\nawait plurnk.note({\"text\":\"wrote\"});", 10),
         // The phantom KILL fails (404); the next turn observes the failure.
-        makeMockResponse("````KILL (log:///1/2/1) <1,-1>````\n````KILL (log:///9/9/9) <1,-1>````\n````NOTE\ncurated\n````", 10),
-        makeMockResponse("````DONE\nthe phantom KILL failed; curation done\n````", 10),
+        makeMockResponse("await plurnk.kill({\"path\":\"log:///1/2/1\",\"range\":\"1,-1\"});\n\nawait plurnk.kill({\"path\":\"log:///9/9/9\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"curated\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"the phantom KILL failed; curation done\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1116,7 +1114,7 @@ async function raceScenario(db: Awaited<ReturnType<typeof openMigrated>>) {
     const parentLoop = await insertLoop(db, parent, 1, "orchestrate");
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     await engine.runTurn({
-        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "```NOTE\nCollect the child result.\n```", reasoning: null } }] }),
+        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.note({\"text\":\"Collect the child result.\"});", reasoning: null } }] }),
         workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
     });
     const { id: parentTurn } = await Turn.open(db, { loopId: parentLoop, producer: "model", kind: "inference" });

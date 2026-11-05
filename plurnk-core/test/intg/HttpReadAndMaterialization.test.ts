@@ -101,8 +101,8 @@ for (const pretty of [false, true]) {
                 });
             });
             let sequence = 0;
-            const run = async (header: string, body: string | null = null) => {
-                const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) });
+            const run = async (source: string) => {
+                const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
                 assert.equal(parsed.items.length, 1);
                 const item = parsed.items[0];
                 assert.ok(item?.kind === "statement");
@@ -110,8 +110,8 @@ for (const pretty of [false, true]) {
                 return readContent(db, ids, sequence);
             };
             const url = `https://${HOST}/dist/index.json`;
-            if (prepared) assert.equal((await run(`READ (${url})`)).status, 200);
-            const found = await run(`FIND (${url}) $[?(@.lts != false)].version`);
+            if (prepared) assert.equal((await run(`await plurnk.read(${JSON.stringify({ path: url })});`)).status, 200);
+            const found = await run(`await plurnk.find(${JSON.stringify({ path: url, pattern: "$[?(@.lts != false)].version" })});`);
             assert.equal(found.status, 200);
             assert.ok(found.content);
             const locations = JSON.parse(found.content) as Array<{ channel?: string; region: string }>;
@@ -120,7 +120,7 @@ for (const pretty of [false, true]) {
             for (const { channel, region } of locations) {
                 assert.equal(channel, undefined, "{§channel-selection}: the default channel goes unnamed");
                 assert.match(region, /^<\d+,\d+,\d+,\d+>$/u, "{§find-result-projection}: the location is itself the READ scope");
-                const value = await run(`READ (${url}) ${region}`);
+                const value = await run(`await plurnk.read(${JSON.stringify({ path: url, range: region.slice(1, -1) })});`);
                 assert.equal(value.status, 200);
                 assert.ok(value.content);
                 values.push(value.content);
@@ -147,11 +147,11 @@ test("{§channel-selection} #283: a scoped READ of a materialized https page's s
             statement, ...ids, sequence: ++sequence, origin: "model",
         })) as { status: number; rowsWritten?: number };
 
-        const acquired = await dispatch(parseRead(`\`\`\`\`READ (https://${HOST}/scoped)\`\`\`\``));
+        const acquired = await dispatch(parseRead(`await plurnk.read({"path":"https://${HOST}/scoped"});`));
         assert.equal(acquired.status, 200, "materialization read succeeds");
 
         // {§channel-selection} — a page's server source is its default channel.
-        const scoped = await dispatch(parseRead(`\`\`\`\`READ (https://${HOST}/scoped) <3,16>\`\`\`\``));
+        const scoped = await dispatch(parseRead(`await plurnk.read({"path":"https://${HOST}/scoped","range":"3,16"});`));
         assert.equal(scoped.status, 200, "scoped source read succeeds");
         const result = await readContent(db, ids, sequence);
         assert.equal(
@@ -159,7 +159,7 @@ test("{§channel-selection} #283: a scoped READ of a materialized https page's s
             windowOf(page, 3, 16),
             "the source read returns exactly lines 3..16 — not the complete page",
         );
-        const projection = await dispatch(parseRead(`\`\`\`\`READ (https://${HOST}/scoped#readable) <1,-1>\`\`\`\``));
+        const projection = await dispatch(parseRead(`await plurnk.read({"path":"https://${HOST}/scoped#readable","range":"1,-1"});`));
         assert.equal(projection.status, 200, "the readable projection is one fragment away");
     } finally {
         globalThis.fetch = originalFetch;
@@ -183,10 +183,10 @@ test("{§scheme-surface} #283: a scoped READ of a materialized https entry's bod
             statement, ...ids, sequence: ++sequence, origin: "model",
         })) as { status: number; rowsWritten?: number };
 
-        const acquired = await dispatch(parseRead(`\`\`\`\`READ (https://${HOST}/scoped-body)\`\`\`\``));
+        const acquired = await dispatch(parseRead(`await plurnk.read({"path":"https://${HOST}/scoped-body"});`));
         assert.equal(acquired.status, 200, "materialization read succeeds");
 
-        const scoped = await dispatch(parseRead(`\`\`\`\`READ (https://${HOST}/scoped-body) <3,16>\`\`\`\``));
+        const scoped = await dispatch(parseRead(`await plurnk.read({"path":"https://${HOST}/scoped-body","range":"3,16"});`));
         assert.equal(scoped.status, 200, "scoped read succeeds");
         const result = await readContent(db, ids, sequence);
         assert.equal(
@@ -220,7 +220,7 @@ test("{§scheme-surface} #283: a scoped READ of a project file still returns exa
             ...ids, sequence: ++sequence, origin: "model",
         }) as { status: number };
         assert.equal(seeded.status, 201, "seed edit succeeds");
-        await dispatch(parseRead(`\`\`\`\`READ (workspace:///scope.md) <3,16>\`\`\`\``));
+        await dispatch(parseRead("await plurnk.read({\"path\":\"workspace:///scope.md\",\"range\":\"3,16\"});"));
         const result = await readContent(db, ids, sequence);
         assert.equal(
             result.content,
@@ -256,7 +256,7 @@ test("{§channel-selection}: a matcher FIND location names its channel only off 
         let sequence = 0;
         const parseFind = (dsl: string): ReadStatement => {
             const found = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
-                (item) => item.kind === "statement" && item.statement.op === (dsl.startsWith("````READ") ? "READ" : "FIND"),
+                (item) => item.kind === "statement" && item.statement.op === (dsl.startsWith("await plurnk.read(") ? "READ" : "FIND"),
             );
             if (found === undefined) throw new Error(`no statement parsed from: ${dsl}`);
             return (found as { kind: "statement"; statement: ReadStatement }).statement;
@@ -265,10 +265,10 @@ test("{§channel-selection}: a matcher FIND location names its channel only off 
             statement: parseFind(dsl), ...ids, sequence: ++sequence, origin: "model",
         })) as unknown as { status: number };
 
-        const acquired = await dispatch("````READ (https://93.184.216.34/channel-facts)````");
+        const acquired = await dispatch("await plurnk.read({\"path\":\"https://93.184.216.34/channel-facts\"});");
         assert.equal(acquired.status, 200, "materialization read succeeds");
 
-        await dispatch("````FIND (https://93.184.216.34/channel-facts) /v[0-9.]+/i````");
+        await dispatch("await plurnk.find({\"path\":\"https://93.184.216.34/channel-facts\",\"pattern\":\"/v[0-9.]+/i\"});");
         const bodyFind = await readContent(db, ids, sequence);
         const bodyLocations = JSON.parse(bodyFind.content ?? "[]") as Array<{ channel?: string }>;
         assert.ok(bodyLocations.length > 0, "the default-channel FIND reports match locations");
@@ -276,7 +276,7 @@ test("{§channel-selection}: a matcher FIND location names its channel only off 
             assert.equal(location.channel, undefined, "{§channel-selection}: a default-channel match names no channel");
         }
 
-        await dispatch("````FIND (https://93.184.216.34/channel-facts#readable) /v[0-9.]+/i````");
+        await dispatch("await plurnk.find({\"path\":\"https://93.184.216.34/channel-facts#readable\",\"pattern\":\"/v[0-9.]+/i\"});");
         const readableFind = await readContent(db, ids, sequence);
         const readableLocations = JSON.parse(readableFind.content ?? "[]") as Array<{ channel?: string }>;
         assert.ok(readableLocations.length > 0, "the #readable-channel FIND reports match locations");
@@ -344,16 +344,10 @@ const statement = (
 };
 
 const parsedRead = (target: string, metadata: readonly string[] = []): ReadStatement => {
-    const modifiers = metadata.map((block) => ` [${block}]`).join("");
-    const parsed = PlurnkParser.parse(`
-\`\`\`\`READ (${target})${modifiers}\`\`\`\`
-\`\`\`\`NOTE
-acquisition pending
-\`\`\`\``, { executors: fixtureExecutors(`
-\`\`\`\`READ (${target})${modifiers}\`\`\`\`
-\`\`\`\`NOTE
-acquisition pending
-\`\`\`\``) });
+    const args: Record<string, unknown> = { path: target };
+    if (metadata.length > 0) args.metadata = metadata;
+    const code = `await plurnk.read(${JSON.stringify(args)});\n\nawait plurnk.note({"text":"acquisition pending"});`;
+    const parsed = PlurnkParser.parse(code, { executors: fixtureExecutors(code) });
     const item = parsed.items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
     );
@@ -510,7 +504,7 @@ for (const mode of ["complete", "oversize", "interrupted"] as const) {
             start(controller) { controller.enqueue(pdf.subarray(0, 4)); },
             pull(controller) { controller.error(new Error("connection interrupted")); },
         }) : pdf, { headers: { "content-type": "application/pdf", "x-response-id": "mutation" } }));
-        const send = PlurnkParser.parseStatements("````SEND (https://93.184.216.34/paper.pdf)\ncreate\n````").items[0];
+        const send = PlurnkParser.parseStatements("await plurnk.send({\"target\":\"https://93.184.216.34/paper.pdf\",\"text\":\"create\"});").items[0];
         assert.ok(send?.kind === "statement");
         const http = new Http();
         const result = await settleOutbound(http, await http.send(send.statement as SendStatement, handlerCtx), handlerCtx,

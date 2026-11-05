@@ -53,11 +53,11 @@ test("{§capability-ctx} {§edit-result-receipt-projection} {§op-methods-op-dis
         const mock = new Mock({
             contextWindow: 32768,
             responses: [makeMockResponse(
-                "````EDIT (reviewed.md) <2>\nTWO\n````\n"
-                + "````EDIT (reviewed.md) <4>\nFOUR\n````\n"
-                + "````SEND\ndone\n````",
+                "await plurnk.edit({\"path\":\"reviewed.md\",\"range\":\"2\",\"content\":\"TWO\"});"
+                + "await plurnk.edit({\"path\":\"reviewed.md\",\"range\":\"4\",\"content\":\"FOUR\"});"
+                + "await plurnk.send({\"text\":\"done\"});",
                 20,
-            ), makeMockResponse("````DONE\ndone\n````", 10)], // {§loop-completion} — the edit receipts force the second turn
+            ), makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10)], // {§loop-completion} — the edit receipts force the second turn
         });
         const reviewed = "reviewer\nreplacement\n";
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -349,15 +349,11 @@ for (const decision of ["accept", "reject", "replace", "drift"] as const) test(`
         assert.equal(read.status, 200);
         const anchors = read.lineAnchors as string[];
         assert.ok(anchors.length >= 3);
-        const source = `\`\`\`\`EDIT (${target}) <2>
-TWO
-\`\`\`\`
-\`\`\`\`EDIT (${target}) <${anchors[2]}>
-THREE
-\`\`\`\`
-\`\`\`\`NOTE
-Continue the task.
-\`\`\`\``;
+        const source = `await plurnk.edit({"path":"${target}","range":"2","content":"TWO"});
+
+await plurnk.edit({"path":"${target}","range":"${anchors[2]}","content":"THREE"});
+
+await plurnk.note({"text":"Continue the task."});`;
         const first = deferred<number>();
         const second = deferred<number>();
         let firstId = 0;
@@ -790,18 +786,14 @@ test("{§edit} a stale hash anchor rejects an EDIT before proposal — no silent
 
         const staleAnchor = LineAnchors.token("doc.md", 1, "V1 original\n");
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````READ (doc.md)````\n````NOTE\nReview the file.\n````", 50),
-            makeMockResponse("````DONE\nRead complete.\n````", 50),
-            makeMockResponse(`\`\`\`\`EDIT (doc.md) <${staleAnchor}>
-V3 model clobber
-\`\`\`\`
+            makeMockResponse("await plurnk.read({\"path\":\"doc.md\"});\n\nawait plurnk.note({\"text\":\"Review the file.\"});", 50),
+            makeMockResponse("await plurnk.done({\"text\":\"Read complete.\"});", 50),
+            makeMockResponse(`await plurnk.edit({"path":"doc.md","range":"${staleAnchor}","content":"V3 model clobber"});
 
-\`\`\`\`SEND
-done
-\`\`\`\`
-\`\`\`\`SEND
-\`\`\`\``, 50),
-            makeMockResponse("````DONE\nStale edit rejected.\n````", 50),
+await plurnk.send({"text":"done"});
+
+await plurnk.send({});`, 50),
+            makeMockResponse("await plurnk.done({\"text\":\"Stale edit rejected.\"});", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -1080,7 +1072,7 @@ test("{§edit} Floor-scope capstone: full DSL surface exercised end-to-end", asy
         engine.dispatch({ statement, ...env, sequence, origin: "client" });
 
     try {
-        const [editQuestion] = parse("````EDIT (workspace:///france/capital)\nwhat is the capital of france?\n````");
+        const [editQuestion] = parse("await plurnk.edit({\"path\":\"workspace:///france/capital\",\"content\":\"what is the capital of france?\"});");
         const r1 = await dispatch(editQuestion, 1);
         assert.equal(r1.status, 201);
         const questionEntryId = r1.entryId as number;
@@ -1091,14 +1083,14 @@ test("{§edit} Floor-scope capstone: full DSL surface exercised end-to-end", asy
 
         // {§edit} — the entry already exists (created above), so
         // the re-edit needs a marker; <1,-1> states the deliberate full rewrite.
-        const [editQuestionAgain] = parse("````EDIT (workspace:///france/capital) <1,-1>\nrephrased question\n````");
+        const [editQuestionAgain] = parse("await plurnk.edit({\"path\":\"workspace:///france/capital\",\"range\":\"1,-1\",\"content\":\"rephrased question\"});");
         const r2 = await dispatch(editQuestionAgain, 2);
         assert.equal(r2.status, 200);
         assert.equal(r2.entryId, questionEntryId);
         const body2 = (await db.test_get_channel.get<{ content: string }>({ entry_id: questionEntryId, name: "body" }))?.content;
         assert.equal(body2, "rephrased question");
 
-        const [copyOp] = parse("````COPY (workspace:///france/capital) (fixture:///france/capital)````");
+        const [copyOp] = parse("await plurnk.copy({\"from\":\"workspace:///france/capital\",\"to\":\"fixture:///france/capital\"});");
         const r3 = await dispatch(copyOp, 3);
         assert.equal(r3.status, 201);
 
@@ -1106,24 +1098,24 @@ test("{§edit} Floor-scope capstone: full DSL surface exercised end-to-end", asy
         const skillEntryId = skillEntry!.id;
 
         // The COPY above already created this entry, so the edit needs a marker too.
-        const [editSkill] = parse("````EDIT (fixture:///france/capital) <1,-1>\nParis\n````");
+        const [editSkill] = parse("await plurnk.edit({\"path\":\"fixture:///france/capital\",\"range\":\"1,-1\",\"content\":\"Paris\"});");
         const r4 = await dispatch(editSkill, 4);
         assert.equal(r4.status, 200);
         const skillBody = (await db.test_get_channel.get<{ content: string }>({ entry_id: skillEntryId, name: "body" }))?.content;
         assert.equal(skillBody, "Paris");
 
-        const [classifiedFind] = parse("````FIND (fixture:///)````");
+        const [classifiedFind] = parse("await plurnk.find({\"path\":\"fixture:///\"});");
         const r6 = await dispatch(classifiedFind, 5);
         assert.equal(r6.status, 200);
         assert.deepEqual((r6.results as Array<[{ path: string }]>).map(([resource]) => resource.path), ["fixture:///france/capital"]);
 
         // glob body matches CONTENT (the entry's body is "Paris"), not the pathname.
-        const [findByGlob] = parse("````FIND (fixture:///) Paris*````");
+        const [findByGlob] = parse("await plurnk.find({\"path\":\"fixture:///\",\"pattern\":\"Paris*\"});");
         const r7 = await dispatch(findByGlob, 6);
         assert.equal(r7.status, 200);
         assert.deepEqual((r7.results as Array<[{ path: string }]>).map(([resource]) => resource.path), ["fixture:///france/capital"]);
 
-        const [moveOp] = parse("````MOVE (workspace:///france/capital) (workspace:///archive/france/capital)````");
+        const [moveOp] = parse("await plurnk.move({\"from\":\"workspace:///france/capital\",\"to\":\"workspace:///archive/france/capital\"});");
         const r10 = await dispatch(moveOp, 9);
         assert.equal(r10.status, 201);
         const oldGone = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "workspace", pathname: "/france/capital" });
@@ -1132,13 +1124,13 @@ test("{§edit} Floor-scope capstone: full DSL surface exercised end-to-end", asy
         const archiveBody = (await db.test_get_channel.get<{ content: string }>({ entry_id: archive?.id, name: "body" }))?.content;
         assert.equal(archiveBody, "rephrased question"); // the commons original — Paris lives on the skill copy
 
-        const [deleteOp] = parse("````KILL (fixture:///france/capital)````");
+        const [deleteOp] = parse("await plurnk.kill({\"path\":\"fixture:///france/capital\"});");
         const r11 = await dispatch(deleteOp, 10);
         assert.equal(r11.status, 200);
         const skillGone = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "fixture", pathname: "/france/capital" });
         assert.equal(skillGone, undefined);
 
-        const [send] = parse("````SEND\nanswer delivered\n````");
+        const [send] = parse("await plurnk.send({\"text\":\"answer delivered\"});");
         const r12 = await engine.executeAdmittedTurn({ ...env, statements: [send], source: null, emission: null, fromSequence: 11, origin: "client" });
         assert.equal(r12.status, 200);
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: env.loopId }))?.status, 102, "delivering a message does not complete work");
@@ -1199,17 +1191,17 @@ for (const specimen of cases) {
                 const source = `workspace://${pathname}`;
                 const destination = "workspace:///selected.txt";
                 const transfer = operation === "COPY" || operation === "MOVE";
-                const findParsed = PlurnkParser.parseStatements(`\`\`\`FIND (${source}) ${specimen.pattern}\n\`\`\``);
+                const findParsed = PlurnkParser.parseStatements(`await plurnk.find(${JSON.stringify({ path: source, pattern: specimen.pattern })});`);
                 const findItem = findParsed.items[0];
                 assert.equal(findItem?.kind, "statement");
                 if (findItem?.kind !== "statement" || findItem.statement.op !== "FIND") throw new Error("Expected parsed FIND");
                 const matcher = findItem.statement.matcher;
-                const header = transfer
-                    ? `${operation} (${source}) (${destination})`
+                const code = transfer
+                    ? `await plurnk.${operation.toLowerCase()}(${JSON.stringify({ from: source, to: destination })});`
                     : operation === "EDIT"
-                        ? `${operation} (${source})`
-                        : `${operation} (${source}) ${specimen.pattern}`;
-                const parsed = PlurnkParser.parseStatements(`\`\`\`${header}\n${operation === "EDIT" ? "replacement\n" : ""}\`\`\``);
+                        ? `await plurnk.edit(${JSON.stringify({ path: source, content: "replacement" })});`
+                        : `await plurnk.${operation.toLowerCase()}(${JSON.stringify({ path: source, pattern: specimen.pattern })});`;
+                const parsed = PlurnkParser.parseStatements(code);
                 assert.equal(parsed.items.length, 1, JSON.stringify(parsed));
                 const [item] = parsed.items;
                 assert.equal(item?.kind, "statement", JSON.stringify(parsed));
@@ -1259,11 +1251,14 @@ for (const specimen of [
             const target = `workspace:///${specimen.path}`;
             await new Workspace().edit(editStmt(urlPath("workspace", `/${specimen.path}`), specimen.content), makeSchemeCtx({ db, ...env }));
             const transfer = operation === "COPY" || operation === "MOVE";
-            const findParsed = PlurnkParser.parseStatements(`\`\`\`FIND (${target}) ${specimen.pattern}\n\`\`\``);
+            const findParsed = PlurnkParser.parseStatements(`await plurnk.find(${JSON.stringify({ path: target, pattern: specimen.pattern })});`);
             const findItem = findParsed.items[0];
             if (findItem?.kind !== "statement" || findItem.statement.op !== "FIND") throw new Error(JSON.stringify(findParsed));
             const matcher = findItem.statement.matcher;
-            const parsed = PlurnkParser.parseStatements(`\`\`\`${operation} (${target})${transfer ? " (workspace:///destination.txt)" : ` ${specimen.pattern}`}\n${operation === "EDIT" ? "replacement\n" : ""}\`\`\``);
+            const code = transfer
+                ? `await plurnk.${operation.toLowerCase()}(${JSON.stringify({ from: target, to: "workspace:///destination.txt" })});`
+                : `await plurnk.${operation.toLowerCase()}(${JSON.stringify({ path: target, pattern: specimen.pattern, ...(operation === "EDIT" ? { content: "replacement" } : {}) })});`;
+            const parsed = PlurnkParser.parseStatements(code);
             assert.equal(parsed.items[0]?.kind, "statement");
             const item = parsed.items[0];
             if (item?.kind !== "statement") throw new Error(JSON.stringify(parsed));
@@ -1378,32 +1373,20 @@ const PROBES: Probe[] = [
 test("{§mimetype-query}: every pattern dialect answers the model from one seeded corpus", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const seed = [
-        `\`\`\`\`EDIT (workspace:///docs/guide.md)
-${GUIDE}
-\`\`\`\``,
-        `\`\`\`\`EDIT (workspace:///data/config.json)
-${CONFIG}
-\`\`\`\``,
-        `\`\`\`\`EDIT (workspace:///data/feed.xml)
-${FEED}
-\`\`\`\``,
-        `\`\`\`\`EDIT (workspace:///notes.txt)
-${NOTES}
-\`\`\`\``,
+        `await plurnk.edit(${JSON.stringify({ path: "workspace:///docs/guide.md", content: GUIDE })});`,
+        `await plurnk.edit(${JSON.stringify({ path: "workspace:///data/config.json", content: CONFIG })});`,
+        `await plurnk.edit(${JSON.stringify({ path: "workspace:///data/feed.xml", content: FEED })});`,
+        `await plurnk.edit(${JSON.stringify({ path: "workspace:///notes.txt", content: NOTES })});`,
     ].join("\n\n");
-    const finds = PROBES.map(({ target, pattern }) => `\`\`\`\`FIND (${target}) ${pattern}\`\`\`\``).join("\n\n");
+    const finds = PROBES.map(({ target, pattern }) => `await plurnk.find(${JSON.stringify({ path: target, pattern })});`).join("\n\n");
     const mock = new Mock({ contextWindow: 65536, responses: [
         makeMockResponse(`${seed}
 
-\`\`\`\`NOTE
-seeded
-\`\`\`\``, 10),
+await plurnk.note({"text":"seeded"});`, 10),
         makeMockResponse(`${finds}
 
-\`\`\`\`NOTE
-searched
-\`\`\`\``, 10),
-        makeMockResponse("````DONE\ndone\n````", 10),
+await plurnk.note({"text":"searched"});`, 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

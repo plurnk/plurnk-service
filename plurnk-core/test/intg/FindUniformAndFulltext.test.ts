@@ -66,9 +66,7 @@ const setup = async () => {
 // delimiter collisions: parse a minimal statement, then replace its typed AST body.
 const seedRaw = async (ctx: ReturnType<typeof makeSchemeCtx>, name: string, content: string): Promise<void> => {
     const k = new Workspace();
-    const stmt = parseOp<ResolvedEditStatement>(`\`\`\`\`EDIT (workspace:///${name})
-x
-\`\`\`\``, "EDIT");
+    const stmt = parseOp<ResolvedEditStatement>(`await plurnk.edit({"path":"workspace:///${name}","content":"x"});`, "EDIT");
     await k.edit({ ...stmt, body: content }, ctx);
 };
 
@@ -109,7 +107,7 @@ test("{§find-result-projection} FIND recognizes shell character-class paths as 
         await seedRaw(ctx, "a1.md", "one");
         await seedRaw(ctx, "a2.md", "two");
         await seedRaw(ctx, "nested/a3.md", "three");
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("````FIND (workspace:///a[12].md)````", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///a[12].md\"});", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -118,7 +116,7 @@ test("{§find-result-projection} exact glob-pattern FIND returns flat matched-li
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "log.md", "alpha target\nbeta\ngamma target\ndelta target");
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("````FIND (workspace:///log.md) *target*````", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///log.md\",\"pattern\":\"*target*\"});", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -129,7 +127,7 @@ test("{§find-result-projection} regex FIND returns matched resources", async ()
         await seedRaw(ctx, "a.md", "intro\nerror: one\ntail");
         await seedRaw(ctx, "b.md", "error: two\nmore");
         await seedRaw(ctx, "c.md", "clean");
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("````FIND (workspace:///**) /error: \\w+/````", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///**\",\"pattern\":\"/error: \\\\w+/\"});", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -138,7 +136,7 @@ test("{§find-result-projection} exact jsonpath FIND returns flat locators with 
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "team.json", '{\n  "users": [\n    { "name": "Alice" },\n    { "name": "Bob" },\n    { "name": "Carol" }\n  ]\n}');
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("````FIND (workspace:///team.json) $.users[*].name````", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///team.json\",\"pattern\":\"$.users[*].name\"});", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -147,7 +145,7 @@ test("{§find-result-projection} two structural matches on one source line remai
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "one.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}');
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("````FIND (workspace:///one.json) $.users[*].name````", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///one.json\",\"pattern\":\"$.users[*].name\"});", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -156,7 +154,7 @@ test("{§find-result-projection} a matcher FIND with zero matches returns 204", 
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "a.md", "nothing here");
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("````FIND (workspace:///**) *absent*````", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///**\",\"pattern\":\"*absent*\"});", "FIND"));
         assert.equal(result.status, 204);
     } finally { await db.close(); }
 });
@@ -167,7 +165,7 @@ test("{§find-result-projection} full-text FIND uses ranking to select resources
         await seedRaw(ctx, "db.md", "the database connection failed with a timeout error");
         await seedRaw(ctx, "cake.md", "preheat the oven and frost the birthday cake");
         await SearchIndex.maintain(makeSchemeCtx({ db, ...ids, mimetypes }));
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("````FIND (workspace:///**) ~database connection error````", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///**\",\"pattern\":\"~database connection error\"});", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -176,7 +174,7 @@ test("{§find-result-projection} exact xpath FIND returns flat locator evidence"
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "page.html", "<ul>\n  <li>one</li>\n  <li>two</li>\n</ul>");
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("````FIND (workspace:///page.html) //li````", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///page.html\",\"pattern\":\"//li\"});", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -187,7 +185,7 @@ test("{§find-result-projection} broad &graph FIND returns selected resource cha
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
         await seedRaw(ctx, "b.ts", "import { foo } from \"./a\";\nfoo();\nfoo();\n");
         await SearchIndex.maintain(makeSchemeCtx({ db, ...ids, mimetypes }));
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("````FIND (workspace:///**) &<foo````", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///**\",\"pattern\":\"&<foo\"});", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -199,10 +197,10 @@ test("{§find-result-projection} broad &graph FIND reports each resource's locat
         await seedRaw(ctx, "b.ts", "import { foo } from \"./a\";\nfoo();\nfoo();\n");
         // This low-level query owns explicit indexing, so prepare the catalog
         // (including accepted message sources) before settling its index.
-        const catalog = await new Workspace().find(parseOp<FindStatement>("````FIND (workspace:///**)````", "FIND"), ctx);
+        const catalog = await new Workspace().find(parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///**\"});", "FIND"), ctx);
         assert.equal(catalog.status, 200);
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, loopId, turnId, mimetypes }));
-        const r = await new Workspace().find(parseOp<FindStatement>("````FIND (workspace:///**) &<foo````", "FIND"), makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }));
+        const r = await new Workspace().find(parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///**\",\"pattern\":\"&<foo\"});", "FIND"), makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }));
         assert.equal(r.status, 200, JSON.stringify(r));
         assert.ok(r.results.length >= 1);
         const rows = resourceGroups(r).map(([item]) => item);
@@ -219,7 +217,7 @@ test("{§find-result-projection} FIND(bare entry) is the one entry, never a pref
     try {
         await seedRaw(ctx, "config.md", "the config");
         await seedRaw(ctx, "config.md.bak", "the backup");
-        const r = await new Workspace().find(parseOp<FindStatement>("````FIND (workspace:///config.md)````", "FIND"), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const r = await new Workspace().find(parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///config.md\"});", "FIND"), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(r.status, 200);
         assert.deepEqual(resourcePaths(r), ["workspace:///config.md"], "bare = exact: config.md.bak is NOT pulled in");
     } finally { await db.close(); }
@@ -231,7 +229,7 @@ test("{§find-result-projection} FIND(folder/) returns the folder's contents; a 
         await seedRaw(ctx, "docs/a.md", "alpha");
         await seedRaw(ctx, "docs/b.md", "beta");
         await seedRaw(ctx, "top.md", "top");
-        const r = await new Workspace().find(parseOp<FindStatement>("````FIND (workspace:///docs/)````", "FIND"), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const r = await new Workspace().find(parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///docs/\"});", "FIND"), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(r.status, 200);
         assert.deepEqual(resourcePaths(r).toSorted(), ["workspace:///docs/a.md", "workspace:///docs/b.md"], "folder/ = its contents, not top.md");
     } finally { await db.close(); }
@@ -243,7 +241,7 @@ test("{§find-result-projection} FIND(folder/) locates the folder's contents", a
         await seedRaw(ctx, "docs/a.md", "alpha body");
         await seedRaw(ctx, "docs/b.md", "beta body");
         await seedRaw(ctx, "top.md", "top body");
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("````FIND (workspace:///docs/)````", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///docs/\"});", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -254,7 +252,7 @@ test("{§find-result-projection} broad matcher FIND emits one item per resource 
     const { db, workspaceId, sessionId, ctx } = await setup();
     try {
         await seedRaw(ctx, "log.md", "alpha target\nbeta\ngamma target");
-        const r = await new Workspace().find(parseOp<FindStatement>("````FIND (workspace:///**) *target*````", "FIND"), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const r = await new Workspace().find(parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///**\",\"pattern\":\"*target*\"});", "FIND"), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 1);
         assert.equal(resourceGroups(r)[0]?.[0].path, "workspace:///log.md");
@@ -273,7 +271,7 @@ test("{§find-result-projection} broad matcher FIND promotes a resource's locato
         await seedRaw(ctx, "one.md", "alpha\ntarget\nbeta");
         await seedRaw(ctx, "two.md", "target\nand target again\n");
         const r = await new Workspace().find(
-            parseOp<FindStatement>("````FIND (workspace:///**) *target*````", "FIND"),
+            parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///**\",\"pattern\":\"*target*\"});", "FIND"),
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(r.status, 200);
@@ -293,7 +291,7 @@ test("{§op-shapes} a glob remains resource mode when it resolves to one matchin
         await seedRaw(ctx, "only.md", "first target\nsecond target");
         await seedRaw(ctx, "other.txt", "target");
         const r = await new Workspace().find(
-            parseOp<FindStatement>("````FIND (workspace:///*.md) *target*````", "FIND"),
+            parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///*.md\",\"pattern\":\"*target*\"});", "FIND"),
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: ctx.mimetypes }),
         );
         assert.deepEqual(resourceGroups(r).map(([{ path, matchLocationCount }]) => ({ path, matchLocationCount })), [{
@@ -310,7 +308,7 @@ test("{§packet} a markerless exact matcher FIND returns its first page of locat
         await seedRaw(ctx, "many.md", Array.from({ length: 20 }, (_, i) => `target ${i + 1}`).join("\n"));
         const session = new Workspace();
         const first = await session.find(
-            parseOp<FindStatement>("````FIND (workspace:///many.md) *target*````", "FIND"),
+            parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///many.md\",\"pattern\":\"*target*\"});", "FIND"),
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(first.results.length, 20);
@@ -322,7 +320,7 @@ test("{§packet} a markerless exact matcher FIND returns its first page of locat
         assert.deepEqual(first.range?.returned, [1, 20]);
 
         const all = await session.find(
-            parseOp<FindStatement>("````FIND (workspace:///many.md) <1,-1> *target*````", "FIND"),
+            parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///many.md\",\"range\":\"1,-1\",\"pattern\":\"*target*\"});", "FIND"),
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(all.results.length, 20);
@@ -337,7 +335,7 @@ test("{§find-result-projection} FIND on an exact target with a result-position 
     try {
         await seedRaw(ctx, "doc.md", "hello world hello again");
         const result = await new Workspace().find(
-            parseOp<FindStatement>("````FIND (workspace:///doc.md) <1>````", "FIND"),
+            parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///doc.md\",\"range\":\"1\"});", "FIND"),
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(result.results.length, 1);
@@ -350,7 +348,7 @@ test("{§op-shapes} FIND on an exact target with a content matcher pages flat ma
     try {
         await seedRaw(ctx, "doc.md", "hello world hello again");
         const result = await new Workspace().find(
-            parseOp<FindStatement>("````FIND (workspace:///doc.md) <1> /hello/````", "FIND"),
+            parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///doc.md\",\"range\":\"1\",\"pattern\":\"/hello/\"});", "FIND"),
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(result.results.length, 1);
@@ -372,7 +370,7 @@ test("{§op-shapes}: a glob survey is an authored FIND; a pattern on an exact RE
         await seedRaw(ctx, "b.md", "other");
         const session = new Workspace();
 
-        const globRead = parseOp<FindStatement>("````FIND (workspace:///*.md) <2>````", "FIND");
+        const globRead = parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///*.md\",\"range\":\"2\"});", "FIND");
         const resourcePage = await session.find(
             globRead,
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: ctx.mimetypes }),
@@ -382,7 +380,7 @@ test("{§op-shapes}: a glob survey is an authored FIND; a pattern on an exact RE
 
         // {§read} — an exact target with a pattern stays a READ: the pattern selects the
         // lines to show, it does not turn the operation into a search.
-        const patternRead = parseOp<ReadStatement>("````READ (workspace:///a.md) <2> /target/````", "READ");
+        const patternRead = parseOp<ReadStatement>("await plurnk.read({\"path\":\"workspace:///a.md\",\"range\":\"2\",\"pattern\":\"/target/\"});", "READ");
         assert.equal(patternRead.op, "READ");
         assert.equal(patternRead.matcher?.dialect, "regex");
         assert.deepEqual(patternRead.lineMarker, { marks: [2] });
@@ -395,7 +393,7 @@ test("{§find-result-projection} broad FIND pagination counts selected resources
         await seedRaw(ctx, "a.md", "target one\ntarget two\ntarget three");
         await seedRaw(ctx, "b.md", "target four");
         const result = await new Workspace().find(
-            parseOp<FindStatement>("````FIND (workspace:///**) <2> *target*````", "FIND"),
+            parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///**\",\"range\":\"2\",\"pattern\":\"*target*\"});", "FIND"),
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: ctx.mimetypes }),
         );
         assert.deepEqual(resourcePaths(result), ["workspace:///b.md"]);
@@ -423,7 +421,7 @@ test("{§find-result-projection} FIND coordinates compose into scoped READ for s
         ].join("\n"));
         const session = new Workspace();
         const found = await session.find(
-            parseOp<FindStatement>('````FIND (workspace:///users.json) $[?(@.role=="admin")]````', "FIND"),
+            parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///users.json\",\"pattern\":\"$[?(@.role==\\\"admin\\\")]\"});", "FIND"),
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: ctx.mimetypes }),
         );
         assert.deepEqual(found.results, [{
@@ -435,7 +433,7 @@ test("{§find-result-projection} FIND coordinates compose into scoped READ for s
         assert.ok(span?.region);
         const read = await readThroughScheme("workspace", null,
             {
-                ...parseOp<ReadStatement>("````READ (workspace:///users.json) <1,1,1,1>````", "READ"),
+                ...parseOp<ReadStatement>("await plurnk.read({\"path\":\"workspace:///users.json\",\"range\":\"1,1,1,1\"});", "READ"),
                 lineMarker: {
                     marks: [
                         span.region.startLine,
@@ -457,7 +455,7 @@ test("{§find-result-projection} body-less FIND is the catalog without match met
     try {
         await seedRaw(ctx, "a.md", "alpha");
         await seedRaw(ctx, "b.md", "beta");
-        const r = await new Workspace().find(parseOp<FindStatement>("````FIND (workspace:///**)````", "FIND"), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const r = await new Workspace().find(parseOp<FindStatement>("await plurnk.find({\"path\":\"workspace:///**\"});", "FIND"), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(r.results.length, 2, "two entries → two catalog channel groups");
         assert.ok(resourceGroups(r).every(([item]) => !("matches" in item)));
         assert.equal(r.range?.unit, "resource");

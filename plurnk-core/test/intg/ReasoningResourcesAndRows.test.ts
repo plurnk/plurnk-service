@@ -31,7 +31,7 @@ let prevReasoningRows: string | undefined;
 beforeAll(() => { prevReasoningRows = process.env.PLURNK_SERVICE_REASONING_ROWS; process.env.PLURNK_SERVICE_REASONING_ROWS = "0"; });
 afterAll(() => { if (prevReasoningRows === undefined) delete process.env.PLURNK_SERVICE_REASONING_ROWS; else process.env.PLURNK_SERVICE_REASONING_ROWS = prevReasoningRows; });
 
-const task = PlurnkParser.frame("NOTE", "Review the result.");
+const task = "await plurnk.note({\"text\":\"Review the result.\"});";
 
 for (const mode of ["fits", "receipt"] as const) test(`{§turn-source-resources} {§tokenomics}: an explicit reasoning READ is exact — ${mode === "fits" ? "whole when it fits" : "a bodiless receipt when it does not"}`, async () => {
     const db = await openMigrated();
@@ -44,7 +44,7 @@ for (const mode of ["fits", "receipt"] as const) test(`{§turn-source-resources}
         const reasoning = Array.from({ length: 120 }, (_, index) => `Finding ${index + 1}: ${"evidence ".repeat(mode === "receipt" ? 100 : 2)}`).join("\n");
         const capacity = mode === "fits" ? 999_000 : 20_000;
         const first = await engine.runTurn({ ...context, provider: providerWithCapacity(capacity, [
-            { assistant: { content: `${PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1> <!-- retain reasoning -->", null)}\n\n${task}`, reasoning } },
+            { assistant: { content: `await plurnk.read({"path":"reasoning://alice/1/2","range":"1,-1"}); // retain reasoning\n\n${task}`, reasoning } },
         ]) });
         const initial = (await db.test_reasoning_reads.all<Read>({ session_id: sessionId })).find(({ pathname }) => pathname === "/1/2")!;
         assert.equal(initial.turn_seq, 2);
@@ -72,7 +72,7 @@ for (const mode of ["fits", "receipt"] as const) test(`{§turn-source-resources}
         const record = logEntries(packet).find(({ logPath }) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(logPath))!;
         assert.ok(record);
         assert.equal(record.aside, undefined);
-        assert.ok(packetSection(packet, "emission-history").includes(PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1> <!-- retain reasoning -->", null)),
+        assert.ok(packetSection(packet, "emission-history").includes("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"}); // retain reasoning"),
             "the paired operation retains the requested source, scope and aside");
         if (mode === "fits") {
             assert.match(String(record.body), /120:Finding 120:/);
@@ -82,7 +82,7 @@ for (const mode of ["fits", "receipt"] as const) test(`{§turn-source-resources}
             assert.doesNotMatch((record.body ?? ""), /120:Finding 120:/, "the whole never arrives; at most the prefix that fit");
             // Source identity never depends on the reader ({§turn-source-resources}); alice's READs and packets are counted below.
             const observer = await insertSession(db, workspaceId, null, "observer");
-            const range = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement(PlurnkParser.frame("READ (reasoning://alice/1/2) <1,10>", null)) });
+            const range = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,10\"});") });
             assert.equal(range.status, 200, "a range READ of the source still works ({§tokenomics})");
             assert.ok("content" in range);
             assert.equal(range.content, reasoning.split("\n").slice(0, 10).join("\n"));
@@ -111,7 +111,7 @@ let prevReasoningRows: string | undefined;
 beforeAll(() => { prevReasoningRows = process.env.PLURNK_SERVICE_REASONING_ROWS; process.env.PLURNK_SERVICE_REASONING_ROWS = "0"; });
 afterAll(() => { if (prevReasoningRows === undefined) delete process.env.PLURNK_SERVICE_REASONING_ROWS; else process.env.PLURNK_SERVICE_REASONING_ROWS = prevReasoningRows; });
 
-const next = PlurnkParser.frame("NOTE", "Continue.");
+const next = "await plurnk.note({\"text\":\"Continue.\"});";
 
 test("{§session-initialization-entry}: initialization is an ordinary `_plurnk` operation turn — its survey runs as a program, authors no reasoning, and fabricates no emission", async () => {
     const db = await openMigrated();
@@ -133,9 +133,9 @@ test("{§session-initialization-entry}: initialization is an ordinary `_plurnk` 
         assert.deepEqual(await db.test_reasoning_reads.all<Read>({ session_id: sessionId }), [], "initialization performs no reasoning READ");
         // Read as another session: alice's own reads and packets are what this test counts.
         const observer = await insertSession(db, workspaceId, null, "observer");
-        const reasoning = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement(PlurnkParser.frame("READ (reasoning://alice/3/1) <1,-1>", null)) });
+        const reasoning = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement("await plurnk.read({\"path\":\"reasoning://alice/3/1\",\"range\":\"1,-1\"});") });
         assert.equal(reasoning.status, 204, "the initialization turn has no reasoning source");
-        const program = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement(PlurnkParser.frame("READ (ops://alice/3/1) <1,-1>", null)) });
+        const program = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement("await plurnk.read({\"path\":\"ops://alice/3/1\",\"range\":\"1,-1\"});") });
         assert.equal(program.status, 200, "the survey is the turn's ops source, the program that ran");
         assert.ok("content" in program && typeof program.content === "string");
         const operations = PlurnkParser.parseStatements(program.content).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
@@ -159,7 +159,7 @@ test("{§turn-source-resources}: a model READ of its own reasoning settles in th
         const loopId = await insertLoop(db, sessionId, 1, "Inspect the fact.");
         const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const read = PlurnkParser.frame("READ (reasoning://alice/1/2) <2,2> <!-- retain this determination -->", null);
+        const read = "await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"2,2\"}); // retain this determination";
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: `${read}\n\n${next}`, reasoning: "first\nselected reasoning\nlast" } },
             { assistant: { content: next, reasoning: "Not requested." } },
@@ -186,7 +186,7 @@ test("{§turn-source-resources}: a model READ of its own reasoning settles in th
         assert.equal((await db.test_get_packet.get<{ packet: string }>({ id: produced.turnId }))!.packet, firstPacket);
         assert.equal(provider.received.length, 2);
         const absent = await engine.dispatch({ ...context, turnId: observed.turnId, sequence: 50, origin: "model",
-            statement: statement(PlurnkParser.frame("READ (reasoning://alice/1/4) <1,-1>", null)),
+            statement: statement("await plurnk.read({\"path\":\"reasoning://alice/1/4\",\"range\":\"1,-1\"});"),
         });
         assert.equal(absent.status, 404, "future coordinates do not create acquisition obligations");
         assert.equal(absent.problem?.type, "https://problems.plurnk.xyz/scheme/reasoning/entry-not-found");
@@ -195,12 +195,11 @@ test("{§turn-source-resources}: a model READ of its own reasoning settles in th
 });
 
 describe("reasoning-operations", () => {
-const frame = PlurnkParser.frame;
 
 for (const preview of ["0", "1"]) for (const operation of [
-    { name: "NOTE", source: frame("NOTE", "Retain this conclusion.") },
-    { name: "FIND", source: frame("FIND (workspace:///fact.txt)", null) },
-    { name: "READ", source: frame("READ (workspace:///fact.txt)", null) },
+    { name: "NOTE", source: "await plurnk.note({\"text\":\"Retain this conclusion.\"});" },
+    { name: "FIND", source: "await plurnk.find({\"path\":\"workspace:///fact.txt\"});" },
+    { name: "READ", source: "await plurnk.read({\"path\":\"workspace:///fact.txt\"});" },
 ]) test(`{§turn-source-resources}: reasoning ${operation.name} fence is inert text with previews ${preview}`, async () => {
     const previous = process.env.PLURNK_SERVICE_REASONING_ROWS;
     process.env.PLURNK_SERVICE_REASONING_ROWS = preview;
@@ -211,7 +210,7 @@ for (const preview of ["0", "1"]) for (const operation of [
         const loopId = await insertLoop(db, sessionId, 1, "Inspect the fact.");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "Observed fact." });
         const reasoning = `Some deliberation.\n\n${operation.source}`;
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("DONE", "Done."), reasoning } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning } }] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
         const outcomes = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
@@ -232,9 +231,9 @@ for (const preview of ["0", "1"]) for (const operation of [
 
 for (const tagged of [false, true]) test(`{§turn-source-resources} {§op-shapes}: ${tagged ? "tagged" : "structured"} HTTP reasoning completes with final usage before content operations execute`, async () => {
     const db = await openMigrated();
-    const firstReasoning = frame("READ (workspace:///fact.txt) <1,-1>", null) + "\n\nMore deliberation.\n";
-    const laterReasoning = frame("NOTE", "Retain the later thought.") + "\n\n" + frame("FIND (workspace:///fact.txt)", null);
-    const content = `${frame("READ (workspace:///fact.txt) <1,-1>", null)}\n\n${frame("NOTE", "Content also survives.")}`;
+    const firstReasoning = "await plurnk.read({\"path\":\"workspace:///fact.txt\",\"range\":\"1,-1\"});\n\nMore deliberation.\n";
+    const laterReasoning = "await plurnk.note({\"text\":\"Retain the later thought.\"});\n\nawait plurnk.find({\"path\":\"workspace:///fact.txt\"});";
+    const content = `await plurnk.read({"path":"workspace:///fact.txt","range":"1,-1"});\n\nawait plurnk.note({"text":"Content also survives."});`;
     const charge = { kind: "charged", amount: { amount: "0.0123", currency: "USD" }, source: "fixture settlement" } as const;
     const requests: Array<{ messages: Array<{ role: string; content: unknown }> }> = [];
     const observed = Promise.withResolvers<void>();
@@ -256,7 +255,7 @@ for (const tagged of [false, true]) test(`{§turn-source-resources} {§op-shapes
             emit(tagged ? { content: laterReasoning + "</think>" } : { reasoning_content: laterReasoning });
             emit({ content }, "stop");
         } else {
-            emit({ content: frame("DONE", "The fact is established.") }, "stop");
+            emit({ content: "await plurnk.done({\"text\":\"The fact is established.\"});" }, "stop");
         }
         response.write(`data: ${JSON.stringify({
             choices: [], charge, usage: { prompt_tokens: 120, completion_tokens: 40, total_tokens: 160,
@@ -347,7 +346,7 @@ test("{§turn-source-resources}: model sources are read-only and hash-free; log 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const context = { workspaceId, sessionId, loopId };
         const first = await engine.runTurn({ ...context, provider: provider(original,
-            PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1>", null)), messages: [] });
+            "await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"});"), messages: [] });
         const resources = await db.test_model_reasoning_resources.all<Resource>({ session_id: sessionId });
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId });
         assert.deepEqual(resources, [{ pathname: `/1/${turn!.sequence}`, content: original }]);
@@ -366,56 +365,54 @@ test("{§turn-source-resources}: model sources are read-only and hash-free; log 
         let sequence = 50;
         const dispatch = (source: string) => engine.dispatch({ ...context, statement: statement(source), turnId: next.turnId, sequence: sequence++, origin: "model" });
         const copy = "session://alice/reasoning-notes.txt";
-        assert.equal((await dispatch(`\`\`\`\`COPY (${target}) (${copy})\`\`\`\``)).status, 201);
+        assert.equal((await dispatch(`await plurnk.copy({"from":"${target}","to":"${copy}"});`)).status, 201);
         const copied = await db.test_get_channel_by_pathname.get<{ content: string; mimetype: string }>({ pathname: "/reasoning-notes.txt", name: "body" });
         assert.equal(copied?.content, original);
         assert.equal(copied?.mimetype, "text/markdown", "COPY uses the destination type without rewriting reasoning text");
-        assert.equal((await dispatch(`\`\`\`\`COPY (${target}) <2,3> (session://alice/reasoning-slice.md)\`\`\`\``)).status, 201);
+        assert.equal((await dispatch(`await plurnk.copy({"from":{"path":"${target}","range":"2,3"},"to":"session://alice/reasoning-slice.md"});`)).status, 201);
         const slice = await db.test_get_channel_by_pathname.get<{ content: string; mimetype: string }>({ pathname: "/reasoning-slice.md", name: "body" });
         assert.equal(slice?.content, "Finding 2: evidence 2.\nFinding 3: evidence 3.\n", "COPY includes the selected lines' original terminators");
         assert.equal(slice?.mimetype, "text/markdown");
         for (const program of [
-            `\`\`\`\`EDIT (${target}) <1>
-Revised determination.
-\`\`\`\``,
-            "````EDIT (reasoning://alice/9/9)\nInvented history.\n````",
-            `\`\`\`\`KILL (${target})\`\`\`\``,
-            `\`\`\`\`KILL (${target}) <2>\`\`\`\``,
-            `\`\`\`\`COPY (${copy}) (${target}) <1,-1>\`\`\`\``,
-            `\`\`\`\`MOVE (${target}) (session://alice/moved-reasoning.txt)\`\`\`\``,
-            `\`\`\`\`MOVE (${copy}) (${target}) <1,-1>\`\`\`\``,
+            `await plurnk.edit({"path":"${target}","range":"1","content":"Revised determination."});`,
+            "await plurnk.edit({\"path\":\"reasoning://alice/9/9\",\"content\":\"Invented history.\"});",
+            `await plurnk.kill({"path":"${target}"});`,
+            `await plurnk.kill({"path":"${target}","range":"2"});`,
+            `await plurnk.copy({"from":"${copy}","to":{"path":"${target}","range":"1,-1"}});`,
+            `await plurnk.move({"from":"${target}","to":"session://alice/moved-reasoning.txt"});`,
+            `await plurnk.move({"from":"${copy}","to":{"path":"${target}","range":"1,-1"}});`,
         ]) {
             const denied = await dispatch(program);
             assert.equal(denied.status, 403, program);
             assert.equal(denied.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden", program);
         }
         assert.deepEqual(await db.test_model_reasoning_resources.all<Resource>({ session_id: sessionId }), resources);
-        const explicit = await dispatch(`\`\`\`\`READ (${target}) <2,3>\`\`\`\``);
+        const explicit = await dispatch(`await plurnk.read({"path":"${target}","range":"2,3"});`);
         assert.equal(explicit.status, 200);
         assert.ok("content" in explicit);
         assert.equal(explicit.content, original.split("\n").slice(1, 3).join("\n"));
         assert.equal(Object.hasOwn(explicit, "lineAnchors"), false);
-        const anchored = await dispatch(`\`\`\`\`READ (${target}) <@abcde>\`\`\`\``);
+        const anchored = await dispatch(`await plurnk.read({"path":"${target}","range":"@abcde"});`);
         assert.equal(anchored.status, 400);
         assert.equal(anchored.problem?.type, "https://problems.plurnk.xyz/scheme/reasoning/line-anchor-unsupported");
         // Scratch is workspace-readable ({§session-scheme}); `log:///` is the reader's own log, so alice reads her receipt.
         const observer = await insertSession(db, workspaceId, null, "observer");
-        const editable = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement(`\`\`\`\`READ (${copy}) <1,-1>\`\`\`\``) });
+        const editable = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement(`await plurnk.read({"path":"${copy}","range":"1,-1"});`) });
         assert.equal(editable.status, 200, "a denied MOVE preserves its writable source");
         assert.ok("lineAnchors" in editable && Array.isArray(editable.lineAnchors));
         assert.equal(editable.lineAnchors.length, 30, "an ordinary editable copy still publishes anchors");
-        const history = await clientRead(engine, db, { workspaceId, sessionId, statement: statement(`\`\`\`\`READ (${receipt}) <1,-1>\`\`\`\``) });
+        const history = await clientRead(engine, db, { workspaceId, sessionId, statement: statement(`await plurnk.read({"path":"${receipt}","range":"1,-1"});`) });
         assert.ok("content" in history && "lineAnchors" in history && Array.isArray(history.lineAnchors));
         assert.equal(history.content, original);
         assert.equal(history.lineAnchors.length, 30, "explicit log READs retain anchors for line curation");
-        assert.equal((await dispatch(`\`\`\`\`KILL (${receipt}) <${history.lineAnchors[1]}>\`\`\`\``)).status, 200);
-        assert.equal((await dispatch(`\`\`\`\`KILL (${receipt}) <17,-1>\`\`\`\``)).status, 200);
+        assert.equal((await dispatch(`await plurnk.kill({"path":"${receipt}","range":"${history.lineAnchors[1]}"});`)).status, 200);
+        assert.equal((await dispatch(`await plurnk.kill({"path":"${receipt}","range":"17,-1"});`)).status, 200);
         const curtailed = (await db.test_reasoning_reads.all<Read>({ session_id: sessionId })).find(({ id }) => id === read.id);
         assert.ok(curtailed);
         assert.equal(curtailed.active, 1);
         assert.notEqual(curtailed.folded, "[]", "scoped log curation changes its projection");
         assert.equal(JSON.parse(curtailed.rx).content, original, "curation preserves durable observations");
-        assert.equal((await dispatch(`\`\`\`\`KILL (${receipt})\`\`\`\``)).status, 200);
+        assert.equal((await dispatch(`await plurnk.kill({"path":"${receipt}"});`)).status, 200);
         assert.deepEqual(await db.test_model_reasoning_resources.all<Resource>({ session_id: sessionId }), resources);
         const automaticBefore = (await db.test_reasoning_reads.all<Read>({ session_id: sessionId })).filter(({ origin }) => origin === "_plurnk").length;
         await engine.runTurn({ ...context, provider: provider(), messages: [] });
@@ -440,7 +437,7 @@ test("{§turn-source-resources}: immutable sources support search, FORK, restart
         let engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
         const context = { workspaceId, sessionId, loopId };
         const producing = await engine.runTurn({ ...context, provider: provider(original,
-            `${PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1>", null)}\n\n${PlurnkParser.frame("SEND", "Ready.")}`), messages: [] });
+            `await plurnk.read({"path":"reasoning://alice/1/2","range":"1,-1"});\n\nawait plurnk.send({"text":"Ready."});`), messages: [] });
         const resource = (await db.test_model_reasoning_resources.all<Resource>({ session_id: sessionId }))[0];
         const target = `reasoning://alice${resource.pathname}`;
         let sequence = 20;
@@ -453,13 +450,11 @@ test("{§turn-source-resources}: immutable sources support search, FORK, restart
             await Turn.complete(db, turn.id, result.status);
             return result;
         };
-        const shared = await clientRead(engine, db, { workspaceId, sessionId: unrelatedId, statement: statement(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``) });
+        const shared = await clientRead(engine, db, { workspaceId, sessionId: unrelatedId, statement: statement(`await plurnk.read({"path":"${target}","range":"1,-1"});`) });
         assert.equal(shared.status, 200);
         assert.equal(shared.content, original, "an explicit source address identifies the same evidence for every workspace session");
-        assert.equal((await clientDispatch(`\`\`\`\`EDIT (${target}) <1>
-Retained determination.
-\`\`\`\``)).status, 403);
-        const found = await dispatch(`\`\`\`\`FIND (${target}) ~"Finding 2"\`\`\`\``);
+        assert.equal((await clientDispatch(`await plurnk.edit({"path":"${target}","range":"1","content":"Retained determination."});`)).status, 403);
+        const found = await dispatch(`await plurnk.find({"path":"${target}","pattern":"~\\"Finding 2\\""});`);
         assert.equal(found.status, 200, JSON.stringify(found));
         assert.ok("matchLocationCount" in found);
         assert.equal(found.matchLocationCount, 1);
@@ -470,11 +465,9 @@ Retained determination.
         await engine.runTurn({ ...forkContext, provider: provider(), messages: [] });
         assert.equal((await db.test_reasoning_reads.all<Read>({ session_id: forkId })).filter(({ pathname }) => pathname === "/1/2").length, 1,
             "the fork inherits the existing ordinary observation without requesting another");
-        assert.equal((await clientDispatch(`\`\`\`\`EDIT (${target}) <1>
-Branch-only decision.
-\`\`\`\``, forkContext)).status, 403);
+        assert.equal((await clientDispatch(`await plurnk.edit({"path":"${target}","range":"1","content":"Branch-only decision."});`, forkContext)).status, 403);
         assert.equal((await db.test_model_reasoning_resources.all<Resource>({ session_id: sessionId }))[0].content, original);
-        const stillFound = await dispatch(`\`\`\`\`FIND (${target}) ~"Finding 2"\`\`\`\``);
+        const stillFound = await dispatch(`await plurnk.find({"path":"${target}","pattern":"~\\"Finding 2\\""});`);
         assert.equal(stillFound.status, 200, "denied writes leave indexed source unchanged");
         const next = await engine.runTurn({ ...context, provider: provider(), messages: [] });
         const observations = await db.test_reasoning_reads.all<Read>({ session_id: sessionId });
@@ -482,7 +475,7 @@ Branch-only decision.
         assert.ok(read, "the parent's deliberate READ retains its own observation identity");
         assert.equal(JSON.parse(read.rx).content, original);
         assert.equal((await engine.dispatch({ ...context, turnId: next.turnId, sequence: 30, origin: "model",
-            statement: statement(`\`\`\`\`KILL (log:///${read.loop_seq}/${read.turn_seq}/${read.sequence}/READ)\`\`\`\``),
+            statement: statement(`await plurnk.kill({"path":"log:///${read.loop_seq}/${read.turn_seq}/${read.sequence}/READ"});`),
         })).status, 200);
         const forkAfterRead = await Fork.fork(db, sessionId, "already-observed");
         await db.close();
@@ -494,7 +487,7 @@ Branch-only decision.
         await engine.runTurn({ workspaceId, sessionId: forkAfterRead, loopId: secondForkLoop.id, provider: provider(), messages: [] });
         assert.equal((await db.test_reasoning_reads.all<Read>({ session_id: forkAfterRead })).filter(({ pathname, ambient_event_id }) => pathname === "/1/2" && ambient_event_id === null).length, 1,
             "fork and restart never automatically reread a KILLed observation");
-        assert.equal((await clientDispatch(`\`\`\`\`KILL (${target})\`\`\`\``)).status, 403);
+        assert.equal((await clientDispatch(`await plurnk.kill({"path":"${target}"});`)).status, 403);
         const ids = await db.test_log_entries_by_turn.all<{ id: number }>({ turn_id: producing.turnId });
         const journal = await Promise.all(ids.map(({ id }) => LogEntry.fetchLogEntry(db, id)));
         const replayed = SessionTranslator.replay(
@@ -519,7 +512,7 @@ Branch-only decision.
         assert.ok(!evidence.includes("Revised conclusion."), "denied source edits cannot alter forensic reasoning");
         // Only a reader with its own 1/2 source can witness substitution, and a client READ joins its reader's log:
         // alice reads last, after her history has been counted and forked.
-        assert.equal((await clientRead(engine, db, { workspaceId, sessionId, statement: statement("```READ (reasoning://unrelated/1/2)```") })).status, 404,
+        assert.equal((await clientRead(engine, db, { workspaceId, sessionId, statement: statement("await plurnk.read({\"path\":\"reasoning://unrelated/1/2\"});") })).status, 404,
             "an address never substitutes another session's history for a missing source");
     } finally {
         await db.close();
@@ -537,16 +530,16 @@ test("{§turn-source-resources}: only exposed final reasoning becomes a resource
         const context = { workspaceId, sessionId, loopId, messages: [] };
         for (const reasoning of [null, ""]) await engine.runTurn({ ...context, provider: provider(reasoning) });
         assert.deepEqual(await db.test_model_reasoning_resources.all({ session_id: sessionId }), []);
-        const source = "````NOTE\nContinue.\n````";
+        const source = "await plurnk.note({\"text\":\"Continue.\"});";
         const admitted = await engine.runTurn({ ...context, provider: new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "````READ (workspace:///invalid-program", reasoning: "Private rejected reasoning." } },
+            { assistant: { content: "await plurnk.read({\"path\":\"workspace:///invalid-program", reasoning: "Private rejected reasoning." } },
             { assistant: { content: source, reasoning: "Admitted reasoning." } },
         ] }) });
         assert.equal(admitted.emissionAttempts, 2);
         const failed = await engine.runTurn({ ...context, provider: new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "````READ (workspace:///first-invalid-program", reasoning: "First private reasoning." } },
-            { assistant: { content: "````READ (workspace:///second-invalid-program", reasoning: "Second private reasoning." } },
-            { assistant: { content: "````READ (workspace:///last-invalid-program", reasoning: "Final rejected reasoning." } },
+            { assistant: { content: "await plurnk.read({\"path\":\"workspace:///first-invalid-program", reasoning: "First private reasoning." } },
+            { assistant: { content: "await plurnk.read({\"path\":\"workspace:///second-invalid-program", reasoning: "Second private reasoning." } },
+            { assistant: { content: "await plurnk.read({\"path\":\"workspace:///last-invalid-program", reasoning: "Final rejected reasoning." } },
         ] }) });
         assert.equal(failed.emissionExhausted, true);
         const rows = await db.test_model_reasoning_resources.all<Resource>({ session_id: sessionId });
@@ -570,7 +563,7 @@ test("{§turn-source-resources}: an existing turn without provider reasoning rea
         const context = { workspaceId, sessionId, loopId };
         // The provider returns no reasoning for the model's turn (1/2); the initialization turn (1/1) authors none either.
         const silent = await engine.runTurn({ ...context, provider: provider(null,
-            `${PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1>", null)}\n\n${PlurnkParser.frame("SEND", "Ready.")}`), messages: [] });
+            `await plurnk.read({"path":"reasoning://alice/1/2","range":"1,-1"});\n\nawait plurnk.send({"text":"Ready."});`), messages: [] });
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: silent.turnId });
         assert.equal(turn?.sequence, 2);
         assert.equal((await db.test_model_reasoning_resources.all<Resource>({ session_id: sessionId })).length, 0, "no substitute source is recorded");
@@ -580,17 +573,17 @@ test("{§turn-source-resources}: an existing turn without provider reasoning rea
         // ({§turn-source-resources}).
         const observer = await insertSession(db, workspaceId, null, "observer");
         const read = (source: string) => clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement(source) });
-        const empty = await read("````READ (reasoning://alice/1/2) <1,-1>````");
+        const empty = await read("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"});");
         assert.equal(empty.status, 204, "an existing turn with nothing from the provider reads as the ordinary empty resource");
         assert.ok("content" in empty);
         assert.equal(empty.content, "");
-        const program = await read("````READ (ops://alice/1/2) <1,-1>````");
+        const program = await read("await plurnk.read({\"path\":\"ops://alice/1/2\",\"range\":\"1,-1\"});");
         assert.equal(program.status, 200);
-        assert.ok("content" in program && typeof program.content === "string" && program.content.includes("READ (reasoning://alice/1/2)"), "the same turn's admitted program is present");
-        const future = await read("````READ (reasoning://alice/1/9) <1,-1>````");
+        assert.ok("content" in program && typeof program.content === "string" && program.content.includes("reasoning://alice/1/2"), "the same turn's admitted program is present");
+        const future = await read("await plurnk.read({\"path\":\"reasoning://alice/1/9\",\"range\":\"1,-1\"});");
         assert.equal(future.status, 404, "a turn that has not happened is missing, not empty");
         assert.equal(future.problem?.type, "https://problems.plurnk.xyz/scheme/reasoning/entry-not-found");
-        assert.equal((await read("```READ (reasoning://alice/2/1) <1,-1>```")).status, 404, "so is a loop that does not exist");
+        assert.equal((await read("await plurnk.read({\"path\":\"reasoning://alice/2/1\",\"range\":\"1,-1\"});")).status, 404, "so is a loop that does not exist");
     } finally { await db.close(); }
 });
 });
@@ -610,7 +603,6 @@ describe("reasoning-row", () => {
 
 
 
-const frame = PlurnkParser.frame;
 const KNOB = "PLURNK_SERVICE_REASONING_ROWS";
 const TRAILING = "PLURNK_SERVICE_REASONING_TRAILING_LINES";
 const withEnv = async (name: string, value: string | undefined, fn: () => Promise<void>): Promise<void> => {
@@ -631,10 +623,10 @@ const story = async (contextWindow: number, reasoning: string) => {
     const loopId = await insertLoop(db, sessionId, 1, "Inspect the evidence and report the result.");
     await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "An observed fact." });
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    const program = `${frame("READ (workspace:///fact.txt)", null)}\n\n${frame("NOTE", "Bearing one.")}`;
+    const program = `await plurnk.read({"path":"workspace:///fact.txt"});\n\nawait plurnk.note({"text":"Bearing one."});`;
     const provider = new Mock({ contextWindow, responses: [
         { assistant: { content: program, reasoning } },
-        { assistant: { content: frame("DONE", "Done."), reasoning: null } },
+        { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
     ] });
     const first = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
     const second = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
@@ -665,7 +657,7 @@ test("{§turn-source-resources} {§emission-history}: reasoning and NOTE stay in
             const previous = chatMessageText(envelope[2]);
             assert.match(before, /reasoning:\/\/alice\/1\/2/u);
             assert.match(before, /converter raises before the view is named/u, "reasoning remains in its log row");
-            assert.equal(previous, `${frame("READ (workspace:///fact.txt)", null)}\n\n${frame("NOTE", "Bearing one.")}`, "the turn's operations immediately precede their results");
+            assert.equal(previous, `await plurnk.read({"path":"workspace:///fact.txt"});\n\nawait plurnk.note({"text":"Bearing one."});`, "the turn's operations immediately precede their results");
             assert.match(before, /### log:\/\/\/1\/2\/\d+\/emission[^\n]*$/u, "the source announcement precedes the operations");
             assert.doesNotMatch(before, /Bearing one\./u, "the content NOTE's text does not precede its program");
             assert.doesNotMatch(log, /Bearing one\./u, "the NOTE body appears only in assistant replay");
@@ -709,7 +701,7 @@ test("{§turn-source-resources}: an oversized reasoning line is a column-scoped 
             assert.ok(preview);
             assert.equal(JSON.parse(preview.rx!).content, "🙂".repeat(64));
             assert.deepEqual(JSON.parse(preview.tx!).lineMarker, { marks: [1, 137, 1, 201] });
-            const item = PlurnkParser.parseStatements(frame("READ (reasoning://alice/1/2) <1,-1>", null)).items[0];
+            const item = PlurnkParser.parseStatements("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"});").items[0];
             assert.ok(item?.kind === "statement");
             const whole = await clientRead(engine, db, { ...ids, statement: item.statement });
             assert.equal(whole.status, 200);
@@ -732,7 +724,7 @@ test("{§turn-source-resources}: reasoning longer than the page lands as its las
             assert.match(log, /DECISION: patch the resolver/u, "the conclusion is in the packet");
             assert.doesNotMatch(log, /thought 1: an exploratory step/u, "the restatement is not");
             assert.match(log, /<201,300> of 300 lines/u, "the fact of the page is stated beneath the heading");
-            const stmt = PlurnkParser.parseStatements(frame("READ (reasoning://alice/1/2) <1,200>", null)).items.flatMap((i) => i.kind === "statement" ? [i.statement] : [])[0];
+            const stmt = PlurnkParser.parseStatements("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,200\"});").items.flatMap((i) => i.kind === "statement" ? [i.statement] : [])[0];
             const head = await clientRead(engine, db, { ...ids, statement: stmt });
             assert.ok("content" in head && typeof head.content === "string" && head.content.startsWith("thought 1:") && head.content.endsWith("thought 200: an exploratory step"), "the rest is one READ away");
             assert.ok(envelope.some((m) => m.role === "user" && /DECISION: patch the resolver/u.test(chatMessageText(m))), "the page reaches the wire");
@@ -779,7 +771,7 @@ test("{§turn-source-resources}: the optional preview never displaces an authore
             const output = enabled === "reference" ? process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET : String(1_000_000 - budget);
             await withEnv("PLURNK_PROVIDERS_OUTPUT_BUDGET", output, async () => {
                 const provider = new Mock({ contextWindow: 1_000_000, responses: [
-                    { assistant: { content: frame("READ (workspace:///evidence.txt) <1,-1>", null), reasoning } },
+                    { assistant: { content: "await plurnk.read({\"path\":\"workspace:///evidence.txt\",\"range\":\"1,-1\"});", reasoning } },
                 ] });
                 const turn = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages, turnNumber: 1 });
                 const rows = await rowsOf(db, turn.turnId);
@@ -815,7 +807,7 @@ test("{§turn-source-resources}: -1 returns complete reasoning independently of 
             const wire = envelope.filter((m) => m.role === "user").map(chatMessageText).join("\n");
             assert.match(wire, /thought 1:/u);
             assert.match(wire, /thought 150:/u);
-            const item = PlurnkParser.parseStatements(frame("READ (reasoning://alice/1/2)", null)).items[0];
+            const item = PlurnkParser.parseStatements("await plurnk.read({\"path\":\"reasoning://alice/1/2\"});").items[0];
             assert.ok(item?.kind === "statement");
             const ordinary = await clientRead(engine, db, { ...ids, statement: item.statement });
             assert.equal(ordinary.status, 200);
@@ -834,7 +826,7 @@ test("{§turn-source-resources}: complete reasoning is omitted whole when it can
             assert.equal(rows.some((row) => kindOf(row) === "reasoning"), false);
             assert.ok(rows.some((row) => row.op === "READ" && row.origin === "model"));
             assert.equal(rows.some((row) => row.op === "error"), false);
-            const item = PlurnkParser.parseStatements(frame("READ (reasoning://alice/1/2) <1,-1>", null)).items[0];
+            const item = PlurnkParser.parseStatements("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"});").items[0];
             assert.ok(item?.kind === "statement");
             const source = await clientRead(engine, db, { ...ids, statement: item.statement });
             assert.equal(source.content, reasoning, "omission retains the full immutable source");
@@ -849,8 +841,8 @@ test("{§turn-source-resources}: reasoning preview precedes the content emission
             const workspaceId = await insertWorkspace(db, `reasoning-source-${crypto.randomUUID()}`);
             const sessionId = await insertSession(db, workspaceId, null, "alice");
             const loopId = await insertLoop(db, sessionId, 1, "Inspect the fact.");
-            const content = frame("NOTE", "content note");
-            const reasoning = frame("NOTE", "reasoned finding");
+            const content = "await plurnk.note({\"text\":\"content note\"});";
+            const reasoning = "await plurnk.note({\"text\":\"reasoned finding\"});";
             const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
             const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning } }] });
             const turn = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });

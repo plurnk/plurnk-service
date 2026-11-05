@@ -266,9 +266,9 @@ test(`{§oauth-continuation}: ACP accepts authorization in an ${busy ? "active" 
         ...httpEntry(served.url),
         authorization: { type: "oauth", redirectUrl: `${origin}/callback`, clientMetadataUrl: "https://client.example.test/oauth.json" },
     } }, [
-        ...(busy ? [makeMockResponse("```DONE\nThe held turn finished.\n```")] : []),
-        makeMockResponse("````fixture (echo)\n{\"message\":\"management proof\"}\n````\n\n````WAIT\nObserve the result.\n````"),
-        makeMockResponse("````DONE\nObserved the authorized result.\n````"),
+        ...(busy ? [makeMockResponse("await plurnk.done({\"text\":\"The held turn finished.\"});")] : []),
+        makeMockResponse("await fixture.echo({\"message\":\"management proof\"});\n\nawait plurnk.wait({\"text\":\"Observe the result.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"Observed the authorized result.\"});"),
     ]);
     const enabled = await action("authorization", "workspace.mcp.enable", { alias: "fixture" });
     assert.equal(enabled.ok, true, JSON.stringify(enabled));
@@ -395,8 +395,8 @@ test("{§oauth-client-credentials}: ACP application credentials and SDK refresh 
     const served = await applicationServer(t);
     const authorization = { type: "client-credentials", clientId: "fixture-app", clientSecret: "${MCP_APP_SECRET}", issuer: served.issuer, scope: "mcp:read" };
     const { action, post, provider } = await setup(t, { fixture: { ...httpEntry(served.url), authorization } }, [
-        makeMockResponse("````fixture (echo)\n{\"message\":\"application proof\"}\n````\n\n````WAIT\nObserve the result.\n````"),
-        makeMockResponse("````DONE\nObserved the application result.\n````"),
+        makeMockResponse("await fixture.echo({\"message\":\"application proof\"});\n\nawait plurnk.wait({\"text\":\"Observe the result.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"Observed the application result.\"});"),
     ], {
         MCP_APP_SECRET: "fixture-app-secret",
     });
@@ -473,8 +473,8 @@ test("{§mcp-host-composition} {§operation-results}: MCP progress reaches ACP w
         return server;
     }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
     const { post, provider } = await setup(t, { fixture: httpEntry(served.url) }, [
-        makeMockResponse("````fixture (observe)\n{}\n````\n\n````WAIT\nObserve the result.\n````"),
-        makeMockResponse("````DONE\nThe observation completed.\n````"),
+        makeMockResponse("await fixture.observe({});\n\nawait plurnk.wait({\"text\":\"Observe the result.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"The observation completed.\"});"),
     ]);
     const received = Promise.withResolvers<Record<string, unknown>>();
     const running = post("live-progress", undefined, "Observe the tool result.", (event) => {
@@ -542,14 +542,10 @@ for (const deferred of [false, true]) {
                 return deferred ? fixture.route(request) : null;
             });
             const { post, provider } = await setup(t, { fixture: httpEntry(served.url) }, [
-                makeMockResponse(`\`\`\`\`fixture (${fixture.toolName})
-{"topic":"MCP"}
-\`\`\`\`
+                makeMockResponse(`await fixture.${fixture.toolName}({"topic":"MCP"});
 
-\`\`\`\`WAIT
-Observe the result.
-\`\`\`\``),
-                makeMockResponse("````DONE\nInspected the result.\n````"),
+await plurnk.wait({"text":"Observe the result."});`),
+                makeMockResponse("await plurnk.done({\"text\":\"Inspected the result.\"});"),
             ]);
             const events = await post("structured", undefined, "Inspect the tool's result, including any failure.");
             assert.equal(((events.at(-1)?.result as { _meta?: { plurnk?: { stopReason?: string } } } | undefined)?._meta?.plurnk?.stopReason), "end_turn", JSON.stringify(events));
@@ -685,8 +681,8 @@ test("{§tools-resource-materialization} Turn0 catalogs the skill; only a reques
         }
     }
     const provider = new CapturingMock({ contextWindow: 32768, responses: [
-        { assistant: { content: "````READ (skill://plurnk/.env.defaults) <1,3>````\n````NOTE\nInspect the reference.\n````", reasoning: null } },
-        { assistant: { content: "````DONE\nReference received.\n````", reasoning: null } },
+        { assistant: { content: "await plurnk.read({\"path\":\"skill://plurnk/.env.defaults\",\"range\":\"1,3\"});\n\nawait plurnk.note({\"text\":\"Inspect the reference.\"});", reasoning: null } },
+        { assistant: { content: "await plurnk.done({\"text\":\"Reference received.\"});", reasoning: null } },
     ] });
     await withDaemon(provider, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -708,7 +704,7 @@ test("{§tools-resource-materialization} Turn0 catalogs the skill; only a reques
 describe("tools-expanded-survey", () => {
 test("{§tools-resource-materialization} turn 0 exposes executable inline-program bodies in interpreter summaries", { timeout: 30_000 }, async () => {
     const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse(
-        PlurnkParser.frame("DONE", "Surveyed."),
+        "await plurnk.done({\"text\":\"Surveyed.\"});",
     )] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });
@@ -725,7 +721,7 @@ test("{§tools-resource-materialization} turn 0 exposes executable inline-progra
         const groups = JSON.parse(body) as Array<Array<{ path: string; aside?: string }>>;
         const jsEntry = groups.flat().find(({ path }) => path.endsWith("/js.md"));
         const aside = jsEntry?.aside;
-        assert.ok(typeof aside === "string" && aside.includes("\n"), "js aside includes its inline body, not just an empty invocation");
+        assert.ok(typeof aside === "string" && aside.includes("console.log(42)"), "js aside includes its inline body, not just an empty invocation");
         const parsed = PlurnkParser.parseStatements(aside, { executors: fixtureExecutors(aside) });
         assert.equal(parsed.items.length, 1);
         const item = parsed.items[0];

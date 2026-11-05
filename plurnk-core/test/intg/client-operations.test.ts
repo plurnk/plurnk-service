@@ -150,7 +150,7 @@ test("{§methods} {§connection-lifecycle} cancelLoop ends one client operation:
     };
 
     // An operation still dispatching: its loop settles cancelled, and its later statements never run.
-    const inFlight = operate([parseOne("````FIND (waiting:///*)````"), parseOne("````EDIT (workspace:///never.md)\nnever\n````")]);
+    const inFlight = operate([parseOne("await plurnk.find({\"path\":\"waiting:///*\"});"), parseOne("await plurnk.edit({\"path\":\"workspace:///never.md\",\"content\":\"never\"});")]);
     const { sessionId: runtime, loopId: inFlightLoop } = await inFlight.loop;
     await waiting.entered.promise;
     assert.equal(await daemon.cancelLoop({ workspaceId: other.workspaceId, loopId: inFlightLoop }), false,
@@ -170,9 +170,9 @@ test("{§methods} {§connection-lifecycle} cancelLoop ends one client operation:
     assert.equal(await daemon.cancelLoop({ workspaceId, loopId: inFlightLoop }), false, "a settled operation has nothing left to cancel");
 
     // Two operations whose dispatch returned while their commands run on, and one detached spawn.
-    const first = operate([parseOne("````held\nfirst\n````")]);
-    const second = operate([parseOne("````held\nsecond\n````")]);
-    const detached = operate([parseOne("````held [{\"lifetime\":\"detached\"}]\ndetached\n````")]);
+    const first = operate([parseOne("await plurnk.held(\"first\");")]);
+    const second = operate([parseOne("await plurnk.held(\"second\");")]);
+    const detached = operate([parseOne("await plurnk.held({\"metadata\":[\"{\\\"lifetime\\\":\\\"detached\\\"}\"],\"body\":\"detached\"});")]);
     for (const operation of [first, second, detached]) {
         const [started] = await operation.done;
         assert.equal(started?.status, 200, `the dispatch returns once the command starts: ${JSON.stringify(started)}`);
@@ -201,8 +201,8 @@ test("{§methods} {§connection-lifecycle} cancelLoop ends one client operation:
 test("{§methods} cancelLoop reaps nothing of a model session's loop", async (t) => {
     serverProposals(t, "accept");
     const provider = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("````held\nmodel command\n````\n````WAIT\nAwait the command.\n````"),
-        makeMockResponse("````DONE\nThe command ended.\n````"),
+        makeMockResponse("await plurnk.held(\"model command\");\n\nawait plurnk.wait({\"text\":\"Await the command.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"The command ended.\"});"),
     ] });
     const { db, daemon } = await boot(t, { provider });
     const held = heldRuntime("read");
@@ -220,8 +220,8 @@ test("{§methods} cancelLoop reaps nothing of a model session's loop", async (t)
 test("{§connection-lifecycle} a client operation's log:/// addresses read the session the person acts for and never curate it; acting for none, they address no log", async (t) => {
     serverProposals(t, "accept");
     const provider = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("````EDIT (workspace:///notes.md)\nremember this\n````\n````NOTE\nContinue.\n````"),
-        makeMockResponse("````DONE\ndone\n````"),
+        makeMockResponse("await plurnk.edit({\"path\":\"workspace:///notes.md\",\"content\":\"remember this\"});\n\nawait plurnk.note({\"text\":\"Continue.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});"),
     ] });
     const { db, daemon } = await boot(t, { provider });
     const { workspaceId } = await daemon.createWorkspace({ name: `client-log-${crypto.randomUUID()}` });
@@ -238,14 +238,14 @@ test("{§connection-lifecycle} a client operation's log:/// addresses read the s
     const problemType = (result: Readonly<Record<string, unknown>>): string | undefined => (result.problem as { type?: string } | undefined)?.type;
 
     await t.test("{§connection-lifecycle} acting for the model session, a READ answers from its log as the model reads it", async () => {
-        const read = await person(`\`\`\`\`READ (${coordinate}) <1,-1>\`\`\`\``, sessionId);
+        const read = await person(`await plurnk.read({"path":"${coordinate}","range":"1,-1"});`, sessionId);
         assert.equal(read.status, 200, JSON.stringify({ status: read.status, problem: problemType(read) }));
-        const own = await modelOperation(daemon, db, { workspaceId, sessionId, statement: parseOne(`\`\`\`\`READ (${coordinate}) <1,-1>\`\`\`\``) });
+        const own = await modelOperation(daemon, db, { workspaceId, sessionId, statement: parseOne(`await plurnk.read({"path":"${coordinate}","range":"1,-1"});`) });
         assert.equal(own.status, 200);
         assert.equal(read.content, own.content);
     });
     await t.test("{§connection-lifecycle} acting for the model session, a FIND answers from its log", async () => {
-        const found = await person("````FIND (log:///**)````", sessionId);
+        const found = await person("await plurnk.find({\"path\":\"log:///**\"});", sessionId);
         assert.equal(found.status, 200, JSON.stringify({ status: found.status, problem: problemType(found) }));
         const paths = (found.results as Array<Array<{ path: string }>>).flat().map(({ path }) => path);
         const own = new Set((await daemon.readLog({ workspaceId, sessionId }))
@@ -254,8 +254,8 @@ test("{§connection-lifecycle} a client operation's log:/// addresses read the s
         assert.deepEqual(paths.filter((path) => !own.has(path)), [], "every row found is the model's");
     });
     for (const [verb, source] of [
-        ["KILL", `\`\`\`\`KILL (${coordinate})\`\`\`\``],
-        ["MOVE", `\`\`\`\`MOVE (${coordinate}) (workspace:///moved.md)\`\`\`\``],
+        ["KILL", `await plurnk.kill({"path":"${coordinate}"});`],
+        ["MOVE", `await plurnk.move({"from":"${coordinate}","to":"workspace:///moved.md"});`],
     ] as const) {
         await t.test(`{§connection-lifecycle} acting for the model session, a ${verb} that would curate its log is refused as a client write`, async () => {
             const refused = await person(source, sessionId);
@@ -265,8 +265,8 @@ test("{§connection-lifecycle} a client operation's log:/// addresses read the s
         });
     }
     for (const [verb, source] of [
-        ["READ", `\`\`\`\`READ (${coordinate})\`\`\`\``],
-        ["FIND", "````FIND (log:///**)````"],
+        ["READ", `await plurnk.read({"path":"${coordinate}"});`],
+        ["FIND", "await plurnk.find({\"path\":\"log:///**\"});"],
     ] as const) {
         await t.test(`{§connection-lifecycle} acting for no session, a ${verb} of log:/// addresses no log`, async () => {
             const unaddressed = await person(source);
@@ -289,7 +289,7 @@ for (const policy of ["review", "accept", "reject"] as const) {
         });
         const loop = Promise.withResolvers<{ loopId: number }>();
         const [result] = await daemon.dispatchClientAction({
-            workspaceId, actor: TEST_OWNER, statements: [parseOne("````held\nhost command\n````")], onLoop: loop.resolve,
+            workspaceId, actor: TEST_OWNER, statements: [parseOne("await plurnk.held(\"host command\");")], onLoop: loop.resolve,
         });
         const runtime = await daemon.ensureRuntimeSession(workspaceId);
         const row = await db.test_get_log_rx_by_session_op.get<{ rx: string }>({ session_id: runtime, op: "held" });
@@ -336,12 +336,12 @@ test("{§session-causal-admission} shutdown cancels a person's operation still d
     const held = heldRuntime("read");
     await daemon.registerRuntime(held.registration);
     const { workspaceId } = await daemon.createWorkspace({ name: `client-shutdown-${crypto.randomUUID()}` });
-    const [started] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne("````held\nlong command\n````")] });
+    const [started] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne("await plurnk.held(\"long command\");")] });
     assert.equal(started.status, 200);
     await held.run("long command").started.promise;
     const loop = Promise.withResolvers<{ loopId: number }>();
     const dispatching = daemon.dispatchClientAction({
-        workspaceId, actor: TEST_OWNER, statements: [parseOne("````FIND (waiting:///*)````")], onLoop: loop.resolve,
+        workspaceId, actor: TEST_OWNER, statements: [parseOne("await plurnk.find({\"path\":\"waiting:///*\"});")], onLoop: loop.resolve,
     });
     await waiting.entered.promise;
     const cancelled = assert.rejects(dispatching, (error: unknown) => {
@@ -357,7 +357,7 @@ test("{§session-causal-admission} shutdown cancels a person's operation still d
 
 test("{§connection-lifecycle} {§machine-processes} a person's operation speaks and delegates as that person: messages arrive from them, WORK starts a root session they own, FORK branches the session they act for", async (t) => {
     serverProposals(t, "accept");
-    const provider = new Mock({ contextWindow: viableWindow(), responses: Array.from({ length: 8 }, () => makeMockResponse("````DONE\nnoted\n````")) });
+    const provider = new Mock({ contextWindow: viableWindow(), responses: Array.from({ length: 8 }, () => makeMockResponse("await plurnk.done({\"text\":\"noted\"});")) });
     const { daemon } = await boot(t, { provider });
     const { workspaceId } = await daemon.createWorkspace({ name: `client-delegation-${crypto.randomUUID()}` });
     const main = await namedModelSession(daemon, workspaceId, "main");
@@ -367,35 +367,35 @@ test("{§connection-lifecycle} {§machine-processes} a person's operation speaks
     const firstLoop = (sessionId: number) => waitForDb(async () => (await daemon.listSessionLoops({ workspaceId, sessionId }))[0], (loop) => loop?.status === 200);
     const session = async (name: string) => (await daemon.listSessions(workspaceId)).find((row) => row.name === name);
 
-    const sent = await person("````SEND (session://main)\nA note from a person.\n````", main);
+    const sent = await person("await plurnk.send({\"target\":\"session://main\",\"text\":\"A note from a person.\"});", main);
     assert.equal(sent.status, 200, JSON.stringify(sent));
     assert.equal((await firstLoop(main))?.promptSource, TEST_OWNER, "a person's message arrives from that person, as a thread message does");
     const runtime = await daemon.ensureRuntimeSession(workspaceId);
     assert.deepEqual((await daemon.readLog({ workspaceId, sessionId: runtime })).filter(({ source }) => source !== null), [],
         "the model's reply never lands in the runtime session's journal");
 
-    const started = await person("````WORK (session://helper)\nStart.\n````", main);
+    const started = await person("await plurnk.work({\"target\":\"session://helper\",\"prompt\":\"Start.\"});", main);
     assert.equal(started.status, 200, JSON.stringify(started));
     const helper = await session("helper");
     assert.deepEqual({ origin: helper?.origin, parent: helper?.parentSessionId, owner: helper?.owner }, { origin: "model", parent: null, owner: TEST_OWNER },
         "a person's WORK starts a root model session that person owns");
     assert.equal((await firstLoop(helper!.id))?.promptSource, TEST_OWNER, "its first prompt arrives from the person");
-    const unnamed = await person("````WORK\nStart too.\n````");
+    const unnamed = await person("await plurnk.work({\"prompt\":\"Start too.\"});");
     assert.equal(unnamed.status, 200, JSON.stringify(unnamed));
     assert.equal((await session(String(unnamed.body)))?.parentSessionId, null, "an unnamed WORK starts a root session too");
 
-    const branched = await person("````FORK (session://branch)\nTry the other way.\n````", main);
+    const branched = await person("await plurnk.fork({\"target\":\"session://branch\",\"prompt\":\"Try the other way.\"});", main);
     assert.equal(branched.status, 200, JSON.stringify(branched));
     const branch = await session("branch");
     assert.deepEqual({ parent: branch?.parentSessionId, kind: branch?.kind }, { parent: main, kind: "fork" }, "FORK branches the session the person acts for");
     assert.ok((await daemon.listSessionLoops({ workspaceId, sessionId: branch!.id })).some(({ promptSource }) => promptSource === TEST_OWNER),
         "the branch's task arrives from the person");
-    const unaddressed = await person("````FORK (session://nowhere)\nContinue.\n````");
+    const unaddressed = await person("await plurnk.fork({\"target\":\"session://nowhere\",\"prompt\":\"Continue.\"});");
     assert.equal(unaddressed.status, 404, JSON.stringify(unaddressed));
     assert.equal((unaddressed.problem as { type?: string }).type, "https://problems.plurnk.xyz/engine/dispatcher/fork-unaddressed");
     assert.equal(await session("nowhere"), undefined, "acting for no session, FORK branches nothing");
 
-    const delivered = await person("````WORK (session://main)\nAnother note.\n````", main);
+    const delivered = await person("await plurnk.work({\"target\":\"session://main\",\"prompt\":\"Another note.\"});", main);
     assert.equal((delivered.attrs as { delivered?: string } | undefined)?.delivered, "message", "WORK to a session that exists is its message");
     await assert.rejects(daemon.forkSession({ workspaceId, sessionId: runtime }), (error: unknown) => {
         assert.ok(error instanceof OperationFailureError, String(error));
@@ -410,11 +410,11 @@ test("{§connection-lifecycle} {§env-functionality} a person's env:/// is the w
     const { workspaceId } = await daemon.createWorkspace({ name: `client-env-${crypto.randomUUID()}` });
     const sessionId = await namedModelSession(daemon, workspaceId, "main");
     const person = async (source: string) => (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne(source)] }))[0];
-    const modelReads = (name: string) => modelOperation(daemon, db, { workspaceId, sessionId, statement: parseOne(`\`\`\`\`READ (env:///${name})\`\`\`\``) });
+    const modelReads = (name: string) => modelOperation(daemon, db, { workspaceId, sessionId, statement: parseOne(`await plurnk.read({"path":"env:///${name}"});`) });
     const definitions = async () => ((await daemon.invokeModuleAction("workspace.env.list", {}, { scope: "workspace", workspaceId })) as { definitions: Array<{ alias: string; origin: string }> })
         .definitions.filter(({ alias }) => alias === "FRAME_NAME").map(({ origin }) => origin);
 
-    assert.equal((await person("````EDIT (env:///FRAME_NAME)\nworkspace-wide\n````")).status, 200);
+    assert.equal((await person("await plurnk.edit({\"path\":\"env:///FRAME_NAME\",\"content\":\"workspace-wide\"});")).status, 200);
     assert.deepEqual(await definitions(), ["workspace"], "the definition is the workspace's own");
     const read = await modelReads("FRAME_NAME");
     assert.equal(read.status, 200, JSON.stringify(read));
@@ -423,7 +423,7 @@ test("{§connection-lifecycle} {§env-functionality} a person's env:/// is the w
     const own = (await daemon.invokeModuleAction("session.env.list", {}, { scope: "session", workspaceId, sessionId: runtime })) as { definitions: Array<{ origin: string }> };
     assert.deepEqual(own.definitions.filter(({ origin }) => origin === "session"), [], "the runtime session keeps no layer of its own");
 
-    assert.equal((await person("````KILL (env:///FRAME_NAME)````")).status, 200);
+    assert.equal((await person("await plurnk.kill({\"path\":\"env:///FRAME_NAME\"});")).status, 200);
     assert.deepEqual(await definitions(), [], "a person's KILL removes the workspace's own entry");
     assert.equal((await modelReads("FRAME_NAME")).status, 404);
 });
@@ -658,7 +658,7 @@ test("{§functionality-inspection} a stalled MCP catalog is visible over ACP bef
         await release.promise;
         return null;
     });
-    const provider = new PacketCapturingMock({ responses: [makeMockResponse("```DONE\nOK\n```")], contextWindow: 1_000_000 });
+    const provider = new PacketCapturingMock({ responses: [makeMockResponse("await plurnk.done({\"text\":\"OK\"});")], contextWindow: 1_000_000 });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const db = await openMigrated();
     const http = await bindListener();
@@ -746,20 +746,20 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
     const provider = new PacketCapturingMock({
         contextWindow: 1_000_000,
         responses: [
-            makeMockResponse("\n````READ (mcp:///fixture.md) <1,-1>````\n````NOTE\nSelect and inspect the echo contract linked from the runtime document.\n````"),
+            makeMockResponse("await plurnk.read({\"path\":\"mcp:///fixture.md\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"Select and inspect the echo contract linked from the runtime document.\"});"),
             makeMockResponse([
-                PlurnkParser.frame("READ (mcp:///fixture/echo.json) <1,-1>", null),
-                PlurnkParser.frame('FIND (mcp:///fixture.json) $.tools[?(@.name=="echo")].name <1,-1>', null),
-                PlurnkParser.frame('READ (mcp:///fixture.json) $.tools[?(@.name=="echo")] <1,-1>', null),
-                PlurnkParser.frame("NOTE", "Invoke the documented observation tool."),
+                "await plurnk.read({\"path\":\"mcp:///fixture/echo.json\",\"range\":\"1,-1\"});",
+                "await plurnk.find({\"path\":\"mcp:///fixture.json\",\"range\":\"1,-1\",\"pattern\":\"$.tools[?(@.name==\\\"echo\\\")].name\"});",
+                "await plurnk.read({\"path\":\"mcp:///fixture.json\",\"range\":\"1,-1\",\"pattern\":\"$.tools[?(@.name==\\\"echo\\\")]\"});",
+                "await plurnk.note({\"text\":\"Invoke the documented observation tool.\"});",
             ].join("\n\n")),
-            makeMockResponse("\n````fixture (echo)\nhello from MCP\n````\n\n````NOTE\nInspect the attributable tool failure.\n````"),
-            makeMockResponse("\n````KILL (log:///**/READ)````\n````fixture (echo)\n{\"message\":\"hello from MCP\"}\n````\n\n````NOTE\nInspect the corrected tool result.\n````"),
-            makeMockResponse("\n````FIND (fixture:///**) <1,-1> invalid-tool-arguments````\n\n````NOTE\nInspect the source's durable terminal result.\n````"),
-            makeMockResponse("````DONE\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\n````"),
-            makeMockResponse("\n````READ (mcp:///fixture.md) <1,-1>````\n````NOTE\nInvoke the documented host tool.\n````"),
-            makeMockResponse("\n````fixture (fail)````\n````NOTE\nInspect the failure.\n````"),
-            makeMockResponse("````DONE\nThe MCP server reported its expected tool error; recovery is complete.\n````"),
+            makeMockResponse("await fixture.echo(\"hello from MCP\");\n\nawait plurnk.note({\"text\":\"Inspect the attributable tool failure.\"});"),
+            makeMockResponse("await plurnk.kill({\"path\":\"log:///**/READ\"});\n\nawait fixture.echo({\"message\":\"hello from MCP\"});\n\nawait plurnk.note({\"text\":\"Inspect the corrected tool result.\"});"),
+            makeMockResponse("await plurnk.find({\"path\":\"fixture:///**\",\"range\":\"1,-1\",\"pattern\":\"invalid-tool-arguments\"});\n\nawait plurnk.note({\"text\":\"Inspect the source's durable terminal result.\"});"),
+            makeMockResponse("await plurnk.done({\"text\":\"The MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\"});"),
+            makeMockResponse("await plurnk.read({\"path\":\"mcp:///fixture.md\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"Invoke the documented host tool.\"});"),
+            makeMockResponse("await fixture.fail();\n\nawait plurnk.note({\"text\":\"Inspect the failure.\"});"),
+            makeMockResponse("await plurnk.done({\"text\":\"The MCP server reported its expected tool error; recovery is complete.\"});"),
         ],
     });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, {
@@ -830,7 +830,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         });
         const deniedTool = actionResult(await post(port, runInput(workspace, "invoke-denied-tool", {
             projectRoot,
-            action: { kind: "op.parse", text: "````fixture (fail)\n{}\n````" },
+            action: { kind: "op.parse", text: "await fixture.fail({});" },
         })));
         assert.equal(deniedTool.ok, true, JSON.stringify(deniedTool.problem));
         if (deniedTool.result === undefined) throw new Error("op.parse returned no result");
@@ -873,8 +873,8 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             "the catalog and its full definitions are not injected into turn0");
         const runtimeContract = packet(provider.requests, 1);
         assert.match(runtimeContract, /Pass the message field unchanged\./, "READ of the runtime document retrieves the full authored instructions");
-        assert.match(runtimeContract, /```fixture \(echo\) <!-- Echo one message\. Schema: mcp:\/\/\/fixture\/echo\.json -->/);
-        assert.doesNotMatch(runtimeContract, /```fixture \(fail\)/);
+        assert.match(runtimeContract, /await fixture\.echo\(.*\/\/ Echo one message\. Schema: mcp:\/\/\/fixture\/echo\.json/);
+        assert.doesNotMatch(runtimeContract, /await fixture\.fail\(/);
         assert.match(runtimeContract, /mcp:\/\/\/fixture\.json/);
         const echoContract = packet(provider.requests, 2);
         assert.match(echoContract, /"title": "fixture: echo"/);
@@ -887,7 +887,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             "an ordinary JSONPath READ materializes the selected complete tool record in the log");
         assert.doesNotMatch(echoContract, /pattern-(?:invalid|unsupported)|entry-not-found/);
         const toolsCatalog = async () => {
-            const parsed = PlurnkParser.parseStatements(PlurnkParser.frame("READ (mcp:///fixture.json) <1,-1>", null));
+            const parsed = PlurnkParser.parseStatements("await plurnk.read({\"path\":\"mcp:///fixture.json\",\"range\":\"1,-1\"});");
             const item = parsed.items[0];
             assert.equal(item?.kind, "statement");
             if (item?.kind !== "statement") throw new Error("Expected one READ");
@@ -903,7 +903,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         const found = actionResult(await post(port, runInput(workspace, "find-tool-definition", {
             action: {
                 kind: "op.parse",
-                text: PlurnkParser.frame('FIND (mcp:///fixture.json) $.tools[?(@.name=="echo")].name <1,-1>', null),
+                text: "await plurnk.find({\"path\":\"mcp:///fixture.json\",\"range\":\"1,-1\",\"pattern\":\"$.tools[?(@.name==\\\"echo\\\")].name\"});",
             },
         })));
         assert.equal(found.ok, true, JSON.stringify(found.problem));
@@ -966,7 +966,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         assert.equal(terminalMeta(resumed)?.stopReason, "end_turn");
         const failContract = packet(provider.requests, 7);
         assert.match(failContract, /Return a deterministic tool error\./);
-        assert.match(failContract, /```fixture \(fail\)/);
+        assert.match(failContract, /await fixture\.fail\(/);
         const recoveryPacket = packet(provider.requests, 8);
         assert.match(recoveryPacket, /tool-reported-error/);
         assert.match(recoveryPacket, /The MCP tool reported an error\./);
@@ -1043,7 +1043,7 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
         // The workspace became resident before it held its token; enabling the unavailable server
         // reconnects it ({§mcp-configuration}).
         await action("mcp", "enable", { alias: "fixture" });
-        const source = PlurnkParser.frame(`READ (fixture://${resourcePath(uri)}) <1,-1>`, null);
+        const source = `await plurnk.read({"path":"fixture://${resourcePath(uri)}","range":"1,-1"});`;
         const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
         const item = parsed.items[0];
         if (item?.kind !== "statement") throw new Error("Expected one READ");
@@ -1334,11 +1334,11 @@ test("{§log-wire-format} reversals land as one client operation of the acting p
             })).filter(({ loop_seq }) => operations.has(loop_seq)).map(({ op, pathname, patch }) => `${op} ${pathname} ${patch === null ? "no patch" : "patch"}`);
         };
 
-        await model_("````READ (a.md) <1,-1>````");
-        const first = await model_("````EDIT (a.md) <2>\nTWO\n````");
-        const second = await model_("````EDIT (a.md) <3>\nTHREE\n````");
-        const created = await model_("````EDIT (new.md)\nhello\n````");
-        const bytes = await model_("````COPY (bin.png) (bin2.png)````");
+        await model_("await plurnk.read({\"path\":\"a.md\",\"range\":\"1,-1\"});");
+        const first = await model_("await plurnk.edit({\"path\":\"a.md\",\"range\":\"2\",\"content\":\"TWO\"});");
+        const second = await model_("await plurnk.edit({\"path\":\"a.md\",\"range\":\"3\",\"content\":\"THREE\"});");
+        const created = await model_("await plurnk.edit({\"path\":\"new.md\",\"content\":\"hello\"});");
+        const bytes = await model_("await plurnk.copy({\"from\":\"bin.png\",\"to\":\"bin2.png\"});");
         assert.equal(await content("a.md"), "one\nTWO\nTHREE\n");
 
         // Roll back to the first edit: the later edit and the creation are reversed, latest first; the
@@ -1375,8 +1375,8 @@ test("{§log-wire-format} reversals land as one client operation of the acting p
         assert.equal(await exists(join(root, "new.md")), false);
 
         // Drift: a file changed outside the daemon stops the rollback at that row, restoring nothing for it.
-        await model_("````READ (a.md) <1,-1>````");
-        const drifted = await model_("````EDIT (a.md) <1>\nONE\n````");
+        await model_("await plurnk.read({\"path\":\"a.md\",\"range\":\"1,-1\"});");
+        const drifted = await model_("await plurnk.edit({\"path\":\"a.md\",\"range\":\"1\",\"content\":\"ONE\"});");
         await writeFile(join(root, "a.md"), "external\n");
         const stopped = await rollback(`1/1/${bytes}`);
         assert.deepEqual(stopped.restored, []);

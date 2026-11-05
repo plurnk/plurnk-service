@@ -8,7 +8,6 @@ import StrikeRail from "../../src/core/StrikeRail.ts";
 import Results from "../../src/core/results.ts";
 import DispatchAsPlurnk from "../../src/server/dispatch-as-plurnk.ts";
 import { type ParsedPath, isExecutionOp } from "@plurnk/plurnk-contracts";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
@@ -22,7 +21,6 @@ import { viableWindow } from "./_provider.ts";
 import { type Db } from "../../src/core/Db.ts";
 
 describe("completion-defers-to-results", () => {
-const frame = PlurnkParser.frame;
 const response = (...program: string[]) => ({ assistant: { content: program.join("\n\n"), reasoning: null } });
 const fixture = async (t: TestContext) => {
     const db = await openMigrated();
@@ -44,9 +42,12 @@ for (const [op, maxStrikes] of [["READ (workspace:///answer.md)", 0], ["READ (wo
     ["READ (workspace:///answer.md)", 3], ["FIND (workspace:///answer.md)", 3], ["BARE", 3]] as const) {
     test(`{§loop-completion} ${op}, tolerance ${maxStrikes}: observe the result without repeating the answer`, async (t) => {
         const { db, engine, workspaceId, sessionId, loopId } = await fixture(t);
+        const firstStmt = op === "BARE"
+            ? 'await plurnk.bare({"prompt":"What is six times seven?"});'
+            : `await plurnk.${op.split(" ")[0].toLowerCase()}({"path":"workspace:///answer.md"});`;
         const provider = new Mock({ contextWindow: 100000, responses: [
-            response(frame(op, op === "BARE" ? "What is six times seven?" : null), frame("SEND", "The answer is 42.")),
-            response(frame("DONE", null)),
+            response(firstStmt, "await plurnk.send({\"text\":\"The answer is 42.\"});"),
+            response("await plurnk.done({});"),
         ] });
         const childProvider = new Mock({ contextWindow: 100000, responses: [response("42")] });
         const result = await engine.runLoop({ provider, childProvider, workspaceId, sessionId, loopId, messages: [], maxTurns: 3, maxStrikes });
@@ -68,8 +69,8 @@ for (const [op, maxStrikes] of [["READ (workspace:///answer.md)", 0], ["READ (wo
 test("{§message-completion} observation permits a corrected reply", async (t) => {
     const { db, engine, workspaceId, sessionId, loopId } = await fixture(t);
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response(frame("READ (workspace:///answer.md)", null), frame("SEND", "The answer is 41.")),
-        response(frame("DONE", "Correction: the answer is 42.")),
+        response("await plurnk.read({\"path\":\"workspace:///answer.md\"});", "await plurnk.send({\"text\":\"The answer is 41.\"});"),
+        response("await plurnk.done({\"text\":\"Correction: the answer is 42.\"});"),
     ] });
     const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);
@@ -83,8 +84,8 @@ for (const target of ["log:///999/*/*", "workspace:///answer.md"]) {
     test(`{§message-completion} progress SEND plus successful KILL ${target} leaves the message unresolved`, async (t) => {
         const { engine, workspaceId, sessionId, loopId } = await fixture(t);
         const provider = new Mock({ contextWindow: 100000, responses: [
-            response(frame(`KILL (${target})`, null), frame("SEND", "Finished.")),
-            response(frame("DONE", null)),
+            response(`await plurnk.kill({"path":"${target}"});`, "await plurnk.send({\"text\":\"Finished.\"});"),
+            response("await plurnk.done({});"),
         ] });
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 2 });
         assert.equal(result.result.status, 200);
@@ -95,7 +96,7 @@ for (const target of ["log:///999/*/*", "workspace:///answer.md"]) {
 test("{§loop-completion} curation cannot turn a same-turn READ into an observed result", async (t) => {
     const { engine, workspaceId, sessionId, loopId } = await fixture(t);
     const provider = new Mock({ contextWindow: 100000, responses: [response(
-        frame("READ (workspace:///answer.md)", null), frame("KILL (log:///**/READ)", null), frame("SEND", "Finished."),
+        "await plurnk.read({\"path\":\"workspace:///answer.md\"});", "await plurnk.kill({\"path\":\"log:///**/READ\"});", "await plurnk.send({\"text\":\"Finished.\"});",
     )] });
     const turn = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
     assert.equal(turn.status, 102);
@@ -106,9 +107,9 @@ test("{§loop-completion} curation cannot turn a same-turn READ into an observed
 test("{§loop-completion} repeated work costs observations, not ceremony strikes", async (t) => {
     const { db, engine, workspaceId, sessionId, loopId } = await fixture(t);
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response(frame("READ (workspace:///answer.md)", null), frame("SEND", "The answer is 42.")),
-        response(frame("FIND (workspace:///answer.md)", null)),
-        response(frame("DONE", null)),
+        response("await plurnk.read({\"path\":\"workspace:///answer.md\"});", "await plurnk.send({\"text\":\"The answer is 42.\"});"),
+        response("await plurnk.find({\"path\":\"workspace:///answer.md\"});"),
+        response("await plurnk.done({});"),
     ] });
     const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 4, maxStrikes: 1 });
     assert.equal(result.result.status, 200);
@@ -120,10 +121,14 @@ for (const kind of ["sessions", "streams", "failed-stream-results", "late-failed
     test(`{§loop-completion} ${kind} arriving after packet assembly prevents premature conclusion`, async (t) => {
         const { db, engine, workspaceId, sessionId, loopId } = await fixture(t);
         const live = kind === "sessions" || kind === "streams";
-        const operation = kind === "operation-failure" ? "READ (workspace:///missing.md)" : kind === "kill-failure" ? "KILL (workspace:///missing.md)" : "DONE";
+        const operation = kind === "operation-failure"
+            ? 'await plurnk.read({"path":"workspace:///missing.md"});'
+            : kind === "kill-failure"
+                ? 'await plurnk.kill({"path":"workspace:///missing.md"});'
+                : "await plurnk.done({});";
         const provider = new Mock({ contextWindow: 100000, responses: [
-            response(frame("READ (workspace:///answer.md)", null), frame("SEND", "The answer is 42.")),
-            response(frame(operation, null)), response(operation === "DONE" ? "" : frame("DONE", null)),
+            response("await plurnk.read({\"path\":\"workspace:///answer.md\"});", "await plurnk.send({\"text\":\"The answer is 42.\"});"),
+            response(operation), response(operation === "await plurnk.done({});" ? "" : "await plurnk.done({});"),
         ] });
         const generate = provider.generate.bind(provider);
         t.mock.method(provider, "generate", async (args: Parameters<Mock["generate"]>[0]) => {
@@ -160,8 +165,8 @@ test("{§session-causal-admission} explicit scope cancellation does not wait for
     const { engine, db, workspaceId, sessionId, loopId } = await fixture(t);
     const childId = await insertSession(db, workspaceId, sessionId, "child");
     const childLoop = await insertLoop(db, childId, 1, "Still working.");
-    const provider = new Mock({ contextWindow: 100000, responses: [response(frame("READ (workspace:///missing.md)", null),
-        frame("SEND", "Stopping the work."), frame("KILL (session://alice)", null))] });
+    const provider = new Mock({ contextWindow: 100000, responses: [response("await plurnk.read({\"path\":\"workspace:///missing.md\"});",
+        "await plurnk.send({\"text\":\"Stopping the work.\"});", "await plurnk.kill({\"path\":\"session://alice\"});")] });
     const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 2 });
     assert.equal(result.result.status, 499);
     assert.equal(result.result.content, undefined);
@@ -308,7 +313,7 @@ test("{§op-shapes} WAIT ignores a non-duration decoration and continues without
         const loopId = await insertLoop(db, sessionId, 1, "wait");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "```WAIT <-1>\nstanding by\n```", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "await plurnk.wait({\"text\":\"standing by\"});", reasoning: null } }] }),
             workspaceId, sessionId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -331,7 +336,7 @@ test("{§op-shapes} a decorated WAIT keeps its sibling, source evidence, and ord
         const loopId = await insertLoop(db, sessionId, 1, "read the note");
         await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.txt", channel: "body", content: "the note", mimetype: "text/plain", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const content = "````READ (workspace:///note.txt)````\n````WAIT (sh:///missing) [60] [{\"timeout\":42}]\nstanding by\n````";
+        const content = "await plurnk.read({\"path\":\"workspace:///note.txt\"});\n\nawait plurnk.wait({\"target\":\"sh:///missing\",\"seconds\":60,\"text\":\"standing by\"});";
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content, reasoning: null } }] }),
             workspaceId, sessionId, loopId,
@@ -536,10 +541,10 @@ describe("send-200-mutation-receipts", () => {
 for (const curate of [false, true]) {
     test(`{§loop-completion}: mutation receipts require observation, including when curated=${curate}`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
-        const extra = curate ? "````READ (workspace:///notes.md)\n````\n````READ (workspace:///notes.md)\n````\n````KILL (log:///**/EDIT)\n````\n" : "";
+        const extra = curate ? "await plurnk.read({\"path\":\"workspace:///notes.md\"});\n\nawait plurnk.read({\"path\":\"workspace:///notes.md\"});\n\nawait plurnk.kill({\"path\":\"log:///**/EDIT\"});" : "";
         const mock = new Mock({ contextWindow: 16384, responses: [
-            makeMockResponse("````EDIT (workspace:///notes.md)\nhello\n````\n" + extra + "````SEND\nWritten.\n````"),
-            makeMockResponse("````DONE\n````"),
+            makeMockResponse("await plurnk.edit({\"path\":\"workspace:///notes.md\",\"content\":\"hello\"});" + extra + "await plurnk.send({\"text\":\"Written.\"});"),
+            makeMockResponse("await plurnk.done({});"),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -584,12 +589,12 @@ for (const command of ["true", "hostname"]) {
     for (const earlyReply of [false, true]) test(`{§loop-completion} a successful ${command} reaches the next packet, early reply=${earlyReply}`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
         const answer = command === "hostname" ? hostname() : "The command completed successfully.";
-        const reply = earlyReply ? "\n````SEND\nThe hostname is plurnk-sandbox.\n````" : "";
+        const reply = earlyReply ? "await plurnk.send({\"text\":\"The hostname is plurnk-sandbox.\"});" : "";
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [
-                makeMockResponse(`\`\`\`\`sh\n${command}\n\`\`\`\`${reply}`),
-                makeMockResponse(`\`\`\`\`DONE\n${answer}\n\`\`\`\``),
+                makeMockResponse(`await plurnk.sh({"command":"${command}"});\n${reply}`),
+                makeMockResponse(`await plurnk.done({"text":"${answer}"});`),
             ],
         });
         await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -629,8 +634,8 @@ test("{§loop-completion}: a successful execution receipt defers completion one 
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("````sh\ntrue\n````\n````SEND\nCompleted.\n````"),
-            makeMockResponse("````DONE\n````"),
+            makeMockResponse("await plurnk.sh({\"command\":\"true\"});\n\nawait plurnk.send({\"text\":\"Completed.\"});"),
+            makeMockResponse("await plurnk.done({});"),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -657,8 +662,8 @@ test("{§loop-completion}: a same-turn stream's nonzero exit defers completion w
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("````sh\nexit 3\n````\n````SEND\nconcluding blind\n````"),
-            makeMockResponse("````DONE\nconcluding after reading the failure\n````"),
+            makeMockResponse("await plurnk.sh({\"command\":\"exit 3\"});\n\nawait plurnk.send({\"text\":\"concluding blind\"});"),
+            makeMockResponse("await plurnk.done({\"text\":\"concluding after reading the failure\"});"),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -747,13 +752,17 @@ for (const [name, completion, answer] of [["answered 200", 200, "the code is 481
         let workspaceId = 0;
         const provider = new Scripted(() => db, {
             root: [
-                () => "````WORK (session://kid)\nask me for the code, then report what I said\n````\n\n````WAIT\nawaiting kid\n````",
-                async (d) => `\`\`\`\`${completion === 200 ? "DONE" : "FAIL"} (${await openMessageFrom(d, workspaceId, "kid")})\n${answer}\n\`\`\`\`\n\n\`\`\`\`WAIT\nstill awaiting kid\n\`\`\`\``,
-                () => "````DONE\nkid is done\n````",
+                () => "await plurnk.work({\"target\":\"session://kid\",\"prompt\":\"ask me for the code, then report what I said\"});\n\nawait plurnk.wait({\"text\":\"awaiting kid\"});",
+                async (d) => `await plurnk.${completion === 200 ? "done" : "fail"}(${JSON.stringify({ target: await openMessageFrom(d, workspaceId, "kid"), text: answer })});
+
+await plurnk.wait({"text":"still awaiting kid"});`,
+                () => "await plurnk.done({\"text\":\"kid is done\"});",
             ],
             kid: [
-                async (d) => `\`\`\`\`SEND (${await parentOf(d, workspaceId, "kid")})\nwhat is the code?\n\`\`\`\`\n\n\`\`\`\`WAIT\nawaiting the parent's answer\n\`\`\`\``,
-                () => "````DONE\nreported\n````",
+                async (d) => `await plurnk.send({"target":"${await parentOf(d, workspaceId, "kid")}","text":"what is the code?"});
+
+await plurnk.wait({"text":"awaiting the parent's answer"});`,
+                () => "await plurnk.done({\"text\":\"reported\"});",
             ],
         });
         await withDaemon(provider, async (database, _daemon, addr) => {
@@ -787,12 +796,14 @@ test("{§loop-completion} a parent that strikes out with the child's message una
     let workspaceId = 0;
     const provider = new Scripted(() => db, {
         root: [
-            () => "````WORK (session://kid)\nask me for the code, then report what happened\n````\n\n````WAIT\nawaiting kid\n````",
+            () => "await plurnk.work({\"target\":\"session://kid\",\"prompt\":\"ask me for the code, then report what happened\"});\n\nawait plurnk.wait({\"text\":\"awaiting kid\"});",
             ...Array.from({ length: 16 }, () => () => ({ raw: "I am thinking about the code and will answer soon." })),
         ],
         kid: [
-            async (d) => `\`\`\`\`SEND (${await parentOf(d, workspaceId, "kid")})\nwhat is the code?\n\`\`\`\`\n\n\`\`\`\`WAIT\nawaiting the parent's answer\n\`\`\`\``,
-            () => "````DONE\nthe parent went away without answering\n````",
+            async (d) => `await plurnk.send({"target":"${await parentOf(d, workspaceId, "kid")}","text":"what is the code?"});
+
+await plurnk.wait({"text":"awaiting the parent's answer"});`,
+            () => "await plurnk.done({\"text\":\"the parent went away without answering\"});",
         ],
     });
     await withDaemon(provider, async (database, _daemon, addr) => {

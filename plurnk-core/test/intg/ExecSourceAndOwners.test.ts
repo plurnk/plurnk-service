@@ -195,7 +195,7 @@ test("{§op-methods-op-dispatch}: create, launch, and delete are ordered without
     const gate = Promise.withResolvers<void>();
     const ctx = await wire(() => gate.promise);
     try {
-        const source = "````EDIT (workspace:///script)\nsource code\n````\n````tool (workspace:///script)````\n````KILL (workspace:///script)````\n````NOTE\nContinue the task.\n````";
+        const source = "await plurnk.edit({\"path\":\"workspace:///script\",\"content\":\"source code\"});\n\nawait tool[\"workspace:///script\"]();\n\nawait plurnk.kill({\"path\":\"workspace:///script\"});\n\nawait plurnk.note({\"text\":\"Continue the task.\"});";
         const result = await ctx.engine.runTurn({
             workspaceId: ctx.workspaceId, sessionId: ctx.root.sessionId, loopId: ctx.root.loopId,
             messages: [], provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
@@ -775,8 +775,8 @@ test("{§exec-target-routing} {§diagnostic-observation} a bare execution of a t
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("````sh\nfail {\"message\":\"boom\"}\n````\n\n````WAIT\nwaiting on the shell\n````", 10),
-            makeMockResponse("````DONE\nseen\n````", 10),
+            makeMockResponse("await plurnk.sh({\"command\":\"fail {\\\"message\\\":\\\"boom\\\"}\"});\n\nawait plurnk.wait({\"text\":\"waiting on the shell\"});", 10),
+            makeMockResponse("await plurnk.done({\"text\":\"seen\"});", 10),
         ],
     });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });
@@ -819,8 +819,8 @@ test("{§exec-target-routing} a program the registry does not know keeps the she
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("````sh\nno_such_program_zq --help\n````\n\n````WAIT\nwaiting\n````", 10),
-            makeMockResponse("````DONE\nseen\n````", 10),
+            makeMockResponse("await plurnk.sh({\"command\":\"no_such_program_zq --help\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});", 10),
+            makeMockResponse("await plurnk.done({\"text\":\"seen\"});", 10),
         ],
     });
     const db = await openMigrated();

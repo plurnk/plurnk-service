@@ -59,7 +59,7 @@ describe("catalog-preview", () => {
 
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; attrs: string; folded: string; origin: string };
-const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```DONE\ndone\n```", 50)] });
+const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50)] });
 
 test("{§actor-boundary} PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
@@ -187,7 +187,7 @@ test("{§actor-boundary} turn-0 once-per-session foists fire on the session's fi
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {
-        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("```DONE\ndone\n```", 50), makeMockResponse("```DONE\ndone\n```", 50)] });
+        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50), makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50)] });
         await withDaemon(twoLoops, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -257,7 +257,8 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                 assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), [],
                     "the program reaches the first request through its results, never assistant history");
                 assert.deepEqual(
-                    program.content.split("\n\n").flatMap((block) => /^```([A-Za-z0-9_]+)/.exec(block)?.[1] ?? []),
+                    PlurnkParser.parseStatements(program.content, { executors: ["plurnk"] }).items.flatMap((item) =>
+                        item.kind === "statement" ? ["runtime" in item.statement ? item.statement.runtime : item.statement.op] : []),
                     initializationRows.map(({ op }) => op),
                     "{§fence-pairing}: every operation is separated by a blank line and has exactly one ordinary receipt",
                 );
@@ -321,13 +322,13 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 const shell = toolItems.flat().find(({ path }) => path === "plurnk:///sh.md");
                 assert.equal(
                     shell?.aside,
-                    `\`\`\`sh <!-- ${Shell.summary(Shell.current())} -->\ngit status --short\n\`\`\``,
+                    `await plurnk.sh({"command":"git status --short"}); // ${Shell.summary(Shell.current())}`,
                     "Turn 0 teaches a compact executable witness with its aside naming the shell that runs ({§executor-subprocess}), as plain text rather than a code span",
                 );
                 const python = toolItems.flat().find(({ path }) => path === "plurnk:///python3.md");
                 assert.equal(
                     python?.aside,
-                    "```python3 <!-- Run Python 3 code or scripts. -->\nprint(42)\n```",
+                    "await plurnk.python3({\"code\":\"print(42)\"}); // Run Python 3 code or scripts.",
                     "the interpreter aside teaches an executable inline program without requiring a document READ",
                 );
                 for (const [index, name] of ["https", "session", "wss"].entries()) {
@@ -367,9 +368,9 @@ describe("inject-fold-posture", () => {
 
 const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
     // A non-auto execution proposal holds loop 1 live (paused at the review) while injects arrive.
-    makeMockResponse("\n````sh\necho hold\n````\n\n````NOTE\nworking\n````", 10),
-    makeMockResponse("````DONE\ndone\n````", 10),
-    makeMockResponse("````DONE\ndone again\n````", 10),
+    makeMockResponse("await plurnk.sh({\"command\":\"echo hold\"});\n\nawait plurnk.note({\"text\":\"working\"});", 10),
+    makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
+    makeMockResponse("await plurnk.done({\"text\":\"done again\"});", 10),
 ] });
 
 test("{§session-ownership}: injecting a message preserves the owner's pending review", async () => {
@@ -429,8 +430,8 @@ test("{§methods-workspace-create}: an omitted ceiling resumes a parked loop unc
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("````sh\nsleep 30\n````\n\n````WAIT\npark\n````", 10),
-            makeMockResponse("````DONE\ndone\n````", 10),
+            makeMockResponse("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.wait({\"text\":\"park\"});", 10),
+            makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
         ],
     });
 
@@ -511,7 +512,7 @@ for (const standing of ["absent", "ignored", "untracked", "tracked", "excluded"]
                 if (standing !== "absent") {
                     await writeFile(join(dir, "packages", "web", "AGENTS.local.md"), "# Nested\n", "utf8");
                 }
-                const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
+                const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50)] });
                 await withDaemon(mock, async (db, _daemon, addr) => {
                     const ws = await connect(addr);
                     try {
@@ -561,12 +562,12 @@ test("{§session-initialization-entry} {§session-scheme}: a pre-populated sessi
             contextWindow: 100000,
             responses: [
                 makeMockResponse([
-                    "````EDIT (session://child/AGENTS.md)\n# Child Role\nFocus only on parser recovery.\n````",
-                    "````WORK (session://child)\nInspect the grammar.\n````",
-                    "````WAIT\n````",
+                    "await plurnk.edit({\"path\":\"session://child/AGENTS.md\",\"content\":\"# Child Role\\nFocus only on parser recovery.\"});",
+                    "await plurnk.work({\"target\":\"session://child\",\"prompt\":\"Inspect the grammar.\"});",
+                    "await plurnk.wait({});",
                 ].join("\n\n"), 50),
-                makeMockResponse("````DONE\nChild finished.\n````", 50),
-                makeMockResponse("````DONE\nParent finished.\n````", 50),
+                makeMockResponse("await plurnk.done({\"text\":\"Child finished.\"});", 50),
+                makeMockResponse("await plurnk.done({\"text\":\"Parent finished.\"});", 50),
             ],
         });
         await withDaemon(provider, async (db, _daemon, addr) => {
@@ -635,8 +636,8 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
         return response;
     });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        "````fixture (third)\n{}\n````\n\n````WAIT\nObserve the result.\n````",
-        "````DONE\nCatalog tool result observed.\n````",
+        "await fixture.third({});\n\nawait plurnk.wait({\"text\":\"Observe the result.\"});",
+        "await plurnk.done({\"text\":\"Catalog tool result observed.\"});",
     ].map(makeMockResponse) });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const db = await openMigrated();
@@ -671,7 +672,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     // Tool documents are workspace resources ({§session-scheme}): a person reads them
     // ({§connection-lifecycle}), leaving the model session's next call under test.
     const read = async (path: string) => {
-        const source = PlurnkParser.frame(`READ (${path}) <1,-1>`, null);
+        const source = `await plurnk.read({"path":"${path}","range":"1,-1"});`;
         const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
         const item = parsed.items[0];
         assert.equal(item?.kind, "statement");
@@ -685,7 +686,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
         return document.content as string;
     };
     // {§mcp-configuration} The first read makes the workspace resident.
-    assert.match(await toolsDocument(), /fixture \(first\)/);
+    assert.match(await toolsDocument(), /await fixture\.first\(\{\}\);/);
     // {§executor-discovery} The catalog shares the same refresh and withdrawal boundary.
     const listRequests = () => served.requests.filter(({ body }) => (body as { method?: string }).method === "tools/list").length;
     const beforeRead = listRequests();
@@ -729,8 +730,8 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     assert.deepEqual((await catalog()).definitions.find(({ alias }) => alias === "fixture")?.detail.tools, ["third"],
         "the second invalidation must not disappear when the earlier catalog commits");
     const document = await toolsDocument();
-    assert.match(document, /fixture \(third\)/);
-    assert.doesNotMatch(document, /fixture \((?:first|second)\)/);
+    assert.match(document, /await fixture\.third\(\{\}\);/);
+    assert.doesNotMatch(document, /await fixture\.(?:first|second)\(\{\}\);/);
     assert.deepEqual(await names(), ["third"]);
     assert.equal((await read("mcp:///fixture/first.json")).status, 404,
         "refresh removes the old per-tool schema as well as its catalog definition");
@@ -765,8 +766,8 @@ describe("mcp-subscription-composition", () => {
 process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
 process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "60000";
 
-const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Resource inspected.");
-const read = (uri: string) => PlurnkParser.frame(`READ (fixture://${resourcePath(uri)}) <1,-1>`, null);
+const step = (op = "NOTE") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "NOTE" ? "Inspect the result." : "Resource inspected." })});`;
+const read = (uri: string) => `await plurnk.read({"path":"fixture://${resourcePath(uri)}","range":"1,-1"});`;
 
 test("{§mcp-host-composition} {§actor-boundary} resource updates refresh a later READ without changing history or waking unrelated sessions", { timeout: 20_000 }, async (t) => {
     serverProposals(t, "accept");
@@ -904,14 +905,14 @@ test("{§child-orientation}: the coordinate on the packet is the one whose reaso
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const context = { workspaceId, sessionId, loopId };
         const mock = reasoningProvider("Own reasoning for this very turn.",
-            `${PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1>", null)}\n\n${PlurnkParser.frame("SEND", "Ready.")}`);
+            `await plurnk.read({"path":"reasoning://alice/1/2","range":"1,-1"});\n\nawait plurnk.send({"text":"Ready."});`);
         const ran = await engine.runTurn({ ...context, provider: mock, messages: [] });
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: ran.turnId });
         assert.equal(turn?.sequence, 2);
         const user = userText(mock.received.at(-1)!);
         assert.match(user, /## Session\n\{"path":"session:\/\/alice","parent":null,"loop":1,"turn":2,"owner":\{"address":"[^"]+","interactive":(?:true|false)\}\}/, "the packet the model answered named turn 1/2 and its owner in its Session block");
         assert.ok(user.indexOf("## Log") < user.indexOf("## Session"), "below the log");
-        const own = await clientRead(engine, db, { ...context, statement: reasoningStatement("````READ (reasoning://alice/1/2) <1,-1>````") });
+        const own = await clientRead(engine, db, { ...context, statement: reasoningStatement("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"});") });
         assert.equal(own.status, 200);
         assert.ok("content" in own);
         assert.equal(own.content, "Own reasoning for this very turn.");

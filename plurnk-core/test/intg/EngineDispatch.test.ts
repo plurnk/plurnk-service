@@ -234,15 +234,21 @@ for (const op of ["READ", "FIND"] as const) {
     test(`{§diagnostic-observation}: ${op} without a path identifies the missing target, not a missing scheme`, async () => {
         const { db, engine, env } = await setup();
         try {
-            const parsed = PlurnkParser.parse(`\`\`\`\`${op}\n*\n\`\`\`\``);
-            const item = parsed.items.find((candidate) => candidate.kind === "statement" && candidate.statement.op === op);
-            assert.ok(item?.kind === "statement");
-            assert.ok(item.statement.op === "READ" || item.statement.op === "FIND");
-            const result = await engine.dispatch({ statement: item.statement, ...env, sequence: 1, origin: "model" });
+            const statement: ReadStatement | FindStatement = {
+                op,
+                aside: null,
+                target: null,
+                lineMarker: null,
+                matcher: null,
+                metadata: null,
+                body: null,
+                position: { line: 1, column: 1 },
+            };
+            const result = await engine.dispatch({ statement, ...env, sequence: 1, origin: "model" });
             assert.equal(result.status, 400);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/target-required");
             assert.equal(result.problem?.detail, `${op} requires a target path.`);
-            const local = await engine.dispatch({ statement: { ...item.statement, target: { kind: "local", raw: "example.txt" } }, ...env, sequence: 2, origin: "model" });
+            const local = await engine.dispatch({ statement: { ...statement, target: { kind: "local", raw: "example.txt" } }, ...env, sequence: 2, origin: "model" });
             assert.equal(local.status, 404, "the bare path reaches file resolution rather than missing-target refusal");
             assert.equal(local.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
         } finally { await db.close(); }
@@ -254,7 +260,7 @@ test("{§loop-completion}: retiring a failed receipt does not make it observed",
     try {
         await engine.injectIntoLoop(env.loopId, "Report the result.", [], undefined, {}, "message://request/result");
         await engine.runTurn({ ...env, messages: [], provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: {
-            content: "```NOTE\nInspect the result.\n```", reasoning: null,
+            content: "await plurnk.note({\"text\":\"Inspect the result.\"});", reasoning: null,
         } }] }) });
         const { id: turnId } = await Turn.open(db, { loopId: env.loopId, producer: "model", kind: "inference" });
         const coordinates = await db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: env.loopId, turn_id: turnId });
@@ -1171,7 +1177,7 @@ test("{§fs-namespace} contract: FIND(bare path) resolves the canonical-stored m
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
-        const stmt = parseOp<FindStatement>("````FIND (notes.md)````", "FIND");
+        const stmt = parseOp<FindStatement>("await plurnk.find({\"path\":\"notes.md\"});", "FIND");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200, "FIND succeeds");
         assert.ok(resourcePaths(result).includes("notes.md"), `FIND must find the member (catalog renders it bare: notes.md); got: ${JSON.stringify(resourcePaths(result))}`);
@@ -1183,7 +1189,7 @@ test("{§fs-namespace} contract: READ(bare path) resolves the canonical-stored m
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
-        const stmt = parseOp<ReadStatement>("````READ (notes.md)````", "READ");
+        const stmt = parseOp<ReadStatement>("await plurnk.read({\"path\":\"notes.md\"});", "READ");
         const result = await readFileScheme(stmt, ctx);
         assert.equal(result.status, 200, "READ canonicalizes the bare path and resolves the member");
         assert.match(result.content ?? "", /phoenix/, "READ returns the member content");
@@ -1197,7 +1203,7 @@ test("{§edit} contract: EDIT(bare path) resolves the canonical-stored member an
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
         // {§edit} — notes.md already exists; <1,-1> states the rewrite.
-        const stmt = parseOp<ResolvedEditStatement>("````EDIT (notes.md) <1,-1>\nthe codename is dragon\n````", "EDIT");
+        const stmt = parseOp<ResolvedEditStatement>("await plurnk.edit({\"path\":\"notes.md\",\"range\":\"1,-1\",\"content\":\"the codename is dragon\"});", "EDIT");
         const result = await new File().edit(stmt, ctx);
         assert.equal(result.status, 202, `EDIT canonicalizes the bare path → proposal; got ${result.status} ${result.problem?.detail ?? ""}`);
     });
@@ -1207,7 +1213,7 @@ test("{§fs-namespace} FIND of an absolute path resolves the member", async () =
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
-        const stmt = parseOp<FindStatement>(PlurnkParser.frame(`FIND (${join(root, "notes.md")})`, null), "FIND");
+        const stmt = parseOp<FindStatement>(`await plurnk.find({"path":"${join(root, "notes.md")}"});`, "FIND");
         const result = await new File().find(stmt, ctx);
         assert.ok(resourcePaths(result).includes("notes.md"), `the leading-slash form finds it; got: ${JSON.stringify(resourcePaths(result))}`);
     });
@@ -1219,7 +1225,7 @@ test("{§fs-namespace} an exact regex FIND returns its flat match location", asy
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "heading\nthe codename is phoenix\ncontext\n");
         await addMember(ctx, "notes.md");
-        const stmt = parseOp<FindStatement>("````FIND (notes.md) /phoenix/````", "FIND");
+        const stmt = parseOp<FindStatement>("await plurnk.find({\"path\":\"notes.md\",\"pattern\":\"/phoenix/\"});", "FIND");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200);
         assert.ok(result.results.length > 0);
@@ -1230,7 +1236,7 @@ test("{§fs-namespace} contract: an exact FIND returns every match as a flat loc
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "log.md"), "alpha\ntarget one\nbeta\ngamma\ntarget two\n");
         await addMember(ctx, "log.md");
-        const stmt = parseOp<FindStatement>("````FIND (log.md) *target*````", "FIND");
+        const stmt = parseOp<FindStatement>("await plurnk.find({\"path\":\"log.md\",\"pattern\":\"*target*\"});", "FIND");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200);
         assert.ok(result.results.length > 0);
@@ -1241,7 +1247,7 @@ test("{§path-syntax} contract: an exact jsonpath FIND returns flat structural l
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "config.json"), '{\n  "host": "db.internal",\n  "pool": 5\n}\n');
         await addMember(ctx, "config.json");
-        const stmt = parseOp<FindStatement>("````FIND (config.json) $.host````", "FIND");
+        const stmt = parseOp<FindStatement>("await plurnk.find({\"path\":\"config.json\",\"pattern\":\"$.host\"});", "FIND");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200);
         assert.ok(result.results.length > 0);
@@ -1257,7 +1263,7 @@ test("{§fs-namespace} explicit file URI and bare FIND globs list the same membe
         await writeFile(join(root, "docs/b.md"), "beta");
         await addMember(ctx, "a.md");
         await addMember(ctx, "docs/b.md");
-        for (const dsl of [PlurnkParser.frame(`FIND (file://${root}/**)`, null), "````FIND (**)````"]) {
+        for (const dsl of [`await plurnk.find({"path":"file://${root}/**"});`, "await plurnk.find({\"path\":\"**\"});"]) {
             const r = await new File().find(parseOp<FindStatement>(dsl, "FIND"), ctx);
             assert.equal(r.status, 200, `${dsl} → 200`);
             assert.equal(r.results.length, 2, `${dsl} lists both tracked members`);
@@ -1279,13 +1285,13 @@ test("{§fs-namespace} contract: bare FIND(*) is a shallow project map; FIND(**)
         await writeFile(join(root, "src/nested/deep.ts"), "deep");
         for (const path of [".env.defaults", ".github/settings.yml", "README.md", "src/index.ts", "src/nested/deep.ts"]) await addMember(ctx, path);
 
-        const shallow = await new File().find(parseOp<FindStatement>("````FIND (*)````", "FIND"), ctx);
+        const shallow = await new File().find(parseOp<FindStatement>("await plurnk.find({\"path\":\"*\"});", "FIND"), ctx);
         assert.deepEqual(resourcePaths(shallow), [".env.defaults", ".github/**", "README.md", "src/**"]);
         const scope = resourceGroups(shallow).find(([item]) => item.path === "src/**")?.[0];
         assert.ok(scope !== undefined && "items" in scope);
         assert.equal(scope.items, 2);
 
-        const recursive = await new File().find(parseOp<FindStatement>("````FIND (**)````", "FIND"), ctx);
+        const recursive = await new File().find(parseOp<FindStatement>("await plurnk.find({\"path\":\"**\"});", "FIND"), ctx);
         assert.deepEqual(resourcePaths(recursive), [".env.defaults", ".github/settings.yml", "README.md", "src/index.ts", "src/nested/deep.ts"]);
     });
 });
@@ -1298,7 +1304,7 @@ test("{§fs-namespace} directory and glob searches from filesystem ancestors ret
 
         await writeFile(join(root, "hidden.txt"), "not a member");
         for (const target of [".", root, `${root}/`, "file:///", "/", "../", "../../**", `${root}/../**/*.ts`]) {
-            const result = await new File().find(parseOp<FindStatement>(PlurnkParser.frame(`FIND (${target})`, null), "FIND"), ctx);
+            const result = await new File().find(parseOp<FindStatement>(`await plurnk.find({"path":"${target}"});`, "FIND"), ctx);
             assert.equal(result.status, 200, target);
             assert.deepEqual(resourcePaths(result), ["src/a.ts"], target);
         }

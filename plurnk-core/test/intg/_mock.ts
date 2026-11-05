@@ -1,4 +1,4 @@
-// Integration harness: mock provider responses built from plurnk DSL.
+// Integration harness: mock provider responses built from plurnk Code Mode statements.
 
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
@@ -10,15 +10,26 @@ export const userText = (messages: readonly ChatMessage[]): string =>
     messages.filter(({ role }) => role === "user").map(chatMessageText).join("\n\n");
 
 // {§operation-fences} — every executor tag the integration fixtures write, as the daemon would name them.
-export const TEST_EXECUTORS: readonly string[] = ["sh", "bash", "js", "python3", "gitea", "brave", "fixture", "fx", "dialogue", "tools", "question", "members", "skills", "env", "svc", "mcp", "resource-tool", "optional-resource", "kubernetes", "goji", "example", "viaexec", "tool", "other", "registrytool", "calc", "workspacecap", "echo", "cdp", "playwright"];
+export const TEST_EXECUTORS: readonly string[] = ["sh", "bash", "js", "python3", "plurnk", "gitea", "brave", "fixture", "dialogue", "tools", "svc", "alpha", "keep", "later", "viaexec", "candidate", "held", "local", "resource-tool", "optional-resource", "kubernetes", "goji", "example", "tool", "other", "registrytool", "calc", "workspacecap", "echo", "cdp", "playwright"];
 
-// Fixtures mint executors freely; every fence tag a DSL text writes is an executor for that text.
+const CORE_AND_PLURNK_TOOLS = new Set([
+    "read", "edit", "copy", "move", "kill", "find", "bare", "work", "fork", "send", "done", "fail", "wait", "note", "todo", "text",
+    "environment", "env", "mcp", "members", "personas", "schedule", "skills", "question", "fx", "destroy",
+    "ts", "javascript", "typescript", "node",
+]);
+
+// Fixtures mint executors freely; every service namespace a Code Mode text invokes is an executor for that text.
 export const fixtureExecutors = (text: string): readonly string[] => [...new Set([
     ...TEST_EXECUTORS,
-    ...[...text.matchAll(/^`{3,}[0-9]*([a-z][A-Za-z0-9_.+-]*)/gmu)].map((match) => match[1]),
+    ...[...text.matchAll(/\bawait\s+([A-Za-z_$][A-Za-z0-9_$-]*)\s*(?:\.|\[)/gu)]
+        .map((match) => match[1] ?? "")
+        .filter((name) => name !== "plurnk"),
+    ...[...text.matchAll(/\bawait\s+plurnk(?:\.([A-Za-z_$][A-Za-z0-9_$-]*)|\[\s*["']([^"']+)["']\s*\])/gu)]
+        .map((match) => match[1] ?? match[2] ?? "")
+        .filter((name) => name.length > 0 && !CORE_AND_PLURNK_TOOLS.has(name.toLowerCase())),
 ])];
 
-// Parse plurnk DSL into statement ops. Used to build mock provider responses.
+// Parse plurnk Code Mode into statement ops. Used to build mock provider responses.
 export const parseDsl = (text: string): PlurnkStatement[] => {
     const result = PlurnkParser.parse(text, { executors: fixtureExecutors(text) });
     const statements = result.items
@@ -33,7 +44,7 @@ export const parseDsl = (text: string): PlurnkStatement[] => {
 
 // A response the parser admits nothing from (prose, bare headings): ops stay empty by design.
 export const makeRawMockResponse = (text: string, completion: number = 0): MockResponse => ({
-    ...makeMockResponse("````NOTE\n````", completion),
+    ...makeMockResponse("await plurnk.note({});", completion),
     // No pre-parsed ops: the engine parses the content itself and rejects it on its own terms.
     assistant: { content: text, reasoning: null },
 });
@@ -57,5 +68,5 @@ export const makeMockResponse = (dsl: string, completion: number = 0): MockRespo
 // {§message-completion}: the scripted model's reply, optionally beside operations
 // whose results must still be observed before the loop can settle.
 export const answer = (text: string, operations: string = ""): MockResponse => makeMockResponse(
-    [...(operations.length > 0 ? [operations] : []), "````DONE", ...(text.length > 0 ? [text] : []), "````"].join("\n"),
+    [...(operations.length > 0 ? [operations] : []), `await plurnk.done(${JSON.stringify(text.length > 0 ? { text } : {})});`].join("\n"),
 );

@@ -103,8 +103,8 @@ test("{§log-wire-format} every settled text mutation keeps its diff on its row;
     const { db, ids, root, dispatch, row } = await runtime(t);
 
     // A READ materializes the member and its revision, as every real turn does before an EDIT.
-    assert.equal((await dispatch("````READ (a.md) <1,-1>````")).status_rx, 200);
-    const edited = await dispatch("````EDIT (a.md) <2>\nTWO\n````");
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"a.md\",\"range\":\"1,-1\"});")).status_rx, 200);
+    const edited = await dispatch("await plurnk.edit({\"path\":\"a.md\",\"range\":\"2\",\"content\":\"TWO\"});");
     assert.equal(edited.status_rx, 200, `the line edit lands: ${edited.rx.slice(0, 200)}`);
     assert.ok(edited.patch, "an EDIT of a text member keeps its patch");
     assert.match(edited.patch, /^Index: a\.md\n=+\n--- a\.md\tcurrent\n\+\+\+ a\.md\tproposed\n@@ -1,3 \+1,3 @@\n one\n-two\n\+TWO\n three\n$/u, "the patch is the unified diff, current to proposed");
@@ -114,35 +114,35 @@ test("{§log-wire-format} every settled text mutation keeps its diff on its row;
     assert.equal(applyPatch("one\nTWO\nthree\n", reversePatch(hunk)), ORIGINAL, "reverse-applying the row's patch restores the original text");
     assert.doesNotMatch(edited.rx, /current\n\+\+\+/u, "the receipt carries no patch");
 
-    const created = await dispatch("````EDIT (new.md)\nhello\n````");
+    const created = await dispatch("await plurnk.edit({\"path\":\"new.md\",\"content\":\"hello\"});");
     assert.ok(created.status_rx < 300, `create: ${created.rx.slice(0, 200)}`);
     assert.match(created.patch ?? "", /--- new\.md\tcurrent\n\+\+\+ new\.md\tproposed\n@@ -0,0 \+1,1 @@\n\+hello\n/u, "a creation's patch adds every line from nothing");
 
-    const copied = await dispatch("````COPY (a.md) (copy.md)````");
+    const copied = await dispatch("await plurnk.copy({\"from\":\"a.md\",\"to\":\"copy.md\"});");
     assert.ok(copied.status_rx < 300, `COPY: ${copied.rx.slice(0, 200)}`);
     assert.match(copied.patch ?? "", /\+\+\+ copy\.md\tproposed\n@@ -0,0 \+1,3 @@\n\+one\n\+TWO\n\+three\n$/u, "a COPY into a new file keeps the destination's patch");
 
-    const moved = await dispatch("````MOVE (copy.md) (moved.md)````");
+    const moved = await dispatch("await plurnk.move({\"from\":\"copy.md\",\"to\":\"moved.md\"});");
     assert.ok(moved.status_rx < 300, `MOVE: ${moved.rx.slice(0, 200)}`);
     const movedPatch = moved.patch ?? "";
     assert.match(movedPatch, /\+\+\+ moved\.md\tproposed\n@@ -0,0 \+1,3 @@\n\+one\n\+TWO\n\+three\n/u, "a MOVE keeps the destination write");
     assert.match(movedPatch, /--- copy\.md\tcurrent\n\+\+\+ copy\.md\tproposed\n@@ -1,3 \+0,0 @@\n-one\n-TWO\n-three\n$/u, "and the source removal, in application order");
     assert.ok(movedPatch.indexOf("moved.md\tproposed") < movedPatch.indexOf("copy.md\tcurrent"), "destination before source");
 
-    const killed = await dispatch("````KILL (moved.md)````");
+    const killed = await dispatch("await plurnk.kill({\"path\":\"moved.md\"});");
     assert.ok(killed.status_rx < 300, `KILL: ${killed.rx.slice(0, 200)}`);
     assert.match(killed.patch ?? "", /^Index: moved\.md\n=+\n--- moved\.md\tcurrent\n\+\+\+ moved\.md\tproposed\n@@ -1,3 \+0,0 @@\n-one\n-TWO\n-three\n$/u, "a KILL keeps every removed line");
 
-    const bytes = await dispatch("````COPY (bin.png) (bin2.png)````");
+    const bytes = await dispatch("await plurnk.copy({\"from\":\"bin.png\",\"to\":\"bin2.png\"});");
     assert.ok(bytes.status_rx < 300, `binary COPY: ${bytes.rx.slice(0, 200)}`);
     assert.equal(bytes.patch, null, "a byte write keeps no patch");
 
     // The row serves its diff as the `patch` channel; a row without one has no such channel.
-    const read = await dispatch(`\`\`\`\`READ (log:///1/1/${edited.sequence}/EDIT#patch) <1,-1>\`\`\`\``);
+    const read = await dispatch(`await plurnk.read({"path":"log:///1/1/${edited.sequence}/EDIT#patch","range":"1,-1"});`);
     assert.equal(read.status_rx, 200, `READ #patch: ${read.rx.slice(0, 200)}`);
     assert.match(read.content, /-two/u);
     assert.match(read.content, /\+TWO/u);
-    const missing = await dispatch(`\`\`\`\`READ (log:///1/1/${bytes.sequence}/COPY#patch) <1,-1>\`\`\`\``);
+    const missing = await dispatch(`await plurnk.read({"path":"log:///1/1/${bytes.sequence}/COPY#patch","range":"1,-1"});`);
     assert.equal(missing.status_rx, 404, `a patchless row has no patch channel: ${missing.rx.slice(0, 200)}`);
 
     // A fork copies the row with its patch.
@@ -177,42 +177,42 @@ const runtime = async (t: TestContext) => {
 
 test("{§log-kill-scope}: READ and COPY omit deliberate trims in original coordinates", async (t) => {
     const { db, ids, dispatch } = await runtime(t);
-    assert.equal((await dispatch("````EDIT (workspace:///source.txt)\none\ntwo\nsecret\nfour\nfive\n````")).status, 201);
-    assert.equal((await dispatch("````READ (workspace:///source.txt) <1,-1>````")).status, 200);
+    assert.equal((await dispatch("await plurnk.edit({\"path\":\"workspace:///source.txt\",\"content\":\"one\\ntwo\\nsecret\\nfour\\nfive\"});")).status, 201);
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"workspace:///source.txt\",\"range\":\"1,-1\"});")).status, 200);
     const target = "log:///1/1/2/READ";
-    assert.equal((await dispatch(`\`\`\`\`KILL (${target}) <3>\`\`\`\``)).status, 200);
-    const read = await dispatch(`\`\`\`\`READ (${target}) <2,4>\`\`\`\``);
+    assert.equal((await dispatch(`await plurnk.kill({"path":"${target}","range":"3"});`)).status, 200);
+    const read = await dispatch(`await plurnk.read({"path":"${target}","range":"2,4"});`);
     assert.equal(read.status, 200);
     assert.equal(read.content, "two\nfour");
     assert.deepEqual(read.lineOrdinals, [2, 4]);
-    assert.equal((await dispatch(`\`\`\`\`COPY (log:///1/1/2) <${read.lineAnchors[1]}> (workspace:///anchored.txt)\`\`\`\``)).status, 201);
-    assert.equal((await dispatch("````READ (workspace:///anchored.txt) <1,-1>````")).content, "four", "canonical leaf aliases share anchor identity");
-    assert.equal((await dispatch(`\`\`\`\`COPY (${target}) <2,4> (workspace:///copy.txt)\`\`\`\``)).status, 201);
-    assert.equal((await dispatch("````READ (workspace:///copy.txt) <1,-1>````")).content, "two\nfour");
-    assert.equal((await dispatch(`\`\`\`\`FIND (${target}) /secret/\`\`\`\``)).status, 204);
-    const found = await dispatch(`\`\`\`\`FIND (${target}) /four/\`\`\`\``);
+    assert.equal((await dispatch(`await plurnk.copy({"from":{"path":"log:///1/1/2","range":"${read.lineAnchors[1]}"},"to":"workspace:///anchored.txt"});`)).status, 201);
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"workspace:///anchored.txt\",\"range\":\"1,-1\"});")).content, "four", "canonical leaf aliases share anchor identity");
+    assert.equal((await dispatch(`await plurnk.copy({"from":{"path":"${target}","range":"2,4"},"to":"workspace:///copy.txt"});`)).status, 201);
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"workspace:///copy.txt\",\"range\":\"1,-1\"});")).content, "two\nfour");
+    assert.equal((await dispatch(`await plurnk.find({"path":"${target}","pattern":"/secret/"});`)).status, 204);
+    const found = await dispatch(`await plurnk.find({"path":"${target}","pattern":"/four/"});`);
     assert.equal(found.status, 200);
     assert.match(JSON.parse(found.content)[0].region, /^<4,/u);
-    assert.equal((await dispatch(`\`\`\`\`READ (${target}) <3>\`\`\`\``)).status, 204);
-    assert.equal((await dispatch(`\`\`\`\`COPY (${target}) (log:///1/1/2/READ)\`\`\`\``)).status, 400, "the log is never a write target");
+    assert.equal((await dispatch(`await plurnk.read({"path":"${target}","range":"3"});`)).status, 204);
+    assert.equal((await dispatch(`await plurnk.copy({"from":"${target}","to":"log:///1/1/2/READ"});`)).status, 400, "the log is never a write target");
     // {§move}: MOVE from a log region is the COPY above plus the same scoped KILL —
     // the destination receives the readable lines, the projection trims them, the evidence stays.
-    const moved = await dispatch(`\`\`\`\`MOVE (${target}) <2,4> (workspace:///moved.txt)\`\`\`\``);
+    const moved = await dispatch(`await plurnk.move({"from":{"path":"${target}","range":"2,4"},"to":"workspace:///moved.txt"});`);
     assert.equal(moved.status, 201, JSON.stringify(moved));
     assert.deepEqual(
         (moved.effects as Array<{ target: string; action: string }>).map(({ target: effectTarget, action }) => `${action} ${effectTarget}`),
         ["create workspace:///moved.txt", `update ${target}`],
     );
-    assert.equal((await dispatch("````READ (workspace:///moved.txt) <1,-1>````")).content, "two\nfour", "the destination holds exactly the readable region");
-    assert.equal((await dispatch(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``)).content, "one\nfive", "the moved lines left the readable projection");
-    const whole = await dispatch(`\`\`\`\`MOVE (${target}) (workspace:///rest.txt)\`\`\`\``);
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"workspace:///moved.txt\",\"range\":\"1,-1\"});")).content, "two\nfour", "the destination holds exactly the readable region");
+    assert.equal((await dispatch(`await plurnk.read({"path":"${target}","range":"1,-1"});`)).content, "one\nfive", "the moved lines left the readable projection");
+    const whole = await dispatch(`await plurnk.move({"from":"${target}","to":"workspace:///rest.txt"});`);
     assert.equal(whole.status, 201, JSON.stringify(whole));
     assert.deepEqual(
         (whole.effects as Array<{ target: string; action: string }>).map(({ target: effectTarget, action }) => `${action} ${effectTarget}`),
         ["create workspace:///rest.txt", `delete ${target}`],
         "an unscoped MOVE retires the row exactly as an unscoped KILL does",
     );
-    assert.equal((await dispatch("````READ (workspace:///rest.txt) <1,-1>````")).content, "one\nfive");
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"workspace:///rest.txt\",\"range\":\"1,-1\"});")).content, "one\nfive");
     const original = (await db.test_log_entries_by_loop.all<{ sequence: number; rx: string; active: number }>({ loop_id: ids.loopId }))
         .find((row) => row.sequence === 2);
     assert.ok(original, "the recorded row is still there");
@@ -224,10 +224,10 @@ test("{§log-wire-format}: a stored source slice and its curated log resource re
     const { db, ids, dispatch } = await runtime(t);
     const content = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join("\n");
     await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, pathname: "/source.txt", content, mimetype: "text/plain" });
-    const original = await dispatch("````READ (workspace:///source.txt) <17,18>````");
+    const original = await dispatch("await plurnk.read({\"path\":\"workspace:///source.txt\",\"range\":\"17,18\"});");
     assert.equal(original.content, "line 17\nline 18");
-    assert.equal((await dispatch("````KILL (log:///1/1/1/READ) <1>````")).status, 200);
-    const reread = await dispatch("````READ (log:///1/1/1/READ) <1,-1>````");
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/1/READ\",\"range\":\"1\"});")).status, 200);
+    const reread = await dispatch("await plurnk.read({\"path\":\"log:///1/1/1/READ\",\"range\":\"1,-1\"});");
     assert.equal(reread.content, "line 18");
     assert.deepEqual(reread.range, { unit: "line", total: 2, requested: [1, -1], returned: [2, 2] });
     const recorded = await db.log_read_by_coordinate.get<{ rx: string; folded: string; status_rx: number }>({ session_id: ids.sessionId, loop_seq: 1, turn_seq: 1, sequence: 1 });
@@ -240,37 +240,35 @@ test("{§log-wire-format}: a stored source slice and its curated log resource re
     assert.equal(row?.range, "<17,18> of 30 lines");
     assert.deepEqual(row?.trimmed, ["<1>"]);
     assert.equal(row?.body, "18:line 18\n");
-    assert.equal((await dispatch("````READ (workspace:///source.txt) <1,-1>````")).content, content, "the source still has every line");
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"workspace:///source.txt\",\"range\":\"1,-1\"});")).content, content, "the source still has every line");
 });
 
 test("{§log-kill-scope}: a multiline pattern never copies a curated gap", async (t) => {
     const { dispatch } = await runtime(t);
-    await dispatch("````EDIT (workspace:///source.txt)\nalpha\nsecret\nomega\n````");
-    await dispatch("````READ (workspace:///source.txt) <1,-1>````");
+    await dispatch("await plurnk.edit({\"path\":\"workspace:///source.txt\",\"content\":\"alpha\\nsecret\\nomega\"});");
+    await dispatch("await plurnk.read({\"path\":\"workspace:///source.txt\",\"range\":\"1,-1\"});");
     const target = "log:///1/1/2/READ";
-    await dispatch(`\`\`\`\`KILL (${target}) <2>\`\`\`\``);
+    await dispatch(`await plurnk.kill({"path":"${target}","range":"2"});`);
     const pattern = "/alpha\\nomega/";
-    const found = await dispatch(`\`\`\`\`FIND (${target}) ${pattern}\`\`\`\``);
+    const found = await dispatch(`await plurnk.find(${JSON.stringify({ path: target, pattern })});`);
     assert.equal(found.status, 200, JSON.stringify(found));
     assert.deepEqual(JSON.parse(found.content).map(({ region }: { region: unknown }) => region), [
         "<1,1,2,1>",
         "<3,1,3,6>",
     ]);
-    const read = await dispatch(`\`\`\`\`READ (${target}) <1,-1> ${pattern}\`\`\`\``);
+    const read = await dispatch(`await plurnk.read(${JSON.stringify({ path: target, range: "1,-1", pattern })});`);
     assert.equal(read.status, 200, JSON.stringify(read));
     assert.equal(read.content, "alpha\nomega");
-    const copied = await dispatch(`\`\`\`\`COPY (${target}) <1,3> (workspace:///copy.txt)\`\`\`\``);
+    const copied = await dispatch(`await plurnk.copy({"from":{"path":"${target}","range":"1,3"},"to":"workspace:///copy.txt"});`);
     assert.equal(copied.status, 201, JSON.stringify(copied));
-    assert.equal((await dispatch("````READ (workspace:///copy.txt) <1,-1>````")).content, "alpha\nomega");
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"workspace:///copy.txt\",\"range\":\"1,-1\"});")).content, "alpha\nomega");
 });
 
 test("{§log-kill-scope}: FIND prices retained bodies consistently in rows and folders", async (t) => {
     const { db, ids, dispatch } = await runtime(t);
     const content = "apple\nsecret\npear";
-    await dispatch(`\`\`\`\`EDIT (workspace:///source.txt)
-${content}
-\`\`\`\``);
-    await dispatch("````READ (workspace:///source.txt) <1,-1>````");
+    await dispatch(`await plurnk.edit(${JSON.stringify({ path: "workspace:///source.txt", content })});`);
+    await dispatch("await plurnk.read({\"path\":\"workspace:///source.txt\",\"range\":\"1,-1\"});");
     const log = new Log();
     const ctx = makeSchemeCtx({ db, ...ids, mimetypes: DEFAULT_MIMETYPES });
     const weigh = ctx.weigh ?? contentWeight;
@@ -282,7 +280,7 @@ ${content}
         return folder[0].weight;
     };
     const before = await folderWeight();
-    assert.equal((await dispatch("````KILL (log:///1/1/2/READ) <2>````")).status, 200);
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/READ\",\"range\":\"2\"});")).status, 200);
     const result = await log.find(findStmt(urlPath("log", "/1/1/2/READ")), ctx);
     assert.equal(result.status, 200);
     const item = result.results[0];
@@ -299,25 +297,25 @@ test("{§log-kill-scope}: a byte-view receipt is readable text, not a second bin
         workspaceId: ids.workspaceId, pathname: "/data.bin",
         content: Buffer.from([0, 1, 2, 3]).toString("base64"), mimetype: "application/octet-stream",
     });
-    const sourceRead = await dispatch("````READ (workspace:///data.bin) <1,-1>````");
+    const sourceRead = await dispatch("await plurnk.read({\"path\":\"workspace:///data.bin\",\"range\":\"1,-1\"});");
     assert.equal(sourceRead.status, 200);
     assert.equal(sourceRead.projection, "hex");
     assert.equal(sourceRead.mimetype, "application/octet-stream");
     const target = "log:///1/1/1/READ";
-    const complete = await dispatch(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``);
+    const complete = await dispatch(`await plurnk.read({"path":"${target}","range":"1,-1"});`);
     assert.equal(complete.status, 200, JSON.stringify(complete));
     assert.equal(complete.content, sourceRead.content);
-    assert.equal((await dispatch(`\`\`\`\`KILL (${target}) <2>\`\`\`\``)).status, 200);
-    const found = await dispatch(`\`\`\`\`FIND (${target}) /02/\`\`\`\``);
+    assert.equal((await dispatch(`await plurnk.kill({"path":"${target}","range":"2"});`)).status, 200);
+    const found = await dispatch(`await plurnk.find({"path":"${target}","pattern":"/02/"});`);
     assert.equal(found.status, 200);
     assert.match(JSON.parse(found.content)[0].region, /^<3,/u);
     await SearchIndex.maintain(makeSchemeCtx({ db, ...ids, mimetypes: DEFAULT_MIMETYPES }));
-    assert.equal((await dispatch(`\`\`\`\`FIND (${target}) ~02\`\`\`\``)).status, 200, "hex receipt text participates in FTS");
-    assert.equal((await dispatch(`\`\`\`\`FIND (${target}) ~01\`\`\`\``)).status, 204, "FTS omits the trimmed byte-view line");
-    assert.equal((await dispatch(`\`\`\`\`COPY (${target}) (workspace:///hex.txt)\`\`\`\``)).status, 201);
-    const copied = await dispatch("````READ (workspace:///hex.txt) <1,-1>````");
+    assert.equal((await dispatch(`await plurnk.find({"path":"${target}","pattern":"~02"});`)).status, 200, "hex receipt text participates in FTS");
+    assert.equal((await dispatch(`await plurnk.find({"path":"${target}","pattern":"~01"});`)).status, 204, "FTS omits the trimmed byte-view line");
+    assert.equal((await dispatch(`await plurnk.copy({"from":"${target}","to":"workspace:///hex.txt"});`)).status, 201);
+    const copied = await dispatch("await plurnk.read({\"path\":\"workspace:///hex.txt\",\"range\":\"1,-1\"});");
     assert.equal(copied.content, "00\n02\n03");
-    const repeatedSource = await dispatch("````READ (workspace:///data.bin) <1,-1>````");
+    const repeatedSource = await dispatch("await plurnk.read({\"path\":\"workspace:///data.bin\",\"range\":\"1,-1\"});");
     assert.equal(repeatedSource.content, sourceRead.content, "the binary source still contains every original byte");
     const original = await db.log_read_by_coordinate.get<{ rx: string }>({ session_id: ids.sessionId, loop_seq: 1, turn_seq: 1, sequence: 1 });
     assert.deepEqual(JSON.parse(original!.rx), sourceRead, "the source mimetype and original byte receipt remain intact in forensic history");
@@ -325,7 +323,7 @@ test("{§log-kill-scope}: a byte-view receipt is readable text, not a second bin
 
 test("{§log-kill-scope}: initially suppressed program READ receipts remain readable until explicitly trimmed, and forks preserve both facts", async (t) => {
     const { db, ids, dispatch, reserve } = await runtime(t);
-    const content = "````NOTE\ncontinue\n````";
+    const content = "await plurnk.note({\n\"text\":\"continue\"});";
     const sequence = reserve();
     await db.engine_insert_log_entry.get({
         session_id: ids.sessionId, loop_id: ids.loopId, turn_id: ids.turnId, sequence,
@@ -337,34 +335,34 @@ test("{§log-kill-scope}: initially suppressed program READ receipts remain read
         state: "resolved", outcome: null, attrs: "{}", initial_folded: "[[1,-1]]",
     });
     const target = "log:///1/1/1/READ";
-    assert.equal((await dispatch(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``)).content, content);
+    assert.equal((await dispatch(`await plurnk.read({"path":"${target}","range":"1,-1"});`)).content, content);
     await t.test("{§log-kill-scope} COPY of a textual program into plain text remains verbatim", async () => {
-        const copied = await dispatch(`\`\`\`\`COPY (${target}) (workspace:///program.txt)\`\`\`\``);
+        const copied = await dispatch(`await plurnk.copy({"from":"${target}","to":"workspace:///program.txt"});`);
         assert.equal(copied.status, 201, JSON.stringify(copied));
     });
-    assert.equal((await dispatch(`\`\`\`\`KILL (${target}) <2>\`\`\`\``)).status, 200);
+    assert.equal((await dispatch(`await plurnk.kill({"path":"${target}","range":"2"});`)).status, 200);
     const branch = await Fork.fork(db, ids.sessionId, "branch");
     const forkRead = await readLog({ ...readStmt(urlPath("log", "/1/1/1/READ")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workspaceId: ids.workspaceId, sessionId: branch }));
-    assert.equal(forkRead.content, "````NOTE\n````");
+    assert.equal(forkRead.content, "await plurnk.note({\n");
     const forkRows = await db.test_fork_log_entries.all<{ initial_folded: string; projection_folded: string }>({ session_id: branch });
     assert.equal(forkRows[0]?.initial_folded, "[[1,-1]]");
     assert.equal(forkRows[0]?.projection_folded, "[[2,2]]");
-    assert.equal((await dispatch(`\`\`\`\`KILL (${target}) <1,-1>\`\`\`\``)).status, 200);
-    assert.equal((await dispatch(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``)).status, 204);
+    assert.equal((await dispatch(`await plurnk.kill({"path":"${target}","range":"1,-1"});`)).status, 200);
+    assert.equal((await dispatch(`await plurnk.read({"path":"${target}","range":"1,-1"});`)).status, 204);
     const stillReadable = await readLog({ ...readStmt(urlPath("log", "/1/1/1/READ")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workspaceId: ids.workspaceId, sessionId: branch }));
     assert.equal(stillReadable.content, forkRead.content, "parent curation does not change the branch's projection");
     const original = await db.log_read_by_coordinate.get<{ rx: string }>({ session_id: ids.sessionId, loop_seq: 1, turn_seq: 1, sequence });
     assert.equal(JSON.parse(original!.rx).content, content);
-    assert.equal((await dispatch(`\`\`\`\`KILL (${target})\`\`\`\``)).status, 200);
-    assert.equal((await dispatch(`\`\`\`\`READ (${target})\`\`\`\``)).status, 404);
-    assert.equal((await dispatch(`\`\`\`\`COPY (${target}) (workspace:///retired.txt)\`\`\`\``)).status, 404);
+    assert.equal((await dispatch(`await plurnk.kill({"path":"${target}"});`)).status, 200);
+    assert.equal((await dispatch(`await plurnk.read({"path":"${target}"});`)).status, 404);
+    assert.equal((await dispatch(`await plurnk.copy({"from":"${target}","to":"workspace:///retired.txt"});`)).status, 404);
 });
 
 test("{§log-kill-scope}: trimming invalidates search and a racing derivation cannot reattach old content", { timeout: 10_000 }, async (t) => {
     const { db, ids, dispatch } = await runtime(t);
-    await dispatch("````EDIT (workspace:///source.txt)\napple\nsecret\npear\n````");
-    await dispatch("````READ (workspace:///source.txt) <1,-1>````");
-    await dispatch("````KILL (workspace:///source.txt)````");
+    await dispatch("await plurnk.edit({\"path\":\"workspace:///source.txt\",\"content\":\"apple\\nsecret\\npear\"});");
+    await dispatch("await plurnk.read({\"path\":\"workspace:///source.txt\",\"range\":\"1,-1\"});");
+    await dispatch("await plurnk.kill({\"path\":\"workspace:///source.txt\"});");
     const ctx = makeSchemeCtx({ db, ...ids, mimetypes: DEFAULT_MIMETYPES });
     const started = Promise.withResolvers<void>();
     const resume = Promise.withResolvers<void>();
@@ -379,20 +377,20 @@ test("{§log-kill-scope}: trimming invalidates search and a racing derivation ca
     const inFlight = SearchIndex.maintain(ctx);
     try {
         await started.promise;
-        assert.equal((await dispatch("````KILL (log:///1/1/2/READ) <2>````")).status, 200);
+        assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/READ\",\"range\":\"2\"});")).status, 200);
     } finally { resume.resolve(); }
     await inFlight;
     const candidates = await db.log_find_candidates.all<{ coordinate: string; deep_hash: string | null }>({ session_id: ids.sessionId, scope_prefix: null, max_id: null });
     assert.equal(candidates.find((row) => row.coordinate === "1/1/2")?.deep_hash, null, "stale in-flight derivation was not attached");
     await SearchIndex.maintain(ctx);
-    assert.equal((await dispatch("````FIND (log:///1/1/2/READ) ~secret````")).status, 204);
-    const retained = await dispatch("````FIND (log:///1/1/2/READ) ~pear````");
+    assert.equal((await dispatch("await plurnk.find({\"path\":\"log:///1/1/2/READ\",\"pattern\":\"~secret\"});")).status, 204);
+    const retained = await dispatch("await plurnk.find({\"path\":\"log:///1/1/2/READ\",\"pattern\":\"~pear\"});");
     assert.equal(retained.status, 200);
     assert.match(JSON.parse(retained.content)[0].region, /^<3,/u);
-    assert.equal((await dispatch("````KILL (log:///1/1/2/READ) <3>````")).status, 200);
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/READ\",\"range\":\"3\"});")).status, 200);
     await SearchIndex.maintain(ctx);
-    assert.equal((await dispatch("````FIND (log:///1/1/2/READ) ~pear````")).status, 204, "later curation also invalidates an already attached artifact");
-    const read = await dispatch("````READ (log:///1/1/2/READ) <1,-1>````");
+    assert.equal((await dispatch("await plurnk.find({\"path\":\"log:///1/1/2/READ\",\"pattern\":\"~pear\"});")).status, 204, "later curation also invalidates an already attached artifact");
+    const read = await dispatch("await plurnk.read({\"path\":\"log:///1/1/2/READ\",\"range\":\"1,-1\"});");
     const wire = PacketWire.renderLog([{ coordinate: "1/1/99", op: "READ", origin: "model", status: read.status, rx: read, lineAnchors: read.lineAnchors, lineNumberWidth: read.lineNumberWidth }], contentWeight);
     assert.match(wire, /1(?:<@[0-9A-Za-z]{5}>|:)apple/);
     assert.doesNotMatch(wire, /secret|pear/);
@@ -401,15 +399,15 @@ test("{§log-kill-scope}: trimming invalidates search and a racing derivation ca
 // {§log-kill-scope} — the recorded emission replayed through the parser and the engine.
 test("{§log-kill-scope} {§slicer-text-algebra}: `KILL (log:///…/READ) <0, -1>` is refused 416 with the forms a log body takes, which then work", async (t) => {
     const { dispatch } = await runtime(t);
-    await dispatch("````EDIT (workspace:///source.txt)\none\ntwo\n````");
-    await dispatch("````READ (workspace:///source.txt) <1,-1>````");
-    const refused = await dispatch("````KILL (log:///1/1/2/READ) <0, -1>````");
+    await dispatch("await plurnk.edit({\"path\":\"workspace:///source.txt\",\"content\":\"one\\ntwo\"});");
+    await dispatch("await plurnk.read({\"path\":\"workspace:///source.txt\",\"range\":\"1,-1\"});");
+    const refused = await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/READ\",\"range\":\"0,-1\"});");
     assert.equal(refused.status, 416);
     assert.match(refused.problem.type, /\/range-not-satisfiable$/);
     assert.equal(refused.problem.detail, "Range <0,-1> starts at 0, which is not a line; lines are numbered from 1."); // {§operation-results}
     assert.equal(refused.problem.recovery, "Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/1/2/READ) with no scope retires the whole row."); // {§operation-results}
-    assert.equal((await dispatch("````KILL (log:///1/1/2/READ) <1,-1>````")).status, 200);
-    assert.equal((await dispatch("````KILL (log:///1/1/2/READ)````")).status, 200);
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/READ\",\"range\":\"1,-1\"});")).status, 200);
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/READ\"});")).status, 200);
 });
 });
 
@@ -424,7 +422,7 @@ const minimalLog = async (db: Db, ctx: { sessionId: number; loopId: number; turn
         signal: null,
         scheme: "workspace", pathname: "/meaning", port: null, query: null,
         lineMarker: null,
-        tx: "````EDIT (workspace:///meaning)\n42\n````", mimetype_tx: "text/x-plurnk",
+        tx: "await plurnk.edit({\"path\":\"workspace:///meaning\",\"content\":\"42\"});", mimetype_tx: "text/x-plurnk",
         rx: "", mimetype_rx: "text/plain", status_rx: 201,
         weight: 32, attrs: "{}",
         ...overrides,
@@ -871,7 +869,7 @@ test("{§turn-source-resources}: the schema admits an emission row only as one b
         const sessionId = await insertSession(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, sessionId, 1);
         const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
-        const content = "```READ (a.md)\n```";
+        const content = "await plurnk.read({\"path\":\"a.md\"});";
         const emission = async (overrides: Record<string, SqlValue> = {}): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 session_id: sessionId, loop_id: loopId, turn_id: turn.id, sequence: 1,
@@ -936,7 +934,7 @@ test("{§log-history-projection} log_entries: immutability trigger — UPDATE of
             /log_entries core fields are immutable/,
         );
         const tx = (await db.test_log_entries_get_tx_by_id.get<{ tx: string }>({ id }))?.tx;
-        assert.match(tx ?? "", /^````EDIT/);
+        assert.match(tx ?? "", /^await plurnk\.edit/);
     } finally { await db.close(); }
 });
 

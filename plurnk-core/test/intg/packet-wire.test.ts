@@ -22,7 +22,6 @@ import { Validator } from "@plurnk/plurnk-contracts";
 import { urlPath, readStmt, completeStmt, copyStmt, editStmt, findStmt, regex, noteStmt } from "./_dsl.ts";
 import { clientRead } from "./_client-read.ts";
 import { parseEnv } from "node:util";
-import { Lexer } from "marked";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { type PacketSectionDraft } from "@plurnk/plurnk-schemes";
@@ -172,8 +171,7 @@ test("{§session-wait-timing}: completion between recipient lookup and insertion
 
 
 describe("emission-history", () => {
-const op = PlurnkParser.frame;
-const note = (body: string) => op("NOTE", body);
+const note = (body: string) => `await plurnk.note({"text":${JSON.stringify(body)}});`;
 const say = (content: string, reasoning: string | null = null) => ({ assistant: { content, reasoning } });
 const previousProgram = (messages: readonly ChatMessage[]): string => messages.filter(({ role }) => role === "assistant").map(chatMessageText).join("\n\n");
 const observations = (messages: readonly ChatMessage[]): string => messages.filter(({ role }) => role === "user").map(chatMessageText).join("\n\n");
@@ -193,12 +191,12 @@ test("{§emission-history} {§packet-assembly}: each turn's operations precede t
     const workspaceId = await insertWorkspace(db, "interpolated-history");
     const sessionId = await insertSession(db, workspaceId, null, "writer");
     const loopId = await insertLoop(db, sessionId, 1, "Write, inspect, and reply.");
-    const edit = op("EDIT (workspace:///memo.md)", "Persist this exact body.");
-    const read = op("READ (workspace:///memo.md)", null);
+    const edit = "await plurnk.edit({\"path\":\"workspace:///memo.md\",\"content\":\"Persist this exact body.\"});";
+    const read = "await plurnk.read({\"path\":\"workspace:///memo.md\"});";
     const provider = new Mock({ contextWindow: 100000, responses: [
         say(`${note("Memory before writing.")}\n\n${edit}`, note("Reasoning memory.")),
         say(`${read}\n\n${note("Checking what landed.")}`),
-        say(op("DONE", "Done.")),
+        say("await plurnk.done({\"text\":\"Done.\"});"),
     ] });
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
     const [opening, afterEdit, afterRead] = provider.received;
@@ -226,10 +224,10 @@ for (const mode of ["none", "latest", "all"]) {
             const sessionId = await insertSession(db, workspaceId, null, "writer");
             const loopId = await insertLoop(db, sessionId, 1, "Edit, inspect, and reply.");
             const firstNote = note("First memory.");
-            const first = `${firstNote}\n\n${op("EDIT (workspace:///memo.md)", "Actual replacement.\nLast line.")}`;
+            const first = `${firstNote}\n\nawait plurnk.edit({"path":"workspace:///memo.md","content":"Actual replacement.\\nLast line."});`;
             const secondNote = note("Second memory.");
-            const second = `${op("READ (workspace:///memo.md)", null)}\n\n${secondNote}`;
-            const final = op("DONE", "Done.");
+            const second = `await plurnk.read({"path":"workspace:///memo.md"});\n\n${secondNote}`;
+            const final = "await plurnk.done({\"text\":\"Done.\"});";
             const provider = new Mock({ contextWindow: 100000, responses: [
                 say(first, note("Reasoning memory.")), say(second), say(final),
             ] });
@@ -263,17 +261,17 @@ test("{§emission-history}: all replays sanitized active emissions across a reas
         const kept = note("Kept finding.");
         const partial = note("Partial program.");
         const provider = new Mock({ contextWindow: 100000, responses: [
-            say(`${kept}\n\n${op("SEND", "Progress update.")}`), say("", note("Reasoning memory.")),
+            say(`${kept}\n\nawait plurnk.send({"text":"Progress update."});`), say("", note("Reasoning memory.")),
             say(`${partial}\n\n\`\`\`READ (unclosed`),
             say("```READ (unclosed"),
-            say(op("DONE", "Done.")),
+            say("await plurnk.done({\"text\":\"Done.\"});"),
         ] });
         await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 6, maxStrikes: 3 });
         assert.equal(provider.received.length, 5);
-        assert.equal(previousProgram(provider.received[1]), `${kept}\n\n${op("SEND", "Progress update.")}`);
-        assert.equal(previousProgram(provider.received[2]), `${kept}\n\n${op("SEND", "Progress update.")}`);
-        assert.equal(previousProgram(provider.received[3]), `${kept}\n\n${op("SEND", "Progress update.")}\n\n${partial}`, "a turn with an admitted statement and an unclosed tail replays its sanitized emission");
-        assert.equal(previousProgram(provider.received[4]), `${kept}\n\n${op("SEND", "Progress update.")}\n\n${partial}`, "a turn with no admitted statement writes no emission and leaves prior emissions intact");
+        assert.equal(previousProgram(provider.received[1]), `${kept}\n\nawait plurnk.send({"text":"Progress update."});`);
+        assert.equal(previousProgram(provider.received[2]), `${kept}\n\nawait plurnk.send({"text":"Progress update."});`);
+        assert.equal(previousProgram(provider.received[3]), `${kept}\n\nawait plurnk.send({"text":"Progress update."});\n\n${partial}`, "a turn with an admitted statement and an unclosed tail replays its sanitized emission");
+        assert.equal(previousProgram(provider.received[4]), `${kept}\n\nawait plurnk.send({"text":"Progress update."});\n\n${partial}`, "a turn with no admitted statement writes no emission and leaves prior emissions intact");
     } finally { await db.close(); }
 }));
 
@@ -285,14 +283,14 @@ test("{§emission-history}: retiring an emission removes only that turn's replay
         const loopId = await insertLoop(db, sessionId, 1, "Work.");
         const firstNote = note("First finding.");
         const secondNote = note("Second finding.");
-        const curate = op("KILL (log:///1/2/*/emission)", null);
+        const curate = "await plurnk.kill({\"path\":\"log:///1/2/*/emission\"});";
         const provider = new Mock({ contextWindow: 100000, responses: [
-            say(`${firstNote}\n\n${op("SEND", "First progress update.")}`), say(`${secondNote}\n\n${op("SEND", "Second progress update.")}`), say(curate), say(op("DONE", "Done.")),
+            say(`${firstNote}\n\nawait plurnk.send({"text":"First progress update."});`), say(`${secondNote}\n\nawait plurnk.send({"text":"Second progress update."});`), say(curate), say("await plurnk.done({\"text\":\"Done.\"});"),
         ] });
         await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 5 });
         assert.equal(provider.received.length, 4);
-        assert.equal(previousProgram(provider.received[2]), `${firstNote}\n\n${op("SEND", "First progress update.")}\n\n${secondNote}\n\n${op("SEND", "Second progress update.")}`);
-        assert.equal(previousProgram(provider.received[3]), `${secondNote}\n\n${op("SEND", "Second progress update.")}`, "curation removes the retired turn's replay without replaying the successful curation KILL itself");
+        assert.equal(previousProgram(provider.received[2]), `${firstNote}\n\nawait plurnk.send({"text":"First progress update."});\n\n${secondNote}\n\nawait plurnk.send({"text":"Second progress update."});`);
+        assert.equal(previousProgram(provider.received[3]), `${secondNote}\n\nawait plurnk.send({"text":"Second progress update."});`, "curation removes the retired turn's replay without replaying the successful curation KILL itself");
         const request = provider.received[3];
         const index = request.findIndex(({ role }) => role === "assistant");
         assert.match(chatMessageText(request[index - 1]).split("\n\n").at(-1)!, announcementOf(3), "the surviving turn keeps its source announcement");
@@ -300,7 +298,7 @@ test("{§emission-history}: retiring an emission removes only that turn's replay
         assert.doesNotMatch(log, /### log:\/\/\/1\/2\/\d+\/emission/u, "only the retired emission row is gone");
         assert.match(log, /### log:\/\/\/1\/2\/\d+\/NOTE · \d+\n[^\n]*\n1:First finding\./u, "the retired turn's NOTE is an ordinary row again, body and all");
         const source = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, session_name: "writer", loop_seq: 1, turn_seq: 2, kind: "ops", sequence: 0 });
-        assert.equal(source?.content, `${firstNote}\n\n${op("SEND", "First progress update.")}`, "the immutable source is untouched");
+        assert.equal(source?.content, `${firstNote}\n\nawait plurnk.send({"text":"First progress update."});`, "the immutable source is untouched");
     } finally { await db.close(); }
 }));
 
@@ -310,26 +308,26 @@ test("{§emission-history}: mixed KILL targets execute normally; a retired NOTE 
     const workspaceId = await insertWorkspace(db, "history-mixed-curation");
     const sessionId = await insertSession(db, workspaceId, null, "writer");
     const loopId = await insertLoop(db, sessionId, 1, "Draft and curate.");
-    const edit = op("EDIT (workspace:///memo.md)", "Draft.");
+    const edit = "await plurnk.edit({\"path\":\"workspace:///memo.md\",\"content\":\"Draft.\"});";
     const first = `${edit}\n\n${note("Superseded memory.")}`;
-    const mixed = op("KILL (log:///1/2/*/NOTE) (workspace:///memo.md)", null);
-    const distilled = op("KILL (log:///1/2/*/EDIT)", "The draft was removed.");
+    const mixed = "await plurnk.kill({\"path\":\"log:///1/2/*/NOTE\"});\n\nawait plurnk.kill({\"path\":\"workspace:///memo.md\"});";
+    const distilled = "await plurnk.kill({\"path\":\"log:///1/2/*/EDIT\",\"note\":\"The draft was removed.\"});";
     const second = `${mixed}\n\n${distilled}`;
-    const provider = new Mock({ contextWindow: 100000, responses: [say(first), say(second), say(op("DONE", "Done."))] });
+    const provider = new Mock({ contextWindow: 100000, responses: [say(first), say(second), say("await plurnk.done({\"text\":\"Done.\"});")] });
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const ids = { workspaceId, sessionId, loopId };
     const result = await engine.runLoop({ ...ids, provider, messages: [], maxTurns: 4 });
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 3);
     assert.equal(previousProgram(provider.received[1]), first, "before curation the turn replays EDIT and NOTE");
-    assert.equal(previousProgram(provider.received[2]), op("KILL (workspace:///memo.md)", null), "the file deletion remains; successful curation and retired operations do not replay");
+    assert.equal(previousProgram(provider.received[2]), "await plurnk.kill({\"path\":\"workspace:///memo.md\"});", "the file deletion remains; successful curation and retired operations do not replay");
     const log = observations(provider.received[2]);
     assert.doesNotMatch(log, /Superseded memory\./u, "the curated NOTE is gone from row and replay alike");
     assert.match(log, /The draft was removed\./u, "the KILL body still distills into an ordinary NOTE row");
     const missing = await clientRead(engine, db, { workspaceId, sessionId, statement: readStmt(urlPath("workspace", "/memo.md")) });
     assert.equal(missing.status, 404, "the file KILL in the mixed target executed");
     for (const [turn, original] of [[2, first], [3, second]] as const) {
-        const parsed = PlurnkParser.parse(op(`READ (ops://writer/1/${turn}) <1,-1>`, null)).items[0];
+        const parsed = PlurnkParser.parse(`await plurnk.read({"path":"ops://writer/1/${turn}","range":"1,-1"});`).items[0];
         assert.ok(parsed?.kind === "statement");
         const source = await clientRead(engine, db, { workspaceId, sessionId, statement: parsed.statement });
         assert.equal(source.status, 200);
@@ -343,15 +341,15 @@ test("{§emission-history} {§operator-config-precedence}: complete operations r
     const workspaceId = await insertWorkspace(db, "previous-whole");
     const sessionId = await insertSession(db, workspaceId, null, "writer");
     const loopId = await insertLoop(db, sessionId, 1, "Edit, inspect, and reply.");
-    const body = "Actual replacement.\n```NOTE\nA literal nested example, not an operation.\n```\nLast line.";
+    const body = "Actual replacement.\n\nawait plurnk.note({\"text\":\"A literal nested example, not an operation.\"});\n\nLast line.";
     const contentNote = note("Content memory.");
-    const first = [op("EDIT (workspace:///memo.md) <!-- draft memo -->", body), contentNote, op("WAIT [0]", null)].join("\n\n");
+    const first = [`await plurnk.edit({"path":"workspace:///memo.md","content":${JSON.stringify(body)}}); // draft memo`, contentNote, "await plurnk.wait({\"seconds\":0});"].join("\n\n");
     const readNote = note("Read it back.");
-    const second = `${op("READ (workspace:///memo.md)", null)}\n\n${readNote}`;
+    const second = `await plurnk.read({"path":"workspace:///memo.md"});\n\n${readNote}`;
     const reasoning = `Unretained deliberation.\n\n${note("Reasoning memory.")}`;
     const provider = new Mock({ contextWindow: 100000, responses: [
         say(first, reasoning),
-        say(second), say(op("DONE", "Finished.")),
+        say(second), say("await plurnk.done({\"text\":\"Finished.\"});"),
     ] });
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const result = await engine.runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
@@ -385,19 +383,19 @@ test("{§emission-history} {§operator-config-precedence}: complete operations r
     assert.equal(reasoningSource?.content, reasoning, "reasoning remains addressable without automatic return");
     const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
     const packet = await builder.buildRequestPacket({ workspaceId, sessionId, loopId, currentTurnSeq: 5, provider, initialMessages: [], gitStatus: null });
-    assert.equal(PacketWire.sectionContent(packet, "emission-history"), `${first}\n\n${second}\n\n${op("DONE", "Finished.")}`, "the concluding reply remains complete");
+    assert.equal(PacketWire.sectionContent(packet, "emission-history"), `${first}\n\n${second}\n\nawait plurnk.done({"text":"Finished."});`, "the concluding reply remains complete");
     assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0), "each message is charged exactly once");
     const nextLoop = await insertLoop(db, sessionId, 2, "A new request.");
     const next = await builder.buildRequestPacket({ workspaceId, sessionId, loopId: nextLoop, currentTurnSeq: 1, provider, initialMessages: [], gitStatus: null });
-    assert.equal(PacketWire.sectionContent(next, "emission-history"), `${first}\n\n${second}\n\n${op("DONE", "Finished.")}`, "a new loop in the same session retains prior loops' active emissions");
+    assert.equal(PacketWire.sectionContent(next, "emission-history"), `${first}\n\n${second}\n\nawait plurnk.done({"text":"Finished."});`, "a new loop in the same session retains prior loops' active emissions");
 });
 
 for (const [name, content, reasoning, expected] of [
-    ["runtime refusal", op("READ (workspace:///missing.md)", null), null, op("READ (workspace:///missing.md)", null)],
+    ["runtime refusal", "await plurnk.read({\"path\":\"workspace:///missing.md\"});", null, "await plurnk.read({\"path\":\"workspace:///missing.md\"});"],
     ["syntax failure after a valid operation", `${note("admitted")}\n\n\`\`\`READ (unclosed`, null, note("admitted")],
     ["reasoning-only turn", "", note("Only reasoning."), ""],
     ["content NOTE only", note("Log memory only."), null, note("Log memory only.")],
-    ["unmatched log curation", op("KILL (log:///1/1/*/READ)", null), null, op("KILL (log:///1/1/*/READ)", null)],
+    ["unmatched log curation", "await plurnk.kill({\"path\":\"log:///1/1/*/READ\"});", null, "await plurnk.kill({\"path\":\"log:///1/1/*/READ\"});"],
     ["empty turn", "", null, ""],
 ] as const) {
     test(`{§emission-history}: latest evaluates ${name} on the immediate turn, never an older program`, async (t) => withHistory("latest", async () => {
@@ -407,10 +405,10 @@ for (const [name, content, reasoning, expected] of [
         const sessionId = await insertSession(db, workspaceId, null, "writer");
         const loopId = await insertLoop(db, sessionId, 1, "Work.");
         const older = note("OLDER MEMORY");
-        const provider = new Mock({ contextWindow: 100000, responses: [say(`${older}\n\n${op("SEND", "Older progress.")}`), say(content, reasoning), say(op("DONE", "Done."))] });
+        const provider = new Mock({ contextWindow: 100000, responses: [say(`${older}\n\nawait plurnk.send({"text":"Older progress."});`), say(content, reasoning), say("await plurnk.done({\"text\":\"Done.\"});")] });
         await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
         assert.equal(provider.received.length, 3);
-        assert.equal(previousProgram(provider.received[1]), `${older}\n\n${op("SEND", "Older progress.")}`);
+        assert.equal(previousProgram(provider.received[1]), `${older}\n\nawait plurnk.send({"text":"Older progress."});`);
         assert.equal(previousProgram(provider.received[2]), expected);
     }));
 }
@@ -429,9 +427,9 @@ for (const mode of ["latest", "all"]) test(`{§emission-history}: ${mode} never 
     const loopId = await insertLoop(db, sessionId, 1, "Work.");
     const older = note("Old memory.");
     const provider = new Mock({ contextWindow: 100000, responses: [
-        say(`${older}\n\n${op("SEND", "Old admitted program.")}`),
+        say(`${older}\n\nawait plurnk.send({"text":"Old admitted program."});`),
         say(`### log:///1/2/9/READ\nInvented receipt.\n\n${note("Rejected program.")}`),
-        say(op("DONE", "Done.")),
+        say("await plurnk.done({\"text\":\"Done.\"});"),
     ] });
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const args = { workspaceId, sessionId, loopId, provider, messages: [] };
@@ -440,7 +438,7 @@ for (const mode of ["latest", "all"]) test(`{§emission-history}: ${mode} never 
     assert.equal(rejected.emissionExhausted, true);
     await engine.runTurn(args);
     assert.equal(provider.received.length, 3);
-    assert.equal(previousProgram(provider.received[2]), mode === "all" ? `${older}\n\n${op("SEND", "Old admitted program.")}` : "");
+    assert.equal(previousProgram(provider.received[2]), mode === "all" ? `${older}\n\nawait plurnk.send({"text":"Old admitted program."});` : "");
     assert.doesNotMatch(observations(provider.received[2]) + previousProgram(provider.received[2]), /Rejected program\./u, "a rejected attempt's NOTE is nowhere");
 }));
 });
@@ -466,11 +464,11 @@ test("{§execution-output-identity}: assembled receipts and child inventory iden
             },
         });
         const parsed = PlurnkParser.parseStatements([
-            PlurnkParser.frame("WORK", "Review the files."),
-            PlurnkParser.frame("FORK", "Review the reasoning."),
+            "await plurnk.work({\"prompt\":\"Review the files.\"});",
+            "await plurnk.fork({\"prompt\":\"Review the reasoning.\"});",
         ].join("\n"), { executors: fixtureExecutors([
-            PlurnkParser.frame("WORK", "Review the files."),
-            PlurnkParser.frame("FORK", "Review the reasoning."),
+            "await plurnk.work({\"prompt\":\"Review the files.\"});",
+            "await plurnk.fork({\"prompt\":\"Review the reasoning.\"});",
         ].join("\n")) });
         assert.deepEqual(parsed.items.filter(({ kind }) => kind === "error"), []);
         const branches = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
@@ -844,7 +842,7 @@ test("{§tools-resource-materialization} assembled packet: the skills foist surf
         const loopId = await insertLoop(db, sessionId, 1, "go");
         // A materialized scheme doc is an ordinary entry owned by the Session
         // whose effective Functionality it describes.
-        await seedEntryWithChannel(db, { workspaceId, scheme: "plurnk", pathname: "/session.md", channel: "body", content: "# session\n\n## Summary\n\nManage shared session entries.\n\n## Invocation\n\n````EDIT (workspace:///notes.md)\nNotes.\n````", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "plurnk", pathname: "/session.md", channel: "body", content: "# session\n\n## Summary\n\nManage shared session entries.\n\n## Invocation\n\nawait plurnk.edit({\"path\":\"workspace:///notes.md\",\"content\":\"Notes.\"});", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
@@ -1040,7 +1038,7 @@ test("{§packet} assembled packet: definition tables compact without changing ot
             "| `A \\| B` | preserve escaped pipes |",
             "| ------- | data dashes stay intact  |",
             "",
-            "```text",
+            "await plurnk.text();",
             "| fenced   | content   |",
             "```",
             "",
@@ -1055,7 +1053,7 @@ test("{§packet} assembled packet: definition tables compact without changing ot
             "| `A \\| B` | preserve escaped pipes |",
             "| ------- | data dashes stay intact |",
             "",
-            "```text",
+            "await plurnk.text();",
             "| fenced   | content   |",
             "```",
             "",
@@ -1082,8 +1080,7 @@ test("{§packet}: canonical operation examples survive packet projection", async
 
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
         const projected = packetSection(await getPacket(db, result.turnId), "definition");
-        const codeBlocks = (markdown: string) => Lexer.lex(markdown)
-            .flatMap((token) => token.type === "code" ? [token.text] : []);
+        const codeBlocks = (markdown: string) => markdown.split("\n").filter((line) => line.startsWith("await plurnk."));
         const examples = codeBlocks(definition);
         assert.ok(examples.length > 0, "canonical definition contains operation examples");
         assert.deepEqual(codeBlocks(projected), examples, "packet projection preserves every example's fences and body whitespace");
@@ -1139,9 +1136,9 @@ test("{§emission-history} extension packet control: a scheme adds, removes, and
         const engine = new Engine({ db, schemes });
         // {§emission-history}: the transform receives each turn's operations before their results.
         const programs = [
-            `${PlurnkParser.frame("EDIT (workspace:///memo.md)", "Kept whole.")}\n\n${PlurnkParser.frame("NOTE", "Wrote the memo.")}`,
-            `${PlurnkParser.frame("READ (workspace:///memo.md)", null)}\n\n${PlurnkParser.frame("NOTE", "Read it back.")}`,
-            PlurnkParser.frame("DONE", "Done."),
+            `await plurnk.edit({"path":"workspace:///memo.md","content":"Kept whole."});\n\nawait plurnk.note({"text":"Wrote the memo."});`,
+            `await plurnk.read({"path":"workspace:///memo.md"});\n\nawait plurnk.note({"text":"Read it back."});`,
+            "await plurnk.done({\"text\":\"Done.\"});",
         ];
         const provider = new Mock({ contextWindow: 100000, responses: programs.map((content) => ({ assistant: { content, reasoning: null } })) });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
@@ -1315,7 +1312,7 @@ test("{§packet}: items nothing references are collected; shared items survive",
 });
 
 describe("workspace-prompts", () => {
-const send = () => makeMockResponse("````DONE\nok\n````", 50);
+const send = () => makeMockResponse("await plurnk.done({\"text\":\"ok\"});", 50);
 const addressed = (thread: string, id: string) => {
     const address = `acp://operator/threads/${thread}/messages/${id}`;
     return { source: address, messageAddress: address };

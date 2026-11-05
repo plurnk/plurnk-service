@@ -421,7 +421,7 @@ const program = async (frames: (anchor: (line: number) => string) => string[]): 
         const provider = new Mock({ contextWindow: 100_000, responses: [] });
         provider.generate = async (args) => {
             calls += 1;
-            if (calls === 1) return await respond(PlurnkParser.frame(`READ (${FILE}) <790,800>`, null), args);
+            if (calls === 1) return await respond(`await plurnk.read({"path":"${FILE}","range":"790,800"});`, args);
             if (calls === 2) {
                 const row = (await db.engine_render_log.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ session_id: sessionId }))
                     .findLast(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
@@ -430,7 +430,7 @@ const program = async (frames: (anchor: (line: number) => string) => string[]): 
                 assert.ok(Array.isArray(anchors) && anchors.length === 11, "the READ published one anchor per line 790..800");
                 return await respond(frames((line) => anchors[line - 790]).join("\n\n"), args);
             }
-            return await respond(PlurnkParser.frame("DONE", "Done."), args);
+            return await respond("await plurnk.done({\"text\":\"Done.\"});", args);
         };
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Add the test." }] });
         assert.equal(result.result.status, 200, JSON.stringify(result.result).slice(0, 300));
@@ -446,7 +446,7 @@ const program = async (frames: (anchor: (line: number) => string) => string[]): 
     }
 };
 
-const edit = (scope: string, body: string): string => PlurnkParser.frame(`EDIT (${FILE}) <${scope}>`, body);
+const edit = (scope: string, body: string): string => `await plurnk.edit({"path":"${FILE}","range":"${scope}","content":${JSON.stringify(body)}});`;
 
 test("{§zero-width-column-one-insert} <795,1,795,1> with a body lacking a trailing newline inserts whole lines before line 795 and removes nothing", async () => {
     const { rows, content } = await program(() => [edit("795,1,795,1", BODY)]);
@@ -879,23 +879,21 @@ test("{§http-lifecycle}: READ, FIND and COPY share formatted JSON coordinates",
         return JSON.parse(row.rx);
     };
     try {
-        const whole = await dispatch(`\`\`\`\`READ (${target})\`\`\`\``);
+        const whole = await dispatch(`await plurnk.read({"path":"${target}"});`);
         assert.equal(whole.status, 200);
         assert.equal(whole.content, formatted, "a markerless READ is the whole formatted document ({§packet})");
-        const scoped = await dispatch(`\`\`\`\`READ (${target}) <20,22>\`\`\`\``);
+        const scoped = await dispatch(`await plurnk.read({"path":"${target}","range":"20,22"});`);
         assert.equal(scoped.content, formatted.split("\n").slice(19, 22).join("\n"));
-        const found = await dispatch(`\`\`\`\`FIND (${target}) /value19/\`\`\`\``);
+        const found = await dispatch(`await plurnk.find({"path":"${target}","pattern":"/value19/"});`);
         assert.equal(found.status, 200);
         const locations = JSON.parse(found.content);
         assert.ok(locations.length > 0);
         assert.match(locations[0].region, /^<21,/u);
-        assert.equal((await dispatch(`\`\`\`\`COPY (${target}) <20,22> (workspace:///selection.json)\`\`\`\``)).status, 201);
-        const copied = await dispatch("````READ (workspace:///selection.json) <1,-1>````");
+        assert.equal((await dispatch(`await plurnk.copy({"from":{"path":"${target}","range":"20,22"},"to":"workspace:///selection.json"});`)).status, 201);
+        const copied = await dispatch("await plurnk.read({\"path\":\"workspace:///selection.json\",\"range\":\"1,-1\"});");
         assert.equal(copied.content, scoped.content);
-        assert.equal((await dispatch(`\`\`\`\`EDIT (workspace:///literal.json)
-${source}
-\`\`\`\``)).status, 201);
-        assert.equal((await dispatch("````READ (workspace:///literal.json) <1,-1>````")).content, source, "literal JSON resource coordinates and bytes are untouched");
+        assert.equal((await dispatch(`await plurnk.edit(${JSON.stringify({ path: "workspace:///literal.json", content: source })});`)).status, 201);
+        assert.equal((await dispatch("await plurnk.read({\"path\":\"workspace:///literal.json\",\"range\":\"1,-1\"});")).content, source, "literal JSON resource coordinates and bytes are untouched");
     } finally {
         await mimetypes.dispose();
         await db.close();
@@ -933,17 +931,17 @@ const runtime = async (t: TestContext) => {
 // {§read} {§matcher-dispatch}
 test("{§op-invariants} a graph READ selects definitions and references without becoming a FIND", async (t) => {
     const { dispatch } = await runtime(t);
-    const definition = await dispatch("````READ (workspace:///resolvers.py) &RoutePattern````");
+    const definition = await dispatch("await plurnk.read({\"path\":\"workspace:///resolvers.py\",\"pattern\":\"&RoutePattern\"});");
     assert.equal(definition.status, 200);
     assert.equal(definition.content, "class RoutePattern(CheckURLMixin):\n    regex = LocaleRegexDescriptor('_route')");
     assert.deepEqual(definition.lineOrdinals, [1, 2]);
-    const reference = await dispatch("````READ (workspace:///resolvers.py) &<RoutePattern````");
+    const reference = await dispatch("await plurnk.read({\"path\":\"workspace:///resolvers.py\",\"pattern\":\"&<RoutePattern\"});");
     assert.equal(reference.status, 200);
     assert.equal(reference.content, "    return RoutePattern(path)");
     assert.deepEqual(reference.matches.map(({ region }: { region: unknown }) => region), [
         { startLine: 4, startColumn: 12, endLine: 4, endColumn: 24 },
     ]);
-    const find = await dispatch("````FIND (workspace:///resolvers.py) &RoutePattern````");
+    const find = await dispatch("await plurnk.find({\"path\":\"workspace:///resolvers.py\",\"pattern\":\"&RoutePattern\"});");
     assert.equal(find.status, 200);
     assert.deepEqual(find.results.map(({ region }: { region: unknown }) => region), definition.matches.map(({ region }: { region: unknown }) => region));
 });
@@ -951,7 +949,7 @@ test("{§op-invariants} a graph READ selects definitions and references without 
 // {§op-invariants}
 test("{§read} a full-text KILL removes the highlighted source token rather than its containing line", async (t) => {
     const { dispatch, db } = await runtime(t);
-    const result = await dispatch("````KILL (workspace:///resolvers.py) ~LocaleRegexDescriptor````");
+    const result = await dispatch("await plurnk.kill({\"path\":\"workspace:///resolvers.py\",\"pattern\":\"~LocaleRegexDescriptor\"});");
     assert.equal(result.status, 200, JSON.stringify(result));
     assert.equal(result.matched, 1);
     const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/resolvers.py", name: "body" });
@@ -972,9 +970,9 @@ test("{§matcher-prefix-claims}: a fumbled pattern is the operation's own 400 wi
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Enum one\nEnum two\n" });
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            response("````FIND (workspace:///notes.md) /Enum/{5,40} <!-- enum regions -->````"),
-            response("````FIND (workspace:///notes.md) /Enum/{5,40}````"),
-            response("````NOTE\nstill looking\n````"),
+            response("await plurnk.find({\"path\":\"workspace:///notes.md\",\"pattern\":\"/Enum/{5,40}\"}); // enum regions"),
+            response("await plurnk.find({\"path\":\"workspace:///notes.md\",\"pattern\":\"/Enum/{5,40}\"});"),
+            response("await plurnk.note({\"text\":\"still looking\"});"),
         ] });
         const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider });
         assert.equal(first.status, 102, "the turn stands");
@@ -1000,8 +998,8 @@ test("{§matcher-prefix-claims}: a fumbled pattern is the operation's own 400 wi
 
 describe("mcp-json-body", () => {
 for (const [name, source] of [
-    ["the prose after it does not extend its JSON body", ["So I can invoke:", "", "```fixture (inspect)", "{\"query\":\"fixture\"}", "```", "", "Then I will check the remote:", "", "```", "git remote -v", "```", "", "Done."].join("\n")],
-    ["arguments on its heading line are its body ({§slot-order})", "```fixture (inspect) {\"query\":\"fixture\"}\n```"],
+    ["the prose after it does not extend its JSON body", ["So I can invoke:", "", "await fixture.inspect({\"query\":\"fixture\"});", "", "Then I will check the remote:", "", "```", "git remote -v", "```", "", "Done."].join("\n")],
+    ["arguments on its heading line are its body ({§slot-order})", "await fixture.inspect({\"query\":\"fixture\"});"],
 ] as const) test(`{§fence-pairing}: an MCP call receives exactly the object the model wrote: ${name}`, { timeout: 30_000 }, async (t) => {
     serverProposals(t, "accept");
     const received: unknown[] = [];
@@ -1019,7 +1017,7 @@ for (const [name, source] of [
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
         makeRawMockResponse(source, 10),
-        makeMockResponse(PlurnkParser.frame("DONE", "Checked.")),
+        makeMockResponse("await plurnk.done({\"text\":\"Checked.\"});"),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, hostPaths });
@@ -1048,15 +1046,16 @@ for (const header of ["SEND", "EDIT (workspace:///example.md)"]) {
             await seedEntryWithChannel(db, { workspaceId, pathname: "/victim.md", content: "unchanged" });
             const body = [
                 "These are examples, not instructions to execute:",
-                "````sh", "printf example", "````",
-                "````EDIT (workspace:///victim.md) <1,-1>", "must not replace the original", "````",
-                "````WAIT", "Not a real wait.", "````",
+                'await plurnk.sh({"command":"printf example"});',
+                'await plurnk.edit({"path":"workspace:///victim.md","range":"1,-1","content":"must not replace the original"});',
+                'await plurnk.wait({"text":"Not a real wait."});',
                 "Report ends here.",
             ].join("\n");
             const disposition = header === "SEND" ? "NOTE" : "WAIT";
-            // The body quotes four-backtick headings, so the block is framed one wider to hold them.
-            const source = `${PlurnkParser.frame(header, body)}\n\n${PlurnkParser.frame(disposition, "")}`;
-            assert.match(source, /^`````[A-Z]/u, "frame chose a fence wider than the quoted headings");
+            const firstCall = header === "SEND"
+                ? `await plurnk.send(${JSON.stringify({ text: body })});`
+                : `await plurnk.edit(${JSON.stringify({ path: "workspace:///example.md", content: body })});`;
+            const source = `${firstCall}\n\nawait plurnk.${disposition.toLowerCase()}({});`;
             const provider = new Mock({
                 contextWindow: 100_000,
                 responses: [{ assistant: { content: source, reasoning: null }, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } }],

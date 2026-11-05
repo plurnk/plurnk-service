@@ -35,7 +35,7 @@ interface ResumeAnswer {
     readonly content?: Record<string, unknown>;
 }
 
-const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "");
+const step = (op = "NOTE") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "NOTE" ? "Inspect the result." : "" })});`;
 
 const setup = async (
     t: TestContext,
@@ -46,7 +46,7 @@ const setup = async (
     serverProposals(t, "accept");
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse(`${operation}\n\n${step("WAIT")}`),
-        makeMockResponse(PlurnkParser.frame("DONE", "MCP result observed.")),
+        makeMockResponse("await plurnk.done({\"text\":\"MCP result observed.\"});"),
     ] });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, servers);
     const db = await openMigrated();
@@ -399,7 +399,7 @@ const completed = (events: readonly Event[], provider: Mock, expected: RegExp): 
 
 for (const cancel of [false, true]) {
     test(`{§mcp-host-composition}: ACP batch elicitation ${cancel ? "cancellation" : "accept/decline"} survives reconnect`, { timeout: 20_000 }, async (t) => {
-        const { provider, post, start, reconnect } = await setup(t, '````fixture (batch)\n{}\n````');
+        const { provider, post, start, reconnect } = await setup(t, "await fixture.batch({});");
         const first = interactions(await start(2), 2);
         assert.equal(provider.received.length, 1);
         const resurfaced = rediscoveredAll(await reconnect(), first);
@@ -423,7 +423,7 @@ for (const cancel of [false, true]) {
 }
 
 test("{§mcp-host-composition}: ACP URL elicitation preserves its browser action and returns to the server", { timeout: 20_000 }, async (t) => {
-    const { provider, post, start } = await setup(t, '````fixture (url)\n{}\n````');
+    const { provider, post, start } = await setup(t, "await fixture.url({});");
     const events = await start(1);
     const [pending] = interactions(events, 1);
     assert.equal(pending.mode, "url");
@@ -437,7 +437,7 @@ test("{§mcp-host-composition}: ACP URL elicitation preserves its browser action
 });
 
 test("{§mcp-host-composition}: two MRTR rounds stay on the originating operation across ACP Runs", { timeout: 20_000 }, async (t) => {
-    const { provider, post, start, reconnect, assertNotPending } = await setup(t, '````fixture (round-trip)\n{}\n````');
+    const { provider, post, start, reconnect, assertNotPending } = await setup(t, "await fixture[\"round-trip\"]({});");
     const first = interaction(await start(), ["name"]);
     const second = interaction(await post({
         followUpElicitations: 1,
@@ -455,7 +455,7 @@ test("{§mcp-host-composition}: two MRTR rounds stay on the originating operatio
 });
 
 test("{§mcp-host-composition}: a schema-invalid ACP answer preserves the pending MCP request for correction", { timeout: 20_000 }, async (t) => {
-    const { provider, post, start, reconnect } = await setup(t, '````fixture (batch)\n{}\n````');
+    const { provider, post, start, reconnect } = await setup(t, "await fixture.batch({});");
     const pending = interactions(await start(2), 2);
     const profile = pending.find((item) => item.message === "Who is making this request?")!;
     const invalid = await post({ resume: [
@@ -478,7 +478,7 @@ for (const { path, key, expected } of [
     { path: "prompts/guarded?topic=MCP", key: "prompt", expected: /MCP:accept/u },
 ]) {
     test(`{§mcp-host-composition}: a ${key} READ completes its elicitation through ACP`, { timeout: 20_000 }, async (t) => {
-        const { provider, post, start } = await setup(t, `\`\`\`\`READ (fixture:///${path}) <1,-1>\`\`\`\``);
+        const { provider, post, start } = await setup(t, `await plurnk.read({"path":"fixture:///${path}","range":"1,-1"});`);
         const pending = interaction(await start(), ["confirm"]);
         completed(await post({ resume: [{
             interruptId: pending.id, action: "accept", content: { confirm: true },
@@ -487,7 +487,7 @@ for (const { path, key, expected } of [
 }
 
 test("{§mcp-host-composition}: a standard Task completes the same operation through ACP", { timeout: 20_000 }, async (t) => {
-    const { provider, start } = await setup(t, '````fixture (stdio-defer)\n{"topic":"MCP"}\n````', {
+    const { provider, start } = await setup(t, "await fixture[\"stdio-defer\"]({\"topic\":\"MCP\"});", {
         fixture: stdioEntry("task-server.mjs"),
     });
     completed(await start(), provider, /plain stdio Task completed/u);
@@ -500,7 +500,7 @@ test("{§mcp-host-composition}: fixture teardown settles an unanswered Task befo
         let owner: Daemon | undefined;
         t.after(() => owner?.stop());
         const served = await serveMcpHttp(t, fixture.handler, fixture.route);
-        const host = await setup(t, '````fixture (deferred-review)\n{"topic":"MCP"}\n````', {
+        const host = await setup(t, "await fixture[\"deferred-review\"]({\"topic\":\"MCP\"});", {
             fixture: httpEntry(served.url),
         });
         owner = host.daemon;
@@ -521,7 +521,7 @@ test("{§mcp-host-composition}: HTTP MRTR and Task input return through ACP befo
     t.after(() => owner?.stop());
     const fixture = taskHandler();
     const served = await serveMcpHttp(t, fixture.handler, fixture.route);
-    const { provider, post, start, reconnect, daemon } = await setup(t, '````fixture (deferred-review)\n{"topic":"MCP"}\n````', {
+    const { provider, post, start, reconnect, daemon } = await setup(t, "await fixture[\"deferred-review\"]({\"topic\":\"MCP\"});", {
         fixture: httpEntry(served.url),
     });
     owner = daemon;
@@ -571,7 +571,7 @@ for (const state of ["failed", "cancelled", "unsupported-input"] as const) {
             assert.ok(error, "the fixture provided the failed Task being changed to cancelled");
             return Response.json({ ...body, result: { ...task, status: "cancelled" } });
         });
-        const { provider, start, daemon } = await setup(t, `\`\`\`\`fixture (${fixture.toolName})\n{"topic":"MCP"}\n\`\`\`\``, {
+        const { provider, start, daemon } = await setup(t, `await fixture.${fixture.toolName}({"topic":"MCP"});`, {
             fixture: httpEntry(served.url),
         });
         owner = daemon;
@@ -602,7 +602,7 @@ for (const stage of ["MRTR", "Task"] as const) {
             t.after(() => owner?.stop());
             const fixture = taskHandler();
             const served = await serveMcpHttp(t, fixture.handler, fixture.route);
-            const { provider, post, start, assertNotPending, daemon } = await setup(t, '````fixture (deferred-review)\n{"topic":"MCP"}\n````', {
+            const { provider, post, start, assertNotPending, daemon } = await setup(t, "await fixture[\"deferred-review\"]({\"topic\":\"MCP\"});", {
                 fixture: httpEntry(served.url),
             });
             owner = daemon;
@@ -649,7 +649,7 @@ test("{§mcp-host-composition}: withdrawing an attachment cannot interrupt its p
     t.after(() => owner?.stop());
     const fixture = taskHandler();
     const served = await serveMcpHttp(t, fixture.handler, fixture.route);
-    const { provider, post, start, reconnect, daemon } = await setup(t, '````fixture (deferred-review)\n{"topic":"MCP"}\n````', {
+    const { provider, post, start, reconnect, daemon } = await setup(t, "await fixture[\"deferred-review\"]({\"topic\":\"MCP\"});", {
         fixture: httpEntry(served.url),
     });
     owner = daemon;
@@ -687,9 +687,9 @@ for (const source of ["MRTR", "Task", "resource", "prompt"] as const) {
         const tool = source === "MRTR" || source === "Task";
         const fixture = tool ? taskHandler() : undefined;
         const served = fixture === undefined ? undefined : await serveMcpHttp(t, fixture.handler, fixture.route);
-        const operation = tool ? '````fixture (deferred-review)\n{"topic":"MCP"}\n````'
-            : source === "resource" ? "````READ (fixture:///resources/fixture%3A%2F%2Fguarded) <1,-1>````"
-                : "````READ (fixture:///prompts/guarded?topic=MCP) <1,-1>````";
+        const operation = tool ? "await fixture[\"deferred-review\"]({\"topic\":\"MCP\"});"
+            : source === "resource" ? "await plurnk.read({\"path\":\"fixture:///resources/fixture%3A%2F%2Fguarded\",\"range\":\"1,-1\"});"
+                : "await plurnk.read({\"path\":\"fixture:///prompts/guarded?topic=MCP\",\"range\":\"1,-1\"});";
         const { provider, post, start, reconnect, assertNotPending, daemon } = await setup(t, operation, {
             fixture: served === undefined ? stdioEntry("interaction-server.mjs") : httpEntry(served.url),
         }, {
@@ -765,7 +765,7 @@ test("{§mcp-configuration} workspace management preserves plugin interpretation
     assert.deepEqual(await list(b.workspaceId), []);
     const call = async () => {
         const before = (await db.test_entries_by_scheme_prefix.all({ workspace_id: a.workspaceId, scheme: "example", prefix: "/%" })).length;
-        const [result] = await daemon.dispatchClientAction({ workspaceId: a.workspaceId, actor: TEST_OWNER, statements: [parseOne("````example (launch)\n{}\n````")] });
+        const [result] = await daemon.dispatchClientAction({ workspaceId: a.workspaceId, actor: TEST_OWNER, statements: [parseOne("await example.launch({});")] });
         assert.equal(result.status, 200);
         const output = await awaitExecOutcome(db, { workspaceId: a.workspaceId, scheme: "example", channel: "json", after: before });
         return JSON.parse((output.content as { text: string }[])[0].text);
@@ -808,7 +808,7 @@ test("{§mcp-configuration} unsupported entries reach the model as diagnostics w
     const file = join(root, "mcp.json");
     await writeFile(file, JSON.stringify({ $schema: MCP_SCHEMA, mcpServers: { example: entry, legacy: { type: "sse", url: "https://example.org/mcp" } } }));
     const db = await openMigrated();
-    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 2 }, () => makeMockResponse("````DONE\nChecked.\n````")) });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 2 }, () => makeMockResponse("await plurnk.done({\"text\":\"Checked.\"});")) });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });

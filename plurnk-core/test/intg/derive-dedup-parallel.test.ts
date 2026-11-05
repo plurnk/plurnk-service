@@ -301,13 +301,13 @@ test("{§execution-output-identity} named and unnamed resources retain bytes, do
         assert.match(paths[2], /\/resources\/note\.txt\.[a-f0-9]{8}$/u);
         const contents = [];
         for (const path of paths) {
-            const read = await engine.dispatch({ statement: parseOne(`\`\`\`\`READ (${path}) <1,-1>\`\`\`\``), workspaceId, sessionId, loopId, turnId, sequence: contents.length + 2, origin: "model" });
+            const read = await engine.dispatch({ statement: parseOne(`await plurnk.read({"path":"${path}","range":"1,-1"});`), workspaceId, sessionId, loopId, turnId, sequence: contents.length + 2, origin: "model" });
             assert.equal(read.status, 200);
             contents.push(Results.assertReadResult(read).content);
         }
         assert.deepEqual(contents, ["first", "01\n02\nff", "second"]);
         const directory = paths[0].slice(0, paths[0].lastIndexOf("/") + 1);
-        const found = await engine.dispatch({ statement: parseOne(`\`\`\`\`FIND (${directory}*)\`\`\`\``), workspaceId, sessionId, loopId, turnId, sequence: 5, origin: "model" });
+        const found = await engine.dispatch({ statement: parseOne(`await plurnk.find({"path":"${directory}*"});`), workspaceId, sessionId, loopId, turnId, sequence: 5, origin: "model" });
         assert.equal(found.status, 200, JSON.stringify(found));
         assert.ok("results" in found && Array.isArray(found.results));
         assert.equal(found.results.length, 3, "the published resources participate in ordinary pattern discovery");
@@ -315,7 +315,7 @@ test("{§execution-output-identity} named and unnamed resources retain bytes, do
         const peerLoopId = await insertLoop(db, peerId, 1, "inspect peer resource");
         const peerTurnId = await insertTurn(db, peerLoopId, 1, 102);
         const peer = { workspaceId, sessionId: peerId, loopId: peerLoopId, turnId: peerTurnId, origin: "model" as const };
-        const shared = await engine.dispatch({ ...peer, statement: parseOne(`\`\`\`\`READ (${paths[0]})\`\`\`\``), sequence: 2 });
+        const shared = await engine.dispatch({ ...peer, statement: parseOne(`await plurnk.read({"path":"${paths[0]}"});`), sequence: 2 });
         assert.equal(shared.status, 200, "the same resource address remains meaningful to another Session");
     } finally {
         await quiesceExecs(schemes);
@@ -526,7 +526,7 @@ test("{§execution-output-identity} search-prefetched https content is matcher-q
         // materialized. Calling Http.read here would hit the network and make a
         // deterministic integration test impossible by construction.
         const queried = await engine.dispatch({
-            statement: parseOne("````FIND (https://example.org/turkeys) *large birds*````"),
+            statement: parseOne("await plurnk.find({\"path\":\"https://example.org/turkeys\",\"pattern\":\"*large birds*\"});"),
             workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 200);
@@ -574,7 +574,7 @@ test("{§http-lifecycle} executor acquisition preserves binary source and native
         assert.equal(entry.entry!.channels.body.mimetype, "application/pdf");
         assert.match(entry.entry!.channels.readable.content, /^PDF document, 1 page,/u);
         const read = await engine.dispatch({
-            statement: parseOne("````READ (https://example.org/live#readable)````"),
+            statement: parseOne("await plurnk.read({\"path\":\"https://example.org/live#readable\"});"),
             workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(read.status, 200);
@@ -605,7 +605,7 @@ test("{§execution-output-identity} search-prefetched encoded parentheses resolv
         assert.equal(stored?.pathname, "/people_(current)",
             "ingestion stores one canonical decoded identity");
         const read = await engine.dispatch({
-            statement: parseOne("````READ (https://example.org/people_%28current%29) <2,2>````"),
+            statement: parseOne("await plurnk.read({\"path\":\"https://example.org/people_%28current%29\",\"range\":\"2,2\"});"),
             workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(read.status, 200);
@@ -632,7 +632,7 @@ test("{§execution-output-identity} an exact HTTPS full-text FIND cannot leak or
         await SearchIndex.maintain(ctx);
 
         const queried = await engine.dispatch({
-            statement: parseOne("````FIND (https://example.org/turkeys) ~birthday cake````"),
+            statement: parseOne("await plurnk.find({\"path\":\"https://example.org/turkeys\",\"pattern\":\"~birthday cake\"});"),
             workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 204);
@@ -648,7 +648,7 @@ test("{§execution-output-identity} an absolute web URL ending in slash is one f
     }));
     try {
         const result = await engine.dispatch({
-            statement: parseOne("````READ (https://example.org/)````"),
+            statement: parseOne("await plurnk.read({\"path\":\"https://example.org/\"});"),
             workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200, "the finite HTTP representation settled through exact READ");

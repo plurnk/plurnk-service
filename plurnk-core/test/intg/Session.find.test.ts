@@ -477,8 +477,8 @@ test("{§find} a body FIND over ~2k members with a handler-crashing member answe
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env });
 
         const mock = new Mock({ contextWindow: 200_000, responses: [
-            makeMockResponse("````FIND (test/**) marker case````\n\n````NOTE\nlooking\n````", 50),
-            makeMockResponse("````DONE\ndone\n````", 50),
+            makeMockResponse("await plurnk.find({\"path\":\"test/**\",\"pattern\":\"marker case\"});\n\nawait plurnk.note({\"text\":\"looking\"});", 50),
+            makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -570,7 +570,7 @@ test("{§find} [catalog] a fenced invocation-form summary lists every tool while
         const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         const workspace = new Workspace();
         const targets = Array.from({ length: 30 }, (_, index) => `tool_number_${index + 1}_with_a_long_name`);
-        const menu = `\`\`\`\`gitea (${targets.join("|")})\n\`\`\`\``;
+        const menu = `await gitea.${targets.join("|")}();`;
         await workspace.edit(editStmt(url("workspace", "menu.md"), `# gitea\n\n## Summary\n\n${menu}\n\n## Tools\n`), ctx);
         const prose = "word ".repeat(120).trim();
         await workspace.edit(editStmt(url("workspace", "prose.md"), `# prose\n\n## Summary\n\n${prose}\n`), ctx);
@@ -629,21 +629,21 @@ const startLines = (found: { content: string }): number[] =>
 
 test("{§find}: the recorded `FIND (x.py) /^from|^import/` locates the lines READ selects", async (t) => {
     const { dispatch } = await runtime(t);
-    const found = await dispatch("````FIND (workspace:///resolvers.py) /^from|^import/ <!-- current imports -->````");
+    const found = await dispatch("await plurnk.find({\"path\":\"workspace:///resolvers.py\",\"pattern\":\"/^from|^import/\"}); // current imports");
     assert.equal(found.status, 200, JSON.stringify(found));
     assert.deepEqual(startLines(found), [4, 5, 6, 8]);
-    const read = await dispatch("````READ (workspace:///resolvers.py) /^from|^import/````");
+    const read = await dispatch("await plurnk.read({\"path\":\"workspace:///resolvers.py\",\"pattern\":\"/^from|^import/\"});");
     assert.equal(read.status, 200, JSON.stringify(read));
     assert.equal(read.content, "import functools\nimport inspect\nfrom importlib import import_module\nfrom django.conf import settings");
-    const tail = await dispatch("````FIND (workspace:///resolvers.py) /urlconf$/````");
+    const tail = await dispatch("await plurnk.find({\"path\":\"workspace:///resolvers.py\",\"pattern\":\"/urlconf$/\"});");
     assert.equal(tail.status, 200, JSON.stringify(tail));
     assert.deepEqual(startLines(tail), [10], "`$` is a line's end as well");
 });
 
 test("{§find}: a log FIND anchors each line of the row it searches", async (t) => {
     const { dispatch } = await runtime(t);
-    assert.equal((await dispatch("````READ (workspace:///resolvers.py) <1,-1>````")).status, 200);
-    const found = await dispatch("````FIND (log:///1/1/1/READ) /^from|^import/````");
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"workspace:///resolvers.py\",\"range\":\"1,-1\"});")).status, 200);
+    const found = await dispatch("await plurnk.find({\"path\":\"log:///1/1/1/READ\",\"pattern\":\"/^from|^import/\"});");
     assert.equal(found.status, 200, JSON.stringify(found));
     assert.deepEqual(startLines(found), [4, 5, 6, 8]);
 });

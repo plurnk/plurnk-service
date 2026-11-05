@@ -31,7 +31,7 @@ interface OpSendParams {
     body?: string;
 }
 
-// {§op-shapes} — the fence name selects the executor; `[{"cwd": "…"}]` names the directory; the body is the program.
+// {§op-shapes} — the runtime selects the executor; `cwd` names the directory; `command` is the program.
 interface OpExecParams {
     cwd?: string;
     runtime?: string;
@@ -39,29 +39,9 @@ interface OpExecParams {
 }
 
 export default class Dsl {
-    static #formatLineMarker(lm: LineMarker | undefined): string {
-        if (lm === undefined || lm === null) return "";
-        return `<${lm.marks.join(",")}>`;
-    }
-
-    static #formatPath(path: string | undefined): string {
-        if (path === undefined) return "";
-        return `(${path})`;
-    }
-
-    // Build one statement from its already-formatted path and scope slots.
-    static #buildStatement({
-        op, target, metadata = "", lineMarker, body,
-    }: {
-        op: string;
-        target: string;
-        metadata?: string;
-        lineMarker: string;
-        body: string;
-    }): string {
-        const modifiers = [target, metadata, lineMarker].filter((value) => value.length > 0).join(" ");
-        const header = `${op}${modifiers.length > 0 ? ` ${modifiers}` : ""}`;
-        return PlurnkParser.frame(header, body.length === 0 ? null : body);
+    static #formatRange(lm: LineMarker | undefined): string | undefined {
+        if (lm === undefined || lm === null) return undefined;
+        return lm.marks.join(",");
     }
 
     static parseSingleStatement(text: string): PlurnkStatement {
@@ -83,61 +63,65 @@ export default class Dsl {
     }
 
     static buildEdit(p: OpEditParams): PlurnkStatement {
-        return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "EDIT",
-            target: Dsl.#formatPath(p.target),
-            lineMarker: Dsl.#formatLineMarker(p.lineRange),
-            body: p.content ?? "",
-        }));
+        const range = Dsl.#formatRange(p.lineRange);
+        return Dsl.parseSingleStatement(`await plurnk.edit(${JSON.stringify({
+            path: p.target,
+            ...(range === undefined ? {} : { range }),
+            ...(p.content === undefined || p.content.length === 0 ? {} : { content: p.content }),
+        })});`);
     }
 
     static buildRead(p: OpWithMatcher): PlurnkStatement {
-        return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "READ",
-            target: Dsl.#formatPath(p.target),
-            lineMarker: Dsl.#formatLineMarker(p.lineRange),
-            body: p.matcher ?? "",
-        }));
+        const range = Dsl.#formatRange(p.lineRange);
+        return Dsl.parseSingleStatement(`await plurnk.read(${JSON.stringify({
+            path: p.target,
+            ...(range === undefined ? {} : { range }),
+            ...(p.matcher === undefined || p.matcher.length === 0 ? {} : { pattern: p.matcher }),
+        })});`);
     }
 
     static buildFind(p: { scope: string; matcher?: string; tags?: string[]; lineRange?: LineMarker }): PlurnkStatement {
-        return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "FIND",
-            target: Dsl.#formatPath(p.scope),
-            lineMarker: Dsl.#formatLineMarker(p.lineRange),
-            body: p.matcher ?? "",
-        }));
+        const range = Dsl.#formatRange(p.lineRange);
+        return Dsl.parseSingleStatement(`await plurnk.find(${JSON.stringify({
+            path: p.scope,
+            ...(range === undefined ? {} : { range }),
+            ...(p.matcher === undefined || p.matcher.length === 0 ? {} : { pattern: p.matcher }),
+        })});`);
     }
 
     static buildCopy(p: OpCopyMoveParams): PlurnkStatement {
         if (p.destination === undefined) throw new Error("op.copy requires destination");
-        const source = `${Dsl.#formatPath(p.source)} ${Dsl.#formatLineMarker(p.lineRange)}`.trim();
-        const destination = `${Dsl.#formatPath(p.destination)} ${Dsl.#formatLineMarker(p.destinationRange)}`.trim();
-        return Dsl.parseSingleStatement(PlurnkParser.frame(`COPY ${source} ${destination}`, null));
+        const srcRange = Dsl.#formatRange(p.lineRange);
+        const dstRange = Dsl.#formatRange(p.destinationRange);
+        return Dsl.parseSingleStatement(`await plurnk.copy(${JSON.stringify({
+            from: srcRange === undefined ? p.source : { path: p.source, range: srcRange },
+            to: dstRange === undefined ? p.destination : { path: p.destination, range: dstRange },
+        })});`);
     }
 
     static buildMove(p: OpCopyMoveParams): PlurnkStatement {
         if (p.destination === undefined) throw new Error("op.move requires destination");
-        const source = `${Dsl.#formatPath(p.source)} ${Dsl.#formatLineMarker(p.lineRange)}`.trim();
-        const destination = `${Dsl.#formatPath(p.destination)} ${Dsl.#formatLineMarker(p.destinationRange)}`.trim();
-        return Dsl.parseSingleStatement(PlurnkParser.frame(`MOVE ${source} ${destination}`, null));
+        const srcRange = Dsl.#formatRange(p.lineRange);
+        const dstRange = Dsl.#formatRange(p.destinationRange);
+        return Dsl.parseSingleStatement(`await plurnk.move(${JSON.stringify({
+            from: srcRange === undefined ? p.source : { path: p.source, range: srcRange },
+            to: dstRange === undefined ? p.destination : { path: p.destination, range: dstRange },
+        })});`);
     }
 
     static buildSend(p: OpSendParams): PlurnkStatement {
-        return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "SEND",
-            target: Dsl.#formatPath(p.recipient),
-            lineMarker: "",
-            body: p.body ?? "",
-        }));
+        return Dsl.parseSingleStatement(`await plurnk.send(${JSON.stringify({
+            ...(p.recipient === undefined ? {} : { target: p.recipient }),
+            ...(p.body === undefined || p.body.length === 0 ? {} : { text: p.body }),
+        })});`);
     }
 
     static buildExec(p: OpExecParams): PlurnkStatement {
-        return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: p.runtime ?? "sh",
-            target: Dsl.#formatPath(p.cwd),
-            lineMarker: "",
-            body: p.command ?? "",
-        }));
+        const runtime = p.runtime ?? "sh";
+        const bodyKey = runtime === "sh" ? "command" : (runtime === "js" || runtime === "python3" ? "code" : "body");
+        return Dsl.parseSingleStatement(`await plurnk[${JSON.stringify(runtime)}](${JSON.stringify({
+            ...(p.cwd === undefined ? {} : { [runtime === "sh" || runtime === "js" || runtime === "python3" ? "cwd" : "target"]: p.cwd }),
+            ...(p.command === undefined || p.command.length === 0 ? {} : { [bodyKey]: p.command }),
+        })});`);
     }
 }

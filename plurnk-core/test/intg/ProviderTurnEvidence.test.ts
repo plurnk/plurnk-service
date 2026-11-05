@@ -37,8 +37,8 @@ const response = (content: string): MockResponse => ({
     assistantRaw: null,
 });
 
-const invalid = response("````READ (workspace:///unframed-prose");
-const valid = response("\n````SEND\ndone\n````");
+const invalid = response("await plurnk.read({\"path\":\"workspace:///unframed-prose");
+const valid = response("await plurnk.send({\"text\":\"done\"});");
 const canonical = (...tags: string[]): string[] => [...new Set(tags)].toSorted();
 
 test("{§emission-admission} each emission attempt composes opaque family hooks and records exactly what it composed", async () => {
@@ -169,7 +169,7 @@ test("{§provider-surface} generate carries the workspace this call serves, and 
         // it carried the coordinate, not the id.
         const loopId = await insertLoop(db, sessionId, 5, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const mock = new CoordMock({ contextWindow: viableWindow(), responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
+        const mock = new CoordMock({ contextWindow: viableWindow(), responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50)] });
         await engine.runTurn({ provider: mock, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "x" }, { role: "user", content: "go" }] });
         assert.equal(mock.seen.workspaceId, String(workspaceId), "the workspace id, stringified");
         assert.equal(mock.seen.callKind, "emission", "ordinary turns declare the emission output contract");

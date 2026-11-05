@@ -5,11 +5,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Turn from "../../src/core/Turn.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock, type ProviderAccounting, type ProviderRequestAccounting, type MockResponse } from "@plurnk/plurnk-providers";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel, holdChild } from "./_db.ts";
 import { packetSection, logEntries } from "./_packet.ts";
-import { testExecutors } from "./_execs.ts";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -24,9 +22,7 @@ import { statement } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
 
 describe("Engine.interstitial-fence", () => {
-const FENCE = "`".repeat(4);
-
-const memory = PlurnkParser.frame("NOTE", "Examples reviewed.");
+const memory = "await plurnk.note({\"text\":\"Examples reviewed.\"});";
 
 const engineRun = async (db: Awaited<ReturnType<typeof openMigrated>>, workspaceId: number, sessionId: number, loopId: number, content: string, prompt: string) =>
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
@@ -34,28 +30,23 @@ const engineRun = async (db: Awaited<ReturnType<typeof openMigrated>>, workspace
         workspaceId, sessionId, loopId, maxTurns: 3, maxStrikes: 3, messages: [{ role: "user", content: prompt }],
     });
 
-// {§fence-pairing} — an unlabeled fence quotes: an operation inside it is shown, never run. A wider
-// SEND holds the same example as body ({§operation-fences}).
-test("{§fence-pairing}: an operation inside an unlabeled fence never runs, and a wider SEND quotes one", async () => {
+test("{§fence-pairing}: a SEND quoting an operation never runs the quoted call, and surrounding prose becomes NOTE rows", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `interstitial-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "Show the examples.");
-        await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
         await seedEntryWithChannel(db, { workspaceId, pathname: "/quoted.md", content: "Keep this one too." });
         const source = [
-            "An unlabeled fence quotes the operation inside it:",
-            "```\n```KILL (workspace:///notes.md)```\n```",
-            "A wider SEND quotes one too:",
-            "````SEND\n```KILL (workspace:///quoted.md)```\n````",
+            "A SEND quotes an operation in its text:",
+            "await plurnk.send({\"text\":\"await plurnk.kill({\\\"path\\\":\\\"workspace:///quoted.md\\\"});\"});",
             memory,
         ].join("\n\n");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await engine.runLoop({
             provider: new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content: source, reasoning: null } },
-                { assistant: { content: PlurnkParser.frame("DONE", null), reasoning: null } },
+                { assistant: { content: "await plurnk.done({});", reasoning: null } },
             ] }),
             workspaceId, sessionId, loopId, maxTurns: 3,
             messages: [{ role: "user", content: "Show the examples." }],
@@ -67,66 +58,31 @@ test("{§fence-pairing}: an operation inside an unlabeled fence never runs, and 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
         const model = rows.filter(({ origin, op }) => origin === "model" && op !== null);
         assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [["NOTE", 200], ["SEND", 200], ["NOTE", 200]]);
-        assert.match(JSON.parse(model[0].tx).body, /^An unlabeled fence quotes[\s\S]*```KILL \(workspace:\/\/\/notes\.md\)```[\s\S]*A wider SEND quotes one too:$/u,
-            "the prose and its quoted KILL, one span before the SEND, are the turn's NOTE, literally ({§outside-text})");
+        assert.match(JSON.parse(model[0].tx).body, /^A SEND quotes an operation in its text:$/u,
+            "the prose before the SEND is the turn's NOTE, literally ({§outside-text})");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
-        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "outside"), undefined, "beside fenced operations there is no outside source");
-        assert.equal(JSON.parse(model[1].tx).body.raw, "```KILL (workspace:///quoted.md)```", "the quoted heading stayed body under the wider fence");
+        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "outside"), undefined, "beside operations there is no outside source");
+        assert.equal(JSON.parse(model[1].tx).body.raw, "await plurnk.kill({\"path\":\"workspace:///quoted.md\"});", "the quoted call stayed body inside SEND");
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, source, "/ops stays exact");
-        const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "workspace", name: "body" });
-        assert.equal(note?.content, "Keep this note.", "the quoted KILL never ran: an unlabeled fence quotes");
         const quoted = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/quoted.md", scheme: "workspace", name: "body" });
         assert.equal(quoted?.content, "Keep this one too.", "the quoted KILL never ran");
     } finally { await db.close(); }
 });
 
-test("{§outside-text} {§whitespace-contract}: an unfenced heading is never run, never outside text, and the model is told so", async () => {
+test("{§whitespace-contract}: a Markdown-fenced Code Mode operation unwraps with an advisory and still runs", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `bare-heading-${crypto.randomUUID()}`);
-        const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1, "Show the examples.");
-        await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
-        const notices: Array<{ kind: string; message?: string }> = [];
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
-        const source = ["KILL (workspace:///notes.md)", PlurnkParser.frame("SEND", "Explained."), memory].join("\n\n");
-        const result = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: source, reasoning: null } },
-                { assistant: { content: PlurnkParser.frame("DONE", null), reasoning: null } },
-            ] }),
-            workspaceId, sessionId, loopId, maxTurns: 3,
-            messages: [{ role: "user", content: "Show the examples." }],
-        });
-        assert.equal(result.result.status, 200);
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: result.turnIds.at(-2)! });
-        const model = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(model.map(({ op }) => op), ["SEND", "NOTE"], "the unfenced heading is not response text: never run ({§whitespace-contract})");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string }>({ session_id: sessionId });
-        assert.equal(sources.some((row) => row.turn_id === result.turnIds.at(-2) && row.kind === "outside"), false, "and it is not outside text either: the turn has no outside source");
-        assert.equal(JSON.parse(model[0].tx).body.raw, "Explained.", "only the authored SEND is delivered");
-        assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory").map(({ message }) => message),
-            ["Unfenced `KILL` ignored."]);
-        const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "workspace", name: "body" });
-        assert.equal(note?.content, "Keep this note.");
-    } finally { await db.close(); }
-});
-
-test("{§whitespace-contract}: an ignored content heading does not deny a successful fenced operation", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `fenced-and-unfenced-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `fenced-codemode-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "Read the note.");
         const body = "The recovery marker is MARIGOLD-43.";
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: body });
-        const heading = "READ (workspace:///notes.md)";
-        const content = `${PlurnkParser.frame(heading, null)}\n\n${heading}`;
+        const content = "```ts\nawait plurnk.read({\"path\":\"workspace:///notes.md\"});\n```";
         const reasoning = "Deliberating before reading.";
         const notices: Array<{ kind: string; message?: string }> = [];
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content, reasoning } },
-            { assistant: { content: PlurnkParser.frame("DONE", body), reasoning: null } },
+            { assistant: { content: `await plurnk.done({"text":${JSON.stringify(body)}});`, reasoning: null } },
         ] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
         const result = await engine.runLoop({
@@ -138,12 +94,13 @@ test("{§whitespace-contract}: an ignored content heading does not deny a succes
         const turnId = result.turnIds.at(-2)!;
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: turnId });
         const reads = rows.filter(({ op, origin }) => op === "READ" && origin === "model");
-        assert.deepEqual(reads.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).content]), [[200, body]], "the fenced READ ran once; its unfenced repetition did not run");
+        assert.deepEqual(reads.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).content]), [[200, body]], "the fenced Code Mode READ unwrapped and ran");
         assert.deepEqual(rows.filter(({ op }) => op === "error"), [], "a valid operation prevents a no-operation strike");
-        assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory").map(({ message }) => message), ["Unfenced `READ` ignored."]);
+        assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory").map(({ message }) => message), [
+            "Code Mode statements need no Markdown fence; write `await plurnk.<op>(...)` directly.",
+        ]);
         const next = JSON.stringify(provider.received[1]);
         assert.ok(next.includes(body), "the next request contains the successful result");
-        assert.ok(next.includes("Unfenced `READ` ignored."), "the same request identifies only the ignored fragment");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, content);
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "reasoning")?.content, reasoning);
@@ -158,7 +115,7 @@ test("{§message-completion}: a final reply, code block and all, answers the ope
         const loopId = await insertLoop(db, sessionId, 1, "How do I run the tests?");
         const answer = "The runner is configured in the package root:\n\n```ts\nexport default { timeout: 30_000 };\n```\n\nIt takes about a minute.";
         const notices: Array<{ kind: string }> = [];
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: PlurnkParser.frame("DONE", answer), reasoning: "simple question" } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: `await plurnk.done({"text":${JSON.stringify(answer)}});`, reasoning: "simple question" } }] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice) });
         const result = await engine.runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 3, maxStrikes: 3,
@@ -182,9 +139,9 @@ test("{§fence-pairing}: a SEND with nested examples delivers its literal body",
         const workspaceId = await insertWorkspace(db, `nested-reply-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "How do I read a file?");
-        const answer = "An operation opens with three backticks:\n\n```text\n```READ (notes.md)\n```\n```";
+        const answer = "An operation uses plurnk.read:\n\n```ts\nawait plurnk.read({ path: \"notes.md\" });\n```";
         const result = await engineRun(db, workspaceId, sessionId, loopId,
-            PlurnkParser.frame("SEND", answer) + "\n\n" + PlurnkParser.frame("DONE", null), "How do I read a file?");
+            `await plurnk.send({"text":${JSON.stringify(answer)}});\n\nawait plurnk.done({});`, "How do I read a file?");
         assert.equal(result.result.status, 200);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
         const send = rows.find(({ origin, op }) => origin === "model" && op === "SEND");
@@ -195,7 +152,7 @@ test("{§fence-pairing}: a SEND with nested examples delivers its literal body",
 
 // {§outside-text} {§turn-source-resources}
 for (const [label, content, finishReason] of [
-    ["an operation heading outside a fence", "Let me check.\n\nREAD (workspace:///notes.md)", "stop"],
+    ["plain narration without an operation", "Let me check the notes first.", "stop"],
     ["prose cut at the output allowance", "The findings give me precise integration points. Now I'll", "length"],
 ] as const) {
     test(`{§outside-text}: ${label} is an empty turn with one strike and an error row, never an answer`, async () => {
@@ -208,7 +165,7 @@ for (const [label, content, finishReason] of [
             const reasoning = Array.from({ length: 120 }, (_, index) => `thinking about it ${index + 1}`).join("\n");
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content, reasoning, finishReason } },
-                { assistant: { content: "````DONE\nDone.\n````", reasoning: null } },
+                { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
             ] });
             const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice) });
             const result = await engine.runLoop({
@@ -249,50 +206,45 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
         const loopId = await insertLoop(db, sessionId, 1, "Do the thing.");
         const narration = "Let me look at the failing test first.";
         const prose = "The investigation is still in progress.";
-        // {§fence-pairing} — native markup naming a plurnk operation is that operation, whatever the
-        // family; a call naming a tool plurnk does not have is read as nothing, so its turn is empty as well as toxic.
-        const toxin = '<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name="READ">\n<｜｜DSML｜｜ parameter name="path" string="true">sh:///67f57ccd#stdout</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>';
         const untranslated = '<tool_call>\n{"name": "read_file", "arguments": {"path": "workspace:///notes.md"}}\n</tool_call>';
-        const brokenOp = "Checking the source.\n\nREAD (workspace:///notes.md)";
+        const secondNarration = "Checking the source.";
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: `${narration}\n\n\`\`\`\`NOTE\nplan\n\`\`\`\``, reasoning: null, finishReason: "stop" } },
+            { assistant: { content: `${narration}\n\nawait plurnk.note({"text":"plan"});`, reasoning: null, finishReason: "stop" } },
             { assistant: { content: prose, reasoning: null, finishReason: "stop" } },
-            { assistant: { content: toxin, reasoning: null, finishReason: "stop" } },
             { assistant: { content: untranslated, reasoning: "Read the note first.", finishReason: "stop" } },
-            { assistant: { content: `${brokenOp}\n\n\`\`\`\`NOTE\nstill here\n\`\`\`\``, reasoning: null, finishReason: "stop" } },
-            { assistant: { content: "````DONE\nDone.\n````", reasoning: null } },
+            { assistant: { content: `${secondNarration}\n\nawait plurnk.note({"text":"still here"});`, reasoning: null, finishReason: "stop" } },
+            { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
         ] });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Do the thing." }] });
         assert.equal(result.result.status, 200);
-        assert.equal(result.turnIds.length, 7, "{§outside-text} no runtime read-back turn follows an empty turn");
-        const [, workingTurn, proseTurn, toxinTurn, untranslatedTurn, brokenTurn] = result.turnIds;
+        assert.equal(result.turnIds.length, 6, "{§outside-text} no runtime read-back turn follows an empty turn");
+        const [, workingTurn, proseTurn, untranslatedTurn, secondWorkingTurn] = result.turnIds;
         const rowsOf = async (turnId: number) => await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
         const notesOf = async (turnId: number) => (await rowsOf(turnId))
             .filter(({ origin, op }) => origin === "model" && op === "NOTE").map(({ tx }) => JSON.parse(tx).body as string);
         const strikesOf = async (turnId: number) => (await rowsOf(turnId))
             .filter(({ origin, op }) => origin === "_plurnk" && op === "error").map(({ status_rx }) => status_rx);
         assert.deepEqual(
-            [await strikesOf(workingTurn), await strikesOf(proseTurn), await strikesOf(toxinTurn), await strikesOf(untranslatedTurn), await strikesOf(brokenTurn)],
-            [[], [422], [], [422], []],
-            "{§outside-text} each empty turn carries its one error row, toxic or plain; the translated call ran, so its turn is not empty",
+            [await strikesOf(workingTurn), await strikesOf(proseTurn), await strikesOf(untranslatedTurn), await strikesOf(secondWorkingTurn)],
+            [[], [422], [422], []],
+            "{§outside-text} each empty turn carries its one error row",
         );
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         const outsideOf = (turnId: number) => sources.find((row) => row.turn_id === turnId && row.kind === "outside")?.content;
         assert.deepEqual(await notesOf(workingTurn), [narration, "plan"], "narration beside a real operation is the turn's NOTE at its position ({§outside-text})");
-        assert.equal(outsideOf(workingTurn), undefined, "beside a fenced operation there is no outside source");
+        assert.equal(outsideOf(workingTurn), undefined, "beside an operation there is no outside source");
         assert.deepEqual(await notesOf(proseTurn), [], "prose alone is never a NOTE");
-        assert.equal(outsideOf(proseTurn), prose, "prose is stored as the outside source when the turn fenced no operation");
+        assert.equal(outsideOf(proseTurn), prose, "prose is stored as the outside source when the turn performed no operation");
         assert.equal((await rowsOf(proseTurn)).some(({ op }) => op === "SEND"), false, "storage is not message delivery");
-        const following = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: toxinTurn }))!.packet);
+        const following = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: untranslatedTurn }))!.packet);
         assert.doesNotMatch(packetSection(following, "log"), /The investigation is still in progress\./u, "the next packet never carries the text");
         assert.doesNotMatch(packetSection(following, "notices"), /outside_text/u, "the empty turn's error row is the one thing the model hears of it; no second notice");
         assert.notDeepEqual(JSON.parse(packetSection(following, "work")).messages, [], "the original message still needs a reply");
         assert.deepEqual(await notesOf(untranslatedTurn), []);
         assert.equal(outsideOf(untranslatedTurn), untranslated, "foreign tool-call markup is stored verbatim; nothing filters the source");
-        assert.deepEqual(await notesOf(brokenTurn), ["Checking the source.", "still here"], "the narration around the unfenced heading is the turn's NOTE; the heading itself is not response text");
-        assert.equal(outsideOf(brokenTurn), undefined);
-        assert.equal(sources.find((row) => row.turn_id === toxinTurn && row.kind === "ops")?.content, toxin, "the exact emission stays readable at ops://");
+        assert.deepEqual(await notesOf(secondWorkingTurn), [secondNarration, "still here"], "narration beside an operation is the turn's NOTE");
+        assert.equal(outsideOf(secondWorkingTurn), undefined);
         assert.equal(sources.find((row) => row.turn_id === untranslatedTurn && row.kind === "reasoning")?.content, "Read the note first.", "the reasoning is kept even when it is not read back");
         assert.equal(sources.find((row) => row.turn_id === proseTurn && row.kind === "ops")?.content, prose);
     } finally { await db.close(); }
@@ -312,9 +264,9 @@ for (const preview of ["0", "1"]) for (const finishReason of [undefined, "stop",
             const reasoning = "I still need to work out the next action.";
             const notices: Array<{ kind: string }> = [];
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: PlurnkParser.frame("READ (workspace:///notes.md)", "") + "\n" + PlurnkParser.frame("SEND", "Recorded."), reasoning: null } },
+                { assistant: { content: "await plurnk.read({\"path\":\"workspace:///notes.md\"});\nawait plurnk.send({\"text\":\"Recorded.\"});", reasoning: null } },
                 { assistant: { content: "", reasoning, ...(finishReason === undefined ? {} : { finishReason }) } },
-                { assistant: { content: PlurnkParser.frame("DONE", null), reasoning: null } },
+                { assistant: { content: "await plurnk.done({});", reasoning: null } },
             ] });
             const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice) });
             const result = await engine.runLoop({
@@ -355,7 +307,7 @@ test("{§outside-text}: metadata on a file READ is ignored with a notice and the
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
         const notices: Array<{ kind: string; directive?: string; message?: string }> = [];
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; directive?: string; message?: string }) });
-        const source = ['````READ (workspace:///notes.md) [{"lines": "1-2"}]', "````", memory].join("\n");
+        const source = ["await plurnk.read({\"path\":\"workspace:///notes.md\",\"metadata\":[\"{\\\"lines\\\": \\\"1-2\\\"}\"]});", memory].join("\n");
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
             workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Read the note." }],
@@ -365,71 +317,6 @@ test("{§outside-text}: metadata on a file READ is ignored with a notice and the
         assert.ok(notice, "one metadata_ignored notice");
         assert.equal(notice.message, "READ on 'workspace' takes no [metadata]; the READ ran without it.");
         assert.equal(notice.directive, "YOU SHOULD NOT write [metadata] on an operation that takes none.", "{§diagnostic-observation}");
-    } finally { await db.close(); }
-});
-
-test("{§fence-pairing}: an offset example draws no parser advisory, and does not conclude the loop", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `indented-program-${crypto.randomUUID()}`);
-        const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1, "Read the note.");
-        await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
-        const notices: Array<{ kind: string; message?: string }> = [];
-        const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "I'll read it now.\n\n    " + FENCE + "READ (workspace:///notes.md)\n    " + FENCE, reasoning: null } },
-            { assistant: { content: PlurnkParser.frame("DONE", "It says: Keep this note."), reasoning: null } },
-        ] });
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
-        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 4, maxStrikes: 3, messages: [{ role: "user", content: "Read the note." }] });
-        assert.equal(result.result.status, 200);
-        assert.equal(provider.received.length, 2, "the offset example is not an answer: the model gets another turn");
-        // #799: the parser presumes nothing about why a fence is offset. The turn is an empty turn
-        // rather than a conclusion — proven by the second provider call above. The strike is silent
-        // ({§outside-text}); the quotation remains literal in the turn's outside source ({§outside-text}).
-        assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "silent");
-        assert.deepEqual(notices.filter(({ kind, message }) => kind !== "turn_no_operations" && /must start its line|read as prose/u.test(message ?? "")), [], "an offset example still draws no parser advisory");
-        const all = await Promise.all(result.turnIds.map((id) => db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: id })));
-        assert.equal(all.flat().filter(({ origin, op }) => origin === "model" && op === "READ").length, 0, "the offset example never ran");
-        assert.equal(all.at(-2)!.some(({ origin, op }) => origin === "model" && op === "NOTE"), false, "the offset example is no row");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
-        assert.equal(sources.find((row) => row.turn_id === result.turnIds.at(-2) && row.kind === "outside")?.content,
-            "I'll read it now.\n\n    " + FENCE + "READ (workspace:///notes.md)\n    " + FENCE, "the offset example is retained literally, never executed");
-        assert.equal(
-            JSON.parse(all.at(-1)!.find(({ origin, op }) => origin === "model" && op === "DONE")!.tx).body.raw,
-            "It says: Keep this note.",
-            "the fenced answer concludes, stripped of its envelope",
-        );
-    } finally { await db.close(); }
-});
-
-// {§whitespace-contract} {§outside-text} — an executor called without its fence is a missed operation: the
-// receipt rides the next packet's notices, and the turn still strikes, so three in a row end the loop (#844).
-test("{§whitespace-contract} {§outside-text}: unfenced executor calls draw their receipt each turn and still strike out", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `unfenced-exec-${crypto.randomUUID()}`);
-        const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1, "Build it.");
-        const notices: Array<{ kind: string; message?: string }> = [];
-        const provider = new Mock({ contextWindow: 100_000, responses: ["build", "test", "lint"].map((step) => (
-            { assistant: { content: `Running the ${step} step.\n\nsh (${step}.sh)`, reasoning: null, finishReason: "stop" as const } }
-        )) });
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
-        engine.setExecutors(await testExecutors());
-        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Build it." }] });
-        assert.equal(result.result.status, 500, "three empty turns cross the strike threshold");
-        assert.match(JSON.stringify(result.result), /performed no operation/u, "the terminal names the source");
-        assert.equal(result.turnIds.length, 4, "initialization and three empty turns; with no reasoning there is nothing to read back");
-        const strikes = await Promise.all(result.turnIds.slice(1).map(async (turnId) => (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number }>({ turn_id: turnId }))
-            .filter(({ origin, op }) => origin === "_plurnk" && op === "error").map(({ status_rx }) => status_rx)));
-        assert.deepEqual(strikes, [[422], [422], [422]], "{§outside-text} each strike is an error row the next packet carries");
-        assert.equal(notices.filter(({ kind, message }) => kind === "parse_advisory" && message === "Unfenced `sh` ignored.").length, 3, "each turn heard its receipt");
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds[1] });
-        assert.equal(rows.some(({ origin, op }) => origin === "model" && op === "NOTE"), false, "the narration is no row");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
-        assert.equal(sources.find((row) => row.turn_id === result.turnIds[1] && row.kind === "outside")?.content,
-            "Running the build step.", "only the narration is outside text, not the unfenced invocation ({§outside-text})");
     } finally { await db.close(); }
 });
 });
@@ -883,13 +770,13 @@ for (const parked of [false, true]) for (const location of ["absent", "content",
             const contentNote = location === "content" || location === "both";
             const reasoningNote = location === "reasoning" || location === "both";
             const expectedNotes = contentNote ? ["Kept from content."] : [];
-            const operation = parked ? "```WAIT\n```" : "```FIND (workspace:///*)\n```";
+            const operation = parked ? "await plurnk.wait({});" : "await plurnk.find({\"path\":\"workspace:///*\"});";
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: {
-                    content: `${contentNote ? "```NOTE\nKept from content.\n```\n\n" : ""}${operation}`,
-                    reasoning: reasoningNote ? "```NOTE\nKept from reasoning.\n```" : null,
+                    content: `${contentNote ? "await plurnk.note({\"text\":\"Kept from content.\"});\n" : ""}${operation}`,
+                    reasoning: reasoningNote ? "await plurnk.note({\"text\":\"Kept from reasoning.\"});" : null,
                 } },
-                { assistant: { content: "```DONE\nDone.\n```", reasoning: null } },
+                { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
             ] });
             const first = await engine.runTurn({ ...context, provider, messages: [] });
             assert.equal(first.status, parked ? 202 : 102, "work determines continuation independently of notes");
@@ -923,8 +810,8 @@ test("{§operation-results} {§op-shapes}: continuing work with a TODO satisfies
         const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "```TODO\n- Survey workspace\n- Complete task\n```\n\n```FIND (workspace:///*)\n```", reasoning: null } },
-            { assistant: { content: "```DONE\nDone.\n```", reasoning: null } },
+            { assistant: { content: "await plurnk.todo({\"text\":\"- Survey workspace\\n- Complete task\"});\n\nawait plurnk.find({\"path\":\"workspace:///*\"});", reasoning: null } },
+            { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
         ] });
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
@@ -943,7 +830,7 @@ test("{§operation-results} {§loop-completion}: a turn that emits DONE beside u
         const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "```EDIT (workspace:///result.txt)\nok\n```\n\n```DONE\nDone.\n```", reasoning: null } },
+            { assistant: { content: "await plurnk.edit({\"path\":\"workspace:///result.txt\",\"content\":\"ok\"});\n\nawait plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
             { assistant: { content: "", reasoning: null } },
         ] });
         const first = await engine.runTurn({ ...context, provider, messages: [] });
@@ -959,7 +846,7 @@ test("{§outside-text} {§operation-results}: an operation-free response keeps i
     try {
         const result = await runLoop(db, [
             { content: "Still thinking about it.", reasoning: null },
-            { content: "```DONE\nDone.\n```", reasoning: null },
+            { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null },
         ]);
         assert.equal(result.result.status, 200);
         const [, empty, final] = result.turnIds;
@@ -987,8 +874,8 @@ test("{§outside-text} prose before, between and after fences lands as NOTEs in 
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "Look around.");
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            "Thinking out loud first.\n\n```FIND (workspace:///*)\n```\n\nBetween the two.\n\n```FIND (workspace:///*)\n```\n\nAnd a trailing remark.",
-            "```DONE\nDone.\n```",
+            "Thinking out loud first.\n\nawait plurnk.find({\"path\":\"workspace:///*\"});\n\nBetween the two.\n\nawait plurnk.find({\"path\":\"workspace:///*\"});\n\nAnd a trailing remark.",
+            "await plurnk.done({\"text\":\"Done.\"});",
         ].map((content) => ({ assistant: { content, reasoning: null, finishReason: "stop" } })) });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Look around." }],
@@ -1005,7 +892,7 @@ test("{§outside-text} prose before, between and after fences lands as NOTEs in 
         assert.equal([...user.matchAll(/^### log:\/\/\/1\/2\/\d+\/NOTE · \d+/gmu)].length, 3, "each annotation retains its own receipt");
         assert.doesNotMatch(user, /Thinking out loud|Between the two|And a trailing remark/u, "receipts do not duplicate the annotations");
         const assistant = PacketWire.renderSlot(packet.sections, "assistant");
-        assert.match(assistant, /```NOTE\nThinking out loud first\.\n```[\s\S]*```NOTE\nBetween the two\.\n```[\s\S]*```NOTE\nAnd a trailing remark\.\n```/u, `the replay carries them as NOTE fences:\n${assistant}`);
+        assert.match(assistant, /await plurnk\.note\(\{"text":"Thinking out loud first\."\}\);[\s\S]*await plurnk\.note\(\{"text":"Between the two\."\}\);[\s\S]*await plurnk\.note\(\{"text":"And a trailing remark\."\}\);/u, `the replay carries them as NOTE statements:\n${assistant}`);
     } finally { await db.close(); }
 });
 });
@@ -1070,7 +957,7 @@ test("{§outside-text}: a strike threshold crossed by unfenced prose keeps its 5
         // And the citation is not a dead link.
         const cited = await clientRead(engine, db, {
             workspaceId, sessionId,
-            statement: statement(`\`\`\`\`READ (${problem.unconcluded as string})\`\`\`\``),
+            statement: statement(`await plurnk.read({"path":"${problem.unconcluded as string}"});`),
         });
         assert.equal(cited.status, 200);
         assert.ok("content" in cited);
@@ -1086,7 +973,7 @@ test("{§outside-text}: a terminal whose last turn acted carries no `unconcluded
         const provider = new Mock({ contextWindow: 100_000, responses: [
             said("Thinking."),
             said("Still thinking."),
-            said("````NOTE\nchecked\n````"),
+            said("await plurnk.note({\"text\":\"checked\"});"),
         ] });
         const loop = await engine.runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 3, maxStrikes: 10,
@@ -1103,7 +990,7 @@ test("{§outside-text}: the turn ceiling cites an unconcluded last turn too", as
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            said("````NOTE\nworking\n````"),
+            said("await plurnk.note({\"text\":\"working\"});"),
             said("I believe the answer is four."),
         ] });
         const loop = await engine.runLoop({
@@ -1152,7 +1039,7 @@ test("{§engine-rails}: repeated reasoning-only responses are not reported as re
 
 // {§operation-results} — the ceiling cut each response, so the verdict names the ceiling: identical cut
 // responses are no repetition, whether the cut left nothing to admit or exhausted every emission attempt.
-for (const [shape, content, calls] of [["before any text", "", 3], ["inside an operation", "````READ (src/a", 9]] as const) {
+for (const [shape, content, calls] of [["before any text", "", 3], ["inside an operation", "await plurnk.read({\"path\":\"src/a", 9]] as const) {
     test(`{§operation-results} {§engine-rails}: responses the output allowance cut ${shape} cross as the allowance, never a cycle`, async () => {
         const { db, engine, workspaceId, sessionId, loopId } = await setup();
         try {
@@ -1176,7 +1063,7 @@ test("{§engine-rails}: a threshold crossed by failed operations still says oper
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // A READ of a session that does not exist is a hard operation failure, three turns running.
-        const bad = said("````READ (session://nobody/1)````");
+        const bad = said("await plurnk.read({\"path\":\"session://nobody/1\"});");
         const provider = new Mock({ contextWindow: 100_000, responses: [bad, bad, bad] });
         const loop = await engine.runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 3,
@@ -1216,7 +1103,7 @@ test("{§outside-text}: the citation reaches the parent, the reader best placed 
         });
 
         const turn = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````NOTE\nchecking\n````", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.note({\"text\":\"checking\"});", reasoning: null } }] }),
             messages: [], workspaceId, sessionId: parent, loopId: parentLoop,
         });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
@@ -1232,13 +1119,13 @@ test("{§outside-text}: the citation reaches the parent, the reader best placed 
 test("{§outside-text}: an empty completion reply resolves the message without replacing the earlier answer", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
-        const provider = new Mock({ contextWindow: 100_000, responses: [said("````SEND\nThe answer is four.\n````"), said("````DONE\n````")] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [said("await plurnk.send({\"text\":\"The answer is four.\"});"), said("await plurnk.done({});")] });
         const loop = await engine.runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 3,
             messages: [{ role: "user", content: "What is two plus two?" }],
         });
         assert.equal(loop.result.status, 200, "{§message-completion} resolves the request before the rail can rule");
-        const answer = await clientRead(engine, db, { workspaceId, sessionId, statement: statement("````READ (ops://alice/1)````") });
+        const answer = await clientRead(engine, db, { workspaceId, sessionId, statement: statement("await plurnk.read({\"path\":\"ops://alice/1\"});") });
         assert.ok("content" in answer);
         assert.equal(answer.content, "The answer is four.", "and the loop's own address is the answer, not a citation");
     } finally { await db.close(); }

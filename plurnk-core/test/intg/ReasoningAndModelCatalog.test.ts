@@ -15,7 +15,6 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readSessionTopology } from "../SessionTopology.ts";
 import { bindListener } from "./_http.ts";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { SessionTranslator } from "@plurnk/plurnk-acp";
 import { requestBody } from "../../../scripts/lib/test-fetch.ts";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -172,10 +171,10 @@ const reasoned = (dsl: string, reasoning: string): MockResponse => {
 test("{§methods-invocation}: a turn's admitted reasoning rides its first model operation row, announced and read, and no other row repeats it", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: [
         reasoned([
-            PlurnkParser.frame("READ (workspace:///facts.txt)", null),
-            PlurnkParser.frame("NOTE", "Answer from the facts."),
+            "await plurnk.read({\"path\":\"workspace:///facts.txt\"});",
+            "await plurnk.note({\"text\":\"Answer from the facts.\"});",
         ].join("\n\n"), "First turn reasoning."),
-        reasoned(PlurnkParser.frame("DONE", "Done."), "Second turn reasoning."),
+        reasoned("await plurnk.done({\"text\":\"Done.\"});", "Second turn reasoning."),
     ] });
     await withDaemon(provider, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "reasoning-carrier", projectRoot: null });
@@ -241,7 +240,7 @@ test("{§notifications}: provider SSE reaches standard ACP before the reasoning 
             assert.equal(events.filter(({ update }) => update.sessionUpdate === "agent_thought_chunk").length, 1);
         } finally {
             clearTimeout(timer);
-            send("</think>````DONE\nDone.\n````", "stop");
+            send('</think>await plurnk.done({"text":"Done."});', "stop");
             controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
             controller.close();
             assert.equal((await run).status, 200);
@@ -318,9 +317,7 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
         for (const { name, sessionId } of sessions) assert.equal(observed.get(sessionId)!.join(""), `Thinking ${name}.`);
         for (const index of [1, 2, 0]) {
             const { name } = sessions[index];
-            emit(name, { content: `${style === "think-tags" ? "</think>" : ""}\`\`\`\`DONE
-ONLY_${name}
-\`\`\`\`` }, "stop", {
+            emit(name, { content: `${style === "think-tags" ? "</think>" : ""}await plurnk.done({"text":"ONLY_${name}"});` }, "stop", {
                 prompt_tokens: 10 + index, completion_tokens: 20 + index, total_tokens: 30 + 2 * index,
             });
             streams.get(name)!.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
@@ -333,8 +330,7 @@ ONLY_${name}
             const calls = await db.test_model_calls.all<{ response: string }>({ turn_id: turnId });
             const response = JSON.parse(calls[0].response);
             assert.equal(response.assistant.reasoning, `Thinking ${name}.`);
-            assert.equal(response.assistant.content, `\`\`\`\`DONE\nONLY_${name}
-\`\`\`\``);
+            assert.equal(response.assistant.content, `await plurnk.done({"text":"ONLY_${name}"});`);
             for (const other of sessions.filter((session) => session.sessionId !== sessionId)) {
                 assert.ok(!JSON.stringify(response.rawBody).includes(other.name), "forensic raw chunks belong to this request only");
             }

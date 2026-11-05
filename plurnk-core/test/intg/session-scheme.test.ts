@@ -265,7 +265,7 @@ for (const op of ["WORK", "FORK"] as const) {
             const occupiedId = await insertSession(db, workspaceId, null, "ab3d5678");
             const loopId = await insertLoop(db, parentId, 1, "delegate");
             const turnId = await insertTurn(db, loopId, 1, 102);
-            const source = PlurnkParser.frame(op, "Inspect the project.");
+            const source = `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: "Inspect the project." })});`;
             const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
             assert.deepEqual(parsed.items.filter(({ kind }) => kind === "error"), []);
             assert.equal(parsed.items.length, 1);
@@ -602,11 +602,11 @@ test("{§op-methods-op-dispatch}: one model program creates sessions before canc
             cancelSession: async (child, reason) => { await lifecycle.cancelTree(child, reason, true); },
         });
         const content = [
-            PlurnkParser.frame("WORK (session://approach_a)", "Consider approach A."),
-            PlurnkParser.frame("WORK (session://approach_b)", "Consider approach B."),
-            PlurnkParser.frame("WORK (session://approach_c)", "Consider approach C."),
-            PlurnkParser.frame("KILL (session://approach_a)", null),
-            PlurnkParser.frame("KILL (session://approach_c)", null),
+            "await plurnk.work({\"target\":\"session://approach_a\",\"prompt\":\"Consider approach A.\"});",
+            "await plurnk.work({\"target\":\"session://approach_b\",\"prompt\":\"Consider approach B.\"});",
+            "await plurnk.work({\"target\":\"session://approach_c\",\"prompt\":\"Consider approach C.\"});",
+            "await plurnk.kill({\"path\":\"session://approach_a\"});",
+            "await plurnk.kill({\"path\":\"session://approach_c\"});",
         ].join("\n\n");
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] });
         const turn = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
@@ -1056,8 +1056,8 @@ test("{§session-loop-lifecycle} READ of a running child does not override a con
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "````READ (session://session)\n````\n````NOTE\nKeep working.\n````", reasoning: null } },
-            { assistant: { content: "````WAIT\nAwait the child.\n````", reasoning: null } },
+            { assistant: { content: "await plurnk.read({\"path\":\"session://session\"});\n\nawait plurnk.note({\"text\":\"Keep working.\"});", reasoning: null } },
+            { assistant: { content: "await plurnk.wait({\"text\":\"Await the child.\"});", reasoning: null } },
         ] });
         const run = () => engine.runTurn({ provider, workspaceId, sessionId: parent, loopId: parentLoop, messages: [] });
         const continued = await run();
@@ -1105,7 +1105,7 @@ test("{§op-methods-op-dispatch} KILL(session) settles before same-turn completi
 
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: {
-                content: "```KILL (session://leftover-session)\n```\n\n```DONE\nDone, session killed.\n```", reasoning: null,
+                content: "await plurnk.kill({\"path\":\"session://leftover-session\"});\n\nawait plurnk.done({\"text\":\"Done, session killed.\"});", reasoning: null,
             } }] }),
             workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
         });
@@ -1126,7 +1126,7 @@ test("{§loop-completion} WAIT: a live obligation parks; an empty join continues
         const child = await insertSession(db, s1, parent, "session");
         await insertLoop(db, child, 1, "work"); // a live child (latest loop 102)
         const eng1 = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````WAIT\nAwait the child.\n````", reasoning: null } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.wait({\"text\":\"Await the child.\"});", reasoning: null } }] });
         const blocked = await eng1.runTurn({ provider, workspaceId: s1, sessionId: parent, loopId: pLoop, messages: [] });
         assert.equal(blocked.status, 202, "202 with a live child blocks on the join");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: pLoop }))?.status, 202, "the loop is blocked at 202");
@@ -1173,7 +1173,7 @@ for (const answer of ["", "The module was tested."]) {
             const collected = await readThroughScheme("session", null, readStmt(sessionPath("req-test")), makeSchemeCtx({ db, workspaceId, sessionId: reader }));
             assert.equal(collected.status, 425);
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: PlurnkParser.frame("DONE", answer), reasoning: null } },
+                { assistant: { content: `await plurnk.done({"text":${JSON.stringify(answer)}});`, reasoning: null } },
             ] });
             const completed = await engine.runTurn({ provider, workspaceId, sessionId: session, loopId: wLoop, messages: [] });
             assert.equal(completed.status, 200, "explicit completion is independent of answer delivery");
@@ -1273,9 +1273,9 @@ const gitRoot = async (): Promise<string> => {
 const bareRoot = async (): Promise<string> => mkdtemp(join(tmpdir(), "plurnk-child-file-bare-"));
 
 const CASES: Array<{ name: string; root: () => Promise<string>; read: string }> = [
-    { name: "git root, unscoped READ", root: gitRoot, read: "````READ (count.txt)````" },
-    { name: "git root, scoped READ <1,-1>", root: gitRoot, read: "````READ (count.txt) <1,-1>````" },
-    { name: "bare directory, scoped READ <1,-1>", root: bareRoot, read: "````READ (count.txt) <1,-1>````" },
+    { name: "git root, unscoped READ", root: gitRoot, read: "await plurnk.read({\"path\":\"count.txt\"});" },
+    { name: "git root, scoped READ <1,-1>", root: gitRoot, read: "await plurnk.read({\"path\":\"count.txt\",\"range\":\"1,-1\"});" },
+    { name: "bare directory, scoped READ <1,-1>", root: bareRoot, read: "await plurnk.read({\"path\":\"count.txt\",\"range\":\"1,-1\"});" },
 ];
 
 for (const c of CASES) {
@@ -1283,15 +1283,13 @@ for (const c of CASES) {
     serverProposals(approvalContext, "accept");
         const root = await c.root();
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````WORK (session://counter)\nWrite the number 3 to count.txt and conclude.\n````\n\n````WAIT\nwaiting\n````", 10),
-            makeMockResponse("````EDIT (count.txt)\n3\n````\n\n````NOTE\nwrote\n````", 10),
-            makeMockResponse("````DONE\nwritten\n````", 10),
+            makeMockResponse("await plurnk.work({\"target\":\"session://counter\",\"prompt\":\"Write the number 3 to count.txt and conclude.\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});", 10),
+            makeMockResponse("await plurnk.edit({\"path\":\"count.txt\",\"content\":\"3\"});\n\nawait plurnk.note({\"text\":\"wrote\"});", 10),
+            makeMockResponse("await plurnk.done({\"text\":\"written\"});", 10),
             makeMockResponse(`${c.read}
 
-\`\`\`\`NOTE
-reading
-\`\`\`\``, 10),
-            makeMockResponse("````DONE\ndone\n````", 10),
+await plurnk.note({"text":"reading"});`, 10),
+            makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
         ] });
         try {
             await withDaemon(mock, async (db, _daemon, addr) => {
@@ -1335,9 +1333,9 @@ reading
 test("{§child-orientation} a child's packet names its parent session; the root's packet does not", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("````WORK (session://counter)\nReply with the number 3.\n````\n\n````WAIT\nwaiting\n````", 10),
-        makeMockResponse("````DONE\n3\n````", 10),
-        makeMockResponse("````DONE\ndone\n````", 10),
+        makeMockResponse("await plurnk.work({\"target\":\"session://counter\",\"prompt\":\"Reply with the number 3.\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"3\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1387,11 +1385,11 @@ test("{§session-scheme} ping/pong: WORK spawns a session once, then WORK to the
     // Causality orders the queue: the child cannot run before the parent names it, and the parent cannot
     // resume before the child answers, so one Mock serves both sessions deterministically.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````WORK (session://pong)\nping 1\n````\n\n````WAIT\nawaiting pong\n````", 10),
-        makeMockResponse("````DONE\npong 1\n````", 10),
-        makeMockResponse("````WORK (session://pong)\nping 2\n````\n\n````WAIT\nawaiting pong again\n````", 10),
-        makeMockResponse("````DONE\npong 2\n````", 10),
-        makeMockResponse("````DONE\nheard pong 1 and pong 2\n````", 10),
+        makeMockResponse("await plurnk.work({\"target\":\"session://pong\",\"prompt\":\"ping 1\"});\n\nawait plurnk.wait({\"text\":\"awaiting pong\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"pong 1\"});", 10),
+        makeMockResponse("await plurnk.work({\"target\":\"session://pong\",\"prompt\":\"ping 2\"});\n\nawait plurnk.wait({\"text\":\"awaiting pong again\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"pong 2\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"heard pong 1 and pong 2\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1427,9 +1425,9 @@ test("{§session-scheme} ping/pong: WORK spawns a session once, then WORK to the
 test("{§session-scheme} a held name: FORK is 409 naming the working forms, WORK with no body is the empty-prompt refusal", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````WORK (session://pong)\nping\n````\n\n````WAIT\nawaiting pong\n````", 10),
-        makeMockResponse("````DONE\npong\n````", 10),
-        makeMockResponse("````DONE\ndone\n````", 10),
+        makeMockResponse("await plurnk.work({\"target\":\"session://pong\",\"prompt\":\"ping\"});\n\nawait plurnk.wait({\"text\":\"awaiting pong\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"pong\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -1443,13 +1441,13 @@ test("{§session-scheme} a held name: FORK is 409 naming the working forms, WORK
             // The model's own operations after its loop concluded.
             const dispatch = (statement: string) => modelOperation(daemon, db, { workspaceId, sessionId: modelSessionId!, statement: parseOne(statement) });
 
-            const fork = await dispatch("````FORK (session://pong)\nbranch it\n````");
+            const fork = await dispatch("await plurnk.fork({\"target\":\"session://pong\",\"prompt\":\"branch it\"});");
             assert.equal(fork.status, 409, "a branch needs a name no session holds");
             assert.match(problemOf(fork).type ?? "", /session-name-conflict$/u);
             assert.equal(problemOf(fork).session, "pong");
             assert.match(problemOf(fork).recovery ?? "", /WORK or SEND \(session:\/\/pong\)/u, "the receipt names the working forms");
 
-            const empty = await dispatch("````WORK (session://pong)\n\n````");
+            const empty = await dispatch("await plurnk.work({\"target\":\"session://pong\",\"prompt\":\"\"});");
             assert.equal(empty.status, 422, "no body, no message");
             assert.match(problemOf(empty).type ?? "", /spawn-prompt-empty$/u);
 
@@ -1477,13 +1475,13 @@ describe("session-spawn-prompt-resource", () => {
 
 // The brief is created by the parent in the same turn (a creation is a member), then handed to the child by path.
 const parentThenChild = (brief: string, work: string) => new Mock({ contextWindow: 16384, responses: [
-    makeMockResponse(`\`\`\`\`EDIT (brief.md)\n${brief}\`\`\`\`\n\n${work}
+    makeMockResponse(`await plurnk.edit({"path":"brief.md","content":${JSON.stringify(brief)}});
 
-\`\`\`\`WAIT
-delegated
-\`\`\`\``, 10),
-    makeMockResponse("````DONE\nchild done\n````", 10),
-    makeMockResponse("````DONE\nparent done\n````", 10),
+${work}
+
+await plurnk.wait({"text":"delegated"});`, 10),
+    makeMockResponse("await plurnk.done({\"text\":\"child done\"});", 10),
+    makeMockResponse("await plurnk.done({\"text\":\"parent done\"});", 10),
 ] });
 
 const childPrompts = async (db: Db, parentSessionId: number) => {
@@ -1499,7 +1497,7 @@ test("{§session-scheme}: a file path on WORK is the child's prompt, and the chi
     serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
     try {
-        const mock = parentThenChild("Count the lines in every file.\n", "````WORK (brief.md)\n````");
+        const mock = parentThenChild("Count the lines in every file.\n", "await plurnk.work({\"target\":\"brief.md\",\"prompt\":\"\"});");
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -1523,7 +1521,7 @@ test("{§session-scheme}: resource then body, joined by a blank line, as BARE co
     serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
     try {
-        const mock = parentThenChild("The brief.\n", "````WORK (brief.md)\nAlso report the total.\n````");
+        const mock = parentThenChild("The brief.\n", "await plurnk.work({\"target\":\"brief.md\",\"prompt\":\"Also report the total.\"});");
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -1542,8 +1540,8 @@ test("{§session-scheme}: a missing resource is the operation's failure and spaw
     const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
     try {
         const mock = new Mock({ contextWindow: 16384, responses: [
-            makeMockResponse("````WORK (missing.md)\n````\n\n````WORK (session://bad/path)\nx\n````\n\n````NOTE\ntried\n````", 10),
-            makeMockResponse("````DONE\ngiving up\n````", 10),
+            makeMockResponse("await plurnk.work({\"target\":\"missing.md\",\"prompt\":\"\"});\n\nawait plurnk.work({\"target\":\"session://bad/path\",\"prompt\":\"x\"});\n\nawait plurnk.note({\"text\":\"tried\"});", 10),
+            makeMockResponse("await plurnk.done({\"text\":\"giving up\"});", 10),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -1576,8 +1574,8 @@ for (const origin of ["model", "client", "_plurnk"] as const) {
         const turnId = origin === "model" ? await insertTurn(db, loopId, 1) : await insertOperationTurn(db, loopId, 1, origin);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         let sequence = 0;
-        const run = (header: string, body: string | null = null) => {
-            const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) });
+        const run = (source: string) => {
+            const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
             const item = parsed.items[0];
             assert.equal(item?.kind, "statement");
             if (item?.kind !== "statement") throw new Error("Expected one operation");
@@ -1587,20 +1585,20 @@ for (const origin of ["model", "client", "_plurnk"] as const) {
         for (const name of ["alice", "bob", "unallocated", ""]) {
             const path = name === "" ? "workspace:///notes.md" : `session://${name}/notes.md`;
             const glob = name === "" ? "workspace:///*.md" : `session://${name}/*.md`;
-            assert.equal((await run(`EDIT (${path})`, "first\nsecond")).status, 201);
-            assert.equal((await run(`READ (${path}) <1,-1>`)).content, "first\nsecond");
-            assert.equal((await run(`FIND (${glob})`)).status, 200);
-            assert.equal((await run(`EDIT (${path}) <2>`, "updated")).status, 200);
+            assert.equal((await run(`await plurnk.edit({"path":"${path}","content":"first\\nsecond"});`)).status, 201);
+            assert.equal((await run(`await plurnk.read({"path":"${path}","range":"1,-1"});`)).content, "first\nsecond");
+            assert.equal((await run(`await plurnk.find({"path":"${glob}"});`)).status, 200);
+            assert.equal((await run(`await plurnk.edit({"path":"${path}","range":"2","content":"updated"});`)).status, 200);
         }
-        assert.equal((await run("COPY (session://alice/notes.md) (session://bob/copy.md)")).status, 201);
-        assert.equal((await run("MOVE (session://bob/copy.md) (workspace:///moved.md)")).status, 201);
-        assert.equal((await run("READ (workspace:///moved.md) <1,-1>")).content, "first\nupdated");
-        assert.equal((await run("READ (session://bob/copy.md)")).status, 404);
-        assert.equal((await run("KILL (session://bob/notes.md)")).status, 200);
-        assert.equal((await run("READ (session://bob/notes.md)")).status, 404);
-        assert.equal((await run("EDIT (session://bob/nested/example.md)", "ordinary scratch area")).status, 201);
-        assert.equal((await run("READ (session://bob/nested/example.md) <1,-1>")).content, "ordinary scratch area");
-        assert.equal((await run("READ (session://missing/notes.md)")).status, 404, "an absent namespace does not resolve through the calling session");
+        assert.equal((await run('await plurnk.copy({"from":"session://alice/notes.md","to":"session://bob/copy.md"});')).status, 201);
+        assert.equal((await run('await plurnk.move({"from":"session://bob/copy.md","to":"workspace:///moved.md"});')).status, 201);
+        assert.equal((await run('await plurnk.read({"path":"workspace:///moved.md","range":"1,-1"});')).content, "first\nupdated");
+        assert.equal((await run('await plurnk.read({"path":"session://bob/copy.md"});')).status, 404);
+        assert.equal((await run('await plurnk.kill({"path":"session://bob/notes.md"});')).status, 200);
+        assert.equal((await run('await plurnk.read({"path":"session://bob/notes.md"});')).status, 404);
+        assert.equal((await run('await plurnk.edit({"path":"session://bob/nested/example.md","content":"ordinary scratch area"});')).status, 201);
+        assert.equal((await run('await plurnk.read({"path":"session://bob/nested/example.md","range":"1,-1"});')).content, "ordinary scratch area");
+        assert.equal((await run('await plurnk.read({"path":"session://missing/notes.md"});')).status, 404, "an absent namespace does not resolve through the calling session");
     });
 }
 
@@ -1625,25 +1623,25 @@ test("{§execution-output-identity}: scratch survives its namesake actor and rem
         const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertOperationTurn(db, loopId, 1, "client");
         let sequence = 0;
-        return { workspaceId, run: (header: string, body: string | null = null) => {
-            const item = PlurnkParser.parseStatements(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) }).items[0];
+        return { workspaceId, run: (source: string) => {
+            const item = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) }).items[0];
             assert.ok(item?.kind === "statement");
             return engine.dispatch({ workspaceId, sessionId, loopId, turnId, origin: "client", sequence: ++sequence,
                 statement: item.statement });
         } };
     }));
     const author = await insertSession(db, spaces[0].workspaceId, null, "author");
-    assert.equal((await spaces[0].run("EDIT (session://author/note.md)", "first workspace")).status, 201);
+    assert.equal((await spaces[0].run('await plurnk.edit({"path":"session://author/note.md","content":"first workspace"});')).status, 201);
     await db.test_delete_session.run({ id: author });
-    assert.equal((await spaces[0].run("READ (session://author/note.md)")).content, "first workspace");
-    const catalog = await spaces[0].run("FIND (session://author/*.md)");
+    assert.equal((await spaces[0].run('await plurnk.read({"path":"session://author/note.md"});')).content, "first workspace");
+    const catalog = await spaces[0].run('await plurnk.find({"path":"session://author/*.md"});');
     assert.match(JSON.stringify(catalog.results), /session:\/\/author\/note\.md/);
-    assert.equal((await spaces[1].run("READ (session://author/note.md)")).status, 404);
-    assert.equal((await spaces[1].run("COPY (session://author/note.md) (workspace:///copy.md)")).status, 404);
-    assert.equal((await spaces[1].run("READ (workspace:///copy.md)")).status, 404);
-    assert.equal((await spaces[1].run("EDIT (session://author/note.md)", "second workspace")).status, 201);
-    assert.equal((await spaces[1].run("MOVE (session://author/note.md) (workspace:///copy.md)")).status, 201);
-    assert.equal((await spaces[1].run("READ (workspace:///copy.md)")).content, "second workspace");
-    assert.equal((await spaces[0].run("READ (session://author/note.md)")).content, "first workspace");
+    assert.equal((await spaces[1].run('await plurnk.read({"path":"session://author/note.md"});')).status, 404);
+    assert.equal((await spaces[1].run('await plurnk.copy({"from":"session://author/note.md","to":"workspace:///copy.md"});')).status, 404);
+    assert.equal((await spaces[1].run('await plurnk.read({"path":"workspace:///copy.md"});')).status, 404);
+    assert.equal((await spaces[1].run('await plurnk.edit({"path":"session://author/note.md","content":"second workspace"});')).status, 201);
+    assert.equal((await spaces[1].run('await plurnk.move({"from":"session://author/note.md","to":"workspace:///copy.md"});')).status, 201);
+    assert.equal((await spaces[1].run('await plurnk.read({"path":"workspace:///copy.md"});')).content, "second workspace");
+    assert.equal((await spaces[0].run('await plurnk.read({"path":"session://author/note.md"});')).content, "first workspace");
 });
 });

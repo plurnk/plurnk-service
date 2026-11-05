@@ -707,7 +707,7 @@ test("{§tokenomics}: a composed packet's largest inventory points to its domina
 
 describe("context-admission", () => {
 const messages = [{ role: "system" as const, content: "An agent." }, { role: "user" as const, content: "Review the evidence." }];
-const note = (body: string): MockResponse => ({ assistant: { content: `\`\`\`\`NOTE\n${body}\n\`\`\`\``, reasoning: null } });
+const note = (body: string): MockResponse => ({ assistant: { content: `await plurnk.note({"text":"${body}"});`, reasoning: null } });
 const PROSE = "Prose runs four characters to a token. ".repeat(100);
 const CODE = "{[(<>)]};=".repeat(600);
 
@@ -1050,7 +1050,7 @@ test("{§tokenomics} runTurn stores provider-derived curation and request-shaped
 });
 
 test("{§tokenomics} providers.list advertises resolved physical input capacity", async () => {
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````DONE\ndone\n````", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1257,7 +1257,7 @@ test("{§tokenomics} failed and rejected provider attempts retain their captured
             await recordSamples(f);
             const offset = await TokenCalibration.forLoop(f.db, "mock", f.loopId);
             const rejected: MockResponse = {
-                assistant: { content: "````READ (workspace:///not-an-operation", reasoning: null },
+                assistant: { content: "await plurnk.read({\"path\":\"workspace:///not-an-operation", reasoning: null },
                 usage: { inputTokens: 17_000, totalTokens: 17_000 },
             };
             const responses = scenario === "invalid emissions"
@@ -1376,7 +1376,7 @@ test("{§tokenomics} null window + no per-alias knob → NO-CAP: the turn builds
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const mock = new Mock({ contextWindow: null, responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
+        const mock = new Mock({ contextWindow: null, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50)] });
         const result = await engine.runTurn({ provider: mock, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.ok(result.turnId > 0, "the turn builds unbounded — a probe blip degrades to no-cap, never crashes the loop");
         assert.equal((await engine.loopUsage(loopId)).curationBudget, null, "the client sees no invented allowance when physical capacity is unknown");

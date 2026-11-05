@@ -54,7 +54,7 @@ const seedLogRead = async (
         query: null,
         fragment: null,
         lineMarker: null,
-        tx: `\`\`\`\`READ (workspace:///source-${sequence}.md)\`\`\`\``,
+        tx: `await plurnk.read({"path":"workspace:///source-${sequence}.md"});`,
         mimetype_tx: "text/vnd.plurnk",
         rx: JSON.stringify({
             status: 200,
@@ -88,7 +88,7 @@ test("{§slot-order}: one admitted READ dispatches every explicit URI member", a
         });
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [response("\n````READ (workspace:///alpha.md workspace:///beta.md)````\n````NOTE\nBoth reads are pending review.\n````")],
+            responses: [response("await plurnk.read({\"path\":\"workspace:///alpha.md\"});\n\nawait plurnk.read({\"path\":\"workspace:///beta.md\"});\n\nawait plurnk.note({\"text\":\"Both reads are pending review.\"});")],
         });
 
         const result = await engine.runTurn({
@@ -127,7 +127,7 @@ test("{§slot-order}: one admitted scoped KILL curates every explicit URI member
         const secondId = await seedLogRead(db, sessionId, loopId, sourceTurnId, 2);
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [response("\n````KILL (log:///1/1/1/READ, log:///1/1/2/READ) <1,-1>````\n````NOTE\nBoth read bodies are suppressed.\n````")],
+            responses: [response("await plurnk.kill({\"path\":\"log:///1/1/1/READ\",\"range\":\"1,-1\"});\n\nawait plurnk.kill({\"path\":\"log:///1/1/2/READ\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"Both read bodies are suppressed.\"});")],
         });
 
         const result = await engine.runTurn({
@@ -159,7 +159,7 @@ test("{§slot-order}: one admitted KILL dispatches every explicit URI member ind
         const sourceTurnId = await insertTurn(db, loopId, 1);
         const firstId = await seedLogRead(db, sessionId, loopId, sourceTurnId, 1);
         const secondId = await seedLogRead(db, sessionId, loopId, sourceTurnId, 2);
-        const source = "\n````KILL (log:///1/1/99/READ,log:///1/1/1/READ log:///1/1/2/READ)````\n````NOTE\nReview the independent KILL outcomes.\n````";
+        const source = "await plurnk.kill({\"path\":\"log:///1/1/99/READ\"});\n\nawait plurnk.kill({\"path\":\"log:///1/1/1/READ\"});\n\nawait plurnk.kill({\"path\":\"log:///1/1/2/READ\"});\n\nawait plurnk.note({\"text\":\"Review the independent KILL outcomes.\"});";
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [response(source)],
@@ -237,10 +237,12 @@ test("{§slot-order} {§slot-order}: a KILL written one path per slot curates ev
         const sourceTurnId = await insertTurn(db, loopId, 1);
         const firstId = await seedLogRead(db, sessionId, loopId, sourceTurnId, 1);
         const secondId = await seedLogRead(db, sessionId, loopId, sourceTurnId, 2);
-        const heading = "KILL (log:///1/1/1/READ) (log:///1/1/2/READ) <1,-1>";
+        const heading = 'await plurnk.kill({"paths":["log:///1/1/1/READ",{"path":"log:///1/1/2/READ","range":"1,-1"}]});';
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [response(`\n\`\`\`\`${heading}\`\`\`\`\n\`\`\`\`NOTE\nThe first is retired, the second trimmed.\n\`\`\`\``)],
+            responses: [response(`${heading}
+
+await plurnk.note({"text":"The first is retired, the second trimmed."});`)],
         });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Curate both reads." }] });
         const rows = await db.test_log_entries_by_loop.all<{ id: number; op: string | null; turn_id: number; status_rx: number; folded: string; active: number }>({ loop_id: loopId });
@@ -264,7 +266,7 @@ test("{§slot-order} {§slot-order}: a READ written one path per slot lands one 
         await seedEntryWithChannel(db, { workspaceId, pathname: "/beta.md", content: "beta" });
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [response("\n````READ (workspace:///alpha.md) (workspace:///beta.md)````\n````NOTE\nBoth reads are pending review.\n````")],
+            responses: [response("await plurnk.read({\"path\":\"workspace:///alpha.md\"});\n\nawait plurnk.read({\"path\":\"workspace:///beta.md\"});\n\nawait plurnk.note({\"text\":\"Both reads are pending review.\"});")],
         });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Read both resources." }] });
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string; pathname: string | null; status_rx: number }>({ turn_id: result.turnId });
@@ -283,7 +285,7 @@ test("{§slot-order}: READ keeps each scope while applying the heading matcher t
         const content = "outside\nlocal\nshared\nlocal\nshared\noutside";
         await seedEntryWithChannel(db, { workspaceId, pathname: "/alpha.md", content });
         await seedEntryWithChannel(db, { workspaceId, pathname: "/beta.md", content });
-        const source = "```READ (workspace:///alpha.md) <2,3> (workspace:///beta.md) <4,5> /shared/\n```";
+        const source = "await plurnk.read({\"path\":\"workspace:///alpha.md\",\"range\":\"2,3\",\"pattern\":\"/shared/\"});\n\nawait plurnk.read({\"path\":\"workspace:///beta.md\",\"range\":\"4,5\",\"pattern\":\"/shared/\"});";
         const provider = new Mock({ contextWindow: 100_000, responses: [response(source)] });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Read the selected lines." }] });
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string; pathname: string; rx: string; status_rx: number }>({ turn_id: result.turnId });
@@ -299,7 +301,7 @@ test("{§parse-recovery}: an ambiguous grouped KILL changes no member, while its
     try {
         const sourceTurnId = await insertTurn(db, loopId, 1);
         const ids = [await seedLogRead(db, sessionId, loopId, sourceTurnId, 1), await seedLogRead(db, sessionId, loopId, sourceTurnId, 2)];
-        const source = '```KILL (log:///1/1/1/READ) (log:///1/1/2/READ) /source/ <1,3>\n```\n\n```NOTE\nsibling retained\n```';
+        const source = 'await plurnk.kill({"paths":["log:///1/1/1/READ","log:///1/1/2/READ"],"pattern":"/source/","range":"<x>"});\n\nawait plurnk.note({"text":"sibling retained"});';
         const provider = new Mock({ contextWindow: 100_000, responses: [response(source)] });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Curate selected lines." }] });
         const originals = await db.test_log_entries_by_turn.all<{ id: number; active: number; folded: string }>({ turn_id: sourceTurnId });
@@ -308,7 +310,7 @@ test("{§parse-recovery}: an ambiguous grouped KILL changes no member, while its
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; status_rx: number; rx: string }>({ turn_id: result.turnId });
         assert.equal(rows.some(({ op }) => op === "KILL"), false);
         assert.ok(rows.some(({ op, status_rx }) => op === "NOTE" && status_rx === 200));
-        assert.ok(rows.some(({ status_rx, rx }) => status_rx >= 400 && rx.includes("The scope `<1,3>` follows the shared pattern of a target group.")));
+        assert.ok(rows.some(({ status_rx, rx }) => status_rx >= 400 && rx.includes("invalid scope")));
     } finally { await db.close(); }
 });
 
@@ -321,7 +323,7 @@ for (const limit of [0, 1, 2]) {
             if (limit === 0) await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ maxCommands: 0 }) });
             await seedEntryWithChannel(db, { workspaceId, pathname: "/alpha.md", content: "alpha" });
             await seedEntryWithChannel(db, { workspaceId, pathname: "/beta.md", content: "beta" });
-            const source = "```READ (workspace:///alpha.md) (workspace:///beta.md)\n```\n\n```NOTE\nafter the group\n```\n\n```DONE\n```\n\n```WAIT\n```";
+            const source = "await plurnk.read({\"path\":\"workspace:///alpha.md\"});\n\nawait plurnk.read({\"path\":\"workspace:///beta.md\"});\n\nawait plurnk.note({\"text\":\"after the group\"});\n\nawait plurnk.done({});\n\nawait plurnk.wait({});";
             const provider = new Mock({ contextWindow: 100_000, responses: [response(source)] });
             const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Read both resources." }] });
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; pathname: string; rx: string; status_rx: number }>({ turn_id: result.turnId });
@@ -373,11 +375,11 @@ const modelUnderRuntime = async (db: Db, workspaceId: number): Promise<number> =
 test("{§operator-config-workspace-settings}: runtime ancestry does not replace the shared child/grandchild ceiling", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32_768, responses: [
-        makeMockResponse("````WORK (session://child)\nDelegate to a grandchild.\n````\n\n````WAIT\n````"),
-        makeMockResponse("````WORK (session://grandchild)\nDo the leaf work.\n````\n\n````WAIT\n````"),
-        makeMockResponse("````NOTE\nLeaf work is in progress.\n````"),
-        makeMockResponse("````DONE\nLeaf work is complete.\n````"),
-        makeMockResponse("````DONE\nThis fifth call exceeds the explicit ceiling.\n````"),
+        makeMockResponse("await plurnk.work({\"target\":\"session://child\",\"prompt\":\"Delegate to a grandchild.\"});\n\nawait plurnk.wait({});"),
+        makeMockResponse("await plurnk.work({\"target\":\"session://grandchild\",\"prompt\":\"Do the leaf work.\"});\n\nawait plurnk.wait({});"),
+        makeMockResponse("await plurnk.note({\"text\":\"Leaf work is in progress.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"Leaf work is complete.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"This fifth call exceeds the explicit ceiling.\"});"),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -410,8 +412,8 @@ test("{§operator-config-workspace-settings}: BARE under the runtime actor still
     serverProposals(approvalContext, "accept");
     const childSpec = declaredProvider("runtime-bare", "runtime-bare-model");
     const parent = new Mock({ contextWindow: 32_768, responses: [
-        makeMockResponse("````BARE\nOne allowed answer.\n````\n\n````BARE\nNo room for another answer.\n````\n\n````NOTE\nReview the results.\n````"),
-        makeMockResponse("````DONE\nThis call must not run.\n````"),
+        makeMockResponse("await plurnk.bare({\"prompt\":\"One allowed answer.\"});\n\nawait plurnk.bare({\"prompt\":\"No room for another answer.\"});\n\nawait plurnk.note({\"text\":\"Review the results.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"This call must not run.\"});"),
     ] });
     const child = new Mock({ contextWindow: 8_192, responses: [
         { assistant: { content: "allowed", reasoning: null } },
@@ -443,9 +445,9 @@ test("{§operator-config-workspace-settings}: BARE calls spend the loop's budget
     const parentSpec = declaredProvider("tree-cap-parent", "tree-cap-parent-model");
     const childSpec = declaredProvider("tree-cap-child", "tree-cap-child-model");
     const parent = new Mock({ contextWindow: 16_384, responses: [
-        makeMockResponse("````BARE\nfirst\n````\n\n````BARE\nsecond\n````\n\n````BARE\nthird\n````\n\n````NOTE\nthree isolated calls\n````"),
-        makeMockResponse("````NOTE\nstill going\n````"),
-        makeMockResponse("````NOTE\nstill going\n````"),
+        makeMockResponse("await plurnk.bare({\"prompt\":\"first\"});\n\nawait plurnk.bare({\"prompt\":\"second\"});\n\nawait plurnk.bare({\"prompt\":\"third\"});\n\nawait plurnk.note({\"text\":\"three isolated calls\"});"),
+        makeMockResponse("await plurnk.note({\"text\":\"still going\"});"),
+        makeMockResponse("await plurnk.note({\"text\":\"still going\"});"),
     ] });
     const child = new Mock({ contextWindow: 8_192, responses: [
         { assistant: { content: "one", reasoning: null } },
@@ -482,11 +484,11 @@ test("{§operator-config-workspace-settings}: BARE calls spend the loop's budget
 test("{§operator-config-workspace-settings}: a child's turns spend the parent's budget", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16_384, responses: [
-        makeMockResponse("````WORK (session://helper)\nDo one small thing.\n````\n\n````WAIT\ndelegated\n````", 10),
-        makeMockResponse("````NOTE\nchild working\n````", 10),
-        makeMockResponse("````DONE\nchild done\n````", 10),
-        makeMockResponse("````NOTE\nparent continues\n````", 10),
-        makeMockResponse("````NOTE\nnever requested: the tree's ceiling is met first\n````", 10),
+        makeMockResponse("await plurnk.work({\"target\":\"session://helper\",\"prompt\":\"Do one small thing.\"});\n\nawait plurnk.wait({\"text\":\"delegated\"});", 10),
+        makeMockResponse("await plurnk.note({\"text\":\"child working\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"child done\"});", 10),
+        makeMockResponse("await plurnk.note({\"text\":\"parent continues\"});", 10),
+        makeMockResponse("await plurnk.note({\"text\":\"never requested: the tree's ceiling is met first\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
