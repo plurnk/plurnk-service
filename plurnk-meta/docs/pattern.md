@@ -38,7 +38,7 @@ source/destination pairs for multiple transfers.
 | `~` | full-text (SQLite FTS5) | `~retry` | FTS5 token occurrences; the query determines which resources match |
 | `//` | xpath (1.0) | `//item` | Item elements |
 | `//` | xpath (1.0) | `//item/text()` | Their direct text nodes |
-| `//` | xpath (1.0) | `//item/@id` | The complete source attribute, not only its value |
+| `//` | xpath (1.0) | `//item/@id` | The complete source attribute (`id="old"`), not only its value |
 | `$` | jsonpath (RFC 9535) | `$.host`, `$.items[?(@.price>500)]` | The JSON member's serialized value, including string quotes |
 | `&` | graph (treesitter symbols) | `&connect` | Definitions of `connect` |
 | `&` | graph (treesitter symbols) | `&<connect` | References to `connect` |

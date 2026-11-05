@@ -330,8 +330,8 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     plurnkContent.includes("await plurnk.python3({\"code\":\"print(42)\"}); // Run Python 3 code or scripts."),
                     "the interpreter aside teaches an executable inline program without requiring a document READ",
                 );
-                const todoSchemaRead = rows.find((row) => row.op === "read" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk/todo.json");
-                assert.ok(todoSchemaRead !== undefined && todoSchemaRead.status_rx === 200, "Turn 0 reads mcp:///plurnk/todo.json");
+                const editSchemaRead = rows.find((row) => row.op === "read" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk/edit.json");
+                assert.ok(editSchemaRead !== undefined && editSchemaRead.status_rx === 200, "Turn 0 reads mcp:///plurnk/edit.json");
                 for (const name of ["https", "session", "wss"]) {
                     const [reference] = await daemon.dispatchClientAction({
                         workspaceId,

@@ -228,7 +228,7 @@ export default class InitializationTurn {
             },
             {
                 op: "read", aside: "Use mcp:///<server>.json or mcp:///<server>/<tool>.json for tool schemas.",
-                target: { kind: "url", raw: "mcp:///plurnk/todo.json", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/plurnk/todo.json", query: null, fragment: null },
+                target: { kind: "url", raw: "mcp:///plurnk/edit.json", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/plurnk/edit.json", query: null, fragment: null },
                 metadata: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },

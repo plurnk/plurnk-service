@@ -846,10 +846,10 @@ test("{§tools-resource-materialization} assembled packet: the skills foist surf
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const log = packetSection(await getPacket(db, result.turnId), "log");
 
-        // The materialized tool index and todo schema reach the model through Turn 0 READs ({§tools-resource-materialization}).
+        // The materialized tool index and edit schema reach the model through Turn 0 READs ({§tools-resource-materialization}).
         assert.match(log, /^### log:\/\/\/\S+\/read \(mcp:\/\/\/plurnk\.md\) · \d+$/m, "Turn 0 reads the Session's materialized plurnk tool index");
-        assert.match(log, /^### log:\/\/\/\S+\/read \(mcp:\/\/\/plurnk\/todo\.json\) · \d+$/m, "Turn 0 reads the Session's materialized todo schema");
-        assert.match(log, /"aside":"Use mcp:\/\/\/<server>\.json or mcp:\/\/\/<server>\/<tool>\.json for tool schemas\."/, "the todo.json READ teaches how to inspect tool schemas");
+        assert.match(log, /^### log:\/\/\/\S+\/read \(mcp:\/\/\/plurnk\/edit\.json\) · \d+$/m, "Turn 0 reads the Session's materialized edit schema");
+        assert.match(log, /"aside":"Use mcp:\/\/\/<server>\.json or mcp:\/\/\/<server>\/<tool>\.json for tool schemas\."/, "the edit.json READ teaches how to inspect tool schemas");
     } finally {
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
