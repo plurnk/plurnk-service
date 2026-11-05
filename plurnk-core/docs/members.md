@@ -58,9 +58,7 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
   proposes its admission and, accepted, admits and reads it in one operation. With
   auto-add off, an accepted `add` makes it a member before the next operation.
 
-  ```plurnk (members) <!-- include the generated reports; each glob is one definition -->
-  {"files": ["build/*.json"]}
-  ```
+  await plurnk.members({ files: ["build/*.json"] }); // include the generated reports; each glob is one definition
 
 - **Beyond your scope**: untracked under scope `none` (an operator narrowed it),
   ignored by git, or excluded by a `!glob`. Neither auto-add nor your `add`
@@ -100,9 +98,7 @@ operator's environment, `workspace` from an `add`) and whether it is enabled. `e
 `disable` flip one definition, and `remove` forgets a workspace definition and restores
 inheritance, each named by the glob as `list` shows it:
 
-```plurnk (members)
-{"file": "build/*.json", "enabled": false}
-```
+await plurnk.members({ file: "build/*.json", enabled: false });
 
 Inherited definitions cannot be removed here. Changes apply to every session. Each enabled
 definition is projected as `plurnk:///members/<glob>.md`, the glob percent-encoded,

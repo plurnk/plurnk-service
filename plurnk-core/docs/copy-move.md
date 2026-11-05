@@ -10,18 +10,15 @@ follows its own path. Neither operation takes a body.
 
 Copy source lines 2–3 into a new entry:
 
-```COPY (workspace:///src.md) <2,3> (workspace:///slice.md)
-```
+await plurnk.copy({ from: { path: "workspace:///src.md", range: "2,3" }, to: "workspace:///slice.md" });
 
 Append source line 1 to that entry:
 
-```COPY (workspace:///src.md) <1> (workspace:///slice.md) <-1>
-```
+await plurnk.copy({ from: { path: "workspace:///src.md", range: "1" }, to: { path: "workspace:///slice.md", range: "-1" } });
 
 Move the whole resulting channel to a new address:
 
-```MOVE (workspace:///slice.md) (workspace:///archive.md)
-```
+await plurnk.move({ from: "workspace:///slice.md", to: "workspace:///archive.md" });
 
 COPY leaves its source unchanged. MOVE removes the selected source region or
 channel after the destination succeeds; a failed destination leaves it intact.

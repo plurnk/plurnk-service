@@ -627,7 +627,7 @@ test("{§functionality-model-projection} each family tool exposes its declarativ
         },
     });
     assert.equal(tool.invocation.signature, undefined);
-    assert.match(tool.details ?? "", /\n```plurnk \(fx\)\n\{"alias":"a","kind":"ok"\}\n/u, "one exact example rides the family tool teaching");
+    assert.match(tool.details ?? "", /\nawait plurnk\.fx\(\{"alias":"a","kind":"ok"\}\);/u, "one exact example rides the family tool teaching");
     assert.doesNotMatch(tool.details ?? "", /\| Field|options\.retries/u);
     assert.match(tool.details ?? "", /fixture locator/u);
 });
@@ -644,7 +644,7 @@ test("{§functionality-replacement} an addressing family's tool teaches its own 
     const [tool] = manager.toolRegistry().tools;
     assert.equal(tool.target, "fx");
     assert.deepEqual(Object.keys((tool.invocation.inputSchema?.properties ?? {}) as Record<string, unknown>), ["files", "file", "enabled", "remove", "discover"]);
-    assert.match(tool.details ?? "", /(?:^|\n)```plurnk \(fx\)\n\{"files":\["docs\/\*\*"\]\}\n/u, "the example is the family's add input, verbatim");
+    assert.match(tool.details ?? "", /(?:^|\n)await plurnk\.fx\(\{"files":\["docs\/\*\*"\]\}\);/u, "the example is the family's add input, verbatim");
 });
 
 test("{§functionality-model-projection} the plurnk manager exposes family tools and question with read/host effects", () => {

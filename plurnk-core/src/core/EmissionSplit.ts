@@ -1,8 +1,6 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { PlurnkParseError, Validator, type Notice, type ParseAttempt, type PlurnkStatement } from "@plurnk/plurnk-contracts";
-import type { BaseHandler, Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { ProviderAttempt, ProviderAttemptFinishReason } from "@plurnk/plurnk-providers";
-import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import FabricatedLog from "./FabricatedLog.ts";
 import type { PacketAssistant } from "./StoredPacket.ts";
 import { observedSync } from "../observe/spans.ts";
@@ -11,9 +9,6 @@ import { observedSync } from "../observe/spans.ts";
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
 // before being pushed to the loop's notices buffer.
 export type ParseErrorInfo = Pick<PlurnkParseError, "message" | "line" | "column"> & { source: string; recovery?: string; attempt?: ParseAttempt };
-
-// {§fence-pairing}: judges a body in its runtime's declared media type; undefined when none declares one.
-export type BodyCheck = (runtime: string, body: string) => boolean;
 
 // Split-out call-metadata that travels with the parsed packet but lands in
 // Turn columns instead of packet.assistant.
@@ -62,7 +57,7 @@ const comparePosition = (
 // or the output was refused, SHOULD where a near-miss was accepted.
 export const DIRECTIVE = Object.freeze({
     note: "YOU MUST persist all new facts and ideas and emit a TODO list.",
-    emission: "YOU MUST ONLY emit fenced operation batches; with the parameters, pattern, and terse aside on the fenced operation line.",
+    emission: "YOU MUST ONLY emit unwrapped Code Mode statements (`await plurnk.<op>(...);` and `await <server>.<tool>(...);`), with a terse `// aside` comment.",
     advisory: "YOU SHOULD write the canonical form.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
 });
@@ -91,41 +86,12 @@ export default class EmissionSplit {
     // its assistant payload to skip the parse roundtrip. The wire Provider
     // contract has no `ops` field; only Mock exposes one. Real providers
     // always take the parse path because their `assistant.ops` is undefined.
-    // {§fence-pairing}: each runtime that declares its body's media type is judged by that media type's
-    // handler. The parse is synchronous, so the handler must validate synchronously; one that cannot breaks the
-    // declaration's contract and fails here.
-    static async bodyChecks(
-        workspaceId: number,
-        registry: ExecutorRegistry | undefined,
-        mimetypes: Mimetypes,
-    ): Promise<BodyCheck | undefined> {
-        if (registry === undefined) return undefined;
-        const declared = registry.availableRuntimes(workspaceId).flatMap((runtime) => {
-            const mimetype = registry.entry(runtime, workspaceId)?.invocation.body.mimetype;
-            return mimetype === undefined ? [] : [{ runtime, mimetype }];
-        });
-        if (declared.length === 0) return undefined;
-        const handlers = new Map<string, BaseHandler>(await Promise.all(declared.map(async ({ runtime, mimetype }) => {
-            const handler = await mimetypes.getHandler(mimetype);
-            if (handler === null) throw new Error(`runtime '${runtime}' declares body media type ${mimetype}, which no installed handler reads`);
-            return [runtime, handler] as const;
-        })));
-        return (runtime, body) => {
-            const handler = handlers.get(runtime);
-            if (handler === undefined) return true;
-            let verdict: void | Promise<void>;
-            try { verdict = handler.validate(body); } catch { return false; }
-            if (verdict instanceof Promise) throw new Error(`the ${runtime} body media type validates asynchronously; a declared body media type must validate synchronously`);
-            return true;
-        };
-    }
-
-    static splitResponse(response: ProviderAttempt, executors: readonly string[] = [], wellFormed?: BodyCheck): SplitProviderResponse {
+    static splitResponse(response: ProviderAttempt, executors: readonly string[] = []): SplitProviderResponse {
         const { assistant } = response;
         // A scripted provider's pre-parsed statements, each proven against the statement schema.
         const preParsedOps = "ops" in assistant && Array.isArray(assistant.ops) ? assistant.ops.map((op) => Validator.assertPlurnkStatement(op)) : undefined;
         const { ops, contentStatementCount, parseErrors, parseNotices, fabrications, outside, hasUnparsedTail, operationOmitted } = preParsedOps === undefined
-            ? EmissionSplit.#parseContent(assistant.content, executors, wellFormed)
+            ? EmissionSplit.#parseContent(assistant.content, executors)
             : {
                 ops: [...preParsedOps], contentStatementCount: preParsedOps.length, parseErrors: [], parseNotices: [], fabrications: [],
                 outside: [], hasUnparsedTail: false, operationOmitted: false,
@@ -163,7 +129,7 @@ export default class EmissionSplit {
     // {§outside-text} {§emission-admission} {§parse-recovery} An emission's content parsed into its
     // statements and what sat beside them: outside text as NOTEs or the empty turn's source, a fabricated log
     // heading as the rejection it is, each parse error by its severity, and the lexer's one boundary fact.
-    static #parseContent(content: string, executors: readonly string[], wellFormed: BodyCheck | undefined): ParsedContent {
+    static #parseContent(content: string, executors: readonly string[]): ParsedContent {
         const ops: PlurnkStatement[] = [];
         const parseErrors: ParseErrorInfo[] = [];
         let contentStatementCount = 0;
@@ -177,7 +143,7 @@ export default class EmissionSplit {
         const parsed = observedSync("contracts.parse", {}, (span) => {
             // {§fence-pairing}: explicit invocations parse without registration; available names
             // also admit slotless headings. Dispatch resolves the then-current workspace registry.
-            const result = PlurnkParser.parse(content, { executors, ...(wellFormed === undefined ? {} : { wellFormed }) });
+            const result = PlurnkParser.parse(content, { executors });
             span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length);
             return result;
         });

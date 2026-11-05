@@ -41,24 +41,15 @@ Read a persona at `READ (persona://<name>/PERSONA.md)` (or the shorthand
 `persona://<name>.md`). Apply a persona to a session by copying it to that
 session's instruction sheet:
 
-```plurnk
-COPY (persona://reviewer/PERSONA.md) (session://child/AGENTS.md)
-```
+await plurnk.copy({ from: "persona://reviewer/PERSONA.md", to: "session://child/AGENTS.md" });
 
 Create or replace a workspace persona directly with `EDIT`, writing either a
 Markdown document with frontmatter (`name` defaults to the target authority when
 omitted) or a JSON definition object:
 
-```plurnk
-EDIT (persona://professor/PERSONA.md)
----
-description: Rigorous first-principles teacher.
-effort: high
----
-Explain from invariants before examples.
-```
+await plurnk.edit({ path: "persona://professor/PERSONA.md", content: "---\ndescription: Rigorous first-principles teacher.\neffort: high\n---\nExplain from invariants before examples." });
 
-`KILL (persona://professor/PERSONA.md)` removes a workspace override (restoring
+`await plurnk.kill({ path: "persona://professor/PERSONA.md" });` removes a workspace override (restoring
 any inherited definition) or disables an inherited service persona.
 
 ## discover
@@ -75,9 +66,7 @@ inline (`description` + `body`, plus optional `model` and `effort`) or from a
 local `source` path (`.md` file or `<name>/PERSONA.md` directory, relative to
 the project root or absolute):
 
-```plurnk (personas)
-{"alias": "professor", "description": "Rigorous first-principles teacher.", "body": "Explain from invariants before examples.", "effort": "high"}
-```
+await plurnk.personas({ alias: "professor", description: "Rigorous first-principles teacher.", body: "Explain from invariants before examples.", effort: "high" });
 
 `disable` suppresses a persona without forgetting its definition; `enable`
 restores it. `remove` forgets a workspace override and restores any inherited

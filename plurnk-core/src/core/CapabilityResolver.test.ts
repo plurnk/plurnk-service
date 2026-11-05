@@ -47,40 +47,40 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
         source: string;
         expected: readonly CapabilityDescriptor[];
     }[] = [
-        { source: "````NOTE\nContinue the task.\n````", expected: [] },
-        { source: "````FIND (README.md)````", expected: [{ operation: "FIND", scheme: "file", access: "observe", traits: [] }] },
-        { source: "````READ (README.md)````", expected: [{ operation: "READ", scheme: "file", access: "observe", traits: [] }] },
-        { source: "````EDIT (workspace:///notes.md)\nreplacement\n````", expected: [{ operation: "EDIT", scheme: "workspace", access: "mutate", traits: [] }] },
+        { source: 'await plurnk.note({ text: "Continue the task." });', expected: [] },
+        { source: 'await plurnk.find({ path: "README.md" });', expected: [{ operation: "FIND", scheme: "file", access: "observe", traits: [] }] },
+        { source: 'await plurnk.read({ path: "README.md" });', expected: [{ operation: "READ", scheme: "file", access: "observe", traits: [] }] },
+        { source: 'await plurnk.edit({ path: "workspace:///notes.md", content: "replacement" });', expected: [{ operation: "EDIT", scheme: "workspace", access: "mutate", traits: [] }] },
         {
-            source: "````COPY (README.md) (workspace:///copy.md)````",
+            source: 'await plurnk.copy({ from: "README.md", to: "workspace:///copy.md" });',
             expected: [
                 { operation: "COPY", scheme: "file", access: "observe", traits: [] },
                 { operation: "COPY", scheme: "workspace", access: "mutate", traits: [] },
             ],
         },
         {
-            source: "````MOVE (README.md) (workspace:///moved.md)````",
+            source: 'await plurnk.move({ from: "README.md", to: "workspace:///moved.md" });',
             expected: [
                 { operation: "MOVE", scheme: "file", access: "observe", traits: [] },
                 { operation: "MOVE", scheme: "file", access: "mutate", traits: [] },
                 { operation: "MOVE", scheme: "workspace", access: "mutate", traits: [] },
             ],
         },
-        { source: "````NOTE\ncontinue\n````", expected: [] },
-        { source: "````TODO\n- continue\n````", expected: [] },
-        { source: "````WAIT\nwaiting\n````", expected: [] },
-        { source: "````SEND\nupdate\n````", expected: [] },
-        { source: "````DONE\ncomplete\n````", expected: [] },
-        { source: "````FAIL\ncannot complete\n````", expected: [] },
-        { source: "````sh\ngit status --short\n````", expected: [{ operation: "sh", scheme: "exec", runtime: "sh", access: "execute", traits: [] }] },
-        { source: "````BARE\nWhat is 2 + 2?\n````", expected: [{ operation: "BARE", access: "execute", traits: [] }] },
-        { source: "````BARE (session://alice/prompt.md)````", expected: [
+        { source: 'await plurnk.note({ text: "continue" });', expected: [] },
+        { source: 'await plurnk.todo({ text: "- continue" });', expected: [] },
+        { source: 'await plurnk.wait({ text: "waiting" });', expected: [] },
+        { source: 'await plurnk.send({ text: "update" });', expected: [] },
+        { source: 'await plurnk.done({ text: "complete" });', expected: [] },
+        { source: 'await plurnk.fail({ text: "cannot complete" });', expected: [] },
+        { source: 'await plurnk.sh({ command: "git status --short" });', expected: [{ operation: "sh", scheme: "exec", runtime: "sh", access: "execute", traits: [] }] },
+        { source: 'await plurnk.bare({ prompt: "What is 2 + 2?" });', expected: [{ operation: "BARE", access: "execute", traits: [] }] },
+        { source: 'await plurnk.bare({ target: "session://alice/prompt.md", prompt: "" });', expected: [
             { operation: "BARE", access: "execute", traits: [] },
             { operation: "BARE", scheme: "session", access: "observe", traits: [] },
         ] },
-        { source: "````WORK (session://child)\nInvestigate.\n````", expected: [{ operation: "WORK", scheme: "session", access: "control", traits: [] }] },
-        { source: "````FORK (session://child)\nInvestigate.\n````", expected: [{ operation: "FORK", scheme: "session", access: "control", traits: [] }] },
-        { source: "````KILL (README.md)````", expected: [{ operation: "KILL", scheme: "file", access: "mutate", traits: [] }] },
+        { source: 'await plurnk.work({ target: "session://child", prompt: "Investigate." });', expected: [{ operation: "WORK", scheme: "session", access: "control", traits: [] }] },
+        { source: 'await plurnk.fork({ target: "session://child", prompt: "Investigate." });', expected: [{ operation: "FORK", scheme: "session", access: "control", traits: [] }] },
+        { source: 'await plurnk.kill({ path: "README.md" });', expected: [{ operation: "KILL", scheme: "file", access: "mutate", traits: [] }] },
     ];
 
     const covered = new Set<string>();
@@ -94,15 +94,15 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
 
 test("{§capability-admission} classifies target-dependent control and curation routes", () => {
     assert.deepEqual(
-        resolver.descriptors(statement("````SEND (session://child)\nContinue.\n````"), 1),
+        resolver.descriptors(statement('await plurnk.send({ target: "session://child", text: "Continue." });'), 1),
         [{ operation: "SEND", scheme: "session", access: "control", traits: [] }],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("````KILL (session://child)````"), 1),
+        resolver.descriptors(statement('await plurnk.kill({ path: "session://child" });'), 1),
         [{ operation: "KILL", scheme: "session", access: "control", traits: [] }],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("````KILL (log:///1/2/3)````"), 1),
+        resolver.descriptors(statement('await plurnk.kill({ path: "log:///1/2/3" });'), 1),
         [],
         "log curation remains available under every attenuation layer",
     );
@@ -110,42 +110,42 @@ test("{§capability-admission} classifies target-dependent control and curation 
 
 test("{§capability-admission} leaves unknown finite-tool targets to their runtime owner", () => {
     assert.deepEqual(
-        resolver.descriptors(statement("````tools (known)\n{}\n````"), 1),
+        resolver.descriptors(statement('await tools.known({});'), 1),
         [{ operation: "tools", scheme: "exec", runtime: "tools", tool: "known", access: "execute", traits: [] }],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("````tools (unknown)\n{}\n````"), 1),
+        resolver.descriptors(statement('await tools.unknown({});'), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("````tools\n{}\n````"), 1),
+        resolver.descriptors(statement('await plurnk.tools({});'), 1),
         [],
     );
 });
 
 test("{§capability-admission} leaves every partially unresolved composed route to its ordinary owner", () => {
     assert.deepEqual(
-        resolver.descriptors(statement("````COPY (unknown://source) (workspace:///copy.md)````"), 1),
+        resolver.descriptors(statement('await plurnk.copy({ from: "unknown://source", to: "workspace:///copy.md" });'), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("````COPY (README.md) (unknown://destination)````"), 1),
+        resolver.descriptors(statement('await plurnk.copy({ from: "README.md", to: "unknown://destination" });'), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("````MOVE (unknown://source) (workspace:///moved.md)````"), 1),
+        resolver.descriptors(statement('await plurnk.move({ from: "unknown://source", to: "workspace:///moved.md" });'), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("````resource-tool (unknown://source)\ntransform\n````"), 1),
+        resolver.descriptors(statement('await plurnk["resource-tool"]({ target: "unknown://source", body: "transform" });'), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("````resource-tool\ntransform\n````"), 1),
+        resolver.descriptors(statement('await plurnk["resource-tool"]("transform");'), 1),
         [],
     );
     assert.deepEqual(
-        resolver.descriptors(statement("````optional-resource\ntransform\n````"), 1),
+        resolver.descriptors(statement('await plurnk["optional-resource"]("transform");'), 1),
         [{ operation: "optional-resource", scheme: "exec", runtime: "optional-resource", access: "execute", traits: [] }],
     );
 });
@@ -153,29 +153,23 @@ test("{§capability-admission} leaves every partially unresolved composed route 
 test("{§session-scheme} intrinsic mutations preserve each external transfer demand", () => {
     const own = "plurnk:///reference.md";
     const external = "session://alice/notes.md";
-    assert.deepEqual(resolver.descriptors(statement(`\`\`\`\`EDIT (${own})
-reference
-\`\`\`\``), 1, "_plurnk"), []);
-    assert.deepEqual(resolver.descriptors(statement(`\`\`\`\`COPY (${external}) (${own})\`\`\`\``), 1, "_plurnk"), [
+    assert.deepEqual(resolver.descriptors(statement(`await plurnk.edit({ path: "${own}", content: "reference" });`), 1, "_plurnk"), []);
+    assert.deepEqual(resolver.descriptors(statement(`await plurnk.copy({ from: "${external}", to: "${own}" });`), 1, "_plurnk"), [
         { operation: "COPY", scheme: "session", access: "observe", traits: [] },
     ]);
-    assert.deepEqual(resolver.descriptors(statement(`\`\`\`\`MOVE (${external}) (${own})\`\`\`\``), 1, "_plurnk"), [
+    assert.deepEqual(resolver.descriptors(statement(`await plurnk.move({ from: "${external}", to: "${own}" });`), 1, "_plurnk"), [
         { operation: "MOVE", scheme: "session", access: "observe", traits: [] },
         { operation: "MOVE", scheme: "session", access: "mutate", traits: [] },
     ]);
-    assert.deepEqual(resolver.descriptors(statement(`\`\`\`\`MOVE (${own}) (${external})\`\`\`\``), 1, "_plurnk"), [
+    assert.deepEqual(resolver.descriptors(statement(`await plurnk.move({ from: "${own}", to: "${external}" });`), 1, "_plurnk"), [
         { operation: "MOVE", scheme: "plurnk", access: "observe", traits: [] },
         { operation: "MOVE", scheme: "session", access: "mutate", traits: [] },
     ]);
     for (const path of [external, "workspace:///notes.md", "file:///notes.md"]) {
-        assert.equal(resolver.descriptors(statement(`\`\`\`\`EDIT (${path})
-content
-\`\`\`\``), 1, "_plurnk").length, 1, path);
+        assert.equal(resolver.descriptors(statement(`await plurnk.edit({ path: "${path}", content: "content" });`), 1, "_plurnk").length, 1, path);
     }
     for (const writer of ["model", "client"] as const) {
-        assert.equal(resolver.descriptors(statement(`\`\`\`\`EDIT (${own})
-content
-\`\`\`\``), 1, writer).length, 1, writer);
+        assert.equal(resolver.descriptors(statement(`await plurnk.edit({ path: "${own}", content: "content" });`), 1, writer).length, 1, writer);
     }
 });
 

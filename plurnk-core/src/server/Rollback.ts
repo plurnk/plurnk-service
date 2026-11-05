@@ -110,8 +110,8 @@ export default class Rollback {
         const action: Restored["action"] = created ? "delete" : removed ? "create" : "update";
         const target = entryAddress("file", "", path, root);
         const source = action === "delete"
-            ? `\`\`\`\`KILL (${target})\`\`\`\``
-            : `\`\`\`\`EDIT (${target})${action === "update" ? " <1,-1>" : ""}\n${previous}\n\`\`\`\``;
+            ? `await plurnk.kill(${JSON.stringify({ path: target })});`
+            : `await plurnk.edit(${JSON.stringify(action === "update" ? { path: target, range: "1,-1", content: previous } : { path: target, content: previous })});`;
         const { items } = PlurnkParser.parseStatements(source, { executors: [...executors] });
         const item = items[0];
         if (items.length !== 1 || item?.kind !== "statement") throw new Error(`rollback of log:///${coordinate} built an operation the parser refused: ${source.slice(0, 120)}`);

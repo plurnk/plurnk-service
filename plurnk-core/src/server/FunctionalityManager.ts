@@ -17,7 +17,6 @@ import type {
 import type { FunctionalityDiscovery } from "@plurnk/plurnk-modules";
 import { OutputScheme, type SchemeManifest } from "@plurnk/plurnk-schemes";
 import { Problems, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import type ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import type { RuntimeRegistryRegistration } from "../core/ExecutorRegistry.ts";
@@ -372,7 +371,7 @@ export default class FunctionalityManager extends BaseExecutor {
             sections.push(entry.discovery.details);
         }
         if (verbs.includes("add") && entry.example !== undefined) {
-            sections.push(PlurnkParser.frame(`plurnk (${entry.family})`, JSON.stringify(entry.example)));
+            sections.push(`await plurnk.${entry.family}(${JSON.stringify(entry.example)});`);
         }
         const docBody = entry.documentBody === undefined ? "" : stripLeadingHeading(entry.documentBody);
         if (docBody.length > 0) {

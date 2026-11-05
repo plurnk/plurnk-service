@@ -338,7 +338,7 @@ An emission attempt parses `assistant.content` as the operational turn program (
 
 | Outcome | Rule |
 | --- | --- |
-| Admitted response | Admitted when (a) `assistant.content` contains no fabricated log heading (`### log:///` outside a fenced block) and (b) either `parseStatements(assistant.content)` has no unparsed tail boundary ({§parse-recovery}), at least one closed statement precedes the lost boundary, or `finishReason === "length"` ({§outside-text}). Admitted statements execute in source order; bounded parse errors record `400` log rows without resampling. |
+| Admitted response | Admitted when (a) `assistant.content` contains no fabricated log heading (`### log:///` outside a string or code block) and (b) either `parseStatements(assistant.content)` has no unparsed tail boundary ({§parse-recovery}), at least one closed statement precedes the lost boundary, or `finishReason === "length"` ({§outside-text}). Admitted statements execute in source order; bounded parse errors record `400` log rows without resampling. |
 | Private retry (`PLURNK_SERVICE_EMISSION_ATTEMPTS`) | When the entire emission is rejected before any statement closes (or fabricates a `### log:///` heading), core records `accepted = 0` on `turn_attempts` and re-invokes `generate` with the exact same `messages` up to `PLURNK_SERVICE_EMISSION_ATTEMPTS` (default `3`), keeping prompt caches warm. |
 | Exhaustion & recovery turn | Exhausting private attempts completes the turn at `102` without fabricating an `error` log row, records a durable body-suppressed `_plurnk` `emissionAttempt` row, and scores one contract strike ({§session-loop-lifecycle}). If the strike rail does not terminate the loop, the next turn projects the latest rejected text and parser diagnostic once in `notices`. |
 | Attribution & client metadata | Each attempt queries `attributions(context)` across schemes, executors, mimetypes, and the provider ({§extension-discovery}), passing the deduplicated sorted tags on `generate` and persisting them on `turn_attempts`. Workspace `settings.client` (`1..128` printable ASCII chars) is stored on `workspaces.settings` and never sent to providers. |
@@ -565,8 +565,8 @@ Every settled text mutation (`EDIT`, `COPY`, `MOVE`) produces a structured `Edit
 
 ## §copy COPY (engine-orchestrated)
 
-```text
-COPY (<source>) [<source-scope>] [<source-pattern>] (<destination>) [<dest-scope>] [<!-- aside -->]
+```ts
+await plurnk.copy({ from: "<source>", to: "<destination>", fromRange: "<source-scope>", pattern: "<source-pattern>", toRange: "<dest-scope>" });
 ```
 
 - Reads `source` (sliced by `<source-scope>` and/or filtered by `<source-pattern>`) and writes the selected content or bytes into `destination` at `<dest-scope>` (`201` created, `200` updated, `204` zero pattern matches, `304` no-op, `404` missing source, `403` read-only destination, `409` self-overwrite without scope). Patterns on `destination` fail `400` `pattern-destination-unsupported`.
@@ -574,8 +574,8 @@ COPY (<source>) [<source-scope>] [<source-pattern>] (<destination>) [<dest-scope
 
 ## §move MOVE (engine-orchestrated)
 
-```text
-MOVE (<source>) [<source-scope>] [<source-pattern>] (<destination>) [<dest-scope>] [<!-- aside -->]
+```ts
+await plurnk.move({ from: "<source>", to: "<destination>", fromRange: "<source-scope>", pattern: "<source-pattern>", toRange: "<dest-scope>" });
 ```
 
 - Decomposes into destination write followed by source removal: whole-resource `MOVE` (unscoped or `<1,-1>` onto a new/whole destination) deletes/unlinks the source resource and transfers generated membership picks; scoped or pattern `MOVE` removes only the transferred spans/bytes from `source` (using pre-mutation coordinates when `source` and `destination` are the same channel).
@@ -583,12 +583,12 @@ MOVE (<source>) [<source-scope>] [<source-pattern>] (<destination>) [<dest-scope
 
 ## §find FIND
 
-```text
-FIND (<target>) [<scope>] [<pattern>] [<!-- aside -->]
+```ts
+await plurnk.find({ path: "<target>", range: "<scope>", pattern: "<pattern>" });
 ```
 
 - **Target scope**: An exact path inspects that single resource; a trailing slash (`folder/`) or single-segment `*` lists immediate children (summarizing subdirectories as `dir/**` with item counts and token weights); `**` traverses recursively. Path globs support `*`, `**`, `?`, `[...]`, `{a,b}`, and extglobs, resolved strictly within workspace membership.
-- **Content matchers**: Glob, regex (with `^`/`$` anchoring each line), JSONPath, XPath (over native or universal deep-JSON/deep-XML projections), and `&graph` symbol queries run against channel content, never against the pathname. Catalog rows include a 256-character `aside` summary (or full fenced invocation menu for tool docs).
+- **Content matchers**: Glob, regex (with `^`/`$` anchoring each line), JSONPath, XPath (over native or universal deep-JSON/deep-XML projections), and `&graph` symbol queries run against channel content, never against the pathname. Catalog rows include a 256-character `aside` summary (or full Code Mode invocation menu for tool docs).
 
 ### §find-result-projection Result projection & full-text search
 
@@ -639,8 +639,8 @@ External cancellation records `terminated_by = 'cancel'` ({§methods}) and prepe
 
 | Construct | Rule |
 | --- | --- |
-| Outside text beside fenced OPs | Each span from {§whitespace-contract} becomes one `NOTE` at its position, frozen in the emission ({§turn-source-resources}) and replayed in history ({§emission-history}) with no notice. |
-| Outside text with no fenced OP | Stored verbatim as one `outside` turn source ({§turn-source-resources}) and surfaced once via `outside/event` ({§notifications}, {§acp-plurnk-metadata}); never enters a packet or delivers a reply. |
+| Outside text beside Code Mode calls | Each span from {§whitespace-contract} becomes one `NOTE` at its position, frozen in the emission ({§turn-source-resources}) and replayed in history ({§emission-history}) with no notice. |
+| Outside text with no Code Mode call | Stored verbatim as one `outside` turn source ({§turn-source-resources}) and surfaced once via `outside/event` ({§notifications}, {§acp-plurnk-metadata}); never enters a packet or delivers a reply. |
 | Empty turn (no content OP) | When no boundary was lost ({§parse-recovery}) and messages remain unresolved or emission is incomplete, counts one progress strike ({§engine-rails}) and records `422 The turn performed no operation.` ({§operation-results}). |
 | Terminal evidence (`unconcluded`) | If a failed terminal's last inference turn performed no authored operation and kept text, Problem Details carries `unconcluded: "ops://<session>/<loop>/<turn>"` citing that emission without re-sending or softening the terminal. |
 | Ignored scheme metadata | READ, FIND, EDIT, KILL, WORK, or FORK carrying `[metadata]` for a scheme taking none runs without it and emits one `metadata_ignored` warning notice; SEND, DONE, FAIL, and executions validate their own metadata ({§op-methods-op-dispatch}). |
@@ -1356,7 +1356,7 @@ The workspace Functionality Coordinator materializes self-documentation, skills,
 | Executable tools | Materializes built-in runtime reference pages at `plurnk:///<runtime>.md` (or `mcp:///<runtime>.md` when the executor declares `resourcesPath: "/tools"`, along with `<runtime>/<percent-encoded-target>.json`, `<runtime>/input.md`, and `<runtime>.json` catalog). At Turn 0, the engine seeds `FIND (plurnk:///*.md) <1,-1>` and `plurnk (mcp)`. Header-only runtimes end their summary aside with `(invocation only)`. |
 | Scheme reference pages | Materializes each active scheme's reference card at `plurnk:///<scheme>.md`; listing a scheme in `PLURNK_SERVICE_DOCS_EXCLUDE` omits its reference `.md` without disabling the scheme. |
 | Bundled `plurnk` skill | Served through the `skill://` scheme at `skill://plurnk/SKILL.md`, with companion reference files at `skill://plurnk/.env.defaults`, `skill://plurnk/plurnk.service`, `skill://plurnk/plurnk.nginx.conf`, `skill://plurnk/packages/<package>/SPEC.md`, and `skill://plurnk/packages/<package>/dist/**/*.d.ts`. |
-| File membership (`members` Functionality family) | Configured via `PLURNK_MEMBERS_<alias>=<glob>` (`!glob` excludes; gated by `PLURNK_MEMBERS_ENABLED` and `PLURNK_MEMBERS_<alias>_ENABLED`), operated via `workspace.members.<verb>`, ```` ```plurnk (members) ```` (`list`, `discover`, `add`, `enable`, `disable`, `remove`), or `members:///<glob>` (`READ`, `EDIT`, `KILL`), bounded for model `add` by `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (`none < root < namespace`; violations fail `403 https://problems.plurnk.xyz/members/functionality/model-scope`), persisted in `workspace_constraints` (`source: "members" \| "model"`, preserving `source: "create"`), and materialized as `plurnk:///members/<percent-encoded-glob>.md`. Outside-root directory globs (`../<dir>/**`) and nested repository / submodule globs (`<dir>/**`, #1400) resolve tracked files via `git ls-files` and respect `.gitignore` for ambient candidates when `<dir>` is a Git working tree. |
+| File membership (`members` Functionality family) | Configured via `PLURNK_MEMBERS_<alias>=<glob>` (`!glob` excludes; gated by `PLURNK_MEMBERS_ENABLED` and `PLURNK_MEMBERS_<alias>_ENABLED`), operated via `workspace.members.<verb>`, `await plurnk.members(...)` (`list`, `discover`, `add`, `enable`, `disable`, `remove`), or `members:///<glob>` (`READ`, `EDIT`, `KILL`), bounded for model `add` by `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (`none < root < namespace`; violations fail `403 https://problems.plurnk.xyz/members/functionality/model-scope`), persisted in `workspace_constraints` (`source: "members" \| "model"`, preserving `source: "create"`), and materialized as `plurnk:///members/<percent-encoded-glob>.md`. Outside-root directory globs (`../<dir>/**`) and nested repository / submodule globs (`<dir>/**`, #1400) resolve tracked files via `git ls-files` and respect `.gitignore` for ambient candidates when `<dir>` is a Git working tree. |
 
 ### §packet-inject System injections, git status, and recap
 
