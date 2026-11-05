@@ -161,12 +161,24 @@ export default class InitializationTurn {
         sessionName: string;
         initializationPolicies: CapabilityPolicy[];
         filesItems: number;
-    }): Promise<Array<FindStatement | ExecStatement>> {
+    }): Promise<Array<FindStatement | ReadStatement | ExecStatement>> {
         const { db, schemes, executors, workspaceId, sessionName, filesItems } = args;
         const catalogSchemes = await db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
         const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
+        const mcpEntries = catalogSchemes.find(({ scheme }) => scheme === "mcp")?.entries ?? 0;
         const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
-        const surveys: Array<FindStatement | ExecStatement> = [
+        const canRunPlurnk = (): boolean => {
+            const registry = executors();
+            if (registry?.availableRuntimes(workspaceId).includes("plurnk") !== true) return false;
+            try {
+                readExecConcurrency();
+                if (EffectPolicy.decide("read") !== "auto") return false;
+            } catch {
+                return false;
+            }
+            return true;
+        };
+        const surveys: Array<FindStatement | ReadStatement | ExecStatement> = [
             {
                 op: "FIND", aside: null,
                 target: { kind: "url", raw: "skill://*/SKILL.md", scheme: "skill", username: null, password: null, hostname: "*", port: null, pathname: "/SKILL.md", query: null, fragment: null },
@@ -195,6 +207,12 @@ export default class InitializationTurn {
                 position: UNKNOWN_POSITION,
             },
             {
+                op: "READ", aside: null,
+                target: { kind: "url", raw: "mcp:///plurnk.md", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/plurnk.md", query: null, fragment: null },
+                metadata: null,
+                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+            },
+            {
                 op: "FIND", aside: "project root member files",
                 target: { kind: "local", raw: "*" },
                 metadata: null,
@@ -218,15 +236,10 @@ export default class InitializationTurn {
         ];
         return surveys.filter((statement) => {
             if (isExecution(statement)) {
-                const registry = executors();
-                if (registry?.availableRuntimes(workspaceId).includes(statement.runtime) !== true) return false;
-                try {
-                    readExecConcurrency();
-                    if (EffectPolicy.decide("read") !== "auto") return false;
-                } catch {
-                    return false;
-                }
-                return true;
+                return canRunPlurnk();
+            }
+            if (statement.op === "READ") {
+                return mcpEntries > 0 && canRunPlurnk() && schemes.get("mcp", workspaceId) !== undefined;
             }
             return schemes.get(statement.target?.kind === "url" ? statement.target.scheme : "file", workspaceId) !== undefined;
         });
