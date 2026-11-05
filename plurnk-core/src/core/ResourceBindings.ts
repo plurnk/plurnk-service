@@ -53,7 +53,9 @@ export default class ResourceBindings {
             return { handler, manifest: handler.manifestAt(target) };
         }
         const manifest = await ExecutionOutputs.manifest(this.#ctx.db, this.#ctx.workspaceId, target);
-        if (manifest !== null) return { handler: this.#schemes.outputResource(manifest), manifest };
+        if (manifest !== null && (handler === undefined || manifest.defaultChannel !== "")) {
+            return { handler: this.#schemes.outputResource(manifest), manifest };
+        }
         return handler === undefined ? undefined : { handler, manifest: Manifest.of(handler, scheme) };
     }
 }

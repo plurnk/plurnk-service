@@ -96,7 +96,12 @@ export default class SchemeRegistry {
         this.#registerBuiltIn("file", new File());
         this.#registerBuiltIn("session", new Session());
         this.#registerBuiltIn("workspace", new Workspace());
-        this.#registerBuiltIn("plurnk", new Plurnk("plurnk"));
+        this.#registerClaimed("plurnk", new Plurnk("plurnk"), {
+            key: "core-fallback:plurnk",
+            label: "core fallback scheme 'plurnk'",
+            reserved: false,
+            fallback: true,
+        });
         this.#registerClaimed("mcp", new Plurnk("mcp"), {
             key: "core-fallback:mcp",
             label: "core fallback scheme 'mcp'",
@@ -424,7 +429,7 @@ export default class SchemeRegistry {
     // {§scheme-address} Whether core itself registered `name`: a core scheme, whose acquisition is core's own.
     coreOwns(name: string): boolean {
         const claim = this.#claims.get(name);
-        return claim?.key === SchemeRegistry.#CORE_CLAIM.key || claim?.fallback === true;
+        return claim?.key === SchemeRegistry.#CORE_CLAIM.key || claim?.key === "module-runtime:core" || claim?.fallback === true;
     }
 
     async #requiredDocs(): Promise<readonly { name: string; scheme: string | null; content: string }[]> {
