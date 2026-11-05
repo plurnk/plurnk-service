@@ -86,7 +86,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
     readonly discovery: FunctionalityDiscovery = {
         inputs: ["rule"],
         emptyListsAll: true,
-        details: "`{}` tells the current time in the effective zone. `rule` is rule text: RFC 5545, an optional DTSTART line and one RRULE line, or bare `FREQ=…` parts. One inert candidate comes back: its summary opens with the current time in the effective zone and previews the first occurrences; its definition carries the rule as it would be stored, to `add` with a `target` and a `prompt`. Nothing is persisted.",
+        details: "`{}` tells the current time in the effective zone. `rule` is rule text: RFC 5545, an optional DTSTART line and one RRULE line, or bare `FREQ=…` parts. One inert candidate comes back: its summary opens with the current time in the effective zone and previews the first occurrences. Nothing is persisted. When calling `add`, omit `DTSTART` on relative rules (e.g. `FREQ=SECONDLY;COUNT=1`) so the rule starts at the next whole second when added.",
     };
 
     readonly #env: NodeJS.ProcessEnv;
