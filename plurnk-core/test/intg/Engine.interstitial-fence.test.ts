@@ -57,7 +57,7 @@ test("{§fence-pairing}: a SEND quoting an operation never runs the quoted call,
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
         const model = rows.filter(({ origin, op }) => origin === "model" && op !== null);
-        assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [["NOTE", 200], ["SEND", 200], ["NOTE", 200]]);
+        assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [["note", 200], ["send", 200], ["note", 200]]);
         assert.match(JSON.parse(model[0].tx).body, /^A SEND quotes an operation in its text:$/u,
             "the prose before the SEND is the turn's NOTE, literally ({§outside-text})");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
@@ -93,7 +93,7 @@ test("{§whitespace-contract}: a Markdown-fenced Code Mode operation unwraps wit
         assert.equal(provider.received.length, 2);
         const turnId = result.turnIds.at(-2)!;
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: turnId });
-        const reads = rows.filter(({ op, origin }) => op === "READ" && origin === "model");
+        const reads = rows.filter(({ op, origin }) => op === "read" && origin === "model");
         assert.deepEqual(reads.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).content]), [[200, body]], "the fenced Code Mode READ unwrapped and ran");
         assert.deepEqual(rows.filter(({ op }) => op === "error"), [], "a valid operation prevents a no-operation strike");
         assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory").map(({ message }) => message), [
@@ -124,7 +124,7 @@ test("{§message-completion}: a final reply, code block and all, answers the ope
         assert.equal(result.result.status, 200);
         assert.equal(provider.received.length, 1, "one model turn: the answer");
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: result.turnIds.at(-1)! });
-        const completions = rows.filter(({ origin, op }) => origin === "model" && op === "DONE");
+        const completions = rows.filter(({ origin, op }) => origin === "model" && op === "done");
         assert.deepEqual(completions.map(({ status_rx }) => status_rx), [200]);
         assert.equal(JSON.parse(completions[0].tx).body.raw, answer, "the exact DONE body is the reply");
         assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 0, "an answer is not an empty turn");
@@ -144,9 +144,9 @@ test("{§fence-pairing}: a SEND with nested examples delivers its literal body",
             `await plurnk.send({"text":${JSON.stringify(answer)}});\n\nawait plurnk.done({});`, "How do I read a file?");
         assert.equal(result.result.status, 200);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
-        const send = rows.find(({ origin, op }) => origin === "model" && op === "SEND");
+        const send = rows.find(({ origin, op }) => origin === "model" && op === "send");
         assert.equal(JSON.parse(send!.tx).body.raw, answer, "the SEND body retains the nested example");
-        assert.equal(rows.filter(({ origin, op }) => origin === "model" && op === "READ").length, 0, "the quoted example never ran");
+        assert.equal(rows.filter(({ origin, op }) => origin === "model" && op === "read").length, 0, "the quoted example never ran");
     } finally { await db.close(); }
 });
 
@@ -185,13 +185,13 @@ for (const [label, content, finishReason] of [
                 .filter(({ origin, op }) => origin === "_plurnk" && op === "error");
             assert.deepEqual(strikes.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).problem.detail]), [[422, "The turn performed no operation."]], "{§outside-text} the strike is one error row on the turn");
             const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; scheme: string | null }>({ turn_id: result.turnIds[2] }))
-                .filter(({ origin, op, scheme }) => origin === "_plurnk" && op === "READ" && scheme === "reasoning");
+                .filter(({ origin, op, scheme }) => origin === "_plurnk" && op === "read" && scheme === "reasoning");
             assert.deepEqual(readBack, [], "no separate read-back turn is manufactured after an empty turn");
             const answer = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds.at(-1)! });
             const errors = JSON.parse(packetSection(JSON.parse(answer!.packet), "errors") || "[]") as Array<{ status: number }>;
             assert.deepEqual(errors.map(({ status }) => status), [422], "the strike rides the next packet's errors");
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
-            assert.equal(JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === "DONE")!.tx).body.raw, "Done.", "the later completion reply answered");
+            assert.equal(JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === "done")!.tx).body.raw, "Done.", "the later completion reply answered");
             const rail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: loopId });
             assert.equal(rail?.strike_streak, 0, "the answer cleared the streak the empty turn earned");
         } finally { await db.close(); }
@@ -222,7 +222,7 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
         const [, workingTurn, proseTurn, untranslatedTurn, secondWorkingTurn] = result.turnIds;
         const rowsOf = async (turnId: number) => await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
         const notesOf = async (turnId: number) => (await rowsOf(turnId))
-            .filter(({ origin, op }) => origin === "model" && op === "NOTE").map(({ tx }) => JSON.parse(tx).body as string);
+            .filter(({ origin, op }) => origin === "model" && op === "note").map(({ tx }) => JSON.parse(tx).body as string);
         const strikesOf = async (turnId: number) => (await rowsOf(turnId))
             .filter(({ origin, op }) => origin === "_plurnk" && op === "error").map(({ status_rx }) => status_rx);
         assert.deepEqual(
@@ -236,7 +236,7 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
         assert.equal(outsideOf(workingTurn), undefined, "beside an operation there is no outside source");
         assert.deepEqual(await notesOf(proseTurn), [], "prose alone is never a NOTE");
         assert.equal(outsideOf(proseTurn), prose, "prose is stored as the outside source when the turn performed no operation");
-        assert.equal((await rowsOf(proseTurn)).some(({ op }) => op === "SEND"), false, "storage is not message delivery");
+        assert.equal((await rowsOf(proseTurn)).some(({ op }) => op === "send"), false, "storage is not message delivery");
         const following = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: untranslatedTurn }))!.packet);
         assert.doesNotMatch(packetSection(following, "log"), /The investigation is still in progress\./u, "the next packet never carries the text");
         assert.doesNotMatch(packetSection(following, "notices"), /outside_text/u, "the empty turn's error row is the one thing the model hears of it; no second notice");
@@ -288,7 +288,7 @@ for (const preview of ["0", "1"]) for (const finishReason of [undefined, "stop",
                 "the ordinary preview belongs to the empty turn and does not count as authored progress");
             assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 0, "{§outside-text} the strike sends no notice");
             const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; scheme: string | null }>({ turn_id: result.turnIds[3] }))
-                .filter(({ origin, op, scheme }) => origin === "_plurnk" && op === "READ" && scheme === "reasoning");
+                .filter(({ origin, op, scheme }) => origin === "_plurnk" && op === "read" && scheme === "reasoning");
             assert.deepEqual(readBack, [], "no runtime READ follows the empty turn: its preview and source belong to that turn");
             const conclusion = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds.at(-1)! });
             const errors = JSON.parse(packetSection(JSON.parse(conclusion!.packet), "errors") || "[]") as Array<{ status: number; path: string }>;
@@ -312,10 +312,10 @@ test("{§outside-text}: metadata on a file READ is ignored with a notice and the
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
             workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Read the note." }],
         });
-        assert.deepEqual(result.outcomes.filter(({ op }) => op === "READ").map(({ op, status }) => [op, status]), [["READ", 200]], "the READ ran without its metadata");
+        assert.deepEqual(result.outcomes.filter(({ op }) => op === "read").map(({ op, status }) => [op, status]), [["read", 200]], "the READ ran without its metadata");
         const notice = notices.find(({ kind }) => kind === "metadata_ignored");
         assert.ok(notice, "one metadata_ignored notice");
-        assert.equal(notice.message, "READ on 'workspace' takes no [metadata]; the READ ran without it.");
+        assert.equal(notice.message, "read on 'workspace' takes no [metadata]; the read ran without it.");
         assert.equal(notice.directive, "YOU SHOULD NOT write [metadata] on an operation that takes none.", "{§diagnostic-observation}");
     } finally { await db.close(); }
 });
@@ -540,7 +540,7 @@ const seedBareEvidence = async (
         origin: "model",
         source: null,
         model_call_id: modelCall.id,
-        op: "BARE",
+        op: "bare",
         signal: JSON.stringify(["+fact"]),
         scheme: null,
         username: null,
@@ -551,7 +551,7 @@ const seedBareEvidence = async (
         query: null,
         fragment: null,
         lineMarker: null,
-        tx: JSON.stringify({ op: "BARE", body: "What is the capital of Germany?" }),
+        tx: JSON.stringify({ op: "bare", body: "What is the capital of Germany?" }),
         mimetype_tx: "application/json",
         rx: JSON.stringify({ status: 200, content: "Berlin", mimetype: "text/plain" }),
         mimetype_rx: "application/json",
@@ -612,10 +612,10 @@ test("{§share-packet-names}: selectors prune emitted evidence and each selectio
     try {
         workspaceA = await insertWorkspace(db, "digest-workspace-a");
         workspaceB = await insertWorkspace(db, "digest-workspace-b");
-        a1 = await seedSessionEvidence(db, workspaceA, "a1", 1, "READ");
+        a1 = await seedSessionEvidence(db, workspaceA, "a1", 1, "read");
         await seedBareEvidence(db, a1);
-        a2 = await seedSessionEvidence(db, workspaceA, "a2", 2, "EDIT");
-        b1 = await seedSessionEvidence(db, workspaceB, "b1", 3, "COPY");
+        a2 = await seedSessionEvidence(db, workspaceA, "a2", 2, "edit");
+        b1 = await seedSessionEvidence(db, workspaceB, "b1", 3, "copy");
     } finally {
         await db.close();
     }
@@ -667,7 +667,7 @@ test("{§share-packet-names}: selectors prune emitted evidence and each selectio
         assert.match(session.markdown, /Tokens:\s+input=100\+\? output=10\+\? reasoning=1\+\? cache-read=0\+\?/);
         assert.match(session.markdown, /Cost:\s+\$0\.001 \+ \? \(incomplete\) \(estimated — catalog rates\)/);
         assert.match(session.markdown, /Wire:\s+3 requests · 1 error \(33%\)/);
-        assert.match(session.markdown, /Op mix:\s+BARE=1 READ=1/);
+        assert.match(session.markdown, /Op mix:\s+bare=1 read=1/);
         assert.match(
             session.markdown,
             /^Owner: _plurnk$/mu,
@@ -676,7 +676,7 @@ test("{§share-packet-names}: selectors prune emitted evidence and each selectio
         assert.doesNotMatch(session.markdown, /\[object Object\]/u);
         assert.match(session.reasoning, /reason-a1/);
         assert.doesNotMatch(`${JSON.stringify(session.json)}${session.markdown}${session.reasoning}`, /(?:prompt|reason)-(?:a2|b1)/);
-        assert.doesNotMatch(session.markdown, /(?:\$0\.002000|\$0\.003000|Op mix:\s+(?:EDIT|COPY)=1)/);
+        assert.doesNotMatch(session.markdown, /(?:\$0\.002000|\$0\.003000|Op mix:\s+(?:edit|copy)=1)/);
         assert.ok(session.files.includes("session-a1-1-1.user.md"));
         assert.equal(await readFile(join(dir, "session", "session-a1-1-1.user.md"), "utf8"), "input-a1");
         assert.ok(!session.files.some((file) => file.startsWith("session-a2")));
@@ -709,11 +709,11 @@ test("{§share-packet-names}: selectors prune emitted evidence and each selectio
         );
         assert.match(workspace.markdown, /prompt-a1/);
         assert.match(workspace.markdown, /prompt-a2/);
-        assert.match(workspace.markdown, /Op mix:\s+BARE=1 READ=1/);
-        assert.match(workspace.markdown, /Op mix:\s+EDIT=1/);
+        assert.match(workspace.markdown, /Op mix:\s+bare=1 read=1/);
+        assert.match(workspace.markdown, /Op mix:\s+edit=1/);
         assert.match(workspace.markdown, /Cost:\s+\$0\.002 \+ \? \(incomplete\) \(charged\)/);
         assert.doesNotMatch(`${JSON.stringify(workspace.json)}${workspace.markdown}${workspace.reasoning}`, /(?:prompt|reason)-b1/);
-        assert.doesNotMatch(workspace.markdown, /(?:\$0\.003000|Op mix:\s+COPY=1)/);
+        assert.doesNotMatch(workspace.markdown, /(?:\$0\.003000|Op mix:\s+copy=1)/);
         assert.ok(workspace.files.some((file) => file.startsWith("session-a1-1-1.")));
         assert.ok(workspace.files.some((file) => file.startsWith("session-a2-1-1.")));
         assert.ok(!workspace.files.some((file) => file.startsWith("session-b1-")));
@@ -883,13 +883,13 @@ test("{§outside-text} prose before, between and after fences lands as NOTEs in 
         assert.equal(result.result.status, 200, JSON.stringify(result.result));
         const [, prosed, final] = result.turnIds;
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: prosed });
-        const notes = rows.filter(({ op, origin }) => op === "NOTE" && origin === "model").map(({ tx }) => (JSON.parse(tx) as { body: string }).body);
+        const notes = rows.filter(({ op, origin }) => op === "note" && origin === "model").map(({ tx }) => (JSON.parse(tx) as { body: string }).body);
         assert.deepEqual(notes, ["Thinking out loud first.", "Between the two.", "And a trailing remark."], "each span is one NOTE row, in source order");
         assert.ok(!rows.some(({ op, origin }) => op === "error" && origin === "_plurnk"), "no error row");
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: final }))!.packet) as { sections: Parameters<typeof PacketWire.renderSlot>[0] };
         assert.equal(packetSection(packet, "notices"), "", "no outside-text and no missing-NOTE notice");
         const user = PacketWire.renderSlot(packet.sections, "user");
-        assert.equal([...user.matchAll(/^### log:\/\/\/1\/2\/\d+\/NOTE · \d+/gmu)].length, 3, "each annotation retains its own receipt");
+        assert.equal([...user.matchAll(/^### log:\/\/\/1\/2\/\d+\/note · \d+/gmu)].length, 3, "each annotation retains its own receipt");
         assert.doesNotMatch(user, /Thinking out loud|Between the two|And a trailing remark/u, "receipts do not duplicate the annotations");
         const assistant = PacketWire.renderSlot(packet.sections, "assistant");
         assert.match(assistant, /await plurnk\.note\(\{"text":"Thinking out loud first\."\}\);[\s\S]*await plurnk\.note\(\{"text":"Between the two\."\}\);[\s\S]*await plurnk\.note\(\{"text":"And a trailing remark\."\}\);/u, `the replay carries them as NOTE statements:\n${assistant}`);

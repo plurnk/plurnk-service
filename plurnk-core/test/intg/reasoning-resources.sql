@@ -9,5 +9,5 @@ SELECT le.id, le.turn_id, le.sequence, le.origin, le.ambient_event_id, le.pathna
        le.rx, p.active, p.folded, l.sequence AS loop_seq, t.sequence AS turn_seq
 FROM log_entries le JOIN log_entry_projections p ON p.log_entry_id = le.id
 JOIN loops l ON l.id = le.loop_id JOIN turns t ON t.id = le.turn_id
-WHERE le.session_id = $session_id AND le.op = 'READ' AND le.scheme = 'reasoning'
+WHERE le.session_id = $session_id AND le.op = 'read' AND le.scheme = 'reasoning'
 ORDER BY le.id;

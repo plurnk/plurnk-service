@@ -86,7 +86,7 @@ test("{§provider-failure-normalization}: blank emissions retain their wire chan
                 return new Response(`data: ${JSON.stringify({
                     id: "blank-tools", model: "wire-evidence",
                     choices: [{ index: 0, delta: {
-                        tool_calls: [{ index: 0, id: "call-1", type: "function", function: { name: "READ", arguments: '{"path":"example.txt"}' } }],
+                        tool_calls: [{ index: 0, id: "call-1", type: "function", function: { name: "read", arguments: '{"path":"example.txt"}' } }],
                         refusal: "retained vendor text",
                     }, finish_reason: "tool_calls" }],
                     usage: { prompt_tokens: 10, completion_tokens: 13, total_tokens: 23 },
@@ -103,28 +103,30 @@ test("{§provider-failure-normalization}: blank emissions retain their wire chan
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 3, messages: [{ role: "user", content: "Inspect." }] });
             assert.equal(result.result.status, 200);
-            assert.equal(result.turnIds.length, 3, "initialization, one empty turn, then the answer");
+            assert.equal(result.turnIds.length, 3, "initialization, one translated tool-call turn, then the answer");
             const first = result.turnIds[1];
             const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: first });
             assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "no provider retry or parser rejection");
             const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: first });
-            assert.deepEqual(rows.filter(({ op }) => op === "error").map(({ rx }) => JSON.parse(rx).problem.detail), ["The turn performed no operation."]);
+            assert.deepEqual(rows.filter(({ op }) => op === "error"), []);
+            assert.equal(rows.filter(({ op }) => op === "read").length, 2, "emission readback plus translated READ");
         } finally {
             await db.close();
         }
-        assert.equal(requests, 2, "the model recovers on the next ordinary turn");
+        assert.equal(requests, 2, "the model answers on the next turn after inspecting the translated tool call");
         Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
         const stems = await digestStems(digestDir);
         const raw = JSON.parse(await readFile(join(digestDir, `${stems[1]}.assistantRaw.json`), "utf8"));
         assert.equal(raw.rawBody, undefined);
         assert.deepEqual(raw.wire.toolCalls, [
-            { index: 0, id: "call-1", type: "function", name: "READ", arguments: '{"path":"example.txt"}' },
+            { index: 0, id: "call-1", type: "function", name: "read", arguments: '{"path":"example.txt"}' },
         ]);
         assert.deepEqual(raw.wire.channels, { refusal: "retained vendor text" });
         assert.equal(await readFile(join(digestDir, `${stems[2]}.assistant.md`), "utf8"), "await plurnk.done({\"text\":\"Inspected.\"});");
         const report = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.doesNotMatch(report, /rejected-emissions=/);
-        assert.match(await readFile(join(digestDir, `${stems[2]}.user.md`), "utf8"), /native tool calls, but no tools were declared/);
+        assert.match(await readFile(join(digestDir, `${stems[2]}.request.md`), "utf8"), /await plurnk\.read\(\{"path":"example\.txt"\}\);/);
+        assert.doesNotMatch(await readFile(join(digestDir, `${stems[2]}.user.md`), "utf8"), /native tool calls/);
     } finally {
         if (priorFiles === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = priorFiles;
     }
@@ -246,7 +248,7 @@ test("{§log-history-projection}: digest retains programs after all source READ 
     const sources = [
         "await plurnk.note({\"text\":\"Continue one.\"});",
         "await plurnk.note({\"text\":\"Continue two.\"});",
-        "await plurnk.kill({\"path\":\"log:///1/[1-2]/*/READ\"});\n\nawait plurnk.note({\"text\":\"Continue three.\"});",
+        "await plurnk.kill({\"path\":\"log:///1/[1-2]/*/read\"});\n\nawait plurnk.note({\"text\":\"Continue three.\"});",
     ];
     const db = await openMigrated(dbPath);
     try {
@@ -260,7 +262,7 @@ test("{§log-history-projection}: digest retains programs after all source READ 
             const result = await engine.dispatch({
                 workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
                 statement: {
-                    op: "READ", aside: null, metadata: null, matcher: null, body: null,
+                    op: "read", aside: null, metadata: null, matcher: null, body: null,
                     target: { ...urlPath("ops", `/1/${turn.sequence}`), hostname: "analyst", raw: `ops://analyst/1/${turn.sequence}` }, lineMarker: { marks: [1, -1] },
                     position: { line: 1, column: 1 },
                 },
@@ -287,8 +289,8 @@ test("{§log-history-projection}: digest retains programs after all source READ 
         await Turn.recordSource(db, curationTurn, "ops", sources[2]);
         const kill: KillStatement = {
             metadata: null,
-            op: "KILL", aside: null,
-            target: urlPath("log", "/1/[1-2]/*/READ"), lineMarker: null, matcher: null, body: null,
+            op: "kill", aside: null,
+            target: urlPath("log", "/1/[1-2]/*/read"), lineMarker: null, matcher: null, body: null,
             position: { line: 1, column: 1 },
         };
         const result = await engine.dispatch({
@@ -481,7 +483,7 @@ test("{§digest-forensic-fidelity}: native attachment selection remains distinct
     const digestDir = join(dir, "digest");
     const attachment = {
         contentHash: "a".repeat(64),
-        coordinate: "log:///1/2/2/READ", path: "board.png", scheme: "file", pathname: "board.png",
+        coordinate: "log:///1/2/2/read", path: "board.png", scheme: "file", pathname: "board.png",
         mimetype: "image/png", kind: "image" as const, weight: 547, width: 640, height: 640,
     };
     const packet = { weight: 0, sections: [], attributions: [] };

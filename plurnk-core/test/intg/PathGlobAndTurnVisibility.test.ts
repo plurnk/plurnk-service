@@ -48,7 +48,7 @@ import { CoreSchemeAdapterBase, type CoreSchemeCallContext } from "../../src/cor
 describe("end_to_end_mock", () => {
 const e2eEditStmt = (pathname: string, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null,
+    op: "edit", aside: null,
     target: urlPath("workspace", pathname),
     lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
@@ -104,11 +104,11 @@ test("{§loop-completion} e2e: single-turn EDIT + SEND — entry created, log ro
 
         const logRows = await db.test_log_entries_by_turn.all<{ op: string; sequence: number; status_rx: number; pathname: string | null }>({ turn_id: result.turnId });
         assert.equal(logRows.length, 2);
-        assert.equal(logRows[0]?.op, "EDIT");
+        assert.equal(logRows[0]?.op, "edit");
         assert.equal(logRows[0]?.sequence, 1);
         assert.equal(logRows[0]?.status_rx, 201);
         assert.equal(logRows[0]?.pathname, "/france/capital");
-        assert.equal(logRows[1]?.op, "NOTE");
+        assert.equal(logRows[1]?.op, "note");
         assert.equal(logRows[1]?.sequence, 2);
         assert.equal(logRows[1]?.status_rx, 200);
         assert.equal(logRows[1]?.pathname, null);
@@ -146,7 +146,7 @@ test("{§op-methods-op-dispatch} e2e: cross-turn state — turn 2 sees entry wri
         assert.ok(message);
         const e2eReadStmt = (pathname: string): PlurnkStatement => ({
             metadata: null,
-            op: "READ", aside: null,
+            op: "read", aside: null,
             target: urlPath("workspace", pathname),
             lineMarker: null, matcher: null, body: null,
             position: { line: 1, column: 1 },
@@ -169,7 +169,7 @@ test("{§op-methods-op-dispatch} e2e: cross-turn state — turn 2 sees entry wri
         assert.deepEqual(turn3.statuses, [200], "the reply is delivered after the read");
 
         const turn2Reads = (await db.test_log_entries_by_turn.all<{ sequence: number; status_rx: number; pathname: string; op: string }>({ turn_id: turn2.turnId }))
-            .filter((r) => r.op === "READ");
+            .filter((r) => r.op === "read");
         assert.equal(turn2Reads.length, 1);
         assert.equal(turn2Reads[0]?.sequence, 1, "sequence resets per turn (1-based)");
         assert.equal(turn2Reads[0]?.status_rx, 200);
@@ -289,16 +289,16 @@ test("{§turn-source-resources} #713: notes have durable sources, normal log cur
         const reasoning = "await plurnk.edit({\"path\":\"should-not-exist.txt\",\"content\":\"Never execute reasoning edits.\"});";
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: ["await plurnk.note({\"text\":\"The network is not the cause.\"});", "await plurnk.note({\"text\":\"Inspect the parser next.\"});"].join("\n\n"), reasoning } },
-            { assistant: { content: "await plurnk.kill({\"path\":\"log:///1/2/*/NOTE\"});", reasoning: null } },
+            { assistant: { content: "await plurnk.kill({\"path\":\"log:///1/2/*/note\"});", reasoning: null } },
             { assistant: { content: ["await plurnk.note({\"text\":\"Both checks passed.\"});", "await plurnk.done({\"text\":\"Finished.\"});"].join("\n\n"), reasoning: null } },
         ] });
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
         const second = await engine.runTurn({ ...context, provider, messages: [] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        const notes = logEntries(packet).filter((row) => /^log:\/\/\/1\/2\/\d+\/NOTE$/.test(row.logPath));
+        const notes = logEntries(packet).filter((row) => /^log:\/\/\/1\/2\/\d+\/note$/.test(row.logPath));
         assert.equal(notes.length, 2, "reasoning and content NOTEs both retain ordinary receipt addresses");
-        assert.deepEqual(notes.map((row) => row.resource), notes.map((row) => `note://alice/${row.logPath.replace(/^log:\/\/\//u, "").replace(/\/NOTE$/u, "")}`), "each ordinary receipt exposes its recoverable source at its own coordinate");
+        assert.deepEqual(notes.map((row) => row.resource), notes.map((row) => `note://alice/${row.logPath.replace(/^log:\/\/\//u, "").replace(/\/note$/u, "")}`), "each ordinary receipt exposes its recoverable source at its own coordinate");
         assert.ok(notes.every((row) => row.origin === undefined || row.origin === "model"));
         // Source identity never depends on the reader ({§turn-source-resources}); alice's later packets are under test.
         const observer = await insertSession(db, workspaceId, null, "observer");
@@ -306,14 +306,14 @@ test("{§turn-source-resources} #713: notes have durable sources, normal log cur
         const firstSource = await read(`await plurnk.read({"path":"${String(notes[0].resource)}","range":"1,-1"});`);
         assert.equal(firstSource.status, 200);
         assert.equal(firstSource.content, "The network is not the cause.");
-        const contentNote = /^log:\/\/\/(1\/2\/\d+)\/NOTE$/u.exec(notes[1].logPath)?.[1];
+        const contentNote = /^log:\/\/\/(1\/2\/\d+)\/note$/u.exec(notes[1].logPath)?.[1];
         assert.ok(contentNote, "the content NOTE has its own receipt coordinate");
         const secondSource = await read(`await plurnk.read({"path":"note://alice/${contentNote}","range":"1,-1"});`);
         assert.equal(secondSource.content, "Inspect the parser next.", "the receipt coordinate reads the content NOTE's durable source");
         const final = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(final.status, 200, "an extracted note is not an unseen external result");
         const finalPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: final.turnId }))!.packet);
-        assert.equal(logEntries(finalPacket).filter((row) => /^log:\/\/\/1\/2\/\d+\/NOTE$/.test(row.logPath)).length, 0);
+        assert.equal(logEntries(finalPacket).filter((row) => /^log:\/\/\/1\/2\/\d+\/note$/.test(row.logPath)).length, 0);
         const sourceAgain = await read(`await plurnk.read({"path":"${String(notes[0].resource)}","range":"1,-1"});`);
         assert.equal(sourceAgain.content, "The network is not the cause.", "curating the log does not delete the source note");
         const rawReasoning = await read("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"});");
@@ -326,9 +326,9 @@ test("{§turn-source-resources} #713: notes have durable sources, normal log cur
         const fork = await Fork.fork(db, sessionId, "branch");
         const inherited = await read(`await plurnk.read({"path":"${String(notes[0].resource).replace("note://alice/", "note://branch/")}","range":"1,-1"});`, fork);
         assert.equal(inherited.content, firstSource.content, "FORK preserves source identity and content");
-        for (const op of ["EDIT", "KILL"]) {
-            const refused = await engine.dispatch({ ...context, turnId: final.turnId, sequence: op === "EDIT" ? 50 : 51, origin: "model",
-                statement: parseSingleStatement(`await plurnk.${op.toLowerCase()}(${JSON.stringify({ path: String(notes[0].resource), ...(op === "EDIT" ? { content: "Changed" } : {}) })});`),
+        for (const op of ["edit", "kill"]) {
+            const refused = await engine.dispatch({ ...context, turnId: final.turnId, sequence: op === "edit" ? 50 : 51, origin: "model",
+                statement: parseSingleStatement(`await plurnk.${op.toLowerCase()}(${JSON.stringify({ path: String(notes[0].resource), ...(op === "edit" ? { content: "Changed" } : {}) })});`),
             });
             assert.equal(refused.status, 403, `${op} cannot change immutable note evidence`);
         }
@@ -373,7 +373,7 @@ test("{§op-shapes} {§parse-recovery}: a lost boundary admits the NOTE beside i
         assert.deepEqual((await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: first.turnId })).map(({ accepted }) => accepted), [1],
             "an admitted operation is a closed operational statement, a NOTE as much as a READ: no resample");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; source: string | null }>({ turn_id: first.turnId });
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["NOTE", "error"], "the NOTE ran; the loss is the model's own diagnostic row");
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["note", "error"], "the NOTE ran; the loss is the model's own diagnostic row");
         assert.ok(rows.some(({ op, source }) => op === "error" && source === "grammar"), "the lost boundary is one hard diagnostic the model sees");
         assert.equal((await engine.runTurn({ ...context, provider, messages: [] })).status, 200);
     } finally { await db.close(); }
@@ -391,7 +391,7 @@ test("{§op-shapes} {§emission-admission}: a rejected emission cannot commit it
         const acceptedReasoning = "await plurnk.note({\"text\":\"This belongs to the accepted attempt.\"});";
         const provider = new Mock({ contextWindow: 100_000, responses: [
             // {§emission-admission} — the model writing the harness's log is the refusal that remains.
-            { assistant: { content: "### log:///1/2/1/NOTE\nI am the harness.", reasoning: rejectedReasoning } },
+            { assistant: { content: "### log:///1/2/1/note\nI am the harness.", reasoning: rejectedReasoning } },
             { assistant: { content: "await plurnk.done({\"text\":\"Finished.\"});", reasoning: acceptedReasoning } },
         ] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });
@@ -524,7 +524,7 @@ for (const shape of ["separate", "glob", "final"] as const) {
             messages: [{ role: "user", content: "Edit the entries." }],
             onSettled: async (id) => {
                 const rows = await db.test_log_entries_by_session.all<{ id: number; origin: string; op: string }>({ session_id: sessionId });
-                if (cancelledAt === undefined && rows.some((row) => row.id === id && row.origin === "model" && row.op === "EDIT")) {
+                if (cancelledAt === undefined && rows.some((row) => row.id === id && row.origin === "model" && row.op === "edit")) {
                     cancelledAt = id;
                     abort.abort(reason);
                 }
@@ -535,7 +535,7 @@ for (const shape of ["separate", "glob", "final"] as const) {
             (await db.test_get_channel.get<{ content: string }>({ entry_id: entryId, name: "body" }))?.content));
         assert.deepEqual(content, ["changed", "original"], "cancellation preserves the committed effect and never applies the next one");
         const rows = await db.test_log_entries_by_session.all<{ id: number; origin: string; op: string; status_rx: number }>({ session_id: sessionId });
-        assert.deepEqual(rows.filter((row) => row.origin === "model" && row.op === "EDIT").map(({ id, status_rx }) => [id, status_rx]), [[cancelledAt, 200]]);
+        assert.deepEqual(rows.filter((row) => row.origin === "model" && row.op === "edit").map(({ id, status_rx }) => [id, status_rx]), [[cancelledAt, 200]]);
         const turns = await db.test_list_turns_in_loop.all<{ kind: string; status: number; completed_at: string | null }>({ loop_id: loopId });
         const inference = turns.find(({ kind }) => kind === "inference");
         assert.equal(inference?.status, 499);
@@ -583,7 +583,7 @@ const run = async (name: string, prompt: string, responses: ReturnType<typeof sa
 test("{§emission-history}: curation removes memory receipts; source READ still restores exact bodies", async (t) => {
     const body = Array.from({ length: 120 }, (_, index) => `FULL-BODY line ${index + 1}`).join("\n");
     const first = `await plurnk.edit({"path":"workspace:///memory.md","content":${JSON.stringify(body)}}); // remember\n\nawait plurnk.note({"text":"CURATABLE-MEMORY: retain the actual observation."});`;
-    const curate = "await plurnk.kill({\"path\":\"log:///1/2/*/NOTE\"});";
+    const curate = "await plurnk.kill({\"path\":\"log:///1/2/*/note\"});";
     const read = "await plurnk.read({\"path\":\"ops://analyst/1/2\",\"range\":\"1,-1\"});";
     const { db, result, provider, rows, sessionId } = await run("envelope-source", "Work, curate, then inspect your original program.", [
         say(first, "await plurnk.note({\"text\":\"REASONING-MEMORY: independent reasoning note.\"});"),
@@ -601,7 +601,7 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
     assert.equal(previous(provider.received[3]), `${edit}\n\n${read}`, "the explicit source READ joins the surviving history");
     assert.match(userText(provider.received[3]), /CURATABLE-MEMORY/u, "an explicit READ retrieves the complete program");
     assert.match(userText(provider.received[3]), /FULL-BODY line 120/u);
-    const reads = await db.test_log_entries_by_session_op_full.all<{ pathname: string; rx: string }>({ session_id: sessionId, op: "READ" });
+    const reads = await db.test_log_entries_by_session_op_full.all<{ pathname: string; rx: string }>({ session_id: sessionId, op: "read" });
     assert.ok(reads.some(({ pathname, rx }) => pathname === "/1/2" && (JSON.parse(rx) as { content?: string }).content === first));
     assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate.startsWith("1/2/"))!.rx) as { content: string }).content, first);
 });
@@ -616,7 +616,7 @@ test("{§turn-source-resources}: initialization has no replay; canonical content
     assert.deepEqual(rows.map(({ coordinate }) => coordinate), ["1/2/2", "1/3/1"]);
     for (const row of rows) {
         assert.equal(row.origin, "_plurnk");
-        assert.equal(row.op, "READ");
+        assert.equal(row.op, "read");
         assert.equal(row.scheme, "ops");
         assert.equal(row.pathname, `/${row.coordinate.split("/").slice(0, 2).join("/")}`);
         assert.deepEqual(JSON.parse(row.initial_folded), [[1, -1]]);
@@ -625,11 +625,11 @@ test("{§turn-source-resources}: initialization has no replay; canonical content
     assert.equal(previous(provider.received[0]), "");
     assert.equal(previous(provider.received[1]), canonical, "normalization preserves each operation at its position");
     assert.equal(JSON.parse(rows[0].rx).content, canonical, "the frozen row preserves the complete admitted program, interstitial text as NOTEs at their positions");
-    assert.match(userText(provider.received[1]), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[\s\S]*### log:\/\/\/1\/2\/4\/READ/u);
+    assert.match(userText(provider.received[1]), /### log:\/\/\/1\/2\/1\/send[\s\S]*### log:\/\/\/1\/2\/2\/emission[\s\S]*### log:\/\/\/1\/2\/4\/read/u);
     const request = provider.received[1];
     assert.deepEqual(request.map(({ role }) => role), ["system", "user", "assistant", "user"], "the turn replays as one assistant message");
-    assert.match(chatMessageText(request[1]), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*### log:\/\/\/1\/2\/2\/emission[^\n]*$/u, "incoming observations precede the content operations");
-    assert.match(chatMessageText(request[3]), /^### log:\/\/\/1\/2\/3\/NOTE[\s\S]*### log:\/\/\/1\/2\/4\/READ/u, "the turn's results follow the operations that caused them");
+    assert.match(chatMessageText(request[1]), /### log:\/\/\/1\/2\/1\/send[\s\S]*### log:\/\/\/1\/2\/2\/emission[^\n]*$/u, "incoming observations precede the content operations");
+    assert.match(chatMessageText(request[3]), /^### log:\/\/\/1\/2\/3\/note[\s\S]*### log:\/\/\/1\/2\/4\/read/u, "the turn's results follow the operations that caused them");
 });
 
 test("{§turn-source-resources}: curation retires the immediately preceding emission without reviving an older one", async (t) => {
@@ -659,9 +659,9 @@ test("{§turn-source-resources}: a scoped KILL cannot partially curate a program
     ], 6);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
-    assert.match(userText(provider.received[2]), /### log:\/\/\/1\/3\/\d+\/KILL[^\n]*\n\{[^\n]*"status":422/u);
+    assert.match(userText(provider.received[2]), /### log:\/\/\/1\/3\/\d+\/kill[^\n]*\n\{[^\n]*"status":422/u);
     assert.match(userText(provider.received[2]), /is an emission; curate it without a line scope/u);
-    assert.match(userText(provider.received[2]), /KILL \(log:\/\/\/1\/2\/2\/emission\) retires it\./u, "the recovery names the one form that retires it");
+    assert.match(userText(provider.received[2]), /await plurnk\.kill\(\{ path: \\"log:\/\/\/1\/2\/2\/emission\\" \}\); retires it\./u, "the recovery names the one form that retires it");
     assert.match(userText(provider.received[2]), /### log:\/\/\/1\/2\/2\/emission/u);
     assert.match(userText(provider.received[3]), /### log:\/\/\/1\/2\/2\/emission/u, "a partial sweep leaves it intact");
     assert.doesNotMatch(userText(provider.received[4]), /### log:\/\/\/1\/2\/2\/emission/u, "the unscoped KILL retires it");
@@ -835,9 +835,9 @@ const stripVolatile = (stmt: PlurnkStatement): object => {
 };
 
 for (const [label, canonical, terse] of [
-    ["EDIT", 'await plurnk.edit({"path":"workspace:///countries/france/capital","content":"Paris"});', 'plurnk.edit({"path":"workspace:///countries/france/capital","content":"Paris"})'],
-    ["FIND", 'await plurnk.find({"path":"workspace:///users.json","pattern":"$.name"});', 'plurnk.find({"path":"workspace:///users.json","pattern":"$.name"})'],
-    ["SEND", 'await plurnk.send({"target":"workspace:///result","text":"Paris"});', 'plurnk.send({"target":"workspace:///result","text":"Paris"})'],
+    ["edit", 'await plurnk.edit({"path":"workspace:///countries/france/capital","content":"Paris"});', 'plurnk.edit({"path":"workspace:///countries/france/capital","content":"Paris"})'],
+    ["find", 'await plurnk.find({"path":"workspace:///users.json","pattern":"$.name"});', 'plurnk.find({"path":"workspace:///users.json","pattern":"$.name"})'],
+    ["send", 'await plurnk.send({"target":"workspace:///result","text":"Paris"});', 'plurnk.send({"target":"workspace:///result","text":"Paris"})'],
     ["sh", 'await plurnk.sh({"command":"uname -r"});', 'plurnk.sh({"command":"uname -r"})'],
 ] as const) {
     test(`{§operation-fences} parser: optional await and semicolon do not change the AST (${label})`, () => {
@@ -851,7 +851,7 @@ test("{§operation-fences} parser: a 3-backtick block stays literal in a Code Mo
     const body = "quoted section:\n\nawait plurnk.edit({\"path\":\"workspace:///inner\",\"content\":\"hello\"});";
     const stmts = parseAll(`await plurnk.edit(${JSON.stringify({ path: "workspace:///demo", content: body })});`);
     assert.equal(stmts.length, 1, "a nested call string never closes the body");
-    assert.equal(stmts[0]?.op, "EDIT");
+    assert.equal(stmts[0]?.op, "edit");
     assert.equal((stmts[0]).body, body);
 });
 
@@ -861,7 +861,7 @@ test("{§fence-pairing} parser: a top-level EDIT after an EDIT runs; a quoted ED
         'await plurnk.edit({"path":"workspace:///demo","content":"quoted section:"});',
         'await plurnk.edit({"path":"workspace:///inner","content":"hello"});',
     ].join("\n\n"));
-    assert.deepEqual(bare.map(({ op }) => op), ["EDIT", "EDIT"], "two top-level statements produce two mutations");
+    assert.deepEqual(bare.map(({ op }) => op), ["edit", "edit"], "two top-level statements produce two mutations");
     assert.equal((bare[0] as EditStatement).body, "quoted section:");
     assert.equal((bare[1] as EditStatement).body, "hello");
     const wider = parseAll(`await plurnk.edit(${JSON.stringify({ path: "workspace:///demo", content: body })});`);
@@ -903,9 +903,9 @@ test("{§op-methods-op-dispatch} escaped and URL selectors read and edit the int
                 assert.equal(loop.result.status, 200);
                 const rows = (await db.engine_render_log.all<{ op: string; origin: string; pathname: string; status_rx: number; rx: string }>({ session_id: loop.modelSessionId! }))
                     .filter(({ origin }) => origin === "model");
-                assert.deepEqual(rows.filter(({ op }) => op === "READ").map(({ pathname, status_rx }) => ({ pathname, status_rx })),
+                assert.deepEqual(rows.filter(({ op }) => op === "read").map(({ pathname, status_rx }) => ({ pathname, status_rx })),
                     [intended, intended, "a*.txt"].map((pathname) => ({ pathname, status_rx: 200 })));
-                const finds = rows.filter(({ op }) => op === "FIND");
+                const finds = rows.filter(({ op }) => op === "find");
                 assert.equal(finds.length, 2);
                 for (const find of finds) {
                     const result = JSON.parse(find.rx);
@@ -917,7 +917,7 @@ test("{§op-methods-op-dispatch} escaped and URL selectors read and edit the int
                     assert.equal(await readFile(join(root, name), "utf8"), name === intended ? "Revised\n" : `Original ${name}\n`, name);
                 }
                 assert.deepEqual(await readdir(join(root, String.raw`dir\name`)), ["a.txt"], "no wildcard-named file is created");
-                assert.deepEqual(rows.filter(({ op }) => op === "EDIT").map(({ pathname, status_rx }) => ({ pathname, status_rx })), [{ pathname: intended, status_rx: 200 }]);
+                assert.deepEqual(rows.filter(({ op }) => op === "edit").map(({ pathname, status_rx }) => ({ pathname, status_rx })), [{ pathname: intended, status_rx: 200 }]);
             } finally { client.close(); }
         });
     } finally { await rm(root, { recursive: true, force: true }); }
@@ -955,18 +955,18 @@ const fixture = async (t: TestContext, entries: Record<string, string>, scheme =
     return { db, env, engine, ids, dispatch, content, rows };
 };
 
-for (const op of ["EDIT", "KILL"] as const) {
+for (const op of ["edit", "kill"] as const) {
     test(`{§op-methods-op-dispatch} ${op} applies a scoped matcher to every selected resource`, async (t) => {
         const { dispatch, content, rows } = await fixture(t, { "/a.txt": "foo one\nfoo two", "/b.txt": "foo three\nfoo four", "/other.md": "foo five" });
         const target = urlPath("workspace", "/@(a|b).txt");
-        const statement = op === "EDIT" ? editStmt(target, "bar", { marks: [1, 1] }, regex("foo")) : killStmt(target, { marks: [1, 1] }, regex("foo"));
+        const statement = op === "edit" ? editStmt(target, "bar", { marks: [1, 1] }, regex("foo")) : killStmt(target, { marks: [1, 1] }, regex("foo"));
         const result = await dispatch(statement);
         assert.equal(result.status, 200, JSON.stringify(result));
         assert.equal(result.rowsWritten, 2);
         assert.equal(Object.hasOwn(result, "commandsExecuted"), false, "dispatch accounting is not an operation result");
         assert.equal(Object.hasOwn(result, "commandsOmitted"), false);
-        assert.equal(await content("/a.txt"), `${op === "EDIT" ? "bar" : ""} one\nfoo two`);
-        assert.equal(await content("/b.txt"), `${op === "EDIT" ? "bar" : ""} three\nfoo four`);
+        assert.equal(await content("/a.txt"), `${op === "edit" ? "bar" : ""} one\nfoo two`);
+        assert.equal(await content("/b.txt"), `${op === "edit" ? "bar" : ""} three\nfoo four`);
         assert.equal(await content("/other.md"), "foo five");
         assert.deepEqual((await rows()).map((row) => [row.op, row.pathname, row.status_rx]), [[op, "/a.txt", 200], [op, "/b.txt", 200]]);
         for (const { rx } of await rows()) {
@@ -978,7 +978,7 @@ for (const op of ["EDIT", "KILL"] as const) {
     test(`{§op-methods-op-dispatch} empty ${op} selection is a single no-effect receipt`, async (t) => {
         const { dispatch, rows, content } = await fixture(t, { "/a.txt": "unchanged" });
         const target = urlPath("workspace", "/missing*.txt");
-        const result = await dispatch(op === "EDIT" ? editStmt(target, "new", fullReplace) : killStmt(target));
+        const result = await dispatch(op === "edit" ? editStmt(target, "new", fullReplace) : killStmt(target));
         assert.equal(result.status, 204, JSON.stringify(result));
         assert.deepEqual((await rows()).map(({ pathname, status_rx }) => [pathname, status_rx]), [["/missing*.txt", 204]]);
         assert.equal(await content("/a.txt"), "unchanged");
@@ -986,23 +986,23 @@ for (const op of ["EDIT", "KILL"] as const) {
     });
 }
 
-for (const op of ["READ", "EDIT", "KILL"] as const) {
+for (const op of ["read", "edit", "kill"] as const) {
     test(`{§op-methods-op-dispatch} ${op} preserves the selected nondefault channel`, async (t) => {
         const { db, dispatch, content, ids, rows } = await fixture(t, { "/a.txt": "body a", "/b.txt": "body b" }, "channels");
         for (const entryId of ids.values()) await db.test_seed_channel.run({ entry_id: entryId, name: "notes", content: "selected", mimetype: "text/plain", state: "static" });
         const target = urlPath("channels", "/*.txt", "notes");
-        const result = await dispatch(op === "READ" ? readStmt(target) : op === "EDIT" ? editStmt(target, "replacement", fullReplace) : killStmt(target, fullReplace));
+        const result = await dispatch(op === "read" ? readStmt(target) : op === "edit" ? editStmt(target, "replacement", fullReplace) : killStmt(target, fullReplace));
         assert.equal(result.status, 200, JSON.stringify(result));
         assert.equal(result.rowsWritten, 2);
         for (const path of ids.keys()) {
             assert.equal(await content(path), `body ${path[1]}`);
-            assert.equal(await content(path, "notes"), op === "EDIT" ? "replacement" : op === "KILL" ? "" : "selected");
+            assert.equal(await content(path, "notes"), op === "edit" ? "replacement" : op === "kill" ? "" : "selected");
         }
-        if (op === "READ") assert.deepEqual((await rows()).map(({ rx }) => JSON.parse(rx).content), ["selected", "selected"]);
+        if (op === "read") assert.deepEqual((await rows()).map(({ rx }) => JSON.parse(rx).content), ["selected", "selected"]);
     });
 }
 
-for (const op of ["COPY", "MOVE"] as const) {
+for (const op of ["copy", "move"] as const) {
     for (const operand of ["source", "destination"] as const) {
         for (const count of [0, 1, 2]) {
             test(`{§op-methods-op-dispatch} ${op} ${operand} glob with ${count} matches`, async (t) => {
@@ -1010,7 +1010,7 @@ for (const op of ["COPY", "MOVE"] as const) {
                 const { dispatch, content, rows } = await fixture(t, entries);
                 const source = urlPath("workspace", operand === "source" ? "/match*.txt" : "/source.txt");
                 const destination = urlPath("workspace", operand === "destination" ? "/match*.txt" : "/destination.txt");
-                const result = await dispatch((op === "COPY" ? copyStmt : moveStmt)(source, destination, { marks: [1, 1] }, fullReplace));
+                const result = await dispatch((op === "copy" ? copyStmt : moveStmt)(source, destination, { marks: [1, 1] }, fullReplace));
                 assert.equal(result.status, count === 1 ? 200 : 400, JSON.stringify(result));
                 if (count !== 1) {
                     assert.ok(result.problem?.type.endsWith("/target-cardinality"), JSON.stringify(result));
@@ -1018,7 +1018,7 @@ for (const op of ["COPY", "MOVE"] as const) {
                     for (const [path, original] of Object.entries(entries)) assert.equal(await content(path), original, `${path} must not change`);
                 } else {
                     assert.equal(await content(operand === "destination" ? "/match0.txt" : "/destination.txt"), "source\n", "line selection preserves its separator");
-                    assert.equal(await content(operand === "source" ? "/match0.txt" : "/source.txt"), op === "MOVE" ? "tail" : "source\ntail");
+                    assert.equal(await content(operand === "source" ? "/match0.txt" : "/source.txt"), op === "move" ? "tail" : "source\ntail");
                 }
                 assert.deepEqual((await rows()).map(({ op: actual }) => actual), [op], "internal surveys do not create extra receipts");
             });
@@ -1032,16 +1032,16 @@ const previewLines = (t: TestContext, lines: number) => {
     t.after(() => { if (old === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES; else process.env.PLURNK_SERVICE_PREVIEW_LINES = old; });
 };
 
-for (const op of ["EDIT", "KILL"] as const) {
+for (const op of ["edit", "kill"] as const) {
     test(`{§op-methods-op-dispatch} ${op} is complete even when the FIND preview holds one item`, async (t) => {
         previewLines(t, 1);
         const entries = { "/a.txt": "a", "/b.txt": "b", "/c.txt": "c", "/nested/d.txt": "d" };
         const { dispatch, content, rows } = await fixture(t, entries);
         const target = urlPath("workspace", "/**/*.txt");
-        const result = await dispatch(op === "EDIT" ? editStmt(target, "changed", fullReplace) : killStmt(target));
+        const result = await dispatch(op === "edit" ? editStmt(target, "changed", fullReplace) : killStmt(target));
         assert.ok(result.status < 300, JSON.stringify(result));
         assert.equal(result.rowsWritten, 4);
-        for (const path of Object.keys(entries)) assert.equal(await content(path), op === "EDIT" ? "changed" : undefined, path);
+        for (const path of Object.keys(entries)) assert.equal(await content(path), op === "edit" ? "changed" : undefined, path);
         assert.deepEqual((await rows()).map(({ pathname }) => pathname), Object.keys(entries));
     });
 }
@@ -1060,27 +1060,27 @@ for (const failOnOperationError of [false, true]) {
         assert.equal(await content("/a.txt"), "updated\nsecond");
         assert.equal(await content("/b.txt"), "different");
         assert.equal(await content("/c.txt"), "first\nsecond", "identical content in another resource does not share the READ anchor");
-        const edits = (await rows()).filter(({ op }) => op === "EDIT");
+        const edits = (await rows()).filter(({ op }) => op === "edit");
         assert.deepEqual(edits.map(({ status_rx }) => status_rx), failOnOperationError ? [200, 409] : [200, 409, 409]);
         assert.match(JSON.parse(edits[1].rx).problem.type, /\/edit-collision$/);
     });
 }
 
-for (const op of ["READ", "EDIT", "KILL"] as const) for (const limit of [0, 1, 2, Infinity]) {
+for (const op of ["read", "edit", "kill"] as const) for (const limit of [0, 1, 2, Infinity]) {
     test(`{§op-methods-op-dispatch} ${op} fan-out obeys concrete command limit ${limit}`, async (t) => {
         const entries = { "/a.txt": "a", "/b.txt": "b", "/c.txt": "c" };
         const { engine, env, rows, content } = await fixture(t, entries);
         const target = urlPath("workspace", "/*.txt");
-        const statement = op === "READ" ? readStmt(target) : op === "EDIT" ? editStmt(target, "changed", fullReplace) : killStmt(target);
+        const statement = op === "read" ? readStmt(target) : op === "edit" ? editStmt(target, "changed", fullReplace) : killStmt(target);
         await engine.executeAdmittedTurn({ ...env, origin: "client", source: null, emission: null, fromSequence: 1, maxCommands: limit,
-            statements: [statement, noteStmt("after targets"), dispositionStmt("WAIT")] });
+            statements: [statement, noteStmt("after targets"), dispositionStmt("wait")] });
         const receipts = await rows();
         assert.deepEqual(receipts.filter(({ op: actual }) => actual === op).map(({ pathname }) => pathname), Object.keys(entries).slice(0, limit));
         for (const [index, [path, original]] of Object.entries(entries).entries()) {
-            assert.equal(await content(path), index >= limit || op === "READ" ? original : op === "EDIT" ? "changed" : undefined);
+            assert.equal(await content(path), index >= limit || op === "read" ? original : op === "edit" ? "changed" : undefined);
         }
-        assert.equal(receipts.some((receipt) => receipt.op === "NOTE"), limit === Infinity);
-        assert.ok(receipts.some((receipt) => receipt.op === "WAIT"), "WAIT remains exempt");
+        assert.equal(receipts.some((receipt) => receipt.op === "note"), limit === Infinity);
+        assert.ok(receipts.some((receipt) => receipt.op === "wait"), "WAIT remains exempt");
         const problem = receipts.map(({ rx }) => JSON.parse(rx).problem).find((candidate) => candidate?.type.endsWith("/max-commands-exceeded"));
         if (limit === Infinity) assert.equal(problem, undefined);
         else assert.equal(problem?.omittedOperations, limit === 0 ? 2 : 4 - limit);
@@ -1150,7 +1150,7 @@ test("{§op-methods-op-dispatch} mutation patterns retain a receipt for every se
 
 test("{§op-methods-op-dispatch} denied mutations neither enumerate nor change their targets", async (t) => {
     const { db, env, dispatch, rows, content } = await fixture(t, { "/a.txt": "original", "/b.txt": "original" });
-    await db.test_set_workspace_settings.run({ id: env.workspaceId, settings: JSON.stringify({ capabilities: { deny: [{ operation: "EDIT" }] } }) });
+    await db.test_set_workspace_settings.run({ id: env.workspaceId, settings: JSON.stringify({ capabilities: { deny: [{ operation: "edit" }] } }) });
     const result = await dispatch(editStmt(urlPath("workspace", "/*.txt"), "updated", fullReplace));
     assert.equal(result.status, 403, JSON.stringify(result));
     assert.match(result.problem!.type, /\/capability-denied$/);
@@ -1159,16 +1159,16 @@ test("{§op-methods-op-dispatch} denied mutations neither enumerate nor change t
     assert.equal(await content("/b.txt"), "original");
 });
 
-for (const op of ["COPY", "MOVE"] as const) {
+for (const op of ["copy", "move"] as const) {
     test(`{§op-methods-op-dispatch} ${op} resolves both channel operands and preserves exact creation`, async (t) => {
         const { db, dispatch, content, ids } = await fixture(t, { "/source.txt": "body", "/destination.txt": "body" }, "channels");
         for (const [path, id] of ids) await db.test_seed_channel.run({ entry_id: id, name: "notes", content: path === "/source.txt" ? "selected" : "destination", mimetype: "text/plain", state: "static" });
-        const transfer = op === "COPY" ? copyStmt : moveStmt;
+        const transfer = op === "copy" ? copyStmt : moveStmt;
         const result = await dispatch(transfer(urlPath("channels", "/source*.txt", "notes"), urlPath("channels", "/destination*.txt", "notes"), fullReplace, fullReplace));
         assert.equal(result.status, 200, JSON.stringify(result));
         assert.equal(await content("/source.txt"), "body");
         assert.equal(await content("/destination.txt"), "body");
-        assert.equal(await content("/source.txt", "notes"), op === "COPY" ? "selected" : undefined, "whole-channel MOVE removes only the selected source channel");
+        assert.equal(await content("/source.txt", "notes"), op === "copy" ? "selected" : undefined, "whole-channel MOVE removes only the selected source channel");
         assert.equal(await content("/destination.txt", "notes"), "selected");
         const created = await dispatch(transfer(urlPath("channels", "/destination*.txt", "notes"), urlPath("workspace", "/new.txt")));
         assert.equal(created.status, 201, JSON.stringify(created));
@@ -1178,7 +1178,7 @@ for (const op of ["COPY", "MOVE"] as const) {
         previewLines(t, 1);
         const entries = { "/source.txt": "original", "/destination1.txt": "one", "/destination2.txt": "two" };
         const { dispatch, content } = await fixture(t, entries);
-        const result = await dispatch((op === "COPY" ? copyStmt : moveStmt)(urlPath("workspace", "/source*.txt"), urlPath("workspace", "/destination*.txt")));
+        const result = await dispatch((op === "copy" ? copyStmt : moveStmt)(urlPath("workspace", "/source*.txt"), urlPath("workspace", "/destination*.txt")));
         assert.equal(result.status, 400, JSON.stringify(result));
         assert.match(result.problem!.type, /\/target-cardinality$/);
         assert.equal(result.problem!.matchingPathCount, 2);
@@ -1196,7 +1196,7 @@ test("{§op-methods-op-dispatch} scheme extensions cannot override the command a
         statements: [editStmt(urlPath("channels", "/a.txt"), "updated", fullReplace), noteStmt("exceeds the ceiling")] });
     assert.equal(await content("/a.txt"), "updated");
     const receipts = await rows();
-    assert.equal(receipts.some((receipt) => receipt.op === "NOTE"), false);
+    assert.equal(receipts.some((receipt) => receipt.op === "note"), false);
     const problem = receipts.map(({ rx }) => JSON.parse(rx).problem).find((candidate) => candidate?.type.endsWith("/max-commands-exceeded"));
     assert.equal(problem?.omittedOperations, 1);
 });
@@ -1229,12 +1229,12 @@ test("{§turn-record}: log KILL selects the pre-program snapshot, not rows emitt
                 active: 0 | 1;
                 attrs: string;
             }>({ loop_id: result.loopId });
-            const firstModelTurnId = rows.find(({ origin, op }) => origin === "model" && op === "FIND")?.turn_id;
+            const firstModelTurnId = rows.find(({ origin, op }) => origin === "model" && op === "find")?.turn_id;
             assert.ok(firstModelTurnId !== undefined);
             const firstModelTurn = rows.filter(({ turn_id }) => turn_id === firstModelTurnId);
-            const prompt = firstModelTurn.find(({ op, origin }) => op === "SEND" && origin === "_plurnk");
+            const prompt = firstModelTurn.find(({ op, origin }) => op === "send" && origin === "_plurnk");
             assert.equal(prompt?.active, 0, "the pre-program arrival row was in the selected snapshot");
-            for (const op of ["FIND", "KILL", "NOTE"] as const) {
+            for (const op of ["find", "kill", "note"] as const) {
                 assert.equal(
                     firstModelTurn.find((row) => row.op === op)?.active,
                     1,
@@ -1263,7 +1263,7 @@ test("{§op-methods-op-dispatch}: FIND observes an entry created by EDIT in the 
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go" });
             assert.equal(finalStatus, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: loopId });
-            const modelFind = (rows ?? []).filter((r) => r.op === "FIND" && r.origin === "model");
+            const modelFind = (rows ?? []).filter((r) => r.op === "find" && r.origin === "model");
             assert.ok(modelFind.length >= 1, "the model's FIND dispatched");
             const rx = JSON.parse(modelFind[0].rx ?? "{}") as { content?: string };
             assert.match(rx.content ?? "", /module-loader-spec/,
@@ -1286,12 +1286,12 @@ test("{§op-methods-op-dispatch}: each EDIT records its own revision; an earlier
             const result = await runLoopToTerminal(ws, 2, { prompt: "go" });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
-            const reads = rows.filter((row) => row.op === "READ" && row.origin === "model");
+            const reads = rows.filter((row) => row.op === "read" && row.origin === "model");
             assert.equal(reads.length, 1);
             const receipt = JSON.parse(reads[0].rx) as { content?: string };
             assert.equal(receipt.content, "one\ntwo\nthree\nfour");
             const edits = rows
-                .filter((row) => row.op === "EDIT" && row.origin === "model")
+                .filter((row) => row.op === "edit" && row.origin === "model")
                 .map((row) => JSON.parse(row.rx) as {
                     receipt?: { revision?: string; effect?: { requested?: string; source?: string; result?: string } };
                 })
@@ -1324,10 +1324,10 @@ test("{§op-methods-op-dispatch}: overlapping numeric EDITs apply to successive 
             const result = await runLoopToTerminal(ws, 2, { prompt: "go" });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
-            const failedEdits = rows.filter((row) => row.op === "EDIT" && row.origin === "model"
+            const failedEdits = rows.filter((row) => row.op === "edit" && row.origin === "model"
                 && (JSON.parse(row.rx) as { status?: number }).status === 200);
             assert.equal(failedEdits.length, 2);
-            const read = rows.find((row) => row.op === "READ" && row.origin === "model");
+            const read = rows.find((row) => row.op === "read" && row.origin === "model");
             assert.equal((JSON.parse(read?.rx ?? "{}") as { content?: string }).content, "changed\nalso changed");
         } finally { ws.close(); }
     });
@@ -1353,7 +1353,7 @@ await plurnk.note({"text":"verify"});`, 10),
             const result = await runLoopToTerminal(ws, 2, { prompt: "go" });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
-            const read = rows.findLast((row) => row.op === "READ" && row.origin === "model");
+            const read = rows.findLast((row) => row.op === "read" && row.origin === "model");
             assert.equal((JSON.parse(read?.rx ?? "{}") as { content?: string }).content, "gamma\ndelta");
         } finally { ws.close(); }
     });
@@ -1392,7 +1392,7 @@ await plurnk.note({"text":"verify"});`, 10),
                 rx: string;
             }>({ loop_id: result.loopId });
             const edits = rows
-                .filter((row) => row.op === "EDIT" && row.origin === "model")
+                .filter((row) => row.op === "edit" && row.origin === "model")
                 .map((row) => JSON.parse(row.rx) as {
                     problem?: { anchor?: string; type?: string };
                     status?: number;
@@ -1405,7 +1405,7 @@ await plurnk.note({"text":"verify"});`, 10),
             assert.equal(edits[2]?.problem?.anchor, three);
             assert.match(edits[2]?.problem?.type ?? "", /line-anchor-invalid$/);
 
-            const read = rows.findLast((row) => row.op === "READ" && row.origin === "model");
+            const read = rows.findLast((row) => row.op === "read" && row.origin === "model");
             assert.equal(
                 (JSON.parse(read?.rx ?? "{}") as { content?: string }).content,
                 "three\nfour\nfive\nsix\nseven\neight",

@@ -375,7 +375,7 @@ test("{§env-delta} entry() materializes an https resource as plurnk narration r
             source: string;
             weight: number;
             attrs: string;
-        }>({ session_id: plurnkSession.id, op: "EDIT" });
+        }>({ session_id: plurnkSession.id, op: "edit" });
         const narrations = rows.filter((r) => r.hostname === "example.org" && r.pathname === "/turkeys");
         assert.equal(narrations.length, 2, "one narration row per entry() write");
         assert.equal(narrations[0]?.source, "session://researcher", "source uses the calling session's control identity");
@@ -388,7 +388,7 @@ test("{§env-delta} entry() materializes an https resource as plurnk narration r
             pathname: string;
             tx: string;
             rx: string;
-        }>({ session_id: plurnkSession.id, op: "EDIT" });
+        }>({ session_id: plurnkSession.id, op: "edit" });
         const second = full.filter((r) => r.hostname === "example.org" && r.pathname === "/turkeys")[1];
         assert.ok(second !== undefined, "the second narration row is present");
         const tx = JSON.parse(second.tx) as { op: string; body: string };
@@ -400,7 +400,7 @@ test("{§env-delta} entry() materializes an https resource as plurnk narration r
         // projects the machine-created entry as an ordinary system READ. Durable storage remains
         // the typed EDIT above; only the currently visible row contributes tokens.
         const view = (initial_folded: readonly (readonly [number, number])[]): object[] => [{
-            coordinate: "1/1/2", origin: "_plurnk", op: "EDIT",
+            coordinate: "1/1/2", origin: "_plurnk", op: "edit",
             target: { scheme: "https", username: null, password: null, hostname: "example.org", port: null, pathname: "/turkeys", query: null, fragment: null },
             status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
             initial_folded, source: "session://researcher", attrs: { kind: "entry_materialized" },
@@ -408,7 +408,7 @@ test("{§env-delta} entry() materializes an https resource as plurnk narration r
         const countTokens = (t: string): number => Math.ceil(t.length / 4);
         const foldedLine = PacketWire.renderLog(view([[1, -1]]), countTokens);
         const [folded] = parseLogRecords(foldedLine);
-        assert.equal(folded?.logPath, "log:///1/1/2/READ", "machine acquisition presents the resulting readable resource at the projected operation handle");
+        assert.equal(folded?.logPath, "log:///1/1/2/read", "machine acquisition presents the resulting readable resource at the projected operation handle");
         assert.equal(folded?.tokens, countTokens(foldedLine), "metadata-only observations still report their full context cost");
         assert.equal(Object.hasOwn(folded ?? {}, "body"), false, "the suppressed body is withheld");
         assert.equal(folded?.lines, 1, "metadata carries the line count for slice planning");
@@ -484,7 +484,7 @@ test("{§execution-output-identity} entry() preserves an exact failed write Prob
             pathname: string;
             rx: string;
             status_rx: number;
-        }>({ session_id: plurnkSession.id, op: "EDIT" });
+        }>({ session_id: plurnkSession.id, op: "edit" });
         const failure = rows.find((row) => row.hostname === "example.org" && row.pathname === "/rejected");
         assert.ok(failure !== undefined, "the rejected materialization remains durable evidence");
         assert.equal(failure.status_rx, 422);
@@ -504,7 +504,7 @@ test("{§execution-output-identity} entry() preserves an exact failed write Prob
         );
         assert.equal(result.problem.detail, "The fetched resource has no model-facing content.");
         assert.equal(result.problem.target, "https://example.org/rejected");
-        assert.match(result.problem.instance ?? "", /^log:\/\/\/\d+\/\d+\/\d+\/READ$/);
+        assert.match(result.problem.instance ?? "", /^log:\/\/\/\d+\/\d+\/\d+\/read$/);
     } finally {
         await quiesceExecs(schemes);
         await schemes.close();
@@ -857,7 +857,7 @@ const target: UrlPath = {
 };
 const statement: ResolvedEditStatement = {
     metadata: null,
-    op: "EDIT", aside: null, target, lineMarker: null,
+    op: "edit", aside: null, target, lineMarker: null,
     matcher: null, body: "an interrupted derivation must never attach", position: { line: 1, column: 1 },
 };
 
@@ -1337,7 +1337,7 @@ const url = (pathname: string): UrlPath => ({
 });
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null, target, lineMarker: null, body,
+    op: "edit", aside: null, target, lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });
 test("{§derivation-dedup-parallel} changed resources report one aggregate derivation lifecycle", async () => {

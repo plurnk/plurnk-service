@@ -426,11 +426,11 @@ interface EditFixture {
 const insertEdit = async (db: Db, fixture: EditFixture): Promise<number> => {
     // The durable statement's matcher is a MatcherBody, as the parser records it.
     const matcher = fixture.pattern === undefined || fixture.pattern === null ? null : { dialect: "regex", raw: fixture.pattern, pattern: fixture.pattern.slice(1, -1), flags: "" };
-    const statement = { op: "EDIT", path: fixture.pathname, lineMarker: fixture.marker === null ? null : JSON.parse(fixture.marker), matcher, body: "x" };
+    const statement = { op: "edit", path: fixture.pathname, lineMarker: fixture.marker === null ? null : JSON.parse(fixture.marker), matcher, body: "x" };
     const row = await db.engine_insert_log_entry.get<{ id: number }>({
         session_id: fixture.sessionId, loop_id: fixture.loopId, turn_id: fixture.turnId, sequence: fixture.sequence,
         origin: fixture.origin ?? "model", source: null, model_call_id: null,
-        op: "EDIT", signal: null,
+        op: "edit", signal: null,
         scheme: "file", username: null, password: null, hostname: null, port: null,
         pathname: fixture.pathname, query: null, fragment: null, lineMarker: fixture.marker,
         tx: JSON.stringify(statement), mimetype_tx: "application/json",
@@ -489,9 +489,9 @@ test("{§digest-forensic-fidelity}: a session's EDITs are counted by form, refus
     Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
 
     const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
-    assert.match(markdown, /^EDITs: {6}7 · hash=1 range=1 insert=1 column=1 append=1 pattern=1 whole=1 · refused=1 · revisits=2$/mu,
+    assert.match(markdown, /^Edits: {6}7 · hash=1 range=1 insert=1 column=1 append=1 pattern=1 whole=1 · refused=1 · revisits=2$/mu,
         "the session summary counts every model EDIT by form, the refusal, and the two returns to a.py; the harness EDIT is not the model's");
-    assert.match(markdown, /^EDITs: {6}\(no edits\)$/mu, "a session without EDITs says so");
+    assert.match(markdown, /^Edits: {6}\(no edits\)$/mu, "a session without EDITs says so");
 
     const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
         sessions: Array<{ name: string; edit_census: { edits: number; refused: number; revisits: number; forms: Record<string, number> } | null }>;
@@ -741,7 +741,7 @@ test("{§db-migrations}: opening a database newer than the build names both vers
         new SqlRiteSync({ path: dbPath, dir: newer }).close();
     });
     assert.equal(result.code, 1, `the launcher fails closed (stderr: ${result.stderr})`);
-    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 13\)/, "both schema versions read are named");
+    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 14\)/, "both schema versions read are named");
 });
 
 test("{§db-migrations}: opening a pre-floor database names both versions read and non-destructive remediation", async () => {

@@ -695,7 +695,7 @@ test("{§module-lifecycle} Daemon first Functionality demand reconciles generate
     try {
         await daemon.start();
         assert.deepEqual(
-            await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "plurnk", prefix: "/%" }),
+            await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "mcp", prefix: "/%" }),
             [],
             "dormant boot does not rewrite workspace documentation",
         );
@@ -706,7 +706,7 @@ test("{§module-lifecycle} Daemon first Functionality demand reconciles generate
             "attachment does not launch semantic derivation",
         );
         assert.deepEqual(
-            await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "plurnk", prefix: "/%" }),
+            await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "mcp", prefix: "/%" }),
             [],
             "attachment remains passive",
         );
@@ -714,7 +714,7 @@ test("{§module-lifecycle} Daemon first Functionality demand reconciles generate
             await daemon.invokeModuleAction("docs.probe", {}, { scope: "session", workspaceId, sessionId }),
             { ready: true },
         );
-        const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "plurnk", prefix: "/%" });
+        const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "mcp", prefix: "/%" });
         assert.ok(docs.length > 0, "capability demand publishes the current installed skills surface into an existing workspace");
         assert.equal(
             docs.some(({ pathname }) => pathname === "/log.md" || pathname === "/prompt.md"),
@@ -723,7 +723,7 @@ test("{§module-lifecycle} Daemon first Functionality demand reconciles generate
         );
         const generated = await db.crud_find_workspace_entry.get<{ id: number }>({
             workspace_id: workspaceId,
-            scheme: "plurnk",
+            scheme: "mcp",
             authority: "",
             pathname: docs[0].pathname,
         });

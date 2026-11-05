@@ -29,7 +29,7 @@ const fullReplace: LineMarker = { marks: [1, -1] };
 
 const wsEditStmt = (pathname: string, body: string, marker: LineMarker | null = fullReplace): EditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null,
+    op: "edit", aside: null,
     target: urlPath("workspace", pathname),
     lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 },
 });
@@ -88,8 +88,8 @@ test("{§loop-completion} Engine.runTurn: EDIT + SEND turn writes entry, log row
         });
         assert.equal(result.status, 102, "turn status from the SEND");
         assert.deepEqual(result.outcomes, [
-            { op: "EDIT", status: 201, problemType: null },
-            { op: "NOTE", status: 200, problemType: null },
+            { op: "edit", status: 201, problemType: null },
+            { op: "note", status: 200, problemType: null },
         ], "EDIT creates content; NOTE retains memory; the turn continues implicitly");
 
         const turn = await db.test_get_turn.get<{ loop_id: number; sequence: number; status: number }>({ id: result.turnId });
@@ -160,7 +160,7 @@ test("{§turn-record}: initialization and inference preserve turnOps beside ordi
             assert.doesNotMatch(initializationSource.content, /^(`{3,})/m, "initialization never emits operation fences");
             assert.match(initializationSource.content, /^await plurnk\.find\(\{"path":"workspace:\/\/\/\*"\}\);(?: \/\/ .*)?$/m, "the initialization program renders each operation in canonical Code Mode");
             assert.ok(!initializationRows.some(({ op }) => op === null));
-            assert.ok(initializationRows.some(({ op }) => op === "FIND"), "source retention does not replace executed results");
+            assert.ok(initializationRows.some(({ op }) => op === "find"), "source retention does not replace executed results");
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
             assert.deepEqual(logEntries(packet).filter(({ logPath }) => logPath.endsWith("/emission")), [],
                 "`_plurnk` initialization never fabricates a content announcement ({§turn-source-resources}); its READ of its own program is an ordinary row");
@@ -170,7 +170,7 @@ test("{§turn-record}: initialization and inference preserve turnOps beside ordi
             assert.equal(inferenceSource?.producer, "model");
             assert.equal(inferenceSource?.content, source, "the admitted source stays exact");
             assert.ok(!inferenceRows.some(({ op }) => op === null));
-            assert.ok(inferenceRows.some(({ op }) => op === "SEND"));
+            assert.ok(inferenceRows.some(({ op }) => op === "send"));
         } finally { await db.close(); }
     } finally {
         if (priorFiles === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = priorFiles;
@@ -353,20 +353,20 @@ test("{§loop-completion} Engine.runTurn: multi-op turn - the arrival row preced
         });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.deepEqual(result.outcomes, [
-            { op: "EDIT", status: 201, problemType: null },
-            { op: "EDIT", status: 201, problemType: null },
-            { op: "EDIT", status: 201, problemType: null },
-            { op: "NOTE", status: 200, problemType: null },
+            { op: "edit", status: 201, problemType: null },
+            { op: "edit", status: 201, problemType: null },
+            { op: "edit", status: 201, problemType: null },
+            { op: "note", status: 200, problemType: null },
         ]);
         const indices = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null }>({ turn_id: result.turnId });
         assert.deepEqual(
             indices.map((r) => ({ idx: r.sequence, op: r.op })),
             [
-                { idx: 1, op: "SEND" },
-                { idx: 2, op: "EDIT" },
-                { idx: 3, op: "EDIT" },
-                { idx: 4, op: "EDIT" },
-                { idx: 5, op: "NOTE" },
+                { idx: 1, op: "send" },
+                { idx: 2, op: "edit" },
+                { idx: 3, op: "edit" },
+                { idx: 4, op: "edit" },
+                { idx: 5, op: "note" },
             ],
         );
     } finally { await db.close(); }
@@ -381,9 +381,9 @@ test("{§edit} Engine.runTurn: a trusted disposition-less program continues with
         });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(result.status, 102);
-        assert.deepEqual(result.outcomes, [{ op: "EDIT", status: 201, problemType: null }]);
+        assert.deepEqual(result.outcomes, [{ op: "edit", status: 201, problemType: null }]);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ op, origin }) => op !== null && !(op === "SEND" && origin === "_plurnk")).map(({ op }) => op), ["EDIT"]);
+        assert.deepEqual(rows.filter(({ op, origin }) => op !== null && !(op === "send" && origin === "_plurnk")).map(({ op }) => op), ["edit"]);
         const channel = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/x", name: "body" });
         assert.equal(channel?.content, "y");
     } finally { await db.close(); }
@@ -431,7 +431,7 @@ test("{§edit} Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched actio
                         wsEditStmt("/c", "3"),
                         wsEditStmt("/d", "4"),
                         wsEditStmt("/e", "5"),
-                        dispositionStmt("WAIT", "Observe the admitted edits."),
+                        dispositionStmt("wait", "Observe the admitted edits."),
                     ]),
                     // Turn 2 clean — gives us a packet carrying turn 1's failure pointer.
                     response([wsEditStmt("/z", "z"), sendStmt(null, "ok")]),
@@ -553,7 +553,7 @@ test("{§loop-completion} Engine.runLoop: soft failures (404) do NOT accumulate 
         // Vary path each turn to keep cycle detection orthogonal.
         const readMissing = (delimiter: string): ReadStatement => ({
             metadata: null,
-            op: "READ", aside: null,
+            op: "read", aside: null,
             target: urlPath("workspace", `/not-there-${delimiter}`),
             lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
         });
@@ -583,13 +583,13 @@ test("{§edit} Engine.runLoop: clean turn between hard failures resets the strea
     try {
         const denied = (): EditStatement => ({
             metadata: null,
-            op: "EDIT", aside: null,
+            op: "edit", aside: null,
             target: urlPath("sealed", "/x"),
             lineMarker: null, matcher: null, body: "v", position: { line: 1, column: 1 },
         });
         const goodEdit = (p: string): EditStatement => ({
             metadata: null,
-            op: "EDIT", aside: null,
+            op: "edit", aside: null,
             target: urlPath("workspace", p),
             lineMarker: null, matcher: null, body: "v", position: { line: 1, column: 1 },
         });
@@ -623,7 +623,7 @@ test("{§operation-results} Engine.runLoop: strike is engine-internal — model 
     try {
         const denied = (): EditStatement => ({
             metadata: null,
-            op: "EDIT", aside: null,
+            op: "edit", aside: null,
             target: urlPath("sealed", "/x"),
             lineMarker: null, matcher: null, body: "v", position: { line: 1, column: 1 },
         });
@@ -643,7 +643,7 @@ test("{§operation-results} Engine.runLoop: strike is engine-internal — model 
         const t2packet = JSON.parse(t2?.packet ?? "{}");
         const errors = packetSection(t2packet, "errors");
         // The 403 action failure DOES surface (a real error that happened) as a LogCoordinate pointer.
-        assert.match(errors, /"status":403,"path":"log:\/\/\/[^"]+\/EDIT"/, "the 403 action failure surfaces as a log-coordinate pointer");
+        assert.match(errors, /"status":403,"path":"log:\/\/\/[^"]+\/edit"/, "the 403 action failure surfaces as a log-coordinate pointer");
         // The strike count does NOT — every surfaced error is a real log-row failure; gamification never leaks.
         assert.doesNotMatch(packetSection(t2packet, "notices"), /strike/, "strike accounting stays engine-internal");
     } finally { await db.close(); }
@@ -667,7 +667,7 @@ test("{§engine-rails} creation differs from repeated period-1 no-op edits", asy
         assert.equal(result.reason, "strike_threshold");
         assert.equal(result.turnIds.length, 7, "initialization plus creation, then five repeated no-op turns");
         const edits = (await db.test_log_entries_by_session.all<{ op: string; status_rx: number }>({ session_id: sessionId }))
-            .filter(({ op }) => op === "EDIT");
+            .filter(({ op }) => op === "edit");
         assert.deepEqual(edits.map(({ status_rx }) => status_rx), [201, 304, 304, 304, 304, 304]);
     } finally { await db.close(); }
 });
@@ -723,7 +723,7 @@ test("{§engine-rails} period-2 no-op edits cycle after initial creations", asyn
         assert.equal(result.reason, "strike_threshold");
         assert.equal(result.turnIds.length, 10, "initialization, two creations, then seven alternating no-op turns");
         const edits = (await db.test_log_entries_by_session.all<{ op: string; status_rx: number }>({ session_id: sessionId }))
-            .filter(({ op }) => op === "EDIT");
+            .filter(({ op }) => op === "edit");
         assert.deepEqual(edits.map(({ status_rx }) => status_rx), [201, 201, 304, 304, 304, 304, 304, 304, 304]);
     } finally { await db.close(); }
 });
@@ -754,7 +754,7 @@ test("{§edit} Engine.runTurn: the durable failure projection shows once, then a
     try {
         const denied = (): EditStatement => ({
             metadata: null,
-            op: "EDIT", aside: null,
+            op: "edit", aside: null,
             target: urlPath("sealed", "/x"),
             lineMarker: null, matcher: null, body: "v", position: { line: 1, column: 1 },
         });
@@ -834,7 +834,7 @@ test("{§op-shapes} Engine.runTurn: a trusted batch with two dispositions dispat
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([dispositionStmt("WAIT", "first"), dispositionStmt("WAIT", "last")])],
+            responses: [response([dispositionStmt("wait", "first"), dispositionStmt("wait", "last")])],
         });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(result.status, 102, "nothing is in flight, so the park continues at once");
@@ -862,14 +862,14 @@ test("{§message-arrival} Engine.runTurn: the first turn's log section contains 
         const inbox = (await db.test_messages_by_loop.all({ loop_id: loopId })) as Array<{ ordinal: number; log_entry_id: number | null }>;
         assert.deepEqual(inbox.map(({ ordinal }) => ordinal), [1], "the loop's one message");
         assert.ok(inbox[0].log_entry_id !== null, "the inbox row was stamped with the row it became");
-        const prompt = log.find((e) => e.logPath.endsWith("/SEND"));
+        const prompt = log.find((e) => e.logPath.endsWith("/send"));
         assert.ok(prompt, "the arrival row is in the log");
         // {§message-arrival} — every other sender has an address; the operator's message is named,
         // or it reads as the model's own SEND.
         assert.equal(prompt.origin, "user", "the operator's message says whose it is");
         assert.equal(prompt.source, undefined, "the operator has no actor address");
         assert.equal("path" in prompt, false, "an arrival has no addressed operand");
-        assert.match(prompt.logPath, /\/SEND$/, "the path owns the SEND delimiter");
+        assert.match(prompt.logPath, /\/send$/, "the path owns the SEND delimiter");
     } finally { await db.close(); }
 });
 
@@ -891,12 +891,12 @@ test("{§session-initialization-entry} Engine.runTurn: the second turn's log sec
         // EDIT and a SEND). Found by identity (an untargeted SEND without a reply receipt),
         // robust to the turn-0 initialization ({§session-initialization-entry}) and a
         // catalog-preview foist that shift coordinates between the arrival and the model's ops.
-        assert.ok(log.find((e) => e.logPath.endsWith("/SEND") && !("path" in e) && !("repliedTo" in e)), "arrival row logged");
-        const edit = log.find((e) => (e.origin ?? "model") === "model" && e.logPath.endsWith("/EDIT"));
+        assert.ok(log.find((e) => e.logPath.endsWith("/send") && !("path" in e) && !("repliedTo" in e)), "arrival row logged");
+        const edit = log.find((e) => (e.origin ?? "model") === "model" && e.logPath.endsWith("/edit"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
         assert.equal(edit.path, "workspace:///a");
-        const send = log.find((e) => (e.origin ?? "model") === "model" && e.logPath.endsWith("/NOTE"));
+        const send = log.find((e) => (e.origin ?? "model") === "model" && e.logPath.endsWith("/note"));
         assert.ok(send, "model NOTE logged");
         assert.match(String(send.body), /keep going/);
     } finally { await db.close(); }
@@ -918,7 +918,7 @@ test("{§edit-result-receipt-projection} Engine.runTurn: the log section parses 
         const packet = JSON.parse(row?.packet ?? "{}");
         const log = logEntries(packet);
         // Found by identity, robust to a turn-0 catalog-preview foist.
-        const edit = log.find((e) => (e.origin ?? "model") === "model" && e.logPath.endsWith("/EDIT"));
+        const edit = log.find((e) => (e.origin ?? "model") === "model" && e.logPath.endsWith("/edit"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
         // The EDIT's result span renders as an anchored coordinate line —
@@ -951,7 +951,7 @@ test("{§edit} Errors pointers use the canonical projected operation of a materi
         const turnId = await insertTurn(db, loopId, 1, 102);
         await db.engine_insert_log_entry.get({
             session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "_plurnk", source: "test", model_call_id: null, op: "EDIT",
+            origin: "_plurnk", source: "test", model_call_id: null, op: "edit",
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/rejected", query: null, fragment: null, lineMarker: null,
             tx: "{}", mimetype_tx: "application/json",
@@ -961,7 +961,7 @@ test("{§edit} Errors pointers use the canonical projected operation of a materi
         const packets = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
         assert.deepEqual(await packets.buildFailurePointers(loopId, 2), [{
             status: 422,
-            coordinate: "1/1/1/READ",
+            coordinate: "1/1/1/read",
         }]);
     } finally { await db.close(); }
 });
@@ -972,7 +972,7 @@ test("{§operation-results} Engine.runTurn: previous-turn 403 surfaces in the ne
         // Model attempts to EDIT sealed:/// — denied 403 (writableBy=['_plurnk']).
         const denied: EditStatement = {
             metadata: null,
-            op: "EDIT", aside: null,
+            op: "edit", aside: null,
             target: urlPath("sealed", "/illegal"),
             lineMarker: null, matcher: null, body: "x", position: { line: 1, column: 1 },
         };
@@ -991,7 +991,7 @@ test("{§operation-results} Engine.runTurn: previous-turn 403 surfaces in the ne
         // failure message on its meta line, so the pointer leads to a record that states its why.
         // The initialization is turn 1. In model turn 2, the prompt precedes
         // the denied EDIT, whose stable coordinate is therefore 1/2/2.
-        assert.equal(packetSection(packet, "errors"), '[{"status":403,"path":"log:///1/2/2/EDIT"}]', "the pointer targets the failing op row itself");
+        assert.equal(packetSection(packet, "errors"), '[{"status":403,"path":"log:///1/2/2/edit"}]', "the pointer targets the failing op row itself");
     } finally { await db.close(); }
 });
 
@@ -1000,7 +1000,7 @@ test("{§edit} Engine.runTurn: Errors includes only the immediately previous tur
     try {
         const denied: EditStatement = {
             metadata: null,
-            op: "EDIT", aside: null,
+            op: "edit", aside: null,
             target: urlPath("sealed", "/a"),
             lineMarker: null, matcher: null, body: "x", position: { line: 1, column: 1 },
         };
@@ -1033,14 +1033,14 @@ test("{§outside-text}: free text is the turn's outside source, never delivered,
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
         assert.deepEqual(result.outcomes, [
-            { op: "NOTE", status: 200, problemType: null },
-            { op: "SEND", status: 200, problemType: null },
+            { op: "note", status: 200, problemType: null },
+            { op: "send", status: 200, problemType: null },
         ], "the text beside the message is the turn's NOTE at its position; the message is delivered without a corrective failure");
         assert.equal(result.status, 102);
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "outside"), undefined, "beside a fenced operation the text is a NOTE, not an outside source");
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ origin, op }) => origin === "model" && op === "NOTE").map(({ tx }) => JSON.parse(tx).body), ["Just thinking out loud here."]);
+        assert.deepEqual(rows.filter(({ origin, op }) => origin === "model" && op === "note").map(({ tx }) => JSON.parse(tx).body), ["Just thinking out loud here."]);
     } finally { await db.close(); }
 });
 
@@ -1056,11 +1056,11 @@ test("{§edit} Engine.runTurn: NOTE carries literal working memory separate from
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
         assert.deepEqual(result.outcomes, [
-            { op: "EDIT", status: 201, problemType: null },
-            { op: "NOTE", status: 200, problemType: null },
+            { op: "edit", status: 201, problemType: null },
+            { op: "note", status: 200, problemType: null },
         ]);
         const ops = await db.test_log_entries_by_loop.all<{ op: string; tx: string }>({ loop_id: loopId });
-        assert.ok(ops.some((row) => row.op === "NOTE" && JSON.parse(row.tx).body === "Review the edit result."));
+        assert.ok(ops.some((row) => row.op === "note" && JSON.parse(row.tx).body === "Review the edit result."));
     } finally { await db.close(); }
 });
 });
@@ -1087,14 +1087,14 @@ test("{§emission-history} {§emission-history}: a turn's content operations pre
         "the turn's operations replay together, in program order, as one assistant message");
     const at = request.findIndex(({ role }) => role === "assistant");
     assert.equal(request[at + 1].role, "user");
-    const records = chatMessageText(request[at + 1]).split(/\n\n(?=### log:)/u).filter((record) => /^### log:\/\/\/1\/2\/\d+\/(?:EDIT|READ|NOTE) /u.test(record));
-    const operations = { EDIT: edit, READ: read, NOTE: note } as const;
-    assert.deepEqual(records.map((record) => /\/(EDIT|READ|NOTE) /u.exec(record)![1]), ["EDIT", "READ", "NOTE"], "the turn's receipts follow it, in order");
+    const records = chatMessageText(request[at + 1]).split(/\n\n(?=### log:)/u).filter((record) => /^### log:\/\/\/1\/2\/\d+\/(?:edit|read|note) /u.test(record));
+    const operations = { edit, read, note } as const;
+    assert.deepEqual(records.map((record) => /\/(edit|read|note) /u.exec(record)![1]), ["edit", "read", "note"], "the turn's receipts follow it, in order");
     for (const record of records) {
-        const op = /\/(EDIT|READ|NOTE) /u.exec(record)![1] as keyof typeof operations;
+        const op = /\/(edit|read|note) /u.exec(record)![1] as keyof typeof operations;
         assert.doesNotMatch(record, /"aside"/u, "the aside stays with the replayed operation");
-        if (op !== "NOTE") assert.match(record.split("\n")[0], / \(workspace:\/\/\/memo\.txt\) · \d+$/u, "the receipt names its operand");
-        if (op === "NOTE") assert.doesNotMatch(record, /An authored memory/u);
+        if (op !== "note") assert.match(record.split("\n")[0], / \(workspace:\/\/\/memo\.txt\) · \d+$/u, "the receipt names its operand");
+        if (op === "note") assert.doesNotMatch(record, /An authored memory/u);
         else assert.match(record, /Unique replacement\./u, "landed edit windows and READ output are returned evidence, not suppressed request bodies");
         const head = record.split("\n\n")[0];
         assert.equal(Number(/ · (\d+)/u.exec(head)![1]), contentWeight(head) + contentWeight(operations[op]), "the curation charge owns the complete operation and receipt once");
@@ -1123,7 +1123,7 @@ test("{§op-shapes}: failed retrievals retain their annotations independently, w
     assert.doesNotMatch(user, /also-absent\.txt/u);
     assert.doesNotMatch(user, /not-a-pattern/u);
     assert.equal([...user.matchAll(/"status":404/gu)].length >= 1, true);
-    const notes = await db.test_log_entries_by_session_op_full.all<{ tx: string }>({ session_id: sessionId, op: "NOTE" });
+    const notes = await db.test_log_entries_by_session_op_full.all<{ tx: string }>({ session_id: sessionId, op: "note" });
     assert.ok(notes.some(({ tx }) => JSON.parse(tx).body === "/not-a-pattern/"));
 });
 
@@ -1148,7 +1148,7 @@ test("{§emission-history} {§op-methods-op-dispatch}: one glob replay owns conc
     const receipts = chatMessageText(request[index + 1]);
     assert.match(receipts, /case-a\.txt[\s\S]*First\.[\s\S]*case-b\.txt[\s\S]*Second\./u, "the glob owns its concrete receipts");
     assert.match(receipts, /"status":404/u, "the failed READ's receipt follows with the turn's others");
-    assert.match(receipts, /^### log:\/\/\/1\/3\/\d+\/COPY \(workspace:\/\/\/case-a\.txt\) \(workspace:\/\/\/copy\.txt\)/mu, "resolved transfer operands are new result facts");
+    assert.match(receipts, /^### log:\/\/\/1\/3\/\d+\/copy \(workspace:\/\/\/case-a\.txt\) \(workspace:\/\/\/copy\.txt\)/mu, "resolved transfer operands are new result facts");
 });
 });
 

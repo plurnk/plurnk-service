@@ -54,7 +54,7 @@ for (const final of ["Four, precisely.", "", " \n\t"]) {
             assert.equal(sent.status, 102, "a SEND answers but cannot conclude");
             assert.equal(sent.emptyTurn, false, "an explicit SEND is an authored operation");
             const firstRows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string; rx: string }>({ turn_id: sent.turnId });
-            const firstSend = firstRows.find(({ op, origin }) => op === "SEND" && origin === "model");
+            const firstSend = firstRows.find(({ op, origin }) => op === "send" && origin === "model");
             assert.ok(firstSend, "the answer is delivered through the authored SEND");
             assert.equal(JSON.parse(firstSend.tx).body.raw, "Four.");
             const repliedTo: string[] = JSON.parse(firstSend.rx).repliedTo;
@@ -67,7 +67,7 @@ for (const final of ["Four, precisely.", "", " \n\t"]) {
             assert.equal(result.status, 200);
             assert.equal(result.content, final.trim() ? final : "Four.");
             const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: concluded.turnId });
-            assert.deepEqual(JSON.parse(rows.find(({ op }) => op === "DONE")!.rx).repliedTo, repliedTo, "completion addresses the original message even without speech");
+            assert.deepEqual(JSON.parse(rows.find(({ op }) => op === "done")!.rx).repliedTo, repliedTo, "completion addresses the original message even without speech");
             const history = await db.message_history.all<{ direction: string; body: string }>({
                 workspace_id: ids.workspaceId, session_id: ids.sessionId, loop_id: ids.loopId,
             });
@@ -79,7 +79,7 @@ for (const final of ["Four, precisely.", "", " \n\t"]) {
             });
             const parentRows = await db.engine_render_log.all<{ source: string; op: string; rx: string }>({ session_id: parentId });
             const childRows = parentRows.filter(({ source }) => source === "session://alice");
-            assert.deepEqual(childRows.map(({ op }) => op), ["READ"], "the parent receives one conclusion, not a duplicate child message or activity");
+            assert.deepEqual(childRows.map(({ op }) => op), ["read"], "the parent receives one conclusion, not a duplicate child message or activity");
             assert.equal(JSON.parse(childRows[0].rx).content, final.trim() ? final : "Four.", "the parent's actual conclusion READ contains the child's final answer");
         } finally { await db.close(); }
     });
@@ -99,7 +99,7 @@ test("{§slot-order} {§message-completion}: addressed completion resolves only 
         assert.equal(second.status, 200, "both explicitly addressed messages are now complete");
         for (const [turnId, addressed] of [[first.turnId, followup], [second.turnId, message]] as const) {
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; rx: string }>({ turn_id: turnId });
-            const replies = rows.filter(({ op, origin }) => op === "DONE" && origin === "model").map(({ rx }) => JSON.parse(rx));
+            const replies = rows.filter(({ op, origin }) => op === "done" && origin === "model").map(({ rx }) => JSON.parse(rx));
             assert.equal(replies.length, 1);
             assert.equal(replies[0].status, 200);
             const expected = await db.message_source_by_address.get<{ key_path: string }>({ workspace_id: ids.workspaceId, path: addressed });
@@ -128,7 +128,7 @@ test("{§message-completion} {§message-completion}: an empty completion succeed
         const rows = await db.engine_render_log.all<{ source: string; op: string; rx: string }>({ session_id: parentId });
         const conclusions = rows.filter(({ source }) => source === "session://alice");
         assert.equal(conclusions.length, 1, "the parent receives one ordinary completion observation");
-        assert.equal(conclusions[0].op, "READ");
+        assert.equal(conclusions[0].op, "read");
         const result = JSON.parse(conclusions[0].rx);
         assert.equal(result.status, 200, "silence does not become a child failure");
         assert.ok(result.content === undefined || result.content === "", "no answer text is invented");
@@ -190,7 +190,7 @@ test("{§message-completion}: sequential final replies both deliver and the late
         const result = await turn();
         assert.equal(result.status, 200);
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["DONE", "DONE"]);
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["done", "done"]);
         const delivered = await answer();
         assert.ok("content" in delivered);
         assert.equal(delivered.content, "Precisely four.");
@@ -208,7 +208,7 @@ test("{§message-completion}: a NOTE after progress delivery leaves messages unr
 
 {
     for (const obligation of ["child", "stream"] as const) {
-        for (const park of ["WAIT", "DONE"] as const) {
+        for (const park of ["wait", "done"] as const) {
             test(`{§loop-completion}: an earlier reply does not park ordinary work before ${park} with a live ${obligation}`, async () => {
                 const first = `${send("Working on it.")}\n\nawait plurnk.note({"text":"Continue the work."});`;
                 const { db, turn, ids } = await setup([
@@ -233,7 +233,7 @@ test("{§message-completion}: a NOTE after progress delivery leaves messages unr
                     const read = await turn();
                     assert.equal(read.status, 102, "ordinary work continues to observe its result without a poll or external wake");
                     const rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: read.turnId });
-                    assert.ok(rows.some(({ op, status_rx, rx }) => op === "READ" && status_rx === 200 && JSON.parse(rx).content === "input-witness"));
+                    assert.ok(rows.some(({ op, status_rx, rx }) => op === "read" && status_rx === 200 && JSON.parse(rx).content === "input-witness"));
                     assert.equal(await new LoopLifecycle(db).status(ids.loopId), 102);
                     assert.equal((await turn()).status, 202, `${park} still joins the live obligation`);
                     assert.equal(await new LoopLifecycle(db).status(ids.loopId), 202);
@@ -252,8 +252,8 @@ for (const response of ["200", "```markdown\nFour.\n```", "```md\nFour.\n```"]) 
             assert.equal(token.status, 102, "neither a numeric token nor a Markdown envelope requests completion");
             assert.equal(token.emptyTurn, true);
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: token.turnId });
-            assert.equal(rows.some(({ op, origin }) => op === "SEND" && origin === "model"), false, "outside text is never delivered");
-            assert.equal(rows.some(({ op, origin }) => op === "NOTE" && origin === "model"), false, "outside text is not a NOTE ({§outside-text})");
+            assert.equal(rows.some(({ op, origin }) => op === "send" && origin === "model"), false, "outside text is never delivered");
+            assert.equal(rows.some(({ op, origin }) => op === "note" && origin === "model"), false, "outside text is not a NOTE ({§outside-text})");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
             assert.equal(sources.find((row) => row.turn_id === token.turnId && row.kind === "outside")?.content, response, "the text is the turn's outside source, not confirmation of completion");
             assert.equal((await turn()).status, 200);
@@ -273,9 +273,9 @@ test("{§outside-text}: each span beside the operations is one NOTE at its posit
         assert.equal(provider.received.length, 2);
         const turnId = result.turnIds.at(-2)!;
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string; rx: string }>({ turn_id: turnId });
-        const operations = rows.filter(({ origin, op }) => origin === "model" && ["SEND", "NOTE"].includes(op));
-        assert.deepEqual(operations.map(({ op, tx }) => [op, op === "SEND" ? JSON.parse(tx).body.raw : JSON.parse(tx).body]),
-            [["NOTE", "Before."], ["NOTE", "remember"], ["NOTE", "Between."], ["SEND", "Four."], ["NOTE", "After."]], "each span is the turn's NOTE at its position, in source order");
+        const operations = rows.filter(({ origin, op }) => origin === "model" && ["send", "note"].includes(op));
+        assert.deepEqual(operations.map(({ op, tx }) => [op, op === "send" ? JSON.parse(tx).body.raw : JSON.parse(tx).body]),
+            [["note", "Before."], ["note", "remember"], ["note", "Between."], ["send", "Four."], ["note", "After."]], "each span is the turn's NOTE at its position, in source order");
         assert.equal(rows.some(({ op }) => op === "error"), false, "annotation is not a failed operation");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "outside"), undefined, "beside fenced operations there is no outside source");
@@ -294,7 +294,7 @@ test("{§outside-text}: a mixed turn's text becomes its NOTEs, replayed in the m
         assert.equal(mixed.status, 102);
         assert.equal(mixed.emptyTurn, false, "the READ is an authored operation");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: mixed.turnId });
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, tx }) => op === "NOTE" ? JSON.parse(tx).body : op), [prose[0], "READ", prose[1]], "each span is a NOTE row at its position");
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, tx }) => op === "note" ? JSON.parse(tx).body : op), [prose[0], "read", prose[1]], "each span is a NOTE row at its position");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; model_call_id: number | null }>({ session_id: ids.sessionId });
         assert.equal(sources.find((row) => row.turn_id === mixed.turnId && row.kind === "outside"), undefined, "no outside source beside fenced operations");
         assert.deepEqual(notices.filter(({ kind }) => kind === "outside_text"), [], "no notice: the card's register is where the text belongs");
@@ -316,13 +316,13 @@ test("{§outside-text}: a repetitive response beside operations is one NOTE per 
         const result = await engine.runLoop({ ...ids, provider, maxTurns: 5, maxStrikes: 2, messages: [] });
         const [, mixedTurn, proseTurn] = result.turnIds;
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: mixedTurn });
-        assert.equal(rows.filter(({ origin, op, tx }) => origin === "model" && op === "NOTE" && JSON.parse(tx).body !== "waiting").length, 401, "each span between operations is its own NOTE, however repetitive");
+        assert.equal(rows.filter(({ origin, op, tx }) => origin === "model" && op === "note" && JSON.parse(tx).body !== "waiting").length, 401, "each span between operations is its own NOTE, however repetitive");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
         assert.deepEqual(sources.filter((row) => row.turn_id === mixedTurn && row.kind === "outside"), [], "beside operations, no outside source");
         assert.deepEqual(sources.filter((row) => row.turn_id === proseTurn && row.kind === "outside").map(({ content }) => content), [proseOnly],
             "a response with no fenced operation keeps every fragment as one outside source and mints no NOTE");
         const proseRows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: proseTurn });
-        assert.equal(proseRows.some(({ origin, op }) => origin === "model" && op === "NOTE"), false);
+        assert.equal(proseRows.some(({ origin, op }) => origin === "model" && op === "note"), false);
         assert.deepEqual(proseRows.filter(({ origin, op }) => origin === "_plurnk" && op === "error").map(({ status_rx }) => status_rx), [422], "{§outside-text}: the prose-only turn strikes once");
     } finally { await db.close(); }
 });
@@ -368,7 +368,7 @@ for (const preview of ["0", "1"]) for (const [label, response, reasoning, notes,
             const rows = await db.test_log_entries_by_turn.all<{ op: string; source: string; origin: string; tx: string; status_rx: number }>({ turn_id: modelTurn });
             assert.equal(rows.some(({ op, source }) => op === "error" && source === "grammar"), false);
             assert.deepEqual(rows.filter(({ op, origin }) => op === "error" && origin === "_plurnk").map(({ status_rx }) => status_rx), [422], "the strike is one error row on the turn");
-            assert.deepEqual(rows.filter(({ op, origin }) => op === "NOTE" && origin === "model").map(({ tx }) => JSON.parse(tx).body), [...notes],
+            assert.deepEqual(rows.filter(({ op, origin }) => op === "note" && origin === "model").map(({ tx }) => JSON.parse(tx).body), [...notes],
                 "a reasoning NOTE beside an empty program is a row of its own; outside text is none");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
             assert.equal(sources.find((row) => row.turn_id === modelTurn && row.kind === "outside")?.content, outside, "a prose-only turn still records its outside source ({§outside-text})");
@@ -380,7 +380,7 @@ for (const preview of ["0", "1"]) for (const [label, response, reasoning, notes,
 
 for (const [failure, operation, failedOp] of [
     ["parser", 'await plurnk.edit({"path":"workspace:///broken.md","range":"bad","content":"not a message"});', "error"],
-    ["operation", "await plurnk.send({\"target\":\"reasoning://alice/1/1\",\"text\":\"Not a recipient.\"});", "SEND"],
+    ["operation", "await plurnk.send({\"target\":\"reasoning://alice/1/1\",\"text\":\"Not a recipient.\"});", "send"],
 ] as const) {
     test(`{§outside-text}: stray text stored outside the turn does not mask an actual ${failure} failure`, async () => {
         const source = `Working.\n\nawait plurnk.note({"text":"Checking."});\n\n${operation}`;
@@ -396,16 +396,16 @@ for (const [failure, operation, failedOp] of [
     });
 }
 
-for (const op of ["NOTE", "WAIT"] as const) {
-    test(`{§loop-completion}: stray text beside ${op} is the turn's NOTE, and ${op === "WAIT" ? "the explicit park holds" : "work continues before automatic parking"}`, async () => {
+for (const op of ["note", "wait"] as const) {
+    test(`{§loop-completion}: stray text beside ${op} is the turn's NOTE, and ${op === "wait" ? "the explicit park holds" : "work continues before automatic parking"}`, async () => {
         const { db, turn, ids, notices } = await setup([said(`Working.\n\nawait plurnk.${op.toLowerCase()}(${JSON.stringify({ text: "Await the child." })});`)]);
         try {
             await holdChild(db, ids.workspaceId, ids.sessionId);
             const result = await turn();
-            assert.equal(result.status, op === "WAIT" ? 202 : 102);
+            assert.equal(result.status, op === "wait" ? 202 : 102);
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
             assert.deepEqual(rows.filter(({ origin }) => origin === "model").map((row) => [row.op, row.status_rx]),
-                [["NOTE", 200], [op, op === "WAIT" ? 202 : 200]], "the stray text is the turn's NOTE at its position, never delivered ({§outside-text})");
+                [["note", 200], [op, op === "wait" ? 202 : 200]], "the stray text is the turn's NOTE at its position, never delivered ({§outside-text})");
             assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error"), []);
         } finally { await db.close(); }
     });
@@ -433,7 +433,7 @@ test("{§outside-text}: bounded malformed operations consume one turn and expose
         assert.equal(failed.emissionExhausted, false);
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number; rx: string }>({ turn_id: failed.turnId });
         assert.ok(rows.some(({ op, status_rx, rx }) => op === "error" && status_rx === 400 && JSON.parse(rx).problem?.stage === "parse"));
-        assert.ok(rows.filter(({ origin }) => origin === "model").every(({ op }) => op !== "EDIT" && op !== "SEND"), "malformed operation regions are not delivered as free text");
+        assert.ok(rows.filter(({ origin }) => origin === "model").every(({ op }) => op !== "edit" && op !== "send"), "malformed operation regions are not delivered as free text");
         assert.equal((await turn()).status, 200);
         assert.equal(provider.received.length, 2, "recovery sees a new packet, not a private same-packet attempt");
         assert.doesNotMatch(JSON.stringify(provider.received[1]), /No valid Operation Syntax OPs detected\./,
@@ -518,8 +518,8 @@ for (const [name, first, detail] of [
             }).length, 1, "one durable correction, not duplicated grammar and runtime errors");
             assert.match(JSON.stringify(provider.received[1]), new RegExp(detail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
         }
-        assert.equal(rows.filter(({ op, origin }) => origin === "model" && op === "DONE").length, 1);
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), [/plurnk\.(\w+)/u.exec(first)![1].toUpperCase(), "DONE"],
+        assert.equal(rows.filter(({ op, origin }) => origin === "model" && op === "done").length, 1);
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), [/plurnk\.(\w+)/u.exec(first)![1], "done"],
             "the model's rows are exactly its program and its conclusion");
     });
 }
@@ -553,7 +553,7 @@ for (const [cancel, status] of [[false, 200], [true, 499]] as const) {
         const loopId = await insertLoop(db, sessionId, 1, "Answer, then tidy up.");
         const provider = new Mock({ contextWindow: 100000, responses: [
             response(`await plurnk.find({"path":"workspace:///*"});\nawait plurnk.send({"text":"The answer."});`),
-            response(`await plurnk.kill({"path":"log:///1/2/*/SEND"});\n${cancel ? "await plurnk.kill({\"path\":\"session://alice\"});" : "await plurnk.note({\"text\":\"Result observed.\"});"}`),
+            response(`await plurnk.kill({"path":"log:///1/2/*/send"});\n${cancel ? "await plurnk.kill({\"path\":\"session://alice\"});" : "await plurnk.note({\"text\":\"Result observed.\"});"}`),
             response("await plurnk.done({});"),
         ] });
         const lifecycle = new LoopLifecycle(db);
@@ -563,7 +563,7 @@ for (const [cancel, status] of [[false, 200], [true, 499]] as const) {
         assert.equal(await lastReply(db, loopId), "The answer.");
         assert.equal((await new LoopLifecycle(db).result(loopId))?.content, undefined);
         const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: loopId });
-        assert.ok(rows.some(({ op, status_rx }) => op === "KILL" && status_rx === 200));
+        assert.ok(rows.some(({ op, status_rx }) => op === "kill" && status_rx === 200));
         assert.equal(provider.received.length, cancel ? 2 : 3, "cancellation or completion of all obligations ends the loop");
         if (cancel) assert.match(result.result.problem?.detail ?? "", /killed via session/);
         else assert.equal(result.result.problem, undefined);
@@ -602,7 +602,7 @@ test("{§loop-completion} an observed cleanup failure does not invalidate comple
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
     const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId });
-    const denied = rows.find(({ op }) => op === "KILL");
+    const denied = rows.find(({ op }) => op === "kill");
     assert.equal(denied?.status_rx, 403);
     assert.equal(JSON.parse(denied.rx).problem.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
     assert.ok(JSON.stringify(provider.received[1]).includes("writer-forbidden"), "the failed cleanup reaches a later packet");
@@ -727,7 +727,7 @@ test("{§message-completion} every progress SEND executes before a later complet
         } }, { assistant: { content: "", reasoning: null, ops: [completeStmt("")] } }] });
         const turn = await engine.runTurn({ ...env, provider, messages: [] });
         assert.equal(turn.status, 102);
-        assert.deepEqual(turn.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["SEND", 200], ["NOTE", 200]]);
+        assert.deepEqual(turn.outcomes.map(({ op, status }) => [op, status]), [["send", 200], ["send", 200], ["note", 200]]);
         assert.equal((await engine.runTurn({ ...env, provider, messages: [] })).status, 200);
         assert.equal((await lifecycle.result(env.loopId))?.content, undefined);
         assert.equal(await lastReply(db, env.loopId), "Second.");
@@ -787,15 +787,15 @@ test("{§message-completion}: progress delivers without resolving; explicit comp
     assert.deepEqual(await f.replies(), ["Working.", "Finished."]);
 });
 
-for (const verb of ["SEND", "DONE", "FAIL"] as const) {
+for (const verb of ["send", "done", "fail"] as const) {
     test(`{§log-wire-format} {§message-completion}: ${verb} omits delivery success without changing message state`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
         await f.add("second");
-        const body = verb === "SEND" ? "Sign-in is required." : "The request is settled.";
+        const body = verb === "send" ? "Sign-in is required." : "The request is settled.";
         const rendered = `await plurnk.${verb.toLowerCase()}(${JSON.stringify({ text: body })});`;
         const result = await f.turn(rendered);
         assert.equal(result.outcomes.find(({ op }) => op === verb)?.status, 200, "delivery still reports success");
-        assert.equal(await f.remaining(), verb === "SEND" ? 2 : 1);
+        assert.equal(await f.remaining(), verb === "send" ? 2 : 1);
 
         const observation = await f.turn("await plurnk.note({\"text\":\"The second request remains open.\"});");
         const storedPacket = await f.db.test_get_packet.get<{ packet: string }>({ id: observation.turnId });
@@ -811,7 +811,7 @@ for (const verb of ["SEND", "DONE", "FAIL"] as const) {
         assert.equal(arrivals.length, 2);
         for (const arrival of arrivals) assert.equal(Object.hasOwn(arrival, "status"), false);
         const open = JSON.parse(packetSection(packet, "work")).messages as Array<{ path: string }>;
-        assert.deepEqual(open.map(({ path }) => path), (verb === "SEND" ? arrivals : arrivals.slice(1)).map(({ resource }) => resource));
+        assert.deepEqual(open.map(({ path }) => path), (verb === "send" ? arrivals : arrivals.slice(1)).map(({ resource }) => resource));
 
         const rows = await f.db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number; rx: string }>({ turn_id: result.turnId });
         const durable = rows.find(({ op, origin }) => op === verb && origin === "model");
@@ -833,7 +833,7 @@ test("{§message-completion}: two independent final replies execute in one turn"
 });
 
 for (const count of [0, 1, 2]) {
-    for (const verb of ["SEND", "DONE", "FAIL"] as const) {
+    for (const verb of ["send", "done", "fail"] as const) {
         test(`{§message-completion}: targetless ${verb} with ${count} Open Messages`, async (t) => {
             const f = await setup(); t.after(() => f.db.close());
             await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, pathname: "/evidence.txt", content: "Evidence." });
@@ -843,7 +843,7 @@ for (const count of [0, 1, 2]) {
             const result = await f.turn(`await plurnk.${verb.toLowerCase()}({"text":"Implicit reply."});`);
             const delivery = result.outcomes.find(({ op }) => op === verb);
             assert.equal(delivery?.status, 200);
-            assert.equal(await f.remaining(), count > 0 && verb !== "SEND" ? count - 1 : count);
+            assert.equal(await f.remaining(), count > 0 && verb !== "send" ? count - 1 : count);
             assert.deepEqual(await f.replies(), [...before, "Implicit reply."]);
             const rows = await f.db.test_log_entries_by_turn.all<{ op: string; origin: string; rx: string }>({ turn_id: result.turnId });
             const reply = rows.find(({ op, origin }) => op === verb && origin === "model");
@@ -865,7 +865,7 @@ test("{§message-completion}: a targetless SEND in a loop with no published mess
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     const result = await engine.runTurn({ workspaceId, sessionId, loopId, messages: [],
         provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.send({\"text\":\"Hello?\"});", reasoning: null, finishReason: "stop" } }] }) });
-    const delivery = result.outcomes.find(({ op }) => op === "SEND");
+    const delivery = result.outcomes.find(({ op }) => op === "send");
     assert.equal(delivery?.status, 400);
     assert.equal(delivery?.problemType, "https://problems.plurnk.xyz/engine/dispatcher/send-target-required");
 });
@@ -882,7 +882,7 @@ test("{§message-completion}: progress and consecutive completions consume the q
     assert.equal(result.status, 200);
     assert.equal(await f.remaining(), 0);
     const rows = await f.db.test_log_entries_by_turn.all<{ op: string; origin: string; rx: string }>({ turn_id: result.turnId });
-    assert.deepEqual(rows.filter(({ op, origin }) => (op === "SEND" || op === "DONE" || op === "FAIL") && origin === "model").map(({ rx }) => JSON.parse(rx).repliedTo),
+    assert.deepEqual(rows.filter(({ op, origin }) => (op === "send" || op === "done" || op === "fail") && origin === "model").map(({ rx }) => JSON.parse(rx).repliedTo),
         [[f.message("first")], [f.message("first")], [f.message("second")], [f.message("second")]]);
 });
 
@@ -894,7 +894,7 @@ test("{§message-completion}: corrections name an already-resolved message expli
     assert.deepEqual(await f.replies(), ["Initial answer.", "Corrected answer."]);
 });
 
-for (const tail of ["", "await plurnk.note({\"text\":\"The result is sufficient.\"});", "await plurnk.kill({\"path\":\"log:///**/READ\",\"note\":\"Retired inspected evidence.\"});"]) {
+for (const tail of ["", "await plurnk.note({\"text\":\"The result is sufficient.\"});", "await plurnk.kill({\"path\":\"log:///**/read\",\"note\":\"Retired inspected evidence.\"});"]) {
     test(`{§loop-completion}: late results retain the answer and settle after ${tail || "no further operations"}`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
         await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, scheme: "workspace", pathname: "/evidence.txt",
@@ -942,7 +942,7 @@ test("{§loop-completion}: final replies join held work without cancelling it", 
     assert.equal((await f.db.lifecycle_loop_status.get<{ status: number }>({ loop_id: childLoop }))!.status, 102);
 });
 
-for (const [verb, code] of [["DONE", 200], ["FAIL", 499]] as const) {
+for (const [verb, code] of [["done", 200], ["fail", 499]] as const) {
     test(`{§message-completion}: ${verb} leaves child and stream work alive until normal settlement`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
         const childLoop = await holdChild(f.db, f.ids.workspaceId, f.ids.sessionId);
@@ -987,7 +987,7 @@ test("{§message-completion}: a later request stays open after an earlier final 
     assert.equal((await f.turn(`await plurnk.done({"target":"${f.message("second")}","text":"Second answer."});`)).status, 200);
 });
 
-for (const [verbs, expected] of [[["FAIL", "FAIL"], 499], [["FAIL", "DONE"], 200], [["DONE", "FAIL"], 200]] as const) {
+for (const [verbs, expected] of [[["fail", "fail"], 499], [["fail", "done"], 200], [["done", "fail"], 200]] as const) {
     test(`{§message-completion}: message outcomes ${verbs.join("+")} settle as ${expected}`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
         await f.add("second");
@@ -1040,10 +1040,10 @@ for (const finishReason of ["length", "content_filter", "tool_calls"] as const) 
 }
 
 for (const content of [
-    "READ (workspace:///evidence.txt)",
+    "await plurnk.read(42);",
     '<tool_call><function=READ><parameter=unknown>evidence.txt</parameter></function></tool_call>',
     "await reed[\"workspace:///evidence.txt\"]();",
-    `await plurnk.note({"text":"Inspect more evidence."});\n\nREAD (workspace:///evidence.txt)`,
+    `await plurnk.note({"text":"Inspect more evidence."});\n\nawait plurnk.read(42);`,
 ]) {
     test(`{§loop-completion}: omitted operation cannot certify settlement: ${content}`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
@@ -1113,7 +1113,7 @@ for (const shape of ["nested", "indented"] as const) {
         assert.equal(final.status, 200);
         assert.equal((await f.db.test_get_channel_by_pathname.get({ pathname: "/kept.md", name: "body" }))?.content, "Retained.");
         assert.deepEqual(await speech(f), [shape === "nested" ? answer : "Done."]);
-        assert.equal((await f.db.test_log_entries_by_turn.all<{ op: string }>({ turn_id: final.turnId })).some(({ op }) => op === "KILL"), false);
+        assert.equal((await f.db.test_log_entries_by_turn.all<{ op: string }>({ turn_id: final.turnId })).some(({ op }) => op === "kill"), false);
     });
 }
 
@@ -1143,14 +1143,14 @@ for (const completionFirst of [false, true]) {
     });
 
     test(`{§loop-completion}: curation ${completionFirst ? "after" : "before"} completion runs without extending the loop`, async (t) => {
-        const curate = "await plurnk.kill({\"path\":\"log:///**/NOTE\"});";
+        const curate = "await plurnk.kill({\"path\":\"log:///**/note\"});";
         const reply = "await plurnk.done({\"text\":\"42.\"});";
         const f = await setup([response("await plurnk.note({\"text\":\"Disposable scratch.\"});"), response((completionFirst ? [reply, curate] : [curate, reply]).join("\n\n"))]);
         t.after(() => f.db.close());
         assert.equal((await f.turn()).status, 102);
         assert.equal((await f.turn()).status, 200);
         assert.deepEqual(await speech(f), ["42."]);
-        assert.equal((await f.db.engine_render_log.all<{ op: string }>({ session_id: f.sessionId })).some(({ op }) => op === "NOTE"), false);
+        assert.equal((await f.db.engine_render_log.all<{ op: string }>({ session_id: f.sessionId })).some(({ op }) => op === "note"), false);
     });
 }
 

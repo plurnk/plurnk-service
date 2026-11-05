@@ -72,13 +72,13 @@ test("{§session-scheme}: an empty directed SEND refuses before admission and th
             (rows) => rows.some((row) => row.id === accepted.loopId && row.status === 200));
         assert.equal(loops.find((row) => row.id === accepted.loopId)?.status, 200);
         const rows = await daemon.readLog({ workspaceId, sessionId: sender.sessionId, loopId: accepted.loopId });
-        const refused = rows.find((row) => row.origin === "model" && row.op === "SEND" && row.status_rx === 422);
+        const refused = rows.find((row) => row.origin === "model" && row.op === "send" && row.status_rx === 422);
         assert.ok(refused);
         assert.equal(refused.status_rx, 422);
         const receipt = refused.rx as SchemeResult;
         assert.equal(receipt.problem?.type, "https://problems.plurnk.xyz/scheme/session/message-empty");
         assert.equal(receipt.problem?.detail, "SEND has no message text or attachments."); // {§operation-results}
-        assert.ok(rows.some((row) => row.origin === "model" && row.op === "NOTE" && row.status_rx === 200));
+        assert.ok(rows.some((row) => row.origin === "model" && row.op === "note" && row.status_rx === 200));
         assert.deepEqual(await daemon.listSessionLoops({ workspaceId, sessionId: receiver.sessionId }), [], "no empty receiving loop is created");
         assert.deepEqual(await daemon.readMessages({ workspaceId, sessionId: receiver.sessionId }), [], "no empty message is stored");
         assert.equal(provider.received.length, 2, "only the sender ran and recovered");
@@ -358,7 +358,7 @@ test("{§methods} op.edit creates an entry via engine.dispatch (origin=client)",
             const log = await db.test_first_log_entry.get<{ id: number; session_id: number; origin: string; op: string }>();
             assert.ok(log !== undefined);
             assert.equal(log?.origin, "client");
-            assert.equal(log?.op, "EDIT");
+            assert.equal(log?.op, "edit");
         } finally { ws.close(); }
     });
 });
@@ -415,7 +415,7 @@ test("{§methods} op.dispatch accepts a raw PlurnkStatement AST and dispatches i
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "dispatch-test" });
             const statement = {
-                op: "EDIT" as const,
+                op: "edit" as const,
                 aside: null,
                 metadata: null,
                 target: {
@@ -449,7 +449,7 @@ test("{§notifications} op.* fires log/entry notification with the entry shape",
             const captured = notifications();
             assert.equal(captured.length, 1);
             const params = captured[0] as { entry: { op: string; origin: string; status_rx: number } };
-            assert.equal(params.entry.op, "EDIT");
+            assert.equal(params.entry.op, "edit");
             assert.equal(params.entry.origin, "client");
             assert.equal(params.entry.status_rx, 201);
         } finally { ws.close(); }

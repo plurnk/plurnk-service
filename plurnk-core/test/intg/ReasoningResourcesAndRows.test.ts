@@ -69,7 +69,7 @@ for (const mode of ["fits", "receipt"] as const) test(`{§turn-source-resources}
         assert.equal(next.status, 102);
         assert.equal(next.createdTurnIds.length, 1);
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-        const record = logEntries(packet).find(({ logPath }) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(logPath))!;
+        const record = logEntries(packet).find(({ logPath }) => /^log:\/\/\/1\/2\/\d+\/read$/u.test(logPath))!;
         assert.ok(record);
         assert.equal(record.aside, undefined);
         assert.ok(packetSection(packet, "emission-history").includes("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"}); // retain reasoning"),
@@ -139,8 +139,8 @@ test("{§session-initialization-entry}: initialization is an ordinary `_plurnk` 
         assert.equal(program.status, 200, "the survey is the turn's ops source, the program that ran");
         assert.ok("content" in program && typeof program.content === "string");
         const operations = PlurnkParser.parseStatements(program.content).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.ok(operations.some(({ op }) => op === "FIND"));
-        assert.ok(!operations.some((operation) => operation.op === "READ" && operation.target?.raw.startsWith("reasoning://")), "no READ of its own reasoning");
+        assert.ok(operations.some(({ op }) => op === "find"));
+        assert.ok(!operations.some((operation) => operation.op === "read" && operation.target?.raw.startsWith("reasoning://")), "no READ of its own reasoning");
         assert.doesNotMatch(program.content, /READ \(prompt:\/\//, "the prompt arrives as its row, never as a second READ");
         assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), [], "the survey never masquerades as a content emission");
         assert.equal(provider.received.length, 1, "the survey costs no model inference");
@@ -177,7 +177,7 @@ test("{§turn-source-resources}: a model READ of its own reasoning settles in th
         const firstPacket = (await db.test_get_packet.get<{ packet: string }>({ id: produced.turnId }))!.packet;
         const observed = await engine.runTurn({ ...context, provider, messages: [] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: observed.turnId }))!.packet);
-        const receipt = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(row.logPath));
+        const receipt = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/read$/u.test(row.logPath));
         assert.ok(receipt);
         assert.equal(receipt.aside, undefined);
         assert.ok(packetSection(packet, "emission-history").includes(read), "the paired operation retains the source, scope and aside");
@@ -197,9 +197,9 @@ test("{§turn-source-resources}: a model READ of its own reasoning settles in th
 describe("reasoning-operations", () => {
 
 for (const preview of ["0", "1"]) for (const operation of [
-    { name: "NOTE", source: "await plurnk.note({\"text\":\"Retain this conclusion.\"});" },
-    { name: "FIND", source: "await plurnk.find({\"path\":\"workspace:///fact.txt\"});" },
-    { name: "READ", source: "await plurnk.read({\"path\":\"workspace:///fact.txt\"});" },
+    { name: "note", source: "await plurnk.note({\"text\":\"Retain this conclusion.\"});" },
+    { name: "find", source: "await plurnk.find({\"path\":\"workspace:///fact.txt\"});" },
+    { name: "read", source: "await plurnk.read({\"path\":\"workspace:///fact.txt\"});" },
 ]) test(`{§turn-source-resources}: reasoning ${operation.name} fence is inert text with previews ${preview}`, async () => {
     const previous = process.env.PLURNK_SERVICE_REASONING_ROWS;
     process.env.PLURNK_SERVICE_REASONING_ROWS = preview;
@@ -215,7 +215,7 @@ for (const preview of ["0", "1"]) for (const operation of [
         const result = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
         const outcomes = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
         assert.deepEqual(outcomes.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]),
-            [["DONE", 200]], "only the content operation ran; reasoning fences never execute");
+            [["done", 200]], "only the content operation ran; reasoning fences never execute");
         const reads = await db.test_reasoning_reads.all<{ origin: string; pathname: string; turn_id: number; rx: string }>({ session_id: sessionId });
         assert.deepEqual(reads.filter(({ origin }) => origin === "_plurnk").map(({ pathname, turn_id, rx }) => [pathname, turn_id, JSON.parse(rx).content]),
             preview === "1" ? [["/1/2", result.turnId, reasoning]] : [], "only the configured optional preview appears, on the same turn");
@@ -289,7 +289,7 @@ for (const tagged of [false, true]) test(`{§turn-source-resources} {§op-shapes
         });
         running = engine.runTurn({ ...context, provider, messages: [] });
         await Promise.race([observed.promise, running.then(() => assert.fail("response ended before reasoning was observed"))]);
-        const pendingReads = await db.test_log_entries_by_session_op_full.all<{ pathname: string }>({ session_id: sessionId, op: "READ" });
+        const pendingReads = await db.test_log_entries_by_session_op_full.all<{ pathname: string }>({ session_id: sessionId, op: "read" });
         assert.deepEqual(pendingReads.filter(({ pathname }) => pathname === "/fact.txt"), [],
             "streaming an operation does not dispatch it before response completion");
         release.resolve();
@@ -309,7 +309,7 @@ for (const tagged of [false, true]) test(`{§turn-source-resources} {§op-shapes
         assert.ok(sources.some((source) => source.kind === "ops" && source.content === content));
         assert.equal(sources.filter((source) => source.kind === "note" && source.content === "Content also survives.").length, 1);
         assert.equal(sources.filter((source) => source.kind === "note" && source.content === "Retain the later thought.").length, 0);
-        const rows = await db.test_log_entries_by_session_op_full.all<{ pathname: string }>({ session_id: sessionId, op: "READ" });
+        const rows = await db.test_log_entries_by_session_op_full.all<{ pathname: string }>({ session_id: sessionId, op: "read" });
         assert.equal(rows.filter(({ pathname }) => pathname === "/fact.txt").length, 1, "content READ executes once; reasoning READ does not");
         const second = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(second.status, 200);
@@ -361,7 +361,7 @@ test("{§turn-source-resources}: model sources are read-only and hash-free; log 
         assert.equal(result.content, original);
         assert.equal(Object.hasOwn(result, "lineAnchors"), false, "read-only sources do not advertise editable anchors");
         assert.equal(Object.hasOwn(result, "lineNumberWidth"), false);
-        const receipt = `log:///${read.loop_seq}/${read.turn_seq}/${read.sequence}/READ`;
+        const receipt = `log:///${read.loop_seq}/${read.turn_seq}/${read.sequence}/read`;
         let sequence = 50;
         const dispatch = (source: string) => engine.dispatch({ ...context, statement: statement(source), turnId: next.turnId, sequence: sequence++, origin: "model" });
         const copy = "session://alice/reasoning-notes.txt";
@@ -475,7 +475,7 @@ test("{§turn-source-resources}: immutable sources support search, FORK, restart
         assert.ok(read, "the parent's deliberate READ retains its own observation identity");
         assert.equal(JSON.parse(read.rx).content, original);
         assert.equal((await engine.dispatch({ ...context, turnId: next.turnId, sequence: 30, origin: "model",
-            statement: statement(`await plurnk.kill({"path":"log:///${read.loop_seq}/${read.turn_seq}/${read.sequence}/READ"});`),
+            statement: statement(`await plurnk.kill({"path":"log:///${read.loop_seq}/${read.turn_seq}/${read.sequence}/read"});`),
         })).status, 200);
         const forkAfterRead = await Fork.fork(db, sessionId, "already-observed");
         await db.close();
@@ -645,7 +645,7 @@ test("{§turn-source-resources} {§emission-history}: reasoning and NOTE stay in
             const emissionRow = rows.find((row) => kindOf(row) === "emission");
             assert.ok(reasoningRow && emissionRow, `both rows land: ${JSON.stringify(rows.map((r) => [r.sequence, r.op, kindOf(r)]))}`);
             assert.equal(reasoningRow.sequence, emissionRow.sequence - 1, "the reasoning row is the one sequence before the emission row");
-            assert.equal(reasoningRow.op, "READ"); assert.equal(reasoningRow.origin, "_plurnk"); assert.equal(reasoningRow.scheme, "reasoning");
+            assert.equal(reasoningRow.op, "read"); assert.equal(reasoningRow.origin, "_plurnk"); assert.equal(reasoningRow.scheme, "reasoning");
             assert.equal((JSON.parse(reasoningRow.rx!) as { content: string }).content, reasoning, "the body is the model's own reasoning, whole");
             const heading = log.indexOf(`/${reasoningRow.sequence}/reasoning (reasoning://alice/1/2)`);
             const emissionHeading = log.indexOf(`/${emissionRow.sequence}/emission`);
@@ -676,7 +676,7 @@ test("{§turn-source-resources}: without room for it, no reasoning row lands and
             assert.equal(rows.filter((row) => kindOf(row) === "reasoning").length, 0, "no reasoning row");
             assert.equal(rows.filter((row) => kindOf(row) === "emission").length, 1, "the emission row lands as always");
             assert.deepEqual(rows.filter((row) => row.op === "error").map((row) => row.sequence), [], "no receipt, no 413, nothing else changes");
-            assert.ok(rows.some((row) => row.op === "READ" && row.origin === "model"), "the program ran");
+            assert.ok(rows.some((row) => row.op === "read" && row.origin === "model"), "the program ran");
             assert.doesNotMatch(log, /\/reasoning \(reasoning:\/\//u, "the next packet carries no reasoning row");
         } finally { await db.close(); }
     });
@@ -775,7 +775,7 @@ test("{§turn-source-resources}: the optional preview never displaces an authore
                 ] });
                 const turn = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages, turnNumber: 1 });
                 const rows = await rowsOf(db, turn.turnId);
-                const read = rows.find((row) => row.op === "READ" && row.scheme === "workspace");
+                const read = rows.find((row) => row.op === "read" && row.scheme === "workspace");
                 assert.ok(read, "the authored READ has a receipt");
                 const result = JSON.parse(read.rx!);
                 assert.equal(result.status, 200, `the requested result fits with reasoning previews ${enabled}`);
@@ -824,7 +824,7 @@ test("{§turn-source-resources}: complete reasoning is omitted whole when it can
             assert.equal(first.status, 102);
             assert.equal(second.status, 200);
             assert.equal(rows.some((row) => kindOf(row) === "reasoning"), false);
-            assert.ok(rows.some((row) => row.op === "READ" && row.origin === "model"));
+            assert.ok(rows.some((row) => row.op === "read" && row.origin === "model"));
             assert.equal(rows.some((row) => row.op === "error"), false);
             const item = PlurnkParser.parseStatements("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"});").items[0];
             assert.ok(item?.kind === "statement");
@@ -851,7 +851,7 @@ test("{§turn-source-resources}: reasoning preview precedes the content emission
             assert.ok(preview, "reasoning preview lands for the turn");
             assert.equal(JSON.parse(preview.rx!).content, reasoning);
             assert.equal(rows.filter((row) => kindOf(row) === "emission").length, 1);
-            const notes = rows.filter((row) => row.op === "NOTE");
+            const notes = rows.filter((row) => row.op === "note");
             assert.equal(notes.length, 1, "only content NOTE executes; reasoning fences remain inert text");
             assert.ok(notes.every((row) => row.sequence > preview.sequence), "the preview precedes the operations it informed");
         } finally { await db.close(); }

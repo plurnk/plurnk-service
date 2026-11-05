@@ -203,8 +203,8 @@ test("{§emission-history} {§packet-assembly}: each turn's operations precede t
     assert.ok(opening && afterEdit && afterRead);
     assert.deepEqual(afterRead.map(({ role }) => role), ["system", "user", ...Array.from({ length: 2 }, () => ["assistant", "user"]).flat()]);
     assert.deepEqual(afterRead.filter(({ role }) => role === "assistant").map(chatMessageText), [`${note("Memory before writing.")}\n\n${edit}`, `${read}\n\n${note("Checking what landed.")}`]);
-    for (const [index, operations] of [[2, ["NOTE", "EDIT"]], [4, ["READ", "NOTE"]]] as const) {
-        assert.match(chatMessageText(afterRead[index + 1]), new RegExp(`^${operations.map((operation) => `### log:///1/\\d+/\\d+/${operation}${operation === "NOTE" ? "" : " \\(workspace:///memo\\.md\\)"} · \\d+`).join("[\\s\\S]*")}`, "u"), "the turn's receipts follow it, in order, each naming its operand");
+    for (const [index, operations] of [[2, ["note", "edit"]], [4, ["read", "note"]]] as const) {
+        assert.match(chatMessageText(afterRead[index + 1]), new RegExp(`^${operations.map((operation) => `### log:///1/\\d+/\\d+/${operation}${operation === "note" ? "" : " \\(workspace:///memo\\.md\\)"} · \\d+`).join("[\\s\\S]*")}`, "u"), "the turn's receipts follow it, in order, each naming its operand");
     }
     const log = observations(afterRead);
     assert.doesNotMatch(log, /Reasoning memory\./u, "reasoning is not scraped for operations");
@@ -262,8 +262,8 @@ test("{§emission-history}: all replays sanitized active emissions across a reas
         const partial = note("Partial program.");
         const provider = new Mock({ contextWindow: 100000, responses: [
             say(`${kept}\n\nawait plurnk.send({"text":"Progress update."});`), say("", note("Reasoning memory.")),
-            say(`${partial}\n\n\`\`\`READ (unclosed`),
-            say("```READ (unclosed"),
+            say(`${partial}\n\nawait plurnk.read({"path":"unclosed`),
+            say("await plurnk.read({\"path\":\"unclosed"),
             say("await plurnk.done({\"text\":\"Done.\"});"),
         ] });
         await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 6, maxStrikes: 3 });
@@ -296,7 +296,7 @@ test("{§emission-history}: retiring an emission removes only that turn's replay
         assert.match(chatMessageText(request[index - 1]).split("\n\n").at(-1)!, announcementOf(3), "the surviving turn keeps its source announcement");
         const log = observations(request);
         assert.doesNotMatch(log, /### log:\/\/\/1\/2\/\d+\/emission/u, "only the retired emission row is gone");
-        assert.match(log, /### log:\/\/\/1\/2\/\d+\/NOTE · \d+\n[^\n]*\n1:First finding\./u, "the retired turn's NOTE is an ordinary row again, body and all");
+        assert.match(log, /### log:\/\/\/1\/2\/\d+\/note · \d+\n[^\n]*\n1:First finding\./u, "the retired turn's NOTE is an ordinary row again, body and all");
         const source = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, session_name: "writer", loop_seq: 1, turn_seq: 2, kind: "ops", sequence: 0 });
         assert.equal(source?.content, `${firstNote}\n\nawait plurnk.send({"text":"First progress update."});`, "the immutable source is untouched");
     } finally { await db.close(); }
@@ -310,8 +310,8 @@ test("{§emission-history}: mixed KILL targets execute normally; a retired NOTE 
     const loopId = await insertLoop(db, sessionId, 1, "Draft and curate.");
     const edit = "await plurnk.edit({\"path\":\"workspace:///memo.md\",\"content\":\"Draft.\"});";
     const first = `${edit}\n\n${note("Superseded memory.")}`;
-    const mixed = "await plurnk.kill({\"path\":\"log:///1/2/*/NOTE\"});\n\nawait plurnk.kill({\"path\":\"workspace:///memo.md\"});";
-    const distilled = "await plurnk.kill({\"path\":\"log:///1/2/*/EDIT\",\"note\":\"The draft was removed.\"});";
+    const mixed = "await plurnk.kill({\"path\":\"log:///1/2/*/note\"});\n\nawait plurnk.kill({\"path\":\"workspace:///memo.md\"});";
+    const distilled = "await plurnk.kill({\"path\":\"log:///1/2/*/edit\",\"note\":\"The draft was removed.\"});";
     const second = `${mixed}\n\n${distilled}`;
     const provider = new Mock({ contextWindow: 100000, responses: [say(first), say(second), say("await plurnk.done({\"text\":\"Done.\"});")] });
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -375,7 +375,7 @@ test("{§emission-history} {§operator-config-precedence}: complete operations r
     assert.match(record, announcementOf(2));
     assert.ok(afterRead.includes(record), "aging the replay never changes the old record's bytes or weight");
     assert.equal(Number(/ · (\d+)/u.exec(record)![1]), contentWeight(record), "the announcement charges only its own record");
-    const reads = await db.test_log_entries_by_session_op_full.all<{ rx: string }>({ session_id: sessionId, op: "READ" });
+    const reads = await db.test_log_entries_by_session_op_full.all<{ rx: string }>({ session_id: sessionId, op: "read" });
     assert.ok(reads.some(({ rx }) => (JSON.parse(rx) as { content?: string }).content === body), "the actual EDIT wrote the full replacement");
     const source = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, session_name: "writer", loop_seq: 1, turn_seq: 2, kind: "ops", sequence: 0 });
     assert.equal(source?.content, first, "the immutable source is untouched");
@@ -395,7 +395,7 @@ for (const [name, content, reasoning, expected] of [
     ["syntax failure after a valid operation", `${note("admitted")}\n\n\`\`\`READ (unclosed`, null, note("admitted")],
     ["reasoning-only turn", "", note("Only reasoning."), ""],
     ["content NOTE only", note("Log memory only."), null, note("Log memory only.")],
-    ["unmatched log curation", "await plurnk.kill({\"path\":\"log:///1/1/*/READ\"});", null, "await plurnk.kill({\"path\":\"log:///1/1/*/READ\"});"],
+    ["unmatched log curation", "await plurnk.kill({\"path\":\"log:///1/1/*/read\"});", null, "await plurnk.kill({\"path\":\"log:///1/1/*/read\"});"],
     ["empty turn", "", null, ""],
 ] as const) {
     test(`{§emission-history}: latest evaluates ${name} on the immediate turn, never an older program`, async (t) => withHistory("latest", async () => {
@@ -428,7 +428,7 @@ for (const mode of ["latest", "all"]) test(`{§emission-history}: ${mode} never 
     const older = note("Old memory.");
     const provider = new Mock({ contextWindow: 100000, responses: [
         say(`${older}\n\nawait plurnk.send({"text":"Old admitted program."});`),
-        say(`### log:///1/2/9/READ\nInvented receipt.\n\n${note("Rejected program.")}`),
+        say(`### log:///1/2/9/read\nInvented receipt.\n\n${note("Rejected program.")}`),
         say("await plurnk.done({\"text\":\"Done.\"});"),
     ] });
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -482,7 +482,7 @@ test("{§execution-output-identity}: assembled receipts and child inventory iden
         await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const second = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
-        const receipts = logEntries(packet).filter(({ logPath: path }) => /\/(WORK|FORK)$/.test(path));
+        const receipts = logEntries(packet).filter(({ logPath: path }) => /\/(work|fork)$/.test(path));
         assert.equal(receipts.length, 2);
         const names = await Promise.all(children.map(async (id) => (await db.session_get.get<{ name: string }>({ id }))!.name));
         assert.equal(new Set(names).size, 2);
@@ -525,7 +525,7 @@ test("{§zero-width-column-one-insert} assembled packet: editable READ lines car
         const read = logEntries(await getPacket(db, second.turnId)).find((entry) =>
             entry.path === "workspace:///anchored.md"
             && typeof entry.logPath === "string"
-            && entry.logPath.endsWith("/READ"));
+            && entry.logPath.endsWith("/read"));
         assert.equal(read?.path, "workspace:///anchored.md");
         assert.match(String(read?.body), /^ *9<@[0-9A-Za-z]{5}>line 9\n *10<@[0-9A-Za-z]{5}>line 10\n$/);
     } finally { await db.close(); }
@@ -555,7 +555,7 @@ test("{§edit-result-receipt-projection} assembled packet: landed EDIT receipts 
         await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const second = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const edits = logEntries(await getPacket(db, second.turnId)).filter((entry) =>
-            typeof entry.logPath === "string" && entry.logPath.endsWith("/EDIT"));
+            typeof entry.logPath === "string" && entry.logPath.endsWith("/edit"));
         const broken = edits.find((entry) => entry.path === "workspace:///broken.go");
         const clean = edits.find((entry) => entry.path === "workspace:///clean.go");
         assert.match(String(broken?.parseIssues), /^0->[1-9]\d*$/);
@@ -606,14 +606,14 @@ test("{§session-initialization-entry} assembled packet: the turn-0 catalog fois
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const rows = await db.test_log_entries_by_loop.all<{ id: number; op: string | null; origin: string; tx: string; rx: string; attrs: string }>({ loop_id: loopId });
         const foists = rows
-            .filter((row) => row.origin === "_plurnk" && (row.op === "FIND" || row.op === "READ") && !LogEntryProjection.isEmission(row));
+            .filter((row) => row.origin === "_plurnk" && (row.op === "find" || row.op === "read") && !LogEntryProjection.isEmission(row));
         assert.ok(foists.length > 0, "the first turn persists its structural observation foists");
         const sources = await db.test_turn_sources.all<{ kind: string; producer: string; content: string }>({ session_id: sessionId });
         const turnSource = sources.find(({ kind, producer }) => kind === "ops" && producer === "_plurnk");
         assert.ok(turnSource, "initialization stores its exact program as its ops source ({§session-initialization-entry})");
         const source = turnSource.content;
         const sourceFoists = PlurnkParser.parseStatements(source).items.flatMap((item) => item.kind === "statement" ? [item.statement] : [])
-            .filter(({ op }) => op === "FIND" || op === "READ");
+            .filter(({ op }) => op === "find" || op === "read");
         assert.equal(sourceFoists.length, foists.length, "the exact source accounts for every structural observation");
         for (const [index, { tx }] of foists.entries()) {
             const statement = JSON.parse(tx) as { position?: unknown };
@@ -644,12 +644,12 @@ test("{§session-initialization-entry} assembled packet: the turn-0 catalog fois
                 `${target} begins its own universally numbered FIND row`,
             );
         }
-        assert.ok(logEntries(packet).some(({ logPath: path }) => path.endsWith("/FIND")), "the catalog foist appears as a FIND op in the log address");
+        assert.ok(logEntries(packet).some(({ logPath: path }) => path.endsWith("/find")), "the catalog foist appears as a FIND op in the log address");
         const initialization = logEntries(packet)
             .filter(({ logPath: path }) => path.startsWith("log:///1/1/"));
         assert.deepEqual(
             [...new Set(initialization.map(({ logPath: path }) => path.split("/").at(-1) ?? ""))].toSorted(),
-            ["FIND", "TODO"],
+            ["find", "todo"],
             "{§session-initialization-entry}: turn 0 exposes its TODOs and its surveys, and nothing else",
         );
         assert.equal(initialization.some(({ path: target }) => target?.startsWith("ops://") === true), false,
@@ -700,7 +700,7 @@ test("{§log-wire-format}: exact matcher FIND shows flat surgical coordinates wi
         const second = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const log = packetSection(await getPacket(db, second.turnId), "log");
 
-        assert.match(log, /^### log:\/\/\/\S+\/FIND \(workspace:\/\/\/notes\.md\) \/target\/ · \d+$/m, "the addressed resource and matcher return on the receipt heading");
+        assert.match(log, /^### log:\/\/\/\S+\/find \(workspace:\/\/\/notes\.md\) \/target\/ · \d+$/m, "the addressed resource and matcher return on the receipt heading");
         assert.match(log, /"range":"2 match locations"/);
         assert.doesNotMatch(log, /"matchLocationCount":2/);
         assert.doesNotMatch(log, /"matchingPathCount":1/);
@@ -742,15 +742,15 @@ test("{§op-shapes} assembled packet: scoped COPY reports both operands and its 
 
         const first = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.deepEqual(first.outcomes, [
-            { op: "EDIT", status: 201, problemType: null },
-            { op: "COPY", status: 201, problemType: null },
-            { op: "COPY", status: 304, problemType: null },
-            { op: "NOTE", status: 200, problemType: null },
+            { op: "edit", status: 201, problemType: null },
+            { op: "copy", status: 201, problemType: null },
+            { op: "copy", status: 304, problemType: null },
+            { op: "note", status: 200, problemType: null },
         ]);
         const second = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
         // Turn 0 archives the prompt by COPY (log:///1/1/…); the model's two are under test.
-        const copies = logEntries(packet).filter(({ logPath: path }) => path.endsWith("/COPY") && !path.startsWith("log:///1/1/"));
+        const copies = logEntries(packet).filter(({ logPath: path }) => path.endsWith("/copy") && !path.startsWith("log:///1/1/"));
 
         assert.equal(copies.length, 2);
         assert.equal(copies[0]?.from, "workspace:///src.md");
@@ -840,19 +840,16 @@ test("{§tools-resource-materialization} assembled packet: the skills foist surf
         const workspaceId = await insertWorkspace(db, `pkt-docs-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "go");
-        // A materialized scheme doc is an ordinary entry owned by the Session
-        // whose effective Functionality it describes.
-        await seedEntryWithChannel(db, { workspaceId, scheme: "plurnk", pathname: "/session.md", channel: "body", content: "# session\n\n## Summary\n\nManage shared session entries.\n\n## Invocation\n\nawait plurnk.edit({\"path\":\"workspace:///notes.md\",\"content\":\"Notes.\"});", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        await LoopDocs.materialize(engine, db, workspaceId);
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const log = packetSection(await getPacket(db, result.turnId), "log");
 
-        // The materialized doc reaches the model through its private FIND, not
-        // an inline packet link ({§tools-resource-materialization}).
-        assert.match(log, /^### log:\/\/\/\S+\/FIND \(plurnk:\/\/\/\*\.md\) · \d+$/m, "the foist scopes discovery to the Session's plurnk reference tree");
-        assert.match(log, /plurnk:\/\/\/session\.md/, "the materialized skill surfaces in the foist's rendered result");
-        assert.match(log, /"aside":"Manage shared session entries\."/, "the catalog projects the document's Summary without opening its body");
+        // The materialized tool index and todo schema reach the model through Turn 0 READs ({§tools-resource-materialization}).
+        assert.match(log, /^### log:\/\/\/\S+\/read \(mcp:\/\/\/plurnk\.md\) · \d+$/m, "Turn 0 reads the Session's materialized plurnk tool index");
+        assert.match(log, /^### log:\/\/\/\S+\/read \(mcp:\/\/\/plurnk\/todo\.json\) · \d+$/m, "Turn 0 reads the Session's materialized todo schema");
+        assert.match(log, /"aside":"Use mcp:\/\/\/<server>\.json or mcp:\/\/\/<server>\/<tool>\.json for tool schemas\."/, "the todo.json READ teaches how to inspect tool schemas");
     } finally {
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
@@ -872,9 +869,9 @@ test("{§session-initialization-entry} assembled packet: a reference catalog wit
         await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
 
         const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; scheme: string | null; pathname: string }>({ loop_id: loopId });
-        assert.equal(rows.some((row) => row.op === "FIND" && row.scheme === "plurnk" && row.pathname === "/*.md"), false,
+        assert.equal(rows.some((row) => row.op === "find" && row.scheme === "plurnk" && row.pathname === "/*.md"), false,
             "the reference survey that would select nothing is left out");
-        assert.ok(rows.some((row) => row.origin === "model" && row.op === "DONE"), "and the model's turn still runs and completes");
+        assert.ok(rows.some((row) => row.origin === "model" && row.op === "done"), "and the model's turn still runs and completes");
     } finally {
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
@@ -935,7 +932,7 @@ test("{§session-initialization-entry} {§packet-assembly} assembled packet: PLU
 
         assert.equal(packetSection(packet, "system-policy"), "# House rules\nNEVER guess a file path.", "system-policy carries the authored global policy");
         const log = packetSection(packet, "log");
-        assert.doesNotMatch(log, /^### log:\/\/\/\S+\/READ \(plurnk:\/\/\/AGENTS\.md\) · \d+$/m, "Turn 0 does not foist a READ of plurnk:///AGENTS.md");
+        assert.doesNotMatch(log, /^### log:\/\/\/\S+\/read \(plurnk:\/\/\/AGENTS\.md\) · \d+$/m, "Turn 0 does not foist a READ of plurnk:///AGENTS.md");
     } finally {
         await db.close();
         if (priorPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = priorPolicy;
@@ -1080,10 +1077,9 @@ test("{§packet}: canonical operation examples survive packet projection", async
 
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
         const projected = packetSection(await getPacket(db, result.turnId), "definition");
-        const codeBlocks = (markdown: string) => markdown.split("\n").filter((line) => line.startsWith("await plurnk."));
-        const examples = codeBlocks(definition);
-        assert.ok(examples.length > 0, "canonical definition contains operation examples");
-        assert.deepEqual(codeBlocks(projected), examples, "packet projection preserves every example's fences and body whitespace");
+        assert.ok(definition.trim().length > 0, "canonical definition is non-empty");
+        const nonTableLines = (markdown: string) => markdown.split("\n").filter((line) => !line.startsWith("|"));
+        assert.deepEqual(nonTableLines(projected), nonTableLines(definition), "packet projection preserves every non-table line of the canonical definition");
     } finally { await db.close(); }
 });
 
@@ -1164,12 +1160,12 @@ test("{§emission-history} extension packet control: a scheme adds, removes, and
             if (section.slot !== "assistant") continue;
             const receipt: PacketSectionDraft = chronological[index + 1];
             assert.equal(receipt.slot, "user");
-            assert.match(receipt.content, /^### log:\/\/\/\d+\/\d+\/\d+\/(?:EDIT|READ) \(\S+\) · \d+/u, "every turn is followed by its receipts, each naming its operand");
+            assert.match(receipt.content, /^### log:\/\/\/\d+\/\d+\/\d+\/(?:edit|read) \(\S+\) · \d+/u, "every turn is followed by its receipts, each naming its operand");
         }
         assert.equal(provider.received.length, 3);
         const last = provider.received[2];
         assert.deepEqual(last.filter(({ role }) => role === "assistant").map(chatMessageText), expected);
-        assert.match(chatMessageText(last[3]), /^### log:\/\/\/1\/2\/\d+\/EDIT/u, "transformed packets retain the chronological result boundary");
+        assert.match(chatMessageText(last[3]), /^### log:\/\/\/1\/2\/\d+\/edit/u, "transformed packets retain the chronological result boundary");
         assert.doesNotMatch(last.map(chatMessageText).join("\n"), /## Context\n/u, "the transform still removes the requested section");
     } finally { await db.close(); }
 });
@@ -1235,7 +1231,7 @@ test("{§packet-inject} PLURNK_SERVICE_PACKET_INJECT: operator file rides as a s
 
 describe("packet-items", () => {
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
-const RECORDS = ["### log:///1/1/1/FIND\n{\"status\":200}\n1:[]", "### log:///1/1/2/READ\n{\"status\":200}\n1:alpha\n2:beta"];
+const RECORDS = ["### log:///1/1/1/find\n{\"status\":200}\n1:[]", "### log:///1/1/2/read\n{\"status\":200}\n1:alpha\n2:beta"];
 const packet = (records: readonly string[], prompt: string): DurablePacket => ({
     weight: 7,
     sections: [
@@ -1252,8 +1248,8 @@ test("{§packet}: a turn stores only the items the previous turn did not, and re
         const workspaceId = await insertWorkspace(db, `packet-items-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "go");
-        const first = packet(RECORDS.slice(0, 1), "[{\"path\":\"log:///1/1/1/SEND\"}]");
-        const second = packet(RECORDS, "[{\"path\":\"log:///1/1/1/SEND\"}]");
+        const first = packet(RECORDS.slice(0, 1), "[{\"path\":\"log:///1/1/1/send\"}]");
+        const second = packet(RECORDS, "[{\"path\":\"log:///1/1/1/send\"}]");
         const firstId = await insertPacketTurn(db, loopId, 1, first, 102);
         const before = (await db.test_packet_item_count.get<{ n: number }>({}))!.n;
         assert.equal(before, 3, "turn 1: definition, one log record, prompt");
@@ -1266,7 +1262,7 @@ test("{§packet}: a turn stores only the items the previous turn did not, and re
             { section: 0, position: 0, text: "# Plurnk" },
             { section: 1, position: 0, text: RECORDS[0] },
             { section: 1, position: 1, text: RECORDS[1] },
-            { section: 2, position: 0, text: "[{\"path\":\"log:///1/1/1/SEND\"}]" },
+            { section: 2, position: 0, text: "[{\"path\":\"log:///1/1/1/send\"}]" },
         ]);
         assert.ok(items.every(({ item_hash, text }) => item_hash === sha256(text)), "an item's address is the SHA-256 of its text");
 

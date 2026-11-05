@@ -232,7 +232,7 @@ test("{§op-methods-op-dispatch}: resource prompts bypass line and size preview 
             [{ role: "user", content: `${prompt}\n\nCompare these findings.` }],
         ]);
         assert.equal(child.maxActive, 2);
-        assert.deepEqual(result.outcomes.map(({ op }) => op), ["EDIT", "BARE", "BARE", "NOTE"], "source reads do not mint extra log receipts");
+        assert.deepEqual(result.outcomes.map(({ op }) => op), ["edit", "bare", "bare", "note"], "source reads do not mint extra log receipts");
     } finally { await db.close(); }
 });
 
@@ -249,7 +249,7 @@ test("{§op-methods-op-dispatch}: missing resources preserve the source error wi
             ].join("\n"))] }),
         });
         assert.deepEqual(child.completions, ["survivor"]);
-        const rows = (await db.test_log_entries_by_turn.all<{ op: string; rx: string; model_call_id: number | null }>({ turn_id: result.turnId })).filter(({ op }) => op === "BARE");
+        const rows = (await db.test_log_entries_by_turn.all<{ op: string; rx: string; model_call_id: number | null }>({ turn_id: result.turnId })).filter(({ op }) => op === "bare");
         assert.equal(rows.length, 2);
         const failure = JSON.parse(rows[0].rx);
         assert.equal(failure.status, 404);
@@ -300,8 +300,8 @@ test("{§op-methods-op-dispatch}: cancellation during source preparation leaves 
 });
 
 for (const [denied, target] of [
-    [{ operation: "BARE" }, ""],
-    [{ operation: "BARE" }, " (workspace:///prompt.md)"],
+    [{ operation: "bare" }, ""],
+    [{ operation: "bare" }, " (workspace:///prompt.md)"],
     [{ scheme: "workspace", access: "observe" }, " (workspace:///prompt.md)"],
 ] as const) {
     test(`{§capability-admission}: BARE${target} respects ${JSON.stringify(denied)} before inference`, async () => {
@@ -318,7 +318,7 @@ for (const [denied, target] of [
                 ].join("\n"))] }),
             });
             assert.equal(child.calls.length, 0);
-            assert.deepEqual(result.outcomes.filter(({ op }) => op === "BARE"), [{ op: "BARE", status: 403, problemType: "https://problems.plurnk.xyz/engine/dispatcher/capability-denied" }]);
+            assert.deepEqual(result.outcomes.filter(({ op }) => op === "bare"), [{ op: "bare", status: 403, problemType: "https://problems.plurnk.xyz/engine/dispatcher/capability-denied" }]);
             const calls = await db.test_model_calls.all<{ kind: string }>({ turn_id: result.turnId });
             assert.equal(calls.filter(({ kind }) => kind === "bare").length, 0);
         } finally { await db.close(); }
@@ -337,11 +337,11 @@ test("{§op-methods-op-dispatch}: a log prompt uses only retained source lines",
             ].join("\n"))] }),
         });
         const rows = await db.test_log_entries_by_turn.all<{ op: string; sequence: number; attrs: string }>({ turn_id: first.turnId });
-        const source = rows.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
+        const source = rows.find((row) => row.op === "read" && !LogEntryProjection.isEmission(row));
         assert.ok(source);
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId });
         assert.ok(turn);
-        const address = `log:///1/${turn.sequence}/${source.sequence}/READ`;
+        const address = `log:///1/${turn.sequence}/${source.sequence}/read`;
         const child = new BareWitness(1);
         const second = await engine.runTurn({
             workspaceId, sessionId, loopId, messages: [], childProvider: child,
@@ -351,7 +351,7 @@ test("{§op-methods-op-dispatch}: a log prompt uses only retained source lines",
                 "await plurnk.note({\"text\":\"Continue the task.\"});",
             ].join("\n"))] }),
         });
-        assert.deepEqual(second.outcomes.filter(({ op }) => op === "BARE"), [{ op: "BARE", status: 200, problemType: null }]);
+        assert.deepEqual(second.outcomes.filter(({ op }) => op === "bare"), [{ op: "bare", status: 200, problemType: null }]);
         assert.deepEqual(child.calls.map(({ messages }) => messages), [[{ role: "user", content: "first\nlast" }]]);
     } finally { await db.close(); }
 });
@@ -373,14 +373,14 @@ for (const [target, status, problem] of [
                     "await plurnk.note({\"text\":\"Continue the task.\"});",
                 ].join("\n"))] }),
             });
-            const bare = result.outcomes.find(({ op }) => op === "BARE");
+            const bare = result.outcomes.find(({ op }) => op === "bare");
             assert.equal(bare?.status, status);
             assert.ok(bare?.problemType?.endsWith(`/${problem}`));
             assert.equal(child.calls.length, 0);
             if (target === null) {
                 // {§diagnostic-observation} — the refusal states where a prompt is read from, and nothing else.
-                const row = (await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: result.turnId })).find(({ op }) => op === "BARE");
-                assert.equal(JSON.parse(row!.rx).problem.detail, "BARE has no prompt text: the prompt is the fence body, a resource path, or both.");
+                const row = (await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: result.turnId })).find(({ op }) => op === "bare");
+                assert.equal(JSON.parse(row!.rx).problem.detail, "BARE has no prompt text: the prompt is the prompt string, a resource path, or both.");
             }
         } finally { await db.close(); }
     });
@@ -404,7 +404,7 @@ test("{§op-methods-op-dispatch}: an intervening operation separates concurrent 
         assert.equal(result.status, 102);
         assert.deepEqual(observed, [undefined, "written"]);
         assert.deepEqual(child.completions, ["before", "after"]);
-        assert.deepEqual(result.outcomes.map(({ op }) => op), ["BARE", "EDIT", "BARE", "NOTE"]);
+        assert.deepEqual(result.outcomes.map(({ op }) => op), ["bare", "edit", "bare", "note"]);
     } finally { await db.close(); }
 });
 
@@ -453,7 +453,7 @@ test("{§provider-interface} BARE calls receive only their body prompts, run in 
             rx: string;
             model_call_id: number | null;
         }>({ turn_id: result.turnId });
-        const bareRows = rows.filter(({ op }) => op === "BARE");
+        const bareRows = rows.filter(({ op }) => op === "bare");
         assert.deepEqual(bareRows.map(({ sequence, rx }) => ({
             sequence,
             content: (JSON.parse(rx) as { content: string }).content,
@@ -539,9 +539,9 @@ test("{§op-methods-op-dispatch} one BARE provider failure is an ordered operati
         });
 
         assert.equal(result.status, 102);
-        assert.deepEqual(result.outcomes.filter(({ op }) => op === "BARE"), [
-            { op: "BARE", status: 503, problemType: "https://problems.plurnk.xyz/provider/bare-witness/network-failure" },
-            { op: "BARE", status: 200, problemType: null },
+        assert.deepEqual(result.outcomes.filter(({ op }) => op === "bare"), [
+            { op: "bare", status: 503, problemType: "https://problems.plurnk.xyz/provider/bare-witness/network-failure" },
+            { op: "bare", status: 200, problemType: null },
         ]);
         const calls = await db.test_model_calls.all<{ kind: string; state: string }>({ turn_id: result.turnId });
         assert.deepEqual(calls.filter(({ kind }) => kind === "bare").map(({ state }) => state), ["error", "response"]);
@@ -567,15 +567,15 @@ test("{§engine-rails}: an isolated call that drops once is re-issued; the recei
             messages: [{ role: "user", content: "ask isolated questions" }],
         });
         assert.equal(result.status, 102);
-        assert.deepEqual(result.outcomes.filter(({ op }) => op === "BARE"), [
-            { op: "BARE", status: 200, problemType: null },
-            { op: "BARE", status: 200, problemType: null },
+        assert.deepEqual(result.outcomes.filter(({ op }) => op === "bare"), [
+            { op: "bare", status: 200, problemType: null },
+            { op: "bare", status: 200, problemType: null },
         ], "the dropped call was re-issued inside the operation; nothing about the failure reaches the result");
         assert.deepEqual(child.completions.toSorted(), ["flaky", "flaky", "ok"], "the flaky prompt was asked twice, its sibling once");
         const calls = await db.test_model_calls.all<{ kind: string; state: string }>({ turn_id: result.turnId });
         assert.deepEqual(calls.filter(({ kind }) => kind === "bare").map(({ state }) => state).toSorted(), ["error", "response", "response"], "the dropped call is its own model call on the ledger");
         const answers = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: result.turnId });
-        assert.deepEqual(answers.filter(({ op }) => op === "BARE").map(({ status_rx }) => status_rx), [200, 200]);
+        assert.deepEqual(answers.filter(({ op }) => op === "bare").map(({ status_rx }) => status_rx), [200, 200]);
     } finally {
         await db.close();
     }
@@ -600,15 +600,15 @@ test("{§op-methods-op-dispatch} a same-turn BARE response is unseen retrieval w
         });
         assert.equal(result.status, 102);
         assert.deepEqual(result.outcomes, [
-            { op: "BARE", status: 200, problemType: null },
-            { op: "SEND", status: 200, problemType: null },
+            { op: "bare", status: 200, problemType: null },
+            { op: "send", status: 200, problemType: null },
         ], "delivery succeeds while the unseen BARE result keeps the loop continuing");
     } finally {
         await db.close();
     }
 });
 
-for (const state of ["WAIT", "SEND"] as const) {
+for (const state of ["wait", "send"] as const) {
     test(`{§op-methods-op-dispatch} {§op-shapes}: BARE after ${state} preserves the operation's scheduling contract`, async () => {
         const { db, workspaceId, sessionId, loopId, engine } = await setup();
         try {
@@ -626,9 +626,9 @@ for (const state of ["WAIT", "SEND"] as const) {
             });
             assert.equal(result.status, 102);
             assert.deepEqual(child.completions, ["question"], "the isolated call was made");
-            assert.deepEqual(result.outcomes.map(({ op }) => op), state === "WAIT" ? ["BARE", "WAIT"] : ["SEND", "BARE"],
+            assert.deepEqual(result.outcomes.map(({ op }) => op), state === "wait" ? ["bare", "wait"] : ["send", "bare"],
                 "only WAIT is deferred; SEND retains its authored order");
-            assert.deepEqual(result.outcomes.filter(({ op }) => op === state), [{ op: state, status: state === "WAIT" ? 102 : 200, problemType: null }]);
+            assert.deepEqual(result.outcomes.filter(({ op }) => op === state), [{ op: state, status: state === "wait" ? 102 : 200, problemType: null }]);
         } finally {
             await db.close();
         }
@@ -822,7 +822,7 @@ test("{§op-methods-op-dispatch}: BARE consumes the loop's durable child provide
             assert.equal(parent.remaining, 0);
             assert.equal(child.remaining, 0, "the selected child provider handled BARE");
             const rows = await db.test_log_entries_by_loop.all<{ op: string | null; rx: string }>({ loop_id: result.loopId });
-            const bare = rows.find(({ op }) => op === "BARE");
+            const bare = rows.find(({ op }) => op === "bare");
             assert.equal((JSON.parse(bare?.rx ?? "null") as { content?: string } | null)?.content, "Berlin");
             const sessions = await db.test_sessions_with_parent.all<{ parent_session_id: number | null }>({});
             assert.equal(sessions.filter(({ parent_session_id }) => parent_session_id !== null).length, 0, "BARE creates no child session");
@@ -890,7 +890,7 @@ test("{§session-model-selection}: an oversized FORK fails as an ordinary child 
             await rpcCall(ws, 1, "workspace.create", { name: `fork-capacity-${crypto.randomUUID()}` });
             const terminated = subscribeNotifications(ws, "loop/terminated");
             const result = await runLoopToTerminal(ws, 2, {
-                prompt: "fork work to a much smaller child",
+                prompt: `fork work to a much smaller child\n${"history ".repeat(400)}`,
                 selector: parentSpec.alias,
                 childSelector: childSpec.alias,
             });

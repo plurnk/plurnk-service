@@ -28,7 +28,7 @@ process.env.PLURNK_MEMBERS_task = "**";
 process.env.PLURNK_MEMBERS_ENABLED = "1";
 process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "60000";
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
-const step = (op = "NOTE") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "NOTE" ? "Inspect the result." : "Media inspection complete." })});`;
+const step = (op = "note") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "note" ? "Inspect the result." : "Media inspection complete." })});`;
 const media = [
     { kind: "image", mimetype: "image/png", bytes: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"), facts: /PNG image/u },
     { kind: "pdf", mimetype: "application/pdf", bytes: Buffer.from(buildPdf({ title: "Contract" })), facts: /PDF document/u },
@@ -74,12 +74,12 @@ ${step()}`),
             turn(`await plurnk.read({"path":"${url}#header"});
 
 ${step()}`),
-            turn(step("DONE")),
+            turn(step("done")),
         ] });
         await run(provider);
         const parts = provider.received.map((messages) => messages.flatMap((message) => Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : []));
         assert.deepEqual(parts.map((files) => files.length), enabled ? [0, 1, 2, 3, 3] : [0, 0, 0, 0, 0],
-            provider.received.at(-1)!.map(chatMessageText).join("\n").split("\n").filter((line) => line.includes('"overflow"') || /^### log:\/\/\/\S+\/READ \(http:\/\//.test(line)).join("\n"));
+            provider.received.at(-1)!.map(chatMessageText).join("\n").split("\n").filter((line) => line.includes('"overflow"') || /^### log:\/\/\/\S+\/read \(http:\/\//.test(line)).join("\n"));
         for (const part of parts.flat()) {
             assert.equal(part.mediaType, sample.mimetype);
             assert.ok(Buffer.from(part.data).equals(sample.bytes), "HTTP native input preserves the exact source bytes");
@@ -124,7 +124,7 @@ ${step()}`),
         turn(`await plurnk.read({"path":"${url}#bytes","range":"1,2"});
 
 ${step()}`),
-        turn(step("DONE")),
+        turn(step("done")),
     ] });
     await run(provider);
     assert.deepEqual(validators, [undefined, '"v1"', '"v1"']);

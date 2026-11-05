@@ -91,14 +91,14 @@ test("{§message-completion}: a loop's address reads its SEND answer; running is
         assert.ok("content" in reply);
         assert.equal(reply.content, "Six.", "a DONE answer is the loop's answer too, without its fence");
         const written = (await db.test_log_entries_by_turn.all<{ op: string; origin: string; attrs: string; tx: string }>({ turn_id: sent.turnIds.at(-1)! }))
-            .find(({ op, origin }) => op === "DONE" && origin === "model");
-        assert.equal(LogEntryProjection.leaf(written!), "DONE", "a DONE the model wrote stays a DONE");
+            .find(({ op, origin }) => op === "done" && origin === "model");
+        assert.equal(LogEntryProjection.leaf(written!), "done", "a DONE the model wrote stays a DONE");
 
         assert.equal((await read("ops://alice/9")).status, 404, "a loop that does not exist");
         assert.equal((await read("ops://alice/1/2")).status, 200, "a turn coordinate still reads that turn's emission");
-        const sendRow = await read("log:///1/2/3/SEND", sessionId);
+        const sendRow = await read("log:///1/2/3/send", sessionId);
         assert.equal(sendRow.status, 200, "a progress reply is an ordinary SEND row");
-        const doneRow = await read("log:///2/1/3/DONE", sessionId);
+        const doneRow = await read("log:///2/1/3/done", sessionId);
         assert.equal(doneRow.status, 200, "a final reply is an ordinary DONE row");
     } finally { await db.close(); }
 });
@@ -133,17 +133,17 @@ for (const [shape, body] of [
 describe("native-tool-calls", () => {
 for (const transport of ["text", "wire"] as const) {
     for (const withOperation of [false, true]) {
-        test(`{§fence-pairing} {§provider-failure-normalization}: ${transport} calls withOperation=${withOperation} retain valid work and use ordinary strikes`, async () => {
+        test(`{§fence-pairing} {§provider-failure-normalization}: ${transport} calls withOperation=${withOperation} translate silently into Code Mode`, async () => {
             const db = await openMigrated();
             try {
                 const workspaceId = await insertWorkspace(db, "native-calls");
                 const sessionId = await insertSession(db, workspaceId, null, "alice");
                 const loopId = await insertLoop(db, sessionId, 1, "Update the fact.");
                 await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "Original fact." });
-                const markup = '<tool_call><function=EDIT><parameter=old_string>Original fact.</parameter><parameter=new_string>Unadmitted change.</parameter></function></tool_call>';
-                const tool = { index: 0, id: "call-1", type: "function", function: { name: "EDIT", arguments: '{"path":"workspace:///fact.txt","body":"Unadmitted change."}' } };
-                const operation = withOperation ? "await plurnk.edit({\"path\":\"workspace:///fact.txt\",\"range\":\"1,-1\",\"content\":\"Admitted change.\"});" : "";
-                const content = transport === "text" ? `${operation}\n\n${markup}` : operation;
+                const markup = '<tool_call><function=EDIT><parameter=path>workspace:///fact.txt</parameter><parameter=old_string>Original fact.</parameter><parameter=new_string>Translated change.</parameter></function></tool_call>';
+                const tool = { index: 0, id: "call-1", type: "function", function: { name: "edit", arguments: '{"path":"workspace:///fact.txt","old_string":"Original fact.","new_string":"Translated change."}' } };
+                const operation = withOperation ? "await plurnk.note({\"text\":\"Preparing edit.\"});" : "";
+                const content = transport === "text" ? (withOperation ? `${operation}\n\n${markup}` : markup) : operation;
                 const notices: Notice[] = [];
                 let requests = 0;
                 const provider = new ModelProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
@@ -171,15 +171,16 @@ for (const transport of ["text", "wire"] as const) {
                 const first = result.turnIds[1];
                 const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: first });
                 assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
-                const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string; status_rx: number }>({ turn_id: first });
-                assert.deepEqual(rows.filter(({ op }) => op === "EDIT").map(({ status_rx }) => status_rx), withOperation ? [200] : []);
-                assert.deepEqual(rows.filter(({ op }) => op === "error").map(({ rx }) => JSON.parse(rx).problem.detail),
-                    withOperation ? [] : ["The turn performed no operation."]);
+                const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; status_rx: number }>({ turn_id: first });
+                assert.deepEqual(rows.filter(({ op }) => op === "edit").map(({ status_rx }) => status_rx), [200]);
+                assert.deepEqual(rows.filter(({ op }) => op === "error"), []);
+                const emissionRow = rows.find(({ op }) => op === "read");
+                assert.match(JSON.parse(emissionRow?.rx ?? "{}").content ?? "", /await plurnk\.edit\(\{"path":"workspace:\/\/\/fact\.txt","pattern":"Original fact\.","content":"Translated change\."\}\);/u);
                 const fact = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/fact.txt", scheme: "workspace", name: "body" });
-                assert.equal(fact?.content, withOperation ? "Admitted change." : "Original fact.");
-                assert.equal(notices.filter(({ message }) => transport === "wire"
-                    ? message === "The response included native tool calls, but no tools were declared."
-                    : message?.includes("tool-call markup and was not executed")).length, 1);
+                assert.equal(fact?.content, "Translated change.");
+                assert.equal(notices.filter(({ message }) =>
+                    message === "The response included native tool calls, but no tools were declared."
+                    || message?.includes("tool-call markup and was not executed")).length, 0);
                 const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
                 assert.equal(sources.find((row) => row.turn_id === first && row.kind === "ops")?.content ?? "", content);
             } finally { await db.close(); }
@@ -194,7 +195,7 @@ for (const finish of ["stop", "tool_calls"]) {
         const sessionId = await insertSession(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, sessionId, 1, "Report the fact.");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "The fact." });
-        const tool = { index: 0, id: "call-extra", type: "function", function: { name: "READ", arguments: '{"path":"workspace:///fact.txt"}' } };
+        const tool = { index: 0, id: "call-extra", type: "function", function: { name: "read", arguments: '{"path":"workspace:///fact.txt"}' } };
         let requests = 0;
         const provider = new ModelProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
             fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
@@ -221,7 +222,7 @@ for (const finish of ["stop", "tool_calls"]) {
 describe("send-response", () => {
 // Every operation is on the line after its fence.
 const MISFENCED = [
-    "```sh <!-- brand presence -->\nprintf plurnk\n```",
+    "sh:\n```\nprintf plurnk\n```",
     "```ts\nawait plurnk.read({\"path\":\"workspace:///notes.md\"}); // retry the notes\n```",
     "````\n```ts\nawait plurnk.wait({\"text\":\"Research positioning.\"});\n```\n````",
 ].join("\n\n");
@@ -250,7 +251,7 @@ await plurnk.done({});`;
             assert.equal(result.content, undefined);
             assert.equal(await lastReply(db, loopId), body, "the client receives the entire answer, not its prefix");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: loopId });
-            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["SEND", 200], ["DONE", 200]], "quoted commands produce no dispatch, proposals or execution receipts");
+            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["send", 200], ["done", 200]], "quoted commands produce no dispatch, proposals or execution receipts");
             const turns = await db.test_list_turns_in_loop.all<{ producer: string }>({ loop_id: loopId });
             assert.equal(turns.filter(({ producer }) => producer === "model").length, 1, "no recovery turn or unnecessary continuation");
             const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: modelSessionId! });
@@ -273,11 +274,11 @@ test("{§fence-pairing} {§op-shapes}: recovered READ preserves nested prose; a 
             assert.equal(finalStatus, 200, "the second turn concludes");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; tx: string }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model").map(({ op, tx }) => ({ op, tx }));
-            assert.ok(model.some(({ op }) => op === "READ"), "the READ under a bare fence ran");
-            assert.ok(model.every(({ op }) => op !== "WAIT"), "the complete nested annotation remains literal under the same rule as NOTE and log KILL");
-            assert.ok(model.some(({ op, tx }) => op === "NOTE" && JSON.parse(tx).body.includes("````\n```ts\nawait plurnk.wait({\"text\":\"Research positioning.\"});\n```\n````")),
+            assert.ok(model.some(({ op }) => op === "read"), "the READ under a bare fence ran");
+            assert.ok(model.every(({ op }) => op !== "wait"), "the complete nested annotation remains literal under the same rule as NOTE and log KILL");
+            assert.ok(model.some(({ op, tx }) => op === "note" && JSON.parse(tx).body.includes("````\n```ts\nawait plurnk.wait({\"text\":\"Research positioning.\"});\n```\n````")),
                 "the complete annotation survives rather than executing its quoted WAIT");
-            assert.ok(model.some(({ op, tx }) => op === "NOTE" && /printf plurnk/u.test(JSON.parse(tx).body)), "a bare executor name is a word: its block stays quoted text, and beside the operations that text is the turn's NOTE ({§outside-text})");
+            assert.ok(model.some(({ op, tx }) => op === "note" && /printf plurnk/u.test(JSON.parse(tx).body)), "a bare executor name is a word: its block stays quoted text, and beside the operations that text is the turn's NOTE ({§outside-text})");
             const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: modelSessionId! });
             assert.equal(sources.some((row) => row.kind === "outside"), false, "a turn with fenced operations keeps no outside source");
             assert.match(JSON.stringify(mock.received[1]), /Code Mode statements need no Markdown fence/, "the next packet states the form once");
@@ -301,7 +302,7 @@ test("{§op-shapes}: messages that start with operation names remain literal rep
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "explain" });
             assert.equal(finalStatus, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: loopId });
-            const sends = rows.filter((r) => r.origin === "model" && (r.op === "SEND" || r.op === "DONE"));
+            const sends = rows.filter((r) => r.origin === "model" && (r.op === "send" || r.op === "done"));
             assert.deepEqual(sends.map(({ status_rx }) => status_rx), [200, 200, 200, 200], "message content is never parsed as another operation");
             assert.equal(rows.filter(({ origin }) => origin === "model").length, 4);
         } finally { ws.close(); }
@@ -320,14 +321,14 @@ test("{§message-completion}: a delivered reply names the open messages it answe
             const { finalStatus, loopId, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "answer me" });
             assert.equal(finalStatus, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
-            const send = rows.find((r) => r.origin === "model" && r.op === "DONE");
+            const send = rows.find((r) => r.origin === "model" && r.op === "done");
             assert.equal(send?.status_rx, 200);
             const receipt = JSON.parse(send.rx) as { repliedTo: string[]; recipients?: unknown };
             assert.ok(Array.isArray(receipt.repliedTo), "a reply names answered message addresses in repliedTo");
             assert.equal(Object.hasOwn(receipt, "recipients"), false, "answered messages are not mislabeled as recipient actors");
             const { repliedTo } = receipt;
             assert.ok(modelSessionId !== undefined);
-            const arrivals = rows.filter((r) => r.origin === "_plurnk" && r.op === "SEND");
+            const arrivals = rows.filter((r) => r.origin === "_plurnk" && r.op === "send");
             assert.equal(arrivals.length, 1, "one message in the loop");
             assert.equal(repliedTo.length, 1, "the receipt names the one open message");
             assert.match(repliedTo[0], /^message:\/\/[^/]+\/[0-9a-f]{8}$/, "the receipt names the short message:// key_path");
@@ -356,14 +357,14 @@ await plurnk.done({});`, 10),
             const next = await runLoopToTerminal(ws, 3, { prompt: "Thanks.", sessionId: modelSessionId });
             assert.equal(next.finalStatus, 200);
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnIds!.at(-1)! }))!.packet);
-            const reply = logEntries(packet).find((row) => Array.isArray(row.repliedTo) && row.logPath.endsWith("/SEND"));
+            const reply = logEntries(packet).find((row) => Array.isArray(row.repliedTo) && row.logPath.endsWith("/send"));
             assert.ok(reply, "the next model request contains the ordinary sent-message receipt");
             assert.equal(reply.preview, undefined, JSON.stringify(reply));
             assert.equal(reply.lines, 40, "the receipt states its full extent");
             assert.match(String(reply.body), /1:delivered line 1\n/u);
             assert.match(String(reply.body), /40:delivered line 40\n$/u, "the whole reply, because it fits");
             const messages = await db.test_log_entries_by_loop.all<{ op: string; origin: string; tx: string }>({ loop_id: loopId });
-            assert.ok(messages.some((row) => row.op === "SEND" && row.origin === "model" && row.tx.includes("delivered line 40")), "the complete submitted reply remains recorded");
+            assert.ok(messages.some((row) => row.op === "send" && row.origin === "model" && row.tx.includes("delivered line 40")), "the complete submitted reply remains recorded");
         } finally { ws.close(); }
     });
 });
@@ -383,12 +384,12 @@ test("{§operation-results} a SEND addressed to a turn source the model may not 
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "answer me" });
             assert.equal(finalStatus, 200, "the target-less reply concluded on the second turn");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
-            const sends = rows.filter((r) => (r.op === "SEND" || r.op === "DONE") && r.origin === "model");
+            const sends = rows.filter((r) => (r.op === "send" || r.op === "done") && r.origin === "model");
             assert.equal(sends[0]?.status_rx, 400, "the directed SEND was refused 400, not 403");
             const problem = (JSON.parse(sends[0].rx) as { problem?: Record<string, unknown> }).problem;
             assert.equal(problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/send-target-not-a-recipient");
-            assert.equal(problem?.detail, "The addressed scheme is not a SEND recipient."); // {§operation-results}
-            assert.equal(problem?.recovery, "Name a message address or a recipient that implements SEND."); // {§operation-results}
+            assert.equal(problem?.detail, "The addressed scheme is not a send recipient."); // {§operation-results}
+            assert.equal(problem?.recovery, "Name a message address or a recipient that implements send."); // {§operation-results}
             assert.doesNotMatch(JSON.stringify(problem), /meant|intended|wanted|tried/u);
             assert.ok(!sends.some((r) => r.status_rx === 403), "the writer rule never speaks first");
             assert.deepEqual(sends.map(({ status_rx }) => status_rx), [400, 200]);
@@ -411,10 +412,10 @@ test("{§operation-results} a SEND addressed to a file path preserves the scheme
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go" });
             assert.equal(finalStatus, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
-            const first = rows.find((r) => r.op === "SEND" && r.origin === "model");
+            const first = rows.find((r) => r.op === "send" && r.origin === "model");
             assert.equal(first?.status_rx, 501);
             const problem = (JSON.parse(first.rx) as { problem?: Record<string, unknown> }).problem;
-            assert.equal(problem?.detail, "Scheme 'file' does not implement SEND."); // {§operation-results}
+            assert.equal(problem?.detail, "Scheme 'file' does not implement send."); // {§operation-results}
             assert.equal(problem?.recovery, undefined);
         } finally { ws.close(); }
     });

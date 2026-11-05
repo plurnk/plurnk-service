@@ -48,7 +48,7 @@ for (const scope of ["session", "workspace"] as const) {
         await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
         const rows = await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER });
         assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk")?.status_rx, 201);
-        assert.ok(rows.some((row) => row.op === "READ" && row.scheme === "sh" && row.status_rx === 200 && JSON.stringify(row.rx).includes("settled")), "the command receives the just-published environment value");
+        assert.ok(rows.some((row) => row.op === "read" && row.scheme === "sh" && row.status_rx === 200 && JSON.stringify(row.rx).includes("settled")), "the command receives the just-published environment value");
     });
 }
 

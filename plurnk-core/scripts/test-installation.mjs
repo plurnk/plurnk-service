@@ -676,14 +676,14 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
         text: 'await plurnk.read({"path":"skill://inspect/SKILL.md","range":"1,-1"});',
     }, attached.name)).results[0];
     const ownSkillReads = [];
-    for (const pathname of ["SKILL.md", ".env.defaults", "plurnk.service", "plurnk.nginx.conf", "references/configuration.md", "references/copy-move.md", "references/models.md"]) {
+    for (const pathname of ["SKILL.md", "configuration/.env.defaults", "configuration/plurnk.service", "configuration/plurnk.nginx.conf", "configuration.md", "copy-move.md", "delegation.md", "extensibility.md", "https.md", "models.md", "pattern.md", "session.md", "wss.md"]) {
         ownSkillReads.push((await acpAction(address, "op.parse", {
             text: `await plurnk.read(${JSON.stringify({ path: `skill://plurnk/${pathname}`, range: "1,-1" })});`,
         }, attached.name)).results[0]);
     }
     await acpAction(address, "workspace.skills.disable", { alias: "plurnk" }, attached.name);
     const disabledSkillRead = (await acpAction(address, "op.parse", {
-        text: 'await plurnk.read({"path":"skill://plurnk/.env.defaults","range":"1,-1"});',
+        text: 'await plurnk.read({"path":"skill://plurnk/configuration/.env.defaults","range":"1,-1"});',
     }, attached.name)).results[0];
     await acpAction(address, "workspace.skills.enable", { alias: "plurnk" }, attached.name);
     const executed = await acpRun(address, {
@@ -766,7 +766,7 @@ if (dormantBoot.probeResult?.afterDemand === 0 || dormantBoot.probeResult?.state
 }
 const packedSkills = await readPackedCapabilityDocs();
 ok(
-    dormantBoot.probeResult?.ownSkillReads?.length === 7
+    dormantBoot.probeResult?.ownSkillReads?.length === 13
         && dormantBoot.probeResult.ownSkillReads.every((result) => result.status === 200)
         && dormantBoot.probeResult.ownSkillReads[1].content === configDefaults.stdout.trimEnd()
         && dormantBoot.probeResult.ownSkillReads[2].content === readFileSync(resolve(import.meta.dirname, "../plurnk.service"), "utf8").trimEnd()
@@ -794,7 +794,7 @@ ok(
     "the packed daemon discovers the skill and description through ordinary FIND",
 );
 ok(
-    packedSkills.get("mcp:///plurnk/skills.json")?.includes("plurnk (skills)") === true,
+    packedSkills.get("mcp:///plurnk/skills.json")?.includes("await plurnk.skills") === true,
     "the packed Session learns Skills management from the generated family tool, not a bundled skill",
 );
 const startsAfterActivation = markerCount(mcpStartMarker);

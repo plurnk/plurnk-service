@@ -323,7 +323,7 @@ for (const staged of ["loop", "messages"] as const) {
             ), 200);
             const frames = (await db.test_log_entries_by_loop.all<{
                 op: string; origin: string; tx: string; source: string | null;
-            }>({ loop_id: recovery.id })).filter((row) => row.op === "SEND" && row.origin === "_plurnk");
+            }>({ loop_id: recovery.id })).filter((row) => row.op === "send" && row.origin === "_plurnk");
             assert.deepEqual(
                 frames.map((row) => ({
                     content: (JSON.parse(row.tx) as { body: { raw: string } }).body.raw,
@@ -405,7 +405,7 @@ for (const accepted of [false, true]) test(`{§proposal}: boot terminalizes inte
             origin: "model",
             source: null,
             model_call_id: null,
-            op: "EDIT",
+            op: "edit",
             scheme: "workspace",
             username: null,
             password: null,
@@ -415,7 +415,7 @@ for (const accepted of [false, true]) test(`{§proposal}: boot terminalizes inte
             query: null,
             fragment: null,
             lineMarker: null,
-            tx: JSON.stringify({ op: "EDIT" }),
+            tx: JSON.stringify({ op: "edit" }),
             mimetype_tx: "application/json",
             rx: JSON.stringify({ status: 202, body: "review material" }),
             mimetype_rx: "application/json",
@@ -456,7 +456,7 @@ for (const accepted of [false, true]) test(`{§proposal}: boot terminalizes inte
             assert.equal(decision?.decision, "accept");
             assert.equal(decision?.body, "approved replacement");
         } else assert.equal(decision, undefined, "restart never invents an approval decision");
-        assert.equal(result?.problem?.instance, "log:///1/1/1/EDIT");
+        assert.equal(result?.problem?.instance, "log:///1/1/1/edit");
         const loop = await db.lifecycle_loop_status.get<{
             status: number;
             terminal_result: string | null;
@@ -471,7 +471,7 @@ for (const accepted of [false, true]) test(`{§proposal}: boot terminalizes inte
         assert.deepEqual(await first.pendingProposals(workspaceId), []);
         const rendered = await db.engine_render_log.all<{ sequence: number; op: string; state: string; status_rx: number }>({ session_id: sessionId });
         assert.ok(
-            rendered.some((row) => row.sequence === 1 && row.op === "EDIT" && row.state === "failed" && row.status_rx === 500),
+            rendered.some((row) => row.sequence === 1 && row.op === "edit" && row.state === "failed" && row.status_rx === 500),
             "the reconciled operation is visible as a truthful failed occurrence",
         );
 

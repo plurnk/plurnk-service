@@ -148,7 +148,7 @@ for (const [scope, end] of [["<395,12>", 406], ["<395,+12>", 407]] as const) {
         assert.equal(first.status, 102);
         assert.equal(second.status, 200);
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        const read = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(row.logPath));
+        const read = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/read$/u.test(row.logPath));
         assert.ok(read, "the explicit READ has its own receipt");
         assert.equal(packetSection(packet, "emission-history"), `await plurnk.read({"path":"workspace:///range.txt","range":"395,${end}"});`);
         const shown = String(read?.body).split("\n").filter(Boolean).map((line) => line.replace(/^\s*\d+<@[0-9A-Za-z]{5}>/u, ""));
@@ -158,7 +158,7 @@ for (const [scope, end] of [["<395,12>", 406], ["<395,+12>", 407]] as const) {
         assert.equal(notice.split("\n").filter((line) => line.includes("Scope ")).length, 1);
         assert.doesNotMatch(notice, /strike|no_operation|No valid Operation/u);
         const outcomes = await db.test_log_entries_by_turn.all<{ op: string; pathname: string; status_rx: number }>({ turn_id: first.turnId });
-        assert.deepEqual(outcomes.filter(({ op, pathname }) => op === "READ" && pathname === "/range.txt").map(({ status_rx }) => status_rx), [200]);
+        assert.deepEqual(outcomes.filter(({ op, pathname }) => op === "read" && pathname === "/range.txt").map(({ status_rx }) => status_rx), [200]);
         assert.ok(outcomes.every(({ status_rx }) => status_rx < 400), JSON.stringify(outcomes));
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: context.sessionId });
         assert.ok(sources.some(({ turn_id, kind, content }) => turn_id === first.turnId && kind === "ops" && content === emission),
@@ -223,8 +223,8 @@ for (const scope of ["3,2", "3,+1"]) {
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: program, reasoning: null } }] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });
         const outcomes = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: result.turnId });
-        assert.deepEqual(outcomes.filter(({ op }) => ["EDIT", "COPY", "MOVE", "KILL"].includes(op)).map(({ op, status_rx }) => ({ op, status_rx })), [
-            { op: "EDIT", status_rx: 200 }, { op: "COPY", status_rx: 200 }, { op: "MOVE", status_rx: 200 }, { op: "KILL", status_rx: 200 },
+        assert.deepEqual(outcomes.filter(({ op }) => ["edit", "copy", "move", "kill"].includes(op)).map(({ op, status_rx }) => ({ op, status_rx })), [
+            { op: "edit", status_rx: 200 }, { op: "copy", status_rx: 200 }, { op: "move", status_rx: 200 }, { op: "kill", status_rx: 200 },
         ]);
         const body = async (name: string) => (await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: `/${name}`, name: "body" }))?.content;
         assert.equal(await body("edited"), "one\ntwo\nreplacement\nfive");

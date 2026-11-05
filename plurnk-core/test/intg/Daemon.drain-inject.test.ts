@@ -311,7 +311,7 @@ test("{§methods-workspace-create}: an active-loop prompt carries its paths into
                 op: string; origin: string; scheme: string | null; pathname: string; turn_id: number; tx: string; attrs: string;
             }>({ loop_id: ended[0].loopId });
             const frame = rows.find((row) => isArrivalRow(row) && arrivalBody(row) === "follow-up");
-            const contextRead = rows.find((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null && row.pathname === "src/active-context.ts");
+            const contextRead = rows.find((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === null && row.pathname === "src/active-context.ts");
             assert.ok(frame, "the injected prompt was published as its own frame");
             assert.ok(contextRead, "the injected prompt's selected path produced a core READ");
             assert.equal(contextRead.turn_id, frame.turn_id,
@@ -387,7 +387,7 @@ test("{§methods-workspace-create}: a parked-loop prompt carries its paths into 
                 op: string; origin: string; scheme: string | null; pathname: string; turn_id: number; tx: string; attrs: string;
             }>({ loop_id: loopId });
             const frame = rows.find((row) => isArrivalRow(row) && arrivalBody(row) === "resume with this file");
-            const contextRead = rows.find((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null && row.pathname === "src/parked-context.ts");
+            const contextRead = rows.find((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === null && row.pathname === "src/parked-context.ts");
             assert.ok(frame, "the waking prompt was published as its own frame");
             assert.ok(contextRead, "the waking prompt's selected path produced a core READ");
             assert.equal(contextRead.turn_id, frame.turn_id,
@@ -562,7 +562,7 @@ test("{§message-arrival}: every orphaned message is recovered in order", async 
                 { ordinal: 2, body: "the second orphaned follow-up" },
             ], "the orphans moved into the recovery loop's inbox, renumbered from its first");
             assert.ok(promotedInbox.every(({ log_entry_id }) => log_entry_id !== null), "the recovery loop published them");
-            const contextReads = rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null);
+            const contextReads = rows.filter((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === null);
             assert.deepEqual(
                 contextReads.map((row) => row.pathname),
                 ["src/first-orphan-context.ts", "src/second-orphan-context.ts"],
@@ -723,7 +723,7 @@ for (const silent of [false, true]) {
                 );
                 assert.equal(done[0].result.status, 200, "the loop completed once the follow-ups were seen");
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number | null; turn_id: number; origin: string; rx: string | null; attrs: string }>({ loop_id: loopId });
-                const replies = rows.filter((r) => r.op === "DONE" && r.origin === "model");
+                const replies = rows.filter((r) => r.op === "done" && r.origin === "model");
                 assert.deepEqual(replies.map(({ status_rx }) => status_rx), [200, 200, 200], "replies deliver immediately while unseen arrivals defer loop settlement");
                 assert.deepEqual(replies.map(({ rx }) => JSON.parse(rx!).repliedTo.length), [1, 1, 1], "each reply resolves one published message, with or without speech");
                 const turns = (await db.test_list_turns_in_loop.all({ loop_id: loopId })).filter(({ producer }) => producer === "model");
@@ -782,14 +782,14 @@ await plurnk.note({"text":"Continue the task."});`, 10)] }).generate(args);
                     const run = await runLoopToTerminal(ws, 2, { prompt: "delete two lines" });
                     assert.equal(run.finalStatus, 200);
                     const rows = await db.engine_render_log.all<{ id: number; op: string; origin: string; source: number | null; rx: string; weight: number }>({ session_id: run.modelSessionId! });
-                    const kill = rows.find((row) => row.op === "KILL" && row.origin === "model" && row.source === null);
+                    const kill = rows.find((row) => row.op === "kill" && row.origin === "model" && row.source === null);
                     assert.ok(kill, "an entry mutation receipt stays visible on later turns");
                     const rx = JSON.parse(kill.rx);
                     assert.equal(rx.status, 200, JSON.stringify(rx));
                     assert.equal(rx.receipt.effect.removedText, "line 10\nline 11");
                     const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: run.turnIds!.at(-1)! }))!.packet);
                     const log = packetSection(packet, "log");
-                    const receipt = parseLogRecords(log).find((row) => row.logPath.endsWith("/KILL"));
+                    const receipt = parseLogRecords(log).find((row) => row.logPath.endsWith("/kill"));
                     assert.ok(receipt, "the packet retains the KILL identity");
                     assert.equal(receipt.path, scheme === "file" ? "notes.md" : target);
                     assert.equal(receipt.extent, "lines 20->18");
@@ -803,7 +803,7 @@ await plurnk.note({"text":"Continue the task."});`, 10)] }).generate(args);
                     // A person's READ of the model's log, acting for the model session ({§connection-lifecycle}).
                     const [recalled] = await daemon.dispatchClientAction({
                         workspaceId, actor: TEST_OWNER, contextSessionId: run.modelSessionId!,
-                        statements: [{ op: "READ", aside: null, metadata: null, target: parsePath(receipt.logPath), lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 0 } }],
+                        statements: [{ op: "read", aside: null, metadata: null, target: parsePath(receipt.logPath), lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 0 } }],
                     });
                     assert.equal(recalled.status, 200, JSON.stringify({ logPath: receipt.logPath, recalled }));
                     assert.equal(recalled.content, rx.receipt.effect.context, "log READ and packet share one canonical receipt body");
@@ -828,7 +828,7 @@ test("{§op-invariants} whole-entry KILL has a bodyless result, not an invented 
             assert.equal(run.finalStatus, 200);
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: run.turnIds!.at(-1)! }))!.packet);
             const log = packetSection(packet, "log");
-            const receipt = parseLogRecords(log).find((row) => row.logPath.endsWith("/KILL"));
+            const receipt = parseLogRecords(log).find((row) => row.logPath.endsWith("/kill"));
             assert.ok(receipt);
             assert.equal(Object.hasOwn(receipt, "status"), false, "routine success is implicit for whole-entry deletion too");
             assert.equal(receipt.path, "workspace:///doomed");
@@ -928,20 +928,20 @@ test("{§methods-invocation} {§loop-completion} a delegation is answered by its
         "await plurnk.done({\"text\":\"The helper said hello; the answer is forty-two.\"});",
     ], ["peer"], async (logs, _announced, session) => {
         const main = await logs("main");
-        const work = main.find(({ op }) => op === "WORK")!;
-        const send = main.find(({ op, attrs: opened }) => op === "SEND" && typeof (opened as { message?: unknown }).message === "string")!;
+        const work = main.find(({ op }) => op === "work")!;
+        const send = main.find(({ op, attrs: opened }) => op === "send" && typeof (opened as { message?: unknown }).message === "string")!;
         assert.match(String(attrs(work).message), /^message:\/\/helper\//u, "the WORK names the message it sent");
         assert.match(String(attrs(send).message), /^message:\/\/peer\//u, "the SEND names the message it sent");
         const answers = main.filter(({ invocation }) => invocation !== undefined).map(({ invocation, op, source, attrs: kind }) =>
             ({ invocation, op, source, kind: (kind as { kind?: unknown }).kind }));
         assert.deepEqual(answers, [
-            { invocation: address(work), op: "READ", source: "session://helper", kind: "loop_termination" },
-            { invocation: address(send), op: "DONE", source: "session://peer", kind: "reply" },
+            { invocation: address(work), op: "read", source: "session://helper", kind: "loop_termination" },
+            { invocation: address(send), op: "done", source: "session://peer", kind: "reply" },
         ], "the child's conclusion answers the WORK and the peer's completion answers the SEND, each once");
-        const wait = main.find(({ op, sequence, turn_seq }) => op === "WAIT" && turn_seq === send.turn_seq && sequence > send.sequence);
+        const wait = main.find(({ op, sequence, turn_seq }) => op === "wait" && turn_seq === send.turn_seq && sequence > send.sequence);
         assert.equal(wait?.status_rx, 202, "the open message held its sender, so the WAIT parked until the reply");
         const peer = await logs("peer");
-        assert.equal(peer.find(({ op, origin }) => op === "SEND" && origin === "_plurnk")?.source, "session://main", "the message names its sender");
+        assert.equal(peer.find(({ op, origin }) => op === "send" && origin === "_plurnk")?.source, "session://main", "the message names its sender");
         // {§methods-workspace-create} A loop names the operation that opened it; a person's prompt is no session's operation.
         const sender = await session("main");
         assert.deepEqual((await session("helper")).loops.map(({ invocation }) => invocation), [{ sessionId: sender.id, address: address(work) }],
@@ -959,7 +959,7 @@ test("{§methods-invocation} a peer's progress and its completion each name the 
         "await plurnk.done({\"text\":\"The answer is forty-two.\"});",
     ], ["peer"], async (logs, announced) => {
         const main = await logs("main");
-        const send = main.find(({ op, attrs: opened }) => op === "SEND" && typeof (opened as { message?: unknown }).message === "string")!;
+        const send = main.find(({ op, attrs: opened }) => op === "send" && typeof (opened as { message?: unknown }).message === "string")!;
         const replies = main.filter(({ answering }) => answering !== undefined).map(({ answering, invocation, source, tx }) =>
             ({ answering, invocation, source, body: (tx as { body?: { raw?: unknown } } | null)?.body?.raw }));
         assert.deepEqual(replies, [

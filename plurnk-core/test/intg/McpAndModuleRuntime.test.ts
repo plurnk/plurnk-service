@@ -383,7 +383,7 @@ const uri = "fixture://resource/item";
 const guardedUri = "fixture://resource/guarded";
 const multipartUri = "fixture://resource/multipart";
 const path = resourcePath(uri);
-const step = (op = "NOTE") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "NOTE" ? "Inspect the result." : "" })});`;
+const step = (op = "note") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "note" ? "Inspect the result." : "" })});`;
 
 const statement = (source: string) => {
     const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
@@ -610,7 +610,7 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
 
 test("{§execution-output-identity}: MCP resource elicitation and its receipt belong to the requesting model operation", { timeout: 20_000 }, async (t) => {
     const f = await fixture(t, [
-        `await plurnk.read({"path":"other://${resourcePath(guardedUri)}"});\n\n${step("NOTE")}`,
+        `await plurnk.read({"path":"other://${resourcePath(guardedUri)}"});\n\n${step("note")}`,
         "await plurnk.done({\"text\":\"The resource was read.\"});",
     ]);
     const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, sessionId: f.alice, prompt: "Read Bob's guarded resource." });
@@ -627,13 +627,13 @@ test("{§execution-output-identity}: MCP resource elicitation and its receipt be
     assert.equal(f.provider.received.length, 2, "the owner model never starts");
     assert.match(f.provider.received[1].map(chatMessageText).join("\n"), /bob:accept/);
     const receipts = await f.db.test_log_entries_by_loop.all<{ op: string; status_rx: number; target: string }>({ loop_id: run.loopId });
-    assert.ok(receipts.some((row) => row.op === "READ" && row.status_rx === 200), "the READ receipt stays in Alice's loop");
+    assert.ok(receipts.some((row) => row.op === "read" && row.status_rx === 200), "the READ receipt stays in Alice's loop");
     assert.deepEqual(await f.daemon.pendingClientInteractions(f.workspaceId), []);
 });
 
 test("{§execution-output-identity}: cancelling the requester settles its MCP interaction and releases the shared connection", { timeout: 20_000 }, async (t) => {
     const f = await fixture(t, [
-        `await plurnk.read({"path":"other://${resourcePath(guardedUri)}"});\n\n${step("NOTE")}`,
+        `await plurnk.read({"path":"other://${resourcePath(guardedUri)}"});\n\n${step("note")}`,
     ]);
     const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, sessionId: f.alice, prompt: "Read Bob's guarded resource." });
     const pending = await waitForDb(() => f.daemon.pendingClientInteractions(f.workspaceId), (items) => items.length === 1);
@@ -713,7 +713,7 @@ const wire = (db: Awaited<ReturnType<typeof openMigrated>>) => {
 
 const readStatement = (pathname: string): ReadStatement => ({
     metadata: null,
-    op: "READ",
+    op: "read",
     aside: null,
     target: {
         kind: "url",
@@ -1273,7 +1273,7 @@ test("{§mcp-open-work} MCP server auto-creates bound workspace and session, rou
     const callerLog = await daemon.readLog({ workspaceId: ops.id, sessionId: callerId, loopId: callerLoop.loopId, limit: 100 });
     const callerFoistedRead = callerLog.find((entry) =>
         entry.origin === "_plurnk"
-        && entry.op === "READ"
+        && entry.op === "read"
         && entry.scheme === "telegram");
     assert.ok(callerFoistedRead, "caller loop received foisted READ of telegram (ask-inbox) output");
     assert.match(JSON.stringify(callerFoistedRead.rx), /Approved by inbox!/u);
@@ -1317,7 +1317,7 @@ test("{§mcp-open-work} MCP server auto-creates bound workspace and session, rou
     const inboxLog = await daemon.readLog({ workspaceId: ops.id, sessionId: inboxSession.id, loopId: inboxStreamLoop.loopId, limit: 100 });
     const foistedRead = inboxLog.find((entry) =>
         entry.origin === "_plurnk"
-        && entry.op === "READ"
+        && entry.op === "read"
         && JSON.stringify(entry.rx).includes("feed-v2"));
     assert.ok(foistedRead, "resource update materialized a foisted _plurnk READ with feed-v2 in the woken turn");
 });

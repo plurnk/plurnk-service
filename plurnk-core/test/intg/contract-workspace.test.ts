@@ -360,7 +360,7 @@ test("{§membership} out-of-band change to a member remains truthful runtime-act
         const runtimeRows = await db.engine_render_log.all<{ source: string | null; op: string; pathname: string | null }>({
             session_id: runtimeSession.id,
         });
-        assert.ok(runtimeRows.some(({ source, op, pathname }) => source === "file" && op === "EDIT" && pathname === trackedPath),
+        assert.ok(runtimeRows.some(({ source, op, pathname }) => source === "file" && op === "edit" && pathname === trackedPath),
             "EMI preserves the divergence as an exact runtime-actor operation row");
     });
 });
@@ -621,13 +621,13 @@ test("{§file-snapshot-revision}: deletion of an unversioned projection preserve
     assert.equal(await MembershipMaterialization.materializeMember("doc.md", fx.root, fx.ctx, new Map()), null);
 });
 
-for (const mutation of ["EDIT", "KILL"] as const) {
+for (const mutation of ["edit", "kill"] as const) {
     for (const drift of ["same-size-and-mtime", "replacement", "missing", "directory"] as const) {
         test(`{§file-snapshot-revision} {§file-snapshot-revision}: ${mutation} preserves ${drift} drift`, async (t) => {
             const fx = await fixture(t);
             await fs.utimes(fx.path, 1_700_000_000, 1_700_000_000);
             await MembershipMaterialization.materializeMember("doc.md", fx.root, fx.ctx, new Map());
-            const proposal = mutation === "EDIT"
+            const proposal = mutation === "edit"
                 ? await fx.file.edit(editStmt(localPath("doc.md"), "proposed\n", fullReplace), fx.ctx)
                 : await fx.file.deleteEntry("doc.md", fx.ctx);
             assert.equal(proposal.status, 202);

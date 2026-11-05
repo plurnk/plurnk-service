@@ -45,7 +45,7 @@ const outcome = (op: StrikeOutcome["op"], status: number): StrikeOutcome => ({ o
 
 test("{§engine-rails} a 409 status alone is soft; no completion claim strikes ({§loop-completion}, {§loop-completion})", async () => {
     const rail = new StrikeRail(db);
-    const verdict = await rail.assess(loopId, { ...base, outcomes: [outcome("SEND", 409)] });
+    const verdict = await rail.assess(loopId, { ...base, outcomes: [outcome("send", 409)] });
     assert.equal(verdict.thresholdCrossed, false);
     assert.equal(await rail.streak(loopId), 0, "a soft status is never counted");
 });
@@ -55,14 +55,14 @@ test("{§engine-rails} a genuinely-spinning model is still caught — identical 
     // The retrieval-preemie no-strike leaves the cycle detector as the backstop: a model repeating
     // the IDENTICAL read+conclude turn is loop-detected even with 409 soft.
     let cycleHit = false;
-    for (let i = 0; i < 8; i++) cycleHit = (await rail.assess(loopId, { ...base, fingerprint: "READ(page)+SEND", outcomes: [outcome("SEND", 409)] })).cycleDetected || cycleHit;
+    for (let i = 0; i < 8; i++) cycleHit = (await rail.assess(loopId, { ...base, fingerprint: "READ(page)+SEND", outcomes: [outcome("send", 409)] })).cycleDetected || cycleHit;
     assert.equal(cycleHit, true, "identical repetition is loop-detected — the spin backstop survives the soft 409");
 });
 
 test("{§engine-rails} a non-execution hard failure (500-class status) still strikes normally", async () => {
     const rail = new StrikeRail(db);
     let crossed = false;
-    for (const fp of ["EDIT(a)", "EDIT(b)", "EDIT(c)"]) crossed = (await rail.assess(loopId, { ...base, fingerprint: fp, outcomes: [outcome("EDIT", 500)] })).thresholdCrossed || crossed;
+    for (const fp of ["EDIT(a)", "EDIT(b)", "EDIT(c)"]) crossed = (await rail.assess(loopId, { ...base, fingerprint: fp, outcomes: [outcome("edit", 500)] })).thresholdCrossed || crossed;
     assert.equal(crossed, true, "a non-soft failure status accrues strikes as ever");
 });
 
@@ -72,12 +72,12 @@ test("{§engine-rails} executor evidence never strikes, wherever it surfaces", a
     const rail = new StrikeRail(db);
     const evidence = (op: StrikeOutcome["op"]): StrikeOutcome => ({ op, status: 500, problemType: "https://problems.plurnk.xyz/executor/subprocess/spawn-failed" });
     let crossed = false;
-    for (const fp of ["execution(a)", "execution(b)", "execution(c)", "execution(d)"]) crossed = (await rail.assess(loopId, { ...base, fingerprint: fp, outcomes: [evidence("READ"), evidence("READ")] })).thresholdCrossed;
+    for (const fp of ["execution(a)", "execution(b)", "execution(c)", "execution(d)"]) crossed = (await rail.assess(loopId, { ...base, fingerprint: fp, outcomes: [evidence("read"), evidence("read")] })).thresholdCrossed;
     assert.equal(crossed, false, "four turns of red test runs are evidence, not strikes");
     assert.equal(await rail.streak(loopId), 0);
     // The same status without executor identity is a hard failure and strikes as before.
     let struck = false;
-    for (const fp of ["READ(a)", "READ(b)", "READ(c)"]) struck = (await rail.assess(loopId, { ...base, fingerprint: fp, outcomes: [{ op: "READ", status: 500, problemType: "https://problems.plurnk.xyz/engine/dispatcher/scheme-handler-threw" }] })).thresholdCrossed;
+    for (const fp of ["READ(a)", "READ(b)", "READ(c)"]) struck = (await rail.assess(loopId, { ...base, fingerprint: fp, outcomes: [{ op: "read", status: 500, problemType: "https://problems.plurnk.xyz/engine/dispatcher/scheme-handler-threw" }] })).thresholdCrossed;
     assert.equal(struck, true, "a non-executor 500 still strikes to the threshold");
 });
 
@@ -92,7 +92,7 @@ test("{§engine-rails} hard outcomes are the non-cycle strike source and accumul
     const rail = new StrikeRail(db);
     assert.equal((await rail.assess(loopId, { ...base, fingerprint: "hard", outcomes: [outcome(null, 400)] })).thresholdCrossed, false);
     assert.equal(await rail.streak(loopId), 1);
-    assert.equal((await rail.assess(loopId, { ...base, fingerprint: "hard2", outcomes: [outcome("EDIT", 500)] })).thresholdCrossed, false);
+    assert.equal((await rail.assess(loopId, { ...base, fingerprint: "hard2", outcomes: [outcome("edit", 500)] })).thresholdCrossed, false);
     assert.equal(await rail.streak(loopId), 2);
 });
 
@@ -100,7 +100,7 @@ test("{§engine-rails} multiple sources still count once per turn, and a clean t
     const rail = new StrikeRail(db);
     const struck = await rail.assess(loopId, {
         ...base,
-        outcomes: [outcome("EDIT", 500)],
+        outcomes: [outcome("edit", 500)],
         maxStrikes: 2,
     });
     assert.equal(struck.thresholdCrossed, false);
@@ -111,12 +111,12 @@ test("{§engine-rails} multiple sources still count once per turn, and a clean t
 
 test("{§engine-rails}: a hard 400 beside a successful operation is progress and clears the streak", async () => {
     const rail = new StrikeRail(db);
-    await rail.assess(loopId, { ...base, fingerprint: "failed", outcomes: [outcome("EDIT", 400)] });
+    await rail.assess(loopId, { ...base, fingerprint: "failed", outcomes: [outcome("edit", 400)] });
     assert.equal(await rail.streak(loopId), 1);
     const productive = await rail.assess(loopId, {
         ...base,
         fingerprint: "productive",
-        outcomes: [outcome("READ", 200), outcome(null, 400), outcome("EDIT", 400), outcome("NOTE", 201)],
+        outcomes: [outcome("read", 200), outcome(null, 400), outcome("edit", 400), outcome("note", 201)],
         progressed: true,
         maxStrikes: 2,
     });
@@ -128,9 +128,9 @@ test("{§engine-rails}: a hard 400 beside a successful operation is progress and
 test("{§engine-rails}: turns without progress strike on their hard failures", async () => {
     const rail = new StrikeRail(db);
     const turns = [
-        [outcome("NOTE", 201), outcome(null, 400)],
-        [outcome("EDIT", 400), outcome("WAIT", 202)],
-        [outcome("NOTE", 201), outcome("READ", 404), outcome("SEND", 200), outcome("KILL", 405)],
+        [outcome("note", 201), outcome(null, 400)],
+        [outcome("edit", 400), outcome("wait", 202)],
+        [outcome("note", 201), outcome("read", 404), outcome("send", 200), outcome("kill", 405)],
     ];
     const verdicts = [];
     for (const [index, outcomes] of turns.entries()) verdicts.push(await rail.assess(loopId, { ...base, fingerprint: `failed-${index}`, outcomes }));
@@ -141,7 +141,7 @@ test("{§engine-rails}: turns without progress strike on their hard failures", a
 test("{§engine-rails}: a successful operation does not exempt a repeating turn from the cycle backstop", async () => {
     const rail = new StrikeRail(db);
     let crossed = null;
-    for (let i = 0; i < base.minCycles * 3; i++) crossed = await rail.assess(loopId, { ...base, fingerprint: "READ(same)+EDIT(bad)", progressed: true, outcomes: [outcome("READ", 200), outcome("EDIT", 400)] });
+    for (let i = 0; i < base.minCycles * 3; i++) crossed = await rail.assess(loopId, { ...base, fingerprint: "READ(same)+EDIT(bad)", progressed: true, outcomes: [outcome("read", 200), outcome("edit", 400)] });
     assert.equal(crossed?.cycleDetected, true);
     assert.equal(crossed?.crossedBy, "repetition");
     assert.equal(crossed?.thresholdCrossed, true);
@@ -166,21 +166,21 @@ test("{§engine-rails} {§operation-results}: a cut turn's strike is the allowan
     const sources = [
         { emptyTurn: true, outcomes: [] },
         { emptyTurn: false, outcomes: [outcome(null, 500)] },
-        { emptyTurn: false, outcomes: [outcome("EDIT", 400)] },
+        { emptyTurn: false, outcomes: [outcome("edit", 400)] },
     ];
     const verdicts = [];
     for (const [index, turn] of sources.entries()) verdicts.push(await rail.assess(loopId, { ...base, ...turn, fingerprint: `cut-${index}`, cut: true }));
     assert.deepEqual(verdicts.map(({ crossedBy }) => crossedBy), ["output_allowance", "output_allowance", "output_allowance"]);
     assert.deepEqual(verdicts.map(({ cycleDetected }) => cycleDetected), [false, false, false]);
     assert.equal(verdicts.at(-1)?.thresholdCrossed, true, "a cut still strikes, so a model that keeps reaching the allowance stops");
-    const progressed = await rail.assess(loopId, { ...base, cut: true, progressed: true, outcomes: [outcome("READ", 200), outcome(null, 400)] });
+    const progressed = await rail.assess(loopId, { ...base, cut: true, progressed: true, outcomes: [outcome("read", 200), outcome(null, 400)] });
     assert.equal(progressed.crossedBy, null, "a cut turn that acted on the task is progress like any other");
     assert.equal(await rail.streak(loopId), 0);
 });
 
 test("{§engine-rails}: clean recovery after a park resets only this loop's streak", async () => {
     const rail = new StrikeRail(db);
-    await rail.assess(loopId, { ...base, outcomes: [outcome("READ", 403)] });
+    await rail.assess(loopId, { ...base, outcomes: [outcome("read", 403)] });
     const lifecycle = new LoopLifecycle(db);
     assert.equal(await lifecycle.park(loopId, { wakenBy: "test-fixture" }), true);
     assert.equal(await lifecycle.wake(loopId), true);
@@ -192,7 +192,7 @@ test("{§engine-rails}: clean recovery after a park resets only this loop's stre
     const workspaceId = await insertWorkspace(db, "independent-rail");
     const sessionId = await insertSession(db, workspaceId);
     const otherLoopId = await insertLoop(db, sessionId, 1);
-    await resumed.assess(otherLoopId, { ...base, outcomes: [outcome("READ", 403)] });
+    await resumed.assess(otherLoopId, { ...base, outcomes: [outcome("read", 403)] });
     assert.equal(await resumed.streak(otherLoopId), 1);
     assert.equal(await resumed.streak(loopId), 0);
 });
@@ -228,7 +228,7 @@ const response = (dsl: string) => ({
 });
 
 for (const wake of ["message", "same-drain", "restart"] as const) {
-    for (const last of ["WAIT", "SEND"] as const) {
+    for (const last of ["wait", "send"] as const) {
         test(`{§engine-rails}: ${wake} wake preserves consecutive strikes through ${last}`, async (t) => {
             // The waits park on live work the fixture holds; a restart wakes them through recovery.
             const provider = new Mock({ contextWindow: 100000, responses: [
@@ -344,7 +344,7 @@ test("{§engine-rails}: actual parks end repetition windows even when wakes stay
             assert.equal(parks, 6);
             assert.equal(provider.received.length, 7);
             const reads = (await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: loopId }))
-                .filter(({ op }) => op === "READ");
+                .filter(({ op }) => op === "read");
             assert.equal(reads.filter(({ status_rx }) => status_rx === 404).length, 6);
         } finally { await daemon.cancelSession({ workspaceId, sessionId }); }
     });
@@ -352,7 +352,7 @@ test("{§engine-rails}: actual parks end repetition windows even when wakes stay
 });
 
 describe("Engine.cycles", () => {
-const turn = (operation: string, op: string | null = "NOTE") => ({
+const turn = (operation: string, op: string | null = "note") => ({
     assistant: { content: op === null ? operation : `${operation}
 
 await plurnk.${op.toLowerCase()}({});`, reasoning: null },
@@ -375,7 +375,7 @@ for (const identical of [false, true]) {
             const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 10 });
             assert.equal(result.result.status, 200, JSON.stringify(result.result));
             const rows = await db.test_log_entries_by_session.all<{ op: string; status_rx: number }>({ session_id: sessionId });
-            assert.deepEqual(rows.filter(({ op }) => op === "EDIT").map(({ status_rx }) => status_rx), [201, 200, 200, 200, 200, 200]);
+            assert.deepEqual(rows.filter(({ op }) => op === "edit").map(({ status_rx }) => status_rx), [201, 200, 200, 200, 200, 200]);
             const entry = await db.test_get_entry_by_path.get<{ id: number }>({ workspace_id: workspaceId, scheme: "workspace", pathname: "/journal" });
             assert.ok(entry);
             const channel = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "body" });
@@ -402,7 +402,7 @@ class ObservedContent {
 }
 
 for (const changing of [false, true]) {
-    for (const status of ["NOTE", null]) test(`{§engine-rails} repeated reads with ${changing ? "changing" : "unchanged"} results, NOTE=${status ?? "omitted"}`, async () => {
+    for (const status of ["note", null]) test(`{§engine-rails} repeated reads with ${changing ? "changing" : "unchanged"} results, NOTE=${status ?? "omitted"}`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `cycles-${crypto.randomUUID()}`);
@@ -420,7 +420,7 @@ for (const changing of [false, true]) {
             assert.equal(result.result.status, changing ? 200 : 508, JSON.stringify(result.result));
             assert.equal(source.calls, changing ? 6 : 5);
             const reads = (await db.test_log_entries_by_loop.all<{ op: string; scheme: string; rx: string }>({ loop_id: loopId }))
-                .filter(({ op, scheme }) => op === "READ" && scheme === "observed-content");
+                .filter(({ op, scheme }) => op === "read" && scheme === "observed-content");
             assert.deepEqual(reads.map(({ rx }) => JSON.parse(rx).content),
                 Array.from({ length: source.calls }, (_, index) => `observation ${changing ? index + 1 : 1}`));
             if (!changing) assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
@@ -439,7 +439,7 @@ test("{§engine-rails} repeated misses cycle despite unique Problem occurrence a
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 10 });
         assert.equal(result.result.status, 508, JSON.stringify(result.result));
         const misses = (await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId }))
-            .filter(({ op, status_rx }) => op === "READ" && status_rx === 404);
+            .filter(({ op, status_rx }) => op === "read" && status_rx === 404);
         assert.equal(misses.length, 5);
         assert.equal(new Set(misses.map(({ rx }) => JSON.parse(rx).problem.instance)).size, 5);
     } finally { await db.close(); }
@@ -484,7 +484,7 @@ await plurnk.note({"text":"started"});`, 50),
                     // wait for the rows the assertion reads, not for the status.
                     taskStatuses = await waitForDb(
                         async () => (await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({}))
-                            .filter(({ op }) => op === "NOTE" || op === "WAIT").map(({ status_rx }) => status_rx),
+                            .filter(({ op }) => op === "note" || op === "wait").map(({ status_rx }) => status_rx),
                         (statuses) => statuses.length === 3,
                     );
                 } finally {
@@ -567,7 +567,7 @@ await plurnk.wait({"text":"Await results."});`)] : []),
         assert.equal(result.result.content, undefined);
         assert.equal(await lastReply(db, loopId), "42");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId });
-        const reads = rows.filter(({ op }) => op === "READ");
+        const reads = rows.filter(({ op }) => op === "read");
         const unfinished = reads.filter(({ status_rx }) => status_rx === 425);
         assert.equal(unfinished.length, 2, "the original not-ready receipts are not erased or relabeled");
         for (const row of unfinished) {
@@ -644,7 +644,7 @@ test("{§session-loop-lifecycle} the daemon wakes a collecting parent on actual 
                 "the resumed parent packet contains the child's completed response");
             assert.equal(await new StrikeRail(db).streak(parent.loopId), 0);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: parent.loopId });
-            assert.ok(rows.some(({ op, status_rx }) => op === "READ" && status_rx === 425));
+            assert.ok(rows.some(({ op, status_rx }) => op === "read" && status_rx === 425));
         } finally {
             await daemon.cancelSession({ workspaceId, sessionId: parentId });
         }
@@ -676,9 +676,9 @@ test("{§engine-rails}: a resumed task retains its strike streak across a wait a
         content: "42", mimetype: "text/plain", state: "static",
     });
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response(extraSlotCopy, "NOTE"),
-        response(extraSlotCopy, "WAIT"),
-        response(extraSlotCopy, "NOTE"),
+        response(extraSlotCopy, "note"),
+        response(extraSlotCopy, "wait"),
+        response(extraSlotCopy, "note"),
     ] });
     const run = () => new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
         workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4, maxStrikes: 3,
@@ -706,7 +706,7 @@ test("{§session-loop-lifecycle}: cancellation wins against a pending strike ver
         }
         return verdict;
     });
-    const provider = new Mock({ contextWindow: 100000, responses: [response(extraSlotCopy, "NOTE")] });
+    const provider = new Mock({ contextWindow: 100000, responses: [response(extraSlotCopy, "note")] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
         workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 2, maxStrikes: 1,
     });
@@ -725,7 +725,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null,
+    op: "edit", aside: null,
     target: urlPath("workspace", pathname),
     lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
 });
@@ -921,7 +921,7 @@ test("{§loop-completion} Engine.runLoop: a completion over a live stream joins 
         assert.equal(provider.remaining, 1, "no further turn runs until the stream concludes and wakes the loop");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
         const modelRows = rows.filter((r) => r.origin === "model");
-        assert.deepEqual(modelRows.map(({ op, status_rx }) => [op, status_rx]), [["DONE", 200]],
+        assert.deepEqual(modelRows.map(({ op, status_rx }) => [op, status_rx]), [["done", 200]],
             "reply delivery succeeds while the loop joins the live stream");
     } finally { await db.close(); }
 });
@@ -999,7 +999,7 @@ test("{§op-methods-op-dispatch} Engine.runLoop: cross-turn state — turn 2 see
     try {
         const readStmt = (pathname: string) => ({
             metadata: null,
-            op: "READ" as const, aside: null,
+            op: "read" as const, aside: null,
             target: urlPath("workspace", pathname),
             lineMarker: null, matcher: null, body: null,
             position: { line: 1, column: 1 },
@@ -1018,7 +1018,7 @@ test("{§op-methods-op-dispatch} Engine.runLoop: cross-turn state — turn 2 see
             messages: [{ role: "user", content: "store then retrieve" }],
         });
         assert.equal(result.turnIds.length, 4, "packetless initialization precedes three model turns");
-        const readLog = await db.test_read_log_entries_for_turn_by_op.get<{ status_rx: number }>({ turn_id: result.turnIds[2], op: "READ" });
+        const readLog = await db.test_read_log_entries_for_turn_by_op.get<{ status_rx: number }>({ turn_id: result.turnIds[2], op: "read" });
         assert.equal(readLog?.status_rx, 200, "READ in turn 2 found the entry written in turn 1");
     } finally { await db.close(); }
 });
@@ -1127,7 +1127,7 @@ await plurnk.note({"text":"fixing the tests"});`, 10)),
             assert.equal(finalStatus, 200, `the loop concludes on the model's completed inventory after ${failing} red runs, never the engine's 500`);
             assert.equal(turnIds?.length, failing + 2, "initialization + every failing turn + the concluding turn");
             const rows = await db.test_log_entries_by_loop.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ loop_id: 1 });
-            const answers = rows.filter((r) => r.op === "READ" && r.origin === "_plurnk" && JSON.parse(r.rx).exitCode === 1);
+            const answers = rows.filter((r) => r.op === "read" && r.origin === "_plurnk" && JSON.parse(r.rx).exitCode === 1);
             assert.ok(answers.length >= failing, `every command surfaced as a completion READ carrying its exit code; got ${answers.length}`);
             assert.ok(answers.every((r) => r.status_rx === 200 && JSON.parse(r.rx).problem === undefined), "each completion is a 200 answer with no Problem");
         } finally { ws.close(); }
@@ -1382,9 +1382,9 @@ for (const cancel of [false, true]) {
                 assert.equal(mock.received.length, 2);
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: result.loopId });
                 assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [
-                    ["KILL", 404], ["SEND", 200], [cancel ? "KILL" : "DONE", 200],
+                    ["kill", 404], ["send", 200], [cancel ? "kill" : "done", 200],
                 ]);
-                const failure = rows.find(({ op, status_rx }) => op === "KILL" && status_rx === 404)!;
+                const failure = rows.find(({ op, status_rx }) => op === "kill" && status_rx === 404)!;
                 const problem = JSON.parse(failure.rx).problem;
                 assert.match(problem.type, /entry-not-found$/);
                 assert.ok(JSON.stringify(mock.received[1]).includes(problem.type), "the actual failure reaches the observation packet");

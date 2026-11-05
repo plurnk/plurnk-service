@@ -619,7 +619,7 @@ test("{§schedule-delivery} {§session-wait-timing}: an occurrence wakes a genui
         occurrence[1].callback();
 
         await waitForDb(() => db.test_log_entries_by_loop.all<{ op: string; tx: string }>({ loop_id: accepted.loopId }),
-            (rows) => rows.some(({ op, tx }) => op === "NOTE" && tx.includes("Received the scheduled message.")));
+            (rows) => rows.some(({ op, tx }) => op === "note" && tx.includes("Received the scheduled message.")));
         await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);
         await waitForDb(async () => module.functionality.scheduler.armed(workspaceId), (aliases) => aliases.length === 0);
         assert.equal(provider.received.length, 2, "the occurrence wakes the loop without waiting for its ten-minute deadline");
@@ -1009,7 +1009,7 @@ test("{§session-loop-lifecycle} an empty wait continues through the real loop u
             assert.equal(t.length, 1, "the loop concluded — one loop/terminated, no held-open 202");
             assert.equal(t[0].result.status, 200, "the answered assignment concludes the loop");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: t[0].loopId! });
-            assert.deepEqual(rows.filter(({ op, origin }) => origin === "model" && (op === "WAIT" || op === "DONE")).map(({ status_rx }) => status_rx), [102, 200]);
+            assert.deepEqual(rows.filter(({ op, origin }) => origin === "model" && (op === "wait" || op === "done")).map(({ status_rx }) => status_rx), [102, 200]);
             assert.equal(mock.remaining, 0);
         } finally { ws.close(); }
     });
@@ -1095,7 +1095,7 @@ test("{§log-history-projection} log-targeted KILL is recorded in the DB, and a 
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "curate" });
             assert.equal(finalStatus, 200, "a curation turn is work, never idleness — the loop concluded");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string }>({ loop_id: loopId });
-            const kills = rows.filter((r) => r.origin === "model" && r.op === "KILL" && JSON.parse(r.tx).target !== null);
+            const kills = rows.filter((r) => r.origin === "model" && r.op === "kill" && JSON.parse(r.tx).target !== null);
             assert.equal(kills.length, 2, `both KILLs recorded in the DB; got ${JSON.stringify(kills)}`);
             assert.deepEqual(kills.map(({ status_rx }) => status_rx), [200, 404], "one success + one failure recorded");
         } finally { ws.close(); }
@@ -1134,7 +1134,7 @@ test("{§session-loop-lifecycle} waiting on a just-concluded child continues unt
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
-        const r = await engine.dispatch({ statement: dispositionStmt("WAIT", "Waiting for session-x."), workspaceId, sessionId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
+        const r = await engine.dispatch({ statement: dispositionStmt("wait", "Waiting for session-x."), workspaceId, sessionId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 102, "the wait is NOT on nothing — the child's deliverable is on the doorstep; continue");
         const loop = await db.test_get_loop_status.get<{ status: number }>({ id: parentLoop });
         assert.notEqual(loop?.status, 200, "the loop did not conclude over the undelivered result");
@@ -1164,7 +1164,7 @@ test("{§loop-completion} a child refused before its first turn still announces 
         const pending = await db.engine_session_has_undelivered_child_term.get<{ pending: number }>({ session_id: parent });
         assert.ok(pending !== undefined, "the refused spawn is an undelivered child termination");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const r = await engine.dispatch({ statement: dispositionStmt("WAIT", "Waiting for session-ghost."), workspaceId, sessionId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
+        const r = await engine.dispatch({ statement: dispositionStmt("wait", "Waiting for session-ghost."), workspaceId, sessionId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 102, "the wait continues so the failure lands in the next packet instead of parking on a ghost");
     } finally { await db.close(); }
 });
@@ -1175,7 +1175,7 @@ test("{§loop-completion} a delivered answer cannot complete before the just-con
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
         const r = await engine.executeAdmittedTurn({ statements: [completeStmt("done")], source: null, emission: null, workspaceId, sessionId: parent, loopId: parentLoop, turnId: parentTurn, fromSequence: 1, origin: "model" });
         assert.equal(r.status, 102, "concluding over an undelivered session result is deferred, never refused");
-        assert.deepEqual(r.outcomes, [{ op: "DONE", status: 200, problemType: null }]);
+        assert.deepEqual(r.outcomes, [{ op: "done", status: 200, problemType: null }]);
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "", reasoning: null } }] });
         const observed = await engine.runTurn({ provider, workspaceId, sessionId: parent, loopId: parentLoop, messages: [] });
         assert.equal(observed.status, 200);

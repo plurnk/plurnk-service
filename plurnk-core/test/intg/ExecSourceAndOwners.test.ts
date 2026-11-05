@@ -201,8 +201,8 @@ test("{§op-methods-op-dispatch}: create, launch, and delete are ordered without
             messages: [], provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
         });
         const rows = await ctx.db.test_log_entries_by_turn.all<{ op: string | null; status_rx: number }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ op }) => ["EDIT", "tool", "KILL"].includes(op ?? "")).map(({ op, status_rx }) => [op, status_rx]), [
-            ["EDIT", 201], ["tool", 200], ["KILL", 200],
+        assert.deepEqual(rows.filter(({ op }) => ["edit", "tool", "kill"].includes(op ?? "")).map(({ op, status_rx }) => [op, status_rx]), [
+            ["edit", 201], ["tool", 200], ["kill", 200],
         ]);
         assert.equal(await ctx.db.test_get_entry_id_by_pathname.get({ pathname: "/script" }), undefined, "cleanup has happened while the executor remains in flight");
         assert.equal(ctx.runs.length, 0, "dispatch does not imply process completion");
@@ -631,7 +631,7 @@ const execStmt = (runtime: string, body: string): ExecStatement => ({
 
 const streamRead = (scheme: string, hostname: string | null, pathname: string): ReadStatement => ({
     metadata: null,
-    op: "READ", aside: null,
+    op: "read", aside: null,
     target: { kind: "url", raw: `${scheme}://${hostname ?? ""}${pathname}`, scheme, username: null, password: null, hostname, port: null, pathname, query: null, fragment: null },
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
@@ -793,7 +793,7 @@ test("{§exec-target-routing} {§diagnostic-observation} a bare execution of a t
             // {§exec-stream}: the spawn's execution row is `started`; the process's conclusion is the receipt
             // on the stream's terminal READ — one per channel with content, and the shell's complaint is on stderr alone.
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; scheme: string; status_rx: number; rx: string }>({ loop_id: loopId });
-            const receipts = rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === "sh");
+            const receipts = rows.filter((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === "sh");
             assert.equal(receipts.length, 1, "one terminal READ, on the channel that holds the shell's complaint");
             assert.deepEqual((JSON.parse(receipts[0].rx) as { channels?: unknown }).channels, { "#stdout": 0 }, "the empty stdout is a fact on that receipt");
             assert.equal(receipts[0].status_rx, 404, "the named program did not run");
@@ -832,7 +832,7 @@ test("{§exec-target-routing} a program the registry does not know keeps the she
             await rpcCall(ws, 1, "workspace.create", { name: `plain-127-${crypto.randomUUID()}` });
             const { loopId } = await runLoopToTerminal(ws, 2, { prompt: "run nothing" }, { timeoutMs: 30_000 });
             const terminal = (await db.test_log_entries_by_loop.all<{ op: string; origin: string; scheme: string; status_rx: number; rx: string }>({ loop_id: loopId }))
-                .find((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === "sh");
+                .find((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === "sh");
             assert.ok(terminal);
             const receipt = JSON.parse(terminal.rx) as { exitCode?: number; problem?: unknown };
             assert.equal(terminal.status_rx, 200);

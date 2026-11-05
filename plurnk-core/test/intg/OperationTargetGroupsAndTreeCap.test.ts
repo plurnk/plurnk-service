@@ -44,7 +44,7 @@ const seedLogRead = async (
         origin: "model",
         source: null,
         model_call_id: null,
-        op: "READ",
+        op: "read",
         scheme: "workspace",
         username: null,
         password: null,
@@ -107,7 +107,7 @@ test("{§slot-order}: one admitted READ dispatches every explicit URI member", a
 
         assert.deepEqual(
             rows
-                .filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))
+                .filter((row) => row.op === "read" && !LogEntryProjection.isEmission(row))
                 .map(({ pathname, status_rx }) => ({ pathname, status: status_rx })),
             [
                 { pathname: "/alpha.md", status: 200 },
@@ -127,7 +127,7 @@ test("{§slot-order}: one admitted scoped KILL curates every explicit URI member
         const secondId = await seedLogRead(db, sessionId, loopId, sourceTurnId, 2);
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [response("await plurnk.kill({\"path\":\"log:///1/1/1/READ\",\"range\":\"1,-1\"});\n\nawait plurnk.kill({\"path\":\"log:///1/1/2/READ\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"Both read bodies are suppressed.\"});")],
+            responses: [response("await plurnk.kill({\"path\":\"log:///1/1/1/read\",\"range\":\"1,-1\"});\n\nawait plurnk.kill({\"path\":\"log:///1/1/2/read\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"Both read bodies are suppressed.\"});")],
         });
 
         const result = await engine.runTurn({
@@ -147,7 +147,7 @@ test("{§slot-order}: one admitted scoped KILL curates every explicit URI member
 
         assert.equal(foldedById.get(firstId), "[[1,-1]]");
         assert.equal(foldedById.get(secondId), "[[1,-1]]");
-        assert.equal(rows.filter(({ op }) => op === "KILL").length, 2);
+        assert.equal(rows.filter(({ op }) => op === "kill").length, 2);
     } finally {
         await db.close();
     }
@@ -159,7 +159,7 @@ test("{§slot-order}: one admitted KILL dispatches every explicit URI member ind
         const sourceTurnId = await insertTurn(db, loopId, 1);
         const firstId = await seedLogRead(db, sessionId, loopId, sourceTurnId, 1);
         const secondId = await seedLogRead(db, sessionId, loopId, sourceTurnId, 2);
-        const source = "await plurnk.kill({\"path\":\"log:///1/1/99/READ\"});\n\nawait plurnk.kill({\"path\":\"log:///1/1/1/READ\"});\n\nawait plurnk.kill({\"path\":\"log:///1/1/2/READ\"});\n\nawait plurnk.note({\"text\":\"Review the independent KILL outcomes.\"});";
+        const source = "await plurnk.kill({\"path\":\"log:///1/1/99/read\"});\n\nawait plurnk.kill({\"path\":\"log:///1/1/1/read\"});\n\nawait plurnk.kill({\"path\":\"log:///1/1/2/read\"});\n\nawait plurnk.note({\"text\":\"Review the independent KILL outcomes.\"});";
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [response(source)],
@@ -180,13 +180,13 @@ test("{§slot-order}: one admitted KILL dispatches every explicit URI member ind
             attrs: string;
             rx: string;
         }>({ turn_id: result.turnId });
-        const kills = rows.filter(({ op }) => op === "KILL");
+        const kills = rows.filter(({ op }) => op === "kill");
         assert.deepEqual(
             kills.map(({ pathname, status_rx }) => ({ pathname, status: status_rx })),
             [
-                { pathname: "/1/1/99/READ", status: 404 },
-                { pathname: "/1/1/1/READ", status: 200 },
-                { pathname: "/1/1/2/READ", status: 200 },
+                { pathname: "/1/1/99/read", status: 404 },
+                { pathname: "/1/1/1/read", status: 200 },
+                { pathname: "/1/1/2/read", status: 200 },
             ],
             "one failed member does not hide either later successful KILL",
         );
@@ -209,7 +209,7 @@ test("{§slot-order}: one admitted KILL dispatches every explicit URI member ind
             active_before: number;
             active_after: number;
             op: string;
-        }>({ session_id: sessionId })).filter(({ op }) => op === "KILL");
+        }>({ session_id: sessionId })).filter(({ op }) => op === "kill");
         assert.deepEqual(
             effects.map(({ operation_log_entry_id, target_log_entry_id, active_before, active_after }) => ({
                 operation_log_entry_id,
@@ -237,7 +237,7 @@ test("{§slot-order} {§slot-order}: a KILL written one path per slot curates ev
         const sourceTurnId = await insertTurn(db, loopId, 1);
         const firstId = await seedLogRead(db, sessionId, loopId, sourceTurnId, 1);
         const secondId = await seedLogRead(db, sessionId, loopId, sourceTurnId, 2);
-        const heading = 'await plurnk.kill({"paths":["log:///1/1/1/READ",{"path":"log:///1/1/2/READ","range":"1,-1"}]});';
+        const heading = 'await plurnk.kill({"paths":["log:///1/1/1/read",{"path":"log:///1/1/2/read","range":"1,-1"}]});';
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [response(`${heading}
@@ -250,7 +250,7 @@ await plurnk.note({"text":"The first is retired, the second trimmed."});`)],
         assert.equal(byId.get(firstId)?.active, 0, "an unscoped member retires its row whole");
         assert.equal(byId.get(secondId)?.active, 1);
         assert.equal(byId.get(secondId)?.folded, "[[1,-1]]", "the scope binds to the slot it follows");
-        assert.deepEqual(rows.filter((row) => row.turn_id === result.turnId && row.op === "KILL").map(({ status_rx }) => status_rx), [200, 200], "one row per member");
+        assert.deepEqual(rows.filter((row) => row.turn_id === result.turnId && row.op === "kill").map(({ status_rx }) => status_rx), [200, 200], "one row per member");
         const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         const ops = programs.find(({ turn_id, kind }) => turn_id === result.turnId && kind === "ops");
         assert.ok(ops !== undefined && ops.content.includes(heading), "the stored program is the authored group, unexpanded");
@@ -271,7 +271,7 @@ test("{§slot-order} {§slot-order}: a READ written one path per slot lands one 
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Read both resources." }] });
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string; pathname: string | null; status_rx: number }>({ turn_id: result.turnId });
         assert.deepEqual(
-            rows.filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row)).map(({ pathname, status_rx }) => ({ pathname, status: status_rx })),
+            rows.filter((row) => row.op === "read" && !LogEntryProjection.isEmission(row)).map(({ pathname, status_rx }) => ({ pathname, status: status_rx })),
             [{ pathname: "/alpha.md", status: 200 }, { pathname: "/beta.md", status: 200 }],
         );
     } finally {
@@ -289,7 +289,7 @@ test("{§slot-order}: READ keeps each scope while applying the heading matcher t
         const provider = new Mock({ contextWindow: 100_000, responses: [response(source)] });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Read the selected lines." }] });
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string; pathname: string; rx: string; status_rx: number }>({ turn_id: result.turnId });
-        const reads = rows.filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
+        const reads = rows.filter((row) => row.op === "read" && !LogEntryProjection.isEmission(row));
         assert.deepEqual(reads.map(({ pathname, status_rx, rx }) => [pathname, status_rx, JSON.parse(rx).content]),
             [["/alpha.md", 200, "shared"], ["/beta.md", 200, "shared"]]);
         assert.deepEqual(reads.map(({ rx }) => JSON.parse(rx).lineOrdinals), [[3], [5]]);
@@ -301,15 +301,15 @@ test("{§parse-recovery}: an ambiguous grouped KILL changes no member, while its
     try {
         const sourceTurnId = await insertTurn(db, loopId, 1);
         const ids = [await seedLogRead(db, sessionId, loopId, sourceTurnId, 1), await seedLogRead(db, sessionId, loopId, sourceTurnId, 2)];
-        const source = 'await plurnk.kill({"paths":["log:///1/1/1/READ","log:///1/1/2/READ"],"pattern":"/source/","range":"<x>"});\n\nawait plurnk.note({"text":"sibling retained"});';
+        const source = 'await plurnk.kill({"paths":["log:///1/1/1/read","log:///1/1/2/read"],"pattern":"/source/","range":"<x>"});\n\nawait plurnk.note({"text":"sibling retained"});';
         const provider = new Mock({ contextWindow: 100_000, responses: [response(source)] });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Curate selected lines." }] });
         const originals = await db.test_log_entries_by_turn.all<{ id: number; active: number; folded: string }>({ turn_id: sourceTurnId });
         assert.deepEqual(originals.filter(({ id }) => ids.includes(id)).map(({ id, active, folded }) => [id, active, folded]),
             ids.map((id) => [id, 1, "[]"]));
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; status_rx: number; rx: string }>({ turn_id: result.turnId });
-        assert.equal(rows.some(({ op }) => op === "KILL"), false);
-        assert.ok(rows.some(({ op, status_rx }) => op === "NOTE" && status_rx === 200));
+        assert.equal(rows.some(({ op }) => op === "kill"), false);
+        assert.ok(rows.some(({ op, status_rx }) => op === "note" && status_rx === 200));
         assert.ok(rows.some(({ status_rx, rx }) => status_rx >= 400 && rx.includes("invalid scope")));
     } finally { await db.close(); }
 });
@@ -327,12 +327,12 @@ for (const limit of [0, 1, 2]) {
             const provider = new Mock({ contextWindow: 100_000, responses: [response(source)] });
             const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Read both resources." }] });
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; pathname: string; rx: string; status_rx: number }>({ turn_id: result.turnId });
-            const reads = rows.filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
+            const reads = rows.filter((row) => row.op === "read" && !LogEntryProjection.isEmission(row));
             assert.deepEqual(reads.map(({ pathname, status_rx }) => [pathname, status_rx]),
                 [["/alpha.md", 200], ["/beta.md", 200]].slice(0, limit));
-            assert.equal(rows.some(({ op }) => op === "NOTE"), false);
-            assert.equal(rows.some(({ op, origin }) => origin === "model" && op === "SEND"), false, "reply delivery counts as an operation");
-            assert.ok(rows.some(({ op }) => op === "WAIT"), "the yield remains outside the action cap");
+            assert.equal(rows.some(({ op }) => op === "note"), false);
+            assert.equal(rows.some(({ op, origin }) => origin === "model" && op === "send"), false, "reply delivery counts as an operation");
+            assert.ok(rows.some(({ op }) => op === "wait"), "the yield remains outside the action cap");
             const error = rows.map(({ rx }) => JSON.parse(rx)).find((rx) => rx.problem?.type.endsWith("max-commands-exceeded"));
             assert.ok(error !== undefined, "omitted operations have the ordinary durable limit notice");
             assert.equal(error.problem.omittedOperations, 4 - limit);
@@ -435,7 +435,7 @@ test("{§operator-config-workspace-settings}: BARE under the runtime actor still
             assert.equal(parent.received.length, 1);
             assert.equal(child.received.length, 1);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: result.loopId });
-            assert.deepEqual(rows.filter(({ op }) => op === "BARE").map(({ status_rx }) => status_rx), [200, 429]);
+            assert.deepEqual(rows.filter(({ op }) => op === "bare").map(({ status_rx }) => status_rx), [200, 429]);
         } finally { ws.close(); }
     });
 });
@@ -469,7 +469,7 @@ test("{§operator-config-workspace-settings}: BARE calls spend the loop's budget
             assert.equal(result.hitMaxTurns, true);
             assert.equal(result.finalStatus, 429, "the tree's ceiling ends the loop at 429 {§tokenomics}");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: result.loopId });
-            const bares = rows.filter((row) => row.op === "BARE" && row.origin === "model");
+            const bares = rows.filter((row) => row.op === "bare" && row.origin === "model");
             assert.deepEqual(bares.map((row) => row.status_rx), [200, 200, 429],
                 "turn 1 is call one; the first two BAREs are calls two and three; the third meets the ceiling and makes no call");
             const refused = JSON.parse(bares[2].rx) as { problem: { type: string; treeModelCalls: number; maximumTurns: number } };

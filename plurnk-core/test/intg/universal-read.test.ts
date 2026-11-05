@@ -198,9 +198,9 @@ class IndependentChannelScheme implements SchemeHandler {
 
 const parseRead = (dsl: string): ReadStatement => {
     const item = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
-        (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
+        (candidate) => candidate.kind === "statement" && candidate.statement.op === "read",
     );
-    if (item?.kind !== "statement" || item.statement.op !== "READ") {
+    if (item?.kind !== "statement" || item.statement.op !== "read") {
         throw new Error(`no READ parsed from ${dsl}`);
     }
     return item.statement;
@@ -208,9 +208,9 @@ const parseRead = (dsl: string): ReadStatement => {
 
 const parseFind = (dsl: string): FindStatement => {
     const item = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
-        (candidate) => candidate.kind === "statement" && candidate.statement.op === "FIND",
+        (candidate) => candidate.kind === "statement" && candidate.statement.op === "find",
     );
-    if (item?.kind !== "statement" || item.statement.op !== "FIND") {
+    if (item?.kind !== "statement" || item.statement.op !== "find") {
         throw new Error(`no FIND parsed from ${dsl}`);
     }
     return item.statement;
@@ -706,17 +706,25 @@ test("{§tools-resource-materialization} the module example loads from its expor
 });
 
 test("{§tools-resource-materialization} the definition pages' add examples conform to their families' definition schemas", async () => {
-    for (const [packageName, docName, fence, schema] of [
-        ["@plurnk/plurnk-mcp", "mcp.md", "plurnk (mcp)", "https://schemas.plurnk.xyz/v0/McpServerDefinition.json"],
+    for (const [packageName, docName, schema] of [
+        ["@plurnk/plurnk-mcp", "mcp.md", "https://schemas.plurnk.xyz/v0/McpServerDefinition.json"],
     ] as const) {
-        const examples = fences(await page(packageName, docName)).filter(({ info }) => info === fence);
+        const text = (await page(packageName, docName))
+            .replace(/^`|`$/gmu, "")
+            .split("\n")
+            .filter((line) => line.startsWith("await "))
+            .join("\n");
+        const examples = PlurnkParser.parseStatements(text, { executors: fixtureExecutors(text) }).items
+            .flatMap((item) => item.kind === "statement" && "runtime" in item.statement && item.statement.runtime === "plurnk" && item.statement.target?.raw === "mcp"
+                ? [JSON.parse(item.statement.body) as Record<string, unknown>]
+                : [])
+            .filter((obj) => typeof obj.alias === "string" && ("command" in obj || "url" in obj));
         assert.ok(examples.length > 0, `${docName} shows an add example`);
-        for (const { body } of examples) {
-            const { alias, ...definition } = JSON.parse(body) as { alias: string } & Record<string, unknown>;
+        for (const { alias, ...definition } of examples) {
             assert.equal(typeof alias, "string");
-            assert.ok(alias.length > 0);
+            assert.ok((alias as string).length > 0);
             const validation = Validator.validateJsonSchemaInstance({ $ref: schema }, { type: "url" in definition ? "streamable-http" : "stdio", ...definition });
-            assert.equal(validation.valid, true, `${docName}: ${body} — ${JSON.stringify(validation.errors)}`);
+            assert.equal(validation.valid, true, `${docName}: ${JSON.stringify(definition)} — ${JSON.stringify(validation.errors)}`);
         }
     }
 });
@@ -773,7 +781,7 @@ const read = (source: string): ReadStatement => {
     assert.equal(parsed.unparsedTail, undefined);
     assert.deepEqual(parsed.items.filter(({ kind }) => kind === "error"), []);
     const item = parsed.items.find(({ kind }) => kind === "statement");
-    if (item?.kind !== "statement" || item.statement.op !== "READ") {
+    if (item?.kind !== "statement" || item.statement.op !== "read") {
         throw new Error("fixture did not produce one READ statement");
     }
     return item.statement;
@@ -790,7 +798,7 @@ const manifest = (name: string, metadataModifier = false) => ({
     ...(metadataModifier ? { metadataModifier: true } : {}),
 });
 
-for (const op of ["FIND", "READ", "EDIT", "KILL"] as const) {
+for (const op of ["find", "read", "edit", "kill"] as const) {
     for (const pattern of ["needle", "absent"]) {
         test(`{§parse-recovery}: ${op} with owner metadata applies /${pattern}/ without widening selection`, async () => {
             const db = await openMigrated();
@@ -816,16 +824,16 @@ for (const op of ["FIND", "READ", "EDIT", "KILL"] as const) {
             const original = "keep first\nneedle one\nkeep last\nneedle two";
             try {
                 await seedEntryWithChannel(db, { workspaceId: env.workspaceId, scheme: "opaque", pathname: "/notes", content: original });
-                const parsed = PlurnkParser.parseStatements(`await plurnk.${op.toLowerCase()}(${JSON.stringify({ path: "opaque:///notes", pattern: `/${pattern}/`, metadata: ['{"accept":"text/plain"}'], ...(op === "EDIT" ? { content: "replacement" } : {}) })});`);
+                const parsed = PlurnkParser.parseStatements(`await plurnk.${op.toLowerCase()}(${JSON.stringify({ path: "opaque:///notes", pattern: `/${pattern}/`, metadata: ['{"accept":"text/plain"}'], ...(op === "edit" ? { content: "replacement" } : {}) })});`);
                 assert.equal(parsed.items.length, 1);
                 const item = parsed.items[0];
                 assert.ok(item?.kind === "statement" && item.statement.op === op);
                 const result = await engine.dispatch({ statement: item.statement, ...env, sequence: 1, origin: "model" });
                 assert.equal(result.status, pattern === "absent" ? 204 : 200, JSON.stringify(result));
-                if (op === "READ") assert.equal(result.content, pattern === "absent" ? "" : "needle one\nneedle two");
-                if (op === "FIND") assert.equal(result.matchLocationCount, pattern === "absent" ? 0 : 2);
-                const expected = pattern === "absent" || op === "FIND" || op === "READ" ? original
-                    : op === "EDIT" ? "keep first\nreplacement one\nkeep last\nreplacement two"
+                if (op === "read") assert.equal(result.content, pattern === "absent" ? "" : "needle one\nneedle two");
+                if (op === "find") assert.equal(result.matchLocationCount, pattern === "absent" ? 0 : 2);
+                const expected = pattern === "absent" || op === "find" || op === "read" ? original
+                    : op === "edit" ? "keep first\nreplacement one\nkeep last\nreplacement two"
                         : "keep first\n one\nkeep last\n two";
                 const stored = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
                     scheme: "opaque", pathname: "/notes", name: "body",
@@ -915,7 +923,7 @@ test("{§operation-results} scheme metadata remains outside the target and reach
             rejected.problem?.type,
             "https://problems.plurnk.xyz/engine/dispatcher/scheme-metadata-unsupported",
         );
-        assert.equal(rejected.problem?.detail, "READ on 'plain' does not accept the [metadata] modifier."); // {§operation-results}
+        assert.equal(rejected.problem?.detail, "read on 'plain' does not accept the [metadata] modifier."); // {§operation-results}
         assert.equal(unsupportedInvoked, false);
     } finally {
         await schemes.close();
@@ -923,7 +931,7 @@ test("{§operation-results} scheme metadata remains outside the target and reach
     }
 });
 
-for (const [op, proposed] of [["COPY", "neither"], ["MOVE", "neither"], ["MOVE", "source"], ["MOVE", "both"]] as const) {
+for (const [op, proposed] of [["copy", "neither"], ["move", "neither"], ["move", "source"], ["move", "both"]] as const) {
     test(`{§op-shapes}: parsed ${op} keeps scope and metadata with each resource (${proposed} proposed)`, async (t) => {
         serverProposals(t, "accept");
         const db = await openMigrated();
@@ -977,14 +985,14 @@ for (const [op, proposed] of [["COPY", "neither"], ["MOVE", "neither"], ["MOVE",
             assert.deepEqual(reads, [{ path: "/source", metadata: ['{"source": "true"}'] }]);
             assert.deepEqual(writes, [
                 { path: "opaque:///destination", metadata: ['{"destination": "true"}'] },
-                ...(op === "MOVE" ? [{ path: "opaque:///source", metadata: ['{"source": "true"}'] }] : []),
+                ...(op === "move" ? [{ path: "opaque:///source", metadata: ['{"source": "true"}'] }] : []),
             ]);
             assert.deepEqual(applications, proposed === "neither" ? [] : [
                 ...(proposed === "both" ? [{ path: "opaque:///destination", metadata: ['{"destination": "true"}'] }] : []),
                 { path: "opaque:///source", metadata: ['{"source": "true"}'] },
             ]);
             for (const [pathname, expected] of [
-                ["/source", op === "COPY" ? "first\nselected\nlast" : "first\nlast"],
+                ["/source", op === "copy" ? "first\nselected\nlast" : "first\nlast"],
                 ["/destination", "before\nselected\nafter"],
             ]) {
                 const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({

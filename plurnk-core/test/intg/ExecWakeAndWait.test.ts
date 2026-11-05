@@ -33,7 +33,7 @@ describe("Daemon.exec-wake", () => {
 // park/wake decision remains the controlled variable.
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
-const execDsl = (command: string, disposition: "WAIT" | "NOTE" = "WAIT"): string =>
+const execDsl = (command: string, disposition: "wait" | "note" = "wait"): string =>
     `await plurnk.sh(${JSON.stringify({ command })});
 
 await plurnk.${disposition.toLowerCase()}({"text":"Observe the command."});`;
@@ -82,7 +82,7 @@ test("{§session-causal-admission}: a person's operation can cancel a workspace 
             await waitFor(() => terminated() as Array<{ loopId: number }>, (events) => events.some(({ loopId }) => loopId === accepted.loopId));
             const reads = (entries() as Array<{ entry: { loop_id: number; op: string; scheme: string; origin: string; status_rx: number } }>)
                 .map(({ entry }) => entry)
-                .filter((entry) => entry.loop_id === accepted.loopId && entry.op === "READ" && entry.scheme === "sh");
+                .filter((entry) => entry.loop_id === accepted.loopId && entry.op === "read" && entry.scheme === "sh");
             assert.deepEqual(reads.map(({ origin, status_rx }) => ({ origin, status_rx })), [{ origin: "_plurnk", status_rx: 499 }],
                 "the terminal stream READ reaches the live log channel once, before the loop concludes");
         } finally {
@@ -486,7 +486,7 @@ test("{§session-causal-admission} wake-on-completion: active loop → daemon do
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse(execDsl("echo soon", "NOTE")),
+            mockResponse(execDsl("echo soon", "note")),
             continueResponse,
             continueResponse,
             continueResponse,
@@ -747,11 +747,11 @@ describe("exec-wait", () => {
 
 let runtimeSequence = 0;
 
-const response = (tag: string, disposition: "WAIT" | "SEND") => ({
+const response = (tag: string, disposition: "wait" | "send") => ({
     assistant: {
         content: "",
         reasoning: null,
-        ops: [execStmt(tag, "go"), disposition === "WAIT" ? dispositionStmt("WAIT") : sendStmt(null, "The execution failed.")],
+        ops: [execStmt(tag, "go"), disposition === "wait" ? dispositionStmt("wait") : sendStmt(null, "The execution failed.")],
     },
 });
 
@@ -809,7 +809,7 @@ test("{§subscriptions} a failed executor close retains a callable owner for its
     const close = t.mock.method(ChannelWrite, "closeSubscription", async () => { throw failure; }, { times: 1 });
     try {
         const result = await fixture.engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "WAIT")] }),
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "wait")] }),
             workspaceId: fixture.workspaceId, sessionId: fixture.sessionId, loopId: fixture.loopId, messages: [],
         });
         assert.equal(result.status, 202);
@@ -855,7 +855,7 @@ test("{§op-shapes} a decorated WAIT parks on its actual live stream; the decora
         assert.equal(result.status, 202);
         assert.deepEqual(result.outcomes, [
             { op: fixture.tag, status: 200, problemType: null },
-            { op: "WAIT", status: 202, problemType: null },
+            { op: "wait", status: 202, problemType: null },
         ]);
         const attempts = await fixture.db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors)]), [[1, []]]);
@@ -881,7 +881,7 @@ test("{§session-loop-lifecycle} fast current-turn streams settle before waiting
     });
     try {
         const result = await fixture.engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "WAIT")] }),
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "wait")] }),
             workspaceId: fixture.workspaceId,
             sessionId: fixture.sessionId,
             loopId: fixture.loopId,
@@ -890,7 +890,7 @@ test("{§session-loop-lifecycle} fast current-turn streams settle before waiting
         assert.equal(result.status, 102, "a concluded-but-unobserved stream continues to its observation turn");
         assert.deepEqual(result.outcomes, [
             { op: fixture.tag, status: 200, problemType: null },
-            { op: "WAIT", status: 102, problemType: null },
+            { op: "wait", status: 102, problemType: null },
         ]);
         assert.ok(Date.now() - startedAt < 20_000, "settlement ends when the stream settles, not at the full minute cap");
     } finally {
@@ -912,7 +912,7 @@ test("{§session-loop-lifecycle} a current-turn stream still active at the settl
     }));
     try {
         const result = await fixture.engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "WAIT")] }),
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "wait")] }),
             workspaceId: fixture.workspaceId,
             sessionId: fixture.sessionId,
             loopId: fixture.loopId,
@@ -921,7 +921,7 @@ test("{§session-loop-lifecycle} a current-turn stream still active at the settl
         assert.equal(result.status, 202, "the still-live stream remains a genuine monitored obligation");
         assert.deepEqual(result.outcomes, [
             { op: fixture.tag, status: 200, problemType: null },
-            { op: "WAIT", status: 202, problemType: null },
+            { op: "wait", status: 202, problemType: null },
         ]);
         assert.ok(Date.now() - startedAt >= 30, "SEND adjudication follows the configured settlement opportunity");
         release();
@@ -944,7 +944,7 @@ test("{§session-causal-admission} a fast failed stream settles naturally and it
     });
     try {
         const result = await fixture.engine.runLoop({
-            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "SEND"), {
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "send"), {
                 assistant: { content: "", reasoning: null, ops: [completeStmt("")] },
             }] }),
             workspaceId: fixture.workspaceId,
@@ -1014,7 +1014,7 @@ test("{§operation-results} cancelling a parked loop releases its undelivered fe
     });
 });
 
-for (const [header, seconds] of [["WAIT", undefined], ["WAIT [0]", 0]] as const) {
+for (const [header, seconds] of [["wait", undefined], ["WAIT [0]", 0]] as const) {
     test(`{§session-loop-lifecycle} ${header} resumes a loop without closing its open stream`, async (t) => {
         disableOptimisticWait(t);
         serverProposals(t, "accept");
@@ -1051,7 +1051,7 @@ await plurnk.wait(${JSON.stringify({ ...(seconds === undefined ? {} : { seconds 
                     assert.equal(observedLiveStream, true, "the wait expired before the 30-second stream concluded");
                     const parks = (notices() as Array<{ notice: { kind: string; status?: number } }>)
                         .filter(({ notice }) => notice.kind === "loop_status" && notice.status === 202);
-                    assert.equal(parks.length, header === "WAIT" ? 1 : 0, "zero bypasses parking rather than creating an immediate timer");
+                    assert.equal(parks.length, header === "wait" ? 1 : 0, "zero bypasses parking rather than creating an immediate timer");
                 } finally { ws.close(); }
             });
         } finally {

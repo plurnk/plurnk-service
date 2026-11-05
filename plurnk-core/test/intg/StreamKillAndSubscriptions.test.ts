@@ -39,7 +39,7 @@ const url = (scheme: string, pathname: string): UrlPath => ({
 
 const readStmt = (target: UrlPath): ReadStatement => ({
     metadata: null,
-    op: "READ", aside: null, target, lineMarker: null, matcher: null, body: null,
+    op: "read", aside: null, target, lineMarker: null, matcher: null, body: null,
     position: { line: 1, column: 1 },
 });
 
@@ -128,7 +128,7 @@ test("{§operation-results} End-to-end: synthetic streaming scheme — KILL tear
 
         assert.equal(result.status, 200, "scheme accepts cancel");
         assert.equal(result.receipt, undefined, "stream cancellation is not a textual edit");
-        assert.equal(LogBody.resolve({ op: "KILL", tx: "", rx: result }).content, "");
+        assert.equal(LogBody.resolve({ op: "kill", tx: "", rx: result }).content, "");
         assert.deepEqual(teardownCalls, [handle], "teardown callback fired with subscription handle");
 
         const sub = await db.test_get_subscription.get<{
@@ -470,7 +470,7 @@ test("{§operation-results} KILL resolves the registry to the owning scheme + st
         const opened = await engine.dispatch({
             statement: {
                 metadata: null,
-                op: "READ", aside: null, target: urlPath("fakestream", "/feed/x"),
+                op: "read", aside: null, target: urlPath("fakestream", "/feed/x"),
                 lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
             },
             workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "client",
@@ -550,7 +550,7 @@ test("{§stream} a public streaming READ returns its 102 row before detached sub
         const opened = await engine.dispatch({
             statement: {
                 metadata: null,
-                op: "READ", aside: null, target: urlPath("detached", "/feed"),
+                op: "read", aside: null, target: urlPath("detached", "/feed"),
                 lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
             },
             workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "client",
@@ -559,7 +559,7 @@ test("{§stream} a public streaming READ returns its 102 row before detached sub
         const rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turnId });
         assert.deepEqual(
             rows.map(({ op, status_rx }) => ({ op, status_rx })),
-            [{ op: "READ", status_rx: 102 }],
+            [{ op: "read", status_rx: 102 }],
             "the initial observation is durable before retained work proceeds",
         );
         if (subscription === undefined) throw new Error("detached subscription missing");

@@ -5,12 +5,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { TEACHING_CORPUS } from "@plurnk/plurnk-meta";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { teachingCorpusReader } from "../../src/core/teaching-corpus.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
+import PlurnkSkill from "../../src/server/PlurnkSkill.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import Paths from "../../src/Paths.ts";
 import { insertSession, insertWorkspace, openMigrated } from "./_db.ts";
@@ -25,23 +26,18 @@ const corpusRoot = async (): Promise<string> => {
     return root;
 };
 
-test("{§teaching-corpus} language and delegation references named by plurnk.md are materialized from their published sources", async () => {
-    const db = await openMigrated();
-    try {
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const workspaceId = await insertWorkspace(db, `teaching-links-${crypto.randomUUID()}`);
-        await insertSession(db, workspaceId);
-        await LoopDocs.materialize(engine, db, workspaceId);
-        for (const name of ["pattern", "delegation"] as const) {
-            const body = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-                pathname: `/${name}.md`, scheme: "plurnk", name: "body",
-            });
-            assert.equal(body?.content, await readFile(Paths.teachingSource(TEACHING_CORPUS.docs[name].source), "utf8"));
-        }
-        const docs = await new SchemeRegistry().docs();
-        assert.equal(docs.find(({ name }) => name === "pattern")?.scheme, null, "a language reference declares no new runtime scheme");
-        assert.equal(docs.find(({ name }) => name === "delegation")?.scheme, "session");
-    } finally { await db.close(); }
+test("{§teaching-corpus} language and delegation references named by plurnk.md are served from their published sources", async () => {
+    const skill = await PlurnkSkill.load(resolve("../node_modules"));
+    for (const name of ["pattern", "delegation", "session"] as const) {
+        const resource = skill.resource(`${name}.md`);
+        const size = await resource.size();
+        assert.ok(size !== null && size > 0);
+        const bytes = await resource.read(0, size);
+        assert.equal(Buffer.from(bytes).toString("utf8"), await readFile(Paths.teachingSource(TEACHING_CORPUS.docs[name].source), "utf8"));
+    }
+    const docs = await new SchemeRegistry().docs();
+    assert.equal(docs.find(({ name }) => name === "pattern")?.scheme, null, "a language reference declares no new runtime scheme");
+    assert.equal(docs.find(({ name }) => name === "delegation")?.scheme, "session");
 });
 
 test("{§teaching-corpus} required built-in corpus absence rejects workspace doc materialization with its filesystem cause", async () => {

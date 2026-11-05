@@ -63,7 +63,7 @@ const setup = async (attrs = "{}", span = "body") => {
         origin: "_plurnk",
         source: null,
         model_call_id: null,
-        op: "EDIT",
+        op: "edit",
         scheme: "workspace", username: null, password: null,
         hostname: null, port: null,
         pathname: "/x", query: null, fragment: null,
@@ -89,7 +89,7 @@ const getFolded = async (db: Awaited<ReturnType<typeof openMigrated>>, sessionId
 const seedRead = async ({ db, sessionId, loopId, turnId }: Awaited<ReturnType<typeof setup>>, sequence: number, content: string): Promise<number> => {
     const row = await db.engine_insert_log_entry.get<{ id: number }>({
         session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
-        origin: "model", source: null, model_call_id: null, op: "READ",
+        origin: "model", source: null, model_call_id: null, op: "read",
         scheme: "workspace", username: null, password: null, hostname: null, port: null,
         pathname: `/doc-${sequence}`, query: null, fragment: null, lineMarker: null,
         tx: "", mimetype_tx: "text/plain",
@@ -133,7 +133,7 @@ test("{§log-kill-scope} a scoped KILL accepts the canonical /OP suffix", async 
     const context = await setup();
     const { db, sessionId } = context;
     try {
-        const r = await new Log().kill(killStmt(urlPath("log", "/1/1/1/EDIT"), WHOLE), ctxOf(context));
+        const r = await new Log().kill(killStmt(urlPath("log", "/1/1/1/edit"), WHOLE), ctxOf(context));
         assert.equal(r.status, 200);
         assert.equal(await getFolded(db, sessionId), "[[1,-1]]");
     } finally { await db.close(); }
@@ -143,7 +143,7 @@ test("{§log-kill-scope} a scoped KILL rejects a supplied /OP suffix that disagr
     const context = await setup();
     const { db, sessionId } = context;
     try {
-        const r = await new Log().kill(killStmt(urlPath("log", "/1/1/1/READ"), WHOLE), ctxOf(context));
+        const r = await new Log().kill(killStmt(urlPath("log", "/1/1/1/read"), WHOLE), ctxOf(context));
         assert.equal(r.status, 404);
         assert.equal(await getFolded(db, sessionId), "[]", "a discordant address cannot curate the row");
     } finally { await db.close(); }
@@ -152,12 +152,12 @@ test("{§log-kill-scope} a scoped KILL rejects a supplied /OP suffix that disagr
 test("{§log-kill-scope} a typed entry-materialization row resolves by its projected /READ suffix, not its durable EDIT event", async () => {
     const accepted = await setup('{"kind":"entry_materialized"}');
     try {
-        assert.equal((await new Log().kill(killStmt(urlPath("log", "/1/1/1/READ"), WHOLE), ctxOf(accepted))).status, 200);
+        assert.equal((await new Log().kill(killStmt(urlPath("log", "/1/1/1/read"), WHOLE), ctxOf(accepted))).status, 200);
     } finally { await accepted.db.close(); }
 
     const rejected = await setup('{"kind":"entry_materialized"}');
     try {
-        assert.equal((await new Log().kill(killStmt(urlPath("log", "/1/1/1/EDIT"), WHOLE), ctxOf(rejected))).status, 404);
+        assert.equal((await new Log().kill(killStmt(urlPath("log", "/1/1/1/edit"), WHOLE), ctxOf(rejected))).status, 404);
     } finally { await rejected.db.close(); }
 });
 
@@ -185,16 +185,16 @@ test("{§log-kill-scope} scoped KILLs compose one way: numeric and hash-selected
         const id = await seedRead(context, 2, content);
         const log = new Log();
 
-        const numeric = await log.kill(killStmt(urlPath("log", "/1/1/2/READ"), { marks: [3, 5] }), ctxOf(context));
+        const numeric = await log.kill(killStmt(urlPath("log", "/1/1/2/read"), { marks: [3, 5] }), ctxOf(context));
         assert.equal(numeric.status, 200);
         assert.deepEqual(await foldedAt(db, sessionId, id), [[3, 5]]);
 
-        const anchor = LineAnchors.token("log:///1/1/2/READ", 7, content);
-        const anchored = await log.kill(killStmt(urlPath("log", "/1/1/2/READ"), { marks: [anchor] }), ctxOf(context));
+        const anchor = LineAnchors.token("log:///1/1/2/read", 7, content);
+        const anchored = await log.kill(killStmt(urlPath("log", "/1/1/2/read"), { marks: [anchor] }), ctxOf(context));
         assert.equal(anchored.status, 200);
         assert.deepEqual(await foldedAt(db, sessionId, id), [[3, 5], [7, 7]], "the second interval joins the first; suppression is monotonic");
 
-        const inside = await log.kill(killStmt(urlPath("log", "/1/1/2/READ"), { marks: [4] }), ctxOf(context));
+        const inside = await log.kill(killStmt(urlPath("log", "/1/1/2/read"), { marks: [4] }), ctxOf(context));
         assert.equal(inside.status, 200);
         assert.deepEqual(await foldedAt(db, sessionId, id), [[3, 5], [7, 7]], "a line already suppressed is a stable no-op");
     } finally { await db.close(); }
@@ -210,7 +210,7 @@ test("{§log-history-projection} bulk scoped KILL intersects one scope with ever
             3,
             Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n"),
         );
-        const result = await new Log().kill(killStmt(urlPath("log", "/**/READ"), { marks: [17, -1] }), ctxOf(context));
+        const result = await new Log().kill(killStmt(urlPath("log", "/**/read"), { marks: [17, -1] }), ctxOf(context));
         assert.equal(result.status, 200);
         assert.equal(result.matched, 2, "row selection is independent of each body's scope intersection");
         assert.deepEqual(await foldedAt(db, sessionId, shortId), [], "an absent range is a successful no-op");
@@ -226,7 +226,7 @@ test("{§log-kill-scope} a matcher body selects the rows a scoped KILL curates",
         await seedRead(context, 3, "discard this row");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.dispatch({
-            statement: killStmt(urlPath("log", "/**/READ"), WHOLE, regex("retain")),
+            statement: killStmt(urlPath("log", "/**/read"), WHOLE, regex("retain")),
             workspaceId, sessionId, loopId, turnId, sequence: 4, origin: "model",
         });
         assert.equal(result.status, 200, JSON.stringify(result));
@@ -245,7 +245,7 @@ test("{§log-history-projection} an unscoped pattern KILL retires only the rows 
         await seedRead(context, 3, "discard this row");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.dispatch({
-            statement: killStmt(urlPath("log", "/**/READ"), null, regex("discard")),
+            statement: killStmt(urlPath("log", "/**/read"), null, regex("discard")),
             workspaceId, sessionId, loopId, turnId, sequence: 4, origin: "model",
         });
         assert.equal(result.status, 200, JSON.stringify(result));
@@ -281,7 +281,7 @@ test("{§env-delta} engine_render_log carries the delta source; self-authored en
         await db.engine_insert_log_entry.get({
             session_id: sessionId, loop_id: loopId, turn_id: turnId,
             sequence: 2, origin: "_plurnk", source: "file", model_call_id: null,
-            op: "EDIT",
+            op: "edit",
             scheme: "file", username: null, password: null, hostname: null, port: null,
             pathname: "/config.toml", query: null, fragment: null, lineMarker: null,
             tx: "await plurnk.edit({\"path\":\"file:///config.toml\"});", mimetype_tx: "text/vnd.plurnk",
@@ -358,7 +358,7 @@ test("{§log-kill-scope} log selectors treat complete numeric bracket segments a
             await db.engine_insert_log_entry.get({
                 session_id: sessionId, loop_id: loopId, turn_id: candidateTurnId,
                 sequence: index === 0 ? 2 : 1,
-                origin: "model", source: null, model_call_id: null, op: "NOTE",
+                origin: "model", source: null, model_call_id: null, op: "note",
                 scheme: null, username: null, password: null, hostname: null, port: null,
                 pathname: null, query: null, fragment: null, lineMarker: null,
                 tx: JSON.stringify({ body: "Retained note." }), mimetype_tx: "application/json",
@@ -368,7 +368,7 @@ test("{§log-kill-scope} log selectors treat complete numeric bracket segments a
         }
 
         const found = await new Log().find(
-            { ...findStmt(urlPath("log", "/1/[35-46]/*/NOTE")), lineMarker: { marks: [1, -1] } },
+            { ...findStmt(urlPath("log", "/1/[35-46]/*/note")), lineMarker: { marks: [1, -1] } },
             ctxOf(context),
         );
         assert.equal(found.status, 200);
@@ -377,35 +377,35 @@ test("{§log-kill-scope} log selectors treat complete numeric bracket segments a
             : []);
         assert.deepEqual(
             foundPaths,
-            Array.from({ length: 12 }, (_, index) => `log:///1/${index + 35}/1/NOTE`),
+            Array.from({ length: 12 }, (_, index) => `log:///1/${index + 35}/1/note`),
             "FIND uses the same inclusive multi-digit interval as curation",
         );
 
-        const killed = await new Log().kill(killStmt(urlPath("log", "/1/[35-46]/*/NOTE"), null), ctxOf(context));
+        const killed = await new Log().kill(killStmt(urlPath("log", "/1/[35-46]/*/note"), null), ctxOf(context));
         assert.equal(killed.status, 200);
         assert.equal(killed.matched, 12);
         const plans = await db.engine_render_log.all<{ turn_seq: number; op: string }>({ session_id: sessionId });
         assert.deepEqual(
-            plans.filter(({ op }) => op === "NOTE").map(({ turn_seq }) => turn_seq),
+            plans.filter(({ op }) => op === "note").map(({ turn_seq }) => turn_seq),
             [...Array.from({ length: 34 }, (_, index) => index + 1), 47],
             "the range includes both boundaries and preserves adjacent turns",
         );
 
-        const documented = await new Log().kill(killStmt(urlPath("log", "/1/[1-7]/*/NOTE"), null), ctxOf(context));
+        const documented = await new Log().kill(killStmt(urlPath("log", "/1/[1-7]/*/note"), null), ctxOf(context));
         assert.equal(documented.status, 200);
         assert.equal(documented.matched, 7);
         const remaining = await db.engine_render_log.all<{ turn_seq: number; op: string }>({ session_id: sessionId });
         assert.deepEqual(
-            remaining.filter(({ op }) => op === "NOTE").map(({ turn_seq }) => turn_seq),
+            remaining.filter(({ op }) => op === "note").map(({ turn_seq }) => turn_seq),
             [...Array.from({ length: 27 }, (_, index) => index + 8), 47],
             "the documented single-digit form is an interval too",
         );
 
-        const repeated = await new Log().kill(killStmt(urlPath("log", "/1/[35-46]/*/NOTE"), null), ctxOf(context));
+        const repeated = await new Log().kill(killStmt(urlPath("log", "/1/[35-46]/*/note"), null), ctxOf(context));
         assert.equal(repeated.status, 204, "a repeated broad KILL is a deterministic no-op");
         assert.equal(repeated.matched, 0);
 
-        const reversed = await new Log().kill(killStmt(urlPath("log", "/1/[46-35]/*/NOTE"), null), ctxOf(context));
+        const reversed = await new Log().kill(killStmt(urlPath("log", "/1/[46-35]/*/note"), null), ctxOf(context));
         assert.equal(reversed.status, 400, "a reversed numeric interval is malformed rather than an empty selection");
     } finally { await db.close(); }
 });
@@ -469,15 +469,15 @@ test("{§log-kill-scope} a `|` between KILL targets lists them, bare or as full 
     try {
         await seedRead(context, 2, "two\n");
         await seedRead(context, 3, "three\n");
-        const bad = await new Log().kill(killStmt(urlPath("log", "/1/1/2/READ|garbage"), null), ctxOf(context));
+        const bad = await new Log().kill(killStmt(urlPath("log", "/1/1/2/read|garbage"), null), ctxOf(context));
         assert.equal(bad.status, 400, "one unreadable piece refuses the whole list");
         assert.match(JSON.stringify(bad), /The log target 'garbage' is malformed\./u, "the piece is named");
         assert.match(JSON.stringify(bad), SHAPE, "the recovery is the shape");
         assert.equal(await db.test_log_entries_by_turn.all<{ active: number }>({ turn_id: context.turnId }).then((rows) => rows.filter((r) => r.active).length), 3, "nothing was retired");
-        const list = await new Log().kill(killStmt(urlPath("log", "/1/1/2/READ|log:///1/1/3/READ"), null), ctxOf(context));
+        const list = await new Log().kill(killStmt(urlPath("log", "/1/1/2/read|log:///1/1/3/read"), null), ctxOf(context));
         assert.equal(list.status, 200, "a bare piece and a full address, as the model writes them");
         assert.equal(list.matched, 2, "the union");
-        const sweep = await new Log().kill(killStmt(urlPath("log", "/1/1/2/READ|log:///9/*"), null), ctxOf(context));
+        const sweep = await new Log().kill(killStmt(urlPath("log", "/1/1/2/read|log:///9/*"), null), ctxOf(context));
         assert.equal(sweep.status, 204, "a list with a glob piece that selects nothing is the sweep's 204");
         const exact = await new Log().kill(killStmt(urlPath("log", "/1/1/2|1/1/3"), null), ctxOf(context));
         assert.equal(exact.status, 404, "every piece an exact coordinate and none active: the exact miss");
@@ -490,9 +490,9 @@ test("{§log-kill-scope} the three near-miss shapes read exactly as the target t
     try {
         for (const context of [near, canon]) for (const [sequence, body] of [[2, "two\n"], [3, "three\n"], [4, "four\n"], [5, "five\n"]] as const) await seedRead(context, sequence, body);
         const pairs = [
-            ["/1/1/2/*/READ", "/1/1/2/READ", "a `*` between the sequence and the leaf is dropped"],
+            ["/1/1/2/*/read", "/1/1/2/read", "a `*` between the sequence and the leaf is dropped"],
             ["/1/1/[3,4]", "/1/1/{3,4}", "a bracketed comma list in a numeric slot is a set"],
-            ["/1/READ", "/1/*/*/READ", "a leaf after one numeric slot fills the missing slots with `*`"],
+            ["/1/read", "/1/*/*/read", "a leaf after one numeric slot fills the missing slots with `*`"],
         ] as const;
         for (const [written, canonical, why] of pairs) {
             const read = await new Log().kill(killStmt(urlPath("log", written), null), ctxOf(near));
@@ -512,7 +512,7 @@ test("{§log-kill-scope} a sweep of nothing stays bare, and only a target nothin
         assert.equal(bare.status, 204);
         assert.equal(bare.matched, 0);
         assert.equal(JSON.stringify(bare), '{"status":204,"matched":0}', "no text rides the packet for a sweep that matched nothing");
-        for (const written of ["/garbage", "/1/READ/2"]) {
+        for (const written of ["/garbage", "/1/read/2"]) {
             const malformed = await new Log().kill(killStmt(urlPath("log", written), null), ctxOf(context));
             assert.equal(malformed.status, 400, `${written}: nothing can read it`);
             assert.match(JSON.stringify(malformed), SHAPE, `${written}: the refusal shows the shape`);
@@ -595,7 +595,7 @@ test("{§message-arrival} an explicit scoped KILL of the arrival row is ordinary
     try {
         const { workspaceId, sessionId, loopId, engine, curationTurn } = await seedPromptSession(db);
         // Turn 1 is initialization; the first model turn's arrival is turn 2, row 1.
-        const r = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/SEND"), { marks: [1, -1] }), workspaceId, sessionId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        const r = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/send"), { marks: [1, -1] }), workspaceId, sessionId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 200, "the valid arrival row accepts scoped KILL like every other visible row");
         assert.equal((r as { matched?: number }).matched, 1);
         const visibility = await db.test_arrival_folded.get<{ folded: string }>({});
@@ -613,11 +613,11 @@ test("{§message-arrival} prior and current loop arrivals share the same explici
             workspaceId, sessionId, loopId: loop2, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the next task" }],
         });
         const curationTurn = await insertTurn(db, loop2, 2, 102);
-        const stale = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/SEND"), { marks: [1, -1] }), workspaceId, sessionId, loopId: loop2, turnId: curationTurn, sequence: 1, origin: "model" });
+        const stale = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/send"), { marks: [1, -1] }), workspaceId, sessionId, loopId: loop2, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.equal(stale.status, 200, "the old loop's arrival accepts scoped KILL");
         assert.equal((stale as { matched?: number }).matched, 1, "the KILL matched the stale arrival row - not a vacuous zero-match 200");
         // Loop 2 has no initialization, so its arrival is row 1.
-        const current = await engine.dispatch({ statement: killStmt(urlLog("log:///2/1/1/SEND"), { marks: [1, -1] }), workspaceId, sessionId, loopId: loop2, turnId: curationTurn, sequence: 2, origin: "model" });
+        const current = await engine.dispatch({ statement: killStmt(urlLog("log:///2/1/1/send"), { marks: [1, -1] }), workspaceId, sessionId, loopId: loop2, turnId: curationTurn, sequence: 2, origin: "model" });
         assert.equal(current.status, 200, "the current arrival accepts scoped KILL under the same valid-row contract");
     } finally { await db.close(); }
 });
@@ -626,7 +626,7 @@ test("{§message-arrival} KILL of the arrival remains deliberate curation", asyn
     const db = await openMigrated();
     try {
         const { workspaceId, sessionId, loopId, engine, curationTurn } = await seedPromptSession(db);
-        const r = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/SEND")), workspaceId, sessionId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        const r = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/send")), workspaceId, sessionId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.ok(r.status < 400, `KILL of the arrival succeeds (deliberate) — got ${r.status}`);
     } finally { await db.close(); }
 });
@@ -662,17 +662,17 @@ test("a scoped KILL is recorded in the DB but never renders ({§log-history-proj
         const { workspaceId, sessionId, loopId, engine, curationTurn } = await seedPromptSession(db);
         // Seed a genuine non-arrival row (a workspace:/// note), then scoped-KILL it so the success records.
         await engine.dispatch({ statement: editStmt(urlSession("workspace:///scratch"), "note"), workspaceId, sessionId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
-        await engine.dispatch({ statement: killStmt(urlLog("log:///1/3/1/EDIT"), { marks: [1, -1] }), workspaceId, sessionId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
-        const dbRow = await db.test_count_op.get<{ n: number }>({ op: "KILL" });
+        await engine.dispatch({ statement: killStmt(urlLog("log:///1/3/1/edit"), { marks: [1, -1] }), workspaceId, sessionId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
+        const dbRow = await db.test_count_op.get<{ n: number }>({ op: "kill" });
         assert.ok((dbRow?.n ?? 0) >= 1, "the scoped KILL is recorded in the DB (forensics)");
         const rendered = await db.engine_render_log.all<{ op: string; status_rx: number }>({ session_id: sessionId });
-        assert.ok(!rendered.some((r) => r.op === "KILL"), "the successful scoped KILL is absent immediately");
+        assert.ok(!rendered.some((r) => r.op === "kill"), "the successful scoped KILL is absent immediately");
         const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         const laterTurn = await insertTurn(db, loopId, next!.next, 102);
         await engine.dispatch({ statement: editStmt(urlSession("workspace:///scratch2"), "later"), workspaceId, sessionId, loopId, turnId: laterTurn, sequence: 1, origin: "model" });
         const later = await db.engine_render_log.all<{ op: string }>({ session_id: sessionId });
-        assert.ok(!later.some((r) => r.op === "KILL"), "the successful receipt remains absent on later turns");
-        const stillRecorded = await db.test_count_op.get<{ n: number }>({ op: "KILL" });
+        assert.ok(!later.some((r) => r.op === "kill"), "the successful receipt remains absent on later turns");
+        const stillRecorded = await db.test_count_op.get<{ n: number }>({ op: "kill" });
         assert.equal(stillRecorded?.n, dbRow?.n, "history is append-only: the suppressed receipt remains in the DB");
     } finally { await db.close(); }
 });
@@ -684,23 +684,23 @@ test("a successful log-item KILL never renders; a non-log KILL renders and stays
         // Two seeds: a workspace:/// note (a real artifact) and a log row to curate. KILL each.
         await engine.dispatch({ statement: editStmt(urlSession("workspace:///scratch"), "note"), workspaceId, sessionId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         // KILL the log EDIT row just written (active-context curation).
-        const logKill = await engine.dispatch({ statement: killStmt(urlLog("log:///1/3/1/EDIT")), workspaceId, sessionId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
+        const logKill = await engine.dispatch({ statement: killStmt(urlLog("log:///1/3/1/edit")), workspaceId, sessionId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
         assert.ok(logKill.status < 400, `KILL of the log item succeeds — got ${logKill.status}`);
         // KILL the workspace:/// note (a WORKSPACE mutation, not log housekeeping).
         const noteKill = await engine.dispatch({ statement: killStmt(urlSession("workspace:///scratch")), workspaceId, sessionId, loopId, turnId: curationTurn, sequence: 3, origin: "model" });
         assert.ok(noteKill.status < 400, `KILL of the note succeeds — got ${noteKill.status}`);
 
-        const killCount = await db.test_count_op.get<{ n: number }>({ op: "KILL" });
+        const killCount = await db.test_count_op.get<{ n: number }>({ op: "kill" });
         assert.ok((killCount?.n ?? 0) >= 2, "both KILLs are recorded in the DB (forensics)");
 
         const rendered = await db.engine_render_log.all<{ op: string; scheme: string | null }>({ session_id: sessionId });
-        const killRows = rendered.filter((r) => r.op === "KILL");
+        const killRows = rendered.filter((r) => r.op === "kill");
         assert.ok(!killRows.some((r) => r.scheme === "log"), "the successful log-item KILL is absent immediately");
         assert.ok(killRows.some((r) => r.scheme === "workspace"), "the KILL of the session:// note — a workspace mutation — renders");
         const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         const laterTurn = await insertTurn(db, loopId, next!.next, 102);
         await engine.dispatch({ statement: editStmt(urlSession("workspace:///scratch3"), "later"), workspaceId, sessionId, loopId, turnId: laterTurn, sequence: 1, origin: "model" });
-        const later = (await db.engine_render_log.all<{ op: string; scheme: string | null }>({ session_id: sessionId })).filter((r) => r.op === "KILL");
+        const later = (await db.engine_render_log.all<{ op: string; scheme: string | null }>({ session_id: sessionId })).filter((r) => r.op === "kill");
         assert.ok(!later.some((r) => r.scheme === "log"), "the log-item KILL receipt remains absent on later turns");
         assert.ok(later.some((r) => r.scheme === "workspace"), "the workspace-mutation KILL stays visible");
     } finally { await db.close(); }
@@ -797,15 +797,15 @@ test("{§log-history-projection} ordinary operation evidence redacts credential 
 
         const read = parseOperation(
             "await plurnk.read({\"path\":\"credential-probe://primary-user:primary-password@example.test/value?ticket=query-visible#body\",\"metadata\":[\"{\\\"Authorization\\\": \\\"Bearer primary-header-secret\\\", \\\"X-Api-Key\\\": \\\"secondary-header-secret\\\"}\"]});",
-            "READ",
+            "read",
         );
         const copy = parseOperation(
             "await plurnk.copy({\"from\":\"workspace:///missing-copy\",\"to\":\"credential-probe://copy-user:copy-password@copy.test/destination?ticket=copy-query-visible\"});",
-            "COPY",
+            "copy",
         );
         const move = parseOperation(
             "await plurnk.move({\"from\":\"workspace:///missing-move\",\"to\":\"credential-probe://move-user:move-password@move.test/destination?ticket=move-query-visible\"});",
-            "MOVE",
+            "move",
         );
 
         const statements = [read, copy, move] as const;
@@ -858,7 +858,7 @@ test("{§log-history-projection} ordinary operation evidence redacts credential 
         await daemon.start();
         daemonRunning = true;
         const parentLog = await daemon.readLog({ workspaceId, sessionId: session.id, limit: 1000 });
-        const readRow = parentLog.find((row) => row.op === "READ");
+        const readRow = parentLog.find((row) => row.op === "read");
         if (readRow === undefined) throw new Error("READ operation row was not hydrated");
         assert.equal(readRow.username, REDACTED);
         assert.equal(readRow.password, REDACTED);
@@ -872,11 +872,11 @@ test("{§log-history-projection} ordinary operation evidence redacts credential 
         assert.deepEqual(readTx.metadata, [REDACTED]);
         assert.equal(durableReadTarget.query, "ticket=query-visible");
 
-        for (const op of ["COPY", "MOVE"] as const) {
+        for (const op of ["copy", "move"] as const) {
             const row = parentLog.find((entry) => entry.op === op);
             if (row === undefined) throw new Error(`${op} operation row was not hydrated`);
             const tx = row.tx as PlurnkStatement;
-            if (tx.op !== "COPY" && tx.op !== "MOVE") {
+            if (tx.op !== "copy" && tx.op !== "move") {
                 throw new Error(`${op} durable statement lost its destination`);
             }
             const destination = tx.destination.target;
@@ -894,7 +894,7 @@ test("{§log-history-projection} ordinary operation evidence redacts credential 
         });
         const branchLog = await daemon.readLog({ workspaceId, sessionId: branch.sessionId, limit: 1000 });
         assertNoStructuralSecrets(branchLog, "forked log hydration");
-        const branchRead = branchLog.find((row) => row.op === "READ");
+        const branchRead = branchLog.find((row) => row.op === "read");
         assert.equal(branchRead?.username, REDACTED);
         assert.equal(branchRead?.password, REDACTED);
 
@@ -984,7 +984,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             assert.ok(observed.replay.includes(invocationCode));
             assert.match(String(invocation.stream), /^receiptfixture:\/\/\/[a-f0-9]{8}$/u);
             assert.equal(invocation.lines, undefined, "argument bodies appear only in the complete operation, never as output");
-            const automatic = observed.rows.find((row) => row.path === `${String(invocation.stream)}#results` && row.logPath.endsWith("/READ"));
+            const automatic = observed.rows.find((row) => row.path === `${String(invocation.stream)}#results` && row.logPath.endsWith("/read"));
             assert.ok(automatic, "the automatic output observation names the resource actually read");
             assert.equal(automatic.source, undefined);
             assert.equal(automatic.stream, undefined);
@@ -994,7 +994,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const mistaken = await turn(`await plurnk.read({"path":"${invocation.logPath}","range":"17,40"});`);
             assert.equal(mistaken.outcomes[0]?.status, 416, "reading invocation arguments cannot retrieve execution output");
             const diagnosed = await observe();
-            const failure = diagnosed.rows.find((row) => row.logPath.endsWith("/READ") && row.status === 416);
+            const failure = diagnosed.rows.find((row) => row.logPath.endsWith("/read") && row.status === 416);
             assert.ok(failure, "the model sees the exact failed READ");
             assert.ok(diagnosed.replay.includes(`await plurnk.read({"path":"${invocation.logPath}","range":"17,40"});`));
             const problem = failure.problem as { range: { total: number }; stream?: string; recovery?: string };
@@ -1005,7 +1005,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const recovered = await turn(`await plurnk.read({"path":"${String(stream)}","range":"17,40"});`);
             assert.equal(recovered.outcomes[0]?.status, 200);
             const recovery = await observe();
-            const read = recovery.rows.find((row) => row.logPath.endsWith("/READ") && row.origin === undefined && row.range === "<17,40> of 40 lines");
+            const read = recovery.rows.find((row) => row.logPath.endsWith("/read") && row.origin === undefined && row.range === "<17,40> of 40 lines");
             assert.ok(read, "the explicit READ reaches the next model packet");
             assert.ok(recovery.replay.includes(`await plurnk.read({"path":"${String(stream)}","range":"17,40"});`));
             assert.equal(read.range, "<17,40> of 40 lines");
@@ -1019,10 +1019,10 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
                 `await plurnk.read({"path":"${String(stream)}","range":"1,-1"});`,
             ].join("\n\n"));
             assert.deepEqual(revisited.outcomes.map(({ op, status }) => [op, status]),
-                [["KILL", 200], ["KILL", 200], ["READ", 200]]);
+                [["kill", 200], ["kill", 200], ["read", 200]]);
             const afterCuration = await observe();
             assert.equal(afterCuration.rows.some((row) => row.logPath === automatic.logPath || row.logPath === read.logPath), false);
-            const reread = afterCuration.rows.find((row) => row.logPath.endsWith("/READ") && row.origin === undefined && row.range === "40 lines");
+            const reread = afterCuration.rows.find((row) => row.logPath.endsWith("/read") && row.origin === undefined && row.range === "40 lines");
             assert.ok(reread, "the retained output is still readable after its observations are curated away");
             assert.ok(afterCuration.replay.includes(`await plurnk.read({"path":"${String(stream)}","range":"1,-1"});`));
             assert.equal(reread.range, "40 lines");
@@ -1057,9 +1057,9 @@ test("{§log-kill-scope} a log KILL's body lands as the model's own NOTE row aft
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         "await plurnk.edit({\"path\":\"workspace:///note\",\"content\":\"first line\\nsecond line\"});\n\nawait plurnk.read({\"path\":\"workspace:///note\"});\n\nawait plurnk.note({\"text\":\"wrote\"});",
-        `await plurnk.kill({"path":"log:///1/**/{READ,NOTE}","note":"${distillation}"}); // retire the read and the note; keep what they taught
+        `await plurnk.kill({"path":"log:///1/**/{read,note}","note":"${distillation}"}); // retire the read and the note; keep what they taught
 
-await plurnk.kill({"path":"log:///1/**/EDIT"});
+await plurnk.kill({"path":"log:///1/**/edit"});
 
 await plurnk.note({"text":"curated"});`,
         "await plurnk.note({\"text\":\"moving on\"});",
@@ -1074,25 +1074,25 @@ await plurnk.note({"text":"curated"});`,
             const ids = result.turnIds ?? [];
             assert.ok(ids.length >= 5, `init + four model turns; got ${ids.length}`);
             const afterCuration = logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[3] }))!.packet);
-            const notes = rows(afterCuration, "NOTE");
+            const notes = rows(afterCuration, "note");
             assert.deepEqual(notes.map(({ body }) => body), [`1:${distillation}\n`, undefined], "distillation remains bodied; the authored NOTE is paired with its replay");
-            assert.match(afterCuration, /### log:\/\/\/1\/3\/\d+\/NOTE · \d+/u, "the curating turn's NOTE keeps its receipt");
-            assert.equal(rows(afterCuration, "KILL").length, 0, "both kills succeeded, so neither receipt renders");
-            assert.equal(rows(afterCuration, "READ").length, 0);
+            assert.match(afterCuration, /### log:\/\/\/1\/3\/\d+\/note · \d+/u, "the curating turn's NOTE keeps its receipt");
+            assert.equal(rows(afterCuration, "kill").length, 0, "both kills succeeded, so neither receipt renders");
+            assert.equal(rows(afterCuration, "read").length, 0);
             const history = await db.test_log_entries_by_loop.all<{
                 op: string | null; pathname: string | null; sequence: number; turn_id: number; status_rx: number; rx: string; attrs: string | null; tx: string; origin: string;
             }>({ loop_id: result.loopId });
             // Sequence 1 of a model turn is the engine's ops:// echo of the emission; the model's rows follow it.
             const curation = history.filter(({ turn_id, origin }) => turn_id === ids[2] && origin === "model");
             assert.deepEqual(curation.map(({ op, pathname, sequence, status_rx }) => ({ op, pathname, sequence, status_rx })), [
-                { op: "KILL", pathname: "/1/**/{READ,NOTE}", sequence: 2, status_rx: 200 },
-                { op: "NOTE", pathname: null, sequence: 3, status_rx: 200 },
-                { op: "KILL", pathname: "/1/**/EDIT", sequence: 4, status_rx: 200 },
-                { op: "NOTE", pathname: null, sequence: 5, status_rx: 200 },
+                { op: "kill", pathname: "/1/**/{read,note}", sequence: 2, status_rx: 200 },
+                { op: "note", pathname: null, sequence: 3, status_rx: 200 },
+                { op: "kill", pathname: "/1/**/edit", sequence: 4, status_rx: 200 },
+                { op: "note", pathname: null, sequence: 5, status_rx: 200 },
             ], "the distillation is written at the next sequence after its kill; a whitespace body is a plain KILL; later rows follow in order");
             const [kill, note, plainKill] = curation;
             assert.equal((JSON.parse(kill.tx) as { body: string | null }).body, distillation, "the kill's own record keeps the body it was emitted with");
-            assert.deepEqual(JSON.parse(note.attrs ?? "{}"), { distilled: "log:///1/**/{READ,NOTE}" }, "the NOTE row names the selection it distilled");
+            assert.deepEqual(JSON.parse(note.attrs ?? "{}"), { distilled: "log:///1/**/{read,note}" }, "the NOTE row names the selection it distilled");
             assert.equal((JSON.parse(note.tx) as { op: string; body: string }).body, distillation);
             assert.equal((JSON.parse(plainKill.tx) as { body: string | null }).body, null, "whitespace is no distillation");
             const programs = await db.test_turn_sources.all<{ kind: string; turn_id: number; content: string }>({ session_id: result.modelSessionId! });
@@ -1121,17 +1121,17 @@ test("{§log-kill-scope} a failed log KILL still keeps its body as the model's N
             }>({ loop_id: result.loopId });
             const curation = history.filter(({ turn_id, origin }) => turn_id === ids[2] && origin === "model");
             assert.deepEqual(curation.map(({ op, pathname, sequence, status_rx }) => ({ op, pathname, sequence, status_rx })), [
-                { op: "KILL", pathname: "/9/9/9", sequence: 2, status_rx: 404 },
-                { op: "NOTE", pathname: null, sequence: 3, status_rx: 200 },
-                { op: "NOTE", pathname: null, sequence: 4, status_rx: 200 },
+                { op: "kill", pathname: "/9/9/9", sequence: 2, status_rx: 404 },
+                { op: "note", pathname: null, sequence: 3, status_rx: 200 },
+                { op: "note", pathname: null, sequence: 4, status_rx: 200 },
             ], "the miss is the receipt, and the body still lands as the NOTE after it");
             const [, kept] = curation;
             assert.deepEqual(JSON.parse(kept.attrs ?? "{}"), { distilled: "log:///9/9/9" }, "the NOTE names the target as written, hit or miss");
             assert.equal((JSON.parse(kept.tx) as { body: string }).body, "nothing here");
             const next = logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[3] }))!.packet);
-            assert.equal(rows(next, "KILL").length, 1, "a missed log KILL's receipt renders");
-            assert.deepEqual(rows(next, "NOTE").map(({ body }) => body).slice(-2), ["1:nothing here\n", undefined], "distillation remains bodied beside the paired authored NOTE");
-            assert.match(next, /### log:\/\/\/1\/2\/\d+\/NOTE · \d+[\s\S]*### log:\/\/\/1\/3\/\d+\/NOTE · \d+/u, "both authored NOTEs keep their handles");
+            assert.equal(rows(next, "kill").length, 1, "a missed log KILL's receipt renders");
+            assert.deepEqual(rows(next, "note").map(({ body }) => body).slice(-2), ["1:nothing here\n", undefined], "distillation remains bodied beside the paired authored NOTE");
+            assert.match(next, /### log:\/\/\/1\/2\/\d+\/note · \d+[\s\S]*### log:\/\/\/1\/3\/\d+\/note · \d+/u, "both authored NOTEs keep their handles");
         } finally { ws.close(); }
     });
 });
@@ -1150,7 +1150,7 @@ for (const partial of [false, true]) {
         const second = "await plurnk.note({\"text\":\"Another finding.\"});";
         const provider = new Mock({ contextWindow: 100000, responses: [
             `${first}\n\n${second}`,
-            `await plurnk.kill({"path":"log:///1/2/3/NOTE"${partial ? ',"range":"1"' : ""}});`,
+            `await plurnk.kill({"path":"log:///1/2/3/note"${partial ? ',"range":"1"' : ""}});`,
             "await plurnk.done({\"text\":\"Done.\"});",
         ].map((content) => ({ assistant: { content, reasoning: null } })) });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
@@ -1161,11 +1161,11 @@ for (const partial of [false, true]) {
         assert.deepEqual(after.filter(({ role }) => role === "assistant").map(chatMessageText), [second]);
         const user = after.filter(({ role }) => role === "user").map(chatMessageText).join("\n");
         assert.doesNotMatch(user, /Obsolete line\./u);
-        assert.match(user, /### log:\/\/\/1\/2\/4\/NOTE · \d+/u, "the other NOTE retains its own curation handle");
+        assert.match(user, /### log:\/\/\/1\/2\/4\/note · \d+/u, "the other NOTE retains its own curation handle");
         if (partial) {
-            assert.match(user, /### log:\/\/\/1\/2\/3\/NOTE[^\n]*\n[^\n]*\n2:Still useful\./u);
+            assert.match(user, /### log:\/\/\/1\/2\/3\/note[^\n]*\n[^\n]*\n2:Still useful\./u);
         } else {
-            assert.doesNotMatch(user, /### log:\/\/\/1\/2\/3\/NOTE|Still useful\./u);
+            assert.doesNotMatch(user, /### log:\/\/\/1\/2\/3\/note|Still useful\./u);
         }
         const source = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, session_name: "writer", loop_seq: 1, turn_seq: 2, kind: "ops", sequence: 0 });
         assert.equal(source!.content, `${first}\n\n${second}`, "curation never rewrites source evidence");

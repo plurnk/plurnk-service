@@ -41,7 +41,7 @@ import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 describe("matcher.xpath-jsonpath", () => {
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
     metadata: null,
-    op: "READ", aside: null,
+    op: "read", aside: null,
  target,
     lineMarker: null, matcher: null, body: null,
     position: { line: 1, column: 1 },
@@ -49,7 +49,7 @@ const readStmt = (target: ParsedPath | null): ReadStatement => ({
 
 const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null,
+    op: "find", aside: null,
  target,
     lineMarker: null, matcher, body: null,
      position: { line: 1, column: 1 },
@@ -75,7 +75,7 @@ const seedJson = async (db: Db, workspaceId: number, sessionId: number, mimetype
     await new Workspace().edit(
         {
             metadata: null,
-            op: "EDIT", aside: null,
+            op: "edit", aside: null,
             target: urlPath("workspace", path),
             lineMarker: null, matcher: null, body: content,
             position: { line: 1, column: 1 },
@@ -289,7 +289,7 @@ test("{§matcher-dispatch} jsonpath match coordinates support a model-chosen sur
         await engine.dispatch({
             statement: {
                 metadata: null,
-                op: "FIND", aside: null,
+                op: "find", aside: null,
                 target: urlPath("workspace", "/team.json"),
                 lineMarker: null,
                 matcher: { dialect: "jsonpath", raw: "$[*].name" } as MatcherBody, body: null,
@@ -342,7 +342,7 @@ test("{§find-result-projection} an exact matcher FIND stores canonical locators
         });
         assert.equal(result.status, 200);
         const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: loopId });
-        const find = rows.find((r) => r.op === "FIND");
+        const find = rows.find((r) => r.op === "find");
         const res = JSON.parse(find!.rx) as {
             results: Array<{ locator?: string }>;
         };
@@ -424,7 +424,7 @@ const program = async (frames: (anchor: (line: number) => string) => string[]): 
             if (calls === 1) return await respond(`await plurnk.read({"path":"${FILE}","range":"790,800"});`, args);
             if (calls === 2) {
                 const row = (await db.engine_render_log.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ session_id: sessionId }))
-                    .findLast(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
+                    .findLast(({ op, origin, status_rx }) => op === "read" && origin === "model" && status_rx === 200);
                 assert.ok(row, "the model READ the file");
                 const anchors = (JSON.parse(row.rx) as { lineAnchors?: string[] }).lineAnchors;
                 assert.ok(Array.isArray(anchors) && anchors.length === 11, "the READ published one anchor per line 790..800");
@@ -435,7 +435,7 @@ const program = async (frames: (anchor: (line: number) => string) => string[]): 
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Add the test." }] });
         assert.equal(result.result.status, 200, JSON.stringify(result.result).slice(0, 300));
         const logRows = (await Promise.all(result.turnIds.map((id) => db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: id })))).flat();
-        const rows = logRows.filter(({ op, origin }) => op === "EDIT" && origin === "model").map(({ status_rx, rx }) => {
+        const rows = logRows.filter(({ op, origin }) => op === "edit" && origin === "model").map(({ status_rx, rx }) => {
             const parsed = JSON.parse(rx) as { receipt?: { effect?: { result?: string; inserted?: number; removed?: number } } };
             return { status: status_rx, landed: parsed.receipt?.effect?.result ?? null, inserted: parsed.receipt?.effect?.inserted ?? null, removed: parsed.receipt?.effect?.removed ?? null };
         });
@@ -540,7 +540,7 @@ test("{§edit-result-receipt-projection} a scoped KILL deletes one span of an en
         const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/notes.md", name: "body" });
         assert.equal(body?.content, "alpha\ngamma", "exactly the scoped line is gone");
         const row = await db.test_first_log_entry_for_turn.get<{ op: string; lineMarker: string | null }>({ turn_id: turnId });
-        assert.equal(row?.op, "KILL", "the receipt is the model's own operation");
+        assert.equal(row?.op, "kill", "the receipt is the model's own operation");
         // {§edit-result-receipt-projection} — the deletion receipt quotes what it took.
         const receiptRow = await db.test_first_log_entry_for_turn.get<{ rx: string | null }>({ turn_id: turnId });
         assert.match(String(receiptRow?.rx), /"removedText":"beta"/, `the removed line rides the receipt: ${String(receiptRow?.rx).slice(0, 300)}`);
@@ -563,7 +563,7 @@ test("{§op-invariants} an entry KILL with a pattern deletes exactly the matchin
         const last = r.last as { removedText?: string } | undefined;
         assert.equal(last?.removedText, "beta", "and the last one");
         const row = await db.test_first_log_entry_for_turn.get<{ op: string }>({ turn_id: turnId });
-        assert.equal(row?.op, "KILL", "the log row is the model's own operation");
+        assert.equal(row?.op, "kill", "the log row is the model's own operation");
     } finally { await db.close(); }
 });
 
@@ -639,7 +639,7 @@ const filePath = (pathname: string): LocalPath => ({ kind: "local", raw: pathnam
 
 const findStmt = (target: LocalPath, matcher: MatcherBody): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null, target, lineMarker: null, matcher, body: null,
+    op: "find", aside: null, target, lineMarker: null, matcher, body: null,
      position: { line: 1, column: 1 },
 });
 
@@ -699,13 +699,13 @@ const url = (pathname: string): UrlPath => ({
 const fullReplace: LineMarker = { marks: [1, -1] };
 const graphEditStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null, target, lineMarker: marker, body,
+    op: "edit", aside: null, target, lineMarker: marker, body,
     matcher: null, position: { line: 1, column: 1 },
 });
 
 const findStmt = (target: UrlPath, matcher: MatcherBody): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null, target, lineMarker: null, matcher, body: null,
+    op: "find", aside: null, target, lineMarker: null, matcher, body: null,
      position: { line: 1, column: 1 },
 });
 
@@ -977,9 +977,9 @@ test("{§matcher-prefix-claims}: a fumbled pattern is the operation's own 400 wi
         const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider });
         assert.equal(first.status, 102, "the turn stands");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number; rx: string }>({ turn_id: first.turnId });
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["FIND", 400]], "one row: the FIND's own refusal");
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["find", 400]], "one row: the FIND's own refusal");
         assert.ok(rows.every(({ op }) => op !== "error"), "no grammar error row is minted");
-        const problem = (JSON.parse(rows.find(({ op }) => op === "FIND")!.rx) as { problem: { type: string; detail: string; recovery: string; stage: string } }).problem;
+        const problem = (JSON.parse(rows.find(({ op }) => op === "find")!.rx) as { problem: { type: string; detail: string; recovery: string; stage: string } }).problem;
         assert.equal(problem.type, "https://problems.plurnk.xyz/grammar/matcher/unreadable-pattern");
         assert.match(problem.detail, /not a valid `\/pattern\/flags` regex/u);
         assert.match(problem.recovery, /^A pattern is a regex written/u, "{§parse-recovery}: the working form rides the Problem");
@@ -988,8 +988,8 @@ test("{§matcher-prefix-claims}: a fumbled pattern is the operation's own 400 wi
         const second = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider });
         assert.equal(await new StrikeRail(db).streak(loopId), 0, "nor does repeating it");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        assert.match(packetSection(packet, "errors"), /"status":400,"path":"log:\/\/\/[^"]*\/FIND"/u, "the refusal is the FIND row in the Errors index");
-        const row = logEntries(packet).find((entry) => entry.status === 400 && entry.logPath.endsWith("/FIND"))!;
+        assert.match(packetSection(packet, "errors"), /"status":400,"path":"log:\/\/\/[^"]*\/find"/u, "the refusal is the FIND row in the Errors index");
+        const row = logEntries(packet).find((entry) => entry.status === 400 && entry.logPath.endsWith("/find"))!;
         assert.match(String((row.problem as { detail?: string }).detail), /not a valid/u, "the next packet carries the diagnostic on the row");
         assert.match(String((row.problem as { recovery?: string }).recovery), /A pattern is a regex/u);
     } finally { await db.close(); }
@@ -1036,7 +1036,7 @@ for (const [name, source] of [
 });
 
 describe("nested-program-bodies", () => {
-for (const header of ["SEND", "EDIT (workspace:///example.md)"]) {
+for (const header of ["send", "EDIT (workspace:///example.md)"]) {
     test(`{§fence-pairing}: a framed ${header} preserves quoted examples, original source, and the real task disposition`, async () => {
         const db = await openMigrated();
         try {
@@ -1051,8 +1051,8 @@ for (const header of ["SEND", "EDIT (workspace:///example.md)"]) {
                 'await plurnk.wait({"text":"Not a real wait."});',
                 "Report ends here.",
             ].join("\n");
-            const disposition = header === "SEND" ? "NOTE" : "WAIT";
-            const firstCall = header === "SEND"
+            const disposition = header === "send" ? "note" : "wait";
+            const firstCall = header === "send"
                 ? `await plurnk.send(${JSON.stringify({ text: body })});`
                 : `await plurnk.edit(${JSON.stringify({ path: "workspace:///example.md", content: body })});`;
             const source = `${firstCall}\n\nawait plurnk.${disposition.toLowerCase()}({});`;
@@ -1065,18 +1065,18 @@ for (const header of ["SEND", "EDIT (workspace:///example.md)"]) {
             assert.equal(result.status, 102, "the quoted body stays literal, and a sibling operation prevents conclusion");
             assert.equal(result.emissionAttempts, 1);
             assert.deepEqual(result.outcomes.map(({ op, status }) => ({ op, status })), [
-                { op: header === "SEND" ? "SEND" : "EDIT", status: header === "SEND" ? 200 : 201 },
-                { op: disposition, status: header === "SEND" ? 200 : 102 },
+                { op: header === "send" ? "send" : "edit", status: header === "send" ? 200 : 201 },
+                { op: disposition, status: header === "send" ? 200 : 102 },
             ]);
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; rx: string }>({ turn_id: result.turnId });
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === result.turnId && kind === "ops")?.content, source);
-            const emitted = JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === (header === "SEND" ? "SEND" : "EDIT"))!.tx);
-            assert.equal(header === "SEND" ? emitted.body.raw : emitted.body, body);
+            const emitted = JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === (header === "send" ? "send" : "edit"))!.tx);
+            assert.equal(header === "send" ? emitted.body.raw : emitted.body, body);
             assert.equal(JSON.parse(rows.find(({ op }) => op === disposition)!.tx).body, null);
             const saved = (pathname: string) => db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname, scheme: "workspace", name: "body" });
             assert.equal((await saved("/victim.md"))?.content, "unchanged");
-            if (header !== "SEND") assert.equal((await saved("/example.md"))?.content, body);
+            if (header !== "send") assert.equal((await saved("/example.md"))?.content, body);
         } finally { await db.close(); }
     });
 }
@@ -1099,8 +1099,8 @@ const enc = (pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, query: null, fragment: null,
 });
-const decodeEditStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({ metadata: null, op: "EDIT", aside: null, target, lineMarker: null, body, matcher: null, position: { line: 1, column: 1 } });
-const readStmt = (target: UrlPath): ReadStatement => ({ metadata: null, op: "READ", aside: null, target, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
+const decodeEditStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({ metadata: null, op: "edit", aside: null, target, lineMarker: null, body, matcher: null, position: { line: 1, column: 1 } });
+const readStmt = (target: UrlPath): ReadStatement => ({ metadata: null, op: "read", aside: null, target, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
 
 test("{§path-syntax} a percent-encoded pathname alias resolves to literal parentheses", async () => {
     const db = await openMigrated();

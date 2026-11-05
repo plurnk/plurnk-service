@@ -138,11 +138,11 @@ test("{§log-wire-format} every settled text mutation keeps its diff on its row;
     assert.equal(bytes.patch, null, "a byte write keeps no patch");
 
     // The row serves its diff as the `patch` channel; a row without one has no such channel.
-    const read = await dispatch(`await plurnk.read({"path":"log:///1/1/${edited.sequence}/EDIT#patch","range":"1,-1"});`);
+    const read = await dispatch(`await plurnk.read({"path":"log:///1/1/${edited.sequence}/edit#patch","range":"1,-1"});`);
     assert.equal(read.status_rx, 200, `READ #patch: ${read.rx.slice(0, 200)}`);
     assert.match(read.content, /-two/u);
     assert.match(read.content, /\+TWO/u);
-    const missing = await dispatch(`await plurnk.read({"path":"log:///1/1/${bytes.sequence}/COPY#patch","range":"1,-1"});`);
+    const missing = await dispatch(`await plurnk.read({"path":"log:///1/1/${bytes.sequence}/copy#patch","range":"1,-1"});`);
     assert.equal(missing.status_rx, 404, `a patchless row has no patch channel: ${missing.rx.slice(0, 200)}`);
 
     // A fork copies the row with its patch.
@@ -179,7 +179,7 @@ test("{§log-kill-scope}: READ and COPY omit deliberate trims in original coordi
     const { db, ids, dispatch } = await runtime(t);
     assert.equal((await dispatch("await plurnk.edit({\"path\":\"workspace:///source.txt\",\"content\":\"one\\ntwo\\nsecret\\nfour\\nfive\"});")).status, 201);
     assert.equal((await dispatch("await plurnk.read({\"path\":\"workspace:///source.txt\",\"range\":\"1,-1\"});")).status, 200);
-    const target = "log:///1/1/2/READ";
+    const target = "log:///1/1/2/read";
     assert.equal((await dispatch(`await plurnk.kill({"path":"${target}","range":"3"});`)).status, 200);
     const read = await dispatch(`await plurnk.read({"path":"${target}","range":"2,4"});`);
     assert.equal(read.status, 200);
@@ -194,7 +194,7 @@ test("{§log-kill-scope}: READ and COPY omit deliberate trims in original coordi
     assert.equal(found.status, 200);
     assert.match(JSON.parse(found.content)[0].region, /^<4,/u);
     assert.equal((await dispatch(`await plurnk.read({"path":"${target}","range":"3"});`)).status, 204);
-    assert.equal((await dispatch(`await plurnk.copy({"from":"${target}","to":"log:///1/1/2/READ"});`)).status, 400, "the log is never a write target");
+    assert.equal((await dispatch(`await plurnk.copy({"from":"${target}","to":"log:///1/1/2/read"});`)).status, 400, "the log is never a write target");
     // {§move}: MOVE from a log region is the COPY above plus the same scoped KILL —
     // the destination receives the readable lines, the projection trims them, the evidence stays.
     const moved = await dispatch(`await plurnk.move({"from":{"path":"${target}","range":"2,4"},"to":"workspace:///moved.txt"});`);
@@ -226,15 +226,15 @@ test("{§log-wire-format}: a stored source slice and its curated log resource re
     await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, pathname: "/source.txt", content, mimetype: "text/plain" });
     const original = await dispatch("await plurnk.read({\"path\":\"workspace:///source.txt\",\"range\":\"17,18\"});");
     assert.equal(original.content, "line 17\nline 18");
-    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/1/READ\",\"range\":\"1\"});")).status, 200);
-    const reread = await dispatch("await plurnk.read({\"path\":\"log:///1/1/1/READ\",\"range\":\"1,-1\"});");
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/1/read\",\"range\":\"1\"});")).status, 200);
+    const reread = await dispatch("await plurnk.read({\"path\":\"log:///1/1/1/read\",\"range\":\"1,-1\"});");
     assert.equal(reread.content, "line 18");
     assert.deepEqual(reread.range, { unit: "line", total: 2, requested: [1, -1], returned: [2, 2] });
     const recorded = await db.log_read_by_coordinate.get<{ rx: string; folded: string; status_rx: number }>({ session_id: ids.sessionId, loop_seq: 1, turn_seq: 1, sequence: 1 });
     assert.ok(recorded);
     assert.deepEqual(JSON.parse(recorded.rx), original, "curation did not modify the recorded acquisition");
     const [row] = parseLogRecords(PacketWire.renderLog([{
-        coordinate: "1/1/1", op: "READ", status: recorded.status_rx,
+        coordinate: "1/1/1", op: "read", status: recorded.status_rx,
         target: { scheme: "workspace", pathname: "/source.txt" }, rx: JSON.parse(recorded.rx), folded: recorded.folded,
     }], contentWeight));
     assert.equal(row?.range, "<17,18> of 30 lines");
@@ -247,7 +247,7 @@ test("{§log-kill-scope}: a multiline pattern never copies a curated gap", async
     const { dispatch } = await runtime(t);
     await dispatch("await plurnk.edit({\"path\":\"workspace:///source.txt\",\"content\":\"alpha\\nsecret\\nomega\"});");
     await dispatch("await plurnk.read({\"path\":\"workspace:///source.txt\",\"range\":\"1,-1\"});");
-    const target = "log:///1/1/2/READ";
+    const target = "log:///1/1/2/read";
     await dispatch(`await plurnk.kill({"path":"${target}","range":"2"});`);
     const pattern = "/alpha\\nomega/";
     const found = await dispatch(`await plurnk.find(${JSON.stringify({ path: target, pattern })});`);
@@ -280,8 +280,8 @@ test("{§log-kill-scope}: FIND prices retained bodies consistently in rows and f
         return folder[0].weight;
     };
     const before = await folderWeight();
-    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/READ\",\"range\":\"2\"});")).status, 200);
-    const result = await log.find(findStmt(urlPath("log", "/1/1/2/READ")), ctx);
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/read\",\"range\":\"2\"});")).status, 200);
+    const result = await log.find(findStmt(urlPath("log", "/1/1/2/read")), ctx);
     assert.equal(result.status, 200);
     const item = result.results[0];
     assert.ok(Array.isArray(item));
@@ -301,7 +301,7 @@ test("{§log-kill-scope}: a byte-view receipt is readable text, not a second bin
     assert.equal(sourceRead.status, 200);
     assert.equal(sourceRead.projection, "hex");
     assert.equal(sourceRead.mimetype, "application/octet-stream");
-    const target = "log:///1/1/1/READ";
+    const target = "log:///1/1/1/read";
     const complete = await dispatch(`await plurnk.read({"path":"${target}","range":"1,-1"});`);
     assert.equal(complete.status, 200, JSON.stringify(complete));
     assert.equal(complete.content, sourceRead.content);
@@ -327,14 +327,14 @@ test("{§log-kill-scope}: initially suppressed program READ receipts remain read
     const sequence = reserve();
     await db.engine_insert_log_entry.get({
         session_id: ids.sessionId, loop_id: ids.loopId, turn_id: ids.turnId, sequence,
-        origin: "model", source: null, model_call_id: null, op: "READ",
+        origin: "model", source: null, model_call_id: null, op: "read",
         scheme: null, username: null, password: null, hostname: null, port: null,
         pathname: null, query: null, fragment: null, lineMarker: null,
         tx: "", mimetype_tx: "text/vnd.plurnk", rx: JSON.stringify({ content, mimetype: "text/vnd.plurnk" }),
         mimetype_rx: "application/json", status_rx: 200, weight: contentWeight(content),
         state: "resolved", outcome: null, attrs: "{}", initial_folded: "[[1,-1]]",
     });
-    const target = "log:///1/1/1/READ";
+    const target = "log:///1/1/1/read";
     assert.equal((await dispatch(`await plurnk.read({"path":"${target}","range":"1,-1"});`)).content, content);
     await t.test("{§log-kill-scope} COPY of a textual program into plain text remains verbatim", async () => {
         const copied = await dispatch(`await plurnk.copy({"from":"${target}","to":"workspace:///program.txt"});`);
@@ -342,14 +342,14 @@ test("{§log-kill-scope}: initially suppressed program READ receipts remain read
     });
     assert.equal((await dispatch(`await plurnk.kill({"path":"${target}","range":"2"});`)).status, 200);
     const branch = await Fork.fork(db, ids.sessionId, "branch");
-    const forkRead = await readLog({ ...readStmt(urlPath("log", "/1/1/1/READ")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workspaceId: ids.workspaceId, sessionId: branch }));
+    const forkRead = await readLog({ ...readStmt(urlPath("log", "/1/1/1/read")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workspaceId: ids.workspaceId, sessionId: branch }));
     assert.equal(forkRead.content, "await plurnk.note({\n");
     const forkRows = await db.test_fork_log_entries.all<{ initial_folded: string; projection_folded: string }>({ session_id: branch });
     assert.equal(forkRows[0]?.initial_folded, "[[1,-1]]");
     assert.equal(forkRows[0]?.projection_folded, "[[2,2]]");
     assert.equal((await dispatch(`await plurnk.kill({"path":"${target}","range":"1,-1"});`)).status, 200);
     assert.equal((await dispatch(`await plurnk.read({"path":"${target}","range":"1,-1"});`)).status, 204);
-    const stillReadable = await readLog({ ...readStmt(urlPath("log", "/1/1/1/READ")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workspaceId: ids.workspaceId, sessionId: branch }));
+    const stillReadable = await readLog({ ...readStmt(urlPath("log", "/1/1/1/read")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workspaceId: ids.workspaceId, sessionId: branch }));
     assert.equal(stillReadable.content, forkRead.content, "parent curation does not change the branch's projection");
     const original = await db.log_read_by_coordinate.get<{ rx: string }>({ session_id: ids.sessionId, loop_seq: 1, turn_seq: 1, sequence });
     assert.equal(JSON.parse(original!.rx).content, content);
@@ -368,7 +368,7 @@ test("{§log-kill-scope}: trimming invalidates search and a racing derivation ca
     const resume = Promise.withResolvers<void>();
     const process = DEFAULT_MIMETYPES.process.bind(DEFAULT_MIMETYPES);
     t.mock.method(DEFAULT_MIMETYPES, "process", async (...args: Parameters<typeof process>) => {
-        if (args[0].path === "1/1/2/READ") {
+        if (args[0].path === "1/1/2/read") {
             started.resolve();
             await resume.promise;
         }
@@ -377,37 +377,37 @@ test("{§log-kill-scope}: trimming invalidates search and a racing derivation ca
     const inFlight = SearchIndex.maintain(ctx);
     try {
         await started.promise;
-        assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/READ\",\"range\":\"2\"});")).status, 200);
+        assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/read\",\"range\":\"2\"});")).status, 200);
     } finally { resume.resolve(); }
     await inFlight;
     const candidates = await db.log_find_candidates.all<{ coordinate: string; deep_hash: string | null }>({ session_id: ids.sessionId, scope_prefix: null, max_id: null });
     assert.equal(candidates.find((row) => row.coordinate === "1/1/2")?.deep_hash, null, "stale in-flight derivation was not attached");
     await SearchIndex.maintain(ctx);
-    assert.equal((await dispatch("await plurnk.find({\"path\":\"log:///1/1/2/READ\",\"pattern\":\"~secret\"});")).status, 204);
-    const retained = await dispatch("await plurnk.find({\"path\":\"log:///1/1/2/READ\",\"pattern\":\"~pear\"});");
+    assert.equal((await dispatch("await plurnk.find({\"path\":\"log:///1/1/2/read\",\"pattern\":\"~secret\"});")).status, 204);
+    const retained = await dispatch("await plurnk.find({\"path\":\"log:///1/1/2/read\",\"pattern\":\"~pear\"});");
     assert.equal(retained.status, 200);
     assert.match(JSON.parse(retained.content)[0].region, /^<3,/u);
-    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/READ\",\"range\":\"3\"});")).status, 200);
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/read\",\"range\":\"3\"});")).status, 200);
     await SearchIndex.maintain(ctx);
-    assert.equal((await dispatch("await plurnk.find({\"path\":\"log:///1/1/2/READ\",\"pattern\":\"~pear\"});")).status, 204, "later curation also invalidates an already attached artifact");
-    const read = await dispatch("await plurnk.read({\"path\":\"log:///1/1/2/READ\",\"range\":\"1,-1\"});");
-    const wire = PacketWire.renderLog([{ coordinate: "1/1/99", op: "READ", origin: "model", status: read.status, rx: read, lineAnchors: read.lineAnchors, lineNumberWidth: read.lineNumberWidth }], contentWeight);
+    assert.equal((await dispatch("await plurnk.find({\"path\":\"log:///1/1/2/read\",\"pattern\":\"~pear\"});")).status, 204, "later curation also invalidates an already attached artifact");
+    const read = await dispatch("await plurnk.read({\"path\":\"log:///1/1/2/read\",\"range\":\"1,-1\"});");
+    const wire = PacketWire.renderLog([{ coordinate: "1/1/99", op: "read", origin: "model", status: read.status, rx: read, lineAnchors: read.lineAnchors, lineNumberWidth: read.lineNumberWidth }], contentWeight);
     assert.match(wire, /1(?:<@[0-9A-Za-z]{5}>|:)apple/);
     assert.doesNotMatch(wire, /secret|pear/);
 });
 
 // {§log-kill-scope} — the recorded emission replayed through the parser and the engine.
-test("{§log-kill-scope} {§slicer-text-algebra}: `KILL (log:///…/READ) <0, -1>` is refused 416 with the forms a log body takes, which then work", async (t) => {
+test("{§log-kill-scope} {§slicer-text-algebra}: `KILL (log:///…/read) <0, -1>` is refused 416 with the forms a log body takes, which then work", async (t) => {
     const { dispatch } = await runtime(t);
     await dispatch("await plurnk.edit({\"path\":\"workspace:///source.txt\",\"content\":\"one\\ntwo\"});");
     await dispatch("await plurnk.read({\"path\":\"workspace:///source.txt\",\"range\":\"1,-1\"});");
-    const refused = await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/READ\",\"range\":\"0,-1\"});");
+    const refused = await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/read\",\"range\":\"0,-1\"});");
     assert.equal(refused.status, 416);
     assert.match(refused.problem.type, /\/range-not-satisfiable$/);
     assert.equal(refused.problem.detail, "Range <0,-1> starts at 0, which is not a line; lines are numbered from 1."); // {§operation-results}
-    assert.equal(refused.problem.recovery, "Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/1/2/READ) with no scope retires the whole row."); // {§operation-results}
-    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/READ\",\"range\":\"1,-1\"});")).status, 200);
-    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/READ\"});")).status, 200);
+    assert.equal(refused.problem.recovery, "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/1/2/read\" }); with no range retires the whole row."); // {§operation-results}
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/read\",\"range\":\"1,-1\"});")).status, 200);
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/2/read\"});")).status, 200);
 });
 });
 
@@ -417,7 +417,7 @@ type SqlValue = string | number | bigint | null;
 const minimalLog = async (db: Db, ctx: { sessionId: number; loopId: number; turnId: number }, overrides: Record<string, SqlValue> = {}): Promise<number> => {
     const params: Record<string, SqlValue> = {
         session_id: ctx.sessionId, loop_id: ctx.loopId, turn_id: ctx.turnId,
-        sequence: 1, origin: "model", op: "EDIT",
+        sequence: 1, origin: "model", op: "edit",
         source: null,
         signal: null,
         scheme: "workspace", pathname: "/meaning", port: null, query: null,
@@ -533,7 +533,7 @@ test("{§db-migrations} log_entries: session, loop, turn, producer, and model-ca
             () => db.engine_insert_log_entry.get({
                 session_id: secondSession, loop_id: secondLoop, turn_id: secondTurn.id,
                 sequence: 1, origin: "client", source: null, model_call_id: modelCall.id,
-                op: "READ",
+                op: "read",
                 scheme: "workspace", username: null, password: null, hostname: null, port: null,
                 pathname: "/wrong-call", query: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain", rx: "", mimetype_rx: "text/plain",
@@ -660,7 +660,7 @@ test("{§log-history-projection} log_entries: a malformed bound curation plan ro
             await assert.rejects(
                 () => minimalLog(db, ctx, {
                     sequence: 2,
-                    op: "KILL",
+                    op: "kill",
                     scheme: "log",
                     attrs: JSON.stringify({ __plurnk_curation: plan }),
                 }),
@@ -698,7 +698,7 @@ test("{§log-history-projection} log_entries: folded body intervals are canonica
         await assert.rejects(
             () => minimalLog(db, ctx, {
                 sequence: 2,
-                op: "KILL",
+                op: "kill",
                 scheme: "log",
                 attrs: JSON.stringify({
                     __plurnk_curation: {
@@ -773,7 +773,7 @@ test("{§log-history-projection}: curation effects are immutable while their eve
     try {
         const ctx = await seedEnvelope(db, "ws-log-curation-effect-history");
         const targetId = await minimalLog(db, ctx, { sequence: 1 });
-        const operationId = await minimalLog(db, ctx, { sequence: 2, op: "KILL", scheme: "log" });
+        const operationId = await minimalLog(db, ctx, { sequence: 2, op: "kill", scheme: "log" });
         await db.test_insert_log_curation_effect.run({
             operation_log_entry_id: operationId,
             target_log_entry_id: targetId,
@@ -831,7 +831,7 @@ test("{§log-history-projection} log_entries: ON DELETE CASCADE via turn", async
     try {
         const ctx = await seedEnvelope(db, "ws-log-turncasc");
         const targetId = await minimalLog(db, ctx, { sequence: 1 });
-        const operationId = await minimalLog(db, ctx, { sequence: 2, op: "KILL", scheme: "log" });
+        const operationId = await minimalLog(db, ctx, { sequence: 2, op: "kill", scheme: "log" });
         await db.test_insert_log_curation_effect.run({
             operation_log_entry_id: operationId,
             target_log_entry_id: targetId,
@@ -873,7 +873,7 @@ test("{§turn-source-resources}: the schema admits an emission row only as one b
         const emission = async (overrides: Record<string, SqlValue> = {}): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 session_id: sessionId, loop_id: loopId, turn_id: turn.id, sequence: 1,
-                origin: "_plurnk", source: null, model_call_id: null, op: "READ", signal: null,
+                origin: "_plurnk", source: null, model_call_id: null, op: "read", signal: null,
                 scheme: "ops", username: null, password: null, hostname: "alice", port: null,
                 pathname: `/1/${turn.sequence}`, query: null, fragment: null, lineMarker: null,
                 tx: "{}", mimetype_tx: "application/json",
@@ -889,7 +889,7 @@ test("{§turn-source-resources}: the schema admits an emission row only as one b
         await Turn.recordSource(db, turn.id, "ops", content);
         const shapes: Array<[Record<string, SqlValue>, string]> = [
             [{ origin: "model" }, "only the harness writes the announcement"],
-            [{ op: "FIND" }, "the announcement is a READ"],
+            [{ op: "find" }, "the announcement is a READ"],
             [{ scheme: "reasoning" }, "of the ops source"],
             [{ initial_folded: "[]" }, "born folded: the emission rides outside its record"],
             [{ rx: JSON.stringify({ status: 200, content: "", mimetype: "text/vnd.plurnk" }) }, "an admitted emission is never empty"],
@@ -968,9 +968,9 @@ test("{§log-history-projection} log_entries: query log:///<L>/<T>/<A> address p
     try {
         const ctx = await seedEnvelope(db, "ws-log-address");
         await minimalLog(db, ctx, { sequence: 1 });
-        await minimalLog(db, ctx, { sequence: 2, op: "SEND" });
+        await minimalLog(db, ctx, { sequence: 2, op: "send" });
         const row = await db.test_log_entries_address_join.get<{ op: string; loop_seq: number; turn_seq: number; sequence: number }>({ loop_seq: 1, turn_seq: 1, sequence: 2 });
-        assert.equal(row?.op, "SEND");
+        assert.equal(row?.op, "send");
         assert.equal(row?.loop_seq, 1);
         assert.equal(row?.turn_seq, 1);
         assert.equal(row?.sequence, 2);

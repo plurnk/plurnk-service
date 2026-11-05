@@ -165,7 +165,7 @@ test("{§digest-forensic-fidelity} digest Markdown exposes amplification as exac
         const insert = async (
             sequence: number,
             origin: "model" | "_plurnk",
-            op: "READ" | "EDIT" | "atlas" | "KILL",
+            op: "read" | "edit" | "atlas" | "kill",
             pathname: string,
             attrs: object,
             hostname: string | null = null,
@@ -188,17 +188,17 @@ test("{§digest-forensic-fidelity} digest Markdown exposes amplification as exac
             if (row === undefined) throw new Error("digest log fixture insert returned no row");
             return row.id;
         };
-        for (let i = 1; i <= 50; i++) readIds.push(await insert(i, "model", "READ", "/whale", {}, "example.test"));
-        for (let i = 51; i <= 62; i++) await insert(i, "_plurnk", "EDIT", "/", { kind: "entry_materialized" }, `result${i}.test`);
-        await insert(63, "model", "READ", "/wiki/Paris", {}, "en.wikipedia.org", "https", "b=2&a=1&a=3", 8443);
+        for (let i = 1; i <= 50; i++) readIds.push(await insert(i, "model", "read", "/whale", {}, "example.test"));
+        for (let i = 51; i <= 62; i++) await insert(i, "_plurnk", "edit", "/", { kind: "entry_materialized" }, `result${i}.test`);
+        await insert(63, "model", "read", "/wiki/Paris", {}, "en.wikipedia.org", "https", "b=2&a=1&a=3", 8443);
         await insert(64, "model", "atlas", "/filesystem_read_text_file", {
             stream: "atlas:///1/1/64/atlas",
         }, null, null);
-        await insert(65, "_plurnk", "EDIT", "/page", { kind: "entry_materialized" }, "repeat.test", "https", "q=1", 9443, "body");
-        await insert(66, "_plurnk", "EDIT", "/page", { kind: "entry_materialized" }, "repeat.test", "https", "q=1", 9443, "body");
-        await insert(67, "_plurnk", "EDIT", "/", { kind: "entry_materialized" }, "empty.test", "https", null);
-        await insert(68, "_plurnk", "EDIT", "/", { kind: "entry_materialized" }, "empty.test", "https", "");
-        killId = await insert(69, "model", "KILL", "/**/READ", {
+        await insert(65, "_plurnk", "edit", "/page", { kind: "entry_materialized" }, "repeat.test", "https", "q=1", 9443, "body");
+        await insert(66, "_plurnk", "edit", "/page", { kind: "entry_materialized" }, "repeat.test", "https", "q=1", 9443, "body");
+        await insert(67, "_plurnk", "edit", "/", { kind: "entry_materialized" }, "empty.test", "https", null);
+        await insert(68, "_plurnk", "edit", "/", { kind: "entry_materialized" }, "empty.test", "https", "");
+        killId = await insert(69, "model", "kill", "/**/read", {
             __plurnk_curation: {
                 targets: readIds.map((id) => ({
                     id,
@@ -233,8 +233,8 @@ test("{§digest-forensic-fidelity} digest Markdown exposes amplification as exac
                 folded_after: Array<[number, number]>;
             }>;
         };
-        assert.match(markdown, /\[model\] READ\[200\] https:\/\/example\.test\/whale ×50 \(seq 1–50\)/);
-        assert.match(markdown, /\[model\] READ\[200\] https:\/\/en\.wikipedia\.org:8443\/wiki\/Paris\?b=2&a=1&a=3/);
+        assert.match(markdown, /\[model\] read\[200\] https:\/\/example\.test\/whale ×50 \(seq 1–50\)/);
+        assert.match(markdown, /\[model\] read\[200\] https:\/\/en\.wikipedia\.org:8443\/wiki\/Paris\?b=2&a=1&a=3/);
         assert.equal(
             markdown.match(/\[_plurnk\] materialized entry\[200\] https:\/\/result\d+\.test\//g)?.length,
             12,
@@ -261,7 +261,7 @@ test("{§digest-forensic-fidelity} digest Markdown exposes amplification as exac
                 id: 1, session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence: 1,
                 origin: "model", source: null, model_call_id: null,
                 inherited_history: false, ambient_event_id: null,
-                attrs: {}, op: "READ", target: "https://example.test/whale",
+                attrs: {}, op: "read", target: "https://example.test/whale",
                 status_rx: 200, state: "resolved", outcome: null,
                 initial_folded: [], projection: { active: true, folded: [[1, -1]] },
             },

@@ -90,7 +90,7 @@ class ProposingTest {
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null,
+    op: "edit", aside: null,
     target: { kind: "url", raw: `proposing-test://${pathname}`, scheme: "proposing-test",
         username: null, password: null, hostname: null, port: null,
         pathname, query: null, fragment: null },
@@ -210,7 +210,7 @@ test("{§digest-evidence-reader}: curation retains original approval in the repo
             decision: "accept", body: "reviewed override", outcome: "reviewed",
         });
         const decision = await db.test_proposal_decision.get({ id: logEntryId });
-        const [statement] = parseDsl("await plurnk.kill({\"path\":\"log:///1/1/1/EDIT\"});");
+        const [statement] = parseDsl("await plurnk.kill({\"path\":\"log:///1/1/1/edit\"});");
         assert.ok(statement);
         assert.equal((await ctx.engine.dispatch({ ...ctx, statement, sequence: 2, origin: "model" })).status, 200);
         const digestDir = join(directory, "digest");
@@ -486,7 +486,7 @@ test("{§engine-rails} proposal: onProposalPending listener fires with the right
         const { logEntryId } = await dispatchAndResolve(ctx.engine, ctx, { decision: "accept" });
         assert.equal(seen.length, 1);
         assert.equal(seen[0]?.logEntryId, logEntryId);
-        assert.equal(seen[0]?.op, "EDIT");
+        assert.equal(seen[0]?.op, "edit");
         assert.equal(seen[0]?.target.scheme, "proposing-test");
         assert.equal(seen[0]?.target.pathname, "/x");
         const attrs = seen[0]?.attrs as { path: string; patch: string };
@@ -504,7 +504,7 @@ test("{§proposal}: a WAIT over live work parks without a proposal", async () =>
         const proposed: number[] = [];
         ctx.engine.onProposalPending((event) => { proposed.push(event.logEntryId); });
 
-        const sendParked = parseDsl("await plurnk.wait({\"text\":\"awaiting your reply\"});").find((s) => s.op === "WAIT");
+        const sendParked = parseDsl("await plurnk.wait({\"text\":\"awaiting your reply\"});").find((s) => s.op === "wait");
         assert.ok(sendParked, "fixture: the broadcast park parsed as a statement");
         const parkDeferred = deferred<number>();
         const parkResult = await ctx.engine.dispatch({
@@ -1080,7 +1080,7 @@ test("{§membership-auto-add} knob off: today's contract holds unchanged", { tim
     const read = await h.model("await plurnk.read({\"path\":\"loose.md\"});") as { status: number; problem?: { type?: string; recovery?: string } };
     assert.equal(read.status, 404);
     assert.match(read.problem?.type ?? "", /entry-not-member$/u);
-    assert.equal(read.problem?.recovery, "Admit it with `plurnk (members)` and a `{\"files\": [\"<path>\"]}` body.");
+    assert.equal(read.problem?.recovery, "Admit it with `await plurnk.members({ files: [\"<path>\"] });`.");
     const listed = await h.model("await plurnk.find({\"path\":\"*\"});") as { status: number; results?: unknown };
     assert.doesNotMatch(h.paths(listed), /loose\.md/u, "members only");
     const matched = await h.model("await plurnk.find({\"path\":\"*.md\",\"pattern\":\"loose\"});") as { status: number; results?: unknown };
@@ -1097,7 +1097,7 @@ test("{§membership-auto-add} {§proposal} under review, a READ proposes the adm
     assert.equal(await h.member("loose.md"), false);
 
     const accepted = await h.review("await plurnk.read({\"path\":\"loose.md\"});", "accept");
-    assert.equal(accepted.proposal.op, "READ");
+    assert.equal(accepted.proposal.op, "read");
     assert.equal(accepted.proposal.body, JSON.stringify({ files: ["loose.md"] }), "the review material is the definition the acceptance admits");
     const read = accepted.result as { status: number; content?: string | null };
     assert.equal(read.status, 200, JSON.stringify(read));
@@ -1114,7 +1114,7 @@ test("{§membership-auto-add} {§proposal} under review, a READ proposes the adm
     assert.equal(await h.member("docs/guide.md"), false, "a rejected admission admits nothing");
     assert.equal(h.notices.length, 1, "and announces nothing");
     const again = await h.review("await plurnk.read({\"path\":\"docs/guide.md\",\"range\":\"1,1\"});", "reject");
-    assert.equal(again.proposal.op, "READ", "a rejection does not retire the file from the universe: the next read proposes again");
+    assert.equal(again.proposal.op, "read", "a rejection does not retire the file from the universe: the next read proposes again");
     assert.equal((again.result as { status: number }).status, 400);
 });
 
@@ -1122,7 +1122,7 @@ test("{§membership-auto-add} under review, a text FIND proposes the admission o
     const h = await harness(t, {});
     await h.attend();
     const { result, proposal } = await h.review("await plurnk.find({\"path\":\"docs/*.md\",\"pattern\":\"beta\"});", "accept");
-    assert.equal(proposal.op, "FIND");
+    assert.equal(proposal.op, "find");
     assert.equal(proposal.body, JSON.stringify({ files: ["docs/guide.md"] }));
     const found = result as { status: number; results?: unknown };
     assert.equal(found.status, 200, JSON.stringify(found));
@@ -1277,7 +1277,7 @@ await plurnk.wait({"text":"Waiting for your answer."});`),
                         "both model turns belong to the original loop, independently of harness observation turns");
                     assert.deepEqual(await daemon.pendingClientInteractions(workspace.workspaceId), []);
                     const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: run.loopId });
-                    const answer = rows.find((row) => row.op === "READ" && JSON.parse(row.rx).content?.includes(`"${action}"`));
+                    const answer = rows.find((row) => row.op === "read" && JSON.parse(row.rx).content?.includes(`"${action}"`));
                     assert.ok(answer, "the answer or cancellation is materialized in the resumed loop");
                     const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
                         scheme: "plurnk", pathname: (await executionAddress(db, (await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: run.loopId, sequence: 2 }))!.id, 2)).replace(/^[a-z][a-z0-9+._-]*:\/\//u, ""),

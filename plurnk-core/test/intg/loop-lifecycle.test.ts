@@ -318,7 +318,7 @@ test("{§session-wait-timing}: execution time is monotonic and invalid transitio
 });
 
 describe("Daemon.causal-admission", () => {
-for (const op of ["WORK", "FORK"]) {
+for (const op of ["work", "fork"]) {
     test(`{§session-causal-admission}: ${op} cannot admit a child after its source task is cancelled`, async (t) => {
     serverProposals(t, "accept");
         const provider = new Mock({ contextWindow: 100000, responses: [
@@ -475,7 +475,7 @@ for (const recipientState of ["idle", "parked"]) {
                 assert.deepEqual(await db.test_loop_queue_by_session.all({ session_id: sessionId }), loopsBefore,
                     "the cancelled source did not start or wake recipient work");
                 const receipt = (await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: task.loopId }))
-                    .find((row) => row.op === "SEND" && row.status_rx === 409);
+                    .find((row) => row.op === "send" && row.status_rx === 409);
                 assert.ok(receipt, "the stopped message has an explicit refusal receipt");
                 assert.equal(JSON.parse(receipt.rx).problem.type, "https://problems.plurnk.xyz/daemon/admission/source-not-running");
             } finally {
@@ -575,7 +575,7 @@ test("{§session-wait-timing}: a message's reported and actual receiving loop ag
             const delivered = await daemon.runLoop({ workspaceId, sessionId, prompt: "A new message." });
             assert.equal(delivered.loopId, accepted[0]?.loopId, "return and wake the same oldest unfinished loop that owns the message");
             await waitForDb(() => db.test_log_entries_by_loop.all<{ op: string; tx: string }>({ loop_id: delivered.loopId }),
-                (rows) => rows.some(({ op, tx }) => op === "NOTE" && tx.includes("new message reached")));
+                (rows) => rows.some(({ op, tx }) => op === "note" && tx.includes("new message reached")));
             assert.equal(provider.received.length, 3);
             assert.ok(JSON.stringify(provider.received[2]).includes("A new message."));
             assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: accepted[1].loopId }))?.status, 202,

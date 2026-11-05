@@ -58,7 +58,7 @@ describe("retention", () => {
 const counts = ({ reclaimedPages: _reclaimed, collectedContents: _contents, ...rest }: Awaited<ReturnType<Retention["run"]>>) => rest;
 const KEEP_ALL = { PLURNK_SERVICE_RETAIN_PACKET_TURNS: "-1", PLURNK_SERVICE_RETAIN_PACKET_MS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_TURNS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_MS: "-1", PLURNK_SERVICE_COLLECT_PACKET_ITEMS: "1", PLURNK_SERVICE_COLLECT_DERIVATIONS: "1", PLURNK_SERVICE_COLLECT_CONTENTS: "1", PLURNK_SERVICE_RETENTION_INTERVAL_MS: "3600000", PLURNK_SERVICE_AUTO_VACUUM: "incremental", PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES: "0" };
 const CAPACITY = JSON.stringify({ decision: "admit", contextWindow: 1001, maxInputTokens: null, maxOutputTokens: null, outputBudget: 1, reasoningBudget: null, inputCapacity: 1000, prompt: { kind: "exact", tokens: 10, source: "retention-fixture" } });
-const record = (n: number): string => `### log:///1/1/${n}/READ\n{"status":200}\n1:line ${n}`;
+const record = (n: number): string => `### log:///1/1/${n}/read\n{"status":200}\n1:line ${n}`;
 const packet = (upTo: number): DurablePacket => {
     const items = Array.from({ length: upTo }, (_, i) => record(i + 1));
     return { weight: 1, sections: [{ name: "log", slot: "user", header: "Log", content: items.join("\n\n"), weight: 1, items }], attributions: [] };
@@ -511,7 +511,7 @@ for (const publicationFails of [false, true]) test(`{§content-store}: a native 
         const result = await dispatch("await plurnk.read({\"path\":\"workspace:///picture.png\"});", 1);
         assert.equal(result.status, 200);
         assert.equal(result.nativeContentHash, hash);
-        assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/1/READ\"});", 2)).status, 200);
+        assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/1/read\"});", 2)).status, 200);
         assert.equal((await dispatch("await plurnk.kill({\"path\":\"workspace:///picture.png\"});", 3)).status, 200);
     }
     assert.notEqual(hash, "", "the real READ path captured native bytes");
@@ -534,7 +534,7 @@ test("{§content-store}: a packet alone pins its native snapshot until containin
     const hash = await NativeContent.retain(db, PNG);
     await insertPacketTurn(db, loopId, 1, {
         sections: [], attributions: [], weight: 1,
-        attachments: [{ contentHash: hash, coordinate: "1/1/1/READ", path: "workspace:///picture.png", scheme: "workspace",
+        attachments: [{ contentHash: hash, coordinate: "1/1/1/read", path: "workspace:///picture.png", scheme: "workspace",
             pathname: "/picture.png", mimetype: "image/png", kind: "image", weight: 1 }],
     });
     const retention = collector(db);

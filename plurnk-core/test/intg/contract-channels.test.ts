@@ -607,7 +607,7 @@ test("{§channels} channel state does not gate reads — errored/closed channels
 });
 
 describe("Engine.channel-recovery", () => {
-const response = (operation: string, op = "NOTE") => ({
+const response = (operation: string, op = "note") => ({
     assistant: { content: `${operation}
 
 await plurnk.${op.toLowerCase()}({});`, reasoning: null },
@@ -642,15 +642,15 @@ test("{§channel-selection} channel exploration across operation owners permits 
         const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; status_rx: number; rx: string }>({ loop_id: loopId });
         const failures = rows.filter(({ status_rx }) => status_rx >= 400);
         assert.deepEqual(failures.map(({ op, status_rx }) => ({ op, status_rx })),
-            ["READ", "FIND", "COPY", "COPY", "MOVE", "MOVE", "EDIT", "EDIT"].map((op) => ({ op, status_rx: 404 })));
+            ["read", "find", "copy", "copy", "move", "move", "edit", "edit"].map((op) => ({ op, status_rx: 404 })));
         for (const { op, rx } of failures) {
             const problem = JSON.parse(rx).problem;
             assert.match(problem.type, /\/channel-not-found$/);
             // A READ miss names the channels the entry holds; the other owners name the scheme's
             // declared channels, which include the derived `readable` ({§channel-selection}).
-            assert.deepEqual(problem.availableChannels, op === "READ" ? ["body"] : ["body", "readable"]);
+            assert.deepEqual(problem.availableChannels, op === "read" ? ["body"] : ["body", "readable"]);
         }
-        const recovered = rows.find(({ op, pathname, status_rx }) => op === "READ" && pathname === "/note" && status_rx === 200);
+        const recovered = rows.find(({ op, pathname, status_rx }) => op === "read" && pathname === "/note" && status_rx === 200);
         assert.ok(recovered);
         assert.match(JSON.parse(recovered.rx).content, /retained text/);
         assert.equal(await db.test_get_entry_by_path.get({ workspace_id: workspaceId, scheme: "workspace", pathname: "/copy" }), undefined);
@@ -799,7 +799,7 @@ const ROSTER = "<html><body><h1>Team Roster</h1><user email=\"alice@x.com\">Alic
 
 const workspaceReadStmt = (pathname: string, body: ReadStatement["body"] = null): ReadStatement => ({
     metadata: null,
-    op: "READ", aside: null,
+    op: "read", aside: null,
     target: { kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, query: null, fragment: null },
     lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
 });
@@ -915,7 +915,7 @@ test("{§scheme-surface} a scoped HTTP READ slices the materialized readable bod
         }, ctx, "https");
         const statement: ReadStatement = {
             metadata: null,
-            op: "READ", aside: null,
+            op: "read", aside: null,
             target: {
                 kind: "url", raw: "https://example.org/page", scheme: "https",
                 username: null, password: null, hostname: "example.org", port: null,
@@ -947,7 +947,7 @@ test("{§scheme-surface} a scoped HTTP READ slices the selected auxiliary channe
         }, ctx, "https");
         const statement: ReadStatement = {
             metadata: null,
-            op: "READ", aside: null,
+            op: "read", aside: null,
             target: {
                 kind: "url", raw: "https://example.org/empty#header", scheme: "https",
                 username: null, password: null, hostname: "example.org", port: null,

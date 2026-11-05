@@ -31,7 +31,7 @@ describe("Session.read", () => {
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStatement = (opts: { target: ParsedPath; body?: string | null; lineMarker?: LineMarker | null }): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null,
+    op: "edit", aside: null,
     target: opts.target,
     lineMarker: opts.lineMarker ?? null,
     matcher: null, body: opts.body ?? null,
@@ -42,7 +42,7 @@ const readStatement = (opts: {
     target?: ParsedPath | null; lineMarker?: LineMarker | null;
 }): ReadStatement => ({
     metadata: null,
-    op: "READ", aside: null,
+    op: "read", aside: null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
     matcher: null, body: null,
@@ -53,7 +53,7 @@ const findStatement = (opts: {
     target?: ParsedPath | null; matcher?: MatcherBody | null; lineMarker?: LineMarker | null;
 }): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null,
+    op: "find", aside: null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
     matcher: opts.matcher ?? null, body: null,
@@ -333,7 +333,7 @@ const assertProjection = (read: AnchoredReadResult, editable: boolean) => {
     assert.equal(read.content, source);
     assert.equal(Object.hasOwn(read, "lineAnchors"), editable);
     if (editable) assert.equal(read.lineAnchors?.length, 3);
-    const wire = PacketWire.renderLog([{ coordinate: "1/1/1", op: "READ", origin: "_plurnk",
+    const wire = PacketWire.renderLog([{ coordinate: "1/1/1", op: "read", origin: "_plurnk",
         status: read.status, rx: read, lineAnchors: read.lineAnchors, lineNumberWidth: read.lineNumberWidth }], contentWeight);
     assert.match(wire, /1(?:<@[0-9A-Za-z]{5}>|:)first/);
     if (editable) assert.match(wire, /1<@[0-9A-Za-z]{5}>first/);
@@ -648,14 +648,14 @@ test("{§read} a pattern READ over a glob fans out into one exact pattern READ r
             return result;
         };
         const rows = async () => (await db.test_log_entries_by_loop.all<{ op: string; pathname: string | null; status_rx: number; rx: string; attrs: string; sequence: number }>({ loop_id: env.loopId }))
-            .filter((row) => row.op === "READ" || row.op === "FIND").toSorted((a, b) => a.sequence - b.sequence);
+            .filter((row) => row.op === "read" || row.op === "find").toSorted((a, b) => a.sequence - b.sequence);
 
         const globTarget = urlPath("workspace", "/pets_*.md");
         const grep = await dispatch(readStmt(globTarget, null, { dialect: "regex", raw: "/dogs/i", pattern: "dogs", flags: "i" }));
         assert.equal(grep.status, 200, JSON.stringify(grep));
         assert.equal(grep.rowsWritten, 2, "one receipt per matching path; the fishless file writes none");
         const receipts = await rows();
-        assert.deepEqual(receipts.map(({ op, pathname, status_rx }) => [op, pathname, status_rx]), [["READ", "/pets_cats.md", 200], ["READ", "/pets_dogs.md", 200]], "each receipt is an exact READ of one matching path, in the FIND's order");
+        assert.deepEqual(receipts.map(({ op, pathname, status_rx }) => [op, pathname, status_rx]), [["read", "/pets_cats.md", 200], ["read", "/pets_dogs.md", 200]], "each receipt is an exact READ of one matching path, in the FIND's order");
         assert.deepEqual(receipts.map(({ attrs }) => (JSON.parse(attrs) as { fanout: unknown }).fanout), [
             { target: globTarget.raw, matched: 2, index: 0, count: 2 },
             { target: globTarget.raw, matched: 2, index: 1, count: 2 },
@@ -672,7 +672,7 @@ test("{§read} a pattern READ over a glob fans out into one exact pattern READ r
         assert.equal(none.status, 204, JSON.stringify(none));
         assert.equal(none.matched, 0);
         const empty = (await rows()).at(-1)!;
-        assert.deepEqual([empty.op, empty.pathname, empty.status_rx], ["READ", "/pets_*.md", 204], "no matching path is one 204 receipt on the authored glob");
+        assert.deepEqual([empty.op, empty.pathname, empty.status_rx], ["read", "/pets_*.md", 204], "no matching path is one 204 receipt on the authored glob");
 
         const scoped = await dispatch(readStmt(urlPath("workspace", "/pets_*.md"), { marks: [1, 2] }, { dialect: "glob", raw: "dogs" }));
         assert.equal(scoped.status, 200, JSON.stringify(scoped));
@@ -684,14 +684,14 @@ test("{§read} a pattern READ over a glob fans out into one exact pattern READ r
         assert.equal(every.status, 200, JSON.stringify(every));
         assert.equal(every.rowsWritten, 3, "without a pattern every path under the glob is read");
         const previews = (await rows()).slice(-3);
-        assert.deepEqual(previews.map(({ op, pathname }) => [op, pathname]), [["READ", "/pets_cats.md"], ["READ", "/pets_dogs.md"], ["READ", "/pets_fish.md"]]);
+        assert.deepEqual(previews.map(({ op, pathname }) => [op, pathname]), [["read", "/pets_cats.md"], ["read", "/pets_dogs.md"], ["read", "/pets_fish.md"]]);
         assert.equal((JSON.parse(previews[2].rx) as { content: string }).content, "Fish are quiet.", "each path renders its ordinary preview");
 
         const fullText = await dispatch(readStmt(urlPath("workspace", "/pets_*.md"), null, { dialect: "fts", raw: "~dogs" }));
         assert.equal(fullText.status, 200, JSON.stringify(fullText));
         assert.equal(fullText.rowsWritten, 2);
         const fullTextRows = (await rows()).slice(-2);
-        assert.deepEqual(fullTextRows.map(({ op, pathname }) => [op, pathname]), [["READ", "/pets_dogs.md"], ["READ", "/pets_cats.md"]], "FTS ranking retains the higher-relevance resource first");
+        assert.deepEqual(fullTextRows.map(({ op, pathname }) => [op, pathname]), [["read", "/pets_dogs.md"], ["read", "/pets_cats.md"]], "FTS ranking retains the higher-relevance resource first");
         assert.deepEqual(fullTextRows.map(({ rx }) => JSON.parse(rx).content), ["but I love dogs.\nHistorically, dogs have been...", "Most cats are afraid of dogs."]);
     } finally { await db.close(); }
 });
@@ -766,7 +766,6 @@ test("{§skills-sources} live trees preserve authority isolation, pattern compos
         assert.deepEqual((await find("skill://*/references/*")).map(({ path }) => path), [
             "skill://alpha/references/guide.md", "skill://alpha/references/nested/**",
             "skill://beta/references/guide.md", "skill://beta/references/nested/**",
-            "skill://plurnk/references/configuration.md", "skill://plurnk/references/copy-move.md", "skill://plurnk/references/extensibility.md", "skill://plurnk/references/models.md",
         ]);
         assert.deepEqual((await find("skill://{alpha,beta}/SKILL.md")).map(({ path }) => path), [
             "skill://alpha/SKILL.md", "skill://beta/SKILL.md",
@@ -929,7 +928,7 @@ test("{§skills-module} a model discovers a skill and reads its original tree th
         assert.match(provider.packets[2], /NESTED_SENTINEL/);
         const binaryRequest = provider.packets[2].indexOf("await plurnk.read({\"path\":\"skill://sample/assets/sample.bin\",\"range\":\"1,-1\"});");
         assert.ok(binaryRequest >= 0, "the complete binary READ replays with its turn, before the turn's results");
-        const reads = provider.packets[2].slice(binaryRequest).split(/\n\n(?=### log:\/\/\/)/).filter((section) => /^### log:\/\/\/1\/3\/\d+\/READ \(skill:\/\/sample\/\S+\) · \d+$/m.test(section));
+        const reads = provider.packets[2].slice(binaryRequest).split(/\n\n(?=### log:\/\/\/)/).filter((section) => /^### log:\/\/\/1\/3\/\d+\/read \(skill:\/\/sample\/\S+\) · \d+$/m.test(section));
         assert.equal(reads.length, 3, "the turn's READ receipts follow it, in program order");
         assert.match(reads.at(-1)!, /\n1:00\n2:ff\n3:81/, "binary assets use the ordinary byte projection");
     });

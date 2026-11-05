@@ -86,8 +86,8 @@ test("{§packet-assembly} the advisory floor instrument measures a real initial 
         });
         assert.doesNotMatch(stdout, /floor report unavailable/);
         assert.match(stdout, /log rows\s+: [1-9]\d* rows, [1-9]\d* tok active, [1-9]\d* metadata/);
-        if (items === "0") assert.doesNotMatch(stdout, /FIND \d+/, "disabled survey contributes no FIND weight");
-        else assert.match(stdout, /FIND [1-9]\d*/, "enabled survey contributes its measured FIND weight");
+        if (items === "0") assert.doesNotMatch(stdout, /find \d+/, "disabled survey contributes no FIND weight");
+        else assert.match(stdout, /find [1-9]\d*/, "enabled survey contributes its measured FIND weight");
         assert.match(stdout, /FLOOR \(approx\): ~[1-9]\d* tok/);
     }
 });
@@ -192,7 +192,7 @@ test("{§methods-invocation}: a turn's admitted reasoning rides its first model 
             const rows = (await daemon.readLog({ workspaceId, sessionId, loopId: accepted.loopId }))
                 .filter((row) => row.origin === "model" && row.op !== null)
                 .toSorted((left, right) => left.id - right.id);
-            const carriers = [["READ", "First turn reasoning."], ["NOTE", null], ["DONE", "Second turn reasoning."]];
+            const carriers = [["read", "First turn reasoning."], ["note", null], ["done", "Second turn reasoning."]];
             assert.deepEqual(rows.map((row) => [row.op, row.reasoning ?? null]), carriers);
             assert.deepEqual(rows.map((row) => { const first = announced.get(row.id); return [first?.op, first?.reasoning ?? null]; }), carriers,
                 "each row's first announcement already carries what a read returns");

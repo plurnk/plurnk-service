@@ -24,7 +24,7 @@ export const logEntries = (packet: unknown): LogRecord[] => {
 
 // {§message-arrival} — an arrival row: the harness's inbound SEND, marked `attrs.kind = "message"`.
 export const isArrivalRow = (row: { op?: unknown; origin?: unknown; attrs?: unknown }): boolean => {
-    if (row.op !== "SEND" || row.origin !== "_plurnk") return false;
+    if (row.op !== "send" || row.origin !== "_plurnk") return false;
     const attrs = typeof row.attrs === "string" ? JSON.parse(row.attrs) as unknown : row.attrs;
     return attrs !== null && typeof attrs === "object" && (attrs as { kind?: unknown }).kind === "message";
 };

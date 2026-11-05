@@ -189,7 +189,7 @@ test("{§session-initialization-entry} runtime-owned entry work is an ordinary a
                     op: string | null; scheme: string | null; pathname: string; origin: string;
                     turn_id: number; status_rx: number;
                 }>({ session_id: await RuntimeSession.ensure(db, workspaceId) });
-                const matEdit = sessionLog.find((row) => row.op === "EDIT" && row.scheme === "plurnk" && row.pathname === "/session.md");
+                const matEdit = sessionLog.find((row) => row.op === "edit" && row.scheme === "mcp" && row.pathname === "/plurnk.md");
                 assert.ok(matEdit !== undefined, "the materialization is durable operation evidence, not a privileged write");
                 assert.equal(matEdit.origin, "_plurnk", "the runtime producer remains explicit");
 
@@ -205,10 +205,10 @@ test("{§session-initialization-entry} runtime-owned entry work is an ordinary a
                     op: string | null; initial_folded: string; folded: string; attrs: string;
                 }>({ turn_id: matEdit.turn_id });
                 const adminOps = adminRows.map(({ op }) => op);
-                assert.equal(adminOps[0], "EDIT");
-                assert.ok(adminOps.slice(0, -1).every((op) => op === "EDIT"), "the program's mutations are explicit EDITs");
-                assert.deepEqual(adminOps.slice(-1), ["NOTE"], "the maintenance program records its purpose without inventing a terminal operation");
-                assert.equal(adminRows.find(({ op }) => op === "EDIT")?.folded, "[]", "maintenance visibility is a render rule, not a fabricated self-curation effect");
+                assert.equal(adminOps[0], "edit");
+                assert.ok(adminOps.slice(0, -1).every((op) => op === "edit"), "the program's mutations are explicit EDITs");
+                assert.deepEqual(adminOps.slice(-1), ["note"], "the maintenance program records its purpose without inventing a terminal operation");
+                assert.equal(adminRows.find(({ op }) => op === "edit")?.folded, "[]", "maintenance visibility is a render rule, not a fabricated self-curation effect");
                 const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: await RuntimeSession.ensure(db, workspaceId) });
                 assert.ok(programs.some(({ turn_id, kind, content }) => turn_id === matEdit.turn_id && kind === "ops" && content.includes("await plurnk.note(")),
                     "maintenance retains its exact source independently of packet visibility");
@@ -216,7 +216,7 @@ test("{§session-initialization-entry} runtime-owned entry work is an ordinary a
                 const modelLoopLog = await db.test_log_entries_by_loop.all<{
                     op: string | null; scheme: string | null; hostname: string | null; pathname: string; status_rx: number;
                 }>({ loop_id: loopId });
-                const docRead = modelLoopLog.find((row) => row.op === "READ" && (row.scheme === null || row.scheme === "file")
+                const docRead = modelLoopLog.find((row) => row.op === "read" && (row.scheme === null || row.scheme === "file")
                     && row.hostname === null && row.pathname === "AGENTS.md");
                 assert.equal(docRead, undefined, "Turn 0 does not foist a READ of the root AGENTS.md");
                 const modelSessionId = (await db.test_get_session_id_by_loop.get<{ session_id: number }>({ loop_id: loopId }))!.session_id;
@@ -429,7 +429,7 @@ const continueResponse = () => ({
         content: "",
         reasoning: null,
         ops: [{
-            op: "NOTE",
+            op: "note",
             aside: null,
             metadata: null,
             target: null,
@@ -455,7 +455,7 @@ const path = (scheme: string, pathname: string): UrlPath => ({
 
 const kill = (target: UrlPath): KillStatement => ({
     metadata: null,
-    op: "KILL",
+    op: "kill",
     aside: null,
     target,
     lineMarker: null,
@@ -519,7 +519,7 @@ test("{§actor-boundary} direct-child activity reaches its parent without leakin
 
         assert.deepEqual(
             (await observedFromChild(parent)).map(({ op }) => op),
-            ["EDIT", "EDIT"],
+            ["edit", "edit"],
             "the parent receives successful and failed child actions in causal order",
         );
         assert.ok(
@@ -672,8 +672,8 @@ test("{§actor-boundary} a fork inherits parent activity pending at its snapshot
             .filter(({ origin, source }) => origin === "_plurnk" && source === "session://sibling")
             .map(({ op }) => op);
 
-        assert.deepEqual(await childOps(branch), ["EDIT"], "the branch receives only the pending parent event inside its fork boundary");
-        assert.deepEqual(await childOps(parent), ["EDIT", "EDIT"], "the parent independently receives both child events");
+        assert.deepEqual(await childOps(branch), ["edit"], "the branch receives only the pending parent event inside its fork boundary");
+        assert.deepEqual(await childOps(parent), ["edit", "edit"], "the parent independently receives both child events");
     } finally {
         await db.close();
     }
@@ -719,7 +719,7 @@ test("{§env-delta} {§env-delta} commons mutations broadcast one occurrence ide
         // {§log-wire-format}: the real parent packet retains both operands and the actor.
         const storedPacket = await db.test_get_packet.get<{ packet: string }>({ id: parentTurn.turnId });
         const activity = logEntries(JSON.parse(storedPacket!.packet)).filter(({ source }) => source === "session://child");
-        for (const [op, from, to] of [["COPY", "source", "copy"], ["MOVE", "copy", "moved"]]) {
+        for (const [op, from, to] of [["copy", "source", "copy"], ["move", "copy", "moved"]]) {
             const receipt = activity.find(({ logPath }) => logPath.endsWith(`/${op}`));
             assert.ok(receipt, `the parent sees the child's ${op}`);
             assert.equal(receipt.source, "session://child");
@@ -731,14 +731,14 @@ test("{§env-delta} {§env-delta} commons mutations broadcast one occurrence ide
 
         type Row = { op: string; origin: string; source: string | null; ambient_event_id: number | null; status_rx: number };
         const mutations = async (sessionId: number) => (await db.test_log_entries_by_session.all<Row>({ session_id: sessionId }))
-            .filter(({ op }) => ["EDIT", "COPY", "MOVE", "KILL", "SEND"].includes(op));
+            .filter(({ op }) => ["edit", "copy", "move", "kill", "send"].includes(op));
         const source = await mutations(child);
         const parentRows = (await mutations(parent)).filter((row) => row.source === "session://child");
         const independentRows = (await mutations(independent)).filter((row) => row.source === "session://child");
         const lateRows = (await mutations(late)).filter((row) => row.source === "session://child");
 
-        assert.deepEqual(parentRows.map(({ op }) => op), ["EDIT", "COPY", "MOVE", "KILL", "EDIT", "KILL", "EDIT"], "the parent gets one row per child operation, not lineage plus broadcast duplicates");
-        assert.deepEqual(independentRows.map(({ op }) => op), ["EDIT", "COPY", "MOVE", "KILL", "EDIT", "KILL"], "every mutation kind that lands a commons effect broadcasts");
+        assert.deepEqual(parentRows.map(({ op }) => op), ["edit", "copy", "move", "kill", "edit", "kill", "edit"], "the parent gets one row per child operation, not lineage plus broadcast duplicates");
+        assert.deepEqual(independentRows.map(({ op }) => op), ["edit", "copy", "move", "kill", "edit", "kill"], "every mutation kind that lands a commons effect broadcasts");
         assert.equal(parentRows.at(-1)?.status_rx, 304, "the parent still supervises its child's no-op operation");
         assert.ok(!independentRows.some(({ status_rx }) => status_rx === 304), "a no-op does not fabricate a commons state-change broadcast");
         assert.deepEqual(lateRows, [], "a session created after the mutations does not inherit broadcast history");
@@ -977,7 +977,7 @@ test("{§proposal-disposition}: an unexpected proposal is refused even when ordi
         },
     );
     assert.deepEqual(await engine.pendingProposals(workspaceId), []);
-    const row = await db.test_get_log_rx_by_session_op.get<{ rx: string }>({ session_id: sessionId, op: "EDIT" });
+    const row = await db.test_get_log_rx_by_session_op.get<{ rx: string }>({ session_id: sessionId, op: "edit" });
     assert.ok(row);
     assert.equal(JSON.parse(row.rx).outcome, "runtime_bookkeeping");
     assert.equal(applied, 0, "the scheme never receives authority to apply its proposal");
@@ -1053,7 +1053,7 @@ test("{§connection-lifecycle} {§actor-boundary} a client op.* journals in the 
             // The client still sees its own op: log.read reads the runtime session, where the op.edit lives.
             const own = await rpcCall(ws, 4, "log.read");
             const entries = (own.result as { entries: Array<{ origin: string; op: string }> }).entries;
-            assert.ok(entries.some((e) => e.op === "EDIT" && e.origin === "client"), "the client reads its own op from the runtime session");
+            assert.ok(entries.some((e) => e.op === "edit" && e.origin === "client"), "the client reads its own op from the runtime session");
             const runtime = await daemon.readSession({ workspaceId, identity: { name: "_plurnk" } });
             assert.equal(runtime?.origin, "_plurnk");
             assert.notEqual(runtime?.id, modelSession.session_id, "the runtime session is distinct from the model session");
@@ -1081,14 +1081,14 @@ test("{§connection-lifecycle} a connection reads the model session by id — lo
             // Default log.read (no sessionId) → the runtime session: the op.edit.
             const own = await rpcCall(ws, 4, "log.read");
             const ownEntries = (own.result as { entries: Array<{ origin: string; op: string }> }).entries;
-            assert.ok(ownEntries.some((e) => e.op === "EDIT" && e.origin === "client"), "default log.read reads the runtime session");
+            assert.ok(ownEntries.some((e) => e.op === "edit" && e.origin === "client"), "default log.read reads the runtime session");
 
             // log.read({ sessionId }) → the MODEL session's log: readable by id,
             // and a DISTINCT session — the client's op is absent from it.
             const modelRead = await rpcCall(ws, 5, "log.read", { sessionId: modelSessionId });
             const modelEntries = (modelRead.result as { entries: Array<{ origin: string; op: string }> }).entries;
             assert.ok(modelEntries.length > 0, "the model session's log is readable by id");
-            assert.ok(!modelEntries.some((e) => e.op === "EDIT" && e.origin === "client"), "the model session is distinct — the client's op is absent from it");
+            assert.ok(!modelEntries.some((e) => e.op === "edit" && e.origin === "client"), "the model session is distinct — the client's op is absent from it");
 
             // Ownership: a session in a DIFFERENT workspace is refused from this connection.
             const foreignWorkspace = await insertWorkspace(db, `foreign-${crypto.randomUUID()}`);
@@ -1193,7 +1193,7 @@ test("{§op-methods-op-dispatch}: each EDIT waits for its own proposal before pr
             assert.deepEqual(scheme.batches, [1, 1]);
             assert.equal(proposals().length, 2);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string; status_rx: number }>({ loop_id: loopId });
-            const edits = rows.filter((row) => row.op === "EDIT" && row.scheme === "proposing-test");
+            const edits = rows.filter((row) => row.op === "edit" && row.scheme === "proposing-test");
             assert.equal(edits.length, 2);
             assert.ok(edits.every((row) => row.status_rx === 200));
         } finally { ws.close(); }
@@ -1217,7 +1217,7 @@ test("{§session-ownership} server acceptance resolves through Core without a cl
             });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; scheme: string }>({ loop_id: result.loopId });
-            const edit = rows.find((row) => row.op === "EDIT" && row.scheme === "proposing-test");
+            const edit = rows.find((row) => row.op === "edit" && row.scheme === "proposing-test");
             assert.ok(edit !== undefined);
             assert.notEqual(edit.status_rx, 202);
         } finally { ws.close(); }
@@ -1241,7 +1241,7 @@ test("{§proposal-disposition} server rejection settles the same admitted propos
             });
             assert.equal(result.result.status, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; scheme: string; rx: string }>({ loop_id: result.loopId });
-            const edit = rows.find((row) => row.op === "EDIT" && row.scheme === "proposing-test");
+            const edit = rows.find((row) => row.op === "edit" && row.scheme === "proposing-test");
             assert.equal(edit?.status_rx, 400, "the admitted action was declined, not denied at capability admission");
             const refusal = JSON.parse(edit.rx) as { outcome?: string };
             assert.equal(refusal.outcome, "policy_veto");

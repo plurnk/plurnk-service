@@ -56,7 +56,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null, target, lineMarker: marker, body,
+    op: "edit", aside: null, target, lineMarker: marker, body,
     matcher: null, position: { line: 1, column: 1 },
 });
 
@@ -158,7 +158,7 @@ test("{§machine-processes} a fork copies the parent's log (rows + their suppres
             op: string; operation_sequence: number; target_sequence: number; folded_before: string; folded_after: string;
         }>({ session_id: branchSessionId });
         assert.deepEqual(effectShape(branchEffects), effectShape(parentEffects), "the branch retains the exact log-curation effect with remapped row identities");
-        assert.deepEqual(effectShape(branchEffects), ["KILL:3->1:[]->[[1,-1]]"]);
+        assert.deepEqual(effectShape(branchEffects), ["kill:3->1:[]->[[1,-1]]"]);
     } finally { db.close(); }
 });
 
@@ -177,15 +177,15 @@ test("{§log-history-projection}: a fork retains killed evidence and its inactiv
         const [target] = await db.test_log_entries_by_session.all<{ id: number }>({ session_id: sessionId });
         assert.ok(target !== undefined);
         await engine.dispatch({
-            statement: killStmt(urlPath("log", "/1/1/1/EDIT")),
+            statement: killStmt(urlPath("log", "/1/1/1/edit")),
             workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
         });
 
         const branchSessionId = await Fork.fork(db, sessionId, undefined);
         const parentRows = await db.test_log_entries_by_session.all<{ op: string }>({ session_id: sessionId });
         const branchRows = await db.test_log_entries_by_session.all<{ op: string }>({ session_id: branchSessionId });
-        assert.deepEqual(parentRows.map(({ op }) => op), ["EDIT", "KILL"]);
-        assert.deepEqual(branchRows.map(({ op }) => op), ["EDIT", "KILL"], "the branch keeps both historical events");
+        assert.deepEqual(parentRows.map(({ op }) => op), ["edit", "kill"]);
+        assert.deepEqual(branchRows.map(({ op }) => op), ["edit", "kill"], "the branch keeps both historical events");
 
         for (const owner of [sessionId, branchSessionId]) {
             const projection = await db.test_get_log_projection.get<{ active: 0 | 1; folded: string }>({
@@ -207,7 +207,7 @@ test("{§log-history-projection}: a fork retains killed evidence and its inactiv
         const effectShape = async (owner: number) => (await db.test_log_curation_effects_by_session.all<{
             op: string; active_before: 0 | 1; active_after: 0 | 1;
         }>({ session_id: owner })).map(({ op, active_before, active_after }) => ({ op, active_before, active_after }));
-        assert.deepEqual(await effectShape(sessionId), [{ op: "KILL", active_before: 1, active_after: 0 }]);
+        assert.deepEqual(await effectShape(sessionId), [{ op: "kill", active_before: 1, active_after: 0 }]);
         assert.deepEqual(await effectShape(branchSessionId), await effectShape(sessionId));
     } finally { await db.close(); }
 });
@@ -417,7 +417,7 @@ test("{§machine-processes} — a fork inherits history without copying provider
             origin: "model",
             source: null,
             model_call_id: bareCall.id,
-            op: "BARE",
+            op: "bare",
             scheme: null,
             username: null,
             password: null,
@@ -427,7 +427,7 @@ test("{§machine-processes} — a fork inherits history without copying provider
             query: null,
             fragment: null,
             lineMarker: null,
-            tx: JSON.stringify({ op: "BARE", body: "What is the capital of Germany?" }),
+            tx: JSON.stringify({ op: "bare", body: "What is the capital of Germany?" }),
             mimetype_tx: "application/json",
             rx: JSON.stringify({ status: 200, content: "Berlin", mimetype: "text/plain" }),
             mimetype_rx: "application/json",
@@ -462,7 +462,7 @@ test("{§machine-processes} — a fork inherits history without copying provider
         });
         assert.deepEqual(
             branchRows.map(({ op, model_call_id }) => ({ op, model_call_id })),
-            [{ op: "BARE", model_call_id: null }],
+            [{ op: "bare", model_call_id: null }],
             "the BARE result remains in the copied history without claiming the source call",
         );
     } finally { db.close(); }
@@ -520,8 +520,8 @@ test("{§log-history-projection} a KILL that worked never renders; one that matc
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         "await plurnk.edit({\"path\":\"workspace:///note\",\"content\":\"first line\\nsecond line\"});\n\nawait plurnk.read({\"path\":\"workspace:///note\"});\n\nawait plurnk.note({\"text\":\"wrote\"});",
-        "await plurnk.kill({\"path\":\"log:///1/**/READ\",\"range\":\"2,-1\"});\n\nawait plurnk.kill({\"path\":\"log:///1/**/EDIT\"});\n\nawait plurnk.kill({\"path\":\"log:///9/9/9\"});\n\nawait plurnk.note({\"text\":\"curated\"});",
-        "await plurnk.kill({\"path\":\"log:///1/**/EDIT\"});\n\nawait plurnk.read({\"path\":\"log:///1/3/2/KILL\"});\n\nawait plurnk.read({\"path\":\"workspace:///note\"});\n\nawait plurnk.kill({\"path\":\"workspace:///note\"});\n\nawait plurnk.note({\"text\":\"verified\"});",
+        "await plurnk.kill({\"path\":\"log:///1/**/read\",\"range\":\"2,-1\"});\n\nawait plurnk.kill({\"path\":\"log:///1/**/edit\"});\n\nawait plurnk.kill({\"path\":\"log:///9/9/9\"});\n\nawait plurnk.note({\"text\":\"curated\"});",
+        "await plurnk.kill({\"path\":\"log:///1/**/edit\"});\n\nawait plurnk.read({\"path\":\"log:///1/3/2/kill\"});\n\nawait plurnk.read({\"path\":\"workspace:///note\"});\n\nawait plurnk.kill({\"path\":\"workspace:///note\"});\n\nawait plurnk.note({\"text\":\"verified\"});",
         "await plurnk.note({\"text\":\"the mismatch has been seen; moving on\"});",
         "await plurnk.done({\"text\":\"done\"});",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
@@ -535,43 +535,43 @@ test("{§log-history-projection} a KILL that worked never renders; one that matc
             assert.ok(ids.length >= 6, `init + five model turns; got ${ids.length}`);
             const packetOf = async (index: number) => logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[index] }))!.packet);
             const afterCuration = await packetOf(3);
-            const kills = rows(afterCuration, "KILL");
+            const kills = rows(afterCuration, "kill");
             assert.deepEqual(kills.map(({ logPath, status }) => ({ logPath, status })), [
-                { logPath: "log:///1/3/4/KILL", status: 404 },
+                { logPath: "log:///1/3/4/kill", status: 404 },
             ], "the first packet after curation contains the failed KILL, not successful receipts");
             assert.ok(kills[0].problem, "the failed KILL retains its corrective Problem");
-            assert.equal(row(afterCuration, "EDIT"), undefined, "the killed EDIT row is retired from the projection");
-            const trimmed = rows(afterCuration, "READ").find(({ logPath }) => logPath === "log:///1/2/4/READ");
+            assert.equal(row(afterCuration, "edit"), undefined, "the killed EDIT row is retired from the projection");
+            const trimmed = rows(afterCuration, "read").find(({ logPath }) => logPath === "log:///1/2/4/read");
             assert.match(String(trimmed?.body), /first line/u, "scoped curation retains the untrimmed line");
             assert.doesNotMatch(String(trimmed?.body), /second line/u, "scoped curation removes the requested line");
             const afterRepeat = await packetOf(4);
-            assert.deepEqual(rows(afterRepeat, "KILL").map(({ logPath, status }) => ({ logPath, status })), [
-                { logPath: "log:///1/3/4/KILL", status: 404 },
-                { logPath: "log:///1/4/2/KILL", status: 204 },
-                { logPath: "log:///1/4/5/KILL", status: undefined },
+            assert.deepEqual(rows(afterRepeat, "kill").map(({ logPath, status }) => ({ logPath, status })), [
+                { logPath: "log:///1/3/4/kill", status: 404 },
+                { logPath: "log:///1/4/2/kill", status: 204 },
+                { logPath: "log:///1/4/5/kill", status: undefined },
             ], "the mismatch says so in the very next packet — the model cannot otherwise tell its own earlier KILL emptied the selection (#779)");
-            assert.ok(rows(afterRepeat, "READ").some(({ logPath }) => logPath === "log:///1/4/3/READ"), "explicit READ of a suppressed receipt remains an ordinary visible operation");
+            assert.ok(rows(afterRepeat, "read").some(({ logPath }) => logPath === "log:///1/4/3/read"), "explicit READ of a suppressed receipt remains an ordinary visible operation");
             const afterNext = await packetOf(5);
-            assert.deepEqual(rows(afterNext, "KILL").map(({ logPath, status }) => ({ logPath, status })), [
-                { logPath: "log:///1/3/4/KILL", status: 404 },
-                { logPath: "log:///1/4/5/KILL", status: undefined },
+            assert.deepEqual(rows(afterNext, "kill").map(({ logPath, status }) => ({ logPath, status })), [
+                { logPath: "log:///1/3/4/kill", status: 404 },
+                { logPath: "log:///1/4/5/kill", status: undefined },
             ], "shown once: a turn later the mismatch has retired, and the failure and resource deletion stay");
             const history = await db.test_log_entries_by_loop.all<{
                 op: string | null; pathname: string | null; scheme: string | null;
                 status_rx: number; rx: string; active: number;
             }>({ loop_id: result.loopId });
-            const recordedKills = history.filter(({ op, pathname }) => op === "KILL" && pathname !== null);
+            const recordedKills = history.filter(({ op, pathname }) => op === "kill" && pathname !== null);
             assert.deepEqual(recordedKills.map(({ status_rx }) => status_rx), [200, 200, 404, 204, 200]);
-            assert.deepEqual(history.filter(({ op, pathname, rx }) => op === "DONE" && pathname === null && JSON.parse(rx).completion === 200)
+            assert.deepEqual(history.filter(({ op, pathname, rx }) => op === "done" && pathname === null && JSON.parse(rx).completion === 200)
                 .map(({ status_rx }) => status_rx), [200], "the final reply resolves the message without curating a resource");
             assert.ok(recordedKills.every(({ active }) => active === 1), "packet suppression does not retire or delete receipt history");
             assert.equal(JSON.parse(recordedKills[0].rx).matched, 1, "the broad sweep matches the file READ; initialization reads nothing back ({§session-initialization-entry})");
-            const sourceReads = history.filter(({ op, scheme, pathname }) => op === "READ" && scheme === "workspace" && pathname === "/note");
+            const sourceReads = history.filter(({ op, scheme, pathname }) => op === "read" && scheme === "workspace" && pathname === "/note");
             assert.equal(sourceReads.length, 2);
             for (const read of sourceReads) {
                 assert.equal(JSON.parse(read.rx).content, "first line\nsecond line", "log curation changes neither the original receipt evidence nor its source");
             }
-            const receiptRead = history.find(({ op, scheme, pathname }) => op === "READ" && scheme === "log" && pathname === "/1/3/2/KILL");
+            const receiptRead = history.find(({ op, scheme, pathname }) => op === "read" && scheme === "log" && pathname === "/1/3/2/kill");
             assert.ok(receiptRead);
             assert.equal(receiptRead.status_rx, 204, "the suppressed receipt remains addressable with its ordinary empty body, not a missing-entry error");
             assert.equal(JSON.parse(receiptRead.rx).content, "");
@@ -977,8 +977,46 @@ test(`{§db-migrations} {§message-completion} {§env-delta}: a ${V5_0_0.label} 
     try {
         const responses = after.prepare("SELECT content FROM log_responses ORDER BY id").all() as Array<{ content: string }>;
         assert.deepEqual(responses.map((row) => ({ ...row })), [{ content: "Done answer." }]);
-        const candidates = after.prepare("SELECT op FROM ambient_events WHERE op IN ('DONE', 'FAIL') ORDER BY source_record_id").all() as Array<{ op: string }>;
-        assert.deepEqual(candidates.map((row) => ({ ...row })), [{ op: "DONE" }]);
+        const candidates = after.prepare("SELECT op FROM ambient_events WHERE op IN ('done', 'fail') ORDER BY source_record_id").all() as Array<{ op: string }>;
+        assert.deepEqual(candidates.map((row) => ({ ...row })), [{ op: "done" }]);
+    } finally { after.close(); }
+});
+
+test(`{§db-migrations}: a ${V5_2_0.label} database upgrades uppercase operation names in log entries, tx statements, rx problem instances, and workspace capabilities to lowercase`, async (t) => {
+    const path = await baseline(t, V5_2_0);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name, settings) VALUES (1, 'lowercaseOps', '{"capabilities":{"deny":[{"operation":"EDIT","scheme":"file"}]}}');
+            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+            INSERT INTO sessions (id, workspace_id, name, origin) VALUES (1, 1, 'root', 'model');
+            INSERT INTO loops (id, session_id, sequence, prompt, max_turns) VALUES (1, 1, 1, 'Ask', -1);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 200);
+            INSERT INTO log_entries (
+                session_id, loop_id, turn_id, sequence, origin, op,
+                scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, attrs
+            ) VALUES (
+                1, 1, 1, 1, 'model', 'FAIL',
+                'log', '1/1/1/FAIL',
+                '{"op":"FAIL","target":{"kind":"url","raw":"log:///1/1/1/FAIL","scheme":"log","username":null,"password":null,"hostname":null,"port":null,"pathname":"1/1/1/FAIL","query":null,"fragment":null}}',
+                'application/json',
+                '{"status":404,"problem":{"type":"https://problems.plurnk.xyz/schemes/message/not-found","title":"Message not found","status":404,"detail":"Message not found.","instance":"log:///1/1/1/FAIL"}}',
+                'application/json', 404, 1, 'resolved', '{}'
+            );
+        `);
+    } finally { before.close(); }
+    const upgraded = await openMigrated(path);
+    await upgraded.close();
+    const after = new DatabaseSync(path);
+    try {
+        const ws = after.prepare("SELECT settings FROM workspaces WHERE id = 1").get() as { settings: string };
+        assert.deepEqual(JSON.parse(ws.settings), { capabilities: { deny: [{ operation: "edit", scheme: "file" }] } });
+        const entry = after.prepare("SELECT op, pathname, tx, rx FROM log_entries WHERE id = 1").get() as { op: string; pathname: string; tx: string; rx: string };
+        assert.equal(entry.op, "fail");
+        assert.equal(entry.pathname, "1/1/1/fail");
+        assert.equal((JSON.parse(entry.tx) as { op: string }).op, "fail");
+        assert.equal((JSON.parse(entry.rx) as { problem: { instance: string } }).problem.instance, "log:///1/1/1/fail");
     } finally { after.close(); }
 });
 
@@ -1002,14 +1040,14 @@ test("{§db-migrations}: a database from before the 5.0.0 support floor or from 
     finally { raw.close(); }
     await assert.rejects(
         () => openMigrated(newerPath),
-        /database schema \(version 99\) is newer than this build \(schema version 13\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
+        /database schema \(version 99\) is newer than this build \(schema version 14\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
     );
 });
 
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.equal(versions.length, 13, "all migration versions are present");
+    assert.equal(versions.length, 14, "all migration versions are present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});

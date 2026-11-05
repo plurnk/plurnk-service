@@ -73,9 +73,9 @@ test("{§capability-ctx} {§edit-result-receipt-projection} {§op-methods-op-dis
                 const loopId = (started.result as { loopId: number }).loopId;
                 const pending = await waitFor(
                     () => proposals() as Array<{ logEntryId: number; op: string }>,
-                    (items) => items.some((item) => item.op === "EDIT"),
+                    (items) => items.some((item) => item.op === "edit"),
                 );
-                const proposal = pending.find((item) => item.op === "EDIT");
+                const proposal = pending.find((item) => item.op === "edit");
                 assert.ok(proposal !== undefined);
                 await rpcCall(ws, 3, "loop.resolve", {
                     logEntryId: proposal.logEntryId,
@@ -95,7 +95,7 @@ test("{§capability-ctx} {§edit-result-receipt-projection} {§op-methods-op-dis
                     rx: string;
                 }>({ loop_id: loopId });
                 const edits = rows
-                    .filter((row) => row.op === "EDIT" && row.origin === "model")
+                    .filter((row) => row.op === "edit" && row.origin === "model")
                     .map((row) => ({
                         tx: JSON.parse(row.tx) as { lineMarker?: { marks?: number[] } },
                         rx: JSON.parse(row.rx) as {
@@ -174,14 +174,14 @@ describe("File.scheme.proposal", () => {
 
 const fileEditStmt = (pathname: string, body: string, marker: LineMarker | null = null): EditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null,
+    op: "edit", aside: null,
     target: { kind: "local", raw: pathname },
     lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 },
 });
 
 const fileReadStmt = (pathname: string): ReadStatement => ({
     metadata: null,
-    op: "READ", aside: null,
+    op: "read", aside: null,
     target: { kind: "local", raw: pathname },
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
@@ -191,7 +191,7 @@ const fileReadStmt = (pathname: string): ReadStatement => ({
 // project file paths." Engine.#schemeNameOf routes LocalPath → 'file'.
 const bareEditStmt = (relPath: string, body: string, marker: LineMarker | null = null): EditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null,
+    op: "edit", aside: null,
     target: { kind: "local", raw: relPath },
     lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 },
 });
@@ -308,9 +308,9 @@ for (const transfer of [copyStmt, moveStmt]) {
                     const destination = await EntryCrud.readEntry({ authority: "", pathname: target }, schemeCtx, "file");
                     assert.equal(destination.entry?.channels.body?.mimetype, "application/octet-stream");
                     const remaining = await EntryCrud.readEntry(source, schemeCtx, "workspace");
-                    if (op === "MOVE" && shape !== "scoped") assert.equal(remaining.status, 404);
+                    if (op === "move" && shape !== "scoped") assert.equal(remaining.status, 404);
                     else assert.equal(remaining.entry?.channels.body?.content,
-                        (op === "MOVE" ? Buffer.from([0, 42]) : bytes).toString("base64"));
+                        (op === "move" ? Buffer.from([0, 42]) : bytes).toString("base64"));
                 });
             });
         }
@@ -377,7 +377,7 @@ await plurnk.note({"text":"Continue the task."});`;
         const secondId = await second.promise;
         if (decision !== "replace") ctx.engine.resolveProposal(secondId, { decision: "accept" });
         const result = await execution;
-        const edits = result.outcomes.filter(({ op }) => op === "EDIT");
+        const edits = result.outcomes.filter(({ op }) => op === "edit");
         assert.deepEqual(edits.map(({ status }) => status), [decision === "reject" ? 400 : 200, decision === "replace" || decision === "drift" ? 409 : 200]);
         const expected = decision === "replace" ? "reviewer replacement\n"
             : decision === "drift" ? original.replace("two", "TWO").replace("four", "external")
@@ -563,7 +563,7 @@ test("{§proposal} file.edit: rejection leaves file untouched; the rx carries a 
             title: "Rejected",
             status: 400,
             detail: "The proposal was rejected (reviewer_said_no).",
-            instance: "log:///1/1/1/EDIT",
+            instance: "log:///1/1/1/edit",
             stage: "proposal-settlement",
             retryable: false,
         });
@@ -662,7 +662,7 @@ test("{§op-shapes} {§edit}: markerless EDIT refuses an existing file", async (
         assert.equal(result.status, 400, "no marker on an existing file is refused outright — never a proposal, never a silent replace");
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/file/line-marker-required");
         assert.match(result.problem?.detail ?? "", /requires a line marker/);
-        assert.match(result.problem?.recovery ?? "", /<1,-1>/, "the recovery names the explicit whole-file form");
+        assert.match(result.problem?.recovery ?? "", /range: "1,-1"/, "the recovery names the explicit whole-file form");
         const onDisk = await readFile(join(root, target), "utf8");
         assert.equal(onDisk, original, "disk is untouched — the refusal happens before any proposal, let alone any write");
     });
@@ -813,7 +813,7 @@ await plurnk.send({});`, 50),
                 const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({
                     session_id: second.modelSessionId!,
                 });
-                const rejected = rows.find(({ op, status_rx }) => op === "EDIT" && status_rx === 409);
+                const rejected = rows.find(({ op, status_rx }) => op === "edit" && status_rx === 409);
                 assert.equal(
                     JSON.parse(rejected?.rx ?? "null")?.problem?.type,
                     "https://problems.plurnk.xyz/engine/edit/edit-collision",
@@ -1026,7 +1026,7 @@ test("{§edit-result-receipt-projection} a multi-span pattern receipt renders as
         assert.equal(r.matched, 4);
         assert.equal(await body(), "alphA\nbetA\ngammA\ndeltA");
         assert.ok("last" in r, "several spans: the receipt carries the last boundary beside the first");
-        const entry = { coordinate: "1/1/1", origin: "model", op: "EDIT", status: 200, folded: [], target: { scheme: "workspace", pathname: "/notes.md" }, tx: { body: "A" }, rx: r };
+        const entry = { coordinate: "1/1/1", origin: "model", op: "edit", status: 200, folded: [], target: { scheme: "workspace", pathname: "/notes.md" }, tx: { body: "A" }, rx: r };
         // The next packet renders this row; a body with an unframed line is a 500 on the whole loop.
         const rendered = PacketWire.renderLog([entry], (s: string) => Math.ceil(s.length / 4));
         assert.match(rendered, /alphA/u);
@@ -1180,7 +1180,7 @@ const cases = [
 
 // {§read} {§edit-pattern} {§op-invariants} {§copy}
 for (const specimen of cases) {
-    for (const operation of ["FIND", "READ", "EDIT", "KILL", "COPY", "MOVE"] as const) {
+    for (const operation of ["find", "read", "edit", "kill", "copy", "move"] as const) {
         test(`{§mimetype-content} pattern composition: ${specimen.name} ${operation} selects the advertised content`, async () => {
             const db = await openMigrated();
             try {
@@ -1190,15 +1190,15 @@ for (const specimen of cases) {
                 await new Workspace().edit(editStmt(urlPath("workspace", pathname), specimen.content), makeSchemeCtx({ db, ...env }));
                 const source = `workspace://${pathname}`;
                 const destination = "workspace:///selected.txt";
-                const transfer = operation === "COPY" || operation === "MOVE";
+                const transfer = operation === "copy" || operation === "move";
                 const findParsed = PlurnkParser.parseStatements(`await plurnk.find(${JSON.stringify({ path: source, pattern: specimen.pattern })});`);
                 const findItem = findParsed.items[0];
                 assert.equal(findItem?.kind, "statement");
-                if (findItem?.kind !== "statement" || findItem.statement.op !== "FIND") throw new Error("Expected parsed FIND");
+                if (findItem?.kind !== "statement" || findItem.statement.op !== "find") throw new Error("Expected parsed FIND");
                 const matcher = findItem.statement.matcher;
                 const code = transfer
                     ? `await plurnk.${operation.toLowerCase()}(${JSON.stringify({ from: source, to: destination })});`
-                    : operation === "EDIT"
+                    : operation === "edit"
                         ? `await plurnk.edit(${JSON.stringify({ path: source, content: "replacement" })});`
                         : `await plurnk.${operation.toLowerCase()}(${JSON.stringify({ path: source, pattern: specimen.pattern })});`;
                 const parsed = PlurnkParser.parseStatements(code);
@@ -1206,31 +1206,31 @@ for (const specimen of cases) {
                 const [item] = parsed.items;
                 assert.equal(item?.kind, "statement", JSON.stringify(parsed));
                 if (item?.kind !== "statement") throw new Error("Expected one parsed operation");
-                const statement = transfer && (item.statement.op === "COPY" || item.statement.op === "MOVE")
+                const statement = transfer && (item.statement.op === "copy" || item.statement.op === "move")
                     ? { ...item.statement, source: { ...item.statement.source, matcher } }
-                    : item.statement.op === "EDIT"
+                    : item.statement.op === "edit"
                         ? { ...item.statement, matcher }
                         : item.statement;
                 const result = await engine.dispatch({ ...env, statement, sequence: 1, origin: "client" });
                 const body = async (path: string) => (await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: path, name: "body" }))?.content;
-                const unchanged = operation === "KILL" && specimen.removed === specimen.content;
+                const unchanged = operation === "kill" && specimen.removed === specimen.content;
                 assert.equal(result.status, transfer ? 201 : unchanged ? 304 : 200, JSON.stringify(result));
                 const lines = specimen.content.split("\n");
-                if (operation === "FIND") {
+                if (operation === "find") {
                     assert.deepEqual((result.results as { region: { startLine: number; endLine: number } }[])
                         .flatMap(({ region }) => Array.from({ length: region.endLine - region.startLine + 1 }, (_, index) => region.startLine + index)), specimen.lines);
                     assert.equal(await body(pathname), specimen.content);
-                } else if (operation === "READ") {
+                } else if (operation === "read") {
                     assert.equal(result.content, specimen.lines.map((line) => lines[line - 1]).join("\n"));
                     assert.deepEqual(result.lineOrdinals, specimen.lines);
                     assert.equal(await body(pathname), specimen.content);
-                } else if (operation === "EDIT") {
+                } else if (operation === "edit") {
                     assert.equal(await body(pathname), specimen.edited);
                 } else {
                     if (transfer) {
                         assert.equal(await body("/selected.txt"), specimen.copied);
                     }
-                    assert.equal(await body(pathname), operation === "COPY" ? specimen.content : specimen.removed);
+                    assert.equal(await body(pathname), operation === "copy" ? specimen.content : specimen.removed);
                 }
             } finally {
                 await db.close();
@@ -1242,7 +1242,7 @@ for (const specimen of cases) {
 for (const specimen of [
     { path: "source.md", content: "# Heading\n\nbody **strong** end", pattern: "//heading | //strong" },
     { path: "source.xml", content: "<root><item>value</item></root>", pattern: "$.type" },
-]) for (const operation of ["EDIT", "KILL", "COPY", "MOVE"] as const) {
+]) for (const operation of ["edit", "kill", "copy", "move"] as const) {
     test(`{§zero-width-column-one-insert} ${operation} refuses ${specimen.pattern} without partial writes`, async () => {
         const db = await openMigrated();
         try {
@@ -1250,19 +1250,19 @@ for (const specimen of [
             const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
             const target = `workspace:///${specimen.path}`;
             await new Workspace().edit(editStmt(urlPath("workspace", `/${specimen.path}`), specimen.content), makeSchemeCtx({ db, ...env }));
-            const transfer = operation === "COPY" || operation === "MOVE";
+            const transfer = operation === "copy" || operation === "move";
             const findParsed = PlurnkParser.parseStatements(`await plurnk.find(${JSON.stringify({ path: target, pattern: specimen.pattern })});`);
             const findItem = findParsed.items[0];
-            if (findItem?.kind !== "statement" || findItem.statement.op !== "FIND") throw new Error(JSON.stringify(findParsed));
+            if (findItem?.kind !== "statement" || findItem.statement.op !== "find") throw new Error(JSON.stringify(findParsed));
             const matcher = findItem.statement.matcher;
             const code = transfer
                 ? `await plurnk.${operation.toLowerCase()}(${JSON.stringify({ from: target, to: "workspace:///destination.txt" })});`
-                : `await plurnk.${operation.toLowerCase()}(${JSON.stringify({ path: target, pattern: specimen.pattern, ...(operation === "EDIT" ? { content: "replacement" } : {}) })});`;
+                : `await plurnk.${operation.toLowerCase()}(${JSON.stringify({ path: target, pattern: specimen.pattern, ...(operation === "edit" ? { content: "replacement" } : {}) })});`;
             const parsed = PlurnkParser.parseStatements(code);
             assert.equal(parsed.items[0]?.kind, "statement");
             const item = parsed.items[0];
             if (item?.kind !== "statement") throw new Error(JSON.stringify(parsed));
-            const statement = transfer && (item.statement.op === "COPY" || item.statement.op === "MOVE")
+            const statement = transfer && (item.statement.op === "copy" || item.statement.op === "move")
                 ? { ...item.statement, source: { ...item.statement.source, matcher } }
                 : item.statement;
             const result = await engine.dispatch({ ...env, statement, sequence: 1, origin: "client" });
@@ -1394,9 +1394,9 @@ await plurnk.note({"text":"searched"});`, 10),
             await rpcCall(ws, 1, "workspace.create", { name: "pattern-dialects" });
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go" });
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string; rx: string }>({ loop_id: loopId });
-            const edits = rows.filter((r) => r.op === "EDIT" && r.origin === "model");
+            const edits = rows.filter((r) => r.op === "edit" && r.origin === "model");
             assert.deepEqual(edits.map((r) => r.status_rx), [201, 201, 201, 201], "the corpus seeded");
-            const findRows = rows.filter((r) => r.op === "FIND" && r.origin === "model");
+            const findRows = rows.filter((r) => r.op === "find" && r.origin === "model");
             assert.equal(findRows.length, PROBES.length, "one dispatched row per FIND");
             for (const [index, probe] of PROBES.entries()) {
                 const row = findRows[index];

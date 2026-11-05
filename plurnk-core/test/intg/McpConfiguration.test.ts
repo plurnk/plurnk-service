@@ -186,7 +186,7 @@ await plurnk.mcp();`),
     assert.match(turn0Text, /"alias":\s*"plurnk"/u, "Turn 0 plurnk (mcp) preserves healthy in-process MCP runtimes");
     assert.match(turn0Text, /"problem":/u, "Turn 0 plurnk (mcp) reports the external MCP configuration problem alongside in-process runtimes");
     const log = await daemon.readLog({ workspaceId, sessionId, limit: 100 });
-    assert.equal(await readFile(file, "utf8"), content, JSON.stringify(log.filter(({ op }) => op === "EDIT")));
+    assert.equal(await readFile(file, "utf8"), content, JSON.stringify(log.filter(({ op }) => op === "edit")));
     const inspected = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk" });
     assert.deepEqual((inspected.definitions as FunctionalityListResult["definitions"]).filter(({ alias }) => alias !== "plurnk").map(({ alias, state }) => [alias, state]),
         [["repaired", "dormant"]], "the manager's own same-turn result observes fresh configuration without premature publication");

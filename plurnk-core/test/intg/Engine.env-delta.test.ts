@@ -78,7 +78,7 @@ const sessionPath = (authority: string, pathname: string): UrlPath => ({
 });
 const editStmt = (target: UrlPath, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null, target, lineMarker: null, body,
+    op: "edit", aside: null, target, lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });
 test("{§env-delta} a parent receives all direct-child entry activity while an independent runtime session stays private", async () => {
@@ -119,7 +119,7 @@ test("{§env-delta} a parent receives all direct-child entry activity while an i
             origin: string; op: string; scheme: string | null; hostname: string | null;
             pathname: string | null; source: string | null; rx: string;
         }>({ session_id: observer });
-        const deltas = rows.filter((row) => row.origin === "_plurnk" && row.op === "EDIT");
+        const deltas = rows.filter((row) => row.origin === "_plurnk" && row.op === "edit");
 
         assert.deepEqual(
             deltas
@@ -154,20 +154,20 @@ test("{§env-delta}: child log curation stays with the child, including failures
             turnId: childTurn, sequence, origin: "model",
         });
         assert.equal((await dispatch(editStmt(sessionPath("child", "/note"), "child note"), 1)).status, 201);
-        assert.equal((await dispatch(killStmt(urlPath("log", "/1/1/1/EDIT")), 2)).status, 200);
+        assert.equal((await dispatch(killStmt(urlPath("log", "/1/1/1/edit")), 2)).status, 200);
         assert.equal((await dispatch(killStmt(urlPath("log", "/9/9/9")), 3)).status, 404);
         const turn = await engine.runTurn({
             provider: new Mock({ contextWindow: 32768, responses: [okSend()] }),
             workspaceId, sessionId: parent, loopId: parentLoop, messages: MESSAGES,
         });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
-        const kills = logEntries(packet).filter(({ logPath: path }) => path.endsWith("/KILL"));
+        const kills = logEntries(packet).filter(({ logPath: path }) => path.endsWith("/kill"));
         assert.deepEqual(kills, [], "neither successful nor failed log curation becomes parent activity");
         const observations = await db.test_log_entries_by_session.all<{ op: string; source: string; status_rx: number }>({ session_id: parent });
-        assert.deepEqual(observations.filter(({ op }) => op === "KILL"), []);
-        assert.ok(observations.some(({ op, source }) => op === "EDIT" && source === "session://child"), "the actual edit still reaches the parent");
+        assert.deepEqual(observations.filter(({ op }) => op === "kill"), []);
+        assert.ok(observations.some(({ op, source }) => op === "edit" && source === "session://child"), "the actual edit still reaches the parent");
         const childHistory = await db.test_log_entries_by_session.all<{ op: string; status_rx: number }>({ session_id: child });
-        assert.deepEqual(childHistory.filter(({ op }) => op === "KILL").map(({ status_rx }) => status_rx), [200, 404],
+        assert.deepEqual(childHistory.filter(({ op }) => op === "kill").map(({ status_rx }) => status_rx), [200, 404],
             "both curation outcomes remain durable for the child and forensics");
     } finally {
         await db.close();
@@ -196,14 +196,14 @@ test("{§env-delta} a session learns a sibling's edit through its own log — pu
         // per-session snapshot; it learned its workspace moved purely through its own log.
         const turn = await eng.runTurn({ provider, workspaceId, sessionId: sessionA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; initial_folded: string; folded: string }>({ session_id: sessionA });
-        const delta = rows.find((r) => r.op === "EDIT" && r.origin === "_plurnk" && r.scheme === "workspace" && r.pathname === "/shared.md");
+        const delta = rows.find((r) => r.op === "edit" && r.origin === "_plurnk" && r.scheme === "workspace" && r.pathname === "/shared.md");
         assert.ok(delta, "A's turn-2 log carries a delta for B's edit");
         assert.equal(delta.source, "session://sibling", "the durable delta uses the sibling's addressable identity");
         assert.equal(delta.initial_folded, "[[1,-1]]", "the broadcast delta lands body-suppressed — listed until the model READs what it needs");
         assert.equal(delta.folded, "[]", "the broadcast does not trim the readable delta");
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
-        const packetDelta = logEntries(packet).find((entry) => entry.path === "workspace:///shared.md" && entry.logPath.endsWith("/EDIT"));
+        const packetDelta = logEntries(packet).find((entry) => entry.path === "workspace:///shared.md" && entry.logPath.endsWith("/edit"));
         assert.equal(packetDelta?.source, "session://sibling", "the model sees the same session identity used by session control");
     } finally {
         await db.close();
@@ -242,7 +242,7 @@ test("{§env-delta} ambient delivery follows monotonic occurrence identity, neve
 
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ session_id: observer });
         const observed = rows
-            .flatMap(({ origin, op, pathname }) => origin === "_plurnk" && op === "EDIT" && pathname?.startsWith("/equal-") === true ? [pathname] : [])
+            .flatMap(({ origin, op, pathname }) => origin === "_plurnk" && op === "edit" && pathname?.startsWith("/equal-") === true ? [pathname] : [])
             .toSorted();
         assert.deepEqual(observed, ["/equal-a.md", "/equal-b.md"], "both equal-time events arrive, once each");
 
@@ -280,7 +280,7 @@ test("{§env-delta} a settled child proposal reaches its parent while only a lan
         const propose = async (sequence: number, pathname: string): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 session_id: producer, loop_id: producerLoop, turn_id: producerTurn, sequence,
-                origin: "model", source: null, model_call_id: null, op: "EDIT",
+                origin: "model", source: null, model_call_id: null, op: "edit",
                 scheme: "workspace", username: null, password: null, hostname: null, port: null,
                 pathname, query: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain", rx: JSON.stringify({ status: 202 }),
@@ -308,7 +308,7 @@ test("{§env-delta} a settled child proposal reaches its parent while only a lan
         const observed = async (sessionId: number) => (await db.engine_render_log.all<{
             origin: string; op: string; pathname: string | null; source: string | null;
         }>({ session_id: sessionId }))
-            .filter((row) => row.origin === "_plurnk" && row.source === "session://producer" && row.op === "EDIT" && row.pathname?.endsWith("-proposal.md") === true)
+            .filter((row) => row.origin === "_plurnk" && row.source === "session://producer" && row.op === "edit" && row.pathname?.endsWith("-proposal.md") === true)
             .map((row) => row.pathname);
         assert.deepEqual(await observed(observer), ["/accepted-proposal.md", "/rejected-proposal.md"], "the parent supervises both final proposal outcomes");
         assert.deepEqual(await observed(independent), ["/accepted-proposal.md"], "only the successfully landed commons effect broadcasts");
@@ -363,7 +363,7 @@ test("{§env-delta} a closed pull boundary assigns before, during, and after rac
         }>({ session_id: observer });
         assert.deepEqual(
             rows
-                .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-boundary.md") === true)
+                .filter((row) => row.origin === "_plurnk" && row.op === "edit" && row.pathname?.endsWith("-boundary.md") === true)
                 .map(({ turn_seq, pathname }) => ({ turn: turn_seq, pathname }))
                 .toSorted((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? "")),
             [
@@ -407,7 +407,7 @@ test("{§env-delta} a fresh session baselines history but retains an event racin
 
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ session_id: observer });
         const observed = rows
-            .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && ["/historical.md", "/first-turn-race.md"].includes(row.pathname ?? ""))
+            .filter((row) => row.origin === "_plurnk" && row.op === "edit" && ["/historical.md", "/first-turn-race.md"].includes(row.pathname ?? ""))
             .map((row) => row.pathname);
         assert.deepEqual(observed, ["/first-turn-race.md"], "pre-baseline history stays out; a post-baseline race remains deliverable once");
     } finally {
@@ -439,7 +439,7 @@ test("{§env-delta} ambient occurrence evidence survives source-log curation", a
 
         await eng.runTurn({ provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null; rx: string }>({ session_id: observer });
-        const delta = rows.find((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname === "/curated.md");
+        const delta = rows.find((row) => row.origin === "_plurnk" && row.op === "edit" && row.pathname === "/curated.md");
         assert.match(delta?.rx ?? "", /durable occurrence/, "curating the producer's log cannot erase the ambient event");
         await db.test_workspaces_delete.run({ id: workspaceId });
     } finally {
@@ -481,7 +481,7 @@ test("{§env-delta} a fork inherits observed progress and independently receives
         for (const [sessionId, label] of [[branch, "branch"], [parent, "parent"]] as const) {
             const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null; source: string | null }>({ session_id: sessionId });
             const paths = rows
-                .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-fork.md") === true)
+                .filter((row) => row.origin === "_plurnk" && row.op === "edit" && row.pathname?.endsWith("-fork.md") === true)
                 .map(({ pathname, source }) => ({ pathname, source }))
                 .toSorted((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? ""));
             assert.deepEqual(paths, [
@@ -510,10 +510,10 @@ test("{§env-delta} a child-activity delta preserves typed attributes and initia
         const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
             session_id: producer, loop_id: producerLoop, turn_id: producerTurn, sequence: 1,
             origin: "_plurnk", source: "session://observer", model_call_id: null,
-            op: "EDIT", signal: JSON.stringify(["+query"]),
+            op: "edit", signal: JSON.stringify(["+query"]),
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/page", query: null, fragment: null, lineMarker: null,
-            tx: JSON.stringify({ op: "EDIT", matcher: null, body: "page" }), mimetype_tx: "application/json",
+            tx: JSON.stringify({ op: "edit", matcher: null, body: "page" }), mimetype_tx: "application/json",
             rx: JSON.stringify({ status: 201, span: "1:page" }), mimetype_rx: "application/json",
             status_rx: 201, weight: 1, state: "resolved", outcome: null,
             attrs: JSON.stringify({ kind: "entry_materialized" }),
@@ -522,7 +522,7 @@ test("{§env-delta} a child-activity delta preserves typed attributes and initia
 
         await eng.runTurn({ provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; attrs: string }>({ session_id: observer });
-        const delta = rows.find((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname === "/page");
+        const delta = rows.find((row) => row.origin === "_plurnk" && row.op === "edit" && row.pathname === "/page");
         assert.equal(delta?.source, "session://producer");
         assert.deepEqual(JSON.parse(delta?.attrs ?? "{}"), { kind: "entry_materialized" });
     } finally {
@@ -549,7 +549,7 @@ test("{§methods-workspace-create} exactly two cross-session channels — state 
         await eng.dispatch({ statement: editStmt(urlPath("workspace", "/shared.md"), "from sibling B"), workspaceId, sessionId: sessionB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
         await eng.runTurn({ provider, workspaceId, sessionId: sessionA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; weight: number }>({ session_id: sessionA });
-        const ambient = rows.find((r) => r.op === "EDIT" && r.origin === "_plurnk" && r.pathname === "/shared.md" && r.source === "session://sibling");
+        const ambient = rows.find((r) => r.op === "edit" && r.origin === "_plurnk" && r.pathname === "/shared.md" && r.source === "session://sibling");
         assert.ok(ambient, "environment door: B's shared-entry edit crossed to A as a delta (state, ambient)");
         assert.ok(ambient.weight > 0, "the ambient copy retains the source event's canonical body weight");
 
@@ -584,7 +584,7 @@ test("{§env-delta} an out-of-band disk change is runtime evidence, not a worksp
         // Turn 1 materializes notes.md from disk (first sight — no divergence).
         await eng.runTurn({ provider, workspaceId, sessionId: sessionA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
         const afterT1 = await db.engine_render_log.all<{ origin: string; op: string; source: string | null }>({ session_id: sessionA });
-        assert.ok(!afterT1.some((r) => r.origin === "_plurnk" && r.op === "EDIT" && r.source === "file"), "first sight reconciles silently — no fs delta");
+        assert.ok(!afterT1.some((r) => r.origin === "_plurnk" && r.op === "edit" && r.source === "file"), "first sight reconciles silently — no fs delta");
         // The file changes out-of-band (an external editor, a git pull).
         await writeFile(join(root, "notes.md"), "line1\nline2\nline3-external\n");
 
@@ -758,7 +758,7 @@ test("{§session-scheme} a child's loop termination reaches only its parent with
         const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string | null; source: string | null; status_rx: number | null; rx: string; initial_folded: string; folded: string; attrs: string }>({ session_id: sessionA });
 
         // {§env-delta}: actor and execution have distinct addresses.
-        const terminations = rows.filter((r) => r.origin === "_plurnk" && r.op === "READ" && r.source?.startsWith("session://") === true);
+        const terminations = rows.filter((r) => r.origin === "_plurnk" && r.op === "read" && r.source?.startsWith("session://") === true);
         assert.deepEqual(
             terminations.map(({ source, scheme, pathname, status_rx }) => ({ source, scheme, pathname, status_rx })),
             [
@@ -803,7 +803,7 @@ test("{§session-scheme} a child's loop termination reaches only its parent with
         const branch = await Fork.fork(db, sessionA, "branch");
         const branchRows = await db.engine_render_log.all<{ origin: string; op: string; scheme: string | null; pathname: string | null; source: string | null; status_rx: number | null }>({ session_id: branch });
         assert.deepEqual(
-            branchRows.filter((r) => r.origin === "_plurnk" && r.op === "READ" && r.source?.startsWith("session://") === true)
+            branchRows.filter((r) => r.origin === "_plurnk" && r.op === "read" && r.source?.startsWith("session://") === true)
                 .map(({ source, scheme, pathname, status_rx }) => ({ source, scheme, pathname, status_rx })),
             terminations.map(({ source, scheme, pathname, status_rx }) => ({ source, scheme, pathname, status_rx })),
             "a fork inherits observed conclusions verbatim, including their original source and target",

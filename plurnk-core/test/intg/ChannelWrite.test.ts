@@ -486,7 +486,7 @@ describe("Exec.kill", () => {
 
 const killExec = (pathname: string, scheme = "exec"): KillStatement => ({
     metadata: null,
-    op: "KILL", aside: null,
+    op: "kill", aside: null,
     target: {
         kind: "url", raw: `${scheme}://${pathname}`, scheme,
         username: null, password: null, hostname: null, port: null,

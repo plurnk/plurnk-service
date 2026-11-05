@@ -4,6 +4,8 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import EnvDefaults from "../../src/core/env-defaults.ts";
+import PlurnkSkill from "../../src/server/PlurnkSkill.ts";
+import ResourceTreeScheme from "../../src/schemes/ResourceTreeScheme.ts";
 import RuntimeSession from "../../src/core/RuntimeSession.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import SessionName from "../../src/core/SessionName.ts";
@@ -582,13 +584,13 @@ test("{§tools-resource-materialization} the discoverable COPY/MOVE chapter prov
         const dispatch = async (statement: PlurnkStatement) =>
             (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0];
         const read = (uri: string) => dispatch(readStmt(parsePath(uri), { marks: [1, -1] }));
-        const uri = "skill://plurnk/references/copy-move.md";
-        const found = await dispatch(findStmt(parsePath("skill://plurnk/references/*"), regex("COPY")));
+        const uri = "skill://plurnk/copy-move.md";
+        const found = await dispatch(findStmt(parsePath("skill://plurnk/*.md"), regex("plurnk\\.copy")));
         assert.equal(found.status, 200);
         assert.ok(Array.isArray(found.results));
         assert.ok((found.results.flat() as Array<{ path: string }>).some(({ path }) => path === uri),
             "ordinary skill search discovers the chapter by the operation the model needs");
-        assert.match(String((await read("skill://plurnk/SKILL.md")).content), /references\/copy-move\.md/u);
+        assert.match(String((await read("skill://plurnk/SKILL.md")).content), /\(copy-move\.md\)/u);
         const chapter = await read(uri);
         assert.equal(chapter.status, 200);
         assert.equal(chapter.content, (await readFile("docs/copy-move.md", "utf8")).trimEnd(), "the skill exposes its owning source verbatim");
@@ -596,7 +598,7 @@ test("{§tools-resource-materialization} the discoverable COPY/MOVE chapter prov
         assert.equal(parsed.unparsedTail, undefined);
         assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
         const examples = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.deepEqual(examples.map(writtenOp), ["COPY", "COPY", "MOVE"]);
+        assert.deepEqual(examples.map(writtenOp), ["copy", "copy", "move"]);
         assert.equal((await dispatch(editStmt(parsePath("workspace:///src.md"), "one\ntwo\nthree\nfour\n"))).status, 201);
         for (const [index, statement] of examples.entries()) {
             const result = await dispatch(statement);
@@ -633,31 +635,31 @@ test("{§teaching-corpus} {§tools-resource-materialization} defaults are the op
         const entry = await read("skill://plurnk/SKILL.md");
         assert.equal(entry.status, 200);
         assert.match(String(entry.content), /name: plurnk/);
-        assert.match(String(entry.content), /\.env\.defaults/);
-        const defaults = await read("skill://plurnk/.env.defaults");
+        assert.match(String(entry.content), /configuration\/\.env\.defaults/);
+        const defaults = await read("skill://plurnk/configuration/.env.defaults");
         assert.equal(defaults.status, 200);
         const expected = EnvDefaults.renderCatalog((await EnvDefaults.collect(resolve("."), resolve("../node_modules"))).files);
         assert.equal(defaults.content, expected.trimEnd(), "the source matches the operator's complete installed catalog");
-        const matches = await dispatch({ ...findStmt(parsePath("skill://plurnk/.env.defaults"), regex("PLURNK_PROVIDERS_OUTPUT_BUDGET")), lineMarker: { marks: [1, -1] } });
+        const matches = await dispatch({ ...findStmt(parsePath("skill://plurnk/configuration/.env.defaults"), regex("PLURNK_PROVIDERS_OUTPUT_BUDGET")), lineMarker: { marks: [1, -1] } });
         assert.equal(matches.status, 200);
         assert.match(JSON.stringify(matches.results), /PLURNK_PROVIDERS_OUTPUT_BUDGET/);
-        assert.equal((await dispatch(copyStmt(parsePath("skill://plurnk/.env.defaults")!, parsePath("workspace:///defaults.md")!))).status, 201);
+        assert.equal((await dispatch(copyStmt(parsePath("skill://plurnk/configuration/.env.defaults")!, parsePath("workspace:///defaults.md")!))).status, 201);
         assert.equal((await read("workspace:///defaults.md")).content, expected.trimEnd(), "COPY consumes the generated resource through ordinary source access");
-        const config = await read("skill://plurnk/references/configuration.md");
+        const config = await read("skill://plurnk/configuration.md");
         assert.equal(config.status, 200);
         assert.equal(config.content, (await readFile("INSTALL.md", "utf8")).trimEnd(), "configuration has one package owner");
         const context = { scope: "workspace" as const, workspaceId };
         const child = await daemon.forkSession({ workspaceId, sessionId });
         // The child's own READ.
-        const childRead = () => modelOperation(daemon, db, { workspaceId, sessionId: child.sessionId, statement: readStmt(parsePath("skill://plurnk/.env.defaults"), { marks: [1, 3] }) });
+        const childRead = () => modelOperation(daemon, db, { workspaceId, sessionId: child.sessionId, statement: readStmt(parsePath("skill://plurnk/configuration/.env.defaults"), { marks: [1, 3] }) });
         assert.equal((await childRead()).status, 200, "children use the same workspace skill");
         await daemon.invokeModuleAction("workspace.skills.disable", { alias: "plurnk" }, context);
-        assert.equal((await read("skill://plurnk/.env.defaults")).status, 404);
+        assert.equal((await read("skill://plurnk/configuration/.env.defaults")).status, 404);
         assert.equal((await childRead()).status, 404, "disablement affects existing children too");
         await daemon.invokeModuleAction("workspace.skills.disable", { alias: "plurnk" }, context);
         assert.equal((await childRead()).status, 404);
         await daemon.invokeModuleAction("workspace.skills.enable", { alias: "plurnk" }, context);
-        assert.equal((await read("skill://plurnk/.env.defaults")).status, 200);
+        assert.equal((await read("skill://plurnk/configuration/.env.defaults")).status, 200);
         assert.equal((await childRead()).status, 200, "enablement restores the shared skill to the child");
 
         const custom = join(root, ".agents", "skills", "plurnk");
@@ -665,7 +667,7 @@ test("{§teaching-corpus} {§tools-resource-materialization} defaults are the op
         await writeFile(join(custom, "SKILL.md"), "---\nname: plurnk\ndescription: Project-owned Plurnk guidance\n---\nProject guidance.\n");
         await daemon.invokeModuleAction("workspace.skills.enable", { alias: "plurnk" }, context);
         assert.match(String((await read("skill://plurnk/SKILL.md")).content), /Project guidance/);
-        assert.equal((await read("skill://plurnk/.env.defaults")).status, 404, "shadowing replaces the tree, not an overlay leaking service resources");
+        assert.equal((await read("skill://plurnk/configuration/.env.defaults")).status, 404, "shadowing replaces the tree, not an overlay leaking service resources");
     });
 });
 
@@ -681,7 +683,7 @@ test("{§tools-resource-materialization} Turn0 catalogs the skill; only a reques
         }
     }
     const provider = new CapturingMock({ contextWindow: 32768, responses: [
-        { assistant: { content: "await plurnk.read({\"path\":\"skill://plurnk/.env.defaults\",\"range\":\"1,3\"});\n\nawait plurnk.note({\"text\":\"Inspect the reference.\"});", reasoning: null } },
+        { assistant: { content: "await plurnk.read({\"path\":\"skill://plurnk/configuration/.env.defaults\",\"range\":\"1,3\"});\n\nawait plurnk.note({\"text\":\"Inspect the reference.\"});", reasoning: null } },
         { assistant: { content: "await plurnk.done({\"text\":\"Reference received.\"});", reasoning: null } },
     ] });
     await withDaemon(provider, async (_db, _daemon, addr) => {
@@ -694,7 +696,7 @@ test("{§tools-resource-materialization} Turn0 catalogs the skill; only a reques
         assert.doesNotMatch(provider.requests[0], /# Plurnk installed configuration defaults/);
         const chapterHeading = (await readFile("INSTALL.md", "utf8")).split("\n")[0];
         assert.ok(!provider.requests[0].includes(chapterHeading), "the configuration chapter is not startup teaching");
-        assert.doesNotMatch(provider.requests[0], /# COPY and MOVE/u, "the transfer chapter is also pull-only");
+        assert.doesNotMatch(provider.requests[0], /# Copy and move/u, "the transfer chapter is also pull-only");
         assert.match(provider.requests[1], /# Plurnk installed configuration defaults/);
     });
 });
@@ -715,12 +717,10 @@ test("{§tools-resource-materialization} turn 0 exposes executable inline-progra
         const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the available tools." });
         assert.equal(finalStatus, 200);
         const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![1] });
-        const survey = logEntries(JSON.parse(row!.packet)).find((entry) => entry.path === "plurnk:///*.md");
+        const survey = logEntries(JSON.parse(row!.packet)).find((entry) => entry.path === "mcp:///plurnk.md");
         assert.ok(survey && typeof survey.body === "string", "turn 0 carries the generated tool catalog");
         const body = survey.body.replace(/^ *\d+:/gm, "");
-        const groups = JSON.parse(body) as Array<Array<{ path: string; aside?: string }>>;
-        const jsEntry = groups.flat().find(({ path }) => path.endsWith("/js.md"));
-        const aside = jsEntry?.aside;
+        const aside = body.split("\n").find((line) => line.startsWith("await plurnk.js("));
         assert.ok(typeof aside === "string" && aside.includes("console.log(42)"), "js aside includes its inline body, not just an empty invocation");
         const parsed = PlurnkParser.parseStatements(aside, { executors: fixtureExecutors(aside) });
         assert.equal(parsed.items.length, 1);
@@ -797,15 +797,15 @@ test("{§capability-policy-cascade}: one effective workspace policy filters exec
         const workspaceId = await insertWorkspace(db, `workspace-policy-render-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
         const before = await engine.referenceEntries(workspaceId);
-        assert.ok(before.some((doc) => doc.scheme === "plurnk" && doc.pathname === "/js.md"));
+        assert.ok(before.some((doc) => doc.scheme === "mcp" && doc.pathname === "/plurnk/js.json"));
 
         await db.test_set_workspace_settings.run({
             id: workspaceId,
             settings: JSON.stringify({ capabilities: { deny: [{ runtime: "js" }] } }),
         });
         const after = await engine.referenceEntries(workspaceId);
-        assert.ok(!after.some((doc) => doc.scheme === "plurnk" && doc.pathname === "/js.md"));
-        assert.ok(after.some((doc) => doc.scheme === "plurnk" && doc.pathname === "/sh.md"));
+        assert.ok(!after.some((doc) => doc.scheme === "mcp" && doc.pathname === "/plurnk/js.json"));
+        assert.ok(after.some((doc) => doc.scheme === "mcp" && doc.pathname === "/plurnk/sh.json"));
 
         const loopId = await insertLoop(db, sessionId, 1, "policy teaching");
         const provider = new Mock({
@@ -844,9 +844,9 @@ test("{§capability-admission}: harness-authored initialization obeys the same w
             settings: JSON.stringify({
                 capabilities: {
                     deny: [
-                        { operation: "COPY" },
-                        { operation: "FIND" },
-                        { operation: "READ" },
+                        { operation: "copy" },
+                        { operation: "find" },
+                        { operation: "read" },
                     ],
                 },
             }),
@@ -870,7 +870,7 @@ test("{§capability-admission}: harness-authored initialization obeys the same w
         const rows = await db.test_log_entries_by_loop.all<{ origin: string; op: string | null; attrs: string }>({ loop_id: loopId });
         const harnessOps = rows.filter((row) => row.origin === "_plurnk" && !LogEntryProjection.isEmission(row)).map(({ op }) => op);
         assert.deepEqual(
-            harnessOps.filter((op) => op === "COPY" || op === "FIND" || op === "READ"),
+            harnessOps.filter((op) => op === "copy" || op === "find" || op === "read"),
             [],
             "the harness neither advertises nor exercises capabilities denied to this workspace",
         );
@@ -894,7 +894,12 @@ for (const layer of ["service", "workspace"] as const) test(`{§tools-resource-m
     });
     const db = await openMigrated();
     try {
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const schemes = new SchemeRegistry();
+        const plurnkTree = await PlurnkSkill.load(resolve("../node_modules"));
+        schemes.registerCore("skill", new ResourceTreeScheme("skill", {
+            trees: () => new Map([["plurnk", plurnkTree]]),
+        }));
+        const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, `reference-read-only-${layer}`);
         const capabilities: CapabilityPolicy = { only: [{ access: "observe" }] };
         const { id: sessionId } = await SessionName.claimAuto(db, { workspaceId });
@@ -906,25 +911,25 @@ for (const layer of ["service", "workspace"] as const) test(`{§tools-resource-m
         const loopId = await insertLoop(db, sessionId, 2, "Read the session reference.");
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "", reasoning: null, ops: [
-                readStmt({ ...urlPath("plurnk", "/session.md"), hostname: null, raw: "plurnk:///session.md" }, { marks: [1, -1] }),
-                readStmt({ ...urlPath("plurnk", "/delegation.md"), hostname: null, raw: "plurnk:///delegation.md" }, { marks: [1, -1] }),
+                readStmt(parsePath("skill://plurnk/session.md"), { marks: [1, -1] }),
+                readStmt(parsePath("skill://plurnk/delegation.md"), { marks: [1, -1] }),
                 noteStmt("Continue."),
             ] } },
         ] });
         await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const rows = await db.test_log_entries_by_loop.all<{
-            op: string; scheme: string; pathname: string; rx: string; status_rx: number;
+            op: string; scheme: string; hostname: string | null; pathname: string; rx: string; status_rx: number;
         }>({ loop_id: loopId });
-        const survey = rows.find(({ op, scheme, pathname }) => op === "FIND" && scheme === "plurnk" && pathname === "/*.md");
-        assert.ok(survey, "read-only policy retains the native reference survey");
-        const result = JSON.parse(survey.rx) as { content: string };
-        const items = JSON.parse(result.content) as Array<Array<{ path: string; aside?: string }>>;
-        const reference = items.flat().find(({ path }) => path.endsWith("/session.md"));
-        assert.ok(reference?.aside, `session orientation is not hidden by its mutation examples: ${JSON.stringify(items)}`);
-        const read = rows.find(({ op, scheme, pathname }) => op === "READ" && scheme === "plurnk" && pathname === "/session.md");
+        const skillRead = rows.find(({ op, scheme, hostname, pathname }) =>
+            op === "read" && scheme === "skill" && hostname === "plurnk" && pathname === "/SKILL.md");
+        assert.equal(skillRead?.status_rx, 200, "read-only policy retains the Turn-0 skill index read");
+        assert.ok(JSON.parse(skillRead.rx).content.includes("(session.md)"));
+        const read = rows.find(({ op, scheme, hostname, pathname }) =>
+            op === "read" && scheme === "skill" && hostname === "plurnk" && pathname === "/session.md");
         assert.equal(read?.status_rx, 200, "the model can read the advertised reference through normal dispatch");
-        assert.ok(JSON.parse(read.rx).content.includes("plurnk:///delegation.md"));
-        const delegation = rows.find(({ op, scheme, pathname }) => op === "READ" && scheme === "plurnk" && pathname === "/delegation.md");
+        assert.ok(JSON.parse(read.rx).content.includes("skill://plurnk/delegation.md"));
+        const delegation = rows.find(({ op, scheme, hostname, pathname }) =>
+            op === "read" && scheme === "skill" && hostname === "plurnk" && pathname === "/delegation.md");
         assert.equal(delegation?.status_rx, 200, "the cross-reference follows the same admission as its session owner");
         assert.ok(JSON.parse(delegation.rx).content.includes("## Lifecycle"));
     } finally { await db.close(); }
@@ -1018,9 +1023,9 @@ test("{§tools-resource-materialization}: read-only reconciliation records creat
         const rows = await db.test_log_entries_by_session.all<{
             op: string; pathname: string; origin: string; status_rx: number; turn_id: number;
         }>({ session_id: await RuntimeSession.ensure(db, workspaceId) });
-        const changes = rows.filter(({ pathname, op }) => pathname === "/readable.md" && ["EDIT", "KILL"].includes(op));
+        const changes = rows.filter(({ pathname, op }) => pathname === "/readable.md" && ["edit", "kill"].includes(op));
         assert.deepEqual(changes.map(({ op, origin, status_rx }) => [op, origin, status_rx]), [
-            ["EDIT", "_plurnk", 201], ["EDIT", "_plurnk", 200], ["KILL", "_plurnk", 200],
+            ["edit", "_plurnk", 201], ["edit", "_plurnk", 200], ["kill", "_plurnk", 200],
         ]);
         for (const { turn_id } of changes) {
             const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number }>({ id: turn_id });

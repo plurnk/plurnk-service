@@ -134,7 +134,7 @@ test("{§fs-write-surface} the four empty-destination scopes create identical bi
 test("{§binary-parity} new binary destinations still reject character-column regions", async () => {
     const { root, operations } = await runCopy({ "logo.png": PNG }, "await plurnk.move({\"from\":\"logo.png\",\"to\":{\"path\":\"copy.png\",\"range\":\"1,1,1,1\"}});");
     try {
-        const move = operations.find(({ op }) => op === "MOVE");
+        const move = operations.find(({ op }) => op === "move");
         assert.equal(move?.status_rx, 416);
         const receipt = JSON.parse(move?.rx ?? "null");
         assert.equal(receipt?.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
@@ -149,7 +149,7 @@ for (const operand of ["source", "destination"]) test(`{§binary-parity} a textu
         : "await plurnk.copy({\"from\":\"logo.png\",\"to\":{\"path\":\"copy.png\",\"range\":\"@abcde\"}});";
     const { root, operations } = await runCopy({ "logo.png": PNG }, dsl);
     try {
-        const receipt = operations.find(({ op }) => op === "COPY");
+        const receipt = operations.find(({ op }) => op === "copy");
         assert.equal(receipt?.status_rx, 416, JSON.stringify(receipt));
         assert.match(JSON.parse(receipt?.rx ?? "null").problem.type, /\/range-not-satisfiable$/);
         await assert.rejects(readFile(join(root, "copy.png")), { code: "ENOENT" });
@@ -204,7 +204,7 @@ test("{§binary-parity} a byte-pattern COPY and MOVE select the same native frag
 test("{§binary-parity} a scoped binary MOVE removes exactly the transferred source bytes", async () => {
     const { root, operations } = await runCopy({ "source.png": PNG }, "await plurnk.move({\"from\":{\"path\":\"source.png\",\"range\":\"2,4\"},\"to\":\"move.png\"});");
     try {
-        assert.equal(operations.find(({ op }) => op === "MOVE")?.status_rx, 200);
+        assert.equal(operations.find(({ op }) => op === "move")?.status_rx, 200);
         assert.deepEqual(await readFile(join(root, "move.png")), PNG.subarray(1, 4));
         assert.deepEqual(await readFile(join(root, "source.png")), Buffer.concat([PNG.subarray(0, 1), PNG.subarray(4)]));
     } finally { await rm(root, { recursive: true, force: true }); }
@@ -214,7 +214,7 @@ test("{§binary-parity} a same-channel byte MOVE uses pre-mutation coordinates",
     const source = Buffer.from([0, 1, 2, 3, 4, 5]);
     const { root, operations } = await runCopy({ "source.png": source }, "await plurnk.move({\"from\":{\"path\":\"source.png\",\"range\":\"2,3\"},\"to\":{\"path\":\"source.png\",\"range\":\"-1\"}});");
     try {
-        assert.equal(operations.find(({ op }) => op === "MOVE")?.status_rx, 200);
+        assert.equal(operations.find(({ op }) => op === "move")?.status_rx, 200);
         assert.deepEqual(await readFile(join(root, "source.png")), Buffer.from([0, 3, 4, 5, 1, 2]));
     } finally { await rm(root, { recursive: true, force: true }); }
 });
@@ -222,7 +222,7 @@ test("{§binary-parity} a same-channel byte MOVE uses pre-mutation coordinates",
 for (const target of ["source.png", "workspace:///source.png"]) test(`{§binary-parity} pattern EDIT of ${target} is a typed refusal, not an anchor invariant failure`, async () => {
     const { root, operations } = await runCopy({ "source.png": PNG }, `${target.startsWith("workspace:") ? `await plurnk.copy({"from":"source.png","to":"${target}"});\n\n` : ""}await plurnk.edit({"path":"${target}","pattern":"/PNG/","content":"replacement"});`);
     try {
-        const edit = operations.find(({ op }) => op === "EDIT");
+        const edit = operations.find(({ op }) => op === "edit");
         assert.equal(edit?.status_rx, 415, JSON.stringify(edit));
         assert.match(JSON.parse(edit?.rx ?? "null").problem.type, /\/binary-(edit|write)-unsupported$/);
         assert.deepEqual(await readFile(join(root, "source.png")), PNG);
@@ -276,7 +276,7 @@ await plurnk.note({"text":"copied"});`),
                 { timeoutMs: 20000 },
             );
             const operations = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId });
-            for (const operation of operations.filter(({ op }) => op === "COPY" || op === "MOVE")) {
+            for (const operation of operations.filter(({ op }) => op === "copy" || op === "move")) {
                 assert.ok([200, 201].includes(operation.status_rx), JSON.stringify(operation));
             }
         } finally { ws.close(); }
@@ -305,7 +305,7 @@ await plurnk.move({"from":"${intermediate}","to":"output.png"});`);
     });
 }
 
-for (const op of ["COPY", "MOVE"]) {
+for (const op of ["copy", "move"]) {
     for (const target of ["absent.md", "existing.bin"]) {
         test(`{§copy} ${op} refuses the known textual type of ${target} without changing either file`, async () => {
             const original = Buffer.from("retained text\n");
@@ -345,7 +345,7 @@ test("{§binary-parity} a stored binary supports the same destination splice and
 // bytes base64 in TEXT content, and a default READ recovers them as the hex byte view — no byte source
 // handed in, synthesized from the stored content — exactly as a File member's #bytes reads.
 const binaryReadStmt = (pathname: string): ReadStatement => ({
-    metadata: null, op: "READ", aside: null,
+    metadata: null, op: "read", aside: null,
     target: { kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, query: null, fragment: null },
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
@@ -416,7 +416,7 @@ test("{§binary-parity} a READ pattern selects source bytes, retaining byte coor
 // FIND treats a binary entry as bytes, never as its base64 text: a byte run in the entry's bytes is
 // found, and a text search over the workspace is never poisoned into matching a binary's base64.
 const findBody = (raw: string, pattern: string): FindStatement => ({
-    metadata: null, op: "FIND", aside: null,
+    metadata: null, op: "find", aside: null,
     target: { kind: "url", raw: "workspace:///**", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/**", query: null, fragment: null },
     lineMarker: null, matcher: { dialect: "regex", raw, pattern, flags: "" }, body: null, position: { line: 1, column: 1 },
 });
@@ -622,7 +622,7 @@ const fileMember = async (ctx: Ctx, rel: string) =>
 const generatedPicks = (ctx: Ctx) =>
     ctx.db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: ctx.workspaceId });
 
-const killStmt = (target: ParsedPath): KillStatement => ({ metadata: null, op: "KILL", aside: null, target, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
+const killStmt = (target: ParsedPath): KillStatement => ({ metadata: null, op: "kill", aside: null, target, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
 
 const proposeAndResolve = async (
     ctx: Ctx,
@@ -680,7 +680,7 @@ for (const transfer of [copyStmt, moveStmt]) {
                     await assert.rejects(readFile(join(root, "copied.txt")), { code: "ENOENT" });
                 }
                 const source = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string; mimetype: string }>({ scheme: "workspace", pathname: "/note", name: "body" });
-                if (op === "MOVE" && decision === "accept") assert.equal(source, undefined);
+                if (op === "move" && decision === "accept") assert.equal(source, undefined);
                 else {
                     assert.equal(source?.content, content);
                     assert.equal(source?.mimetype, "text/plain");

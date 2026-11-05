@@ -561,7 +561,7 @@ test("{§session-model-selection}: the spawn override persists onto the session 
             const delegatedPrompt = (await daemon.readLog({
                 workspaceId,
                 sessionId: kid.id,
-            })).find((entry) => entry.op === "SEND" && entry.origin === "_plurnk");
+            })).find((entry) => entry.op === "send" && entry.origin === "_plurnk");
             assert.equal(
                 delegatedPrompt?.source,
                 `session://${root.name}`,
@@ -1042,7 +1042,7 @@ test("{§session-model-selection}: switching to a smaller model whose budget can
             makeMockResponse(`await plurnk.note({"text":"${bigNote}"});
 
 await plurnk.done({"text":"stored note"});`),
-            makeMockResponse("await plurnk.kill({\"path\":\"log:///**/NOTE\"});\n\nawait plurnk.done({\"text\":\"curated note\"});"),
+            makeMockResponse("await plurnk.kill({\"path\":\"log:///**/note\"});\n\nawait plurnk.done({\"text\":\"curated note\"});"),
         ],
     });
     const small = new Mock({

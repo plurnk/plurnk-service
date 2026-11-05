@@ -26,7 +26,7 @@ const wsUrlPath = (pathname: string): UrlPath => ({
 
 const wsEditStmt = (pathname: string, body: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null,
+    op: "edit", aside: null,
     target: wsUrlPath(pathname), lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });
@@ -149,7 +149,7 @@ test("{§tokenomics} a packet past the window preserves exact evidence in its te
             "the rejected candidate retains its original identity",
         );
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnId });
-        const plan = rows.find((row) => row.op === "NOTE" && row.origin === "_plurnk");
+        const plan = rows.find((row) => row.op === "note" && row.origin === "_plurnk");
         assert.equal(plan, undefined, "admission never manufactures a cleanup note");
         const problem = result.curationFailure?.problem as { detail?: string; tokens?: number; wall?: number; excess?: number } | undefined;
         assert.ok(problem !== undefined, "the terminal owns exact evidence ({§tokenomics})");
@@ -417,7 +417,7 @@ test("{§tokenomics}: an upstream capacity refusal is the provider's own 413 —
         assert.deepEqual(requests.map(({ outcome }) => outcome), ["error"], "the physical request remains a cardinal accounting fact");
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
-        const arrival = logEntries(packet).find(({ logPath: path }) => path.endsWith("/SEND"));
+        const arrival = logEntries(packet).find(({ logPath: path }) => path.endsWith("/send"));
         assert.ok(arrival && typeof arrival.body === "string" && arrival.body.includes(PROMPT_CAPACITY_SENTINEL), "the stored request is the request that was sent: the arrival, whole");
         const errors = await db.test_error_rows_for_session.all<{ rx: string }>({ session_id: sessionId });
         assert.equal(errors.length, 1, "the failure is one durable error row");
@@ -695,7 +695,7 @@ test("{§tokenomics}: a composed packet's largest inventory points to its domina
         const inventory = object.largest;
         assert.ok(inventory.length > 0, "the pressure inventory rides inside the JSON object");
         const [largest] = inventory;
-        assert.match(largest.path, /^log:\/\/\/\d+\/\d+\/\d+\/[A-Z]+$/u);
+        assert.match(largest.path, /^log:\/\/\/\d+\/\d+\/\d+\/[a-z]+$/u);
         assert.equal(typeof largest.tokens, "number");
         const advised = logEntries(stored.packet).find((row) => row.logPath === largest.path);
         assert.equal(largest.tokens, advised?.tokens, "inventory and receipt use the same complete-row charge");
@@ -803,7 +803,7 @@ test("{§tokenomics} {§tokenomics}: calibrated on prose, unmeasured dense code 
         const replay = packetSection(packet, "emission-history");
         assert.ok(replay.includes(PROSE) && replay.includes(CODE), "the previous programs stay whole in emission-history");
         const rows = logEntries(packet);
-        const notes = rows.filter(({ logPath }) => logPath.endsWith("/NOTE"));
+        const notes = rows.filter(({ logPath }) => logPath.endsWith("/note"));
         assert.equal(notes.length, 4, "all four NOTE receipts remain in the log");
         assert.ok(notes.every(({ size }) => size === undefined), "no row is reduced to a size receipt by the daemon");
         assert.equal(rows.filter(({ logPath }) => logPath.endsWith("/error")).length, 1, "{§tokenomics}: the over-budget row rides the request that fits");
@@ -1127,7 +1127,7 @@ const prepareLog = async ({ db, workspaceId, sessionId, loopId, engine }: Fixtur
     assert.equal(read.status, 200);
     assert.equal((await engine.dispatch({ ...args, sequence: 3, statement: findStmt(target) })).status, 200);
     assert.equal((await engine.dispatch({
-        ...args, sequence: 4, statement: killStmt(urlPath("log", "/1/1/1/EDIT")),
+        ...args, sequence: 4, statement: killStmt(urlPath("log", "/1/1/1/edit")),
     })).status, 200);
     return { args, content, readId };
 };
@@ -1149,14 +1149,14 @@ test("{§log-wire-format} non-unit calibration preserves one ruler for READ, FIN
     const packet = await f.build(provider);
     const state = budgetOf(packet);
     const rows = logEntries(packet);
-    const read = rows.find(({ logPath: path }) => path === "log:///1/1/2/READ")!;
+    const read = rows.find(({ logPath: path }) => path === "log:///1/1/2/read")!;
     assert.ok(read.tokens < state.tokens, "a visible READ cannot outweigh its complete packet");
     assert.equal(state.tokens, packet.weight, "the total retains the measured curation ruler");
     // {§packet-assembly}: each complete message is measured once.
     assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, message) => sum + contentWeight(message.content), 0));
     assert.equal(state.budget, TokenCalibration.capacity(provider.inputCapacity, offset));
     assert.deepEqual(rows, logEntries(uncalibrated), "neither receipt nor FIND item costs are rewritten by calibration");
-    const find = rows.find(({ logPath: path }) => path === "log:///1/1/3/FIND")!;
+    const find = rows.find(({ logPath: path }) => path === "log:///1/1/3/find")!;
     assert.ok(Number(find.itemsTokenTotal) > 0, "the FIND witness has real resource accounting");
     assert.ok(state.largest?.some(({ path }) => path === read.logPath), "pressure identifies the dominant body");
     for (const item of state.largest!) {
@@ -1175,7 +1175,7 @@ test("{§tokenomics} {§tokenomics} new shared-model samples cannot resize the c
     });
     const persisted = (await f.db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet;
     const before = await f.build(provider);
-    const arrival = logEntries(before).find(({ logPath: path }) => path.endsWith("/SEND"));
+    const arrival = logEntries(before).find(({ logPath: path }) => path.endsWith("/send"));
     assert.ok(arrival, "the arrival row is in the packet");
     assert.equal(arrival.body, undefined, "the message did not fit the budget: it landed folded, its row its size and address");
     assert.deepEqual(Object.keys(arrival.size as object).toSorted(), ["lines", "tokens"], "the folded arrival states its size, never a preview");
@@ -1295,8 +1295,8 @@ test("{§log-wire-format} scoped and whole KILL reclaim stable costs without alt
     await recordSamples(f);
     const raw = await f.db.tok_log_weight.get<{ rx: string; weight: number }>({ id: readId });
     const before = await f.build();
-    const read = logEntries(before).find(({ logPath: path }) => path === "log:///1/1/2/READ")!;
-    assert.equal((await f.engine.dispatch({ ...args, sequence: 5, statement: killStmt(urlPath("log", "/1/1/2/READ"), { marks: [1, -1] }) })).status, 200);
+    const read = logEntries(before).find(({ logPath: path }) => path === "log:///1/1/2/read")!;
+    assert.equal((await f.engine.dispatch({ ...args, sequence: 5, statement: killStmt(urlPath("log", "/1/1/2/read"), { marks: [1, -1] }) })).status, 200);
     const trimmed = await f.build();
     const trimmedRead = logEntries(trimmed).find(({ logPath: path }) => path === read.logPath)!;
     assert.equal(trimmedRead.body, undefined);
@@ -1307,7 +1307,7 @@ test("{§log-wire-format} scoped and whole KILL reclaim stable costs without alt
         contentWeight(renderedRead(before)) - contentWeight(renderedRead(trimmed)),
         "the scoped KILL's saving is the actual row-size change, without a conversion multiplier");
     assert.ok(trimmed.weight < before.weight, "the large body removal more than pays for its receipt");
-    assert.equal((await f.engine.dispatch({ ...args, sequence: 6, statement: killStmt(urlPath("log", "/1/1/2/READ")) })).status, 200);
+    assert.equal((await f.engine.dispatch({ ...args, sequence: 6, statement: killStmt(urlPath("log", "/1/1/2/read")) })).status, 200);
     const killed = await f.build();
     assert.equal(logEntries(killed).some(({ logPath: path }) => path === read.logPath), false);
     for (const packet of [before, trimmed, killed]) {

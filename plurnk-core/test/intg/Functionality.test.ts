@@ -212,10 +212,10 @@ test("{§functionality-model-projection} one raw model program observes each man
         const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname, scheme: "plurnk", name: "results" });
         assert.ok(channel?.state === "closed" || channel?.state === "errored");
         const body = JSON.parse(channel.content) as Record<string, unknown>;
-        if (Array.isArray(body.definitions)) states.push((body.definitions as Array<{ alias: string; state: string }>).find(({ alias }) => alias === "candidate")?.state);
+        if (body.family === "fx" && Array.isArray(body.definitions)) states.push((body.definitions as Array<{ alias: string; state: string }>).find(({ alias }) => alias === "candidate")?.state);
     }
     assert.deepEqual(states, ["active", "disabled", "active", "active", undefined], "inspection snapshots match their own execution point, including the failed replacement");
-    assert.ok(rows.some((row) => row.origin === "model" && row.op === "READ" && row.status_rx === 200 && JSON.stringify(row.rx).includes("fixture document")), "READ sees the newly published document without another turn");
+    assert.ok(rows.some((row) => row.origin === "model" && row.op === "read" && row.status_rx === 200 && JSON.stringify(row.rx).includes("fixture document")), "READ sees the newly published document without another turn");
     assert.equal(await lifecycle.status(loop.loopId), 200);
 });
 
@@ -1140,11 +1140,11 @@ for (const verb of ["add", "replace"]) for (const hold of ["", "plurnk:host"]) {
         const priorHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
         process.env.PLURNK_SERVICE_EXEC_HOLD = hold;
         const alias = verb === "add" ? "candidate" : "svc";
-        const step = (op = "NOTE") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "NOTE" ? "Inspect the result." : "Tool result inspected." })});`;
+        const step = (op = "note") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "note" ? "Inspect the result." : "Tool result inspected." })});`;
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
-            makeMockResponse(`await plurnk.fx(${JSON.stringify({ alias, kind: "doc" })});\n${step("NOTE")}`),
-            makeMockResponse(`await plurnk[${JSON.stringify(alias)}](${JSON.stringify("fixture")});\n${step("NOTE")}`),
-            makeMockResponse(step("DONE")),
+            makeMockResponse(`await plurnk.fx(${JSON.stringify({ alias, kind: "doc" })});\n${step("note")}`),
+            makeMockResponse(`await plurnk[${JSON.stringify(alias)}](${JSON.stringify("fixture")});\n${step("note")}`),
+            makeMockResponse(step("done")),
         ] });
         const db = await openMigrated();
         const log: string[] = [];
@@ -1203,7 +1203,7 @@ test("{§functionality-model-projection} authorization-required holds the model 
         assert.equal(log.filter((line) => line === "run:candidate").length, 1, "the next model turn runs the newly authorized tool");
         assert.ok(result.modelSessionId !== undefined, "the loop identifies its model session");
         const rows = await daemon.readLog({ workspaceId, sessionId: result.modelSessionId, limit: Number.MAX_SAFE_INTEGER });
-        const observed = rows.find((row) => row.op === "READ" && row.scheme === "plurnk" && JSON.stringify(row.rx).includes("active"));
+        const observed = rows.find((row) => row.op === "read" && row.scheme === "plurnk" && JSON.stringify(row.rx).includes("active"));
         assert.ok(observed, "the terminal observation carries the settled active resource outcome");
         assert.equal(observed.status_rx, 201, "the observation carries the settled creation status");
         const body = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk" });
@@ -1293,7 +1293,7 @@ test("{§tools-resource-materialization} {§capability-admission}: a denied fami
         const hidden = await daemon.engine.referenceEntries(workspaceId);
         assert.equal(hidden.some(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk/fx.json"), false, "a denied family has no tool schema");
         assert.equal(hidden.some(({ scheme, pathname }) => scheme === "plurnk" && pathname === "/fx/paper.md"), false, "a denied family projects no generated document");
-        assert.equal(hidden.some(({ scheme, pathname }) => scheme === "plurnk" && pathname === "/session.md"), true, "other references are untouched");
+        assert.equal(hidden.some(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk.md"), true, "other references are untouched");
         assert.equal((await operate("await plurnk.fx();")).status, 403, "the family's tool refuses at admission");
     } finally {
         await daemon.stop();

@@ -337,7 +337,7 @@ SELECT workspace_id, parent_session_id FROM sessions WHERE id = $id;
 
 -- PREP: test_get_log_rx_by_session_op
 -- Forensic read-back for read-only ops in live tests: the latest rx the engine
--- recorded for a given op in a session (e.g. what a READ<L> actually sliced).
+-- recorded for a given op in a session (e.g. what a read<L> actually sliced).
 SELECT rx FROM log_entries WHERE session_id = $session_id AND op = $op ORDER BY id DESC LIMIT 1;
 
 -- PREP: test_count_log_entries
@@ -501,8 +501,8 @@ SELECT id, name, parent_session_id, origin FROM sessions ORDER BY id;
 SELECT id, name, model_route_id, spawn_model_route_id, effort FROM sessions ORDER BY id;
 
 -- PREP: test_edit_states
--- {§session-ownership} — a delegated child's EDIT settles through its inherited owner.
-SELECT pathname, state FROM log_entries WHERE op = 'EDIT' AND origin = 'model' ORDER BY id;
+-- {§session-ownership} — a delegated child's edit settles through its inherited owner.
+SELECT pathname, state FROM log_entries WHERE op = 'edit' AND origin = 'model' ORDER BY id;
 
 -- PREP: test_all_packets
 -- {§operation-results} — every stored packet, to prove no section carries strike state.
@@ -597,7 +597,7 @@ INSERT INTO log_entries (
     session_id, loop_id, turn_id, sequence, at, origin, op,
     scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx
 ) VALUES (
-    $session_id, $loop_id, $turn_id, $sequence, $at, 'model', 'EDIT',
+    $session_id, $loop_id, $turn_id, $sequence, $at, 'model', 'edit',
     'workspace', $pathname, '', 'text/plain', $rx, 'application/json', 201
 )
 RETURNING id;
@@ -642,7 +642,7 @@ FROM log_entries WHERE session_id = $session_id AND op = $op ORDER BY id;
 SELECT rx, weight FROM log_entries WHERE session_id = $session_id AND op = 'error';
 
 -- PREP: test_disposition_rows_for_session
-SELECT rx, tx, status_rx FROM log_entries WHERE session_id = $session_id AND op = 'WAIT' AND origin = 'model' ORDER BY id;
+SELECT rx, tx, status_rx FROM log_entries WHERE session_id = $session_id AND op = 'wait' AND origin = 'model' ORDER BY id;
 
 -- PREP: test_sessions_by_workspace
 SELECT id, name, origin, parent_session_id
@@ -655,7 +655,7 @@ SELECT packet FROM turn_packets WHERE loop_id = $loop_id ORDER BY sequence LIMIT
 SELECT projection.folded
 FROM log_entries le
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
-WHERE le.op = 'SEND' AND le.origin = '_plurnk' AND json_extract(le.attrs, '$.kind') = 'message'
+WHERE le.op = 'send' AND le.origin = '_plurnk' AND json_extract(le.attrs, '$.kind') = 'message'
 LIMIT 1;
 -- PREP: test_turn_id_by_seq
 SELECT id FROM turns WHERE loop_id = $loop_id AND sequence = $sequence;
@@ -857,10 +857,10 @@ SELECT COUNT(*) AS n, SUM(length(content)) AS bytes FROM contents;
 -- PREP: test_loop_termination_events
 SELECT rx FROM ambient_events WHERE kind = 'loop_termination' AND recipient_session_id = $recipient_session_id ORDER BY id;
 -- PREP: test_edit_rows_by_session
--- {§digest-forensic-fidelity}: a session's model-authored EDITs with the scope and pattern they authored.
+-- {§digest-forensic-fidelity}: a session's model-authored edits with the scope and pattern they authored.
 SELECT id, pathname, status_rx, lineMarker AS line_marker,
        CASE WHEN json_valid(tx) THEN json_extract(tx, '$.matcher.raw') END AS pattern
-FROM log_entries WHERE session_id = $session_id AND op = 'EDIT' AND origin = 'model' ORDER BY id;
+FROM log_entries WHERE session_id = $session_id AND op = 'edit' AND origin = 'model' ORDER BY id;
 
 -- PREP: test_emission_rows_by_session
 -- {§turn-source-resources}: a session's emission announcements with their coordinates and projection state.

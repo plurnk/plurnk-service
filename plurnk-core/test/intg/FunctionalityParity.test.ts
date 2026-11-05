@@ -316,8 +316,8 @@ const matrix = async (family: Family): Promise<void> => {
         const managerDoc = references.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk.md")!;
         const toolSchemaPath = `/plurnk/${family.family}.json`;
         const toolDoc = references.find(({ scheme, pathname }) => scheme === "mcp" && pathname === toolSchemaPath)!;
-        assert.ok(managerDoc && toolDoc, "the manager catalog links to a materialized input schema");
-        assert.ok(managerDoc.content.includes(`Schema: mcp://${toolSchemaPath}`));
+        assert.ok(managerDoc && toolDoc, "the manager catalog materializes its input schema");
+        assert.ok(managerDoc.content.includes(`await plurnk.${family.family}(`));
         const toolSchema = JSON.parse(toolDoc.content) as { description?: string; properties?: Record<string, unknown> };
         assert.ok(toolSchema.properties?.alias !== undefined, "the tool schema includes the flat definition schema");
         // {§functionality-model-projection} — the adapter package's docs/<family>.md rides inside the family tool schema description.
@@ -354,7 +354,7 @@ const matrix = async (family: Family): Promise<void> => {
         // an asker, and reconciliation turns have none).
         const afterAdd = await nextPacket();
         assert.equal(packetLogRecords(afterAdd).some(({ logPath: path, path: target }) =>
-            typeof path === "string" && path.endsWith("/EDIT") && target === family.documentOf(family.addable.alias)), false, "no reconciliation EDIT receipt rides the packet");
+            typeof path === "string" && path.endsWith("/edit") && target === family.documentOf(family.addable.alias)), false, "no reconciliation EDIT receipt rides the packet");
         assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: family.addable.alias })).definition.state, "disabled");
         assert.equal(await live(family.addable), false, "disable withdraws the definition before the next operation");
         assert.equal(await document(family.addable.alias), 404, "disable withdraws the generated document");
@@ -362,7 +362,7 @@ const matrix = async (family: Family): Promise<void> => {
             "disable withdraws the child schema as well as its family catalog");
         const afterDisable = await nextPacket();
         assert.equal(packetLogRecords(afterDisable).some(({ logPath: path, path: target }) =>
-            typeof path === "string" && path.endsWith("/KILL") && target === family.documentOf(family.addable.alias)), false, "no reconciliation KILL receipt rides the packet (#338)");
+            typeof path === "string" && path.endsWith("/kill") && target === family.documentOf(family.addable.alias)), false, "no reconciliation KILL receipt rides the packet (#338)");
         assert.equal((await invoke<{ definition: { state: string } }>("enable", { alias: family.addable.alias })).definition.state, "active");
         if (family.family === "mcp") assert.equal(await documentPresent(context(), "mcp:///extra/echo.json"), 200);
         assert.equal(await live(family.addable), true);

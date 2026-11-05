@@ -21,10 +21,9 @@ import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, s
 import { Mock, chatMessageText, ProviderError } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, waitForDb, rpcProblem, subscribeNotifications, waitFor } from "./_rpc.ts";
 import { makeMockResponse, fixtureExecutors, userText } from "./_mock.ts";
-import { Validator } from "@plurnk/plurnk-contracts";
 import { urlPath, readStmt } from "./_dsl.ts";
 import { packetSection } from "./_packet.ts";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
 import { Shell } from "@plurnk/plurnk-execs";
 import { execFile } from "node:child_process";
@@ -77,7 +76,7 @@ test("{§actor-boundary} PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the
                 const resp = await runLoopToTerminal(ws, 5, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-                const cf = rows.find((r) => r.op === "FIND" && r.scheme === "workspace" && r.hostname === null && r.pathname === "/*");
+                const cf = rows.find((r) => r.op === "find" && r.scheme === "workspace" && r.hostname === null && r.pathname === "/*");
                 assert.ok(cf !== undefined, "turn 0 foists a FIND(workspace:///*) catalog preview when set");
                 assert.equal(cf.status_rx, 200, "the catalog FIND returns the scheme's rows (200)");
                 const parsed = JSON.parse(cf.rx) as { content?: string; results?: unknown[] };
@@ -95,7 +94,7 @@ test("{§actor-boundary} PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-                assert.equal(rows.find((r) => r.op === "FIND"), undefined, "no catalog FIND foisted when unset");
+                assert.equal(rows.find((r) => r.op === "find"), undefined, "no catalog FIND foisted when unset");
             } finally { ws.close(); }
         });
     } finally {
@@ -119,7 +118,7 @@ test("{§operator-config-workspace-settings} no manifest.json entry — the cata
                 const entry = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "workspace", pathname: "/manifest.json" });
                 assert.equal(entry?.id, undefined, "no manifest.json entry — the catalog is not materialized as an entry");
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-                assert.equal(rows.find((r) => r.op === "FIND"), undefined, "preview off → no catalog FIND foisted; the model FINDs on demand");
+                assert.equal(rows.find((r) => r.op === "find"), undefined, "preview off → no catalog FIND foisted; the model FINDs on demand");
             } finally { ws.close(); }
         });
     } finally {
@@ -141,7 +140,7 @@ test("{§operator-config-workspace-settings} workspace.create settings.filesItem
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-                assert.equal(rows.find((r) => r.op === "FIND"), undefined, "workspace filesItems:0 replaces env -1 — no catalog FIND foisted");
+                assert.equal(rows.find((r) => r.op === "find"), undefined, "workspace filesItems:0 replaces env -1 — no catalog FIND foisted");
             } finally { ws.close(); }
         });
         // env OFF (0) but the client's workspace asks for ON (-1) → preview appears.
@@ -153,7 +152,7 @@ test("{§operator-config-workspace-settings} workspace.create settings.filesItem
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-                const cf = rows.find((r) => r.op === "FIND" && r.status_rx === 200);
+                const cf = rows.find((r) => r.op === "find" && r.status_rx === 200);
                 assert.ok(cf !== undefined, "workspace filesItems:-1 replaces env 0 — catalog FIND foisted");
             } finally { ws.close(); }
         });
@@ -197,7 +196,7 @@ test("{§actor-boundary} turn-0 once-per-session foists fire on the session's fi
                 const r2 = await runLoopToTerminal(ws, 4, { prompt: "second" });
                 const catalogFind = async (loopId: number) => {
                     const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-                    return rows.find((r) => r.op === "FIND" && r.scheme === "workspace" && r.hostname === null && r.pathname === "/*");
+                    return rows.find((r) => r.op === "find" && r.scheme === "workspace" && r.hostname === null && r.pathname === "/*");
                 };
                 assert.ok((await catalogFind((r1 as { loopId: number }).loopId)) !== undefined, "session's first loop foists the catalog preview");
                 assert.equal(await catalogFind((r2 as { loopId: number }).loopId), undefined, "the second loop does NOT re-foist it — it's already in the session's log");
@@ -222,7 +221,7 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                 const resp = await runLoopToTerminal(ws, 4, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-                const commons = rows.find((candidate) => candidate.op === "FIND" && candidate.scheme === "workspace" && candidate.hostname === null && candidate.pathname === "/*");
+                const commons = rows.find((candidate) => candidate.op === "find" && candidate.scheme === "workspace" && candidate.hostname === null && candidate.pathname === "/*");
                 assert.ok(commons !== undefined);
                 const map = JSON.parse((JSON.parse(commons.rx) as { content: string }).content) as Array<Array<{ path: string; items?: number; tokens?: number }>>;
                 assert.deepEqual(map.map(([item]) => item.path), ["workspace:///a.md", "workspace:///nested/**"]);
@@ -230,10 +229,10 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                     "the automatic shallow map retains the nested subtree as a complete aggregate");
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 const ops = initializationRows.map(({ op }) => op);
-                assert.deepEqual([ops[0], ops.at(-1)], ["TODO", "TODO"], "initialization opens and closes with its TODOs");
-                assert.ok(ops.length > 2 && ops.slice(1, -1).every((op) => op === "FIND" || op === "plurnk" || op === "READ"),
+                assert.deepEqual([ops[0], ops.at(-1)], ["todo", "todo"], "initialization opens and closes with its TODOs");
+                assert.ok(ops.length > 2 && ops.slice(1, -1).every((op) => op === "find" || op === "plurnk" || op === "read"),
                     "between them only the environment surveys: no READ of its own program, no reasoning demonstration");
-                for (const row of initializationRows.filter(({ op }) => op === "FIND")) {
+                for (const row of initializationRows.filter(({ op }) => op === "find")) {
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
                     const items = result.results ?? (result.content === undefined ? [] : JSON.parse(result.content) as unknown[]);
                     if (row.scheme === "session") {
@@ -273,24 +272,24 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "2";
-        await withDaemon(mock(), async (db, _daemon, addr) => {
+        await withDaemon(mock(), async (db, daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "workspace.create", { name: "empty-ws-find" }); // headless: zero tracked files
+                const created = await rpcCall(ws, 1, "workspace.create", { name: "empty-ws-find" }); // headless: zero tracked files
+                const workspaceId = (created.result as { id: number }).id;
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId, modelSessionId } = resp as { loopId: number; modelSessionId: number };
                 const sessionName = await SessionName.forId(db, modelSessionId);
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-                const finds = rows.filter((r) => r.op === "FIND");
+                const finds = rows.filter((r) => r.op === "find");
                 // Nothing is in it: no project files, workspace entries, agents or members definitions, and the session is new.
                 assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
                     { scheme: "skill", hostname: "*", pathname: "/SKILL.md" },
-                    { scheme: "plurnk", hostname: null, pathname: "/*.md" },
                     { scheme: "session", hostname: sessionName, pathname: "/*" },
                 ], "the surveys that select something and the session scratch survey run, in their taught order; the other empty surfaces are left out ({§session-initialization-entry})");
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
-                    [null, null, "session knowledgebase entries"],
+                    [null, "session knowledgebase entries"],
                     "asides name what each namespace is",
                 );
                 for (const row of finds) {
@@ -315,41 +314,38 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     ?? (skillsResult.content === undefined ? [] : JSON.parse(skillsResult.content) as unknown[])) as Array<Array<{ path: string; aside?: string }>>;
                 assert.deepEqual(skillItems.flat().map(({ path }) => path), ["skill://plurnk/SKILL.md"], "an empty project still has Plurnk's ordinary service skill");
                 assert.ok(skillItems[0]?.[0]?.aside, "the skill arrives with its standard description");
-                const toolSurvey = finds.find((r) => r.scheme === "plurnk" && r.pathname === "/*.md");
-                const toolResult = JSON.parse(toolSurvey!.rx) as { content?: string; results?: unknown[] };
-                const toolItems = (toolResult.results
-                    ?? (toolResult.content === undefined ? [] : JSON.parse(toolResult.content) as unknown[])) as Array<Array<{ path: string; aside?: string }>>;
-                const shell = toolItems.flat().find(({ path }) => path === "plurnk:///sh.md");
-                assert.equal(
-                    shell?.aside,
-                    `await plurnk.sh({"command":"git status --short"}); // ${Shell.summary(Shell.current())}`,
+                const skillRead = rows.find((row) => row.op === "read" && row.scheme === "skill" && row.hostname === "plurnk" && row.pathname === "/SKILL.md");
+                assert.ok(skillRead !== undefined && skillRead.status_rx === 200, "Turn 0 reads skill://plurnk/SKILL.md");
+                const plurnkRead = rows.find((row) => row.op === "read" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk.md");
+                assert.ok(plurnkRead !== undefined && plurnkRead.status_rx === 200, "Turn 0 introspects mcp:///plurnk.md");
+                const plurnkContent = (JSON.parse(plurnkRead.rx) as { content: string }).content;
+                assert.ok(
+                    plurnkContent.includes(`await plurnk.sh({"command":"git status --short"}); // ${Shell.summary(Shell.current())}`),
                     "Turn 0 teaches a compact executable witness with its aside naming the shell that runs ({§executor-subprocess}), as plain text rather than a code span",
                 );
-                const python = toolItems.flat().find(({ path }) => path === "plurnk:///python3.md");
-                assert.equal(
-                    python?.aside,
-                    "await plurnk.python3({\"code\":\"print(42)\"}); // Run Python 3 code or scripts.",
+                assert.ok(
+                    plurnkContent.includes("await plurnk.python3({\"code\":\"print(42)\"}); // Run Python 3 code or scripts."),
                     "the interpreter aside teaches an executable inline program without requiring a document READ",
                 );
-                for (const [index, name] of ["https", "session", "wss"].entries()) {
-                    const resource = toolItems.flat().find(({ path }) => path === `plurnk:///${name}.md`);
-                    assert.ok(resource !== undefined && resource.aside !== undefined && resource.aside.trim() !== "",
-                        `${name} reference depth is visible with an orienting aside`);
-                    const response = await rpcCall(ws, 10 + index, "entry.read", { target: resource.path });
-                    const reference = Validator.assertEntryReadResult(response.result);
+                const todoSchemaRead = rows.find((row) => row.op === "read" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk/todo.json");
+                assert.ok(todoSchemaRead !== undefined && todoSchemaRead.status_rx === 200, "Turn 0 reads mcp:///plurnk/todo.json");
+                for (const name of ["https", "session", "wss"]) {
+                    const [reference] = await daemon.dispatchClientAction({
+                        workspaceId,
+                        actor: TEST_OWNER,
+                        statements: [readStmt(parsePath(`skill://plurnk/${name}.md`), { marks: [1, -1] })],
+                    });
                     assert.equal(reference.status, 200);
-                    assert.ok(reference.entry?.channels.body.content.replace(/\s+/g, " ").includes(resource.aside.replace(/\s+/g, " ")),
-                        `${name} orientation comes from the readable reference, without pinning its prose`);
+                    assert.ok(typeof reference.content === "string" && reference.content.trim().length > 0,
+                        `${name} reference is readable under skill://plurnk/`);
                 }
-                const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "plurnk" && row.hostname === null && row.pathname === "/sh.md");
-                assert.equal(shellSample, undefined, "Turn 0 does not privilege the shell skill with an automatic READ");
-                const plurnkRead = rows.find((row) => row.op === "READ" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk.md");
-                assert.ok(plurnkRead !== undefined && plurnkRead.status_rx === 200, "Turn 0 introspects mcp:///plurnk.md");
+                const shellSample = rows.find((row) => row.op === "read" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk/sh.json");
+                assert.equal(shellSample, undefined, "Turn 0 does not privilege the shell schema with an automatic READ");
                 const initializationTurnId = finds[0].turn_id;
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["TODO", "FIND", "FIND", "plurnk", "READ", "FIND", "TODO"],
+                    ["todo", "find", "read", "plurnk", "read", "read", "find", "todo"],
                     "initialization contains its opening TODO, the surveys, its closing TODO, and nothing else",
                 );
                 assert.equal(initializationRows.some(({ scheme }) => scheme === "ops"), false,
@@ -530,7 +526,7 @@ for (const standing of ["absent", "ignored", "untracked", "tracked", "excluded"]
                             assert.equal(body?.content, LOCAL, "the projection mirrors the file");
                         }
                         const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string | null; hostname: string | null; pathname: string; status_rx: number }>({ loop_id: loopId });
-                        const reads = rows.filter((row) => row.op === "READ" && row.scheme === null && row.hostname === null && /^AGENTS(\.local)?\.md$/u.test(row.pathname));
+                        const reads = rows.filter((row) => row.op === "read" && row.scheme === null && row.hostname === null && /^AGENTS(\.local)?\.md$/u.test(row.pathname));
                         assert.deepEqual(reads, [], "turn 0 does not foist READs of root AGENTS(.local).md");
                         const latestPacket = await db.engine_session_latest_packet.get<{ packet: string }>({ session_id: modelSessionId });
                         assert.ok(latestPacket, "session recorded its request packet");
@@ -585,13 +581,13 @@ test("{§session-initialization-entry} {§session-scheme}: a pre-populated sessi
                 const rows = await db.test_log_entries_by_loop.all<{
                     origin: string; op: string; scheme: string; hostname: string | null; pathname: string; status_rx: number; rx: string;
                 }>({ loop_id: childLoops[0].id });
-                const agentsRead = rows.find((row) => row.origin === "_plurnk" && row.op === "READ" && row.scheme === "session" && row.hostname === "child" && row.pathname === "/AGENTS.md");
+                const agentsRead = rows.find((row) => row.origin === "_plurnk" && row.op === "read" && row.scheme === "session" && row.hostname === "child" && row.pathname === "/AGENTS.md");
                 assert.equal(agentsRead, undefined, "child turn 0 does not foist a READ of session://child/AGENTS.md");
                 const childPacket = await db.engine_session_latest_packet.get<{ packet: string }>({ session_id: childSession.id });
                 assert.ok(childPacket, "child session recorded its request packet");
                 const childSystemText = packetSection(JSON.parse(childPacket.packet), "system-policy");
                 assert.match(childSystemText, /# Child Role\nFocus only on parser recovery\./u, "session://child/AGENTS.md rides system-policy");
-                const sessionSurvey = rows.find((row) => row.origin === "_plurnk" && row.op === "FIND" && row.scheme === "session" && row.hostname === "child" && row.pathname === "/*");
+                const sessionSurvey = rows.find((row) => row.origin === "_plurnk" && row.op === "find" && row.scheme === "session" && row.hostname === "child" && row.pathname === "/*");
                 assert.ok(sessionSurvey, "child turn 0 still surveys session://child/*");
                 assert.equal(sessionSurvey.status_rx, 200);
                 assert.match(sessionSurvey.rx, /session:\/\/child\/AGENTS\.md/u);
@@ -768,7 +764,7 @@ describe("mcp-subscription-composition", () => {
 process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
 process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "60000";
 
-const step = (op = "NOTE") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "NOTE" ? "Inspect the result." : "Resource inspected." })});`;
+const step = (op = "note") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "note" ? "Inspect the result." : "Resource inspected." })});`;
 const read = (uri: string) => `await plurnk.read({"path":"fixture://${resourcePath(uri)}","range":"1,-1"});`;
 
 test("{§mcp-host-composition} {§actor-boundary} resource updates refresh a later READ without changing history or waking unrelated sessions", { timeout: 20_000 }, async (t) => {
@@ -794,11 +790,11 @@ test("{§mcp-host-composition} {§actor-boundary} resource updates refresh a lat
     const served = await serveMcpHttp(t, handler);
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        `${read(alpha)}\n\n${read(beta)}\n\n${step("NOTE")}`,
-        step("DONE"),
-        step("DONE"),
-        `${read(alpha)}\n\n${step("NOTE")}`,
-        step("DONE"),
+        `${read(alpha)}\n\n${read(beta)}\n\n${step("note")}`,
+        step("done"),
+        step("done"),
+        `${read(alpha)}\n\n${step("note")}`,
+        step("done"),
     ].map(makeMockResponse) });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });

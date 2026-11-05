@@ -23,7 +23,7 @@ test("live: smoke — boot, read one entry, complete, and write digest evidence"
         assert.match(lastContent, /beta/, "the answer reports the requested line");
         const reads = await s.db.test_log_entries_by_session_op_full.all<{ pathname: string; rx: string }>({
             session_id: modelSessionId,
-            op: "READ",
+            op: "read",
         });
         const targetReads = reads.filter(({ pathname }) => pathname === "/lines.md");
         assert.ok(targetReads.length > 0, "the model read the target entry");

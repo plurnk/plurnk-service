@@ -35,7 +35,7 @@ interface ResumeAnswer {
     readonly content?: Record<string, unknown>;
 }
 
-const step = (op = "NOTE") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "NOTE" ? "Inspect the result." : "" })});`;
+const step = (op = "note") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "note" ? "Inspect the result." : "" })});`;
 
 const setup = async (
     t: TestContext,
@@ -45,7 +45,7 @@ const setup = async (
 ) => {
     serverProposals(t, "accept");
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse(`${operation}\n\n${step("WAIT")}`),
+        makeMockResponse(`${operation}\n\n${step("wait")}`),
         makeMockResponse("await plurnk.done({\"text\":\"MCP result observed.\"});"),
     ] });
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, servers);

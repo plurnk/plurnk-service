@@ -159,7 +159,7 @@ test("{§move}: Engine.move treats <1,-1> as whole-channel source selection", as
         );
         const rows = await db.test_log_entries_by_loop.all<{ op: string; lineMarker: string | null }>({ loop_id: loopId });
         assert.equal(
-            rows.find(({ op }) => op === "MOVE")?.lineMarker,
+            rows.find(({ op }) => op === "move")?.lineMarker,
             JSON.stringify(fullReplace),
             "canonical cleanup does not erase the scope the model authored",
         );
@@ -341,7 +341,7 @@ for (const transfer of [copyStmt, moveStmt]) {
                 assert.equal(result.status, binary ? 415 : 201);
                 if (binary) assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/mimetype-mismatch");
                 assert.deepEqual(await read("/dst.md"), binary ? undefined : { content: body, mimetype: "text/markdown" });
-                assert.deepEqual(await read("/src"), binary || op === "COPY" ? { content: body, mimetype } : undefined);
+                assert.deepEqual(await read("/src"), binary || op === "copy" ? { content: body, mimetype } : undefined);
             } finally {
                 await db.close();
                 await mimetypes.dispose();
@@ -358,7 +358,7 @@ for (const transfer of [copyStmt, moveStmt]) {
                 const result = await dispatch(transfer(urlPath("workspace", "/src"), urlPath("workspace", pathname)));
                 assert.equal(result.status, 201);
                 assert.deepEqual(await read(pathname), { content: body, mimetype: "text/markdown" });
-                assert.deepEqual(await read("/src"), op === "COPY" ? { content: body, mimetype: "text/plain" } : undefined);
+                assert.deepEqual(await read("/src"), op === "copy" ? { content: body, mimetype: "text/plain" } : undefined);
             } finally { await db.close(); }
         });
     }
@@ -377,7 +377,7 @@ for (const transfer of [copyStmt, moveStmt]) {
                     const result = await dispatch(transfer(urlPath("workspace", "/src"), urlPath("workspace", pathname)));
                     assert.equal(result.status, 201, JSON.stringify(result));
                     assert.deepEqual(await read(pathname), { content: body, mimetype });
-                    assert.deepEqual(await read("/src"), op === "COPY" ? { content: body, mimetype } : undefined);
+                    assert.deepEqual(await read("/src"), op === "copy" ? { content: body, mimetype } : undefined);
                 } finally { await db.close(); }
             });
         }
@@ -419,7 +419,7 @@ for (const transfer of [copyStmt, moveStmt]) {
                     content: 'before\n- `a<b` & "quoted"\nafter\n', mimetype: destinationMimetype,
                 });
                 assert.deepEqual(await read("/src"), {
-                    content: op === "COPY" ? content : "## Finding\n\tcafé → 東京\n", mimetype: sourceMimetype,
+                    content: op === "copy" ? content : "## Finding\n\tcafé → 東京\n", mimetype: sourceMimetype,
                 });
             } finally { await db.close(); }
         });
@@ -437,7 +437,7 @@ for (const transfer of [copyStmt, moveStmt]) {
                 const result = await dispatch(transfer(urlPath("workspace", "/src"), urlPath("workspace", "/dst.md")));
                 assert.equal(result.status, 201);
                 assert.deepEqual(await read("/dst.md"), { content: body, mimetype: "text/markdown" });
-                assert.deepEqual(await read("/src"), op === "COPY" ? { content: body, mimetype } : undefined);
+                assert.deepEqual(await read("/src"), op === "copy" ? { content: body, mimetype } : undefined);
             } finally { await db.close(); }
         });
     }
@@ -590,8 +590,8 @@ for (const transfer of [copyStmt, moveStmt]) {
             assert.equal(destination.entry?.channels.body?.content, "other channel");
             assert.equal(destination.entry?.channels.body?.mimetype, "text/markdown");
             const source = await read("/src");
-            assert.equal(source.status, op === "COPY" ? 200 : 404);
-            if (op === "COPY") {
+            assert.equal(source.status, op === "copy" ? 200 : 404);
+            if (op === "copy") {
                 assert.equal(source.entry?.channels.body?.content, content);
                 assert.equal(source.entry?.channels.body?.mimetype, "text/markdown");
             }

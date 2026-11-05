@@ -55,7 +55,7 @@ const execFileP = promisify(execFile);
 const replaceAll: LineMarker = { marks: [1, -1] };
 const edit = (pathname: string, body: string, lineMarker: LineMarker | null = null): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT",
+    op: "edit",
     aside: null,
     target: { kind: "local", raw: pathname },
     lineMarker,
@@ -533,7 +533,7 @@ const filePath = (pathname: string): ParsedPath => ({ kind: "local", raw: pathna
 
 const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement["lineMarker"]; } = {}): ReadStatement => ({
     metadata: null,
-    op: "READ", aside: null,
+    op: "read", aside: null,
     target,
     lineMarker: opts.lineMarker ?? null, matcher: null, body: null,
     position: { line: 1, column: 1 },
@@ -541,7 +541,7 @@ const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement[
 
 const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null, target, lineMarker: null, matcher, body: null,  position: { line: 1, column: 1 },
+    op: "find", aside: null, target, lineMarker: null, matcher, body: null,  position: { line: 1, column: 1 },
 });
 
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
@@ -551,14 +551,14 @@ const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
 // (a LocalPath {kind:"local"}), not a hand-built UrlPath that hides the kind the model emits.
 const parseRead = (dsl: string): ReadStatement => {
     const found = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items
-        .find((i) => i.kind === "statement" && i.statement.op === "READ");
+        .find((i) => i.kind === "statement" && i.statement.op === "read");
     if (found === undefined) throw new Error(`no READ parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: ReadStatement }).statement;
 };
 
 const parseFind = (dsl: string): FindStatement => {
     const found = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items
-        .find((i) => i.kind === "statement" && i.statement.op === "FIND");
+        .find((i) => i.kind === "statement" && i.statement.op === "find");
     if (found === undefined) throw new Error(`no FIND parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: FindStatement }).statement;
 };
@@ -1018,7 +1018,7 @@ const turnRows = async (program: string | ((root: string) => string)) => {
         const provider = new Mock({ contextWindow: 100_000, responses: [makeRawMockResponse(typeof program === "string" ? program : program(root))] });
         const turn = await engine.runTurn({ messages: [], provider, workspaceId, sessionId, loopId });
         const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string; attrs: string }>({ turn_id: turn.turnId });
-        return rows.filter((row) => row.op !== "NOTE" && row.op !== "SEND" && !LogEntryProjection.isEmission(row)).map(({ op, rx }) => ({ op, ...JSON.parse(rx) as { status: number; content?: string; problem?: Record<string, unknown> } }));
+        return rows.filter((row) => row.op !== "note" && row.op !== "send" && !LogEntryProjection.isEmission(row)).map(({ op, rx }) => ({ op, ...JSON.parse(rx) as { status: number; content?: string; problem?: Record<string, unknown> } }));
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
@@ -1036,26 +1036,26 @@ test("{§fs-namespace} {§diagnostic-observation}: a directory target says it is
         "await plurnk.kill({\"path\":\"changelog\"});",
         "await plurnk.edit({\"path\":\"changelog\",\"content\":\"x\"});",
         "await plurnk.wait({});",
-    ].join("\n\n")).then((rows) => rows.filter(({ op }) => op !== "SEND"));
+    ].join("\n\n")).then((rows) => rows.filter(({ op }) => op !== "send"));
     assert.equal(read?.status, 404);
     assert.deepEqual([read?.problem?.type, read?.problem?.detail, read?.problem?.recovery], [
         "https://problems.plurnk.xyz/scheme/file/path-is-directory",
-        "'changelog' is a directory, not a file; READ reads one file.",
-        "`FIND (changelog/)` lists its files.",
+        "'changelog' is a directory, not a file; read reads one file.",
+        "`await plurnk.find({ path: \"changelog/\" });` lists its files.",
     ]);
-    assert.equal(slashed?.problem?.detail, "'tests/forms_tests' is a directory, not a file; READ reads one file."); // {§operation-results}
-    assert.equal(slashed?.problem?.recovery, "`FIND (tests/forms_tests/)` lists its files."); // {§operation-results}
+    assert.equal(slashed?.problem?.detail, "'tests/forms_tests' is a directory, not a file; read reads one file."); // {§operation-results}
+    assert.equal(slashed?.problem?.recovery, "`await plurnk.find({ path: \"tests/forms_tests/\" });` lists its files."); // {§operation-results}
     assert.equal(listing?.status, 200, "the named listing form works");
     assert.match(String(listing?.content), /changelog\/7122\.bugfix\.rst/u);
     assert.equal(member?.status, 200, "and the listed path reads");
     assert.deepEqual([kill?.status, kill?.problem?.detail, kill?.problem?.recovery], [
         404,
-        "'changelog' is a directory, not a file; KILL removes one file.",
-        "`FIND (changelog/)` lists its files.",
+        "'changelog' is a directory, not a file; kill removes one file.",
+        "`await plurnk.find({ path: \"changelog/\" });` lists its files.",
     ]);
     assert.deepEqual([edit?.status, edit?.problem?.detail, edit?.problem?.recovery], [
         403,
-        "'changelog' is a directory, not a file; EDIT writes one file.",
+        "'changelog' is a directory, not a file; edit writes one file.",
         undefined,
     ]);
 });

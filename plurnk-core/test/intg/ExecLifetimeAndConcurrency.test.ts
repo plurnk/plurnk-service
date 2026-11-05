@@ -38,7 +38,7 @@ const statement = (body: string): ExecStatement => ({
 
 const killStatement = (scheme: string, pathname: string): KillStatement => ({
     metadata: null,
-    op: "KILL",
+    op: "kill",
     aside: null,
     target: {
         kind: "url",
@@ -711,7 +711,7 @@ const driveLoop = async (finishAfterMs: number, midTurns: number, effect: "read"
     try {
         const responses = [
             { assistant: { content: "", reasoning: null, ops: [execStmt(tag, "go"), noteStmt("searching")] } },
-            ...Array.from({ length: midTurns }, () => ({ assistant: { content: "", reasoning: null, ops: [dispositionStmt("WAIT", "waiting on the monitored stream")] } })),
+            ...Array.from({ length: midTurns }, () => ({ assistant: { content: "", reasoning: null, ops: [dispositionStmt("wait", "waiting on the monitored stream")] } })),
             { assistant: { content: "", reasoning: null, ops: [completeStmt("done")] } },
         ];
         const provider = new Mock({ contextWindow: 100000, responses: responses });

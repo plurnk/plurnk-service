@@ -38,11 +38,11 @@ const fixture = async (t: TestContext) => {
     return { db, workspaceId, sessionId, loopId, engine };
 };
 
-for (const [op, maxStrikes] of [["READ (workspace:///answer.md)", 0], ["READ (workspace:///answer.md)", 1],
-    ["READ (workspace:///answer.md)", 3], ["FIND (workspace:///answer.md)", 3], ["BARE", 3]] as const) {
+for (const [op, maxStrikes] of [["read (workspace:///answer.md)", 0], ["read (workspace:///answer.md)", 1],
+    ["read (workspace:///answer.md)", 3], ["find (workspace:///answer.md)", 3], ["bare", 3]] as const) {
     test(`{§loop-completion} ${op}, tolerance ${maxStrikes}: observe the result without repeating the answer`, async (t) => {
         const { db, engine, workspaceId, sessionId, loopId } = await fixture(t);
-        const firstStmt = op === "BARE"
+        const firstStmt = op === "bare"
             ? 'await plurnk.bare({"prompt":"What is six times seven?"});'
             : `await plurnk.${op.split(" ")[0].toLowerCase()}({"path":"workspace:///answer.md"});`;
         const provider = new Mock({ contextWindow: 100000, responses: [
@@ -58,8 +58,8 @@ for (const [op, maxStrikes] of [["READ (workspace:///answer.md)", 0], ["READ (wo
         assert.match(JSON.stringify(provider.received[1]), /42/, "the observation packet contains the result");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string }>({ loop_id: loopId });
         const authored = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(authored.map((row) => row.op), [op.split(" ")[0], "SEND", "DONE"], "the model resolves its messages without repeating the answer");
-        assert.equal(authored.find((row) => row.op === "SEND")?.status_rx, 200, "reply delivery is not deferred");
+        assert.deepEqual(authored.map((row) => row.op), [op.split(" ")[0], "send", "done"], "the model resolves its messages without repeating the answer");
+        assert.equal(authored.find((row) => row.op === "send")?.status_rx, 200, "reply delivery is not deferred");
         assert.equal(await new StrikeRail(db).streak(loopId), 0);
         const turns = await Promise.all(result.turnIds.slice(1).map((id) => db.test_get_turn.get<{ status: number }>({ id })));
         assert.deepEqual(turns.map((turn) => turn?.status), [102, 200]);
@@ -96,12 +96,12 @@ for (const target of ["log:///999/*/*", "workspace:///answer.md"]) {
 test("{§loop-completion} curation cannot turn a same-turn READ into an observed result", async (t) => {
     const { engine, workspaceId, sessionId, loopId } = await fixture(t);
     const provider = new Mock({ contextWindow: 100000, responses: [response(
-        "await plurnk.read({\"path\":\"workspace:///answer.md\"});", "await plurnk.kill({\"path\":\"log:///**/READ\"});", "await plurnk.send({\"text\":\"Finished.\"});",
+        "await plurnk.read({\"path\":\"workspace:///answer.md\"});", "await plurnk.kill({\"path\":\"log:///**/read\"});", "await plurnk.send({\"text\":\"Finished.\"});",
     )] });
     const turn = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
     assert.equal(turn.status, 102);
-    assert.deepEqual(turn.outcomes.map(({ op }) => op), ["READ", "KILL", "SEND"]);
-    assert.ok(turn.outcomes.filter(({ op }) => op !== "KILL").every(({ status }) => status === 200));
+    assert.deepEqual(turn.outcomes.map(({ op }) => op), ["read", "kill", "send"]);
+    assert.ok(turn.outcomes.filter(({ op }) => op !== "kill").every(({ status }) => status === 200));
 });
 
 test("{§loop-completion} repeated work costs observations, not ceremony strikes", async (t) => {
@@ -214,8 +214,8 @@ test("{§loop-completion} completion with a live child session joins it on the r
 
         const rows = await db.test_log_entries_by_turn.all<{ status_rx: number; op: string; origin: string }>({ turn_id: premature.turnId });
         const modelRows = rows.filter(({ origin }) => origin === "model");
-        const completion = modelRows.find((r) => r.op === "DONE");
-        assert.deepEqual(modelRows.map(({ op }) => op), ["DONE"], "joining adds no fictional operation");
+        const completion = modelRows.find((r) => r.op === "done");
+        assert.deepEqual(modelRows.map(({ op }) => op), ["done"], "joining adds no fictional operation");
         assert.equal(completion?.status_rx, 200, "the reply is delivered while the loop joins the child");
     } finally { await db.close(); }
 });
@@ -297,7 +297,7 @@ test("{§loop-completion}: READ + completed inventory in the same turn is deferr
         });
         assert.equal(result.status, 102, "the turn stays a continue — the loop never went terminal");
         const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
-        assert.equal(rows.find((r) => r.op === "SEND")?.status_rx, 200, "successful delivery is not rewritten to describe loop continuation");
+        assert.equal(rows.find((r) => r.op === "send")?.status_rx, 200, "successful delivery is not rewritten to describe loop continuation");
         // The STORED record agrees with the return: the close persists the provisional status
         // pre-dispatch, and the refusal demotes the stored row too.
         const storedTurn = await db.test_get_turn.get<{ status: number }>({ id: result.turnId });
@@ -344,9 +344,9 @@ test("{§op-shapes} a decorated WAIT keeps its sibling, source evidence, and ord
         });
         assert.equal(result.status, 102);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; status_rx: number; rx: string }>({ turn_id: result.turnId });
-        assert.equal(rows.find(({ op }) => op === "READ")?.status_rx, 200, "the valid sibling executes");
+        assert.equal(rows.find(({ op }) => op === "read")?.status_rx, 200, "the valid sibling executes");
         assert.equal(rows.some(({ op }) => op === "error"), false);
-        const task = rows.find(({ op }) => op === "WAIT");
+        const task = rows.find(({ op }) => op === "wait");
         assert.equal(task?.status_rx, 102);
         assert.equal(JSON.parse(task.rx).problem, undefined);
         assert.equal(JSON.parse(task.rx).detail, "Nothing is in flight. Continuing."); // {§operation-results}
@@ -377,7 +377,7 @@ test("{§loop-completion} waiting cannot complete an empty join over a same-turn
                         reasoning: null,
                         ops: [
                             execStmt("unregistered-runtime", "build"),
-                            dispositionStmt("WAIT", "awaiting the build"),
+                            dispositionStmt("wait", "awaiting the build"),
                         ],
                     },
                 }],
@@ -393,7 +393,7 @@ test("{§loop-completion} waiting cannot complete an empty join over a same-turn
         assert.equal(loopStatus, 102, "the loop never records a false successful terminal");
         const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
         assert.ok((rows.find((row) => isExecutionOp(row.op))?.status_rx ?? 0) >= 400, "the original operation failure is preserved");
-        assert.equal(rows.find((row) => row.op === "WAIT")?.status_rx, 102, "the failed result enters the next packet without an additional correction");
+        assert.equal(rows.find((row) => row.op === "wait")?.status_rx, 102, "the failed result enters the next packet without an additional correction");
     } finally { await db.close(); }
 });
 
@@ -425,7 +425,7 @@ test("{§loop-completion} a successful same-turn scoped KILL continues an empty 
                 messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
             });
             const rows = await db.test_log_sequencees_by_turn.all<{ sequence: number; op: string }>({ turn_id: primed.turnId });
-            const read = rows.find((row) => row.op === "READ");
+            const read = rows.find((row) => row.op === "read");
             assert.ok(read, "the prior READ provides one open log row to curate");
             const primedTurn = await db.test_get_turn.get<{ sequence: number }>({ id: primed.turnId });
             assert.ok(primedTurn, "the model turn has a durable loop coordinate");
@@ -437,8 +437,8 @@ test("{§loop-completion} a successful same-turn scoped KILL continues an empty 
                             content: "",
                             reasoning: null,
                             ops: [
-                                killStmt(urlPath("log", `/1/${primedTurn.sequence}/${read.sequence}/READ`), { marks: [1, -1] }),
-                                status === 202 ? dispositionStmt("WAIT", "continue after curation") : sendStmt(null, "curation complete"),
+                                killStmt(urlPath("log", `/1/${primedTurn.sequence}/${read.sequence}/read`), { marks: [1, -1] }),
+                                status === 202 ? dispositionStmt("wait", "continue after curation") : sendStmt(null, "curation complete"),
                             ],
                         },
                     }],
@@ -531,7 +531,7 @@ test("{§loop-completion} 499 is never gated by live work: it recursively cancel
         const childStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: childLoop }))?.status;
         assert.equal(childStatus, 499, "the unresolved child is cancelled with its abandoned parent scope");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; origin: string }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["KILL", 200]],
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["kill", 200]],
             "cancellation is the actual KILL, not an invented failure operation");
     } finally { await db.close(); }
 });
@@ -541,7 +541,7 @@ describe("send-200-mutation-receipts", () => {
 for (const curate of [false, true]) {
     test(`{§loop-completion}: mutation receipts require observation, including when curated=${curate}`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
-        const extra = curate ? "await plurnk.read({\"path\":\"workspace:///notes.md\"});\n\nawait plurnk.read({\"path\":\"workspace:///notes.md\"});\n\nawait plurnk.kill({\"path\":\"log:///**/EDIT\"});" : "";
+        const extra = curate ? "await plurnk.read({\"path\":\"workspace:///notes.md\"});\n\nawait plurnk.read({\"path\":\"workspace:///notes.md\"});\n\nawait plurnk.kill({\"path\":\"log:///**/edit\"});" : "";
         const mock = new Mock({ contextWindow: 16384, responses: [
             makeMockResponse("await plurnk.edit({\"path\":\"workspace:///notes.md\",\"content\":\"hello\"});" + extra + "await plurnk.send({\"text\":\"Written.\"});"),
             makeMockResponse("await plurnk.done({});"),
@@ -557,10 +557,10 @@ for (const curate of [false, true]) {
                 assert.equal(mock.received.length, 2, "a completed mutation needs one observation turn, no terminal ceremony");
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: result.loopId });
                 const model = rows.filter(({ origin }) => origin === "model");
-                assert.deepEqual(model.map(({ op }) => op), curate ? ["EDIT", "READ", "READ", "KILL", "SEND", "DONE"] : ["EDIT", "SEND", "DONE"]);
+                assert.deepEqual(model.map(({ op }) => op), curate ? ["edit", "read", "read", "kill", "send", "done"] : ["edit", "send", "done"]);
                 assert.equal(model[0].status_rx, 201);
                 assert.deepEqual(model.slice(1).map(({ op, status_rx }) => [op, status_rx]),
-                    curate ? [["READ", 200], ["READ", 200], ["KILL", 204], ["SEND", 200], ["DONE", 200]] : [["SEND", 200], ["DONE", 200]],
+                    curate ? [["read", 200], ["read", 200], ["kill", 204], ["send", 200], ["done", 200]] : [["send", 200], ["done", 200]],
                     "curation cannot select a same-turn receipt before it is published");
                 assert.match(JSON.stringify(mock.received[1]), /notes\.md/);
                 const entry = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "workspace", name: "body" });
@@ -613,8 +613,8 @@ for (const command of ["true", "hostname"]) {
                 const rows = await db.test_log_entries_by_session.all<{ op: string; origin: string; status_rx: number }>({ session_id: result.modelSessionId });
                 assert.ok(rows.some((r) => isExecutionOp(r.op)), "the stream ran");
                 assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op),
-                    ["sh", ...(earlyReply ? ["SEND"] : []), "DONE"], "no synthetic completion operation");
-                assert.equal(rows.filter((r) => (r.op === "SEND" || r.op === "DONE") && r.origin === "model" && r.status_rx === 200).length,
+                    ["sh", ...(earlyReply ? ["send"] : []), "done"], "no synthetic completion operation");
+                assert.equal(rows.filter((r) => (r.op === "send" || r.op === "done") && r.origin === "model" && r.status_rx === 200).length,
                     earlyReply ? 2 : 1, "only the authored replies were delivered");
             } finally {
                 ws.close();
@@ -647,7 +647,7 @@ test("{§loop-completion}: a successful execution receipt defers completion one 
             assert.equal(provider.received.length, 2);
             assert.equal(provider.remaining, 0);
             const rows = await db.test_log_entries_by_session.all<{ op: string; origin: string; status_rx: number }>({ session_id: result.modelSessionId });
-            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "DONE"]);
+            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "send", "done"]);
             assert.equal(result.result.content, undefined);
             assert.equal(await lastReply(db, result.loopId), "Completed.", "an empty completion resolves the observed assignment without repeating its answer");
             assert.equal(rows.filter(({ op, origin }) => isExecutionOp(op) && origin === "model").length, 1, "the submitted command was executed");
@@ -674,12 +674,12 @@ test("{§loop-completion}: a same-turn stream's nonzero exit defers completion w
             assert.equal(result.finalStatus, 200);
             assert.equal(provider.remaining, 0, "the deferral cost exactly one more provider turn");
             const rows = await db.test_log_entries_by_session.all<{ id: number; op: string; origin: string; status_rx: number }>({ session_id: result.modelSessionId });
-            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "DONE"]);
-            assert.ok(rows.some(({ op, origin, status_rx }) => op === "READ" && origin === "_plurnk" && status_rx === 200), "the terminal stream observation lands as the command's answer");
+            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "send", "done"]);
+            assert.ok(rows.some(({ op, origin, status_rx }) => op === "read" && origin === "_plurnk" && status_rx === 200), "the terminal stream observation lands as the command's answer");
             assert.match(JSON.stringify(provider.received[1]), /\\"exitCode\\":3/, "the exit code reaches the observation packet");
             assert.equal(result.result.content, undefined);
         assert.equal(await lastReply(db, result.loopId), "concluding after reading the failure");
-            assert.ok(rows.filter(({ origin, op }) => origin === "model" && ["SEND", "DONE", "KILL"].includes(op)).every(({ status_rx }) => status_rx === 200),
+            assert.ok(rows.filter(({ origin, op }) => origin === "model" && ["send", "done", "kill"].includes(op)).every(({ status_rx }) => status_rx === 200),
                 "both replies succeeded independently of the execution");
         } finally {
             ws.close();

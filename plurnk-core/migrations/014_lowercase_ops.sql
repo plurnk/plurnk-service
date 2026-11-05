@@ -161,11 +161,44 @@ SET op = CASE
         THEN lower(op)
         ELSE op
     END,
+    pathname = CASE
+        WHEN scheme = 'log'
+         AND pathname IS NOT NULL
+         AND substr(pathname, length(pathname) - 4) IN ('/FIND','/READ','/EDIT','/COPY','/MOVE','/SEND','/DONE','/FAIL','/BARE','/WORK','/FORK','/KILL','/NOTE','/TODO','/WAIT')
+        THEN substr(pathname, 1, length(pathname) - 4) || lower(substr(pathname, length(pathname) - 3))
+        ELSE pathname
+    END,
     tx = CASE
         WHEN json_valid(tx)
          AND json_extract(tx, '$.op') IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
-        THEN json_set(tx, '$.op', lower(json_extract(tx, '$.op')))
+        THEN json_set(
+            CASE
+                WHEN json_extract(tx, '$.target.raw') GLOB 'log:///*/*'
+                 AND substr(json_extract(tx, '$.target.raw'), length(json_extract(tx, '$.target.raw')) - 4) IN ('/FIND','/READ','/EDIT','/COPY','/MOVE','/SEND','/DONE','/FAIL','/BARE','/WORK','/FORK','/KILL','/NOTE','/TODO','/WAIT')
+                THEN json_set(
+                    tx,
+                    '$.target.raw',
+                    substr(json_extract(tx, '$.target.raw'), 1, length(json_extract(tx, '$.target.raw')) - 4) || lower(substr(json_extract(tx, '$.target.raw'), length(json_extract(tx, '$.target.raw')) - 3)),
+                    '$.target.pathname',
+                    substr(json_extract(tx, '$.target.pathname'), 1, length(json_extract(tx, '$.target.pathname')) - 4) || lower(substr(json_extract(tx, '$.target.pathname'), length(json_extract(tx, '$.target.pathname')) - 3))
+                )
+                ELSE tx
+            END,
+            '$.op',
+            lower(json_extract(tx, '$.op'))
+        )
         ELSE tx
+    END,
+    rx = CASE
+        WHEN json_valid(rx)
+         AND json_extract(rx, '$.problem.instance') GLOB 'log:///*/*'
+         AND substr(json_extract(rx, '$.problem.instance'), length(json_extract(rx, '$.problem.instance')) - 4) IN ('/FIND','/READ','/EDIT','/COPY','/MOVE','/SEND','/DONE','/FAIL','/BARE','/WORK','/FORK','/KILL','/NOTE','/TODO','/WAIT')
+        THEN json_set(
+            rx,
+            '$.problem.instance',
+            substr(json_extract(rx, '$.problem.instance'), 1, length(json_extract(rx, '$.problem.instance')) - 4) || lower(substr(json_extract(rx, '$.problem.instance'), length(json_extract(rx, '$.problem.instance')) - 3))
+        )
+        ELSE rx
     END,
     source = CASE
         WHEN source GLOB 'log:///*/*'
@@ -174,7 +207,9 @@ SET op = CASE
         ELSE source
     END
 WHERE op IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
+   OR (scheme = 'log' AND pathname IS NOT NULL AND substr(pathname, length(pathname) - 4) IN ('/FIND','/READ','/EDIT','/COPY','/MOVE','/SEND','/DONE','/FAIL','/BARE','/WORK','/FORK','/KILL','/NOTE','/TODO','/WAIT'))
    OR (json_valid(tx) AND json_extract(tx, '$.op') IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT'))
+   OR (json_valid(rx) AND json_extract(rx, '$.problem.instance') GLOB 'log:///*/*' AND substr(json_extract(rx, '$.problem.instance'), length(json_extract(rx, '$.problem.instance')) - 4) IN ('/FIND','/READ','/EDIT','/COPY','/MOVE','/SEND','/DONE','/FAIL','/BARE','/WORK','/FORK','/KILL','/NOTE','/TODO','/WAIT'))
    OR (source GLOB 'log:///*/*' AND substr(source, length(source) - 4) IN ('/FIND','/READ','/EDIT','/COPY','/MOVE','/SEND','/DONE','/FAIL','/BARE','/WORK','/FORK','/KILL','/NOTE','/TODO','/WAIT'));
 
 CREATE TRIGGER log_entries_immutable_core
@@ -228,25 +263,76 @@ WHERE packet IS NOT NULL
 UPDATE workspaces
 SET settings = json_set(
     settings,
-    '$.capabilities',
+    '$.capabilities.allow',
     (
-        SELECT json_group_object(
+        SELECT json_group_array(
             CASE
-                WHEN cap.key IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
-                THEN lower(cap.key)
-                ELSE cap.key
-            END,
-            json(cap.value)
+                WHEN json_type(item.value) = 'object'
+                 AND json_extract(item.value, '$.operation') IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
+                THEN json_set(item.value, '$.operation', lower(json_extract(item.value, '$.operation')))
+                ELSE json(item.value)
+            END
         )
-        FROM json_each(workspaces.settings, '$.capabilities') cap
+        FROM json_each(workspaces.settings, '$.capabilities.allow') item
     )
 )
 WHERE json_valid(settings)
-  AND json_type(settings, '$.capabilities') = 'object'
+  AND json_type(settings, '$.capabilities.allow') = 'array'
   AND EXISTS (
       SELECT 1
-      FROM json_each(workspaces.settings, '$.capabilities') cap
-      WHERE cap.key IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
+      FROM json_each(workspaces.settings, '$.capabilities.allow') item
+      WHERE json_type(item.value) = 'object'
+        AND json_extract(item.value, '$.operation') IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
+  );
+
+UPDATE workspaces
+SET settings = json_set(
+    settings,
+    '$.capabilities.only',
+    (
+        SELECT json_group_array(
+            CASE
+                WHEN json_type(item.value) = 'object'
+                 AND json_extract(item.value, '$.operation') IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
+                THEN json_set(item.value, '$.operation', lower(json_extract(item.value, '$.operation')))
+                ELSE json(item.value)
+            END
+        )
+        FROM json_each(workspaces.settings, '$.capabilities.only') item
+    )
+)
+WHERE json_valid(settings)
+  AND json_type(settings, '$.capabilities.only') = 'array'
+  AND EXISTS (
+      SELECT 1
+      FROM json_each(workspaces.settings, '$.capabilities.only') item
+      WHERE json_type(item.value) = 'object'
+        AND json_extract(item.value, '$.operation') IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
+  );
+
+UPDATE workspaces
+SET settings = json_set(
+    settings,
+    '$.capabilities.deny',
+    (
+        SELECT json_group_array(
+            CASE
+                WHEN json_type(item.value) = 'object'
+                 AND json_extract(item.value, '$.operation') IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
+                THEN json_set(item.value, '$.operation', lower(json_extract(item.value, '$.operation')))
+                ELSE json(item.value)
+            END
+        )
+        FROM json_each(workspaces.settings, '$.capabilities.deny') item
+    )
+)
+WHERE json_valid(settings)
+  AND json_type(settings, '$.capabilities.deny') = 'array'
+  AND EXISTS (
+      SELECT 1
+      FROM json_each(workspaces.settings, '$.capabilities.deny') item
+      WHERE json_type(item.value) = 'object'
+        AND json_extract(item.value, '$.operation') IN ('FIND','READ','EDIT','COPY','MOVE','SEND','DONE','FAIL','BARE','WORK','FORK','KILL','NOTE','TODO','WAIT')
   );
 
 DROP TRIGGER IF EXISTS model_calls_native_inputs_valid;

@@ -76,9 +76,9 @@ ${task}`, 10),
             assert.equal(JSON.parse(dispatched.find((row) => isExecutionOp(row.op))!.rx).problem.instance, path,
                 "the durable Problem and model-facing pointer address the same receipt");
             const retrievals = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turnIds[2] });
-            assert.equal(retrievals.find((row) => row.op === "READ")?.status_rx, 200);
-            assert.equal(retrievals.find((row) => row.op === "FIND")?.status_rx, 200);
-            assert.match(JSON.stringify(logEntries(packets[1]).filter((entry) => entry.logPath.endsWith("/FIND"))), /log:\/\/\/1\/2\/2\/search-api2/,
+            assert.equal(retrievals.find((row) => row.op === "read")?.status_rx, 200);
+            assert.equal(retrievals.find((row) => row.op === "find")?.status_rx, 200);
+            assert.match(JSON.stringify(logEntries(packets[1]).filter((entry) => entry.logPath.endsWith("/find"))), /log:\/\/\/1\/2\/2\/search-api2/,
                 "full-text search and path-glob selection return the same canonical leaf");
             assert.equal(logEntries(packets[2]).some((entry) => entry.logPath === path), false,
                 "KILL selects that exact runtime's receipts and retires them from context");
@@ -137,7 +137,7 @@ test("{§exec-stream} a model's execution result surfaces visibly in the next tu
             // into the next turn (origin=_plurnk), visible because the channel closed: the model SEES
             // its output, it never has to find+pull it. This is the loop the live demo exposed.
             assert.ok(
-                entries.some((e) => e.logPath.endsWith("/READ") && e.origin === "_plurnk" && (e.path ?? "").includes("stdout")),
+                entries.some((e) => e.logPath.endsWith("/read") && e.origin === "_plurnk" && (e.path ?? "").includes("stdout")),
                 `turn-2 must foist a READ of the exec stdout; got ${JSON.stringify(entries.map((e) => ({ logPath: e.logPath, path: e.path, origin: e.origin })))}`,
             );
             assert.match(packetSection(packet, "log"), /plurnk-index-probe/, "the foisted delta surfaces the actual stdout, open");
@@ -174,7 +174,7 @@ test("{§exec-stream} a generated JSON result publishes whole with the extent th
                 weight: number;
             }>({ turn_id: turn2 });
             const observation = rows.find((row) =>
-                row.scheme === "js" && row.op === "READ" && row.origin === "_plurnk");
+                row.scheme === "js" && row.op === "read" && row.origin === "_plurnk");
             assert.ok(observation, "the structured executor result reaches the ambient READ path");
 
             const result = JSON.parse(observation.rx) as { content: string; mimetype: string; startLine: number; range: { total: number; returned: [number, number] } };
@@ -187,7 +187,7 @@ test("{§exec-stream} a generated JSON result publishes whole with the extent th
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(packetRow!.packet);
             const entry = logEntries(packet).find((candidate) =>
-                candidate.logPath.endsWith("/READ") && (candidate.path ?? "").startsWith("js:///"));
+                candidate.logPath.endsWith("/read") && (candidate.path ?? "").startsWith("js:///"));
             assert.ok(entry, "the model-facing packet contains the structured observation");
             assert.equal(entry.preview, undefined, "nothing is previewed on the model's behalf");
             assert.match(packetSection(packet, "log"), /1:\{"n":1,/, "the document's head is what the model sees");
@@ -212,7 +212,7 @@ test("{§exec-stream} a failed execution with output on both channels is one fai
             assert.equal(finalStatus, 200);
             const turn2 = turnIds![2];
             const rows = (await db.test_log_entries_by_turn.all<{ sequence: number; status_rx: number; scheme: string; fragment: string | null; op: string; origin: string; rx: string }>({ turn_id: turn2 }))
-                .filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === "sh");
+                .filter((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === "sh");
             assert.equal(rows.length, 2, "one terminal READ per channel that holds content");
             const failed = rows.filter((row) => row.status_rx >= 400);
             assert.equal(failed.length, 1, "the execution's failure rides one row");
@@ -258,7 +258,7 @@ test("{§executor-results} {§exec-stream} a nonzero exit reaches the model as t
                 source: string | null;
                 rx: string;
             }>({ turn_id: turn2 });
-            const terminals = rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === "sh");
+            const terminals = rows.filter((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === "sh");
             assert.equal(terminals.length, 2, "one terminal READ per channel that holds content");
             for (const terminal of terminals) {
                 assert.equal(terminal.status_rx, 200);
@@ -304,7 +304,7 @@ test("{§exec-stream} the cursor-terminal race: a one-burst stream consumed befo
             const row = await db.test_get_packet.get<{ packet: string }>({ id: last });
             const packet = JSON.parse(row?.packet ?? "{}");
             const entries = logEntries(packet);
-            const deltas = entries.filter((e) => e.logPath.endsWith("/READ") && e.origin === "_plurnk" && (e.path ?? "").includes("stdout"));
+            const deltas = entries.filter((e) => e.logPath.endsWith("/read") && e.origin === "_plurnk" && (e.path ?? "").includes("stdout"));
             assert.ok(deltas.length >= 1, "the stream's deltas surfaced");
             const log = packetSection(packet, "log");
             assert.match(log, /burst-payload/, "the burst content was delivered visibly as the terminal observation");
@@ -357,18 +357,18 @@ class StructuredFixture {
     } as const;
 }
 
-const response = (op: "NOTE" | "SEND") => ({
+const response = (op: "note" | "send") => ({
     assistant: {
         content: "",
         reasoning: null,
-        ops: [op === "NOTE" ? noteStmt("continue") : sendStmt(null, "done")],
+        ops: [op === "note" ? noteStmt("continue") : sendStmt(null, "done")],
     },
 });
 
 const setup = async (
     mimetype: string,
     content: string,
-    responses: ConstructorParameters<typeof Mock>[0]["responses"] = [response("NOTE"), response("SEND")],
+    responses: ConstructorParameters<typeof Mock>[0]["responses"] = [response("note"), response("send")],
 ) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `structured-${crypto.randomUUID()}`);
@@ -418,7 +418,7 @@ const structuredRows = async (db: Awaited<ReturnType<typeof openMigrated>>, turn
         attrs: string;
         active: 0 | 1;
     }>({ turn_id: turnId }).then((rows) => rows.filter((row) =>
-        row.scheme === "structured-fixture" && row.op === "READ" && row.origin === "_plurnk"));
+        row.scheme === "structured-fixture" && row.op === "read" && row.origin === "_plurnk"));
 
 type Fixture = Awaited<ReturnType<typeof setup>>;
 
@@ -612,7 +612,7 @@ test("{§exec-stream}: invalid result liveness cannot advance publication or lea
 test("{§packet} KILLing a terminal observation cannot erase its subscription delivery transition", async () => {
     const kill: KillStatement = {
         metadata: null,
-        op: "KILL",
+        op: "kill",
         aside: null,
         target: urlPath("log", "/1/2/2"),
         lineMarker: null,
@@ -620,7 +620,7 @@ test("{§packet} KILLing a terminal observation cannot erase its subscription de
         position: { line: 1, column: 1 },
     };
     const fixture = await setup("application/json", "", [
-        response("NOTE"),
+        response("note"),
         {
             assistant: {
                 content: "",
@@ -628,7 +628,7 @@ test("{§packet} KILLing a terminal observation cannot erase its subscription de
                 ops: [kill, noteStmt("failure observed")],
             },
         },
-        response("SEND"),
+        response("send"),
     ]);
     try {
         await ChannelWrite.setChannelState(fixture.db, {
@@ -661,8 +661,8 @@ test("{§packet} KILLing a terminal observation cannot erase its subscription de
 
         const curated = await fixture.runTurn();
         assert.deepEqual(curated.outcomes, [
-            { op: "KILL", status: 200, problemType: null },
-            { op: "NOTE", status: 200, problemType: null },
+            { op: "kill", status: 200, problemType: null },
+            { op: "note", status: 200, problemType: null },
         ]);
         const durableObservations = await structuredRows(fixture.db, observed.turnId);
         assert.equal(durableObservations.length, 1, "the terminal observation remains durable evidence");
@@ -685,7 +685,7 @@ test("{§packet} KILLing a terminal observation cannot erase its subscription de
             [],
             "the terminal result is not published again after its observation row is curated away",
         );
-        assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200, problemType: null }],
+        assert.deepEqual(completed.outcomes, [{ op: "send", status: 200, problemType: null }],
             "log curation cannot make an already-published terminal result pending again");
         const source = await fixture.db.test_get_subscription.get<{ close_result: string }>({
             id: fixture.subscriptionId,
@@ -949,7 +949,7 @@ for (const specimen of [
             assert.equal(wakes[0].result.status, specimen.status);
 
             const waited = await engine.dispatch({
-                statement: dispositionStmt("WAIT", "waiting"),
+                statement: dispositionStmt("wait", "waiting"),
                 workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
             });
             assert.equal(
@@ -962,7 +962,7 @@ for (const specimen of [
                 workspaceId, sessionId, loopId, turnId, fromSequence: 3, origin: "model",
             });
             assert.equal(completed.status, 102, "closed but unobserved: the completion defers to the next packet");
-            assert.deepEqual(completed.outcomes, [{ op: "DONE", status: 200, problemType: null }], "message completion is delivered while the loop still observes results");
+            assert.deepEqual(completed.outcomes, [{ op: "done", status: 200, problemType: null }], "message completion is delivered while the loop still observes results");
             const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: {
                 content: "", reasoning: null,
             } }] });
@@ -990,7 +990,7 @@ test("{§loop-completion}: an earlier turn's completed stream is identified with
             workspaceId, sessionId, loopId, turnId: nextTurnId, fromSequence: 1, origin: "model",
         });
         assert.equal(completed.status, 102);
-        assert.deepEqual(completed.outcomes, [{ op: "DONE", status: 200, problemType: null }], "the earlier execution is not invented in this program");
+        assert.deepEqual(completed.outcomes, [{ op: "done", status: 200, problemType: null }], "the earlier execution is not invented in this program");
     } finally { await db.close(); }
 });
 });
@@ -1039,7 +1039,7 @@ test("{§exec-stream} a 40-line stream closes as its first page with the extent;
             const { finalStatus, turnIds, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "count" });
             const turn2 = turnIds![2];
             const rows = await db.test_log_entries_by_turn.all<{ id: number; scheme: string; op: string; origin: string; source: string | null; fragment: string | null; rx: string }>({ turn_id: turn2 });
-            const foisted = rows.find((r) => r.scheme === "sh" && r.op === "READ" && r.origin === "_plurnk" && r.fragment === "stdout");
+            const foisted = rows.find((r) => r.scheme === "sh" && r.op === "read" && r.origin === "_plurnk" && r.fragment === "stdout");
             assert.ok(foisted, "the stream's terminal observation was foisted");
             assert.equal(foisted.source, null, "invocation correlation is not copied into actor attribution");
             assert.equal((await db.test_stream_observation_source.get<{ source: string }>({ id: foisted.id }))?.source,
@@ -1056,7 +1056,7 @@ test("{§exec-stream} a 40-line stream closes as its first page with the extent;
             const log = packetSection(packet, "log");
             assert.match(log, /\s1:1\n/, "line 1 is delivered");
             assert.match(log, /\n40:40(?:\n|$)/, "and so is line 40: the first page holds them all");
-            const terminal = logEntries(packet).find((e) => e.logPath.endsWith("/READ") && (e.path ?? "").includes("stdout"));
+            const terminal = logEntries(packet).find((e) => e.logPath.endsWith("/read") && (e.path ?? "").includes("stdout"));
             assert.ok(terminal, "the terminal observation names the read resource under path");
             assert.equal(terminal.target, undefined);
             assert.equal(terminal.stream, undefined);
@@ -1065,16 +1065,16 @@ test("{§exec-stream} a 40-line stream closes as its first page with the extent;
             assert.equal(terminal.exitCode, 0);
             assert.equal(terminal.range, "40 lines");
             // {§exec-stream} — the empty stderr channel is a fact on the stdout conclusion, never a row of its own.
-            const emptyTerminal = logEntries(packet).find((e) => e.logPath.endsWith("/READ") && (e.path ?? "").includes("stderr"));
+            const emptyTerminal = logEntries(packet).find((e) => e.logPath.endsWith("/read") && (e.path ?? "").includes("stderr"));
             assert.equal(emptyTerminal, undefined, "an empty sibling channel lands no row");
             assert.deepEqual(terminal.channels, { "#stderr": 0 }, "the surviving conclusion names the empty sibling");
             assert.equal(finalStatus, 200, "the scoped READ turn concluded");
-            const read = await db.test_get_log_rx_by_session_op.get<{ rx: string }>({ session_id: modelSessionId, op: "READ" });
+            const read = await db.test_get_log_rx_by_session_op.get<{ rx: string }>({ session_id: modelSessionId, op: "read" });
             const asked = JSON.parse(read!.rx) as { content: string; startLine: number };
             assert.equal(asked.content, "38\n39\n40", "the channel keeps every line for a scoped READ");
             assert.equal(asked.startLine, 38);
             const nextPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![3] }))!.packet);
-            const explicit = logEntries(nextPacket).find((row) => /^log:\/\/\/1\/3\/\d+\/READ$/u.test(row.logPath) && row.origin === undefined);
+            const explicit = logEntries(nextPacket).find((row) => /^log:\/\/\/1\/3\/\d+\/read$/u.test(row.logPath) && row.origin === undefined);
             assert.ok(explicit, "the requested tail reaches the next model request");
             assert.equal(explicit.terminal, true, "a deliberate stream READ conveys the same liveness as the automatic observation");
             assert.equal(explicit.exitCode, 0, "the subprocess exit code survives deliberate READ projection");
@@ -1165,11 +1165,11 @@ await plurnk.wait({"text":"waiting"});`, 10),
             assert.match(String(delivery.body), new RegExp(`${specimen.pageLines}:`), "the packet carries the page, line-numbered");
             assert.doesNotMatch(String(delivery.body), new RegExp(`${specimen.pageLines + 1}:`), "and nothing past it");
             const delivered = await db.test_log_entries_by_turn.all<{ origin: string; op: string; rx: string }>({ turn_id: turnIds![2] });
-            const automatic = delivered.find((row) => row.origin === "_plurnk" && row.op === "READ" && JSON.parse(row.rx).content === specimen.page);
+            const automatic = delivered.find((row) => row.origin === "_plurnk" && row.op === "read" && JSON.parse(row.rx).content === specimen.page);
             assert.ok(automatic, "the page is what was delivered and stored");
             assert.deepEqual(JSON.parse(automatic.rx).range, specimen.range, "the durable range keeps requested and returned coordinates");
             const rows = await db.test_log_entries_by_turn.all<{ origin: string; op: string; rx: string }>({ turn_id: turnIds![2] });
-            const explicit = rows.find((row) => row.origin === "model" && row.op === "READ");
+            const explicit = rows.find((row) => row.origin === "model" && row.op === "read");
             assert.equal(JSON.parse(explicit?.rx ?? "null")?.content, content, "the full source remains available on deliberate READ");
         } finally {
             ws.close();
@@ -1199,7 +1199,7 @@ test("{§exec-stream} FIND over an exec stream channel answers the match instead
             await rpcCall(ws, 1, "workspace.create", { name: "find-over-stream" });
             const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go" });
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
-            const find = rows.find((r) => r.op === "FIND" && r.origin === "model");
+            const find = rows.find((r) => r.op === "find" && r.origin === "model");
             assert.ok(find, "the model's FIND was dispatched");
             assert.equal(find.status_rx, 200, `FIND over the stream channel answers 200, got ${find.status_rx}: ${find.rx.slice(0, 200)}`);
             assert.match(find.rx, /"matched":"beta"/, "the regex row carries its match");
@@ -1261,17 +1261,17 @@ for (const body of [null, '{"query":"fixture"}']) {
         assert.equal(invocation.path, "inspect", "the receipt names the invoked tool, as its paired operation does");
         assert.ok(provider.received[1].some((message) => message.role === "assistant" && chatMessageText(message) === `await fixture.inspect(${body ?? ""});`),
             "the complete invocation remains distinct from its output");
-        const automatic = observed.find((row) => row.path === invocation.stream && row.logPath.endsWith("/READ"));
+        const automatic = observed.find((row) => row.path === invocation.stream && row.logPath.endsWith("/read"));
         assert.ok(automatic);
         assert.equal(automatic.source, undefined);
         assert.equal(automatic.stream, undefined);
         assert.equal(automatic.range, "40 lines", "the automatic observation is a markerless READ: whole, because it fits ({§tokenomics})");
-        const failed = (await packet(3)).find((row) => /^log:\/\/\/1\/3\/\d+\/READ$/u.test(row.logPath) && row.status === 416);
+        const failed = (await packet(3)).find((row) => /^log:\/\/\/1\/3\/\d+\/read$/u.test(row.logPath) && row.status === 416);
         assert.ok(failed);
         assert.ok(provider.received[2].some((message) => message.role === "assistant" && chatMessageText(message) === `await plurnk.read({"path":"${invocation.logPath}","range":"17,40"});`));
         assert.equal((failed.problem as { range: { total: number } }).range.total, body === null ? 0 : 1);
         if (body === null) assert.equal((failed.problem as { stream: string }).stream, invocation.stream);
-        const explicit = (await packet(4)).find((row) => /^log:\/\/\/1\/4\/\d+\/READ$/u.test(row.logPath) && row.origin === undefined);
+        const explicit = (await packet(4)).find((row) => /^log:\/\/\/1\/4\/\d+\/read$/u.test(row.logPath) && row.origin === undefined);
         assert.ok(explicit, "the actual MCP output is read at the address advertised in the packet");
         assert.ok(provider.received[3].some((message) => message.role === "assistant" && chatMessageText(message) === `await plurnk.read({"path":"${String(invocation.stream)}","range":"17,40"});`));
         assert.equal(explicit.terminal, true, "MCP's JSON channel declaration does not hide its lifecycle");

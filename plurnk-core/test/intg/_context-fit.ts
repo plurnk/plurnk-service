@@ -81,7 +81,7 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, sessio
         id: number; turn_id: number; sequence: number; op: string | null; scheme: string | null; origin: string;
         pathname: string | null; rx: string; folded: string; active: number; status_rx: number;
     }>({ loop_id: firstModel.loop_id });
-    const attachments = rows.filter((row) => row.op === "READ" && row.scheme === null && row.origin === "_plurnk"
+    const attachments = rows.filter((row) => row.op === "read" && row.scheme === null && row.origin === "_plurnk"
         && fixture.openPaths.includes(row.pathname ?? ""));
     assert.deepEqual(attachments.map(({ pathname }) => pathname), fixture.openPaths, "every attachment produced exactly one ordinary READ row, in order");
     const landed = attachments.filter(({ status_rx }) => status_rx === 200);
@@ -99,8 +99,8 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, sessio
         else assert.ok((rx.problem.delivered ?? 0) > 0 && expected.startsWith(rx.content), `${row.pathname}: a receipt's body is the prefix of lines that fit`);
         assert.equal(rx.problem.type, RESULT_EXCEEDS_BUDGET);
         assert.ok(rx.problem.lines > 0 && rx.problem.tokens > rx.problem.remaining, "the receipt names the size and what remained");
-        assert.match(rx.problem.detail, /READ a range, or KILL first\.$/u, "the receipt names the verbs ({§tokenomics})");
-        const coordinate: string = `log:///${loop.sequence}/${firstModel.sequence}/${row.sequence}/READ`;
+        assert.match(rx.problem.detail, /read a range, or kill first\.$/u, "the receipt names the verbs ({§tokenomics})");
+        const coordinate: string = `log:///${loop.sequence}/${firstModel.sequence}/${row.sequence}/read`;
         const visible: Record<string, unknown> | undefined = projected.find((entry) => entry.logPath === coordinate);
         if (visible !== undefined && rx.content === null) assert.equal("body" in visible, false, "the body it could not hold is absent from the request");
     }
@@ -124,7 +124,7 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, sessio
         assert.ok(retirement, "retirement has a durable curation effect, not missing history");
         const operation = rows.find(({ id }) => id === retirement.operation_log_entry_id);
         assert.ok(operation);
-        assert.equal(operation.op, "KILL");
+        assert.equal(operation.op, "kill");
         assert.equal(operation.status_rx, 200, "a successful KILL accounts for the inactive projection");
     }
     assert.equal(await readFile(join(fixture.workspace, "incident.txt"), "utf8"), fixture.content, "curation never alters the source file");

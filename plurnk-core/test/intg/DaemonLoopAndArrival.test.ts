@@ -75,7 +75,7 @@ test("{§message-arrival}: a trusted adapter source survives message publication
                 workspaceId: workspace.workspaceId,
                 sessionId,
                 loopId: accepted.loopId,
-            })).find((entry) => entry.op === "SEND" && entry.origin === "_plurnk");
+            })).find((entry) => entry.op === "send" && entry.origin === "_plurnk");
             assert.equal(prompt?.origin, "_plurnk", "the harness remains the arrival-row producer");
             assert.equal(prompt?.source, "acp://session42", "the external actor remains its causal source");
         } finally {
@@ -173,7 +173,7 @@ test("{§turn-source-resources} loop.run streams log/entry notifications during 
             const captured = logNotifs().filter((event) => (event as { entry?: { loop_id?: unknown } }).entry?.loop_id === terminal.loopId);
             const harness = captured
                 .map((event) => (event as { entry: { id: number; op: string | null; origin: string; status_rx: number; attrs: unknown } }).entry)
-                .filter((entry) => entry.origin === "_plurnk" && entry.op !== "SEND");
+                .filter((entry) => entry.origin === "_plurnk" && entry.op !== "send");
             assert.equal(harness.some(LogEntryProjection.isEmission), false, "`_plurnk` initialization announces no content emission ({§turn-source-resources})");
             const initialization = harness;
             assert.equal(
@@ -182,23 +182,23 @@ test("{§turn-source-resources} loop.run streams log/entry notifications during 
                 "initialization has no synthetic actionless receipt",
             );
             assert.equal(new Set(initialization.map(({ id }) => id)).size, initialization.length, "initialization rows are ordinary settled operations, not later updates");
-            assert.ok(initialization.filter(({ op }) => op === "READ").every(({ status_rx }) => status_rx === 200));
+            assert.ok(initialization.filter(({ op }) => op === "read").every(({ status_rx }) => status_rx === 200));
             const authored = captured.filter((event) => {
                 const entry = (event as { entry: { op: string | null; origin: string } }).entry;
-                return (entry.op === "SEND" && entry.origin === "_plurnk") || entry.origin === "model";
+                return (entry.op === "send" && entry.origin === "_plurnk") || entry.origin === "model";
             });
-            assert.deepEqual(authored.map((event) => (event as { entry: { op: string } }).entry.op), ["SEND", "EDIT", "SEND", "DONE"], "each authored message and operation streams independently of initialization");
+            assert.deepEqual(authored.map((event) => (event as { entry: { op: string } }).entry.op), ["send", "edit", "send", "done"], "each authored message and operation streams independently of initialization");
             const prompt = authored[0] as { entry: { op: string; origin: string } };
-            assert.equal(prompt.entry.op, "SEND");
+            assert.equal(prompt.entry.op, "send");
             assert.equal(prompt.entry.origin, "_plurnk");
             const first = authored[1] as { entry: { op: string; origin: string } };
-            assert.equal(first.entry.op, "EDIT");
+            assert.equal(first.entry.op, "edit");
             assert.equal(first.entry.origin, "model");
             const firstReply = authored[2] as { entry: { op: string; status_rx: number } };
-            assert.equal(firstReply.entry.op, "SEND");
+            assert.equal(firstReply.entry.op, "send");
             assert.equal(firstReply.entry.status_rx, 200, "delivery succeeds before the EDIT is observed");
             const observedReply = authored[3] as { entry: { op: string; status_rx: number } };
-            assert.equal(observedReply.entry.op, "DONE");
+            assert.equal(observedReply.entry.op, "done");
             assert.equal(observedReply.entry.status_rx, 200, "the observation turn's reply is also delivered");
             assert.equal(terminal.finalStatus, 200);
         } finally { ws.close(); }
@@ -350,14 +350,14 @@ test("{§methods-workspace-create}: a fresh loop foists one turn-zero READ per p
             const result = await runLoopToTerminal(ws, 2, { prompt: "look at these", openPaths: ["src/foo.ts", "README.md"] });
             const reads = (logNotifs() as Array<{ entry: { op: string; origin: string; scheme: string | null; pathname: string } }>)
                 .map((c) => c.entry)
-                .filter((e) => e.op === "READ" && e.origin === "_plurnk" && e.scheme === null);
+                .filter((e) => e.op === "read" && e.origin === "_plurnk" && e.scheme === null);
             assert.deepEqual(reads.map((r) => r.pathname).toSorted(), ["README.md", "src/foo.ts"], "a plurnk-origin file READ foisted per openPath at turn 0 — columns in wire canon ({§fs-namespace})");
             const rows = await db.test_log_entries_by_loop.all<{
                 op: string; origin: string; scheme: string | null; pathname: string; turn_id: number;
             }>({ loop_id: result.loopId });
-            const frame = rows.find((row) => row.op === "SEND" && row.origin === "_plurnk");
+            const frame = rows.find((row) => row.op === "send" && row.origin === "_plurnk");
             assert.ok(frame, "the initial message row exists");
-            assert.ok(rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null)
+            assert.ok(rows.filter((row) => row.op === "read" && row.origin === "_plurnk" && row.scheme === null)
                 .every((row) => row.turn_id === frame.turn_id),
             "every selected path is read in the same turn that publishes the initial message");
         } finally { ws.close(); }
@@ -379,7 +379,7 @@ test("{§methods-workspace-create}: initial reads preserve file paths, scheme ad
             assert.equal(result.result.status, 200);
             const reads = (await db.test_log_entries_by_loop.all<{
                 op: string; origin: string; scheme: string | null; pathname: string; status_rx: number;
-            }>({ loop_id: result.loopId })).filter(({ op, origin }) => op === "READ" && origin === "_plurnk");
+            }>({ loop_id: result.loopId })).filter(({ op, origin }) => op === "read" && origin === "_plurnk");
             assert.ok(reads.some(({ scheme, pathname, status_rx }) => scheme === null && pathname === "literal (file).txt" && status_rx === 200));
             assert.ok(reads.some(({ scheme, pathname, status_rx }) => scheme === "workspace" && pathname === "/reference.txt" && status_rx === 200), JSON.stringify(reads));
             const packet = mock.received[0].map(chatMessageText).join("\n");
@@ -423,10 +423,10 @@ test("{§message-arrival} the arrival row and a normal same-turn op are both bor
             const resp = await runLoopToTerminal(ws, 2, { prompt: "hello there" });
             const { loopId } = resp as { loopId: number };
             const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-            const prompt = rows.find((r) => r.op === "SEND" && r.origin === "_plurnk");
+            const prompt = rows.find((r) => r.op === "send" && r.origin === "_plurnk");
             assert.ok(prompt !== undefined, "the message is logged once as an inbound SEND row");
             assert.equal(prompt.folded, "[]", "new message delivery is visible");
-            const send = rows.find((r) => r.op === "DONE" && r.origin === "model" && r.turn_id === prompt.turn_id);
+            const send = rows.find((r) => r.op === "done" && r.origin === "model" && r.turn_id === prompt.turn_id);
             assert.ok(send !== undefined, "the model's own op shares the turn");
             assert.equal(send.folded, "[]", "a normal op in the same turn stays visible");
         } finally { ws.close(); }
@@ -447,11 +447,11 @@ test("{§tokenomics} a short message lands as one inbound SEND row", async () =>
             const resp = await runLoopToTerminal(ws, 2, { prompt: "three\nshort\nlines" });
             const { loopId } = resp as { loopId: number };
             const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-            const prompt = rows.find((r) => r.op === "SEND" && r.origin === "_plurnk");
+            const prompt = rows.find((r) => r.op === "send" && r.origin === "_plurnk");
             assert.ok(prompt, "the arrival row exists");
             assert.equal(prompt.lineMarker, null, "message delivery is not a synthetic scoped retrieval");
             assert.match(prompt.tx ?? "", /three/, "the complete durable body belongs to the arrival row's sent side");
-            assert.equal(rows.filter((r) => r.op === "SEND" && r.origin === "_plurnk").length, 1, "initialization does not duplicate message delivery");
+            assert.equal(rows.filter((r) => r.op === "send" && r.origin === "_plurnk").length, 1, "initialization does not duplicate message delivery");
         } finally { ws.close(); }
     });
 });
@@ -465,14 +465,14 @@ test("{§tokenomics}: a jumbo message lands folded with its size; Open Work poin
             const resp = await runLoopToTerminal(ws, 2, { prompt: fat });
             const { loopId, turnIds } = resp as { loopId: number; turnIds: number[] };
             const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-            const prompt = rows.find((r) => r.op === "SEND" && r.origin === "_plurnk");
+            const prompt = rows.find((r) => r.op === "send" && r.origin === "_plurnk");
             assert.ok(prompt, "the arrival row exists");
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds[turnIds.length - 1] });
             const packet = JSON.parse(row!.packet) as { weight: number; sections?: Array<{ name: string; slot: string; header: string | null; content: string }> };
             const log = packetSection(packet, "log");
             const workSection = (packet.sections ?? []).find((sec) => sec.name === "work");
             assert.doesNotMatch(log, /prompt line 1:/, "a body that does not fit is not shown in part");
-            const projectedPrompt = logEntries(packet).find((entry) => typeof entry.logPath === "string" && entry.logPath.endsWith("/SEND"));
+            const projectedPrompt = logEntries(packet).find((entry) => typeof entry.logPath === "string" && entry.logPath.endsWith("/send"));
             assert.ok(projectedPrompt, "the arrival row is in the packet");
             assert.equal(projectedPrompt.body, undefined, "folded: the row is its size and its address");
             assert.equal(projectedPrompt.preview, undefined, "nothing is previewed on the model's behalf");
@@ -483,7 +483,7 @@ test("{§tokenomics}: a jumbo message lands folded with its size; Open Work poin
             assert.ok(Number.isFinite(budget) && size.tokens > budget - packet.weight, "it did not fit the remaining budget");
             assert.ok(packet.weight <= budget, "the packet itself fits");
             const bodyTarget = typeof projectedPrompt.logPath === "string" ? projectedPrompt.logPath : undefined;
-            assert.match(bodyTarget ?? "", /^log:\/\/\/1\/2\/\d+\/SEND$/, "the message body is addressed in the first packet-bearing turn");
+            assert.match(bodyTarget ?? "", /^log:\/\/\/1\/2\/\d+\/send$/, "the message body is addressed in the first packet-bearing turn");
             const session = await db.test_get_session_id_by_loop.get<{ session_id: number }>({ loop_id: loopId });
             assert.ok(session, "the model session exists");
             const [workspace] = await daemon.listWorkspaces();
@@ -515,7 +515,7 @@ test("{§tokenomics}: a single-line jumbo prompt lands folded with its size, and
             const packet = JSON.parse(row!.packet) as { sections?: Array<{ name: string; content: string }> };
             const log = packetSection(packet, "log");
             assert.doesNotMatch(log, /hay hay/u, "the jumbo line is not stuffed into the packet, nor cut into it");
-            const arrival = logEntries(packet).find((entry) => typeof entry.logPath === "string" && entry.logPath.endsWith("/SEND"));
+            const arrival = logEntries(packet).find((entry) => typeof entry.logPath === "string" && entry.logPath.endsWith("/send"));
             assert.ok(arrival);
             assert.deepEqual(Object.keys(arrival.size as object).toSorted(), ["lines", "tokens"], "the row states its size");
             assert.equal((arrival.size as { lines: number }).lines, 1);

@@ -23,19 +23,19 @@ export const fullReplace: LineMarker = { marks: [1, -1] };
 
 export const editStmt = (target: ParsedPath | null, body: string | null = null, marker: LineMarker | null = null, matcher: MatcherBody | null = null): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null, target, lineMarker: marker, matcher, body,
+    op: "edit", aside: null, target, lineMarker: marker, matcher, body,
     position: { line: 1, column: 1 },
 });
 
 export const readStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null, matcher: MatcherBody | null = null): ReadStatement => ({
     metadata: null,
-    op: "READ", aside: null, target, lineMarker, matcher, body: null,
+    op: "read", aside: null, target, lineMarker, matcher, body: null,
     position: { line: 1, column: 1 },
 });
 
 export const sendStmt = (recipient: ParsedPath | null = null, body: string | null = null): SendStatement => ({
     metadata: null,
-    op: "SEND", aside: null, target: recipient, lineMarker: null,
+    op: "send", aside: null, target: recipient, lineMarker: null,
     body: body === null ? null : { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
@@ -46,27 +46,27 @@ export function dispositionStmt(op: DispositionStatement["op"], body: string | n
 }
 
 export const noteStmt = (body: string | null = null): NoteStatement => ({
-    op: "NOTE", body, aside: null, metadata: null, target: null, lineMarker: null, position: { line: 1, column: 1 },
+    op: "note", body, aside: null, metadata: null, target: null, lineMarker: null, position: { line: 1, column: 1 },
 });
 
 // {§op-shapes} — a scoped KILL suppresses one log body interval or deletes an entry span; a
 // matcher ({§parse-recovery}) selects the rows or lines.
 export const killStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null, matcher: MatcherBody | null = null): KillStatement => ({
     metadata: null,
-    op: "KILL", aside: null, target, lineMarker, matcher, body: null,
+    op: "kill", aside: null, target, lineMarker, matcher, body: null,
     position: { line: 1, column: 1 },
 });
 
 export const doneStmt = (body: string | null = null, target: ParsedPath | null = null): DoneStatement => ({
     metadata: null,
-    op: "DONE", aside: null, target, lineMarker: null,
+    op: "done", aside: null, target, lineMarker: null,
     body: body === null ? null : { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
 
 export const failStmt = (body: string | null = null, target: ParsedPath | null = null): FailStatement => ({
     metadata: null,
-    op: "FAIL", aside: null, target, lineMarker: null,
+    op: "fail", aside: null, target, lineMarker: null,
     body: body === null ? null : { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
@@ -75,7 +75,7 @@ export const completeStmt = (body: string | null = null): DoneStatement => doneS
 
 export const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null, target, lineMarker: null, matcher, body: null,
+    op: "find", aside: null, target, lineMarker: null, matcher, body: null,
     position: { line: 1, column: 1 },
 });
 
@@ -85,7 +85,7 @@ export const copyStmt = (
     sourceMarker: TextLineMarker | null = null,
     destinationMarker: TextLineMarker | null = null,
 ): CopyStatement => ({
-    op: "COPY", aside: null,
+    op: "copy", aside: null,
     source: { target: src, metadata: null, lineMarker: sourceMarker, matcher: null },
     destination: { target: dst, metadata: null, lineMarker: destinationMarker, matcher: null },
     position: { line: 1, column: 1 },
@@ -97,7 +97,7 @@ export const moveStmt = (
     sourceMarker: TextLineMarker | null = null,
     destinationMarker: TextLineMarker | null = null,
 ): MoveStatement => ({
-    op: "MOVE", aside: null,
+    op: "move", aside: null,
     source: { target: src, metadata: null, lineMarker: sourceMarker, matcher: null },
     destination: { target: dst, metadata: null, lineMarker: destinationMarker, matcher: null },
     position: { line: 1, column: 1 },

@@ -105,7 +105,7 @@ When a server requires OAuth sign-in, Plurnk notifies the user in the client and
 holds `add`, `replace`, or `enable` until sign-in completes. Once the operation
 returns `active`, the server's tool reference is ready for the next turn; an
 active server's `detail.grant` names the sign-in it holds. Neither the sign-in
-URL nor callback is a resource to READ.
+URL nor callback is a resource to read.
 
 An advanced `authorization` definition can specify scope, client registration,
 the authorization server (`issuer`) or extra request parameters; the add schema
@@ -120,4 +120,4 @@ undoes the workspace definition and restores any inherited definition and
 enabled state; use `disable` to suppress an inherited server. Neither action
 deletes configuration files or saved results. The runtime document projects
 the enabled-tool snapshot: after
-`enable`, FIND the reference again before relying on a tool's signature.
+`enable`, find the reference again before relying on a tool's signature.

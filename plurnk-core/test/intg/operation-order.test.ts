@@ -37,42 +37,42 @@ const cases = [
     {
         name: "READs observe the state at their authored position, not a future EDIT",
         ops: [`await plurnk.read({"path":"${target}","range":"1,-1"});`, `await plurnk.edit({"path":"${target}","range":"2","content":"TWO\\nextra"});`, `await plurnk.read({"path":"${target}","range":"1,-1"});`, `await plurnk.edit({"path":"${target}","range":"4","content":"THREE"});`, `await plurnk.read({"path":"${target}","range":"1,-1"});`],
-        order: ["READ", "EDIT", "READ", "EDIT", "READ"],
+        order: ["read", "edit", "read", "edit", "read"],
         reads: [content, "one\nTWO\nextra\nthree\nfour\nfive\nsix", "one\nTWO\nextra\nTHREE\nfour\nfive\nsix"],
         statuses: [200, 200],
     },
     {
         name: "an EDIT can create a resource and a later EDIT can change it in the same turn",
         ops: ["await plurnk.edit({\"path\":\"workspace:///new.md\",\"content\":\"alpha\\nbeta\"});", "await plurnk.edit({\"path\":\"workspace:///new.md\",\"range\":\"2\",\"content\":\"BETA\"});", "await plurnk.read({\"path\":\"workspace:///new.md\",\"range\":\"1,-1\"});"],
-        order: ["EDIT", "EDIT", "READ"],
+        order: ["edit", "edit", "read"],
         reads: ["alpha\nBETA"],
         statuses: [201, 200],
     },
     {
         name: "an invalid EDIT does not roll back an earlier effect or suppress a later one",
         ops: [`await plurnk.edit({"path":"${target}","range":"1","content":"ONE"});`, `await plurnk.edit({"path":"${target}","range":"99","content":"invalid"});`, `await plurnk.edit({"path":"${target}","range":"2","content":"TWO"});`, `await plurnk.read({"path":"${target}","range":"1,-1"});`],
-        order: ["EDIT", "EDIT", "EDIT", "READ"],
+        order: ["edit", "edit", "edit", "read"],
         reads: ["ONE\nTWO\nthree\nfour\nfive\nsix"],
         statuses: [200, 416, 200],
     },
     {
         name: "a surviving hash follows its target through an adjacent numeric insertion",
         ops: [`await plurnk.edit({"path":"${target}","range":"0","content":"prefix"});`, `await plurnk.read({"path":"${target}","range":"1,-1"});`, `await plurnk.edit({"path":"${target}","range":"${anchors[1]}","content":"TWO"});`, `await plurnk.read({"path":"${target}","range":"1,-1"});`],
-        order: ["EDIT", "READ", "EDIT", "READ"],
+        order: ["edit", "read", "edit", "read"],
         reads: [`prefix\n${content}`, "prefix\none\nTWO\nthree\nfour\nfive\nsix"],
         statuses: [200, 200],
     },
     {
         name: "an overwritten hash target is not rebound to replacement content",
         ops: [`await plurnk.edit({"path":"${target}","range":"${anchors[1]}","content":"replacement"});`, `await plurnk.edit({"path":"${target}","range":"${anchors[1]}","content":"wrong"});`, `await plurnk.read({"path":"${target}","range":"1,-1"});`],
-        order: ["EDIT", "EDIT", "READ"],
+        order: ["edit", "edit", "read"],
         reads: ["one\nreplacement\nthree\nfour\nfive\nsix"],
         statuses: [200, 409],
     },
     {
         name: "an untouched hash range survives a preceding scoped entry KILL",
         ops: [`await plurnk.kill({"path":"${target}","range":"1"});`, `await plurnk.edit({"path":"${target}","range":"${anchors[2]},${anchors[3]}","content":"THREE\\nFOUR"});`, `await plurnk.read({"path":"${target}","range":"1,-1"});`],
-        order: ["KILL", "EDIT", "READ"],
+        order: ["kill", "edit", "read"],
         reads: ["two\nTHREE\nFOUR\nfive\nsix"],
         statuses: [200],
     },
@@ -96,11 +96,11 @@ await plurnk.note({"text":"verify"});`, 10),
             const result = await runLoopToTerminal(ws, 2, { prompt: "run" });
             assert.equal(result.finalStatus, 200);
             const rows = (await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string; tx: string }>({ loop_id: result.loopId }))
-                .filter(({ origin, op }) => origin === "model" && op !== "SEND" && op !== "DONE" && op !== "FAIL" && op !== "NOTE"
+                .filter(({ origin, op }) => origin === "model" && op !== "send" && op !== "done" && op !== "fail" && op !== "note"
                     && !TurnDisposition.isOp(op)).slice(1);
             assert.deepEqual(rows.map(({ op }) => op), fixture.order);
-            assert.deepEqual(rows.filter(({ op }) => op === "READ").map(({ rx }) => JSON.parse(rx).content), fixture.reads);
-            assert.deepEqual(rows.filter(({ op }) => op === "EDIT").map(({ rx }) => JSON.parse(rx).status), fixture.statuses);
+            assert.deepEqual(rows.filter(({ op }) => op === "read").map(({ rx }) => JSON.parse(rx).content), fixture.reads);
+            assert.deepEqual(rows.filter(({ op }) => op === "edit").map(({ rx }) => JSON.parse(rx).status), fixture.statuses);
         } finally { ws.close(); }
     });
 });
@@ -127,8 +127,8 @@ for (const origin of ["client", "_plurnk"] as const) for (const hasNote of [fals
             else assert.equal((await execution).status, 200, "the administrative program finished without ending a model loop");
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: env.turnId });
             assert.deepEqual(rows.filter(({ op }) => op !== null).map(({ op }) => op),
-                failOnOperationError ? ["EDIT", "READ", "EDIT"] : ["EDIT", "READ", "EDIT", "EDIT", ...(hasNote ? ["NOTE"] : [])]);
-            assert.equal(JSON.parse(rows.find(({ op }) => op === "READ")!.rx).content, content);
+                failOnOperationError ? ["edit", "read", "edit"] : ["edit", "read", "edit", "edit", ...(hasNote ? ["note"] : [])]);
+            assert.equal(JSON.parse(rows.find(({ op }) => op === "read")!.rx).content, content);
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: env.sessionId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === env.turnId && kind === "ops")?.content, source,
                 "the submitted program remains durable even when execution stops at an error");
@@ -406,28 +406,28 @@ for (const readers of [undefined, 1]) test(`{§scheme-address} a client read acq
             off();
         }
         const rows = await daemon.readLog({ workspaceId, sessionId });
-        const note = rows.find(({ op }) => op === "NOTE");
+        const note = rows.find(({ op }) => op === "note");
         // {§message-arrival} The arrival's receipt names the message by its short address.
         const short = rows.flatMap(({ origin, rx }) => origin === "_plurnk" && typeof (rx as { resource?: unknown } | null)?.resource === "string"
             ? [(rx as { resource: string }).resource] : []).find((resource) => resource.startsWith("message://"));
         assert.ok(note !== undefined && short !== undefined, "the turn noted, and its arrival names its message");
         const coordinate = `${note.loop_seq}/${note.turn_seq}/${note.sequence}`;
         // {§log-kill-scope} A deliberate scoped KILL trims the row's second line from every later reader.
-        const trimmed = await modelOperation(daemon, db, { workspaceId, sessionId, statement: killStmt(parsePath(`log:///${coordinate}/NOTE`), { marks: [2] }) });
+        const trimmed = await modelOperation(daemon, db, { workspaceId, sessionId, statement: killStmt(parsePath(`log:///${coordinate}/note`), { marks: [2] }) });
         assert.equal(trimmed.status, 200);
         const read = async (target: string, slice: { channel?: string; offset?: number } = {}): Promise<EntryReadResult> =>
             Validator.assertEntryReadResult(await daemon.readEntry({ workspaceId, sessionId, target, ...slice }));
 
         // A log row is computed: no stored entry, the canonical coordinate, its unnamed default channel, trimmed.
         const kept = "One.\nThree.";
-        assert.deepEqual(await read(`log:///${coordinate}/NOTE`), { status: 200, entry: {
-            entryId: null, target: `log:///${coordinate}/NOTE`,
+        assert.deepEqual(await read(`log:///${coordinate}/note`), { status: 200, entry: {
+            entryId: null, target: `log:///${coordinate}/note`,
             channels: { "": { content: kept, contentOffset: 0, contentLength: kept.length, mimetype: "text/plain", weight: contentWeight(kept), state: "static" } },
         } });
-        assert.deepEqual((await read(`log:///${coordinate}/NOTE`, { channel: "", offset: 5 })).entry?.channels[""],
+        assert.deepEqual((await read(`log:///${coordinate}/note`, { channel: "", offset: 5 })).entry?.channels[""],
             { content: "Three.", contentOffset: 5, contentLength: kept.length, mimetype: "text/plain", weight: contentWeight(kept), state: "static" },
             "a computed channel slices by code points, as a stored one does");
-        const unknownChannel = await read(`log:///${coordinate}/NOTE`, { channel: "patch" });
+        const unknownChannel = await read(`log:///${coordinate}/note`, { channel: "patch" });
         assert.deepEqual([unknownChannel.status, typeOf(unknownChannel)], [404, "channel-not-found"]);
 
         // A turn's sources are computed by the session they name; its reasoning is the text its first operation row projects.
@@ -455,14 +455,14 @@ for (const readers of [undefined, 1]) test(`{§scheme-address} a client read acq
         const selected = async (target: string): Promise<EntryReadResult> =>
             Validator.assertEntryReadResult(await daemon.readEntryChannel({ workspaceId, sessionId, target }));
         for (const [target, channel, content] of [
-            [`log:///${coordinate}/NOTE`, "", kept],
+            [`log:///${coordinate}/note`, "", kept],
             [`reasoning://main/${note.loop_seq}/${note.turn_seq}`, "body", thought],
             [`${minted}#body`, "body", "Think, then answer."],
         ] as const) {
             const one = await selected(target);
             assert.deepEqual([Object.keys(one.entry?.channels ?? {}), one.entry?.channels[channel]?.content], [[channel], content], target);
         }
-        const absent = await selected(`log:///${coordinate}/NOTE#patch`);
+        const absent = await selected(`log:///${coordinate}/note#patch`);
         assert.deepEqual([absent.status, typeOf(absent)], [404, "channel-not-found"]);
 
         // Another workspace reads none of this session's addresses.
@@ -473,7 +473,7 @@ for (const readers of [undefined, 1]) test(`{§scheme-address} a client read acq
         // The scheme's own refusals stand.
         for (const [target, status, code] of [
             ["log:///x", 400, "coordinate-malformed"],
-            [`log:///9/9/9/NOTE`, 404, "entry-not-found"],
+            [`log:///9/9/9/note`, 404, "entry-not-found"],
             [`reasoning://main/${note.loop_seq}/99`, 404, "entry-not-found"],
         ] as const) {
             const refused = await read(target);
@@ -622,7 +622,7 @@ test("{§op-methods-op-dispatch}: attachment acquisition obeys ordinary READ pol
     });
     assert.equal(result.status, 403);
     assert.match(result.problem!.type, /capability-denied$/u);
-    assert.equal(result.problem!.operation, "READ");
+    assert.equal(result.problem!.operation, "read");
     assert.equal(source.preparations, 0, "denied sources are not fetched or prepared");
 });
 
@@ -683,7 +683,7 @@ test("{§capability-admission} a MOVE source requires observation as well as mut
             origin: "client",
         });
         assert.equal(result.status, 403);
-        assert.equal(result.problem?.operation, "MOVE");
+        assert.equal(result.problem?.operation, "move");
         assert.equal(result.problem?.scheme, "file");
         assert.equal(result.problem?.access, "observe");
     } finally { await db.close(); }
@@ -699,7 +699,7 @@ test("{§capability-admission} proposal disposition cannot deny or resurrect a c
         });
         assert.equal(admitted.status, 201, "proposal settlement is downstream of admission");
 
-        await setPolicies(db, workspaceId, policies({ deny: [{ operation: "EDIT" }] }, "accept"));
+        await setPolicies(db, workspaceId, policies({ deny: [{ operation: "edit" }] }, "accept"));
         const denied = await engine.dispatch({
             statement: editStmt(urlPath("workspace", "/y"), "body"),
             workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "client",
@@ -725,7 +725,7 @@ test("{§capability-admission} unknown routes reach ordinary resolution even und
     const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
         await setPolicies(db, workspaceId, policies({ deny: [
-            { operation: "READ" },
+            { operation: "read" },
             { scheme: "exec" },
         ] }));
         const result = await engine.dispatch({
@@ -881,7 +881,7 @@ ${next}`),
         assert.equal(received[0].attachments[0].mediaType, "text/markdown");
         assert.equal(Buffer.from(received[0].attachments[0].bytes).toString(), "original");
         const rows = await daemon.readLog({ workspaceId, sessionId, loopId: started.loopId });
-        const failed = rows.filter((row) => row.op === "SEND" && row.status_rx === 404);
+        const failed = rows.filter((row) => row.op === "send" && row.status_rx === 404);
         assert.equal(failed.length, 1, "the source failure is a visible ordinary SEND failure");
         const senderPackets = provider.received.map((messages) => messages.map(chatMessageText).join("\n")).join("\n");
         assert.match(senderPackets, /"attachments":\[\{"name":"selected\.md","mediaType":"text\/markdown","path":"workspace:\/\/\/selected\.md"\}\]/u);
@@ -952,22 +952,22 @@ test("{§op-shapes} a KILL after SEND executes: curation and the reply persist b
             workspaceId, sessionId, loopId, messages: [],
         });
         const originalRows = await db.test_log_entries_by_turn.all<{ id: number; sequence: number; op: string; active: number }>({ turn_id: seed.turnId });
-        const plan = originalRows.find(({ op }) => op === "NOTE");
+        const plan = originalRows.find(({ op }) => op === "note");
         assert.ok(plan);
         const turn = await db.test_latest_model_turn_in_loop.get<{ sequence: number }>({ loop_id: loopId });
         assert.ok(turn);
         const source = `await plurnk.send({"text":"Answer."});
 
-await plurnk.kill({"path":"log:///1/${turn.sequence}/${plan.sequence}/NOTE"});`;
+await plurnk.kill({"path":"log:///1/${turn.sequence}/${plan.sequence}/note"});`;
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }),
             workspaceId, sessionId, loopId, messages: [],
         });
         assert.equal(result.status, 102, "a progress reply leaves the message unresolved");
-        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["KILL", 200]]);
+        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["send", 200], ["kill", 200]]);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; tx: string; attrs: string }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter((row) => row.op !== null && row.op !== "prompt" && !LogEntryProjection.isEmission(row)).map(({ op }) => op), ["SEND", "KILL"]);
-        const send = rows.find(({ op }) => op === "SEND");
+        assert.deepEqual(rows.filter((row) => row.op !== null && row.op !== "prompt" && !LogEntryProjection.isEmission(row)).map(({ op }) => op), ["send", "kill"]);
+        const send = rows.find(({ op }) => op === "send");
         assert.ok(send);
         assert.equal(JSON.parse(send.tx).body.raw, "Answer.");
         const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
@@ -992,10 +992,10 @@ test("{§matcher-prefix-claims} SEND authored first: later operations run in aut
         const source = "await plurnk.send({\"text\":\"Inspect results.\"});\n\nawait plurnk.edit({\"path\":\"workspace:///note.md\",\"content\":\"Created before READ.\"});\n\nawait plurnk.read({\"path\":\"workspace:///note.md\"});\n\nawait plurnk.find({\"path\":\"workspace:///*\",\"pattern\":\"/[/\"});";
         const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, sessionId, loopId, messages: [] });
         assert.equal(result.status, 102);
-        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["EDIT", 201], ["READ", 200], ["FIND", 400]],
+        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["send", 200], ["edit", 201], ["read", 200], ["find", 400]],
             "the reply, mutations, retrieval, and the refused matcher ({§matcher-prefix-claims}) retain authored order");
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; attrs: string }>({ turn_id: result.turnId });
-        const read = rows.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
+        const read = rows.find((row) => row.op === "read" && !LogEntryProjection.isEmission(row));
         assert.ok(read);
         assert.equal(JSON.parse(read.rx).content, "Created before READ.", "the actual READ observed the EDIT that preceded it");
     } finally { await db.close(); }
@@ -1010,7 +1010,7 @@ test("{§parse-recovery} a lost boundary refuses only what follows it: the state
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [
-                response("await plurnk.edit({\"path\":\"workspace:///before-loss.md\",\"content\":\"Kept.\"});\n\n\nawait plurnk.wait({\"text\":\"Continue.\"});\n\n\n```READ (unfinished"),
+                response("await plurnk.edit({\"path\":\"workspace:///before-loss.md\",\"content\":\"Kept.\"});\n\n\nawait plurnk.wait({\"text\":\"Continue.\"});\n\n\nawait plurnk.read({\"path\":\"unfinished"),
             ] }), workspaceId, sessionId, loopId, messages: [],
         });
         assert.equal(result.status, 102, "the failed row keeps the loop going; nothing was resampled");
@@ -1020,7 +1020,7 @@ test("{§parse-recovery} a lost boundary refuses only what follows it: the state
         }]]], "the one attempt is admitted and carries the tail as its diagnostic");
         const [{ message }] = JSON.parse(attempts[0].parse_errors) as [{ message: string }];
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: result.turnId });
-        assert.equal(rows.some(({ op }) => op === "EDIT"), true, "the statement that closed before the loss ran");
+        assert.equal(rows.some(({ op }) => op === "edit"), true, "the statement that closed before the loss ran");
         const loss = rows.find(({ op }) => op === "error");
         assert.ok(loss, "the loss is a failed row of the same turn");
         const problem = JSON.parse(loss.rx).problem;
@@ -1032,11 +1032,11 @@ test("{§parse-recovery} a lost boundary refuses only what follows it: the state
 test("{§op-shapes} internal turn programs admit a disposition anywhere like model turns", () => {
     const source = "await plurnk.kill({\"path\":\"log:///1/1/*\"});\n\nawait plurnk.wait({\"text\":\"Continue.\"});";
     const statements = TurnOps.parseInternal(source);
-    assert.deepEqual(statements.map(({ op }) => op), ["KILL", "WAIT"]);
+    assert.deepEqual(statements.map(({ op }) => op), ["kill", "wait"]);
     assert.equal(TurnOps.renderInternal(statements), source);
     // {§op-shapes} — a program that authors an operation after its disposition is valid turnOps.
     const first = TurnOps.parseInternal("await plurnk.wait({\"text\":\"Continue.\"});\n\nawait plurnk.kill({\"path\":\"log:///1/1/*\"});");
-    assert.deepEqual(first.map(({ op }) => op), ["WAIT", "KILL"]);
+    assert.deepEqual(first.map(({ op }) => op), ["wait", "kill"]);
 });
 });
 

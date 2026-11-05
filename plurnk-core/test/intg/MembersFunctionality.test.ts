@@ -101,7 +101,7 @@ for (const decision of ["auto", "accept", "reject"] as const) test(`{§op-method
             daemon.subscribeToEvents((_id, method, params) => {
                 if (method !== "operation/event") return;
                 const event = params as { phase: string; origin: string; statement: PlurnkStatement; result?: { status: number; body?: string } };
-                if (event.phase === "settled" && event.origin === "model" && event.statement.op === "READ" && event.result !== undefined) results.push(event.result);
+                if (event.phase === "settled" && event.origin === "model" && event.statement.op === "read" && event.result !== undefined) results.push(event.result);
             });
             await daemon.start();
             const loop = await daemon.runLoop({ workspaceId, sessionId, prompt: "Admit loose.md and read it.", maxTurns: 2 });
@@ -113,7 +113,7 @@ for (const decision of ["auto", "accept", "reject"] as const) test(`{§op-method
                 if (decision === "reject") {
                     // {§membership-auto-add} — the READ of the file still unadmitted proposes its admission in its turn,
                     // after the rejection settled; refused as well, the READ settles rejected.
-                    const again = await waitForDb(() => daemon.pendingProposals(workspaceId), (items) => items.length === 1 && items[0].op === "READ");
+                    const again = await waitForDb(() => daemon.pendingProposals(workspaceId), (items) => items.length === 1 && items[0].op === "read");
                     assert.deepEqual(results, [], "the READ waits for its own decision");
                     await daemon.resolveProposal(again[0].logEntryId, { decision: "reject" }, { workspaceId, address: TEST_OWNER });
                 }

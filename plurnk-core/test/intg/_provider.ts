@@ -1,6 +1,7 @@
 // Integration harness: provider capacity fixtures and the test-only viable context window.
 
 import { readFile } from "node:fs/promises";
+import { TEACHING_CORPUS } from "@plurnk/plurnk-meta";
 import Paths from "../../src/Paths.ts";
 import ToolResources from "../../src/core/ToolResources.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
@@ -54,6 +55,7 @@ const [plurnkToolsDoc] = ToolResources.render({
 });
 const _testInputCapacity = (
     contentWeight(await readFile(Paths.instructionsSystem, "utf8"))
+    + contentWeight(await readFile(Paths.teachingSource(TEACHING_CORPUS.skill), "utf8"))
     + contentWeight(plurnkToolsDoc?.content ?? "")
 ) * 3;
 

@@ -66,8 +66,8 @@ export interface LogCurationOutcome {
 // log:///<loop_seq>/<turn_seq>/<sequence>[/<leaf>] — the trailing leaf is
 // canonical model-facing identity derived from the row's projected operation
 // or actionless durable type. Parsing accepts it (or omits it), but a supplied
-// leaf must agree. Matching is case-insensitive: model operations render
-// uppercase while `attempt` and engine-minted selectors are lowercase.
+// leaf must agree. Matching is case-insensitive: model operations and
+// engine-minted selectors are lowercase.
 const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Za-z0-9_.+-]+))?$/;
 // {§log-history-projection} — a log coordinate is a HIERARCHICAL PREFIX: `1` selects loop 1's rows,
 // `1/2` turn 1/2's rows, `1/2/3` the one row. A full coordinate is always 3 parts, so a 1- or 2-part

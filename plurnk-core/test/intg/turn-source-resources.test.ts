@@ -72,7 +72,7 @@ test("{§turn-source-resources}: the initialization program and later content so
         const rows = await db.test_log_entries_by_session.all<{ op: string | null }>({ session_id: sessionId });
         assert.ok(!rows.some(({ op }) => op === null), "admitted programs produce no actionless log artifacts");
         const killed = await engine.dispatch({ ...context, turnId: next.turnId, sequence: 50, origin: "model",
-            statement: statement("await plurnk.kill({\"path\":\"log:///**/READ\"});"),
+            statement: statement("await plurnk.kill({\"path\":\"log:///**/read\"});"),
         });
         assert.ok(killed.status < 400);
         for (const [scheme, expected] of [["ops", source], ["reasoning", reasoning]]) {
@@ -164,7 +164,7 @@ test("{§turn-source-resources}: every producer reads the same named sources wit
             await Turn.complete(db, turn.id, 200);
         }
         assert.ok(!(await db.test_log_entries_by_session.all<{ op: string | null }>({ session_id: sessionId }))
-            .some(({ op }) => op === "SEND"), "reading an admitted program cannot execute its operations");
+            .some(({ op }) => op === "send"), "reading an admitted program cannot execute its operations");
     } finally { await db.close(); }
 });
 
@@ -281,7 +281,7 @@ test("{§turn-source-resources} {§share-packet-names}: the digest writes each r
     const { log_entries: rows } = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as { log_entries: Array<{ op: string | null; attrs: unknown }> };
     const kind = (attrs: unknown): unknown => ((typeof attrs === "string" ? JSON.parse(attrs) : attrs) as { kind?: unknown } | null)?.kind;
     assert.equal(rows.filter(({ attrs }) => kind(attrs) === "emission").length, provider.received.length, "each content turn is announced, never initialization");
-    const reads = rows.filter(({ op, attrs }) => op === "READ" && kind(attrs) !== "emission").length;
+    const reads = rows.filter(({ op, attrs }) => op === "read" && kind(attrs) !== "emission").length;
     const mix = /^Op mix: {5}(.*)$/mu.exec(report)?.[1] ?? "";
     if (reads === 0) assert.doesNotMatch(mix, /\bREAD=/u, "announcements are not operations");
     else assert.match(mix, new RegExp(`\\bREAD=${reads}\\b`, "u"), "announcements are not operations");
@@ -326,7 +326,7 @@ test("{§turn-source-resources} {§digest-forensic-fidelity}: the digest counts 
         assert.match(report, /← \[_plurnk\] reasoning\[200\] reasoning:\/\/analyst\/1\/3$/mu);
         // Op mix must NOT count the 3 reasoning READs (only the 1 model-authored READ from turn 1!)
         const mix = /^Op mix: {5}(.*)$/mu.exec(report)?.[1] ?? "";
-        assert.match(mix, /\bREAD=1\b/u, "harness reasoning rows are excluded from the model op mix");
+        assert.match(mix, /\bread=1\b/u, "harness reasoning rows are excluded from the model op mix");
     });
 });
 
@@ -438,7 +438,7 @@ test("{§env-delta}: file deletion, session cancellation and stream cancellation
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.note({\"text\":\"Observe.\"});", reasoning: null } }] }),
         });
         const observations = (await db.test_log_entries_by_loop.all<{ op: string; source: string; tx: string; status_rx: number }>({ loop_id: parentLoop }))
-            .filter(({ op, source }) => op === "KILL" && source === "session://child");
+            .filter(({ op, source }) => op === "kill" && source === "session://child");
         assert.deepEqual(observations.map(({ tx, status_rx }) => [JSON.parse(tx).target.raw, status_rx]),
             [["obsolete.txt", 200], ["session://descendant", 200], [target, 200]]);
     } finally {
@@ -470,7 +470,7 @@ test("{§turn-source-resources}: shared addresses retain identity across session
         // A READ is its reader's client action, whose loop follows loop 1; any other operation is the model's.
         const perform = async (source: string, sessionId = parent, loopId = parentLoop) => {
             const operation = statement(source);
-            if (operation.op === "READ") return clientRead(engine, db, { workspaceId, sessionId, statement: operation });
+            if (operation.op === "read") return clientRead(engine, db, { workspaceId, sessionId, statement: operation });
             const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
             const result = await engine.dispatch({ workspaceId, sessionId, loopId, turnId: turn.id, sequence: 1,
                 origin: "model", statement: operation });
@@ -508,7 +508,7 @@ test("{§turn-source-resources}: shared addresses retain identity across session
         assert.equal(copied.status, 201, JSON.stringify(copied));
         const copy = await perform("await plurnk.read({\"path\":\"workspace:///shared-note.md\",\"range\":\"1,-1\"});");
         assert.equal("content" in copy && copy.content, "child_A note");
-        const trimmed = await perform("await plurnk.kill({\"path\":\"log:///1/1/1/NOTE\"});", child, childLoop);
+        const trimmed = await perform("await plurnk.kill({\"path\":\"log:///1/1/1/note\"});", child, childLoop);
         assert.equal(trimmed.status, 200);
         const retained = await perform("await plurnk.read({\"path\":\"note://child_A/1/1/1\",\"range\":\"1,-1\"});");
         assert.equal("content" in retained && retained.content, "child_A note");
@@ -519,12 +519,12 @@ test("{§turn-source-resources}: shared addresses retain identity across session
         assert.equal("content" in original && original.content, program("child_A"));
         const forkProgram = await perform("await plurnk.read({\"path\":\"ops://branch/1/1\",\"range\":\"1,-1\"});");
         assert.equal("content" in forkProgram && forkProgram.content, program("child_A"), "embedded explicit source references are not rewritten by FORK");
-        for (const op of ["READ", "FIND", "KILL"]) {
-            const qualifiedLog = await perform(`await plurnk.${op.toLowerCase()}(${JSON.stringify({ path: "log://child_A/1/1/1/NOTE", range: "1,-1" })});`);
+        for (const op of ["read", "find", "kill"]) {
+            const qualifiedLog = await perform(`await plurnk.${op.toLowerCase()}(${JSON.stringify({ path: "log://child_A/1/1/1/note", range: "1,-1" })});`);
             assert.equal(qualifiedLog.status, 400, `${op} must not silently substitute the caller's log`);
             assert.equal(qualifiedLog.problem?.type, "https://problems.plurnk.xyz/scheme/log/coordinate-malformed");
         }
-        const parentNote = await perform("await plurnk.read({\"path\":\"log:///1/1/1/NOTE\",\"range\":\"1,-1\"});");
+        const parentNote = await perform("await plurnk.read({\"path\":\"log:///1/1/1/note\",\"range\":\"1,-1\"});");
         assert.equal("content" in parentNote && parentNote.content, "parent note", "rejected foreign curation leaves local context intact");
     } finally { await db.close(); }
 });
@@ -560,9 +560,9 @@ test("{§turn-source-resources}: a SEND shares a note; the recipient deliberatel
         } }] });
         await engine.runTurn({ workspaceId, sessionId: parent, loopId: parentLoop, provider, messages: [] });
         const history = await db.test_log_entries_by_loop.all<{ op: string; source: string; rx: string; tx: string }>({ loop_id: parentLoop });
-        assert.ok(history.some(({ op, tx }) => op === "SEND" && tx.includes("See note://child/1/1/1")), "the addressed message reaches the parent's inbox");
-        assert.ok(!history.some(({ op, source }) => op === "NOTE" && source === "session://child"), "source availability is not automatic observation");
-        assert.ok(history.some(({ op, rx }) => op === "READ" && JSON.parse(rx).content === "The retry condition is idempotent."), "the parent's READ resolves the exact shared source");
+        assert.ok(history.some(({ op, tx }) => op === "send" && tx.includes("See note://child/1/1/1")), "the addressed message reaches the parent's inbox");
+        assert.ok(!history.some(({ op, source }) => op === "note" && source === "session://child"), "source availability is not automatic observation");
+        assert.ok(history.some(({ op, rx }) => op === "read" && JSON.parse(rx).content === "The retry condition is idempotent."), "the parent's READ resolves the exact shared source");
         const otherWorkspace = await insertWorkspace(db, "other-note-sharing");
         const otherSession = await insertSession(db, otherWorkspace, null, "parent");
         const isolated = await clientRead(engine, db, { workspaceId: otherWorkspace, sessionId: otherSession,
@@ -600,13 +600,13 @@ for (const exitCode of [0, 7]) test(`{§env-delta}: executor exit ${exitCode} is
         await engine.runTurn({ workspaceId, sessionId: child, loopId: childLoop,
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.done({\"text\":\"Executor result observed.\"});", reasoning: null } }] }), messages: [] });
         const childRows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; attrs: string }>({ loop_id: childLoop });
-        const output = childRows.filter(({ op, rx }) => op === "READ" && JSON.parse(rx).terminal === true);
+        const output = childRows.filter(({ op, rx }) => op === "read" && JSON.parse(rx).terminal === true);
         assert.ok(output.length > 0, "the owner's terminal observation was actually materialized");
         assert.ok(output.some(({ rx }) => JSON.parse(rx).content?.includes("child output")), "the owner retains the output");
         await engine.runTurn({ workspaceId, sessionId: parent, loopId: parentLoop, provider: continuation(), messages: [] });
         const observations = (await db.test_log_entries_by_loop.all<{ op: string; source: string; attrs: string }>({ loop_id: parentLoop }))
             .filter(({ source }) => source === "session://child");
-        assert.deepEqual(observations.map(({ op }) => op), ["sh", "READ"], "the invocation and child conclusion reach the parent; the child's READs and notes do not");
+        assert.deepEqual(observations.map(({ op }) => op), ["sh", "read"], "the invocation and child conclusion reach the parent; the child's READs and notes do not");
         assert.equal(JSON.parse(observations[1].attrs).kind, "loop_termination", "the child's conclusion still uses the lifecycle channel");
     } finally {
         await exec.idle();
@@ -638,14 +638,14 @@ test("{§env-delta}: WORK, FORK and outgoing SEND are observable; BARE, WAIT and
         const result = await engine.runTurn({ workspaceId, sessionId: child, loopId: childLoop, provider, childProvider, messages: [] });
         assert.equal(result.status, 202);
         const childRows = await db.test_log_entries_by_session.all<{ op: string; origin: string; status_rx: number }>({ session_id: child });
-        assert.deepEqual(childRows.filter(({ op, origin }) => origin === "model" && ["WORK", "FORK", "SEND", "BARE", "WAIT"].includes(op))
-            .map(({ op, status_rx }) => [op, status_rx]), [["WORK", 200], ["FORK", 200], ["SEND", 200], ["BARE", 200], ["WAIT", 202]]);
+        assert.deepEqual(childRows.filter(({ op, origin }) => origin === "model" && ["work", "fork", "send", "bare", "wait"].includes(op))
+            .map(({ op, status_rx }) => [op, status_rx]), [["work", 200], ["fork", 200], ["send", 200], ["bare", 200], ["wait", 202]]);
         await engine.runTurn({ workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.note({\"text\":\"Observe.\"});", reasoning: null } }] }),
         });
         const observations = (await db.engine_render_log.all<{ op: string; source: string; tx: string }>({ session_id: parent }))
             .filter(({ source }) => source === "session://child");
-        assert.deepEqual(observations.map(({ op }) => op), ["WORK", "FORK", "SEND"], "only child-authored topology changes and messages reach the parent");
+        assert.deepEqual(observations.map(({ op }) => op), ["work", "fork", "send"], "only child-authored topology changes and messages reach the parent");
         const sent = JSON.parse(observations[2].tx);
         assert.equal(sent.target.raw, "session://research");
         assert.equal(sent.body.raw, "Use the retained evidence.", "the observed SEND is the outgoing message, not the child's received assignment");
@@ -668,7 +668,7 @@ test("{§env-delta}: parent receives actions, never child exploration or log cur
             ["await plurnk.edit({\"path\":\"session://child/scratch.md\",\"content\":\"A real change.\"});", 201],
             ["await plurnk.read({\"path\":\"session://child/scratch.md\"});", 200],
             ["await plurnk.find({\"path\":\"session://child/*\"});", 200],
-            ["await plurnk.kill({\"path\":\"log:///1/1/1/NOTE\"});", 200],
+            ["await plurnk.kill({\"path\":\"log:///1/1/1/note\"});", 200],
             ["await plurnk.kill({\"path\":\"log:///9/9/9\"});", 404],
             ["await plurnk.kill({\"path\":\"session://child/scratch.md\"});", 200],
             ["await plurnk.edit({\"path\":\"missing:///file\",\"content\":\"A failed action.\"});", 501],
@@ -683,7 +683,7 @@ test("{§env-delta}: parent receives actions, never child exploration or log cur
         });
         const observed = (await db.test_log_entries_by_session.all<{ op: string; source: string; status_rx: number }>({ session_id: parent }))
             .filter(({ source }) => source === "session://child");
-        assert.deepEqual(observed.map(({ op, status_rx }) => [op, status_rx]), [["EDIT", 201], ["KILL", 200], ["EDIT", 501]]);
+        assert.deepEqual(observed.map(({ op, status_rx }) => [op, status_rx]), [["edit", 201], ["kill", 200], ["edit", 501]]);
         const history = await db.test_log_entries_by_session.all({ session_id: child });
         assert.equal(history.length, 8, "excluded observations remain durable in the child's history");
     } finally { await db.close(); }

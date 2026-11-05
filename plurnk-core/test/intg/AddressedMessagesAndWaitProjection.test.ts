@@ -30,16 +30,16 @@ test("{§message-source-scheme} restart retains source text and answered state a
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [
             makeRawMockResponse(["await plurnk.send({\"text\":\"Original answer.\"});", "await plurnk.done({});"].join("\n\n")),
-            makeRawMockResponse(["await plurnk.kill({\"path\":\"log:///**/SEND\"});", "await plurnk.send({\"text\":\"History curated.\"});"].join("\n\n")),
+            makeRawMockResponse(["await plurnk.kill({\"path\":\"log:///**/send\"});", "await plurnk.send({\"text\":\"History curated.\"});"].join("\n\n")),
             makeRawMockResponse("await plurnk.done({});"),
         ] });
         const answered = await engine.runTurn({ messages: [], provider, workspaceId, sessionId, loopId });
         assert.equal(answered.status, 200);
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: answered.turnId });
         const original = (await db.test_log_entries_by_turn.all<{ op: string; origin: string; sequence: number }>({ turn_id: answered.turnId }))
-            .find(({ op, origin }) => op === "SEND" && origin === "model");
+            .find(({ op, origin }) => op === "send" && origin === "model");
         assert.ok(turn && original);
-        const originalLog = `log:///1/${turn.sequence}/${original.sequence}/SEND`;
+        const originalLog = `log:///1/${turn.sequence}/${original.sequence}/send`;
         const curationLoop = await insertLoop(db, sessionId, 2, "Curate the earlier log.");
         assert.equal((await engine.runTurn({ messages: [], provider, workspaceId, sessionId, loopId: curationLoop })).status, 102);
         assert.equal((await engine.runTurn({ messages: [], provider, workspaceId, sessionId, loopId: curationLoop })).status, 200);
@@ -54,7 +54,7 @@ test("{§message-source-scheme} restart retains source text and answered state a
         const read = await reopened.runTurn({ messages: [], provider: reader, workspaceId, sessionId, loopId: readingLoop });
         assert.deepEqual(read.outcomes.map(({ status }) => status), [200, 404], "the source survives while the curated log remains gone");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string; attrs: string }>({ turn_id: read.turnId });
-        const retained = rows.find((row) => row.op === "READ" && row.status_rx === 200 && !LogEntryProjection.isEmission(row));
+        const retained = rows.find((row) => row.op === "read" && row.status_rx === 200 && !LogEntryProjection.isEmission(row));
         assert.ok(retained);
         assert.equal(JSON.parse(retained.rx).content, "Keep this original assignment.");
         assert.equal((await db.message_unanswered_count.get({ loop_id: loopId }))?.count, 0, "curation and restart do not revoke the answer");
@@ -119,7 +119,7 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
         const problem = JSON.parse(failedRows.find(({ origin }) => origin === "model")!.rx).problem;
         assert.match(problem.type, /message-not-implemented$/);
         assert.equal(problem.detail, "SEND does not deliver messages to workspace entries.");
-        assert.equal(problem.recovery, "To reply, SEND to an Open Message address or omit the target. SEND (session://<name>) sends a new message.");
+        assert.equal(problem.recovery, "To reply, SEND to an Open Message address or omit the target. await plurnk.send({ target: \"session://<name>\", text: \"...\" }); sends a new message.");
         assert.equal((await db.message_unanswered_count.get({ loop_id: loopId }))?.count, 1);
 
         assert.equal((await run()).status, 102, "both reply forms are messaging, not completion");
@@ -182,13 +182,13 @@ test("{§message-source-scheme} native message views reject mutations without ca
         const turn = await engine.runTurn({ messages: [], provider, workspaceId, sessionId, loopId });
         assert.equal(turn.status, 102);
         assert.deepEqual(turn.outcomes.map(({ op, status }) => [op, status]), [
-            ["READ", 200], ["EDIT", 405], ["MOVE", 405], ["COPY", 405], ["KILL", 405],
+            ["read", 200], ["edit", 405], ["move", 405], ["copy", 405], ["kill", 405],
         ]);
         const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turn.turnId });
-        for (const row of rows.filter(({ op }) => ["EDIT", "MOVE", "COPY", "KILL"].includes(op))) {
+        for (const row of rows.filter(({ op }) => ["edit", "move", "copy", "kill"].includes(op))) {
             assert.match(JSON.parse(row.rx).problem.type, /message-immutable$/);
         }
-        const kill = JSON.parse(rows.find(({ op }) => op === "KILL")!.rx).problem;
+        const kill = JSON.parse(rows.find(({ op }) => op === "kill")!.rx).problem;
         assert.equal(kill.detail, `\`${path}\` is a received message; it cannot be edited, moved or killed.`);
         assert.equal(kill.recovery, undefined);
         const retained = await db.message_source_by_address.get<{ body: string }>({ workspace_id: workspaceId, path });
@@ -213,7 +213,7 @@ for (const scope of ["", " <1,-1>"]) test(`{§message-arrival} curation${scope} 
         assert.match(first, /^message:\/\/alice\/[a-f0-9]{8}$/);
         const provider = new Mock({ contextWindow: 100000, responses: [
             makeRawMockResponse([
-                `await plurnk.kill({"path":"log:///**/SEND"${scope ? ',"range":"1,-1"' : ""}});`,
+                `await plurnk.kill({"path":"log:///**/send"${scope ? ',"range":"1,-1"' : ""}});`,
                 `await plurnk.read({"path":"${first}","range":"1,-1"});`,
                 `await plurnk.copy({"from":"${first}","to":"workspace:///copy.md"});`,
                 `await plurnk.done({"target":"${first}","text":"First answer."});`,
@@ -230,10 +230,10 @@ for (const scope of ["", " <1,-1>"]) test(`{§message-arrival} curation${scope} 
             assert.ok(initialLog.includes(`"resource":"${address}"`), "each arrival identifies its immutable Open Message source");
         }
         assert.deepEqual(one.outcomes.map(({ op, status }) => [op, status]), [
-            ["KILL", 200], ["READ", 200], ["COPY", 201], ["DONE", 200],
+            ["kill", 200], ["read", 200], ["copy", 201], ["done", 200],
         ]);
         const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string; attrs: string }>({ turn_id: one.turnId });
-        assert.equal(JSON.parse(rows.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!.rx).content, "First assignment.");
+        assert.equal(JSON.parse(rows.find((row) => row.op === "read" && !LogEntryProjection.isEmission(row))!.rx).content, "First assignment.");
         const two = await run();
         assert.equal(two.status, 102, "one addressed answer cannot conclude over the second assignment");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: two.turnId }))!.packet);
@@ -388,7 +388,7 @@ for (const outcome of ["success", "failure", "cancel"] as const) {
         assert.ok(exact);
         const after = await f.run(f.parent, f.parentLoop);
         const observations = after.entries.filter(({ source }) => source === "session://child");
-        assert.deepEqual(observations.map(({ logPath: path }) => path.split("/").at(-1)), ["READ"]);
+        assert.deepEqual(observations.map(({ logPath: path }) => path.split("/").at(-1)), ["read"]);
         const completion = observations[0];
         assert.equal(completion.path, "ops://child/1");
         assert.equal(completion.origin, "_plurnk");
@@ -422,7 +422,7 @@ test("{§env-delta}: delayed observation preserves each completed loop after new
     const observed = await f.run(f.parent, f.parentLoop);
     const completions = observed.entries.filter(({ path: target }) => String(target).startsWith("ops://child/"));
     assert.equal(completions.length, 2);
-    assert.ok(completions.every(({ logPath: path }) => path.endsWith("/READ")));
+    assert.ok(completions.every(({ logPath: path }) => path.endsWith("/read")));
     assert.deepEqual(completions.map(({ path: target }) => target), ["ops://child/1", "ops://child/2"]);
     assert.match(String(completions[0].body), /First result line 1\n/);
     assert.match(String(completions[0].body), /First result line 24/, "automatic observation is a markerless READ: whole when it fits ({§tokenomics})");
@@ -435,7 +435,7 @@ test("{§env-delta}: delayed observation preserves each completed loop after new
         `await plurnk.read({"path":"${String(completions[0].path)}","range":"1,-1"});\n\nawait plurnk.kill({"path":"${completions[0].logPath}","range":"2,-1"});`);
     const rows = await f.db.test_log_entries_by_loop.all<{ turn_id: number; op: string; status_rx: number; rx: string; attrs: string }>({ loop_id: f.parentLoop });
     const actions = rows.filter((row) => row.turn_id === curated.result.turnId && !LogEntryProjection.isEmission(row));
-    assert.deepEqual(actions.map(({ op, status_rx }) => [op, status_rx]), [["READ", 200], ["KILL", 200]]);
+    assert.deepEqual(actions.map(({ op, status_rx }) => [op, status_rx]), [["read", 200], ["kill", 200]]);
     assert.equal(JSON.parse(actions[0].rx).content, first, "source READ recovers the exact original result, never the current session loop");
     assert.equal((await f.lifecycle.result(f.childLoop))?.content, first, "curation never changes the producer's result");
     assert.deepEqual((await f.lifecycle.result(secondLoop))?.problem, failure.problem);
@@ -470,7 +470,7 @@ test("{§op-shapes}: a scoped session SEND is refused and admits no task", async
 
 describe("wait-projection", () => {
 for (const [header, warning] of [
-    ['await plurnk.wait({"seconds":"10s"});', 'Ignored WAIT duration "10s".'],
+    ['await plurnk.wait({"seconds":"10s"});', 'Ignored wait duration "10s".'],
 ] as const) {
     test(`{§operation-results} ${header} feedback survives parking, reaches only its loop, and drains once`, async (t) => {
         const db = await openMigrated();
@@ -508,7 +508,7 @@ for (const [header, warning] of [
         const notices = packetSection(resumedPacket, "notices");
         assert.ok(notices.includes(`> YOU SHOULD write the canonical form. ${warning}`), notices);
         assert.equal(notices.match(/\[parse_advisory\]/gu)?.length, 1);
-        const wait = logEntries(resumedPacket).find(({ logPath }) => logPath.endsWith("/WAIT"));
+        const wait = logEntries(resumedPacket).find(({ logPath }) => logPath.endsWith("/wait"));
         assert.equal(wait?.waitSeconds, 300, "a duration was not supplied; the configured bound applies");
 
         const next = await resume();
@@ -539,12 +539,12 @@ for (const headers of [['await plurnk.wait({"seconds":0});'], ['await plurnk.wai
         assert.equal(await lifecycle.status(loopId), 102);
         assert.deepEqual(await lifecycle.parked(sessionId), [], "zero creates no parked wait or timer");
         assert.equal(await lifecycle.status(childLoopId), 102, "the child keeps running");
-        assert.ok(result.outcomes.some(({ op, status }) => op === "NOTE" && status === 200), "the sibling operation executed");
+        assert.ok(result.outcomes.some(({ op, status }) => op === "note" && status === 200), "the sibling operation executed");
         const next = await run("await plurnk.wait({});");
         assert.equal(next.status, 202, "the zero bound does not leak into a later WAIT");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
         assert.equal(packetSection(packet, "notices"), "", "zero earns no correction");
-        const zero = logEntries(packet).find((entry) => entry.logPath.endsWith("/WAIT") && entry.waitSeconds === 0);
+        const zero = logEntries(packet).find((entry) => entry.logPath.endsWith("/wait") && entry.waitSeconds === 0);
         assert.ok(zero, "the no-wait receipt records the accepted zero");
         assert.equal(zero.status, 102);
     });
@@ -616,7 +616,7 @@ test("{§session-wait-timing} an early wake retires the override; a later bare W
 });
 
 for (const [header, call] of [
-    ["WAIT", 'await plurnk.wait({"text":"Await results."});'],
+    ["wait", 'await plurnk.wait({"text":"Await results."});'],
     ["WAIT (sh:///missing)", 'await plurnk.wait({"target":"sh:///missing","text":"Await results."});'],
 ] as const) {
     test(`{§op-shapes} {§loop-completion} ${header} parks on the actual live child, not the decoration`, async (t) => {
@@ -633,12 +633,12 @@ for (const [header, call] of [
         });
         assert.equal(result.status, 202);
         assert.equal(await new LoopLifecycle(db).status(loopId), 202);
-        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["NOTE", 200], ["WAIT", 202]], "WAIT still settles after its sibling");
+        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["note", 200], ["wait", 202]], "WAIT still settles after its sibling");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; tx: string; rx: string }>({ turn_id: result.turnId });
-        const wait = rows.find(({ op }) => op === "WAIT");
+        const wait = rows.find(({ op }) => op === "wait");
         assert.ok(wait);
         const tx = JSON.parse(wait.tx);
-        assert.equal(tx.target?.raw ?? null, header === "WAIT" ? null : "sh:///missing");
+        assert.equal(tx.target?.raw ?? null, header === "wait" ? null : "sh:///missing");
         assert.equal(tx.lineMarker, null);
         assert.equal(tx.metadata, null);
         assert.equal(tx.body, "Await results.");
@@ -665,12 +665,12 @@ test("{§op-shapes} {§loop-completion} WAIT retains literal prose without inven
         const terminal = await new LoopLifecycle(db).result(loopId);
         assert.equal(terminal, null, "no deliverable is manufactured from a wait");
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; tx: string; rx: string; status_rx: number }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter((row) => row.origin === "model" && !LogEntryProjection.isEmission(row)).map(({ op }) => op), ["WAIT"]);
-        const wait = rows.find(({ op }) => op === "WAIT")!;
+        assert.deepEqual(rows.filter((row) => row.origin === "model" && !LogEntryProjection.isEmission(row)).map(({ op }) => op), ["wait"]);
+        const wait = rows.find(({ op }) => op === "wait")!;
         assert.equal(wait.status_rx, 102);
         assert.equal(JSON.parse(wait.rx).detail, "Nothing is in flight. Continuing.");
         assert.equal(JSON.parse(wait.tx).body, body);
-        const projection = LogBody.resolve({ op: "WAIT", tx: JSON.parse(wait.tx), rx: JSON.parse(wait.rx) });
+        const projection = LogBody.resolve({ op: "wait", tx: JSON.parse(wait.tx), rx: JSON.parse(wait.rx) });
         assert.equal(projection.mimetype, "text/plain");
         assert.equal(projection.content, body);
     } finally { await db.close(); }
@@ -691,7 +691,7 @@ test("{§loop-completion} every idle WAIT receives the same plain receipt, howev
             });
             assert.equal(result.status, 102, "an idle WAIT neither parks nor resolves the open message");
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: result.turnId });
-            return JSON.parse(rows.find(({ op }) => op === "WAIT")!.rx).detail as string;
+            return JSON.parse(rows.find(({ op }) => op === "wait")!.rx).detail as string;
         };
 
         const details = [await detailOf(), await detailOf(), await detailOf()];

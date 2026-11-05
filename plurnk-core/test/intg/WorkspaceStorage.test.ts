@@ -137,7 +137,7 @@ test("{§share-packet-names}: restore preserves history, decisions and attachmen
         messages = await daemon.readMessages({ workspaceId, sessionId, loopId });
         using evidence = EvidenceReader.open(dbPath);
         history = evidence.rows();
-        const edit = history.logEntries.find(({ op, origin }) => op === "EDIT" && origin === "model");
+        const edit = history.logEntries.find(({ op, origin }) => op === "edit" && origin === "model");
         assert.equal(edit?.status_rx, 200, JSON.stringify(edit));
         assert.equal(await readFile(filePath, "utf8"), "Preserved project version.\n");
         assert.equal(edit?.proposalDecision?.decision, "accept");

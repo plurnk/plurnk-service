@@ -507,7 +507,7 @@ test("{§methods} the client-interface seam does not manufacture a resolver from
         const turnId = await insertTurn(db, loopId, 1, 102);
         const row = await db.engine_insert_log_entry.get<{ id: number }>({
             session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "model", source: null, model_call_id: null, op: "EDIT",
+            origin: "model", source: null, model_call_id: null, op: "edit",
             scheme: "workspace", username: null, password: null, hostname: null, port: null,
             pathname: "/x", query: null, fragment: null, lineMarker: null,
             tx: "await plurnk.edit({\"path\":\"workspace:///x\",\"content\":\"body\"});", mimetype_tx: "text/vnd.plurnk",
@@ -544,7 +544,7 @@ test("{§tokenomics} the client-interface seam — runLoop drives a loop end to 
             daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });
 
             assert.deepEqual(
-                await db.test_entries_by_scheme_prefix.all({ workspace_id: created.id, scheme: "plurnk", prefix: "/%" }),
+                await db.test_entries_by_scheme_prefix.all({ workspace_id: created.id, scheme: "mcp", prefix: "/%" }),
                 [],
                 "workspace creation remains passive until real work arrives",
             );
@@ -592,12 +592,12 @@ test("{§tokenomics} the client-interface seam — runLoop drives a loop end to 
 
             // The first-turn feature holds on the seam path: Functionality activation materialized
             // the teaching skills into the model session before packet assembly.
-            const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: created.id, scheme: "plurnk", prefix: "/%" });
+            const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: created.id, scheme: "mcp", prefix: "/%" });
             assert.ok(docs.length > 0);
             const docEdits = (await db.test_log_entries_by_session_op_full.all<{
                 tx: string;
                 origin: string;
-            }>({ session_id: runtimeSessionId, op: "EDIT" })).filter(({ origin }) => origin === "_plurnk");
+            }>({ session_id: runtimeSessionId, op: "edit" })).filter(({ origin }) => origin === "_plurnk");
             assert.ok(docEdits.length > 0, "documentation publication dispatches structural EDIT statements");
             for (const { tx } of docEdits) {
                 const statement = JSON.parse(tx) as unknown;
@@ -626,7 +626,7 @@ test("{§tokenomics} the client-interface seam — runLoop drives a loop end to 
 
             const afterTwoLoops = await publicationRows();
             assert.equal(afterTwoLoops.length, publishedCount, "model loops never repeat unchanged session skills publication");
-            assert.equal(afterTwoLoops.filter((row) => row.op === "EDIT" && row.status_rx >= 400).length, 0, "session skills publication produces no error rows");
+            assert.equal(afterTwoLoops.filter((row) => row.op === "edit" && row.status_rx >= 400).length, 0, "session skills publication produces no error rows");
         } finally { ws.close(); }
     });
 });
@@ -720,7 +720,7 @@ test("{§methods} the client-interface seam — readLog returns a workspace's jo
 
             const entries = await daemon.readLog({ workspaceId: created.id, sessionId: await daemon.ensureRuntimeSession(created.id) });
             assert.ok(entries.length >= 1, "readLog returned the workspace's journal entries");
-            assert.ok(entries.some((e) => e.op === "EDIT"), "the client EDIT is in the journal the seam read");
+            assert.ok(entries.some((e) => e.op === "edit"), "the client EDIT is in the journal the seam read");
 
             const other = (await rpcCall(ws, 2, "workspace.create", { name: "seam-read-other" })).result as { id: number };
             const otherSession = await daemon.ensureRuntimeSession(other.id);

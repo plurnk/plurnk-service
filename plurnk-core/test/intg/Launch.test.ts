@@ -307,10 +307,10 @@ test("{§observability-boundary} live workspaces expose a model session's refere
 
         const skill = await read("skill://plurnk/SKILL.md");
         assert.equal(skill.status, 200);
-        for (const reference of ["session", "sh"]) {
-            const result = await read(`plurnk:///${reference}.md`);
-            assert.equal(result.status, 200, `${reference}.md is READ-able in the session's actual generated tree`);
-            assert.match(String(result.content), /\S/, `${reference}.md contains its contract`);
+        for (const [label, target] of [["session.md", "skill://plurnk/session.md"], ["sh.json", "mcp:///plurnk/sh.json"]] as const) {
+            const result = await read(target);
+            assert.equal(result.status, 200, `${label} is READ-able in the session's actual generated tree`);
+            assert.match(String(result.content), /\S/, `${label} contains its contract`);
         }
         const plurnkDoc = await read("mcp:///plurnk.md");
         assert.equal(plurnkDoc.status, 200, "plurnk.md is READ-able in the session's actual generated tree");
@@ -406,7 +406,7 @@ test("{§observability-boundary} specimen schedules deliver and shut down withou
         assert.equal(await lastReply(workspace.db, completed[0].loopId), "Scheduled message received.");
         assert.equal(inference.mock.callCount(), 1, "only the explicitly added fixture scheduled inference");
         const rows = await workspace.db.test_log_entries_by_loop.all<{ op: string; origin: string; source: string | null }>({ loop_id: completed[0].loopId });
-        assert.equal(rows.filter(({ op, origin, source }) => op === "SEND" && origin === "_plurnk" && source === "schedule://beat").length, 1,
+        assert.equal(rows.filter(({ op, origin, source }) => op === "send" && origin === "_plurnk" && source === "schedule://beat").length, 1,
             "the occurrence arrives through ordinary source-attributed session messaging");
         await waitForDb(list, ({ definitions }) => {
             const detail = definitions.find(({ alias }) => alias === "beat")?.detail;
@@ -994,10 +994,10 @@ test("{§observability-boundary} observe: a real loop emits the loop → turn �
             const dispatches = turnChildren.filter((s) => s.name === "op.dispatch");
             const ops = dispatches.map((s) => s.attributes.op);
             assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 0, "completion invents no lifecycle operation");
-            assert.ok(ops.includes("FIND"), "initialization's surveys use ordinary dispatch");
-            assert.equal(ops.filter((op) => op === "DONE").length, 1, "the model's completion has its own dispatch span");
+            assert.ok(ops.includes("find"), "initialization's surveys use ordinary dispatch");
+            assert.equal(ops.filter((op) => op === "done").length, 1, "the model's completion has its own dispatch span");
             assert.ok(
-                ops.filter((op) => op !== "DONE" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "NOTE" || op === "TODO" || op === "FIND" || op === "READ" || op === "plurnk"),
+                ops.filter((op) => op !== "done" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "note" || op === "todo" || op === "find" || op === "read" || op === "plurnk"),
                 `initialization dispatches only orientation operations; got ${ops.join(", ")}`,
             );
             for (const d of dispatches) {

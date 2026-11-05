@@ -32,13 +32,13 @@ const journeys = Object.freeze({
         programs: [{
             reasoning: "I will complete the request through the interactive terminal.\n",
             content: [
-                "await plurnk.read({ path: \"log:///1/2/1/SEND\" });",
-                "await plurnk.read({ path: \"plurnk:///session.md\", range: \"1,-1\" });",
-                "await plurnk.read({ path: \"plurnk:///pattern.md\", pattern: \"~quotes\" });",
-                "await plurnk.read({ path: \"plurnk:///delegation.md\", range: \"1,16\" });",
-                "await plurnk.read({ path: \"plurnk:///js.md\", range: \"1,-1\" });",
+                "await plurnk.read({ path: \"log:///1/2/1/send\" });",
+                "await plurnk.read({ path: \"skill://plurnk/session.md\", range: \"1,-1\" });",
+                "await plurnk.read({ path: \"skill://plurnk/pattern.md\", pattern: \"~quotes\" });",
+                "await plurnk.read({ path: \"skill://plurnk/delegation.md\", range: \"1,16\" });",
+                "await plurnk.read({ path: \"mcp:///plurnk/js.json\", range: \"1,-1\" });",
                 "await plurnk.read({ path: \"skill://plurnk/SKILL.md\", range: \"1,-1\" });",
-                "await plurnk.read({ path: \"skill://plurnk/.env.defaults\", range: \"1,16\" });",
+                "await plurnk.read({ path: \"skill://plurnk/configuration/.env.defaults\", range: \"1,16\" });",
                 "await plurnk.note({ text: \"The shared protocol is available.\" }); // Confirm the packed interactive terminal path.",
             ].join("\n"),
         }, {
@@ -88,9 +88,7 @@ const pairedReceipts = (messages) => messages.flatMap((message, index) => {
     if (message.role !== "assistant") return [];
     const receipts = parseLogRecords(textOf(messages[index + 1]).split(/\n## /u)[0].trim());
     return [...textOf(message).matchAll(/^await plurnk\.([A-Za-z]\w*)\((.*)\);/gmu)].map(([, rawOp, request = ""]) => {
-        const op = ["sh", "js", "python3", "env", "mcp", "members", "personas", "schedule", "skills", "question"].includes(rawOp)
-            ? rawOp
-            : rawOp.toUpperCase();
+        const op = rawOp;
         const at = receipts.findIndex((row) => row.logPath.endsWith(`/${op}`));
         assert.notEqual(at, -1, `the replayed ${op} is followed by its receipt`);
         let parsedArgs = null;
@@ -164,7 +162,7 @@ export const startClientJourneyModel = async () => {
             // {§packet-assembly}: the system and user messages carry the packet; the assistant messages replay the session's operations.
             const text = (body.messages ?? []).filter((message) => message.role !== "assistant").map(textOf).join("\n\n");
             if (journey === "files" && index > 0) {
-                const edits = pairedReceipts(body.messages ?? []).filter((row) => row.op === "EDIT" && row.path === "integrity.txt");
+                const edits = pairedReceipts(body.messages ?? []).filter((row) => row.op === "edit" && row.path === "integrity.txt");
                 assert.equal(edits.length, index, "each published file operation remains observable");
                 assert.ok(edits.every((row) => (row.status ?? 200) === 200), "file publication succeeded through the installed approval path");
             }
@@ -177,14 +175,14 @@ export const startClientJourneyModel = async () => {
                 assert.ok(stream?.status === "active" && /stdout 1 lines/u.test(stream.detail), "the next packet retains the producer's output");
             }
             if (journey === "tui" && index === 1) {
-                const reads = pairedReceipts(body.messages ?? []).filter((row) => row.op === "READ");
-                const messageRead = reads.find((row) => row.path === "log:///1/2/1/SEND");
+                const reads = pairedReceipts(body.messages ?? []).filter((row) => row.op === "read");
+                const messageRead = reads.find((row) => row.path === "log:///1/2/1/send");
                 assert.ok(messageRead, "installed TUI must READ its message from the arrival's log address");
                 assert.equal(messageRead.status ?? 200, 200, "the message READ succeeded");
                 assert.match(String(messageRead.body ?? ""), /^ *1(?:<@[0-9A-Za-z]{5}>|:)Exercise the installed interactive terminal\./u,
                     "the READ receipt contains the addressed message, not merely a final success claim");
                 // {§read} {§teaching-corpus}: packed references and indexed READ compose.
-                const patternRead = reads.find((row) => row.path === "plurnk:///pattern.md");
+                const patternRead = reads.find((row) => row.path === "skill://plurnk/pattern.md");
                 assert.ok(patternRead, "the installed runtime exposes the pattern reference");
                 assert.equal(patternRead.status ?? 200, 200);
                 assert.match(patternRead.request, /"pattern":"~quotes"/u, "the pattern rides the replayed READ");
@@ -193,20 +191,20 @@ export const startClientJourneyModel = async () => {
                 assert.ok(Array.isArray(patternRead.matches) && patternRead.matches.length > 0);
                 assert.ok(patternRead.matches.every(({ region }) => typeof region === "string"),
                     "the installed packet retains precise match locations beside whole source lines");
-                const delegationRead = reads.find((row) => row.path === "plurnk:///delegation.md");
+                const delegationRead = reads.find((row) => row.path === "skill://plurnk/delegation.md");
                 assert.ok(delegationRead, "the installed runtime exposes the delegation reference");
                 assert.equal(delegationRead.status ?? 200, 200);
-                assert.match(String(delegationRead.body ?? ""), /WORK starts a fresh log/u);
+                assert.match(String(delegationRead.body ?? ""), /`plurnk\.work` starts a fresh log/u);
                 for (const witness of [
                     /(?:^|\n) *\d+:await plurnk\.bare\(\{ prompt: "A self-contained prompt, with everything it needs pasted in\." \}\);/u,
                     /(?:^|\n) *\d+:await plurnk\.js\(/u,
-                    /(?:^|\n) *\d+:.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u,
+                    /(?:^|\n) *\d+:.*\[Complete \.env\.defaults\]\(configuration\/\.env\.defaults\)/u,
                 ]) {
                     if (!witness.test(text)) throw new Error(`installed reference READ omitted ${witness}`);
                 }
-                assert.ok(reads.some((row) => row.path === "skill://plurnk/.env.defaults" && (row.status ?? 200) === 200),
-                    "installed reference READ omitted skill://plurnk/.env.defaults");
-                if (/\d+<@[0-9A-Za-z]{5}>.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u.test(text)) {
+                assert.ok(reads.some((row) => row.path === "skill://plurnk/configuration/.env.defaults" && (row.status ?? 200) === 200),
+                    "installed reference READ omitted skill://plurnk/configuration/.env.defaults");
+                if (/\d+<@[0-9A-Za-z]{5}>.*\[Complete \.env\.defaults\]\(configuration\/\.env\.defaults\)/u.test(text)) {
                     throw new Error("installed read-only skill advertised model EDIT anchors");
                 }
             }

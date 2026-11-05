@@ -62,7 +62,7 @@ const repeated = (body: string) => {
     ];
 };
 
-for (const op of ["EDIT", "KILL", "COPY", "MOVE"] as const) {
+for (const op of ["edit", "kill", "copy", "move"] as const) {
     test(`{§line-anchors}: ${op} uses contextual READ handles after a separate operation shifts the resource`, async (t) => {
         const { run, read, write } = await runtime(t);
         const source = "workspace:///source.md";
@@ -84,9 +84,9 @@ for (const op of ["EDIT", "KILL", "COPY", "MOVE"] as const) {
         assert.equal((await write(source, "prefix\nhead-0", "<1>")).status, 200);
         assert.equal((await write(destination, "prefix\nhead-0", "<1>")).status, 200);
         assert.equal((await read(source, anchor)).content, "source-target");
-        const program = op === "EDIT"
+        const program = op === "edit"
             ? `await plurnk.edit({"path":"${source}","range":"${anchor}","content":"changed"});`
-            : op === "KILL"
+            : op === "kill"
                 ? `await plurnk.kill({"path":"${source}","range":"${anchor}"});`
                 : `await plurnk.${op.toLowerCase()}({"from":{"path":"${source}","range":"${anchor}"},"to":{"path":"${destination}","range":"${destinationAnchor}"}});`;
         const result = await run(program);
@@ -94,9 +94,9 @@ for (const op of ["EDIT", "KILL", "COPY", "MOVE"] as const) {
 
         const expectedSource = ["prefix", ...sourceLines];
         const expectedDestination = ["prefix", ...destinationLines];
-        if (op === "EDIT") expectedSource[selected + 1] = "changed";
-        if (op === "KILL" || op === "MOVE") expectedSource.splice(selected + 1, 1);
-        if (op === "COPY" || op === "MOVE") expectedDestination[other + 1] = "source-target";
+        if (op === "edit") expectedSource[selected + 1] = "changed";
+        if (op === "kill" || op === "move") expectedSource.splice(selected + 1, 1);
+        if (op === "copy" || op === "move") expectedDestination[other + 1] = "source-target";
         assert.equal((await read(source)).content, expectedSource.join("\n"), "only the selected copy is changed or removed");
         assert.equal((await read(destination)).content, expectedDestination.join("\n"), "the destination independently resolves its contextual anchor");
     });
@@ -163,7 +163,7 @@ const seeded = async (root: string): Promise<void> => {
 
 type Row = { op: string; origin: string; status_rx: number; rx: string };
 const editRows = (rows: Row[]): Array<{ status: number; rx: Record<string, unknown> }> =>
-    rows.filter(({ op }) => op === "EDIT").map(({ status_rx, rx }) => ({ status: status_rx, rx: JSON.parse(rx) }));
+    rows.filter(({ op }) => op === "edit").map(({ status_rx, rx }) => ({ status: status_rx, rx: JSON.parse(rx) }));
 
 test("{§op-methods-op-dispatch} separate numeric EDITs never negotiate a shared endpoint", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
@@ -218,7 +218,7 @@ await plurnk.note({"text":"editing"});`, 50)] }).generate(args);
                 await rpcCall(ws, 1, "workspace.create", { name: "paste", projectRoot: root });
                 const first = await runLoopToTerminal(ws, 2, { prompt: "look" });
                 assert.equal(first.result.status, 200);
-                const readRow = (await db.engine_render_log.all<Row>({ session_id: first.modelSessionId! })).find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
+                const readRow = (await db.engine_render_log.all<Row>({ session_id: first.modelSessionId! })).find(({ op, origin, status_rx }) => op === "read" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow!.rx).lineAnchors as string[];
                 assert.equal(anchors.length, 7);
                 // Lines 1-2 pasted back exactly as rendered (right-aligned ordinal, the anchor as the delimiter, text);
@@ -263,7 +263,7 @@ await plurnk.note({"text":"editing"});`, 50)] }).generate(args);
                 await rpcCall(ws, 1, "workspace.create", { name: "stale-paste", projectRoot: root });
                 const first = await runLoopToTerminal(ws, 2, { prompt: "look" });
                 assert.equal(first.result.status, 200);
-                const readRow = (await db.engine_render_log.all<Row>({ session_id: first.modelSessionId! })).find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
+                const readRow = (await db.engine_render_log.all<Row>({ session_id: first.modelSessionId! })).find(({ op, origin, status_rx }) => op === "read" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow!.rx).lineAnchors as string[];
                 // Line 4 changes out-of-band after the READ: line 2's neighbourhood now differs, so the
                 // pasted prefixes no longer verify against the current anchors - only against the READ's.
@@ -795,7 +795,7 @@ const edit = (file: string, scope: string, body: string | null): string => `awai
 const anchorsFromLog = async ({ db, sessionId }: Ctx): Promise<[Anchors, Anchors]> => {
     const rows = await db.engine_render_log.all<{ op: string | null; origin: string; status_rx: number; pathname: string | null; rx: string }>({ session_id: sessionId });
     const latest = (file: string): Anchors => {
-        const row = rows.findLast(({ op, origin, status_rx, pathname }) => op === "READ" && origin === "model" && status_rx === 200 && (pathname === file || pathname === `/${file}`));
+        const row = rows.findLast(({ op, origin, status_rx, pathname }) => op === "read" && origin === "model" && status_rx === 200 && (pathname === file || pathname === `/${file}`));
         assert.ok(row, `the model READ ${file}`);
         const anchors = (JSON.parse(row.rx) as { lineAnchors?: string[] }).lineAnchors;
         assert.ok(Array.isArray(anchors) && anchors.length > 0, `the READ of ${file} published one anchor per line`);
@@ -832,7 +832,7 @@ const program = async (ctx: Ctx, sequence: number, frames: (a: Anchors, b: Ancho
     assert.equal(result.result.status, 200, JSON.stringify(result.result).slice(0, 300));
     assert.ok(published, "the program ran");
     const rows = (await Promise.all(result.turnIds.map((id) => db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: id })))).flat();
-    const edits = rows.filter(({ op, origin }) => op === "EDIT" && origin === "model").map(({ status_rx, rx }) => {
+    const edits = rows.filter(({ op, origin }) => op === "edit" && origin === "model").map(({ status_rx, rx }) => {
         const parsed = JSON.parse(rx) as { receipt?: { effect?: { result?: string; context?: string } }; problem?: { unresolvedAnchors?: Unresolved[] } };
         return {
             status: status_rx,

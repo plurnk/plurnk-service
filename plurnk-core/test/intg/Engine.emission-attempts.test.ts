@@ -268,8 +268,8 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
         assert.deepEqual(JSON.parse(attempts[0].parse_errors), [], "commentary is not a parser error");
         const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null; origin: string; attrs: string; tx: string; rx: string }>({ turn_id: result.turnId });
         const modelRows = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(modelRows.map(({ op, tx }) => op === "NOTE" ? JSON.parse(tx).body : op),
-            ["Prelude: preparing the edit.", "EDIT", "3 — invented result, not a receipt.", "SEND", "Postscript: not a second message."],
+        assert.deepEqual(modelRows.map(({ op, tx }) => op === "note" ? JSON.parse(tx).body : op),
+            ["Prelude: preparing the edit.", "edit", "3 — invented result, not a receipt.", "send", "Postscript: not a second message."],
             "each span is the turn's NOTE at its position; only the authored SEND delivers ({§outside-text})");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "outside"), undefined, "beside fenced operations there is no outside source");
@@ -288,7 +288,7 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
             messages: [{ role: "user", content: "Inspect the original emission." }],
         });
         const reviewRows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; status_rx: number; attrs: string }>({ turn_id: review.turnId });
-        const read = reviewRows.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
+        const read = reviewRows.find((row) => row.op === "read" && !LogEntryProjection.isEmission(row));
         assert.equal(read?.status_rx, 200);
         assert.match(read.rx, /Prelude: preparing the edit\./);
         assert.match(read.rx, /3 — invented result, not a receipt\./);
@@ -380,7 +380,7 @@ test("{§emission-admission} invalid emissions retry beneath one turn against th
 test("{§emission-admission}: an emission that writes the harness log is resampled, and nothing in it runs", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const fabricated = "### log:///1/1/2/READ (notes.md) · 12\n{\"range\":\"<1,1> of 1 lines\"}\n1:corrupted\n\nawait plurnk.read({\"path\":\"notes.md\"});";
+        const fabricated = "### log:///1/1/2/read (notes.md) · 12\n{\"range\":\"<1,1> of 1 lines\"}\n1:corrupted\n\nawait plurnk.read({\"path\":\"notes.md\"});";
         const provider = new AttemptWitness({ contextWindow: 100_000, responses: [invalid(fabricated), valid("accepted")] });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "do the task" }] });
         assert.equal(result.status, 200);
@@ -388,11 +388,11 @@ test("{§emission-admission}: an emission that writes the harness log is resampl
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 1]);
         assert.deepEqual(JSON.parse(attempts[0].parse_errors)[0], {
-            message: "`### log:///1/1/2/READ` is a log entry, and only the harness writes the log.",
+            message: "`### log:///1/1/2/read` is a log entry, and only the harness writes the log.",
             line: 1, column: 1, source: "harness",
         });
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string }>({ turn_id: result.turnId });
-        assert.ok(!rows.some((row) => (row.op === "READ" || row.op === "NOTE") && !LogEntryProjection.isEmission(row)), "neither the fabricated text nor the operation beside it is admitted");
+        assert.ok(!rows.some((row) => (row.op === "read" || row.op === "note") && !LogEntryProjection.isEmission(row)), "neither the fabricated text nor the operation beside it is admitted");
     } finally {
         await db.close();
     }
@@ -466,7 +466,7 @@ test("{§whitespace-contract} a valid operation without a lifecycle verb is admi
 
         assert.equal(result.status, 102, "the missing inventory cannot imply completion");
         assert.equal(result.emissionAttempts, 1, "valid framing does not spend another inference");
-        assert.deepEqual(result.outcomes, [{ op: "EDIT", status: 201, problemType: null }]);
+        assert.deepEqual(result.outcomes, [{ op: "edit", status: 201, problemType: null }]);
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({
             turn_id: result.turnId,
         });
@@ -482,8 +482,8 @@ test("{§whitespace-contract} a valid operation without a lifecycle verb is admi
             status_rx: number;
         }>({ turn_id: result.turnId });
         assert.deepEqual(
-            rows.filter((row) => row.op !== null && !(row.op === "SEND" && row.origin === "_plurnk") && !LogEntryProjection.isEmission(row)).map(({ op }) => op),
-            ["EDIT"],
+            rows.filter((row) => row.op !== null && !(row.op === "send" && row.origin === "_plurnk") && !LogEntryProjection.isEmission(row)).map(({ op }) => op),
+            ["edit"],
             "only the authored operation is recorded",
         );
         assert.equal(rows.filter(({ status_rx }) => status_rx >= 400).length, 0);
@@ -517,8 +517,8 @@ test("{§fence-pairing} a literal nested NOTE remains data in the complete opera
         assert.equal(attempts[0]?.accepted, 1);
         assert.deepEqual(JSON.parse(attempts[0].parse_errors), []);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: first.turnId });
-        assert.equal(rows.some((row) => row.op === "READ" && !LogEntryProjection.isEmission(row)), false, "shorter nested fences remain literal data");
-        assert.equal(rows.some(({ op }) => op === "NOTE"), false, "no nested NOTE was dispatched");
+        assert.equal(rows.some((row) => row.op === "read" && !LogEntryProjection.isEmission(row)), false, "shorter nested fences remain literal data");
+        assert.equal(rows.some(({ op }) => op === "note"), false, "no nested NOTE was dispatched");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         assert.equal(sources.find(({ turn_id, kind }) => turn_id === first.turnId && kind === "ops")?.content, source);
         const second = await engine.runTurn({
@@ -527,7 +527,7 @@ test("{§fence-pairing} a literal nested NOTE remains data in the complete opera
         });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: second.turnId });
         const log = packetSection(JSON.parse(row!.packet), "log");
-        assert.match(log, /### log:\/\/\/1\/2\/\d+\/EDIT/u, "the next model turn receives the EDIT receipt");
+        assert.match(log, /### log:\/\/\/1\/2\/\d+\/edit/u, "the next model turn receives the EDIT receipt");
         assert.match(packetSection(JSON.parse(row!.packet), "emission-history"), /plurnk\.edit\(\{"path":"workspace:\/\/\/example\.md"/u, "the operation supplies its addressed path");
     } finally {
         await db.close();
@@ -617,7 +617,7 @@ test("{§emission-admission} finish=length is forensic evidence: a frame that lo
             source: "grammar",
         }], "the admitted attempt preserves one tail fact and no recovered-tail diagnostics");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: result.turnId });
-        assert.equal(rows.filter(({ op, origin }) => origin === "model" && op === "READ").length, 1, "the statement that closed before the loss dispatched");
+        assert.equal(rows.filter(({ op, origin }) => origin === "model" && op === "read").length, 1, "the statement that closed before the loss dispatched");
         assert.equal(rows.filter(({ op, origin }) => origin === "model" && op === "error").length, 1, "the loss is a row");
         const turn = await db.test_get_turn.get<{ packet: string; finish_reason: string | null }>({ id: result.turnId });
         assert.equal(turn?.finish_reason, "length", "the provider's finish reason is evidence, not a rejection rule");
@@ -659,13 +659,13 @@ test("{§slot-order}: a malformed continuation statement preserves siblings with
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
         const parseErrors = JSON.parse(attempts[0].parse_errors) as Array<{ message: string; line: number; source: string }>;
         assert.equal(parseErrors.length, 1, "one bounded diagnostic for the malformed continuation statement");
-        assert.equal(parseErrors[0]?.message, "READ requires a target.");
+        assert.equal(parseErrors[0]?.message, "read requires a target.");
         assert.deepEqual({ line: parseErrors[0]?.line, source: parseErrors[0]?.source }, { line: 2, source: "parser" });
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({
             turn_id: result.turnId,
         });
-        assert.equal(rows.some(({ origin, op }) => origin === "model" && op === "EDIT"), true);
+        assert.equal(rows.some(({ origin, op }) => origin === "model" && op === "edit"), true);
         const landed = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
             pathname: "/proof.md",
             scheme: "workspace",
@@ -701,7 +701,7 @@ test("{§operation-results} {§matcher-prefix-claims} a syntactically legal $fC 
         assert.equal(failed.emissionAttempts, 1, "a trustworthy frame is not blindly resampled");
         assert.equal(failed.emissionExhausted, false);
         assert.ok(
-            failed.outcomes.some(({ op, status }) => op === "FIND" && status === 400),
+            failed.outcomes.some(({ op, status }) => op === "find" && status === 400),
             "the malformed matcher is the FIND's own refusal, not a parse error",
         );
         const attempts = await db.test_turn_attempts.all<{
@@ -719,16 +719,16 @@ test("{§operation-results} {§matcher-prefix-claims} a syntactically legal $fC 
             rx: string;
         }>({ turn_id: failed.turnId });
         const authored = rows.filter(({ origin, op }) =>
-            origin === "model" && (op === "NOTE" || op === "FIND" || op === "error"));
+            origin === "model" && (op === "note" || op === "find" || op === "error"));
         assert.deepEqual(
             authored.map(({ op, status_rx }) => ({ op, status_rx })),
             [
-                { op: "FIND", status_rx: 400 },
-                { op: "NOTE", status_rx: 200 },
+                { op: "find", status_rx: 400 },
+                { op: "note", status_rx: 200 },
             ],
             "the refused FIND and the note retain their authored order; no error row is minted",
         );
-        const refusal = JSON.parse(authored.find(({ op }) => op === "FIND")!.rx) as {
+        const refusal = JSON.parse(authored.find(({ op }) => op === "find")!.rx) as {
             problem?: { type?: string; detail?: string; stage?: string; recovery?: string };
         };
         assert.equal(refusal.problem?.type, "https://problems.plurnk.xyz/grammar/matcher/unreadable-pattern");
@@ -747,7 +747,7 @@ test("{§operation-results} {§matcher-prefix-claims} a syntactically legal $fC 
         });
         const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(packetRow?.packet ?? "{}");
-        assert.match(packetSection(packet, "errors"), /"status":400,"path":"log:\/\/\/[^"]*\/FIND"/);
+        assert.match(packetSection(packet, "errors"), /"status":400,"path":"log:\/\/\/[^"]*\/find"/);
         assert.match(
             packetSection(packet, "log"),
             /not a valid jsonpath/i,
@@ -796,12 +796,12 @@ await plurnk.read({"path":"evaluator/functions.go","range":"2286,2292"});`,
             attrs: string;
         }>({ turn_id: failed.turnId });
         assert.equal(
-            rows.some(({ origin, op }) => origin === "model" && op === "READ"),
+            rows.some(({ origin, op }) => origin === "model" && op === "read"),
             true,
             "the retrieval dispatches bodyless after its annotation",
         );
         assert.equal(rows.some(({ origin, op }) => origin === "model" && op === "error"), false);
-        assert.equal(rows.filter(({ origin, op }) => origin === "model" && op === "NOTE").length, 2, "the annotation and explicit NOTE are separate memories");
+        assert.equal(rows.filter(({ origin, op }) => origin === "model" && op === "note").length, 2, "the annotation and explicit NOTE are separate memories");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         const turnOps = sources.find((row) => row.turn_id === failed.turnId && row.kind === "ops");
         assert.ok(turnOps, "the admitted source remains durable independently of result rows");
@@ -854,11 +854,11 @@ test("{§matcher-prefix-claims} a bounded malformed operation defers same-turn c
         assert.equal(result.emissionAttempts, 1);
         assert.equal(result.status, 102, "the malformed operation's result keeps the turn non-terminal");
         assert.ok(
-            result.outcomes.some(({ op, status }) => op === "FIND" && status === 400),
+            result.outcomes.some(({ op, status }) => op === "find" && status === 400),
             "the fumbled matcher is the FIND's own refusal, an unseen failure that defers completion",
         );
         assert.ok(
-            result.outcomes.some(({ op, status }) => op === "SEND" && status === 200),
+            result.outcomes.some(({ op, status }) => op === "send" && status === 200),
             "delivery is independent of the unseen failure ({§loop-completion})",
         );
         const rows = await db.test_log_entries_by_turn.all<{
@@ -872,8 +872,8 @@ test("{§matcher-prefix-claims} a bounded malformed operation defers same-turn c
         assert.deepEqual(
             authored.map(({ op, status_rx }) => ({ op, status_rx })),
             [
-                { op: "FIND", status_rx: 400 },
-                { op: "SEND", status_rx: 200 },
+                { op: "find", status_rx: 400 },
+                { op: "send", status_rx: 200 },
             ],
         );
     } finally {
@@ -899,7 +899,7 @@ test("{§matcher-prefix-claims}: a malformed COPY statement preserves siblings, 
         const context = { workspaceId, sessionId, loopId };
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
-        assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["NOTE", 200], ["READ", 200], ["READ", 200], [null, 400]], "the interstitial text is the turn's NOTE beside the operations ({§outside-text})");
+        assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["note", 200], ["read", 200], ["read", 200], [null, 400]], "the interstitial text is the turn's NOTE beside the operations ({§outside-text})");
         const { sequence } = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
         const [readSource] = PlurnkParser.parseStatements(`await plurnk.read({"path":"ops://subject/1/${sequence}","range":"1,-1"});`).items;
         assert.ok(readSource.kind === "statement");
@@ -918,14 +918,14 @@ test("{§matcher-prefix-claims}: a malformed COPY statement preserves siblings, 
         assert.equal(failures.length, 1, "only the malformed COPY has a failure receipt");
         const problem = failures[0].problem as Record<string, unknown>;
         assert.equal(problem.type, "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax");
-        assert.equal(problem.detail, "COPY requires both from and to targets.");
+        assert.equal(problem.detail, "copy requires both from and to targets.");
         assert.equal(problem.siblingsRetained, true);
         assert.equal(problem.line, 5);
         assert.equal(problem.column, 0);
         // {§parse-recovery} The row records the statement the parser refused, as written; the packet shows the model nothing new.
         const [refused] = await db.test_log_entries_by_session_op_full.all<{ attrs: string }>({ session_id: sessionId, op: "error" });
         const attempt = (JSON.parse(refused.attrs) as { attempt?: { verb: string; text: string } }).attempt;
-        assert.equal(attempt?.verb, "COPY");
+        assert.equal(attempt?.verb, "copy");
         assert.equal(attempt?.text, badCopy);
         assert.equal(Object.hasOwn(problem, "attempt"), false);
         assert.equal(JSON.stringify(failures[0]).includes("attempt"), false, "the attempt never reaches the model's packet");
@@ -961,7 +961,7 @@ test("{§op-shapes} a malformed COPY destination cannot dispatch or materialize"
             turn_id: result.turnId,
         });
         assert.equal(
-            rows.some(({ op, origin }) => op === "COPY" && origin === "model"),
+            rows.some(({ op, origin }) => op === "copy" && origin === "model"),
             false,
             "the malformed selection never becomes a dispatchable COPY AST",
         );
@@ -1010,8 +1010,8 @@ test("{§op-shapes} two WAITs keep the single-turn boundary: the program is admi
             op: string;
             origin: string;
         }>({ turn_id: result.turnId });
-        assert.equal(rows.filter(({ op, origin }) => op === "EDIT" && origin === "model").length, 1, "the operation beside the two WAITs ran");
-        assert.equal(rows.filter(({ op }) => op === "WAIT").length, 2, "each WAIT is a row of the one admitted turn");
+        assert.equal(rows.filter(({ op, origin }) => op === "edit" && origin === "model").length, 1, "the operation beside the two WAITs ran");
+        assert.equal(rows.filter(({ op }) => op === "wait").length, 2, "each WAIT is a row of the one admitted turn");
     } finally {
         await db.close();
     }
@@ -1049,14 +1049,14 @@ test("{§parse-recovery} {§parse-recovery}: a boundary lost after a statement i
         const replyAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: replyTurn });
         assert.deepEqual(replyAttempts.map(({ accepted }) => accepted), [1]);
         const rows = await db.engine_render_log.all<{ op: string; origin: string; tx: string; rx: string }>({ session_id: sessionId });
-        assert.equal(rows.filter(({ op, origin }) => op === "EDIT" && origin === "model").length, 1, "the statement that closed before the loss ran");
-        assert.equal(rows.filter(({ op, origin }) => op === "DONE" && origin === "model").length, 1);
+        assert.equal(rows.filter(({ op, origin }) => op === "edit" && origin === "model").length, 1, "the statement that closed before the loss ran");
+        assert.equal(rows.filter(({ op, origin }) => op === "done" && origin === "model").length, 1);
         const loss = rows.find(({ op, origin }) => op === "error" && origin === "model");
         assert.ok(loss, "the loss is a failed row");
         assert.equal(JSON.parse(loss.rx).problem?.detail, message);
         const entries = await db.test_list_entries_by_workspace_workspace_pathname.all<{ pathname: string }>({ workspace_id: workspaceId });
         assert.equal(entries.some(({ pathname }) => pathname === "/before-loss.md"), true);
-        const send = rows.find(({ op, origin }) => op === "DONE" && origin === "model");
+        const send = rows.find(({ op, origin }) => op === "done" && origin === "model");
         assert.equal(JSON.parse(send!.tx).body?.raw, body, "the durable message retains the complete literal body");
     } finally { await db.close(); }
 });
@@ -1139,7 +1139,7 @@ test("{§emission-admission} exhausted private attempts expose the latest respon
         assert.equal(rejectedMirror.initial_folded, "[[1,-1]]", "the rejected model item remains durably body-suppressed");
         assert.equal(rejectedMirror.folded, "[]", "the rejected program remains readable");
         assert.match(rejectedMirror.rx, /await plurnk\.read\(\{\\"path\\":\\"file:\/\/\/main\.go/);
-        assert.equal(rows.filter((row) => row.origin === "model" && row.op === "READ").length, 0, "no rejected operation dispatches");
+        assert.equal(rows.filter((row) => row.origin === "model" && row.op === "read").length, 0, "no rejected operation dispatches");
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "the lifeline does not fabricate an operation failure");
     } finally {
         await db.close();
@@ -1710,7 +1710,7 @@ test("{§engine-rails} a complete-looking resource-interrupted attempt is persis
             false,
             "no operation from the interrupted response dispatches",
         );
-        assert.equal(rows.filter(({ origin, op }) => origin === "model" && op === "DONE").length, 1, "the re-issued call's emission is the one that dispatches");
+        assert.equal(rows.filter(({ origin, op }) => origin === "model" && op === "done").length, 1, "the re-issued call's emission is the one that dispatches");
         assert.equal(rows.filter(({ op }) => op === "error").length, 1, "the ProviderError remains one durable failure");
     } finally {
         await db.close();
@@ -1799,7 +1799,7 @@ test("{§emission-admission} a valid turn with a failed operation remains recove
         assert.equal(failed.emissionAttempts, 1);
         assert.equal(failed.emissionExhausted, false);
         assert.ok(
-            failed.outcomes.some(({ op, status }) => op === "EDIT" && status === 403),
+            failed.outcomes.some(({ op, status }) => op === "edit" && status === 403),
             "the valid turn dispatches its failing operation",
         );
 
@@ -1808,7 +1808,7 @@ test("{§emission-admission} a valid turn with a failed operation remains recove
         const packet = JSON.parse(row?.packet ?? "{}");
         assert.match(packetSection(packet, "errors"), /"status":403,"path":"log:\/\//, "the operation failure reaches the recovery turn");
         assert.match(packetSection(packet, "emission-history"), /plurnk\.edit\(\{"path":"sealed:\/\/\/x"/u, "the failed operation remains in model-visible history");
-        assert.match(packetSection(packet, "log"), /### log:\/\/\/1\/2\/\d+\/EDIT[^\n]*\n[^\n]*"status":403/u, "the failure stays beside it");
+        assert.match(packetSection(packet, "log"), /### log:\/\/\/1\/2\/\d+\/edit[^\n]*\n[^\n]*"status":403/u, "the failure stays beside it");
     } finally {
         await db.close();
     }
@@ -1962,7 +1962,7 @@ test("{§parse-recovery} {§provider-failure-normalization} {§outside-text}: Mo
         assert.equal(rows.filter(({ op, origin }) => op === "error" && origin === "model").length, 0, "neither glitched closers nor retry closers produce parser/model error rows");
         const emptyTurnRow = rows.find(({ op, origin }) => op === "error" && origin === "_plurnk");
         assert.match(emptyTurnRow?.rx ?? "", /no-operation/, "the thinking-only turn records one recoverable no-operation rail prompt");
-        const send = rows.find(({ op, origin }) => op === "DONE" && origin === "model");
+        const send = rows.find(({ op, origin }) => op === "done" && origin === "model");
         assert.equal(JSON.parse(send!.tx).body?.raw, "all seams green", "the retry closer is stripped before DONE body extraction");
     } finally {
         await db.close();

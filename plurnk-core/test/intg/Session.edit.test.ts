@@ -27,7 +27,7 @@ const editStatement = (opts: {
     lineMarker?: LineMarker | null;
 }): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT",
+    op: "edit",
     aside: null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
@@ -37,7 +37,7 @@ const editStatement = (opts: {
 
 const readStatement = (opts: { target?: ParsedPath | null }): ReadStatement => ({
     metadata: null,
-    op: "READ",
+    op: "read",
     aside: null,
     target: opts.target ?? null,
     lineMarker: null,
@@ -233,7 +233,7 @@ test("{§zero-width-column-one-insert} Session.edit: lineMarker on non-existent 
         const stmt = editStatement({ target: urlPath("workspace", "/new"), body: "first line\nsecond line", lineMarker: { marks: [0] } });
         const result = await new Workspace().edit(stmt, makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(result.status, 201);
-        const read = await readThroughScheme("workspace", null, { ...stmt, op: "READ", lineMarker: null, matcher: null, body: null } as never, makeSchemeCtx({ db, workspaceId, sessionId }));
+        const read = await readThroughScheme("workspace", null, { ...stmt, op: "read", lineMarker: null, matcher: null, body: null } as never, makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal((read as { content: string }).content, "first line\nsecond line");
     } finally { await db.close(); }
 });
@@ -486,7 +486,7 @@ await plurnk.note({"text":"editing"});`, 50)] }).generate(args);
                 const first = await runLoopToTerminal(ws, 2, { prompt: "look" });
                 assert.equal(first.result.status, 200);
                 const readRow = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ session_id: first.modelSessionId! }))
-                    .find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
+                    .find(({ op, origin, status_rx }) => op === "read" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow?.rx ?? "{}").lineAnchors as string[] | undefined;
                 assert.ok(Array.isArray(anchors) && anchors.length === fixture.source.split("\n").length - 1, `the READ published one anchor per line; got ${JSON.stringify(anchors)}`);
                 if (fixture.name === "repeated") assert.notEqual(anchors[fixture.first - 1], anchors[fixture.first + 5], "the two copies have distinct handles");
@@ -498,7 +498,7 @@ await plurnk.note({"text":"editing"});`, 50)] }).generate(args);
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit" });
                 assert.equal(second.result.status, 200);
                 const edits = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ session_id: second.modelSessionId! }))
-                    .filter(({ op }) => op === "EDIT");
+                    .filter(({ op }) => op === "edit");
                 assert.deepEqual(edits.map(({ status_rx }) => status_rx), [200, 200], `both anchored edits applied; got ${edits.map(({ rx }) => rx).join(" | ")}`);
                 assert.equal(await readFile(join(root, "doc.md"), "utf8"), `zero-a\nzero-b\n${fixture.expected}`, "the edits landed on the selected moved lines, leaving any twin intact");
             } finally { ws.close(); }
@@ -620,7 +620,7 @@ await plurnk.note({"text":"editing"});`, 50)] }).generate(args);
                 const first = await runLoopToTerminal(ws, 2, { prompt: "look" });
                 assert.equal(first.result.status, 200);
                 const readRow = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ session_id: first.modelSessionId! }))
-                    .find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
+                    .find(({ op, origin, status_rx }) => op === "read" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow?.rx ?? "{}").lineAnchors as string[] | undefined;
                 assert.ok(Array.isArray(anchors) && anchors.length >= 6, `the READ published its anchors; got ${JSON.stringify(anchors)}`);
                 if (fixture.hashCollision) assert.equal(anchors[5], anchors[9], "the fixture injected an actual derivation collision");
@@ -637,7 +637,7 @@ await plurnk.note({"text":"editing"});`, 50)] }).generate(args);
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit" });
                 assert.equal(second.result.status, 200, "the model concludes after observing the individual failures");
                 const rows = await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ session_id: second.modelSessionId! });
-                const edits = rows.filter(({ op }) => op === "EDIT");
+                const edits = rows.filter(({ op }) => op === "edit");
                 assert.equal(edits.length, statements.length);
                 assert.deepEqual(edits.slice(0, 3).map(({ status_rx }) => status_rx), [200, 200, 200], "valid earlier operations land independently");
                 for (const [index, row] of edits.slice(3).entries()) {
@@ -718,7 +718,7 @@ await plurnk.note({"text":"second"});`, 50)] }).generate(args);
                 const first = await runLoopToTerminal(ws, 2, { prompt: "edit" });
                 assert.equal(first.result.status, 200);
                 const editRow = (await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ session_id: first.modelSessionId! }))
-                    .find(({ op, status_rx }) => op === "EDIT" && status_rx === 200);
+                    .find(({ op, status_rx }) => op === "edit" && status_rx === 200);
                 const context = JSON.parse(editRow!.rx).receipt.effect.context as string;
                 const lines = context.split("\n");
                 assert.ok(lines.length >= 3, `bounded context around the landed line; got ${JSON.stringify(context)}`);
@@ -733,7 +733,7 @@ await plurnk.note({"text":"second"});`, 50)] }).generate(args);
                 assert.equal(second.result.status, 200);
                 // The session persists across loops: the first loop's one EDIT row precedes this loop's.
                 const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ session_id: second.modelSessionId! });
-                const edits = rows.filter(({ op }) => op === "EDIT").slice(1);
+                const edits = rows.filter(({ op }) => op === "edit").slice(1);
                 assert.deepEqual(edits.map(({ status_rx }) => status_rx), [200], JSON.stringify(edits.map(({ rx }) => JSON.parse(rx).problem ?? null)));
                 assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int64\n\nfunc requireFn(a int) int { // anchored\n\treturn a\n}\n\nfunc other() {}\n", "the anchor cited from the EDIT receipt resolved to line 3 with no READ in between");
             } finally { ws.close(); }

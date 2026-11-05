@@ -229,7 +229,7 @@ test("{§connection-lifecycle} a client operation's log:/// addresses read the s
     const { loopId } = await daemon.runLoop({ workspaceId, sessionId, prompt: "Take a note." });
     await waitForDb(async () => (await loopOf(daemon, workspaceId, sessionId, loopId))?.status, (status) => status === 200);
     const modelRows = await daemon.readLog({ workspaceId, sessionId });
-    const edit = modelRows.find(({ op }) => op === "EDIT");
+    const edit = modelRows.find(({ op }) => op === "edit");
     assert.ok(edit, "the model's log holds its EDIT");
     const coordinate = `log:///${edit.loop_seq}/${edit.turn_seq}/${edit.sequence}`;
     const person = async (source: string, contextSessionId?: number) => (await daemon.dispatchClientAction({
@@ -250,12 +250,12 @@ test("{§connection-lifecycle} a client operation's log:/// addresses read the s
         const paths = (found.results as Array<Array<{ path: string }>>).flat().map(({ path }) => path);
         const own = new Set((await daemon.readLog({ workspaceId, sessionId }))
             .map(({ loop_seq, turn_seq, sequence, op }) => `log:///${loop_seq}/${turn_seq}/${sequence}/${op}`));
-        assert.ok(paths.includes(`${coordinate}/EDIT`), `the model's EDIT is found; first found: ${JSON.stringify(paths.slice(0, 3))}`);
+        assert.ok(paths.includes(`${coordinate}/edit`), `the model's EDIT is found; first found: ${JSON.stringify(paths.slice(0, 3))}`);
         assert.deepEqual(paths.filter((path) => !own.has(path)), [], "every row found is the model's");
     });
     for (const [verb, source] of [
-        ["KILL", `await plurnk.kill({"path":"${coordinate}"});`],
-        ["MOVE", `await plurnk.move({"from":"${coordinate}","to":"workspace:///moved.md"});`],
+        ["kill", `await plurnk.kill({"path":"${coordinate}"});`],
+        ["move", `await plurnk.move({"from":"${coordinate}","to":"workspace:///moved.md"});`],
     ] as const) {
         await t.test(`{§connection-lifecycle} acting for the model session, a ${verb} that would curate its log is refused as a client write`, async () => {
             const refused = await person(source, sessionId);
@@ -265,8 +265,8 @@ test("{§connection-lifecycle} a client operation's log:/// addresses read the s
         });
     }
     for (const [verb, source] of [
-        ["READ", `await plurnk.read({"path":"${coordinate}"});`],
-        ["FIND", "await plurnk.find({\"path\":\"log:///**\"});"],
+        ["read", `await plurnk.read({"path":"${coordinate}"});`],
+        ["find", "await plurnk.find({\"path\":\"log:///**\"});"],
     ] as const) {
         await t.test(`{§connection-lifecycle} acting for no session, a ${verb} of log:/// addresses no log`, async () => {
             const unaddressed = await person(source);
@@ -534,7 +534,7 @@ test("{§capability-admission}: existing sessions reconcile their tool catalog a
         const model = await namedModelSession(daemon, workspace.workspaceId, "main");
         const sibling = await daemon.createSession({ workspaceId: workspace.workspaceId, name: "sibling" });
         const reference = (sessionId: number, runtime: string) => modelOperation(daemon, db, { workspaceId: workspace.workspaceId, sessionId,
-            statement: readStmt({ ...urlPath("plurnk", `/${runtime}.md`), hostname: null }) });
+            statement: readStmt({ ...urlPath("mcp", `/plurnk/${runtime}.json`), hostname: null }) });
         for (const sessionId of [model, sibling.sessionId]) assert.equal((await reference(sessionId, "js")).status, 200);
         await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: { deny: [{ runtime: "js" }] } });
         for (const sessionId of [model, sibling.sessionId]) {
@@ -754,7 +754,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
                 "await plurnk.note({\"text\":\"Invoke the documented observation tool.\"});",
             ].join("\n\n")),
             makeMockResponse("await fixture.echo(\"hello from MCP\");\n\nawait plurnk.note({\"text\":\"Inspect the attributable tool failure.\"});"),
-            makeMockResponse("await plurnk.kill({\"path\":\"log:///**/READ\"});\n\nawait fixture.echo({\"message\":\"hello from MCP\"});\n\nawait plurnk.note({\"text\":\"Inspect the corrected tool result.\"});"),
+            makeMockResponse("await plurnk.kill({\"path\":\"log:///**/read\"});\n\nawait fixture.echo({\"message\":\"hello from MCP\"});\n\nawait plurnk.note({\"text\":\"Inspect the corrected tool result.\"});"),
             makeMockResponse("await plurnk.find({\"path\":\"fixture:///**\",\"range\":\"1,-1\",\"pattern\":\"invalid-tool-arguments\"});\n\nawait plurnk.note({\"text\":\"Inspect the source's durable terminal result.\"});"),
             makeMockResponse("await plurnk.done({\"text\":\"The MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\"});"),
             makeMockResponse("await plurnk.read({\"path\":\"mcp:///fixture.md\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"Invoke the documented host tool.\"});"),
@@ -873,9 +873,9 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             "the catalog and its full definitions are not injected into turn0");
         const runtimeContract = packet(provider.requests, 1);
         assert.match(runtimeContract, /Pass the message field unchanged\./, "READ of the runtime document retrieves the full authored instructions");
-        assert.match(runtimeContract, /await fixture\.echo\(.*\/\/ Echo one message\. Schema: mcp:\/\/\/fixture\/echo\.json/);
+        assert.match(runtimeContract, /await fixture\.echo\(.*\/\/ Echo one message\./);
         assert.doesNotMatch(runtimeContract, /await fixture\.fail\(/);
-        assert.match(runtimeContract, /mcp:\/\/\/fixture\.json/);
+        assert.doesNotMatch(runtimeContract, /Schema: mcp:\/\/\/fixture\/echo\.json|mcp:\/\/\/fixture\.json/);
         const echoContract = packet(provider.requests, 2);
         assert.match(echoContract, /"title": "fixture: echo"/);
         assert.match(echoContract, /"additionalProperties": false/, "the linked document preserves constraints omitted from the preview");
@@ -914,7 +914,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         const failedInvocation = packet(provider.requests, 3);
         assert.match(failedInvocation, /invalid-tool-arguments/, "the first malformed invocation reached the model as the exact MCP failure");
         assert.match(failedInvocation, /One JSON object per MCP tool call/, "the failure names the form that works, not only the JSON diagnostic");
-        assert.match(failedInvocation, /log:\/\/\/\d+\/\d+\/\d+\/READ/, "the failure has a stable log coordinate curated by the next turn");
+        assert.match(failedInvocation, /log:\/\/\/\d+\/\d+\/\d+\/read/, "the failure has a stable log coordinate curated by the next turn");
         const correctedInvocation = packet(provider.requests, 4);
         assert.match(correctedInvocation, /hello from MCP/, "the corrected remote result entered the next model packet");
         assert.doesNotMatch(
@@ -1084,7 +1084,7 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
 describe("question-tool-admission", () => {
 const findStatement = (scheme: "plurnk" | "mcp"): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null,
+    op: "find", aside: null,
     target: {
         kind: "url", raw: `${scheme}:///**`, scheme,
         username: null, password: null, hostname: null, port: null,
@@ -1193,7 +1193,7 @@ for (const [label, owner] of [
     try {
         if (owner !== null) await ownSession(db, workspaceId, sessionId, [...owner.tools], owner.interactive);
         const { paths, content } = await catalog();
-        assert.ok(paths.some((path) => path.endsWith("/sh.md")), "noninteractive tools remain discoverable");
+        assert.ok(paths.some((path) => path.endsWith("/plurnk/sh.json")), "noninteractive tools remain discoverable");
         assert.ok(paths.some((path) => path.endsWith("/plurnk/members.json")), "noninteractive plurnk tools remain discoverable");
         assert.ok(!paths.some((path) => path.endsWith("/plurnk/question.json")), "the shared reference set hides the tool from this session");
         assert.ok(!content.includes("plurnk (question)"), "the rendered catalog agrees with the location list");
@@ -1263,8 +1263,8 @@ test("{§question-tool}: the executor switch removes plurnk and its teaching", a
             await ownSession(db, workspaceId, sessionId);
             assert.equal(engine.executors?.entry("plurnk", workspaceId), undefined);
             const { paths } = await catalog();
-            assert.ok(paths.some((path) => path.endsWith("/sh.md")), "noninteractive tools remain discoverable");
-            assert.ok(!paths.some((path) => path.endsWith("/plurnk.md") || path.endsWith("/plurnk/question.json")));
+            assert.ok(paths.some((path) => path.endsWith("/plurnk/sh.json")), "noninteractive tools remain discoverable");
+            assert.ok(!paths.some((path) => path.endsWith("/plurnk/members.json") || path.endsWith("/plurnk/question.json")));
             const result = await engine.dispatch({ ...dispatch, sequence: 2, statement: execStatement() });
             assert.equal(result.status, 400);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/executor-not-registered");
@@ -1356,7 +1356,7 @@ test("{§log-wire-format} reversals land as one client operation of the acting p
         assert.equal(await content("a.md"), "one\nTWO\nthree\n");
         assert.equal(await exists(join(root, "new.md")), false);
         assert.equal(await exists(join(root, "bin2.png")), true, "a patchless row's effect stands");
-        assert.deepEqual(await clientMutations(), ["EDIT a.md patch", "KILL new.md patch"], "every reversal is a row of the person's operation with a patch of its own");
+        assert.deepEqual(await clientMutations(), ["edit a.md patch", "kill new.md patch"], "every reversal is a row of the person's operation with a patch of its own");
         const [operation] = await personLoops();
         assert.equal((await personLoops()).length, 1, "the reversals are one client operation, attributed to the acting person");
         assert.equal(operation?.status, 200);

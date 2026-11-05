@@ -54,7 +54,7 @@ test("{§fs-namespace} file URLs preserve native filename identity through reads
                 const loop = await runLoopToTerminal(client, 2, { prompt: "Read the files." });
                 assert.equal(loop.result.status, 200);
                 const rows = (await db.engine_render_log.all<{ op: string; origin: string; scheme: string | null; pathname: string | null; status_rx: number; rx: string }>({ session_id: loop.modelSessionId! }))
-                    .filter(({ origin, op }) => origin === "model" && op === "READ");
+                    .filter(({ origin, op }) => origin === "model" && op === "read");
                 assert.deepEqual(rows.map(({ pathname, status_rx }) => ({ pathname, status_rx })), names.map((pathname) => ({ pathname, status_rx: 200 })));
                 for (const row of rows) {
                     const target = renderTarget(row, root);
@@ -101,12 +101,12 @@ test("{§fs-namespace} encoded file operands compose across mutations, attachmen
                 const rows = await db.engine_render_log.all<{ op: string; origin: string; scheme: string | null; pathname: string | null; status_rx: number; rx: string }>({ session_id: loop.modelSessionId! });
                 const authored = rows.filter(({ origin }) => origin === "model");
                 assert.deepEqual(authored.filter(({ status_rx }) => status_rx >= 400), [], "no operation failed through address confusion");
-                assert.deepEqual(rows.filter(({ origin, op }) => origin === "_plurnk" && op === "READ").map(({ pathname, status_rx }) => ({ pathname, status_rx })),
+                assert.deepEqual(rows.filter(({ origin, op }) => origin === "_plurnk" && op === "read").map(({ pathname, status_rx }) => ({ pathname, status_rx })),
                     names.map((name) => ({ pathname: key(name), status_rx: 200 })), "client attachments use the native URI boundary");
-                for (const op of ["EDIT", "COPY", "MOVE", "KILL"]) {
+                for (const op of ["edit", "copy", "move", "kill"]) {
                     assert.equal(authored.filter((row) => row.op === op && row.status_rx === 200).length, names.length, op);
                 }
-                const reads = authored.filter(({ op }) => op === "READ");
+                const reads = authored.filter(({ op }) => op === "read");
                 assert.equal(reads.length, names.length * 2 - 1, "the glob reads every visible original and moved file once");
                 assert.ok(reads.every(({ status_rx }) => status_rx === 200));
                 for (const name of names) {
@@ -121,13 +121,13 @@ test("{§fs-namespace} encoded file operands compose across mutations, attachmen
                     const entry = Validator.assertEntryReadResult(await daemon.readEntry({ workspaceId, sessionId: loop.modelSessionId!, target: address }));
                     assert.equal(entry.entry?.channels.body?.content, `Revised ${name}\n`, "the client entry API resolves the same resource");
                 }
-                const survey = JSON.parse(authored.find(({ op, pathname }) => op === "FIND" && pathname === "*")!.rx);
+                const survey = JSON.parse(authored.find(({ op, pathname }) => op === "find" && pathname === "*")!.rx);
                 const groups = survey.results as Array<Array<{ path: string; items: number }>>;
                 assert.equal(groups.length, 1);
                 const folder = groups[0][0];
                 assert.equal(folder.path, `${pathToFileURL(join(root, directory)).href}/**`);
                 assert.equal(folder.items, names.length);
-                const subtree = JSON.parse(authored.find(({ op, pathname }) => op === "FIND" && pathname === `${directory}/**`)!.rx);
+                const subtree = JSON.parse(authored.find(({ op, pathname }) => op === "find" && pathname === `${directory}/**`)!.rx);
                 assert.equal(subtree.status, 200);
                 assert.equal(subtree.matchingPathCount, names.length, "the grouped selector includes hidden members and preserves literal glob characters");
                 assert.ok(userText(provider.received[5]).includes(glob), "the glob receipt retains the authored URI's syntax");
@@ -164,9 +164,9 @@ test("{§fs-namespace} digest addresses retain literal identities and authored s
         const evidence = EvidenceReader.open(dbPath);
         try {
             const rows = evidence.rows().logEntries;
-            assert.deepEqual(rows.filter(({ op }) => op === "READ").map(({ pathname, target }) => ({ pathname, target })),
+            assert.deepEqual(rows.filter(({ op }) => op === "read").map(({ pathname, target }) => ({ pathname, target })),
                 names.map((pathname) => ({ pathname, target: renderTarget({ scheme: null, pathname }, root) })));
-            assert.equal(rows.find(({ op }) => op === "FIND")?.target, glob);
+            assert.equal(rows.find(({ op }) => op === "find")?.target, glob);
         } finally { evidence[Symbol.dispose](); }
     } finally { await rm(dir, { recursive: true, force: true }); }
 });
@@ -186,7 +186,7 @@ test("{§fs-namespace} malformed URLs refuse only their operation and preserve d
                 const loop = await runLoopToTerminal(client, 2, { prompt: "Inspect the URLs." });
                 assert.equal(loop.result.status, 200);
                 const rows = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ session_id: loop.modelSessionId! }))
-                    .filter(({ op, origin }) => op === "READ" && origin === "model");
+                    .filter(({ op, origin }) => op === "read" && origin === "model");
                 assert.equal(rows.length, invalid.length);
                 for (const row of rows) {
                     assert.equal(row.status_rx, 400);
@@ -242,12 +242,12 @@ for (const form of ["absolute", "home", "literal"] as const) test(`{§fs-namespa
                 assert.equal(loop.result.status, 200);
                 const rows = await db.engine_render_log.all<{ op: string; origin: string; pathname: string | null; status_rx: number; rx: string }>({ session_id: loop.modelSessionId! });
                 const authored = rows.filter(({ origin }) => origin === "model");
-                const attached = rows.filter(({ origin, op, pathname }) => origin === "_plurnk" && op === "READ" && pathname === key("source.txt"));
+                const attached = rows.filter(({ origin, op, pathname }) => origin === "_plurnk" && op === "read" && pathname === key("source.txt"));
                 assert.deepEqual(attached.map(({ status_rx }) => status_rx), [200, 200, 200], "all client attachment spellings resolve the same member");
-                assert.ok(rows.some(({ op, rx }) => op === "READ" && rx.includes(source)), "the shell's absolute path reached its stream observation");
-                assert.deepEqual(authored.filter(({ op }) => op === "COPY" || op === "MOVE").map(({ op, status_rx }) => ({ op, status_rx })), [
-                    { op: "COPY", status_rx: 200 },
-                    { op: "MOVE", status_rx: 200 },
+                assert.ok(rows.some(({ op, rx }) => op === "read" && rx.includes(source)), "the shell's absolute path reached its stream observation");
+                assert.deepEqual(authored.filter(({ op }) => op === "copy" || op === "move").map(({ op, status_rx }) => ({ op, status_rx })), [
+                    { op: "copy", status_rx: 200 },
+                    { op: "move", status_rx: 200 },
                 ]);
                 assert.deepEqual(authored.filter(({ status_rx }) => status_rx >= 400), [], "normalization causes no failed operation or strike");
                 assert.equal(await readFile(source, "utf8"), "revised\n");
@@ -255,10 +255,10 @@ for (const form of ["absolute", "home", "literal"] as const) test(`{§fs-namespa
                 await assert.rejects(readFile(moved), { code: "ENOENT" });
                 await assert.rejects(readFile(join(root, source.slice(1))), { code: "ENOENT" });
 
-                for (const op of ["sh", "READ", "EDIT", "COPY", "MOVE", "FIND", "KILL"]) {
+                for (const op of ["sh", "read", "edit", "copy", "move", "find", "kill"]) {
                     assert.ok(authored.some((row) => row.op === op && row.status_rx === 200), `${op} completed`);
                 }
-                assert.deepEqual(authored.filter(({ op, pathname }) => op === "READ" && pathname === key("source.txt")).map(({ status_rx }) => status_rx), [200, 200], "exact and glob reads converge on the same key");
+                assert.deepEqual(authored.filter(({ op, pathname }) => op === "read" && pathname === key("source.txt")).map(({ status_rx }) => status_rx), [200, 200], "exact and glob reads converge on the same key");
 
                 const notices = notifications() as { notice: Notice }[];
                 const normalized = notices.map(({ notice }) => notice).filter(({ kind }) => kind === "path_normalized");
@@ -358,11 +358,11 @@ describe("namespace-canon", () => {
 
 
 const filePath = (pathname: string): ParsedPath => ({ kind: "local", raw: pathname });
-const readStmt = (pathname: string): ReadStatement => ({ metadata: null, op: "READ", aside: null, target: filePath(pathname), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
+const readStmt = (pathname: string): ReadStatement => ({ metadata: null, op: "read", aside: null, target: filePath(pathname), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
 const readFileScheme = (statement: ReadStatement, ctx: ReturnType<typeof makeSchemeCtx>) =>
     readThroughScheme("file", null, statement, ctx);
 const fullReplace: LineMarker = { marks: [1, -1] };
-const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ metadata: null, op: "EDIT", aside: null, target: filePath(pathname), lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 } });
+const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ metadata: null, op: "edit", aside: null, target: filePath(pathname), lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 } });
 
 const setup = async (databasePath?: string) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-canon-"));
@@ -383,7 +383,7 @@ for (const glob of ["**", "~/**"]) test(`{§fs-namespace} literal membership glo
         await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob, source: "members" });
         await GitMembership.indexGitMembership(ctx);
         const file = new File();
-        const find = (pathname: string): FindStatement => ({ ...readStmt(pathname), op: "FIND", lineMarker: null });
+        const find = (pathname: string): FindStatement => ({ ...readStmt(pathname), op: "find", lineMarker: null });
         const catalog = await file.find(find("*"), ctx);
         assert.equal(catalog.status, 200);
         assert.ok(JSON.stringify(catalog.results).includes('"path":"./~/**"'), "folder selectors are reusable literal addresses");
@@ -400,7 +400,7 @@ for (const glob of ["**", "~/**"]) test(`{§fs-namespace} literal membership glo
         const directory = await readFileScheme(readStmt("./~"), ctx);
         assert.equal(directory.problem?.type, "https://problems.plurnk.xyz/scheme/file/path-is-directory");
         assert.equal(directory.problem?.target, "./~");
-        assert.equal(directory.problem?.recovery, "`FIND (./~/)` lists its files.");
+        assert.equal(directory.problem?.recovery, "`await plurnk.find({ path: \"./~/\" });` lists its files.");
         await SearchIndex.maintain(ctx);
         const searched = await file.find({ ...find("./~/**"), matcher: { dialect: "fts", raw: "~alpha" } }, ctx);
         assert.equal(searched.status, 200);
@@ -594,17 +594,17 @@ test("{§fs-namespace}: facts distinguish a wrong address, occupancy, and an emp
         const miss = await readFileScheme(readStmt(join(root, "no/such.md")), ctx);
         assert.equal(miss.status, 404);
         assert.equal(miss.problem?.detail, "No member of this workspace is at 'no/such.md'.", "the READ miss states its fact — resolved form, wire canon"); // {§operation-results}
-        assert.equal(miss.problem?.recovery, "FIND lists paths. EDIT creates files; `plurnk (members)` admits existing files with a `{\"files\": [\"<path>\"]}` body."); // {§operation-results}
+        assert.equal(miss.problem?.recovery, "FIND lists paths. EDIT creates files; `await plurnk.members({ files: [\"<path>\"] });` admits existing files."); // {§operation-results}
 
         // Exact-path FIND distinguishes absence from a successful empty survey.
-        const findMissStmt = { op: "FIND", aside: null, lineMarker: null, position: { line: 1, column: 1 },
+        const findMissStmt = { op: "find", aside: null, lineMarker: null, position: { line: 1, column: 1 },
             target: { kind: "local", raw: "no/such.md" }, matcher: null, body: null } as never;
         const findMiss = await file.find(findMissStmt, ctx);
         assert.equal(findMiss.status, 404, "FIND over an absent exact path cannot certify an empty set");
         assert.equal(findMiss.problem?.detail, "No member of this workspace is at 'no/such.md'."); // {§operation-results}
 
         // A FOLDER scope with zero matches stays the blessed orienting empty survey.
-        const surveyStmt = { op: "FIND", aside: null, lineMarker: null, position: { line: 1, column: 1 },
+        const surveyStmt = { op: "find", aside: null, lineMarker: null, position: { line: 1, column: 1 },
             target: { kind: "local", raw: "empty-dir/" }, matcher: null, body: null } as never;
         const survey = await file.find(surveyStmt, ctx);
         assert.equal(survey.status, 200, "an empty folder survey is orienting, not an error");
@@ -621,7 +621,7 @@ test("{§fs-namespace}: facts distinguish a wrong address, occupancy, and an emp
         assert.equal(peek.status, 404);
         assert.equal(peek.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-member");
         assert.equal(peek.problem?.detail, "'occupied.md' exists on disk but is not a member of this workspace."); // {§operation-results}
-        assert.equal(peek.problem?.recovery, "Admit it with `plurnk (members)` and a `{\"files\": [\"<path>\"]}` body."); // {§operation-results}
+        assert.equal(peek.problem?.recovery, "Admit it with `await plurnk.members({ files: [\"<path>\"] });`."); // {§operation-results}
         assert.equal(clobber.problem?.recovery, "Choose an unoccupied member path."); // {§operation-results}
         assert.equal(clobber.problem?.retryable, false);
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
@@ -633,7 +633,7 @@ test("{§fs-namespace}: directory recognition does not probe outside-root paths"
     try {
         const target = `../${outside.split("/").at(-1)}`;
         const statement: FindStatement = {
-            metadata: null, op: "FIND", aside: null, target: filePath(target),
+            metadata: null, op: "find", aside: null, target: filePath(target),
             lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
         };
         const result = await new File().find(statement, ctx);
@@ -655,7 +655,7 @@ test("{§fs-namespace}: beyond the root an existing non-member reports occupancy
         assert.equal(there.status, 404);
         assert.equal(there.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-member");
         assert.equal(there.problem?.detail, `'../${present}' exists on disk but is not a member of this workspace.`);
-        assert.equal(there.problem?.recovery, "Admit it with `plurnk (members)` and a `{\"files\": [\"<path>\"]}` body.");
+        assert.equal(there.problem?.recovery, "Admit it with `await plurnk.members({ files: [\"<path>\"] });`.");
 
         assert.equal(notThere.status, 404);
         assert.equal(notThere.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
@@ -709,7 +709,7 @@ test("{§operation-results} {§diagnostic-observation} a file target named like 
         for (const key of ["sh", "nope", "tools/sh"]) {
             const miss = await readFileScheme(readStmt(key), withExecutors);
             assert.equal(miss.status, 404, key);
-            assert.equal(miss.problem?.recovery, "FIND lists paths. EDIT creates files; `plurnk (members)` admits existing files with a `{\"files\": [\"<path>\"]}` body.", key);
+            assert.equal(miss.problem?.recovery, "FIND lists paths. EDIT creates files; `await plurnk.members({ files: [\"<path>\"] });` admits existing files.", key);
         }
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
@@ -843,12 +843,12 @@ test("{§fs-namespace} a non-member an exclusion covers or the repository ignore
     assert.equal(ignored.problem.detail, "'generated.log' exists on disk but is not a member of this workspace.");
     assert.equal(ignored.problem.recovery, "Git ignores it (`.gitignore` line 1): a client or operator members definition can include it, a model definition cannot.");
     const untracked = await dispatch("await plurnk.read({\"path\":\"loose.md\"});");
-    assert.equal(untracked.problem.recovery, "Admit it with `plurnk (members)` and a `{\"files\": [\"<path>\"]}` body.", "an untracked file is still admitted");
+    assert.equal(untracked.problem.recovery, "Admit it with `await plurnk.members({ files: [\"<path>\"] });`.", "an untracked file is still admitted");
     await writeFile(join(root, "secret.md"), "hidden\n");
     await db.crud_insert_family_workspace_constraint.run({ workspace_id: ids.workspaceId, effect: "exclude", glob: "secret.md", source: "members" });
     const excluded = await dispatch("await plurnk.read({\"path\":\"secret.md\"});");
     assert.equal(excluded.problem.detail, "'secret.md' exists on disk but is not a member of this workspace.", "an excluded file on disk says so");
-    assert.doesNotMatch(excluded.problem.recovery ?? "", /plurnk \(members\)/u, "an exclusion no add lifts is not offered one");
+    assert.doesNotMatch(excluded.problem.recovery ?? "", /plurnk\.members/u, "an exclusion no add lifts is not offered one");
     assert.match(excluded.problem.recovery ?? "", /!secret\.md/u, "the refusal names the exclusion");
 });
 
@@ -887,7 +887,7 @@ test("{§membership} an ignored file's refusal names the rule's file and line, w
     for (const [path, file, line] of [["default.md", "~/.config/git/ignore", 1], ["info.md", ".git/info/exclude", excludeLine], ["drop.tmp", ".gitignore", 2]] as const) {
         assert.match(await named(path) ?? "", new RegExp(`^Git ignores it \\(\`${file.replaceAll(".", "\\.")}\` line ${line}\\)`, "u"), `${path} names ${file} line ${line}`);
     }
-    assert.match(await named("keep.tmp") ?? "", /plurnk \(members\)/u, "a re-included path is untracked, not ignored");
+    assert.match(await named("keep.tmp") ?? "", /plurnk\.members/u, "a re-included path is untracked, not ignored");
 
     await asHome("configured", { ".gitconfig": "[core]\n\texcludesFile = ~/my-ignore\n", "my-ignore": "configured.md\n" });
     assert.match(await named("configured.md") ?? "", /^Git ignores it \(`~\/my-ignore` line 1\)/u, "the user's configured excludes file is honored and named");
@@ -899,14 +899,14 @@ test("{§log-history-projection} a log miss beside real rows names them", async 
     await dispatch("await plurnk.find({\"path\":\"a.md\",\"pattern\":\"/alpha/\"});");
     const wrongLeaf = await dispatch("await plurnk.read({\"path\":\"log:///1/1/1/sh\"});");
     assert.equal(wrongLeaf.status, 404);
-    assert.equal(wrongLeaf.problem.recovery, "The entry at log:///1/1/1 is `log:///1/1/1/READ`.");
-    assert.equal((await dispatch("await plurnk.find({\"path\":\"log:///1/1/2/READ\"});")).problem.recovery, "Turn 1/1's READ rows are `log:///1/1/1/READ`, `log:///1/1/3/READ`; the entry at log:///1/1/2 is `log:///1/1/2/FIND`.", "the leaf asked for first, then what the guessed sequence holds");
-    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/1/sh\"});")).problem.recovery, "The entry at log:///1/1/1 is `log:///1/1/1/READ`.", "the curation a 413 demands is told the same");
+    assert.equal(wrongLeaf.problem.recovery, "The entry at log:///1/1/1 is `log:///1/1/1/read`.");
+    assert.equal((await dispatch("await plurnk.find({\"path\":\"log:///1/1/2/read\"});")).problem.recovery, "Turn 1/1's read rows are `log:///1/1/1/read`, `log:///1/1/3/read`; the entry at log:///1/1/2 is `log:///1/1/2/find`.", "the leaf asked for first, then what the guessed sequence holds");
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/1/sh\"});")).problem.recovery, "The entry at log:///1/1/1 is `log:///1/1/1/read`.", "the curation a 413 demands is told the same");
     // The rtx5070 benchlet's shape (run393): a turn's row asked for at the sequence another row holds.
-    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/1/FIND\"});")).problem.recovery, "Turn 1/1's FIND rows are `log:///1/1/2/FIND`, `log:///1/1/4/FIND`; the entry at log:///1/1/1 is `log:///1/1/1/READ`.");
-    assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///1/1/9/FIND\"});")).problem.recovery, "Turn 1/1's FIND rows are `log:///1/1/2/FIND`, `log:///1/1/4/FIND`.", "a sequence off names the turn's rows that carry the leaf");
-    assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///1/4/1/READ\"});")).problem.recovery, "Turn 1/4 has no entries; loop 1's latest turn is 1/1.");
-    assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///7/1/1/READ\"});")).problem.recovery, undefined, "a loop with no rows has nothing to name");
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/1/find\"});")).problem.recovery, "Turn 1/1's find rows are `log:///1/1/2/find`, `log:///1/1/4/find`; the entry at log:///1/1/1 is `log:///1/1/1/read`.");
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///1/1/9/find\"});")).problem.recovery, "Turn 1/1's find rows are `log:///1/1/2/find`, `log:///1/1/4/find`.", "a sequence off names the turn's rows that carry the leaf");
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///1/4/1/read\"});")).problem.recovery, "Turn 1/4 has no entries; loop 1's latest turn is 1/1.");
+    assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///7/1/1/read\"});")).problem.recovery, undefined, "a loop with no rows has nothing to name");
 });
 
 test("{§operation-results} {§diagnostic-observation} an unregistered scheme names what is registered, whatever its authority", async (t) => {

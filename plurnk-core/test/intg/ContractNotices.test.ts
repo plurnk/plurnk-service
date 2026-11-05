@@ -213,7 +213,7 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
         const packet = await getPacket(db, second.turnId);
 
         const read = logEntries(packet).find(({ logPath, body }) =>
-            typeof logPath === "string" && logPath.endsWith("/READ") && /2<@[0-9A-Za-z]{5}>beta/.test(String(body)));
+            typeof logPath === "string" && logPath.endsWith("/read") && /2<@[0-9A-Za-z]{5}>beta/.test(String(body)));
         assert.match(String(read?.body), /^2<@[0-9A-Za-z]{5}>beta\n3<@[0-9A-Za-z]{5}>gamma\n$/);
         assert.equal(
             packetSection(packet, "notices"),
@@ -235,12 +235,12 @@ test("{§slicer-text-algebra}: a zero-start READ delivers its body and one warni
         const first = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const second = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
-        const read = logEntries(packet).find(({ logPath, body }) => logPath.endsWith("/READ") && /1<@[0-9A-Za-z]{5}>alpha/.test(String(body)));
+        const read = logEntries(packet).find(({ logPath, body }) => logPath.endsWith("/read") && /1<@[0-9A-Za-z]{5}>alpha/.test(String(body)));
         assert.match(String(read?.body), /1<@[0-9A-Za-z]{5}>alpha\n2<@[0-9A-Za-z]{5}>beta\n3<@[0-9A-Za-z]{5}>gamma/);
         assert.equal(packetSection(packet, "notices"),
             `${scope("0,120", "1,120")}\n\n${CONTINUED}`);
         const receipts = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: first.turnId });
-        assert.deepEqual(receipts.filter(({ op }) => op === "READ").map(({ status_rx }) => status_rx), [200]);
+        assert.deepEqual(receipts.filter(({ op }) => op === "read").map(({ status_rx }) => status_rx), [200]);
         assert.doesNotMatch(packetSection(packet, "notices"), /strike|failed/i);
     } finally { await db.close(); }
 });
@@ -440,7 +440,7 @@ test("{§operation-results} a parser warning remains advisory while the independ
         assert.equal(turn.status, 102, "the invalid mutation prevents premature terminal completion");
         assert.equal(turn.emissionAttempts, 1, "the advisory does not reject and reroll the trustworthy frame");
         assert.ok(
-            turn.outcomes.some(({ op, status }) => op === "EDIT" && status === 400),
+            turn.outcomes.some(({ op, status }) => op === "edit" && status === 400),
             "the targetless mutation fails through ordinary operation execution",
         );
         const advisories = broadcasts.filter(({ payload }) => payload.notice.kind === "parse_advisory");
@@ -454,7 +454,7 @@ test("{§operation-results} a parser warning remains advisory while the independ
         );
         const [failedEdit] = await db.test_log_entries_by_session_op_full.all<{
             status_rx: number;
-        }>({ session_id: sessionId, op: "EDIT" });
+        }>({ session_id: sessionId, op: "edit" });
         assert.equal(failedEdit?.status_rx, 400, "the operation's own row preserves its durable failure");
         assert.deepEqual(
             await db.test_error_rows_for_session.all({ session_id: sessionId }),
@@ -512,7 +512,7 @@ test("{§operation-fences}: literal programs inside a longer fence produce no sp
         const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("await plurnk.done({\"text\":\"done\"});")] });
         const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(t1.emissionAttempts, 1);
-        const edits = t1.outcomes.filter(({ op }) => op === "EDIT");
+        const edits = t1.outcomes.filter(({ op }) => op === "edit");
         assert.equal(edits.length, 1, "the nested programs are one EDIT's literal body");
         const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
@@ -695,7 +695,7 @@ test("{§env-delta} generated child documentation is durable without publishing 
         });
         assert.equal(doc?.content, engine.documents[0].content, "the program actually materialized its resource");
         const source = await db.test_log_sequencees_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turns[0].id });
-        assert.ok(source.some(({ op, status_rx }) => op === "EDIT" && status_rx === 201), "the source operation receipt remains durable");
+        assert.ok(source.some(({ op, status_rx }) => op === "edit" && status_rx === 201), "the source operation receipt remains durable");
         assert.equal(await db.engine_session_has_undelivered_child_term.get({ session_id: parentId }), undefined,
             "housekeeping is not an unobserved child result that can wake waiting work or refuse completion");
 
@@ -761,12 +761,13 @@ for (const runtime of ["sh", "js", "python3"]) test(`{§op-shapes}: installed ${
         await insertSession(db, workspaceId);
         await LoopDocs.materialize(engine, db, workspaceId);
         const doc = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-            pathname: `/${runtime}.md`, scheme: "plurnk", name: "body",
+            pathname: `/plurnk/${runtime}.json`, scheme: "mcp", name: "body",
         });
         assert.ok(doc, "the installed executor's documentation reaches the session");
+        const details = (JSON.parse(doc.content) as { description?: string }).description ?? "";
         const readme = await readFile(new URL("README.md", import.meta.resolve("@plurnk/plurnk-execs-common/package.json")), "utf8");
         const pattern = new RegExp(`await\\s+plurnk\\.${runtime}\\(\\{[^\\n]+\\}\\);`, "g");
-        const examples = [doc.content, readme].flatMap((content) => [...content.matchAll(pattern)].map((m) => ({ raw: m[0] })));
+        const examples = [details, readme].flatMap((content) => [...content.matchAll(pattern)].map((m) => ({ raw: m[0] })));
         assert.ok(examples.length > 0, `${runtime} has executable examples`);
         const execs = examples.flatMap(({ raw }) => {
             const parsed = PlurnkParser.parseStatements(raw, { executors: fixtureExecutors(raw) });
@@ -818,16 +819,17 @@ test("{§exec-stream}: materialized shell documentation demonstrates scoped READ
         await insertSession(db, workspaceId);
         await LoopDocs.materialize(engine, db, workspaceId);
         const doc = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-            pathname: "/sh.md", scheme: "plurnk", name: "body",
+            pathname: "/plurnk/sh.json", scheme: "mcp", name: "body",
         });
         assert.ok(doc, "the installed shell's documentation reaches the session");
-        const examples = [...doc.content.matchAll(/^await\s+plurnk\.read\(\{[^\n]+\}\);$/gm)].map((m) => m[0]);
+        const details = (JSON.parse(doc.content) as { description?: string }).description ?? "";
+        const examples = [...details.matchAll(/^await\s+plurnk\.read\(\{[^\n]+\}\);$/gm)].map((m) => m[0]);
         const reads = examples.flatMap((source) => {
             const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
             assert.equal(parsed.unparsedTail, undefined, source);
             assert.equal(parsed.items.length, 1, source);
             assert.equal(parsed.items[0]?.kind, "statement", source);
-            return parsed.items.flatMap((item) => item.kind === "statement" && item.statement.op === "READ" ? [item.statement] : []);
+            return parsed.items.flatMap((item) => item.kind === "statement" && item.statement.op === "read" ? [item.statement] : []);
         });
         assert.ok(reads.length > 0, "the doc demonstrates fetching beyond the terminal observation");
         for (const read of reads) {

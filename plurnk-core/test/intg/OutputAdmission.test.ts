@@ -22,7 +22,7 @@ import { clientRead } from "./_client-read.ts";
 
 describe("cancellation-accounting", () => {
 for (const reported of [false, true]) {
-    for (const stop of ["KILL", "shutdown"] as const) {
+    for (const stop of ["kill", "shutdown"] as const) {
         test(`{§tokenomics} ${stop} retains cancelled child accounting; reported=${reported} (#971)`, async () => {
             const charge: ProviderCost = {
                 kind: "charged", amount: { amount: "0.0123", currency: "USD" }, source: "fixture response",
@@ -68,7 +68,7 @@ for (const reported of [false, true]) {
                 try {
                     const task = await daemon.runLoop({ workspaceId, sessionId: child, prompt: "Think about the task." });
                     await observed.promise;
-                    if (stop === "KILL") {
+                    if (stop === "kill") {
                         // The parent's own KILL of its child.
                         const result = await modelOperation(daemon, db, {
                             workspaceId, sessionId: parent,
@@ -112,7 +112,7 @@ for (const reported of [false, true]) {
                         "cancellation is lifecycle truth, not a new model-facing provider error");
                 } finally {
                     unsubscribe();
-                    if (stop === "KILL") await daemon.cancelSession({ workspaceId, sessionId: parent });
+                    if (stop === "kill") await daemon.cancelSession({ workspaceId, sessionId: parent });
                 }
             });
         });
@@ -142,7 +142,7 @@ test("{§methods-workspace-create} {§packet}: one oversized attachment lands as
                 const turns = await db.test_list_turns_in_loop.all<{ kind: string }>({ loop_id: result.loopId });
                 assert.equal(turns.filter(({ kind }) => kind === "overflow").length, 0, "no recovery turn is manufactured");
                 const rows = await db.test_log_entries_by_loop.all<{ origin: string; op: string; pathname: string; status_rx: number; rx: string }>({ loop_id: result.loopId });
-                const attachment = rows.find((row) => row.origin === "_plurnk" && row.op === "READ" && row.pathname === "incident.txt");
+                const attachment = rows.find((row) => row.origin === "_plurnk" && row.op === "read" && row.pathname === "incident.txt");
                 assert.ok(attachment);
                 assert.equal(attachment.status_rx, 200, "the page is an ordinary result");
                 const page = JSON.parse(attachment.rx) as { content: string; region?: { startLine: number; endLine: number; endColumn: number } };
@@ -151,7 +151,7 @@ test("{§methods-workspace-create} {§packet}: one oversized attachment lands as
                 assert.equal(content.startsWith(page.content), true, "the page is the head of the line");
                 assert.equal(page.region?.startLine, 1);
                 assert.equal(page.region?.endLine, 1, "the cut is inside line 1 and says so");
-                const answer = rows.find((row) => row.origin === "model" && row.op === "READ" && row.pathname === "incident.txt");
+                const answer = rows.find((row) => row.origin === "model" && row.op === "read" && row.pathname === "incident.txt");
                 assert.ok(answer, "the model's own range READ ran");
                 assert.equal(answer.status_rx, 200);
                 assert.match((JSON.parse(answer.rx) as { content: string }).content, new RegExp(fixture.answer, "u"), "a range of the same file fits and answers");
@@ -170,8 +170,8 @@ for (const retire of [false, true]) test(`{§tokenomics}: sixteen attachments la
     const provider = new Mock({
         contextWindow: 20_000,
         responses: [
-            makeMockResponse("await plurnk.kill({\"path\":\"log:///**/FIND\"});\n\nawait plurnk.read({\"path\":\"incident.txt\",\"range\":\"2\"});\n\nawait plurnk.note({\"text\":\"Inspect the recovery site.\"});"),
-            makeMockResponse(`${retire ? "await plurnk.kill({\"path\":\"log:///**/READ\"});\n\n" : ""}await plurnk.done(${JSON.stringify({ text: fixture.answer })});`),
+            makeMockResponse("await plurnk.kill({\"path\":\"log:///**/find\"});\n\nawait plurnk.read({\"path\":\"incident.txt\",\"range\":\"2\"});\n\nawait plurnk.note({\"text\":\"Inspect the recovery site.\"});"),
+            makeMockResponse(`${retire ? "await plurnk.kill({\"path\":\"log:///**/read\"});\n\n" : ""}await plurnk.done(${JSON.stringify({ text: fixture.answer })});`),
         ],
     });
     try {
@@ -196,7 +196,7 @@ for (const retire of [false, true]) test(`{§tokenomics}: sixteen attachments la
                 assert.equal(evidence.modelTurns, 2, "receipts cost no turn; the model answered in two");
                 assert.equal(evidence.receiptActive, !retire);
                 const rows = await db.test_log_entries_by_loop.all<{ origin: string; op: string; pathname: string; status_rx: number; rx: string }>({ loop_id: result.loopId });
-                const recovered = rows.filter((row) => row.origin === "model" && row.op === "READ" && row.pathname === "incident.txt");
+                const recovered = rows.filter((row) => row.origin === "model" && row.op === "read" && row.pathname === "incident.txt");
                 assert.equal(recovered.length, 1, "the model made its own recovery READ");
                 assert.equal(recovered[0].status_rx, 200);
                 assert.match(JSON.parse(recovered[0].rx).content, new RegExp(fixture.answer, "u"), "the scripted answer is backed by a delivered result");
@@ -265,7 +265,7 @@ ${continuing}`),
         ]);
         const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 1, provider });
         const read = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: first.turnId }))
-            .find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!;
+            .find((row) => row.op === "read" && !LogEntryProjection.isEmission(row))!;
         assert.equal(read.status_rx, 200, "the page is an ordinary result");
         const stored = JSON.parse(read.rx) as { content: string; range: { total: number; returned: [number, number] } };
         const [from, to] = stored.range.returned;
@@ -276,11 +276,11 @@ ${continuing}`),
         assert.equal(stored.range.total, 600, "the whole is named beside the page");
         const second = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 2, provider });
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        const row = logEntries(packet).find((entry) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(entry.logPath))!;
+        const row = logEntries(packet).find((entry) => /^log:\/\/\/1\/2\/\d+\/read$/u.test(entry.logPath))!;
         assert.equal(row.range, `<1,${to}> of 600 lines`, "{§log-wire-format}: one fact, one notation");
         assert.equal(String(row.body).trimEnd().split("\n").length, to, "the row shows exactly the page");
         const sliced = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: second.turnId }))
-            .find((entry) => entry.op === "READ" && !LogEntryProjection.isEmission(entry))!;
+            .find((entry) => entry.op === "read" && !LogEntryProjection.isEmission(entry))!;
         assert.equal(sliced.status_rx, 200, "an explicit scope is exact");
         assert.equal((JSON.parse(sliced.rx) as { content: string }).content, content.split("\n").slice(1, 3).join("\n"));
         const whole = await clientRead(engine, db, { statement: readStmt(urlPath("workspace", "/large.md"), { marks: [1, -1] }), workspaceId, sessionId });
@@ -303,7 +303,7 @@ test("{§tokenomics}: a page that does not fit the room lands as the longest pre
             response(`await plurnk.read({"path":"workspace:///large.md"});
 
 ${continuing}`),
-            response(`await plurnk.kill({"path":"log:///**/READ"});
+            response(`await plurnk.kill({"path":"log:///**/read"});
 
 await plurnk.read({"path":"workspace:///large.md","range":"2,3"});
 
@@ -312,28 +312,28 @@ ${continuing}`),
         ]);
         const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 1, provider });
         const read = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: first.turnId }))
-            .find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!;
+            .find((row) => row.op === "read" && !LogEntryProjection.isEmission(row))!;
         assert.equal(read.status_rx, 413, "the page does not fit the remaining budget");
         const stored = JSON.parse(read.rx) as { content: unknown; problem: { type: string; detail: string; lines: number; tokens: number; remaining: number; delivered: number }; range?: { total: number; returned?: [number, number] } };
         const delivered = stored.problem.delivered;
         assert.ok(Number.isSafeInteger(delivered) && delivered > 0 && delivered < stored.problem.lines, `a prefix of the page fit: ${delivered} of ${stored.problem.lines}`);
         assert.equal(stored.content, `${content.split("\n").slice(0, delivered).join("\n")}\n`, "the row carries the first lines delivered, cut at a line boundary");
         assert.equal(stored.problem.type, "https://problems.plurnk.xyz/engine/context/result-exceeds-budget");
-        assert.match(stored.problem.detail, new RegExp(`^${stored.problem.lines} lines, \\d+ tokens; \\d+ tokens remain: ${delivered} lines? delivered; READ a range, or KILL first\\.$`, "u"));
+        assert.match(stored.problem.detail, new RegExp(`^${stored.problem.lines} lines, \\d+ tokens; \\d+ tokens remain: ${delivered} lines? delivered; read a range, or kill first\\.$`, "u"));
         assert.ok(stored.problem.tokens > stored.problem.remaining, "the page did not fit");
         assert.deepEqual(stored.range?.returned, [1, delivered], "the returned range closes on the last line delivered");
         const second = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 2, provider });
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
         assert.ok(packet.weight <= room, "the receipt and its prefix fit where the page could not");
-        const row = logEntries(packet).find((entry) => entry.status === 413 && /^log:\/\/\/1\/2\/\d+\/READ$/u.test(entry.logPath))!;
+        const row = logEntries(packet).find((entry) => entry.status === 413 && /^log:\/\/\/1\/2\/\d+\/read$/u.test(entry.logPath))!;
         assert.ok(row, "the receipt is a row of the next packet");
         assert.equal(String(row.body).trimEnd().split("\n").length, delivered, "the row shows exactly the lines delivered");
         const facts = receipt(row);
         assert.ok(facts.tokens > 0 && facts.remaining >= 0 && facts.tokens > facts.remaining);
-        assert.match(facts.detail, /READ a range, or KILL first/u);
+        assert.match(facts.detail, /read a range, or kill first/u);
         assert.doesNotMatch(packetSection(packet, "budget"), /WARNING|MUST/u, "{§tokenomics}: the gauge is state, not a mandate");
         const sliced = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: second.turnId }))
-            .find((entry) => entry.op === "READ" && !LogEntryProjection.isEmission(entry))!;
+            .find((entry) => entry.op === "read" && !LogEntryProjection.isEmission(entry))!;
         assert.equal(sliced.status_rx, 200, "{§tokenomics}: the prefix held the room; KILL first, then a range READ takes a piece of what did not fit");
         assert.equal((JSON.parse(sliced.rx) as { content: string }).content, content.split("\n").slice(1, 3).join("\n"));
         const whole = await clientRead(engine, db, { statement: readStmt(urlPath("workspace", "/large.md"), { marks: [1, -1] }), workspaceId, sessionId });
@@ -356,12 +356,12 @@ test("{§tokenomics}: a READ whose first line does not fit is a bodiless receipt
 ${continuing}`)]);
         const turn = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 1, provider });
         const read = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turn.turnId }))
-            .find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!;
+            .find((row) => row.op === "read" && !LogEntryProjection.isEmission(row))!;
         assert.equal(read.status_rx, 413);
         const stored = JSON.parse(read.rx) as { content: unknown; problem: { detail: string; lines: number; delivered?: number } };
         assert.equal(stored.content, null, "not one line fit: the row carries no body");
         assert.equal(stored.problem.delivered, undefined);
-        assert.match(stored.problem.detail, /^1 line, \d+ tokens; \d+ tokens remain: READ a range, or KILL first\.$/u);
+        assert.match(stored.problem.detail, /^1 line, \d+ tokens; \d+ tokens remain: read a range, or kill first\.$/u);
     } finally { await db.close(); }
 });
 
@@ -383,17 +383,17 @@ test("{§tokenomics}: KILL first — the fit measure honours curation within the
 ${continuing}`),
             response([
                 "await plurnk.read({\"path\":\"workspace:///wanted.md\",\"range\":\"1,-1\"});",
-                "await plurnk.kill({\"path\":\"log:///1/*/*/READ\"});",
+                "await plurnk.kill({\"path\":\"log:///1/*/*/read\"});",
                 "await plurnk.read({\"path\":\"workspace:///wanted.md\",\"range\":\"1,-1\"});",
                 continuing,
             ].join("\n")),
         ]);
         const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 1, provider });
-        const filled = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: first.turnId })).find((row) => row.op === "READ")!;
+        const filled = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: first.turnId })).find((row) => row.op === "read")!;
         assert.equal(filled.status_rx, 200, "the first file fits an empty room");
         const second = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 2, provider });
         const reads = (await db.test_log_entries_by_turn.all<{ sequence: number; op: string; status_rx: number }>({ turn_id: second.turnId }))
-            .filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))
+            .filter((row) => row.op === "read" && !LogEntryProjection.isEmission(row))
             .toSorted((a, b) => a.sequence - b.sequence)
             .map(({ status_rx }) => status_rx);
         assert.deepEqual(reads, [413, 200], "before the KILL the room is full; after it the same READ fits");
@@ -435,7 +435,7 @@ test("{§tokenomics}: over budget but under the wall, the packet goes with one 4
         const after = await db.engine_render_log.all<{ id: number }>({ session_id: sessionId });
         for (const row of before as Array<{ id: number }>) assert.deepEqual(after.find(({ id }) => id === row.id), row, "authored state cannot be removed or folded to manufacture a fit");
         const firstRows = await db.test_log_entries_by_turn.all<{ op: string; tx: string; folded: string }>({ turn_id: first.turnId });
-        assert.ok(firstRows.some(({ op, tx }) => op === "NOTE" && JSON.parse(tx).body === note), "the authored NOTE stands whole");
+        assert.ok(firstRows.some(({ op, tx }) => op === "note" && JSON.parse(tx).body === note), "the authored NOTE stands whole");
     } finally { await db.close(); }
 });
 
@@ -450,7 +450,7 @@ for (const origin of ["client", "_plurnk"] as const) test(`{§tokenomics}: ${ori
         const result = { ...Results.failure("scheme:session", "output-failure", 503, "Connection closed."), content, mimetype: "text/plain", startLine: 1 };
         const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
             session_id: sessionId, loop_id: loopId, turn_id: earlier.id, sequence: 1, origin,
-            source: null, model_call_id: null, op: "READ", scheme: "workspace", pathname: "/result",
+            source: null, model_call_id: null, op: "read", scheme: "workspace", pathname: "/result",
             username: null, password: null, hostname: null, port: null, query: null, fragment: null, lineMarker: null,
             tx: "{}", mimetype_tx: "application/json", rx: JSON.stringify(result), mimetype_rx: "application/json",
             status_rx: 503, weight: 0, state: "resolved", outcome: null, attrs: "{}",
@@ -468,7 +468,7 @@ for (const origin of ["client", "_plurnk"] as const) test(`{§tokenomics}: ${ori
         const next = await new Engine({ db, schemes }).runTurn({ workspaceId, sessionId, loopId: laterLoop, messages, provider });
         assert.equal(provider.remaining, 0);
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: next.turnId }))!.packet);
-        const row = logEntries(packet).find(({ logPath: path }) => path === `log:///1/${earlier.sequence}/1/READ`)!;
+        const row = logEntries(packet).find(({ logPath: path }) => path === `log:///1/${earlier.sequence}/1/read`)!;
         assert.equal(row.status, 503, "the actual operation result is not restamped");
         assert.equal((row.problem as { detail: string }).detail, "Connection closed.");
         assert.match(String(row.body), /result result/u, "the retained result arrives whole: nothing is withheld");

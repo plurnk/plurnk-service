@@ -27,7 +27,7 @@ import { resourceGroups, resourcePaths } from "./_find.ts";
 describe("Engine.dispatch", () => {
 const dispatchEditStmt = (opts: { target: ParsedPath; body?: string | null; marker?: TextLineMarker | null; aside?: string | null }): EditStatement => ({
     metadata: null,
-    op: "EDIT", aside: opts.aside ?? null,
+    op: "edit", aside: opts.aside ?? null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
     matcher: null, body: opts.body ?? null,
@@ -36,7 +36,7 @@ const dispatchEditStmt = (opts: { target: ParsedPath; body?: string | null; mark
 
 const readStmt = (opts: { target: ParsedPath; marker?: ReadStatement["lineMarker"] }): ReadStatement => ({
     metadata: null,
-    op: "READ", aside: null,
+    op: "read", aside: null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
     matcher: null, body: null,
@@ -45,7 +45,7 @@ const readStmt = (opts: { target: ParsedPath; marker?: ReadStatement["lineMarker
 
 const killStmt = (opts: { target: ParsedPath; marker?: TextLineMarker | null; matcher?: MatcherBody | null }): KillStatement => ({
     metadata: null,
-    op: "KILL", aside: null,
+    op: "kill", aside: null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
     matcher: opts.matcher ?? null, body: null,
@@ -54,7 +54,7 @@ const killStmt = (opts: { target: ParsedPath; marker?: TextLineMarker | null; ma
 
 const continuationStmt = (opts: { body?: string | null }): NoteStatement => ({
     metadata: null,
-    op: "NOTE", aside: null,
+    op: "note", aside: null,
     target: null,
     lineMarker: null,
     body: opts.body ?? "Continue the task.",
@@ -109,7 +109,7 @@ test("{§edit-result-receipt-projection} Engine.dispatch: the KILL matcher survi
         });
         const log = await db.test_first_log_entry_for_turn.get<{ op: string; tx: string }>({ turn_id: env.turnId });
         if (log === undefined) throw new Error("KILL log_entry not found");
-        assert.equal(log.op, "KILL");
+        assert.equal(log.op, "kill");
         const tx = JSON.parse(log.tx) as { matcher: MatcherBody | null; body: null };
         assert.deepEqual(tx.matcher, { dialect: "glob", raw: "superseded — see /final" });
         assert.equal(tx.body, null);
@@ -185,7 +185,7 @@ test("{§log-history-projection} model-origin log KILL atomically retires its ta
                 active_after: 0,
                 folded_before: "[]",
                 folded_after: "[]",
-                op: "KILL",
+                op: "kill",
                 turn_id: env.turnId,
                 operation_sequence: 2,
                 target_sequence: 1,
@@ -215,7 +215,7 @@ test("{§op-shapes} a NOTE retains its literal text and does not claim a lifecyc
         assert.equal(plan.status, 200);
         const log = await db.test_first_log_entry_for_turn.get<{ op: string; tx: string }>({ turn_id: env.turnId });
         if (log === undefined) throw new Error("NOTE log_entry not found");
-        assert.equal(log.op, "NOTE");
+        assert.equal(log.op, "note");
         const tx = JSON.parse(log.tx) as { body: unknown };
         assert.equal(tx.body, "The capital of France remains unverified.");
     } finally { await db.close(); }
@@ -230,7 +230,7 @@ const setup = async () => {
     return { db, engine, env };
 };
 
-for (const op of ["READ", "FIND"] as const) {
+for (const op of ["read", "find"] as const) {
     test(`{§diagnostic-observation}: ${op} without a path identifies the missing target, not a missing scheme`, async () => {
         const { db, engine, env } = await setup();
         try {
@@ -271,17 +271,17 @@ test("{§loop-completion}: retiring a failed receipt does not make it observed",
         assert.equal(failed.status, 404);
         const result = await engine.executeAdmittedTurn({ ...env, turnId, fromSequence: 2, origin: "model",
             source: null, emission: null, statements: [
-                killStmt({ target: urlPath("log", `/${coordinates.loop_seq}/${coordinates.turn_seq}/1/READ`) }),
+                killStmt({ target: urlPath("log", `/${coordinates.loop_seq}/${coordinates.turn_seq}/1/read`) }),
                 doneStmt(null),
             ],
         });
         assert.equal(result.status, 102, "retiring the receipt cannot remove the observation barrier");
         assert.deepEqual(result.outcomes, [
-            { op: "KILL", status: 200, problemType: null },
-            { op: "DONE", status: 200, problemType: null },
+            { op: "kill", status: 200, problemType: null },
+            { op: "done", status: 200, problemType: null },
         ], "curation and delivery succeed independently of continuation");
         const history = await db.test_log_entries_by_turn.all<{ op: string; origin: string; active: number; status_rx: number }>({ turn_id: turnId });
-        const receipt = history.find(({ op, origin }) => op === "READ" && origin === "model");
+        const receipt = history.find(({ op, origin }) => op === "read" && origin === "model");
         assert.equal(receipt?.active, 0, "the failed receipt was actually removed from the model's curated view");
         assert.equal(receipt?.status_rx, 404, "execution evidence retains the failure");
         assert.equal((await db.message_unanswered_count.get({ loop_id: env.loopId }))?.count, 0,
@@ -300,7 +300,7 @@ test("{§packet} a KILL line scope trims a NOTE like any other log body", async 
             ...env, sequence: 1, origin: "model",
         });
         const curated = await engine.dispatch({
-            statement: killStmt({ target: urlPath("log", "/1/1/1/NOTE"), marker: { marks: [2, 2] } }),
+            statement: killStmt({ target: urlPath("log", "/1/1/1/note"), marker: { marks: [2, 2] } }),
             ...env, sequence: 2, origin: "model",
         });
         assert.equal(curated.status, 200);
@@ -477,12 +477,12 @@ test("{§line-anchors} Engine.dispatch: READ accepts a current line anchor and r
 test("{§log-kill-scope} Engine.dispatch: scoped KILL accepts body and log anchors, and READ respects the curated view", async () => {
     const { db, engine, env } = await setup();
     const content = "alpha\nbeta\ngamma";
-    const target = urlPath("log", "/1/1/1/READ");
+    const target = urlPath("log", "/1/1/1/read");
     const publishedAnchors = LineAnchors.tokens("workspace:///source.md", content);
     try {
         await db.engine_insert_log_entry.get({
             session_id: env.sessionId, loop_id: env.loopId, turn_id: env.turnId, sequence: 1,
-            origin: "model", source: null, model_call_id: null, op: "READ",
+            origin: "model", source: null, model_call_id: null, op: "read",
             scheme: "workspace", username: null, password: null, hostname: null, port: null,
             pathname: "/source.md", query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -505,7 +505,7 @@ test("{§log-kill-scope} Engine.dispatch: scoped KILL accepts body and log ancho
         });
         assert.equal(read.status, 200);
         const logAnchors = (read as { lineAnchors?: readonly string[] }).lineAnchors;
-        assert.equal(logAnchors?.[1], LineAnchors.token("log:///1/1/1/READ", 2, content));
+        assert.equal(logAnchors?.[1], LineAnchors.token("log:///1/1/1/read", 2, content));
 
         const foldedFromBody = await engine.dispatch({
             statement: killStmt({ target, marker: { marks: [publishedAnchors[1]] } }),
@@ -538,7 +538,7 @@ test("{§log-kill-scope} Engine.dispatch: scoped KILL accepts body and log ancho
         const retrieval = rows.find(({ sequence }) => sequence === 5);
         assert.deepEqual(
             { op: retrieval?.op, active: retrieval?.active, folded: retrieval?.folded },
-            { op: "READ", active: 1, folded: "[]" },
+            { op: "read", active: 1, folded: "[]" },
             "retrieval lands as a new visible READ occurrence instead of mutating the curated occurrence",
         );
         assert.equal((JSON.parse(retrieval?.rx ?? "null") as { content?: string }).content, "alpha");
@@ -756,7 +756,7 @@ test("{§edit-result-receipt-projection} Engine.dispatch: writes log_entry with 
         assert.equal(log.turn_id, env.turnId);
         assert.equal(log.sequence, 1);
         assert.equal(log.origin, "model");
-        assert.equal(log.op, "EDIT");
+        assert.equal(log.op, "edit");
         assert.equal(Object.hasOwn(log, "delimiter"), false);
         assert.equal(log.signal, null);
         assert.equal(log.scheme, "workspace");
@@ -765,7 +765,7 @@ test("{§edit-result-receipt-projection} Engine.dispatch: writes log_entry with 
         assert.equal(log.mimetype_rx, "application/json");
         assert.equal(log.status_rx, 201);
         const tx = JSON.parse(log.tx) as { op: string };
-        assert.equal(tx.op, "EDIT");
+        assert.equal(tx.op, "edit");
         const rx = JSON.parse(log.rx) as { status: number };
         assert.equal(rx.status, 201);
     } finally { await db.close(); }
@@ -809,7 +809,7 @@ test("{§operation-results} Engine.dispatch: null path on path-required op retur
     try {
         const stmt: EditStatement = {
             metadata: null,
-            op: "EDIT", aside: null, target: null, lineMarker: null, matcher: null, body: "y",
+            op: "edit", aside: null, target: null, lineMarker: null, matcher: null, body: "y",
             position: { line: 1, column: 1 },
         };
         const result = await engine.dispatch({
@@ -904,7 +904,7 @@ test("{§turn-source-resources}: log EDIT has no mutation surface; reasoning use
         });
         assert.equal(result.status, 501);
         assert.match(result.problem!.type, /operation-not-implemented$/);
-        assert.equal(result.problem!.detail, "Scheme 'log' does not implement EDIT."); // {§operation-results}
+        assert.equal(result.problem!.detail, "Scheme 'log' does not implement edit."); // {§operation-results}
     } finally { await db.close(); }
 });
 
@@ -1032,10 +1032,10 @@ test("{§operation-results} Engine.dispatch: scheme handler that throws → acti
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 500);
-        assert.equal(result.problem?.detail, "The 'boom' scheme did not produce a result for EDIT."); // {§operation-results}
+        assert.equal(result.problem?.detail, "The 'boom' scheme did not produce a result for edit."); // {§operation-results}
         assert.equal(result.problem?.stage, "scheme-dispatch");
         assert.equal(result.problem?.scheme, "boom");
-        assert.equal(result.problem?.operation, "EDIT");
+        assert.equal(result.problem?.operation, "edit");
         assert.doesNotMatch(JSON.stringify(result), /scheme handler deliberately threw/);
         // action-entry preserved at status 500 with error in rx
         const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number; rx: string; scheme: string }>({ turn_id: env.turnId });
@@ -1043,7 +1043,7 @@ test("{§operation-results} Engine.dispatch: scheme handler that throws → acti
         assert.equal(log?.scheme, "boom");
         const rx = JSON.parse(log?.rx ?? "{}");
         assert.equal(rx.status, 500);
-        assert.equal(rx.problem.detail, "The 'boom' scheme did not produce a result for EDIT."); // {§operation-results}
+        assert.equal(rx.problem.detail, "The 'boom' scheme did not produce a result for edit."); // {§operation-results}
         assert.doesNotMatch(log?.rx ?? "", /scheme handler deliberately threw/);
     } finally { await db.close(); }
 });
@@ -1070,7 +1070,7 @@ test("{§operation-results} Engine.dispatch: non-Error throw becomes the same ge
         });
         assert.equal(result.status, 500);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/scheme-handler-threw");
-        assert.equal(result.problem?.detail, "The 'boomstr' scheme did not produce a result for EDIT."); // {§operation-results}
+        assert.equal(result.problem?.detail, "The 'boomstr' scheme did not produce a result for edit."); // {§operation-results}
         assert.doesNotMatch(JSON.stringify(result), /raw string thrown/);
     } finally { await db.close(); }
 });
@@ -1087,7 +1087,7 @@ test("{§operation-results} Engine.dispatch: COPY rejects a non-entry destinatio
         // Attempt copy workspace:///src → log:///dst — destination scheme rejects.
         const result = await engine.dispatch({
             statement: {
-                op: "COPY", aside: null,
+                op: "copy", aside: null,
                 source: { target: urlPath("workspace", "/src"), metadata: null, lineMarker: null, matcher: null },
                 destination: { target: urlPath("log", "/dst"), metadata: null, lineMarker: null, matcher: null },
                 position: { line: 1, column: 1 },
@@ -1177,7 +1177,7 @@ test("{§fs-namespace} contract: FIND(bare path) resolves the canonical-stored m
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
-        const stmt = parseOp<FindStatement>("await plurnk.find({\"path\":\"notes.md\"});", "FIND");
+        const stmt = parseOp<FindStatement>("await plurnk.find({\"path\":\"notes.md\"});", "find");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200, "FIND succeeds");
         assert.ok(resourcePaths(result).includes("notes.md"), `FIND must find the member (catalog renders it bare: notes.md); got: ${JSON.stringify(resourcePaths(result))}`);
@@ -1189,7 +1189,7 @@ test("{§fs-namespace} contract: READ(bare path) resolves the canonical-stored m
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
-        const stmt = parseOp<ReadStatement>("await plurnk.read({\"path\":\"notes.md\"});", "READ");
+        const stmt = parseOp<ReadStatement>("await plurnk.read({\"path\":\"notes.md\"});", "read");
         const result = await readFileScheme(stmt, ctx);
         assert.equal(result.status, 200, "READ canonicalizes the bare path and resolves the member");
         assert.match(result.content ?? "", /phoenix/, "READ returns the member content");
@@ -1203,7 +1203,7 @@ test("{§edit} contract: EDIT(bare path) resolves the canonical-stored member an
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
         // {§edit} — notes.md already exists; <1,-1> states the rewrite.
-        const stmt = parseOp<ResolvedEditStatement>("await plurnk.edit({\"path\":\"notes.md\",\"range\":\"1,-1\",\"content\":\"the codename is dragon\"});", "EDIT");
+        const stmt = parseOp<ResolvedEditStatement>("await plurnk.edit({\"path\":\"notes.md\",\"range\":\"1,-1\",\"content\":\"the codename is dragon\"});", "edit");
         const result = await new File().edit(stmt, ctx);
         assert.equal(result.status, 202, `EDIT canonicalizes the bare path → proposal; got ${result.status} ${result.problem?.detail ?? ""}`);
     });
@@ -1213,7 +1213,7 @@ test("{§fs-namespace} FIND of an absolute path resolves the member", async () =
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
-        const stmt = parseOp<FindStatement>(`await plurnk.find({"path":"${join(root, "notes.md")}"});`, "FIND");
+        const stmt = parseOp<FindStatement>(`await plurnk.find({"path":"${join(root, "notes.md")}"});`, "find");
         const result = await new File().find(stmt, ctx);
         assert.ok(resourcePaths(result).includes("notes.md"), `the leading-slash form finds it; got: ${JSON.stringify(resourcePaths(result))}`);
     });
@@ -1225,7 +1225,7 @@ test("{§fs-namespace} an exact regex FIND returns its flat match location", asy
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "heading\nthe codename is phoenix\ncontext\n");
         await addMember(ctx, "notes.md");
-        const stmt = parseOp<FindStatement>("await plurnk.find({\"path\":\"notes.md\",\"pattern\":\"/phoenix/\"});", "FIND");
+        const stmt = parseOp<FindStatement>("await plurnk.find({\"path\":\"notes.md\",\"pattern\":\"/phoenix/\"});", "find");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200);
         assert.ok(result.results.length > 0);
@@ -1236,7 +1236,7 @@ test("{§fs-namespace} contract: an exact FIND returns every match as a flat loc
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "log.md"), "alpha\ntarget one\nbeta\ngamma\ntarget two\n");
         await addMember(ctx, "log.md");
-        const stmt = parseOp<FindStatement>("await plurnk.find({\"path\":\"log.md\",\"pattern\":\"*target*\"});", "FIND");
+        const stmt = parseOp<FindStatement>("await plurnk.find({\"path\":\"log.md\",\"pattern\":\"*target*\"});", "find");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200);
         assert.ok(result.results.length > 0);
@@ -1247,7 +1247,7 @@ test("{§path-syntax} contract: an exact jsonpath FIND returns flat structural l
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "config.json"), '{\n  "host": "db.internal",\n  "pool": 5\n}\n');
         await addMember(ctx, "config.json");
-        const stmt = parseOp<FindStatement>("await plurnk.find({\"path\":\"config.json\",\"pattern\":\"$.host\"});", "FIND");
+        const stmt = parseOp<FindStatement>("await plurnk.find({\"path\":\"config.json\",\"pattern\":\"$.host\"});", "find");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200);
         assert.ok(result.results.length > 0);
@@ -1264,7 +1264,7 @@ test("{§fs-namespace} explicit file URI and bare FIND globs list the same membe
         await addMember(ctx, "a.md");
         await addMember(ctx, "docs/b.md");
         for (const dsl of [`await plurnk.find({"path":"file://${root}/**"});`, "await plurnk.find({\"path\":\"**\"});"]) {
-            const r = await new File().find(parseOp<FindStatement>(dsl, "FIND"), ctx);
+            const r = await new File().find(parseOp<FindStatement>(dsl, "find"), ctx);
             assert.equal(r.status, 200, `${dsl} → 200`);
             assert.equal(r.results.length, 2, `${dsl} lists both tracked members`);
             const paths = resourcePaths(r).join(" ");
@@ -1285,13 +1285,13 @@ test("{§fs-namespace} contract: bare FIND(*) is a shallow project map; FIND(**)
         await writeFile(join(root, "src/nested/deep.ts"), "deep");
         for (const path of [".env.defaults", ".github/settings.yml", "README.md", "src/index.ts", "src/nested/deep.ts"]) await addMember(ctx, path);
 
-        const shallow = await new File().find(parseOp<FindStatement>("await plurnk.find({\"path\":\"*\"});", "FIND"), ctx);
+        const shallow = await new File().find(parseOp<FindStatement>("await plurnk.find({\"path\":\"*\"});", "find"), ctx);
         assert.deepEqual(resourcePaths(shallow), [".env.defaults", ".github/**", "README.md", "src/**"]);
         const scope = resourceGroups(shallow).find(([item]) => item.path === "src/**")?.[0];
         assert.ok(scope !== undefined && "items" in scope);
         assert.equal(scope.items, 2);
 
-        const recursive = await new File().find(parseOp<FindStatement>("await plurnk.find({\"path\":\"**\"});", "FIND"), ctx);
+        const recursive = await new File().find(parseOp<FindStatement>("await plurnk.find({\"path\":\"**\"});", "find"), ctx);
         assert.deepEqual(resourcePaths(recursive), [".env.defaults", ".github/settings.yml", "README.md", "src/index.ts", "src/nested/deep.ts"]);
     });
 });
@@ -1304,7 +1304,7 @@ test("{§fs-namespace} directory and glob searches from filesystem ancestors ret
 
         await writeFile(join(root, "hidden.txt"), "not a member");
         for (const target of [".", root, `${root}/`, "file:///", "/", "../", "../../**", `${root}/../**/*.ts`]) {
-            const result = await new File().find(parseOp<FindStatement>(`await plurnk.find({"path":"${target}"});`, "FIND"), ctx);
+            const result = await new File().find(parseOp<FindStatement>(`await plurnk.find({"path":"${target}"});`, "find"), ctx);
             assert.equal(result.status, 200, target);
             assert.deepEqual(resourcePaths(result), ["src/a.ts"], target);
         }

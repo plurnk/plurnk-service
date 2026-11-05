@@ -49,7 +49,7 @@ const htmlPage = (): string => [
 
 const parseRead = (dsl: string): ReadStatement => {
     const found = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
-        (item) => item.kind === "statement" && item.statement.op === "READ",
+        (item) => item.kind === "statement" && item.statement.op === "read",
     );
     if (found === undefined) throw new Error(`no READ parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: ReadStatement }).statement;
@@ -211,7 +211,7 @@ test("{§scheme-surface} #283: a scoped READ of a project file still returns exa
         const seeded = await engine.dispatch({
             statement: {
                 metadata: null,
-                op: "EDIT", aside: null,
+                op: "edit", aside: null,
                 target: { kind: "url", raw: "workspace:///scope.md", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/scope.md", query: null, fragment: null },
                 lineMarker: null,
                 matcher: null, body: content,
@@ -256,7 +256,7 @@ test("{§channel-selection}: a matcher FIND location names its channel only off 
         let sequence = 0;
         const parseFind = (dsl: string): ReadStatement => {
             const found = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
-                (item) => item.kind === "statement" && item.statement.op === (dsl.startsWith("await plurnk.read(") ? "READ" : "FIND"),
+                (item) => item.kind === "statement" && item.statement.op === (dsl.startsWith("await plurnk.read(") ? "read" : "find"),
             );
             if (found === undefined) throw new Error(`no statement parsed from: ${dsl}`);
             return (found as { kind: "statement"; statement: ReadStatement }).statement;
@@ -334,7 +334,7 @@ const statement = (
     };
     return {
         metadata: null,
-        op: "READ",
+        op: "read",
         aside: null,
         target,
         lineMarker,
@@ -349,9 +349,9 @@ const parsedRead = (target: string, metadata: readonly string[] = []): ReadState
     const code = `await plurnk.read(${JSON.stringify(args)});\n\nawait plurnk.note({"text":"acquisition pending"});`;
     const parsed = PlurnkParser.parse(code, { executors: fixtureExecutors(code) });
     const item = parsed.items.find(
-        (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
+        (candidate) => candidate.kind === "statement" && candidate.statement.op === "read",
     );
-    if (item?.kind !== "statement" || item.statement.op !== "READ") {
+    if (item?.kind !== "statement" || item.statement.op !== "read") {
         throw new Error(`no READ parsed from target: ${target}`);
     }
     return item.statement;
@@ -532,7 +532,7 @@ for (const mode of ["complete", "oversize", "interrupted"] as const) {
 
 const emptyStatement = (): ReadStatement => ({
     metadata: null,
-    op: "READ",
+    op: "read",
     aside: null,
     target: {
         kind: "url",
@@ -553,7 +553,7 @@ const emptyStatement = (): ReadStatement => ({
 
 const plainTextStatement = (): ReadStatement => ({
     metadata: null,
-    op: "READ",
+    op: "read",
     aside: null,
     target: {
         kind: "url",

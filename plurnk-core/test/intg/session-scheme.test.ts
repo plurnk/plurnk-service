@@ -92,12 +92,12 @@ const sessionEntry = (owner: string, path: string): ParsedPath => ({
 // branches the current session into a named sister. The body is the seed task, not a destination path.
 const spawnedSession = (name: string, prompt: string): WorkStatement => ({
     metadata: null,
-    op: "WORK", aside: null, target: sessionPath(name),
+    op: "work", aside: null, target: sessionPath(name),
     lineMarker: null, body: prompt, position: { line: 1, column: 1 },
 });
 const forkSession = (name: string, prompt: string): ForkStatement => ({
     metadata: null,
-    op: "FORK", aside: null, target: sessionPath(name),
+    op: "fork", aside: null, target: sessionPath(name),
     lineMarker: null, body: prompt, position: { line: 1, column: 1 },
 });
 
@@ -118,7 +118,7 @@ const weigh = (text: string): number => Math.ceil(text.length / 4);
 // FIND in one named namespace: session://<owner>/<glob>.
 const findEntry = (owner: string, glob: string): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null,
+    op: "find", aside: null,
     target: { kind: "url", raw: owner === "" ? `workspace:///${glob}` : `session://${owner}/${glob}`, scheme: owner === "" ? "workspace" : "session", username: null, password: null, hostname: owner === "" ? null : owner, port: null, pathname: `/${glob}`, query: null, fragment: null },
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
@@ -126,7 +126,7 @@ const findEntry = (owner: string, glob: string): FindStatement => ({
 // READ from one named namespace: session://<owner>/<path>.
 const readEntry = (owner: string, path: string): ReadStatement => ({
     metadata: null,
-    op: "READ", aside: null,
+    op: "read", aside: null,
     target: { kind: "url", raw: owner === "" ? `workspace:///${path}` : `session://${owner}/${path}`, scheme: owner === "" ? "workspace" : "session", username: null, password: null, hostname: owner === "" ? null : owner, port: null, pathname: `/${path}`, query: null, fragment: null },
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
@@ -134,7 +134,7 @@ const readEntry = (owner: string, path: string): ReadStatement => ({
 // KILL in one named namespace: session://<owner>/<path> — deletes the scratch entry (path present).
 const killEntry = (owner: string, path: string): KillStatement => ({
     metadata: null,
-    op: "KILL", aside: null,
+    op: "kill", aside: null,
     target: { kind: "url", raw: owner === "" ? `workspace:///${path}` : `session://${owner}/${path}`, scheme: owner === "" ? "workspace" : "session", username: null, password: null, hostname: owner === "" ? null : owner, port: null, pathname: `/${path}`, query: null, fragment: null },
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
@@ -223,7 +223,7 @@ test("{§session-scheme}: concurrent WORK and FORK cannot claim the same literal
     if (fork.status === 409) {
         assert.match(fork.problem!.type, /session-name-conflict$/);
         assert.equal(fork.problem!.session, "child");
-        assert.match(String(fork.problem!.recovery), /WORK or SEND \(session:\/\/child\)/u, "the receipt names the working forms");
+        assert.match(String(fork.problem!.recovery), /plurnk\.work\([^)]*session:\/\/child/u, "the receipt names the working forms");
         assert.equal(calls.length, 1, "the one claim started the child");
         assert.equal(calls[0].spawn, true);
     } else {
@@ -254,7 +254,7 @@ for (const origin of ["model", "client", "_plurnk"] as const) {
     });
 }
 
-for (const op of ["WORK", "FORK"] as const) {
+for (const op of ["work", "fork"] as const) {
     test(`{§execution-output-identity}: addressless ${op} allocates and reports a distinct short child address`, async (t) => {
         const db = await openMigrated();
         try {
@@ -307,7 +307,7 @@ for (const op of ["WORK", "FORK"] as const) {
                 assert.equal(call.prompt, "Inspect the project.");
                 assert.deepEqual(await SessionOwners.read(db, call.sessionId), await SessionOwners.read(db, parentId));
                 const inherited = await db.test_fork_loops.all({ session_id: call.sessionId });
-                assert.equal(inherited.length, op === "FORK" ? 1 : 0, "FORK copies history; WORK starts fresh");
+                assert.equal(inherited.length, op === "fork" ? 1 : 0, "FORK copies history; WORK starts fresh");
                 const addressed = await db.session_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: child.name });
                 assert.equal(addressed?.id, call.sessionId, "the reported name addresses the child that actually received the prompt");
             }
@@ -317,7 +317,7 @@ for (const op of ["WORK", "FORK"] as const) {
     });
 }
 
-for (const op of ["WORK", "FORK"] as const) test(`{§capability-admission}: ${op} shares live workspace policy and inherits its parent owner`, async () => {
+for (const op of ["work", "fork"] as const) test(`{§capability-admission}: ${op} shares live workspace policy and inherits its parent owner`, async () => {
     const db = await openMigrated();
     try {
         const { calls, injectSession } = recordingInjectSession();
@@ -333,7 +333,7 @@ for (const op of ["WORK", "FORK"] as const) test(`{§capability-admission}: ${op
         });
         assert.equal(seed.status, 201);
         await db.test_set_workspace_settings.run({
-            id: workspaceId, settings: JSON.stringify({ capabilities: { deny: [{ operation: "READ" }] } }),
+            id: workspaceId, settings: JSON.stringify({ capabilities: { deny: [{ operation: "read" }] } }),
         });
         const spawned = await engine.dispatch({
             statement: { ...spawnedSession("child", "work independently"), op },
@@ -342,7 +342,7 @@ for (const op of ["WORK", "FORK"] as const) test(`{§capability-admission}: ${op
         assert.equal(spawned.status, 200);
         assert.equal((await SessionOwners.read(db, calls[0].sessionId)).address, TEST_OWNER);
         const childId = calls[0].sessionId;
-        const childLoop = await insertLoop(db, childId, op === "FORK" ? 2 : 1, "continue");
+        const childLoop = await insertLoop(db, childId, op === "fork" ? 2 : 1, "continue");
         const childTurn = await insertTurn(db, childLoop, 1, 102);
         const read = (sequence: number) => engine.dispatch({
             statement: readEntry("", "note.md"), workspaceId, sessionId: childId,
@@ -392,7 +392,7 @@ test("{§machine-processes} session control rejects every non-authority URI comp
             });
             assert.equal(result.status, 400, raw);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/session/control-address-invalid", raw);
-            assert.equal(result.problem?.operation, "WORK", raw);
+            assert.equal(result.problem?.operation, "work", raw);
             assert.equal(result.problem?.retryable, false, raw);
         }
         assert.equal(calls.length, 0, "invalid address components never reach child startup");
@@ -432,7 +432,7 @@ test("{§machine-processes} the exact session control address is enforced before
             { ...forkSession("session", "fork"), target },
             sendStmt(target, "message"),
             readStmt(target),
-            { metadata: null, op: "KILL", aside: null, target, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } },
+            { metadata: null, op: "kill", aside: null, target, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } },
         ];
 
         const results = [];
@@ -452,7 +452,7 @@ test("{§machine-processes} the exact session control address is enforced before
             results.map(({ problem }) => problem?.type),
             Array.from({ length: 5 }, () => "https://problems.plurnk.xyz/scheme/session/control-address-invalid"),
         );
-        assert.deepEqual(results.map(({ problem }) => problem?.operation), ["WORK", "FORK", "SEND", "READ", "KILL"]);
+        assert.deepEqual(results.map(({ problem }) => problem?.operation), ["work", "fork", "send", "read", "kill"]);
         assert.equal(calls.length, 0, "invalid controls never inject a session message or task");
         assert.equal(killed.length, 0, "invalid controls never cancel a session");
     } finally { await db.close(); }
@@ -482,7 +482,7 @@ test("{§session-scheme}: all Session names are literal; tilde is not an alias",
             "a literal tilde never aliases the caller's named scratch");
         for (const name of ["actor", "self"]) {
             assert.equal((await dispatch(editStmt(sessionEntry(name, "notes.md"), "scratch"))).status, 201);
-            const kill: KillStatement = { metadata: null, op: "KILL", aside: null, target: sessionPath(name), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
+            const kill: KillStatement = { metadata: null, op: "kill", aside: null, target: sessionPath(name), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
             assert.equal((await dispatch(kill)).status, 200);
         }
         assert.deepEqual(killed, [sessionId, named.id]);
@@ -612,11 +612,11 @@ test("{§op-methods-op-dispatch}: one model program creates sessions before canc
         const turn = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
         const rows = await db.test_log_entries_by_turn.all<{ op: string; hostname: string | null; origin: string; status_rx: number }>({ turn_id: turn.turnId });
         assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, hostname, status_rx }) => [op, hostname, status_rx]), [
-            ["WORK", "approach_a", 200],
-            ["WORK", "approach_b", 200],
-            ["WORK", "approach_c", 200],
-            ["KILL", "approach_a", 200],
-            ["KILL", "approach_c", 200],
+            ["work", "approach_a", 200],
+            ["work", "approach_b", 200],
+            ["work", "approach_c", 200],
+            ["kill", "approach_a", 200],
+            ["kill", "approach_c", 200],
         ], "every operation sees the preceding operation's durable effects");
         assert.deepEqual([...children.keys()], ["approach_a", "approach_b", "approach_c"]);
         assert.equal(await lifecycle.status(children.get("approach_a")!), 499);
@@ -644,7 +644,7 @@ test("{§session-scheme}: a completed Session retains its name and scratch ident
         const fork = await engine.dispatch({ statement: forkSession("session", "branch"), workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model" });
         assert.equal(fork.status, 409);
         assert.equal(fork.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/session-name-conflict");
-        assert.match(String(fork.problem?.recovery), /WORK or SEND \(session:\/\/session\)/u);
+        assert.match(String(fork.problem?.recovery), /plurnk\.work\([^)]*session:\/\/session/u);
         assert.equal(calls.length, 1, "one message, no spawn");
         assert.equal(calls[0].sessionId, retained, "delivered to the retained session");
         assert.equal((await db.session_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "session" }))?.id, retained);
@@ -934,12 +934,12 @@ test("{§session-scheme} KILL(session://name) aborts a sister by address; a miss
         const turnId = await insertTurn(db, loopId, 1, 102);
         const sisterId = await insertSession(db, workspaceId, null, "session");
 
-        const killSession: KillStatement = { metadata: null, op: "KILL", aside: null, target: sessionPath("session"), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
+        const killSession: KillStatement = { metadata: null, op: "kill", aside: null, target: sessionPath("session"), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
         const ok = await engine.dispatch({ statement: killSession, workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(ok.status, 200, "KILL of an existing sister returns 200");
         assert.deepEqual(killed, [sisterId], "the named sister session is aborted by id");
 
-        const killGhost: KillStatement = { metadata: null, op: "KILL", aside: null, target: sessionPath("ghost"), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
+        const killGhost: KillStatement = { metadata: null, op: "kill", aside: null, target: sessionPath("ghost"), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
         const missing = await engine.dispatch({ statement: killGhost, workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model" });
         assert.equal(missing.status, 404, "KILL of a non-existent sister is 404");
         assert.equal(killed.length, 1, "no abort for a missing sister");
@@ -955,7 +955,7 @@ for (const related of [true, false]) test(`{§session-scheme}: ${related ? "pare
         const childId = await insertSession(db, workspaceId, related ? meId : null, "author");
         const loopId = await insertLoop(db, meId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        const readOf = (target: ParsedPath): ReadStatement => ({ metadata: null, op: "READ", aside: null, lineMarker: null, target, matcher: null, body: null, position: { line: 1, column: 1 } });
+        const readOf = (target: ParsedPath): ReadStatement => ({ metadata: null, op: "read", aside: null, lineMarker: null, target, matcher: null, body: null, position: { line: 1, column: 1 } });
 
         // {§execution-output-identity}: the authority is part of the workspace entry key.
         const childLoop = await insertLoop(db, childId, 1, "go");
@@ -1035,8 +1035,8 @@ test("{§session-scheme}: session:/// entry operations and FIND require a named 
         for (const statement of [
             editStmt(emptyTarget, "body"),
             readStmt(emptyTarget),
-            { metadata: null, op: "FIND" as const, aside: null, target: emptyTarget, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } },
-            { metadata: null, op: "KILL" as const, aside: null, target: emptyTarget, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } },
+            { metadata: null, op: "find" as const, aside: null, target: emptyTarget, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } },
+            { metadata: null, op: "kill" as const, aside: null, target: emptyTarget, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } },
         ]) {
             const res = await engine.dispatch({ statement, workspaceId, sessionId: sessionId, loopId, turnId, sequence: ++sequence, origin: "model" });
             assert.equal(res.status, 400);
@@ -1061,7 +1061,7 @@ test("{§session-loop-lifecycle} READ of a running child does not override a con
         ] });
         const run = () => engine.runTurn({ provider, workspaceId, sessionId: parent, loopId: parentLoop, messages: [] });
         const continued = await run();
-        assert.deepEqual(continued.outcomes.map(({ op, status }) => [op, status]), [["READ", 425], ["NOTE", 200]]);
+        assert.deepEqual(continued.outcomes.map(({ op, status }) => [op, status]), [["read", 425], ["note", 200]]);
         assert.equal(continued.status, 102);
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: parentLoop }))?.status, 102, "actionable work remains runnable");
         const waiting = await run();
@@ -1109,7 +1109,7 @@ test("{§op-methods-op-dispatch} KILL(session) settles before same-turn completi
             } }] }),
             workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
         });
-        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["KILL", 200], ["DONE", 200]]);
+        assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["kill", 200], ["done", 200]]);
         const wstatus = await db.test_get_loop_status.get<{ status: number }>({ id: sessionLoop });
         assert.equal(wstatus?.status, 499, "the killed session's loop is 499 NOW, not next turn — KILL landed before the turn moved on");
         assert.equal(result.status, 200, "the stopped session is no longer live pending work and KILL permits completion");
@@ -1137,7 +1137,7 @@ test("{§loop-completion} WAIT: a live obligation parks; an empty join continues
         const loop = await insertLoop(db, session, 1, "solo");
         const turn = await insertTurn(db, loop, 1, 200);
         const eng2 = new Engine({ db, schemes: new SchemeRegistry() });
-        const satisfied = await eng2.dispatch({ statement: dispositionStmt("WAIT", "standing by"), workspaceId: s2, sessionId: session, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
+        const satisfied = await eng2.dispatch({ statement: dispositionStmt("wait", "standing by"), workspaceId: s2, sessionId: session, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
         assert.equal(satisfied.status, 102);
         assert.equal(satisfied.detail, "Nothing is in flight. Continuing."); // {§operation-results}
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 102, "the empty join is not terminal");
@@ -1148,7 +1148,7 @@ test("{§loop-completion} WAIT: a live obligation parks; an empty join continues
         const loop3 = await insertLoop(db, run3, 1, "solo");
         const turn3 = await insertTurn(db, loop3, 1, 200);
         const eng3 = new Engine({ db, schemes: new SchemeRegistry() });
-        const scoped = { ...dispositionStmt("WAIT", "standing by"), seconds: 600 };
+        const scoped = { ...dispositionStmt("wait", "standing by"), seconds: 600 };
         const continued = await eng3.dispatch({ statement: scoped, workspaceId: s3, sessionId: run3, loopId: loop3, turnId: turn3, sequence: 1, origin: "model" });
         assert.equal(continued.status, 102);
         assert.equal(continued.problem, undefined);
@@ -1166,7 +1166,7 @@ for (const answer of ["", "The module was tested."]) {
             const wLoop = await insertLoop(db, session, 1, "test the module");
             const wTurn = await insertTurn(db, wLoop, 1, 200);
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
-            const waited = await engine.dispatch({ statement: dispositionStmt("WAIT", "Standing by for user input"), workspaceId, sessionId: session, loopId: wLoop, turnId: wTurn, sequence: 1, origin: "model" });
+            const waited = await engine.dispatch({ statement: dispositionStmt("wait", "Standing by for user input"), workspaceId, sessionId: session, loopId: wLoop, turnId: wTurn, sequence: 1, origin: "model" });
             assert.equal(waited.status, 102, "the empty join continues");
             assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: wLoop }))?.status, 102, "the loop remains active");
             const reader = await insertSession(db, workspaceId);
@@ -1194,7 +1194,7 @@ test("{§machine-processes} an empty waiting inventory stays runnable in the sam
         const loop = await insertLoop(db, session, 1, "nothing to do");
         const turn = await insertTurn(db, loop, 1, 200);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const r = await engine.dispatch({ statement: dispositionStmt("WAIT", "idle"), workspaceId, sessionId: session, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
+        const r = await engine.dispatch({ statement: dispositionStmt("wait", "idle"), workspaceId, sessionId: session, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
         assert.equal(r.status, 102);
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 102, "no completion and no held-open 202");
     } finally { await db.close(); }
@@ -1298,14 +1298,14 @@ await plurnk.note({"text":"reading"});`, 10),
                     await rpcCall(ws, 1, "workspace.create", { name: "child-file-visibility", projectRoot: root });
                     const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "delegate the count" }, { timeoutMs: 20000 });
                     const all = await db.test_log_entries_by_loop.all<{ op: string; origin: string; source: string | null; signal: string | null; status_rx: number; rx: string }>({ loop_id: loopId });
-                    const edit = all.find((r) => r.op === "EDIT");
+                    const edit = all.find((r) => r.op === "edit");
                     assert.ok(edit && edit.status_rx < 300, `the child's write was admitted, got ${edit?.status_rx}: ${edit?.rx.slice(0, 200)}`);
                     // {§env-delta} — the child's model activity crossed, its
                     // runtime-private initialization never did.
                     const crossed = all.filter((r) => r.source === "session://counter");
-                    assert.ok(crossed.some((r) => r.op === "EDIT"), "the child's EDIT crossed to the parent");
+                    assert.ok(crossed.some((r) => r.op === "edit"), "the child's EDIT crossed to the parent");
                     assert.deepEqual(crossed.filter((r) => /"init"/.test(String(r.signal))).map((r) => r.op), [], "no turn-0 initialization row of the child reached the parent");
-                    const read = all.find((r) => r.op === "READ" && r.origin === "model");
+                    const read = all.find((r) => r.op === "read" && r.origin === "model");
                     assert.ok(read, "the parent's READ was dispatched");
                     assert.equal(read.status_rx, 200, `the parent reads the child's file by bare path, got ${read.status_rx}: ${read.rx.slice(0, 220)}`);
                     assert.match(read.rx, /"content":"3"/, "the parent sees the child's content");
@@ -1314,8 +1314,8 @@ await plurnk.note({"text":"reading"});`, 10),
                     const turns = await db.test_list_turns_in_loop.all<{ sequence: number; packet: string | null }>({ loop_id: loopId });
                     const observations = turns.flatMap(({ packet }) => (packet === null ? [] : logEntries(JSON.parse(packet)))
                         .filter((entry) => entry.source === "session://counter" && entry.origin === "_plurnk"));
-                    const replies = observations.filter((entry) => entry.logPath.endsWith("/SEND") && entry.status === 200 && Array.isArray(entry.repliedTo));
-                    const conclusions = observations.filter((entry) => entry.logPath.endsWith("/READ") && entry.path === "ops://counter/1");
+                    const replies = observations.filter((entry) => entry.logPath.endsWith("/send") && entry.status === 200 && Array.isArray(entry.repliedTo));
+                    const conclusions = observations.filter((entry) => entry.logPath.endsWith("/read") && entry.path === "ops://counter/1");
                     // {§message-completion}: the child's answer to its parent's own task arrives once, as the
                     // conclusion at the child's loop address.
                     assert.equal(new Set(conclusions.map(({ logPath: path }) => path)).size, 1, "one terminal observation");
@@ -1406,7 +1406,7 @@ test("{§session-scheme} ping/pong: WORK spawns a session once, then WORK to the
             const childLoops = (await db.test_count_loops_by_session.get<{ n: number }>({ session_id: pong[0].id }))!.n;
             assert.equal(childLoops, 2, "the message woke pong as a second loop");
             const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ session_id: modelSessionId! });
-            const works = rows.filter((row) => row.op === "WORK");
+            const works = rows.filter((row) => row.op === "work");
             assert.deepEqual(works.map((row) => row.status_rx), [200, 200], "both WORKs succeeded: one spawn, one message");
             assert.doesNotMatch(works[0].rx, /"delivered":"message"/u, "the first WORK's receipt is a spawn");
             assert.match(works[1].rx, /"delivered":"message"/u, "the second WORK's receipt says it was a message");
@@ -1445,7 +1445,7 @@ test("{§session-scheme} a held name: FORK is 409 naming the working forms, WORK
             assert.equal(fork.status, 409, "a branch needs a name no session holds");
             assert.match(problemOf(fork).type ?? "", /session-name-conflict$/u);
             assert.equal(problemOf(fork).session, "pong");
-            assert.match(problemOf(fork).recovery ?? "", /WORK or SEND \(session:\/\/pong\)/u, "the receipt names the working forms");
+            assert.match(problemOf(fork).recovery ?? "", /plurnk\.work\([^)]*session:\/\/pong/u, "the receipt names the working forms");
 
             const empty = await dispatch("await plurnk.work({\"target\":\"session://pong\",\"prompt\":\"\"});");
             assert.equal(empty.status, 422, "no body, no message");
@@ -1505,7 +1505,7 @@ test("{§session-scheme}: a file path on WORK is the child's prompt, and the chi
                 const { finalStatus, loopId, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
                 assert.equal(finalStatus, 200);
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string; tx: string }>({ loop_id: loopId });
-                const work = rows.find((r) => r.op === "WORK" && r.origin === "model");
+                const work = rows.find((r) => r.op === "work" && r.origin === "model");
                 assert.equal(work?.status_rx, 200, work?.rx ?? "no WORK row");
                 assert.match((JSON.parse(work.tx) as { target: { raw: string } }).target.raw, /brief\.md$/, "the durable row keeps the authored path");
                 assert.match(JSON.parse(work.rx).attrs?.session ?? "", /^session:\/\/[a-f0-9]{8}$/, "the child is auto-named");
@@ -1550,7 +1550,7 @@ test("{§session-scheme}: a missing resource is the operation's failure and spaw
                 const { finalStatus, loopId, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
                 assert.equal(finalStatus, 200);
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
-                const works = rows.filter((r) => r.op === "WORK" && r.origin === "model");
+                const works = rows.filter((r) => r.op === "work" && r.origin === "model");
                 assert.equal(works.length, 2);
                 assert.equal(works[0].status_rx, 404, "the missing resource's own read failure");
                 assert.equal(works[1].status_rx, 400);

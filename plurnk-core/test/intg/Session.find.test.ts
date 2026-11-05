@@ -47,13 +47,13 @@ const url = (pathname: string): UrlPath => ({
 
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null, target, lineMarker: null, body,
+    op: "edit", aside: null, target, lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });
 
 const findStmt = (target: UrlPath, matcher: MatcherBody | null = null): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null, target, lineMarker: null, matcher, body: null,
+    op: "find", aside: null, target, lineMarker: null, matcher, body: null,
      position: { line: 1, column: 1 },
 });
 
@@ -487,7 +487,7 @@ test("{§find} a body FIND over ~2k members with a handler-crashing member answe
                 const outcome = await runLoopToTerminal(ws, 2, { prompt: "find" }, { timeoutMs: 50_000 });
                 assert.equal(outcome.result.status, 200);
                 const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ session_id: outcome.modelSessionId! });
-                const find = rows.find(({ op }) => op === "FIND");
+                const find = rows.find(({ op }) => op === "find");
                 assert.ok(find, "the FIND row exists");
                 assert.notEqual(find.status_rx, 500, `FIND must not 500: ${JSON.parse(find.rx).problem?.detail ?? find.rx.slice(0, 200)}`);
                 assert.ok([200, 204, 404].includes(find.status_rx), `truthful status; got ${find.status_rx}`);
@@ -518,7 +518,7 @@ const url = (scheme: string, pathname: string): UrlPath => ({
 });
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null, target, lineMarker: null, body,
+    op: "edit", aside: null, target, lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });
 
@@ -576,7 +576,7 @@ test("{§find} [catalog] a fenced invocation-form summary lists every tool while
         await workspace.edit(editStmt(url("workspace", "prose.md"), `# prose\n\n## Summary\n\n${prose}\n`), ctx);
         await SearchIndex.maintain(ctx);
         const listing = await workspace.find({
-            metadata: null, op: "FIND", aside: null, target: url("workspace", "*"),
+            metadata: null, op: "find", aside: null, target: url("workspace", "*"),
             lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 1 },
         }, ctx);
         assert.equal(listing.status, 200, JSON.stringify(listing));
@@ -643,7 +643,7 @@ test("{§find}: the recorded `FIND (x.py) /^from|^import/` locates the lines REA
 test("{§find}: a log FIND anchors each line of the row it searches", async (t) => {
     const { dispatch } = await runtime(t);
     assert.equal((await dispatch("await plurnk.read({\"path\":\"workspace:///resolvers.py\",\"range\":\"1,-1\"});")).status, 200);
-    const found = await dispatch("await plurnk.find({\"path\":\"log:///1/1/1/READ\",\"pattern\":\"/^from|^import/\"});");
+    const found = await dispatch("await plurnk.find({\"path\":\"log:///1/1/1/read\",\"pattern\":\"/^from|^import/\"});");
     assert.equal(found.status, 200, JSON.stringify(found));
     assert.deepEqual(startLines(found), [4, 5, 6, 8]);
 });
@@ -672,19 +672,19 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
     metadata: null,
-    op: "READ", aside: null, target,
+    op: "read", aside: null, target,
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
 const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null, lineMarker: FindStatement["lineMarker"] = null): FindStatement => ({
     metadata: null,
-    op: "FIND", aside: null, target,
+    op: "find", aside: null, target,
     lineMarker, matcher, body: null,  position: { line: 1, column: 1 },
 });
 
 const seed = async (db: Db, workspaceId: number, sessionId: number, mimetypes: Mimetypes, path: string, content: string): Promise<void> => {
     await new Workspace().edit(
-        { metadata: null, op: "EDIT", aside: null, target: urlPath("workspace", path), lineMarker: null, matcher: null, body: content, position: { line: 1, column: 1 } },
+        { metadata: null, op: "edit", aside: null, target: urlPath("workspace", path), lineMarker: null, matcher: null, body: content, position: { line: 1, column: 1 } },
         makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }),
     );
 };

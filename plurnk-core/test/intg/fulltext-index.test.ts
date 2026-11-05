@@ -800,7 +800,7 @@ const url = (pathname: string): UrlPath => ({
 
 const edit = (pathname: string, body: string): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null, target: url(pathname), lineMarker: null, body,
+    op: "edit", aside: null, target: url(pathname), lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });
 
@@ -1009,9 +1009,9 @@ class PreparedDataScheme implements SchemeHandler {
 
 const parseFind = (dsl: string): FindStatement => {
     const item = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
-        (candidate) => candidate.kind === "statement" && candidate.statement.op === "FIND",
+        (candidate) => candidate.kind === "statement" && candidate.statement.op === "find",
     );
-    if (item?.kind !== "statement" || item.statement.op !== "FIND") {
+    if (item?.kind !== "statement" || item.statement.op !== "find") {
         throw new Error(`no FIND parsed from ${dsl}`);
     }
     return item.statement;
@@ -1019,9 +1019,9 @@ const parseFind = (dsl: string): FindStatement => {
 
 const parseRead = (dsl: string): ReadStatement => {
     const item = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
-        (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
+        (candidate) => candidate.kind === "statement" && candidate.statement.op === "read",
     );
-    if (item?.kind !== "statement" || item.statement.op !== "READ") {
+    if (item?.kind !== "statement" || item.statement.op !== "read") {
         throw new Error(`no READ parsed from ${dsl}`);
     }
     return item.statement;
@@ -1031,9 +1031,9 @@ const parseRead = (dsl: string): ReadStatement => {
 
 const parseSend = (dsl: string): SendStatement => {
     const item = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find(
-        (candidate) => candidate.kind === "statement" && candidate.statement.op === "SEND",
+        (candidate) => candidate.kind === "statement" && candidate.statement.op === "send",
     );
-    if (item?.kind !== "statement" || item.statement.op !== "SEND") {
+    if (item?.kind !== "statement" || item.statement.op !== "send") {
         throw new Error(`no SEND parsed from ${dsl}`);
     }
     return item.statement;
@@ -1525,7 +1525,7 @@ test("{§persistent-search-index} a model turn joins an in-flight startup warm b
         const response: MockResponse = {
             assistant: {
                 content: "",
-                ops: [{ op: "SEND", aside: null, target: null, metadata: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }],
+                ops: [{ op: "send", aside: null, target: null, metadata: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }],
                 reasoning: null,
             },
         };

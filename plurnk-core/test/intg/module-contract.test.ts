@@ -246,7 +246,7 @@ test("{§provided-skills-module-slice} host-composed references are supplied as 
     assert.deepEqual([...trees.keys()], ["plurnk"]);
     const tree = trees.get("plurnk")!;
     assert.equal(tree.document.name, "plurnk");
-    assert.ok((await tree.list()).includes(".env.defaults"));
+    assert.ok((await tree.list()).includes("configuration/.env.defaults"));
     const document = tree.resource("SKILL.md");
     assert.equal(new TextDecoder().decode(await document.read(1, (await document.size())!)), tree.document.source);
 });
@@ -701,7 +701,7 @@ test("{§rpc} log.read returns recent entries from the attached workspace", asyn
                 entries: Array<{ op: string; origin: string; tx: { target?: { pathname?: string } } }>;
             };
             assert.equal(result.status, 200);
-            const edits = result.entries.filter(({ op, origin }) => op === "EDIT" && origin === "client");
+            const edits = result.entries.filter(({ op, origin }) => op === "edit" && origin === "client");
             assert.deepEqual(
                 edits.map(({ tx }) => tx.target?.pathname),
                 ["/b", "/a"],
@@ -757,7 +757,7 @@ test("{§rpc} log.read entries have hydrated JSON columns", async () => {
             const result = r.result as {
                 entries: Array<{ op: string; origin: string; tx: unknown; signal: unknown; status_rx: number }>;
             };
-            const entry = result.entries.find(({ op, origin }) => op === "EDIT" && origin === "client");
+            const entry = result.entries.find(({ op, origin }) => op === "edit" && origin === "client");
             assert.ok(entry !== undefined, "the client operation remains addressable among runtime-authored history");
             // tx should be an object (parsed JSON), not a string
             assert.equal(typeof entry.tx, "object");
@@ -778,7 +778,7 @@ test("{§methods}: a full L/T/S coordinate resolves the single entry's full shap
 
             // Discover the SEND entry's DISPLAY coordinate (no hardcoded ids).
             const all = (await rpcCall(ws, 4, "log.read")).result as { entries: Array<{ id: number; op: string; loop_seq: number; turn_seq: number; sequence: number; tx: unknown }> };
-            const send = all.entries.find((e) => e.op === "SEND" && /Paris/.test(JSON.stringify(e.tx)));
+            const send = all.entries.find((e) => e.op === "send" && /Paris/.test(JSON.stringify(e.tx)));
             assert.ok(send, "the SEND entry is in the log");
 
             // {§methods} — one call by L/T/S returns exactly that entry, full shape.
@@ -808,10 +808,10 @@ test("{§rpc} log.read is workspace-scoped — doesn't see other workspaces' log
             const rB = await rpcCall(wsB, 3, "log.read");
             const aEntries = (rA.result as {
                 entries: Array<{ op: string; origin: string; tx: { target: { pathname: string } } }>;
-            }).entries.filter(({ op, origin }) => op === "EDIT" && origin === "client");
+            }).entries.filter(({ op, origin }) => op === "edit" && origin === "client");
             const bEntries = (rB.result as {
                 entries: Array<{ op: string; origin: string; tx: { target: { pathname: string } } }>;
-            }).entries.filter(({ op, origin }) => op === "EDIT" && origin === "client");
+            }).entries.filter(({ op, origin }) => op === "edit" && origin === "client");
 
             assert.equal(aEntries.length, 1);
             assert.equal(aEntries[0].tx.target.pathname, "/a");
@@ -1297,13 +1297,13 @@ for (const outcome of ["success", "failure", "delegation"] as const) {
     });
 }
 
-for (const operation of ["READ", "EDIT", "KILL"]) test(`{§notifications} tool hooks bracket ${operation} dispatch, not fan-out rows or automatic observations`, { timeout: 20_000 }, async (t) => {
+for (const operation of ["read", "edit", "kill"]) test(`{§notifications} tool hooks bracket ${operation} dispatch, not fan-out rows or automatic observations`, { timeout: 20_000 }, async (t) => {
     serverProposals(t, "accept");
     const db = await openMigrated();
     const root = await mkdtemp(join(tmpdir(), "plurnk-hook-project-"));
-    const opCall = operation === "READ"
+    const opCall = operation === "read"
         ? 'await plurnk.read({"path":"workspace:///*.txt"});'
-        : operation === "EDIT"
+        : operation === "edit"
             ? 'await plurnk.edit({"path":"workspace:///*.txt","range":"1,-1","content":"updated"});'
             : 'await plurnk.kill({"path":"workspace:///*.txt"});';
     const provider = new Mock({ contextWindow: viableWindow() * 4, responses: [
@@ -1325,11 +1325,11 @@ for (const operation of ["READ", "EDIT", "KILL"]) test(`{§notifications} tool h
     const events = await hooks.events();
     const tools = events.filter(({ tool_use_id }) => tool_use_id !== undefined);
     assert.deepEqual(tools.map(({ hook_event_name, tool_name }) => [hook_event_name, tool_name]), [
-        ["PreToolUse", "EDIT"], ["PostToolUse", "EDIT"],
-        ["PreToolUse", "EDIT"], ["PostToolUse", "EDIT"],
+        ["PreToolUse", "edit"], ["PostToolUse", "edit"],
+        ["PreToolUse", "edit"], ["PostToolUse", "edit"],
         ["PreToolUse", operation], ["PostToolUse", operation],
-        ["PreToolUse", "READ"], ["PostToolUseFailure", "READ"],
-        ["PreToolUse", "DONE"], ["PostToolUse", "DONE"],
+        ["PreToolUse", "read"], ["PostToolUseFailure", "read"],
+        ["PreToolUse", "done"], ["PostToolUse", "done"],
     ]);
     for (let index = 0; index < tools.length; index += 2) {
         const start = tools[index];
@@ -1372,7 +1372,7 @@ test("{§notifications} concurrent BARE starts precede inference and correlate w
     };
     const hooks = await captureHooks(t, daemon, "PreToolUse,PostToolUse");
     daemon.subscribeToEvents((_scope, method, params) => {
-        if (method === "operation/event" && (params as ApplicationOperationEvent).statement.op === "BARE") sequence.push((params as ApplicationOperationEvent).phase);
+        if (method === "operation/event" && (params as ApplicationOperationEvent).statement.op === "bare") sequence.push((params as ApplicationOperationEvent).phase);
     });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "hooks-bare" });
@@ -1384,7 +1384,7 @@ test("{§notifications} concurrent BARE starts precede inference and correlate w
     await daemon.stop();
     assert.deepEqual(hooks.failures, []);
     assert.deepEqual(sequence, ["started", "started", "inference", "inference", "settled", "settled"]);
-    const events = (await hooks.events()).filter(({ tool_name }) => tool_name === "BARE");
+    const events = (await hooks.events()).filter(({ tool_name }) => tool_name === "bare");
     assert.deepEqual(events.map(({ hook_event_name }) => hook_event_name), ["PreToolUse", "PreToolUse", "PostToolUse", "PostToolUse"]);
     assert.deepEqual(events.slice(0, 2).map(({ tool_use_id }) => tool_use_id), events.slice(2).map(({ tool_use_id }) => tool_use_id));
     assert.notEqual(events[0].tool_use_id, events[1].tool_use_id);

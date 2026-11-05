@@ -20,7 +20,7 @@ import { urlPath, findStmt, readStmt } from "./_dsl.ts";
 describe("Log.read", () => {
 const logEditStmt = (pathname: string, body: string): ResolvedEditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null,
+    op: "edit", aside: null,
     target: urlPath("workspace", pathname),
     lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
@@ -136,8 +136,8 @@ test("{§read} Log.read: an exact /OP delimiter must agree with the addressed ro
             workspaceId, sessionId, loopId, turnId,
             sequence: 1, origin: "model",
         });
-        const correct = await readLog(readStmt(urlPath("log", "/1/1/1/EDIT")), makeSchemeCtx({ db, workspaceId, sessionId }));
-        const wrong = await readLog(readStmt(urlPath("log", "/1/1/1/READ")), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const correct = await readLog(readStmt(urlPath("log", "/1/1/1/edit")), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const wrong = await readLog(readStmt(urlPath("log", "/1/1/1/read")), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(correct.status, 200);
         assert.equal(wrong.status, 404);
     } finally { db.close(); }
@@ -163,7 +163,7 @@ test("{§log-history-projection}: rejected attempts retain exact canonical leave
             "the three-part exact-coordinate shorthand remains accepted",
         );
         assert.equal(
-            (await readLog(readStmt(urlPath("log", "/1/1/1/READ")), ctx)).status,
+            (await readLog(readStmt(urlPath("log", "/1/1/1/read")), ctx)).status,
             404,
             "a canonical leaf that disagrees with the durable type cannot address the row",
         );
@@ -218,7 +218,7 @@ test("{§read} Log.read: 404 on missing coordinates", async () => {
 test("{§read} Log.read: 400 on malformed coordinates", async () => {
     const { db, workspaceId, sessionId } = await setup();
     try {
-        for (const bad of ["abc", "1/2", "1/2/3/READ/4", "x/y/z"]) {
+        for (const bad of ["abc", "1/2", "1/2/3/read/4", "x/y/z"]) {
             const result = await readLog(readStmt(urlPath("log", bad)), makeSchemeCtx({ db, workspaceId, sessionId }));
             assert.equal(result.status, 400, `path '${bad}' should return 400`);
         }
@@ -301,7 +301,7 @@ test("{§read} Log.find: an exact matcher returns flat locations and complete pa
         await engine.dispatch({ statement: readStmt(urlPath("workspace", "/data.json")), workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model" });
         const stmt: FindStatement = {
             metadata: null,
-            op: "FIND", aside: null, target: urlPath("log", "/1/1/2"), lineMarker: null,
+            op: "find", aside: null, target: urlPath("log", "/1/1/2"), lineMarker: null,
             matcher: { dialect: "regex", raw: "/\"status\"/", pattern: "\"status\"", flags: "" }, body: null, position: { line: 1, column: 1 },
         };
         const r = await new Log().find(stmt, makeSchemeCtx({ db, workspaceId, sessionId }));
@@ -340,7 +340,7 @@ test("{§read} Log.find: body matcher selects the full projection before <L> pro
         // exact, <1> selects the first match location.
         const stmt: FindStatement = {
             metadata: null,
-            op: "FIND", aside: null, target: urlPath("log", "/1/1/2"),
+            op: "find", aside: null, target: urlPath("log", "/1/1/2"),
             lineMarker: { marks: [1, 1] },
             matcher: { dialect: "regex", raw: "/\\d+/", pattern: "\\d+", flags: "" }, body: null, position: { line: 1, column: 1 },
         };
@@ -363,7 +363,7 @@ test("{§read} Log.find: a matcher FIND writes flat surgical coordinates", async
         const result = await engine.dispatch({
             statement: {
                 metadata: null,
-                op: "FIND", aside: null,
+                op: "find", aside: null,
                 target: { kind: "url", raw: "workspace:///notes", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/notes", query: null, fragment: null },
                 lineMarker: null,
                 matcher: { dialect: "regex", raw: "/\\w+/g", pattern: "\\w+", flags: "g" }, body: null,
@@ -566,7 +566,7 @@ const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§packet} —
 
 const findEditStmt = (pathname: string, content: string): EditStatement => ({
     metadata: null,
-    op: "EDIT", aside: null,
+    op: "edit", aside: null,
     target: { kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null },
     lineMarker: null, matcher: null, body: content, position: { line: 1, column: 1 },
 });
@@ -599,8 +599,8 @@ test("{§find} FIND(log:///**):/regex/ matches log rows by CONTENT — the jumbo
         const foundPaths = paths(r);
         // BOTH rows whose projection carries the phrase match: the EDIT's rx echoes the written
         // span, the READ's rx carries the retrieved content — FIND matches exactly what READ shows.
-        assert.ok(foundPaths.includes("log:///1/1/2/READ"), "the READ-result row matches by its content");
-        assert.ok(foundPaths.includes("log:///1/1/1/EDIT"), "the EDIT row matches too — its rx echoes the written span (the projection is the contract)");
+        assert.ok(foundPaths.includes("log:///1/1/2/read"), "the READ-result row matches by its content");
+        assert.ok(foundPaths.includes("log:///1/1/1/edit"), "the EDIT row matches too — its rx echoes the written span (the projection is the contract)");
         assert.ok(!foundPaths.some((x) => x.includes("/1/1/3/")), "the irrelevant row is excluded");
         assert.ok(resources(r).every(([item]) => (item.matchLocationCount ?? 0) > 0), "each selected row reports its addressable location count");
     } finally { await db.close(); }
@@ -665,7 +665,7 @@ test("{§log-history-projection}: FIND projects and filters actionless rows by t
 
         const ops = await log.find(findStmt(urlPath("log", "/**/attempt")), ctx);
         assert.deepEqual(paths(ops), ["log:///1/1/4/attempt", "log:///1/1/5/attempt"]);
-        const wrong = await log.find(findStmt(urlPath("log", "/1/1/4/READ")), ctx);
+        const wrong = await log.find(findStmt(urlPath("log", "/1/1/4/read")), ctx);
         assert.equal(wrong.status, 404);
     } finally {
         await db.close();
@@ -676,12 +676,12 @@ test("{§find} an exact body-less log FIND returns 404 when the resource does no
     const { db, sessionId, workspaceId } = await setup();
     try {
         const result = await new Log().find(
-            findStmt(urlPath("log", "/9/9/9/READ")),
+            findStmt(urlPath("log", "/9/9/9/read")),
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 404);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/log/entry-not-found");
-        assert.equal(result.problem?.target, "log:///9/9/9/READ");
+        assert.equal(result.problem?.target, "log:///9/9/9/read");
     } finally { await db.close(); }
 });
 
@@ -689,11 +689,11 @@ test("{§find} an exact log FIND rejects a supplied /OP delimiter that disagrees
     const { db, sessionId, workspaceId } = await setup();
     try {
         const result = await new Log().find(
-            findStmt(urlPath("log", "/1/1/1/READ")),
+            findStmt(urlPath("log", "/1/1/1/read")),
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 404);
-        assert.equal(result.problem?.target, "log:///1/1/1/READ");
+        assert.equal(result.problem?.target, "log:///1/1/1/read");
     } finally { await db.close(); }
 });
 
@@ -784,7 +784,7 @@ test("{§find} log FIND reports an exact readable region for structural matches"
             workspaceId, sessionId, loopId, turnId, sequence: 5, origin: "model",
         });
         const result = await new Log().find(
-            findStmt(urlPath("log", "/1/1/5/READ"), { dialect: "jsonpath", raw: "$.second" }),
+            findStmt(urlPath("log", "/1/1/5/read"), { dialect: "jsonpath", raw: "$.second" }),
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 200);
@@ -805,7 +805,7 @@ test("{§find} FIND(log:///**):/pattern/ — FIND locates matching log entries",
         });
         assert.equal(result.status, 200, "FIND locates log entries");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; sequence: number }>({ loop_id: loopId });
-        const delivered = rows.filter((r) => r.op === "FIND" && r.sequence >= 4);
+        const delivered = rows.filter((r) => r.op === "find" && r.sequence >= 4);
         assert.ok(delivered.length >= 1, "the matching FIND row is recorded");
     } finally { await db.close(); }
 });
@@ -822,7 +822,7 @@ test("{§find} READ(log://)<1,-1> returns a composed row's complete canonical bo
             origin: "model",
             source: null,
             model_call_id: null,
-            op: "NOTE",
+            op: "note",
             scheme: null,
             username: null,
             password: null,
@@ -844,7 +844,7 @@ test("{§find} READ(log://)<1,-1> returns a composed row's complete canonical bo
         });
 
         const result = await readLog(
-            { ...readStmt(urlPath("log", "/1/1/4/NOTE")), lineMarker: { marks: [1, -1] } },
+            { ...readStmt(urlPath("log", "/1/1/4/note")), lineMarker: { marks: [1, -1] } },
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 200);
@@ -917,7 +917,7 @@ test("{§find} full-text and graph FIND over logs use the same persistent deriva
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(fulltext.status, 200);
-        assert.ok(paths(fulltext).some((path) => path.includes("/1/1/2/READ")),
+        assert.ok(paths(fulltext).some((path) => path.includes("/1/1/2/read")),
             "full-text rank returns the log address whose READ projection carries the phrase");
         assert.ok(fulltext.results.length >= 2, "the full-text specimen has multiple ranked log results");
         const secondFulltext = await new Log().find(
@@ -935,7 +935,7 @@ test("{§find} full-text and graph FIND over logs use the same persistent deriva
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(graph.status, 200);
-        assert.ok(paths(graph).some((path) => path.includes("/1/1/5/READ")),
+        assert.ok(paths(graph).some((path) => path.includes("/1/1/5/read")),
             "graph relation returns the log address whose readable code projection references helper");
 
         const graphMiss = await new Log().find(
