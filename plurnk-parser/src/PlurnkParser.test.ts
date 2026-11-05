@@ -1,422 +1,277 @@
 import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import PlurnkParser from "./PlurnkParser.ts";
-import { writtenOp, type FindStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
+import { propAccess, isPlurnkOp } from "./CodeMode.ts";
+import {
+    writtenOp,
+    type CopyStatement,
+    type DispositionStatement,
+    type DoneStatement,
+    type EditStatement,
+    type ExecStatement,
+    type FailStatement,
+    type FindStatement,
+    type ForkStatement,
+    type KillStatement,
+    type MoveStatement,
+    type NoteStatement,
+    type PlurnkStatement,
+    type ReadStatement,
+    type SendStatement,
+    type TodoStatement,
+    type WorkStatement,
+} from "@plurnk/plurnk-contracts";
 
-describe("PlurnkParser", () => {
-test("{§fence-pairing}: canonical frames close on their own line and preserve ordinary nested code", () => {
-    assert.equal(PlurnkParser.frame("READ (note.md)", null), "```READ (note.md)\n```");
-    const body = "```json\n{\"ok\":true}\n```";
-    assert.equal(PlurnkParser.frame("SEND", body), `\`\`\`\`SEND\n${body}\n\`\`\`\``);
-    const nested = "````SEND\n" + body + "\n````";
-    // {§operation-fences} — a body holding a four-backtick heading is framed one wider.
-    assert.equal(PlurnkParser.frame("EDIT (example.md)", nested), "`````EDIT (example.md)\n" + nested + "\n`````");
-});
-
-test("{§fence-pairing}: inline input remains legal but is never the canonical rendering", () => {
-    const parsed = PlurnkParser.parse("````READ (note.md) <1,-1> <!-- inspect note -->````");
-    assert.deepEqual(parsed.items.filter(({ kind }) => kind === "error"), []);
-    const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    assert.equal(statements.length, 1);
-    const rendered = PlurnkParser.stringify(statements);
-    assert.equal(rendered, "```READ (note.md) <1,-1> <!-- inspect note -->\n```");
-    const reparsed = PlurnkParser.parse(rendered);
-    assert.deepEqual(reparsed.items, parsed.items);
-});
-
-test("{§fence-pairing}: programs separate fenced operations without changing body whitespace", () => {
-    const body = "# Example\n\n````sh\necho 42\n````\n";
-    const blocks = [
-        PlurnkParser.frame("READ (note.md)", null),
-        PlurnkParser.frame("EDIT (example.md)", body),
-        PlurnkParser.frame("SEND", "The edit is ready for verification."),
-    ];
-    const parsed = PlurnkParser.parse(blocks.join("\n"));
-    assert.ok(parsed.items.every((item) => item.kind === "statement"));
-    const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    const source = PlurnkParser.stringify(statements);
-    assert.equal(source, blocks.join("\n\n"));
-    const reparsed = PlurnkParser.parse(source);
-    assert.deepEqual(reparsed.items.map((item) => item.kind), ["statement", "statement", "statement"]);
-    const edit = reparsed.items[1];
-    assert.equal(edit?.kind === "statement" && edit.statement.op === "EDIT" ? edit.statement.body : null, body);
-});
-
-test("{§operation-fences} framing a large body does not spread its backtick runs into function arguments", () => {
-    const body = "`quoted` ".repeat(100_000);
-    assert.equal(PlurnkParser.frame("EDIT (large.md)", body), "```EDIT (large.md)\n" + body + "\n```");
-});
-
-test("{§operation-fences} quoted programs are exact body content without speculative diagnostics", () => {
-    const body = "````sh\necho hello\n````\n## PLAN_\n### READ_ (example.md)";
-    const input = PlurnkParser.frame("SEND", body) + "\n" + PlurnkParser.frame("NOTE", "Example delivered.");
-    const parsed = PlurnkParser.parse(input);
-    assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
-    const send = parsed.items.find((item) => item.kind === "statement" && item.statement.op === "SEND");
-    assert.equal(send?.kind === "statement" && send.statement.op === "SEND" ? send.statement.body?.raw : null, body);
-});
-
-test("{§operation-fences} an unfinished wider body ends at the next known heading; the wider fence holds it only while it closes", () => {
-    const unfinished = PlurnkParser.parseStatements("````READ (before.md)````\n````EDIT (notes.md)\n```sh\necho literal\n```");
-    assert.deepEqual(unfinished.items.flatMap((item) => item.kind === "statement" ? [writtenOp(item.statement)] : []), ["READ", "EDIT", "sh"]);
-    assert.equal(unfinished.unparsedTail, undefined);
-    const closed = PlurnkParser.parseStatements("````READ (before.md)````\n````EDIT (notes.md)\n```sh\necho literal\n```\n````");
-    assert.deepEqual(closed.items.flatMap((item) => item.kind === "statement" ? [writtenOp(item.statement)] : []), ["READ", "EDIT"]);
-    const edit = closed.items.find((item) => item.kind === "statement" && item.statement.op === "EDIT");
-    assert.equal(edit?.kind === "statement" && edit.statement.op === "EDIT" ? edit.statement.body : null, "```sh\necho literal\n```");
-});
-
-test("{§whitespace-contract}: prose and operation-shaped text stay literal, without guessing intent", () => {
-    const executors = ["sh", "js"];
-    for (const source of [
-        "The answer is 42.\n\n```rust\nconst x = 1;\n```",
-        "Example:\n\n```text\n````READ (x.md\n````\n```",
-        "I will look.\n\n    ```FIND (ledger.md) /shutdown/i\n    ```",
-        "Thinking.\n\n    ```NOTE\nhello\n    ```",
-        "Run:\n\n    ```sh (x)\nnpm test\n    ```",
-        "sh [{\"cwd\":\"/\"}]",
-        "### log:///1/2/3/READ\n{}",
-    ]) {
-        const parsed = PlurnkParser.parse(source, { executors });
-        assert.deepEqual(parsed.items.filter((item) => item.kind === "statement"), []);
-        assert.deepEqual(parsed.items.flatMap((item) => item.kind === "text" ? [item.content] : []), [source]);
-    }
-});
-
-test("{§whitespace-contract}: an operation written without its fence is not response text; the prose beside it is", () => {
-    // A column-zero line that opens with an operation's name and anything else is the unfenced
-    // shape, whether an operand or a sentence follows ("KILL The answer…" in the declaration).
-    for (const [source, texts] of [
-        ["Let me look.\nREAD (x.md)", ["Let me look.\n"]],
-        ["READ the file first, then decide.\nsh is a shell.", ["sh is a shell."]],
-    ] as const) {
-        const parsed = PlurnkParser.parse(source, { executors: ["sh", "js"] });
-        assert.deepEqual(parsed.items.filter((item) => item.kind === "statement"), [], source);
-        assert.deepEqual(parsed.items.flatMap((item) => item.kind === "text" ? [item.content] : []), [...texts], source);
-        assert.deepEqual(parsed.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []),
-            ["Unfenced `READ` ignored."], source);
-    }
-});
-
-test("{§operation-fences}: three backticks open an operation and draw nothing; ordinary code stays prose", () => {
-    const warnings = (input: string) => PlurnkParser.parse(input, { executors: ["sh"] }).items.flatMap((item) =>
-        item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
-    const statements = (input: string) => PlurnkParser.parse(input, { executors: ["sh"] }).items.filter((item) => item.kind === "statement").length;
-    assert.equal(statements("```READ (notes.md)\n```\n\n```sh\nnpm test\n```"), 2, "three backticks open an operation");
-    assert.deepEqual(warnings("```READ (notes.md)\n```"), [], "the taught width draws nothing");
-    assert.deepEqual(warnings("```sh\nnpm test\n```"), []);
-    assert.deepEqual(warnings("````READ (notes.md)\n````"), [], "a wider fence is the same statement");
-    assert.equal(statements("````READ (notes.md)\n````"), 1);
-    assert.deepEqual(warnings("The config:\n\n```ts\nexport default {};\n```"), [], "an ordinary code block draws nothing");
-    // {§fence-pairing} — an operation inside an unlabeled code block is shown, not run; it is told once.
-    assert.deepEqual(warnings("Example:\n\n````\n```READ (notes.md)\n```\n````"), ["`READ` inside a code block was shown, not run."]);
-    assert.deepEqual(warnings("```\n```READ (notes.md)\n```"), ["`READ` inside a code block was shown, not run."], "a same-width wrapper is told the same");
-    assert.deepEqual(warnings("    ```READ (notes.md)\n    ```"), [], "the taught offset draws nothing");
-    assert.deepEqual(warnings("```plurnk\n```READ (notes.md)\n```\n```"), [], "a labeled code block is an example by declaration");
-    assert.deepEqual(warnings("````typo (x)\n````"), [], "an explicit invocation is resolved at dispatch");
-    assert.deepEqual(warnings("````typo\n````"), [], "an unknown name without a slot is a code block at any width");
-    assert.equal(statements("````typo (x)\n````"), 1);
-});
-
-test("{§whitespace-contract}: an executor's name with an operand slot did not run either; inside a sentence it is a word", () => {
-    const parse = (source: string) => PlurnkParser.parse(source, { executors: ["sh", "gitea"] });
-    const warnings = (source: string) => parse(source).items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
-    const texts = (source: string) => parse(source).items.flatMap((item) => item.kind === "text" ? [item.content] : []);
-    const call = 'gitea (list_issues) <!-- List issues -->\n{"owner": "plurnk"}';
-    assert.deepEqual(warnings(call), ["Unfenced `gitea` ignored."]);
-    assert.deepEqual(texts(call), ['{"owner": "plurnk"}'], "the heading line leaves response text; its body line is what remains");
-    assert.deepEqual(warnings("sh(build.sh)"), ["Unfenced `sh` ignored."], "a glued operand counts");
-    assert.deepEqual(warnings("sh is a shell.\nGitea (list_issues) works too."), ["Unfenced `Gitea` ignored."], "the name inside a sentence is a word; the executor's case rule applies");
-    assert.deepEqual(warnings("Use gitea (list_issues) for that."), [], "only at column zero");
-});
-
-test("{§fence-pairing} {§fence-pairing}: explicit unknown invocations parse; code blocks remain quoted", () => {
-    const parse = (source: string) => PlurnkParser.parse(source, { executors: ["sh"] }).items;
-    const runtime = (source: string) => parse(source).flatMap((item) => item.kind === "statement" && "runtime" in item.statement ? [item.statement.runtime] : []);
-    assert.ok(parse('```OP (gitea) (search_issues)\n{"query": "open"}\n```').some((item) =>
-        item.kind === "error" && item.error.message === "op accepts one `(program)` path at most once"));
-    assert.deepEqual(runtime("```Read (notes.md)\n```"), ["read"], "native names remain case-sensitive");
-    assert.deepEqual(runtime("```OP (gitea)```"), ["op"], "the inline form is also an invocation");
-    for (const source of ["```python\nprint(1)\n```", "~~~OP (x)\n~~~", "    ```OP (x)\n    ```"]) {
-        assert.deepEqual(runtime(source), []);
-        assert.deepEqual(parse(source).filter((item) => item.kind === "error" && item.error.severity === "warning"), []);
-    }
-});
-
-test("{§fence-pairing}: at the top level, an operation heading under a bare fence runs, with one warning", () => {
-    const parse = (source: string) => PlurnkParser.parse(source, { executors: ["sh", "gitea"] }).items;
-    const ran = (source: string) => parse(source).flatMap((item) => item.kind === "statement" ? [item.statement.op ?? (item.statement as { runtime?: string }).runtime] : []);
-    const warnings = (source: string) => parse(source).flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
-    const malformed = (tag: string) => `\`${tag}\` ran, though its fence was malformed: the opening fence, OP, parameters, and aside share one line.`;
-    assert.deepEqual(ran("```\nREAD (notes.md) <1,-1>\n```"), ["READ"]);
-    assert.deepEqual(warnings("```\nREAD (notes.md) <1,-1>\n```"), [malformed("READ")]);
-    assert.deepEqual(ran("```\nNOTE\nDone.\n```"), ["NOTE"], "a native name alone qualifies");
-    assert.deepEqual(warnings("```\nNOTE\nDone.\n```"), [malformed("NOTE")]);
-    assert.deepEqual(ran("```\ngitea (list_issues)\n{\"owner\": \"plurnk\"}\n```"), ["gitea"], "an executor with its operand");
-    assert.deepEqual(warnings("```\nsh\n$ npm test\n```"), [], "an executor's bare name is a word in a transcript");
-    assert.deepEqual(warnings("```\ndef f():\n    pass\n```"), [], "a code snippet draws nothing");
-    assert.deepEqual(ran("```text\nREAD (notes.md)\n```"), [], "a labeled block is an example by declaration");
-    assert.deepEqual(ran("```NOTE\nshown:\n```\nREAD (x)\n```\n```"), ["NOTE"], "inside a body the same shape stays literal");
-    assert.deepEqual(warnings("```\n```READ (notes.md)\n```\n```"), ["`READ` inside a code block was shown, not run."], "a fenced example inside keeps its own receipt");
-});
-
-test("{§parse-recovery} a refused statement carries its attempt, its verb and its text as written; a diagnostic outside every statement carries none", () => {
-    const attempts = (source: string) => PlurnkParser.parse(source).items
-        .flatMap((item) => item.kind === "error" && item.error.severity === "error" ? [item.attempt ?? null] : []);
-    assert.deepEqual(attempts("````READ (a.md) <1,\n````"), [{ verb: "READ", text: "````READ (a.md) <1,\n````" }, null],
-        "the refused READ as written; the turn's absence of an operation refuses no statement");
-    assert.deepEqual(attempts("````sh\necho hi\n````\n````FIND (*.md) <x>\n````"), [{ verb: "FIND", text: "````FIND (*.md) <x>\n````" }],
-        "a sibling that parsed leaves the refusal its own attempt");
-    assert.deepEqual(attempts("````READ (b.md\n````")[0], { verb: "READ", text: "````READ (b.md\n" }, "an unclosed slot is read as far as the parser read it");
-});
-});
-
-describe("matcher-refusal", () => {
-const parse = (source: string) => {
-    const parsed = PlurnkParser.parse(source);
-    const errors = parsed.items.flatMap((item) => item.kind === "error" && item.error.severity === "error" ? [item.error.message] : []);
-    const warnings = parsed.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
-    const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    return { errors, warnings, statements, items: parsed.items };
-};
-const matcherOf = (statement: FindStatement | ReadStatement) => statement.matcher;
-
-test("{§matcher-prefix-claims}: a matcher the parser cannot read is admitted with its statement, carrying the diagnostic and the working form; siblings stand", () => {
-    const { errors, warnings, statements } = parse("```FIND (tests/migrations/test_writer.py) /Enum/{5,40} <!-- enum test regions -->\n```\n\n```NOTE\nnext\n```");
-    assert.deepEqual(errors, [], "no parse error: the fumble is not a contract violation");
-    assert.deepEqual(warnings, []);
-    assert.deepEqual(statements.map(({ op }) => op), ["FIND", "NOTE"]);
-    const matcher = matcherOf(statements[0] as FindStatement);
-    if (matcher?.dialect !== "unreadable") assert.fail("the matcher is unreadable");
-    assert.equal(matcher.raw, "/Enum/{5,40}");
-    assert.match(matcher.message, /^pattern leads with `\/` but is not a valid `\/pattern\/flags` regex - Invalid flags/u);
-    assert.match(matcher.recovery, /^A pattern is a regex written `\/pattern\/flags`/u);
-    assert.equal((statements[0] as FindStatement).aside, "enum test regions", "the aside is still the aside");
-});
-
-test("{§matcher-prefix-claims} {§fence-pairing}: an unreadable matcher renders back as written and reparses equal", () => {
-    for (const source of ["```FIND (a.py) /Enum/{5,40}\n```", "```READ (a.py) /set_ticks|set_ticklabels/_/\n```", "```READ (a.md) //[bad\n```"]) {
-        const parsed = PlurnkParser.parse(source);
-        const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.equal(statements.length, 1, source);
-        assert.equal(PlurnkParser.stringify(statements), source);
-        assert.deepEqual(PlurnkParser.parse(PlurnkParser.stringify(statements)).items, parsed.items);
-    }
-});
-
-test("{§matcher-prefix-claims}: grep's `\\|` is alternation, `-i` after the slash is the flag, a glob-shaped pattern is its glob over the line; one advisory each, and a compiling regex is never rewritten", () => {
-    const alternation = parse("```FIND (django/forms/forms.py) /render\\|_html_output\\|get_context/\n```");
-    assert.deepEqual(alternation.errors, []);
-    const read = matcherOf(alternation.statements[0] as FindStatement);
-    assert.deepEqual(read?.dialect === "regex" ? [read.pattern, read.flags, read.raw] : null, ["render|_html_output|get_context", "", "/render\\|_html_output\\|get_context/"]);
-    assert.deepEqual(alternation.warnings, ["`\\|` was read as alternation, `|`; a literal pipe is `[|]`."]);
-
-    const flags = parse("```FIND (django/db/models/*) /collector/ -i\n```");
-    assert.deepEqual(flags.errors, []);
-    const flagged = matcherOf(flags.statements[0] as FindStatement);
-    assert.deepEqual(flagged?.dialect === "regex" ? [flagged.pattern, flagged.flags] : null, ["collector", "i"]);
-    assert.deepEqual(flags.warnings, ["`-i` after the pattern was read as the flags `i`; flags go right after the closing `/`."]);
-
-    for (const [source, pattern] of [
-        ["```FIND (sklearn/decomposition/tests/) /*kernel_pca*/\n```", ".*kernel_pca.*"],
-        ["```FIND (sklearn/decomposition/kernel_pca.py) /*/\n```", ".*"],
-        ["```FIND (sympy/printing/**/*.py) /**/\n```", ".*"],
-    ] as const) {
-        const glob = parse(source);
-        assert.deepEqual(glob.errors, [], source);
-        const body = matcherOf(glob.statements[0] as FindStatement);
-        assert.equal(body?.dialect === "regex" ? body.pattern : null, pattern, source);
-        assert.equal(glob.warnings.length, 1, source);
-        assert.match(glob.warnings[0], /was read as the glob .* over each line/u, source);
-    }
-
-    const plain = parse("```FIND (a.py) /a*b|c/i\n```");
-    const kept = matcherOf(plain.statements[0] as FindStatement);
-    assert.deepEqual(kept?.dialect === "regex" ? [kept.pattern, kept.flags] : null, ["a*b|c", "i"]);
-    assert.deepEqual(plain.warnings, [], "a regex that compiles is never rewritten");
-    const literalPipe = parse("```FIND (a.py) /a[|]b/\n```");
-    assert.equal(matcherOf(literalPipe.statements[0] as FindStatement)?.dialect, "regex");
-    assert.deepEqual(literalPipe.warnings, []);
-});
-});
-
-describe("metadata-order", () => {
-const parse = (heading: string, body: string | null = null) => {
-    const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(heading, body), { executors: ["sh", "gitea"] });
-    assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), [], heading);
-    assert.equal(parsed.unparsedTail, undefined, heading);
+const statementsOf = (source: string, executors?: readonly string[]): PlurnkStatement[] => {
+    const parsed = PlurnkParser.parse(source, executors === undefined ? {} : { executors });
+    const hardErrors = parsed.items.filter((item) => item.kind === "error" && item.error.severity === "error");
+    assert.deepEqual(hardErrors, [], source);
     return parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 };
 
-test("{§slot-order}: SEND, DONE, and FAIL accept attachment metadata before or after their message path", () => {
-    for (const op of ["SEND", "DONE", "FAIL"] as const) {
-        const result = PlurnkParser.parse(`\`\`\`${op} [{"attach":["a.png"]}] (message://dogfood04/6094c6e9)\nFinal deliverable\n\`\`\``);
-        assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
-        const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.equal(statements.length, 1);
-        const statement = statements[0];
-        assert.equal(statement.op, op);
-        assert.equal(statement.target?.raw, "message://dogfood04/6094c6e9");
-        assert.deepEqual(statement.metadata, ['{"attach":["a.png"]}']);
-        assert.deepEqual(statement.body, { raw: "Final deliverable", json: null });
-    }
-});
-
-for (const op of ["FIND", "READ", "EDIT", "KILL", "SEND", "sh", "gitea"]) {
-    test(`{§slot-order}: ${op} accepts metadata before or after its path/scope pair`, () => {
-        const metadata = '[{"request":{"value":"]"}}]';
-        const body = op === "EDIT" || op === "SEND" || op === "sh" || op === "gitea" ? "literal body" : null;
-        const canonical = parse(`${op} (item) <1,3> ${metadata}`, body);
-        for (const slots of [
-            `${metadata} (item) <1,3>`,
-            `(item) ${metadata} <1,3>`,
-            `${metadata}(item)<1,3>`,
-        ]) assert.deepEqual(parse(`${op} ${slots}`, body), canonical, slots);
-    });
-}
-
-for (const op of ["FIND", "READ", "EDIT", "KILL"]) {
-    test(`{§slot-order}: ${op} retains single-path scope-first tolerance around metadata`, () => {
-        const metadata = '[{"keep":1}]';
-        const canonical = parse(`${op} (item) <1,3> ${metadata}`);
-        for (const slots of [
-            `${metadata} <1,3> (item)`,
-            `<1,3> ${metadata} (item)`,
-            `<1,3> (item) ${metadata}`,
-        ]) assert.deepEqual(parse(`${op} ${slots}`), canonical, slots);
-    });
-}
-
-for (const op of ["BARE", "WORK", "FORK", "WAIT", "DONE", "FAIL"]) {
-    test(`{§slot-order}: ${op} accepts leading metadata without changing its body`, () => {
-        const metadata = op === "WAIT" ? "[60]" : '[{"x":1}]';
-        assert.deepEqual(parse(`${op} ${metadata} (session://child)`, "literal body"),
-            parse(`${op} (session://child) ${metadata}`, "literal body"));
-    });
-}
-
-test("{§slot-order}: prefix and suffix blocks retain exact bytes in authored order", () => {
-    const statements = parse('READ [opaque] (item) <1> [{"x": [1,2]}]');
-    assert.ok(statements[0]?.op === "READ");
-    assert.deepEqual(statements[0].metadata, ["opaque", '{"x": [1,2]}']);
-    assert.deepEqual(statements, parse('READ (item) <1> [opaque] [{"x": [1,2]}]'));
-});
-
-test("{§slot-order} {§op-shapes}: metadata ordering does not add NOTE or TODO metadata, and TODO round-trips as a body-only op", () => {
-    for (const op of ["NOTE", "TODO"] as const) {
-        const parsed = PlurnkParser.parse(`\`\`\`${op} [{"keep":1}]\nliteral body\n\`\`\``);
-        assert.ok(parsed.items.some((item) => item.kind === "error" && item.error.severity === "error"));
-        assert.equal(parsed.items.some((item) => item.kind === "statement"), false);
-    }
-    const todo = PlurnkParser.parse("```TODO <1,2> <!-- checklist -->\n- Step 1\n- Step 2\n```");
-    const statements = todo.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    assert.equal(statements.length, 1);
-    assert.deepEqual(statements[0], {
-        op: "TODO",
-        aside: "checklist",
-        target: null,
-        metadata: null,
-        lineMarker: null,
-        body: "- Step 1\n- Step 2",
-        position: { line: 1, column: 0 },
-    });
-    assert.equal(PlurnkParser.stringify(statements), "```TODO <!-- checklist -->\n- Step 1\n- Step 2\n```");
-    const warnings = todo.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
-    assert.deepEqual(warnings, ["`TODO` takes no target or scope; the scope `<1,2>` was ignored."]);
-});
-});
-
-describe("selection-binding", () => {
-const parse = (heading: string) => PlurnkParser.parse(`\`\`\`${heading}\n\`\`\``);
-const statements = (heading: string) => {
-    const parsed = parse(heading);
-    assert.deepEqual(parsed.items.filter((item) => item.kind === "error" && item.error.severity === "error"), [], heading);
-    return parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-};
-
-for (const op of ["READ", "KILL"] as const) {
-    test(`{§slot-order}: ${op} compiles each path with its own scope and metadata`, () => {
-        for (const heading of [
-            `${op} (a)<1,3>[{"keep":1}](b)[{"keep":2}]<4,6>`,
-            `${op} (a) [{"keep":1}] <1,3> (b) <4,6> [{"keep":2}]`,
-            `${op} [{"keep":1}] (a) <1,3> (b) <4,6> [{"keep":2}]`,
-        ]) {
-            const ops = statements(heading);
-            assert.equal(ops.length, 2);
-            assert.deepEqual(ops.map((statement) => {
-                assert.equal(statement.op, op);
-                assert.ok(statement.op === "READ" || statement.op === "KILL");
-                assert.equal("group" in statement, false, "the AST has one representation per selection");
-                return [statement.target?.raw, statement.lineMarker?.marks, statement.metadata];
-            }), [["a", [1, 3], ['{"keep":1}']], ["b", [4, 6], ['{"keep":2}']]]);
-        }
+describe("PlurnkParser Code Mode", () => {
+    test("{§parser-build} {§operation-fences}: propAccess and isPlurnkOp classify identifiers and non-identifiers", () => {
+        assert.equal(propAccess("read"), ".read");
+        assert.equal(propAccess("issue_read"), ".issue_read");
+        assert.equal(propAccess("a|b"), '["a|b"]');
+        assert.equal(propAccess("my-tool"), '["my-tool"]');
+        assert.equal(isPlurnkOp("READ"), true);
+        assert.equal(isPlurnkOp("not_an_op"), false);
     });
 
-    test(`{§slot-order}: ${op} applies the naked matcher to every member independently of member options`, () => {
-        for (const own of [0, 1]) {
-            const paths = ["a", "b"].map((path, index) => `(${path})${index === own ? ' [{"keep":1}]' : ""}`).join(" ");
-            const ops = statements(`${op} ${paths} /shared/`);
-            assert.deepEqual(ops.map((statement) => {
-                assert.ok(statement.op === "READ" || statement.op === "KILL");
-                return [statement.target?.raw, statement.matcher?.raw, statement.metadata];
-            }), [["a", "/shared/", own === 0 ? ['{"keep":1}'] : null], ["b", "/shared/", own === 1 ? ['{"keep":1}'] : null]]);
-        }
+    test("{§operation-fences} {§fence-pairing}: canonical Code Mode statements parse and round-trip idempotently through stringify", () => {
+        const canonical = [
+            'await plurnk.find({"path":"src/**/*.ts","range":"1,20","pattern":"/export/","metadata":["{\\"depth\\":2}"]}); // find exports',
+            'await plurnk.read({"path":"README.md","range":"1,50","pattern":"/Plurnk/i","metadata":["{\\"raw\\":true}"]}); // read readme',
+            'await plurnk.edit({"path":"src/index.ts","range":"@abcde,@fghij","pattern":"/old/","metadata":["{\\"encoding\\":\\"utf8\\"}"],"content":"export const x = 1;\\n"}); // update export',
+            'await plurnk.copy({"from":"a.txt","to":"b.txt"}); // copy file',
+            'await plurnk.move({"from":{"path":"src/old.ts","range":"1,10","pattern":"/foo/","metadata":["m1"]},"to":{"path":"src/new.ts","range":"5,15","pattern":"/bar/","metadata":["m2"]}}); // move slice',
+            'await plurnk.kill({"path":"log:///1/1/1/READ","range":"1,5","pattern":"/secret/","metadata":["9"],"note":"distilled summary"}); // prune log',
+            'await plurnk.note({"text":"Remember the invariant."}); // working note',
+            'await plurnk.todo({"text":"- [ ] Step 1\\n- [x] Step 2"}); // update todo',
+            'await plurnk.work({"target":"session://worker_1","metadata":["{\\"model\\":\\"fast\\"}"],"prompt":"Audit the module."}); // delegate work',
+            'await plurnk.fork({"target":"session://branch_a","prompt":"Try alternative."});',
+            'await plurnk.bare({"prompt":"Summarize concisely."});',
+            'await plurnk.send({"target":"session://peer","range":"1,10","metadata":["{\\"eof\\":true}"],"text":"Status update."}); // notify peer',
+            'await plurnk.done({"target":"message://main/12345678","metadata":["{\\"attach\\":[\\"a.png\\"]}"],"text":"Completed all tasks."}); // finish',
+            'await plurnk.fail({"text":"Blocked by upstream outage."});',
+            'await plurnk.wait({"target":"sh:///12345678","seconds":30,"text":"Waiting for build."}); // wait on build',
+            'await plurnk.sh({"cwd":"packages/core","range":"1,2","metadata":["{\\"env\\":{\\"CI\\":\\"1\\"}}"],"command":"npm test"}); // run tests',
+            'await plurnk.js({"code":"return 2 + 2;"});',
+            'await plurnk.python3({"code":"print(42)"});',
+            'await plurnk.env({"action":"list"}); // list env',
+            'await gitea.issue_read({"owner":"plurnk","repo":"plurnk-service","index":1}); // read issue',
+        ].join("\n\n");
+
+        const parsed = statementsOf(canonical, ["sh", "js", "python3", "plurnk", "gitea"]);
+        assert.equal(parsed.length, 20);
+        const rendered = PlurnkParser.stringify(parsed);
+        assert.equal(rendered, canonical);
+        const reparsed = statementsOf(rendered, ["sh", "js", "python3", "plurnk", "gitea"]);
+        assert.equal(PlurnkParser.stringify(reparsed), canonical);
     });
 
-    test(`{§parse-recovery}: ${op} refuses ambiguous scope relocation without executing any group member`, () => {
-        const parsed = PlurnkParser.parse(`\`\`\`${op} (a) (b) /pattern/ <1,3>\n\`\`\`\n\n\`\`\`NOTE\nsibling retained\n\`\`\``);
-        assert.deepEqual(parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["NOTE"]);
-        const errors = parsed.items.filter((item) => item.kind === "error" && item.error.severity === "error");
-        assert.equal(errors.length, 1);
-        assert.ok(errors[0]?.kind === "error");
-        assert.equal(errors[0].error.message, "The scope `<1,3>` follows the shared pattern of a target group.");
-        assert.equal(errors[0].error.recovery, "In a target group each `(path)` carries its own scope and option block, and the one shared pattern comes last.");
-        assert.equal(parsed.items.some((item) => item.kind === "error" && item.error.severity === "warning"), false, "no false claim that the scope was applied");
+    test("{§op-shapes}: READ and FIND support string shorthands, array targets, and options objects", () => {
+        const ops = statementsOf([
+            'await plurnk.find();',
+            'await plurnk.find("src/**/*.ts", { range: [1, 10], pattern: /test/i, headers: { Accept: "text/plain" }, aside: "with regex" });',
+            'await plurnk.read("a.ts", { range: { start: 1, end: 5 } });',
+            'await plurnk.read(["x.ts", "y.ts"]);',
+            'await plurnk.read({ paths: ["m.ts", { path: "n.ts", range: 12 }] });',
+        ].join("\n"));
+        assert.equal(ops.length, 7);
+        assert.equal((ops[0] as FindStatement).target, null);
+        assert.equal((ops[1] as FindStatement).matcher?.raw, "/test/i");
+        assert.deepEqual((ops[1] as FindStatement).lineMarker, { marks: [1, 10] });
+        assert.equal((ops[1] as FindStatement).aside, "with regex");
+        assert.deepEqual((ops[2] as ReadStatement).lineMarker, { marks: [1, 5] });
+        assert.equal((ops[3] as ReadStatement).target?.raw, "x.ts");
+        assert.equal((ops[4] as ReadStatement).target?.raw, "y.ts");
+        assert.equal((ops[5] as ReadStatement).target?.raw, "m.ts");
+        assert.deepEqual((ops[6] as ReadStatement).lineMarker, { marks: [12] });
     });
 
-    test(`{§parse-recovery}: ${op} retains unambiguous single-path scope recovery`, () => {
-        const parsed = parse(`${op} (a) /pattern/ <1,3>`);
-        assert.deepEqual(parsed.items.filter((item) => item.kind === "error" && item.error.severity === "error"), []);
-        const ops = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.equal(ops.length, 1);
-        assert.ok(ops[0]?.op === op);
-        assert.equal(ops[0].target?.raw, "a");
-        assert.deepEqual(ops[0].lineMarker, { marks: [1, 3] });
-        assert.equal(ops[0].matcher?.raw, "/pattern/");
-        assert.ok(parsed.items.some((item) => item.kind === "error" && item.error.severity === "warning"));
+    test("{§op-shapes}: EDIT supports whole-file content, range replacement, oldText/newText, and multi-hunk edits array", () => {
+        const ops = statementsOf([
+            'await plurnk.edit("src/a.ts", "const a = 1;");',
+            'await plurnk.edit({ path: "src/b.ts", oldText: "const old = 1;", newText: "const next = 2;" });',
+            'await plurnk.edit({ path: "src/c.ts", oldText: "line1\\nline2", newText: "replaced" });',
+            'await plurnk.edit({ path: "src/d.ts", edits: [{ range: "@abcde,@fghij", newText: "hunk1" }, { oldText: "foo", newText: "" }] });',
+        ].join("\n"));
+        assert.equal(ops.length, 5);
+        assert.equal((ops[0] as EditStatement).body, "const a = 1;");
+        assert.equal((ops[1] as EditStatement).matcher?.dialect, "glob");
+        assert.equal((ops[1] as EditStatement).matcher?.raw, "const old = 1;");
+        assert.equal((ops[1] as EditStatement).body, "const next = 2;");
+        assert.equal((ops[2] as EditStatement).matcher?.dialect, "regex");
+        assert.equal((ops[3] as EditStatement).body, "hunk1");
+        assert.equal((ops[4] as EditStatement).body, null);
     });
-}
 
-for (const op of ["COPY", "MOVE"] as const) {
-    test(`{§op-shapes}: ${op} keeps both operand pairs through adjacency and metadata order`, () => {
-        for (const heading of [
-            `${op} (a)<1,3>[{"first":1}](b)[{"second":2}]<4,6>`,
-            `${op} (a) [{"first":1}] <1,3> (b) <4,6> [{"second":2}]`,
-            `${op} [{"first":1}] (a) <1,3> (b) <4,6> [{"second":2}]`,
-        ]) {
-            const ops = statements(heading);
-            assert.equal(ops.length, 1);
-            assert.ok(ops[0]?.op === op);
-            assert.deepEqual([ops[0].source, ops[0].destination].map(({ target, lineMarker, metadata }) =>
-                [target.raw, lineMarker?.marks, metadata]), [["a", [1, 3], ['{"first":1}']], ["b", [4, 6], ['{"second":2}']]]);
-        }
+    test("{§op-shapes}: COPY, MOVE, and KILL support positional and object forms", () => {
+        const ops = statementsOf([
+            'await plurnk.copy("src/a.ts", "src/b.ts");',
+            'await plurnk.move({ from: "src/b.ts", to: "src/c.ts", range: "1,5", toRange: "10,15" });',
+            'await plurnk.kill("log:///1/1/1/READ", "Distilled note.");',
+            'await plurnk.kill(["log:///1/1/2/READ", "log:///1/1/3/READ"]);',
+            'await plurnk.kill({ paths: ["log:///1/1/4/READ", { path: "log:///1/1/5/READ" }], note: "Once." });',
+        ].join("\n"));
+        assert.equal(ops.length, 7);
+        assert.equal((ops[0] as CopyStatement).source.target.raw, "src/a.ts");
+        assert.deepEqual((ops[1] as MoveStatement).source.lineMarker, { marks: [1, 5] });
+        assert.deepEqual((ops[1] as MoveStatement).destination.lineMarker, { marks: [10, 15] });
+        assert.equal((ops[2] as KillStatement).body, "Distilled note.");
+        assert.equal((ops[5] as KillStatement).body, "Once.");
+        assert.equal((ops[6] as KillStatement).body, null);
     });
-}
 
-for (const op of ["READ", "KILL", "COPY", "MOVE"] as const) {
-    test(`{§slot-order}: ${op} binds leading metadata to the first operand and inter-path metadata to the preceding operand`, () => {
-        const ops = statements(`${op} [{"first":1}] (a) [{"second":2}] (b) [{"third":3}]`);
-        const selections = ops.flatMap((statement) => {
-            if (statement.op === "COPY" || statement.op === "MOVE") {
-                return [statement.source, statement.destination].map(({ target, metadata }) => [target.raw, metadata]);
-            }
-            assert.ok(statement.op === "READ" || statement.op === "KILL");
-            return [[statement.target?.raw, statement.metadata]];
-        });
-        assert.deepEqual(selections, [
-            ["a", ['{"first":1}', '{"second":2}']],
-            ["b", ['{"third":3}']],
+    test("{§op-shapes}: NOTE, TODO, WORK, FORK, BARE, SEND, DONE, FAIL, and WAIT support all argument shapes", () => {
+        const ops = statementsOf([
+            'await plurnk.note();',
+            'await plurnk.note("Quick note.");',
+            'await plurnk.todo();',
+            'await plurnk.todo(["First task", { text: "Second task", status: "done" }, { text: "Third task", status: "in_progress" }]);',
+            'await plurnk.todo({ items: ["Item A"] });',
+            'await plurnk.work("session://helper", "Run checks.");',
+            'await plurnk.work("Run checks in new session.");',
+            'await plurnk.fork({ session: "branch_1", model: "fast", effort: "low", persona: "reviewer", prompt: "Review diff." });',
+            'await plurnk.bare();',
+            'await plurnk.send();',
+            'await plurnk.send("Hello user.");',
+            'await plurnk.send("session://helper", "Ping.");',
+            'await plurnk.send("sh:///12345678", { text: "input\\n", metadata: "{\\"eof\\":true}" });',
+            'await plurnk.send({ session: "helper", json: { ok: true } });',
+            'await plurnk.done();',
+            'await plurnk.done("All done.");',
+            'await plurnk.done("message://main/1", "Reply.");',
+            'await plurnk.fail({ json: { error: "failed" } });',
+            'await plurnk.wait();',
+            'await plurnk.wait(15, "Waiting 15s.");',
+            'await plurnk.wait("Waiting for child.");',
+            'await plurnk.wait({ session: "helper", seconds: 10, text: "Polling." });',
+        ].join("\n"));
+        assert.equal(ops.length, 22);
+        assert.equal((ops[0] as NoteStatement).body, null);
+        assert.equal((ops[1] as NoteStatement).body, "Quick note.");
+        assert.equal((ops[2] as TodoStatement).body, null);
+        assert.equal((ops[3] as TodoStatement).body, "- [ ] First task\n- [x] Second task\n- [~] Third task");
+        assert.equal((ops[4] as TodoStatement).body, "- [ ] Item A");
+        assert.equal((ops[5] as WorkStatement).target?.raw, "session://helper");
+        assert.equal((ops[6] as WorkStatement).body, "Run checks in new session.");
+        assert.equal((ops[7] as ForkStatement).target?.raw, "session://branch_1");
+        assert.deepEqual((ops[7] as ForkStatement).metadata, ['{"model":"fast","effort":"low","persona":"reviewer"}']);
+        assert.equal((ops[13] as SendStatement).body?.raw, '{"ok":true}');
+        assert.equal((ops[16] as DoneStatement).target?.raw, "message://main/1");
+        assert.equal((ops[17] as FailStatement).body?.raw, '{"error":"failed"}');
+        assert.equal((ops[19] as DispositionStatement).seconds, 15);
+        assert.equal((ops[21] as DispositionStatement).target?.raw, "session://helper");
+    });
+
+    test("{§op-shapes}: standalone executors, plurnk Functionality tools, and MCP tools compile to ExecStatement", () => {
+        const ops = statementsOf([
+            'await plurnk.sh("ls -la");',
+            'await plurnk.sh("./script.sh", "--flag", { env: { FOO: "bar" } });',
+            'await plurnk.sh({ script: "./run.sh", args: ["a", "b c"] });',
+            'await plurnk.sh();',
+            'await plurnk.plurnk("env", { action: "list" });',
+            'await plurnk["env|mcp"]();',
+            'await plurnk.custom_exec({ key: "val" });',
+            'await gitea("raw_body");',
+            'await gitea.issue_read({ owner: "plurnk", repo: "service" }, { range: "1,10", metadata: ["m"] });',
+        ].join("\n"), ["sh", "plurnk", "custom_exec", "gitea"]);
+        assert.equal(ops.length, 9);
+        assert.equal((ops[0] as ExecStatement).runtime, "sh");
+        assert.equal((ops[0] as ExecStatement).body, "ls -la");
+        assert.equal((ops[1] as ExecStatement).target?.raw, "./script.sh");
+        assert.equal((ops[1] as ExecStatement).body, "--flag");
+        assert.equal((ops[2] as ExecStatement).body, 'a "b c"');
+        assert.equal((ops[3] as ExecStatement).body, null);
+        assert.equal((ops[4] as ExecStatement).runtime, "plurnk");
+        assert.equal((ops[4] as ExecStatement).target?.raw, "env");
+        assert.equal((ops[5] as ExecStatement).target?.raw, "env|mcp");
+        assert.equal((ops[6] as ExecStatement).runtime, "custom_exec");
+        assert.equal((ops[6] as ExecStatement).body, '{"key":"val"}');
+        assert.equal((ops[8] as ExecStatement).runtime, "gitea");
+        assert.equal((ops[8] as ExecStatement).target?.raw, "issue_read");
+        assert.equal(PlurnkParser.stringify([ops[8]]), 'await gitea.issue_read({"owner":"plurnk","repo":"service"}, {"range":"1,10","metadata":["m"]});');
+    });
+
+    test("{§slot-order}: comma, pipe, and URI lists in READ, FIND, and KILL expand in member order", () => {
+        const ops = statementsOf([
+            'await plurnk.read({ path: "workspace:///a workspace:///b" });',
+            'await plurnk.find({ path: "src/a.py, src/b.py", pattern: "/needle/" });',
+            'await plurnk.kill({ path: "log:///1/1/1/READ, log:///1/1/2/READ", note: "Both read." });',
+        ].join("\n"));
+        assert.deepEqual(ops.map((op) => ("target" in op ? op.target?.raw : null)), [
+            "workspace:///a",
+            "workspace:///b",
+            "src/a.py",
+            "src/b.py",
+            "log:///1/1/1/READ",
+            "log:///1/1/2/READ",
         ]);
+        assert.equal((ops[4] as KillStatement).body, "Both read.");
+        assert.equal((ops[5] as KillStatement).body, null);
     });
-}
+
+    test("{§whitespace-contract}: model tier separates outside text from Code Mode statements and flags empty turns", () => {
+        const turn = [
+            "Let me inspect the configuration first.",
+            "",
+            'await plurnk.read({ path: "package.json" });',
+            "",
+            "Then I will check the build.",
+        ].join("\n");
+        const parsed = PlurnkParser.parse(turn);
+        assert.deepEqual(parsed.items.map((item) => item.kind), ["text", "statement", "text"]);
+        const stmtOnly = PlurnkParser.parseStatements(turn);
+        assert.deepEqual(stmtOnly.items.map((item) => item.kind), ["statement"]);
+
+        const proseOnly = PlurnkParser.parse("Just thinking out loud.\n\n```rust\nfn main() {}\n```");
+        assert.equal(proseOnly.items.filter((item) => item.kind === "text").length, 1);
+        assert.ok(proseOnly.items.some((item) => item.kind === "error" && item.error.message === PlurnkParser.NO_VALID_OPERATION));
+    });
+
+    test("{§fence-pairing} {§parse-recovery}: Markdown-fenced Code Mode unwraps with a warning advisory; uppercase method/runtime names recover with advisories", () => {
+        const fenced = [
+            "```ts",
+            'await plurnk.READ({ path: "README.md", range: "10,5" });',
+            'await Gitea.issue_read({ "owner"?: string });',
+            "```",
+        ].join("\n");
+        const parsed = PlurnkParser.parse(fenced, { executors: ["gitea"] });
+        const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [writtenOp(item.statement)] : []);
+        assert.deepEqual(statements, ["READ", "gitea"]);
+        const warnings = parsed.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
+        assert.equal(warnings.length, 4);
+    });
+
+    test("{§matcher-prefix-claims}: matcher dialects and soft unreadability work in Code Mode", () => {
+        const ops = statementsOf([
+            'await plurnk.find({ path: "a.xml", pattern: "//book/title" });',
+            'await plurnk.find({ path: "a.json", pattern: "$.store.book[*]" });',
+            'await plurnk.find({ path: "a.txt", pattern: "~search terms" });',
+            'await plurnk.find({ path: "a.ts", pattern: "&>MySymbol" });',
+            'await plurnk.find({ path: "a.ts", pattern: "/render\\\\|parse/" });',
+            'await plurnk.find({ path: "a.ts", pattern: "/Enum/{5,40}" });',
+        ].join("\n"));
+        assert.equal((ops[0] as FindStatement).matcher?.dialect, "xpath");
+        assert.equal((ops[1] as FindStatement).matcher?.dialect, "jsonpath");
+        assert.equal((ops[2] as FindStatement).matcher?.dialect, "fts");
+        assert.equal((ops[3] as FindStatement).matcher?.dialect, "graph");
+        assert.equal((ops[4] as FindStatement).matcher?.dialect, "regex");
+        assert.equal((ops[5] as FindStatement).matcher?.dialect, "unreadable");
+    });
+
+    test("{§parse-recovery}: unclosed statements report unparsedTail and invalid calls record ParseAttempt", () => {
+        const truncated = PlurnkParser.parse('await plurnk.read({ path: "README.md" });\nawait plurnk.edit({ path: "src/a.ts", content: "unterminated');
+        assert.ok(truncated.unparsedTail !== undefined);
+        assert.equal(truncated.unparsedTail?.from.line, 2);
+        assert.equal(truncated.items.filter((item) => item.kind === "statement").length, 1);
+
+        const refused = PlurnkParser.parse('await plurnk.read();\nawait plurnk.unknownOp();');
+        const errors = refused.items.filter((item): item is Extract<typeof item, { kind: "error" }> => item.kind === "error" && item.error.severity === "error");
+        assert.equal(errors[0]?.attempt?.verb, "READ");
+        assert.equal(errors[1]?.attempt?.verb, "unknownOp");
+    });
 });
