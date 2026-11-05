@@ -22,7 +22,7 @@
             "$ref": "https://schemas.plurnk.xyz/v0/FunctionalityProvenance.json"
         },
         "inherited": {
-            "description": "The Session this entry was copied from when this Session was created (WORK or FORK), preserved across generations until this Session changes the entry. Absent for an entry this Session set itself. Session-scoped families only.",
+            "description": "The Session this entry was copied from when this Session was created (`work` or `fork`), preserved across generations until this Session changes the entry. Absent for an entry this Session set itself. Session-scoped families only.",
             "type": "string",
             "minLength": 1
         },

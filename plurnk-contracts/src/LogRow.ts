@@ -35,27 +35,27 @@ export const isLogEntryKind = (value: unknown): value is LogEntryKind =>
  */
 export const toolKindOf = (op: string | null, scheme: string | null): ProposalToolKind => {
     switch (op) {
-        case "READ":
+        case "read":
             return scheme === "http" || scheme === "https" ? "fetch" : "read";
-        case "EDIT":
-        case "COPY":
+        case "edit":
+        case "copy":
             return "edit";
-        case "MOVE":
+        case "move":
             return "move";
-        case "KILL":
+        case "kill":
             return "delete";
-        case "FIND":
+        case "find":
             return "search";
-        case "NOTE":
-        case "TODO":
-        case "WAIT":
+        case "note":
+        case "todo":
+        case "wait":
             return "think";
-        case "SEND":
-        case "DONE":
-        case "FAIL":
+        case "send":
+        case "done":
+        case "fail":
             return "other";
-        case "WORK":
-        case "FORK":
+        case "work":
+        case "fork":
             return "execute";
         default:
             return op === null ? "other" : "execute";

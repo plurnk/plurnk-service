@@ -10,10 +10,10 @@
         "operation": {
             "description": "An operation keyword, or a runtime tag: an execution's operation is its runtime.",
             "anyOf": [
-                { "enum": ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "BARE", "WORK", "FORK", "KILL"] },
-                { "type": "string", "pattern": "^[a-z][a-z0-9+._-]*$" }
+                { "enum": ["find", "read", "edit", "copy", "move", "send", "bare", "work", "fork", "kill"] },
+                { "type": "string", "pattern": "^[a-z][a-z0-9+._-]*$", "not": { "enum": ["done", "fail", "note", "todo", "wait", "extension", "error"] } }
             ],
-            "tsType": "\"FIND\" | \"READ\" | \"EDIT\" | \"COPY\" | \"MOVE\" | \"SEND\" | \"BARE\" | \"WORK\" | \"FORK\" | \"KILL\" | Lowercase<string>"
+            "tsType": "\"find\" | \"read\" | \"edit\" | \"copy\" | \"move\" | \"send\" | \"bare\" | \"work\" | \"fork\" | \"kill\" | Lowercase<string>"
         },
         "scheme": { "type": "string", "pattern": "^[a-z][a-z0-9+._-]*$" },
         "runtime": { "type": "string", "pattern": "^[a-z][a-z0-9+._-]*$" },

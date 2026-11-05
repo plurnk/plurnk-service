@@ -19,28 +19,25 @@ import type PlurnkParseError from "./PlurnkParseError.ts";
 
 // Runtime protocol alphabet; PlurnkOp is structurally derived from this tuple. {§op-shapes}
 export const PLURNK_OPS = [
-    "FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "DONE", "FAIL", "BARE", "WORK", "FORK", "KILL",
-    "NOTE", "TODO", "WAIT",
+    "find", "read", "edit", "copy", "move", "send", "done", "fail", "bare", "work", "fork", "kill",
+    "note", "todo", "wait",
 ] as const;
-
-// {§operation-fences} — canonical teaching/rendering width; ingestion also accepts three.
-export const PLURNK_FENCE = "```";
 
 export type PlurnkOp = (typeof PLURNK_OPS)[number];
 
-// Membership in the operation alphabet: the one test a heading's name or a stored row's op is read through.
+// Membership in the operation alphabet: the one test an operation name or a stored row's op is read through.
 export const isPlurnkOp = (value: unknown): value is PlurnkOp => PLURNK_OPS.some((op) => op === value);
 
-// An execution is written as its runtime's fence, so its operation IS the runtime tag: lowercase
-// by {§executor-discovery}, which is why it can never collide with an operation keyword.
-// The engine's own lowercase row ops (`extension`, `error`) are reserved runtime names.
+// An execution's operation IS the runtime tag: lowercase by {§executor-discovery},
+// disjoint from core operation keywords (`PLURNK_OPS`) and reserved row ops (`extension`, `error`).
 export type RuntimeTag = Lowercase<string>;
 export const RUNTIME_TAG = /^[a-z][a-z0-9+._-]*$/;
 export const INTERNAL_ROW_OPS: ReadonlySet<string> = new Set(["extension", "error"]);
-export const isExecutionOp = (op: string | null | undefined): op is RuntimeTag => typeof op === "string" && !INTERNAL_ROW_OPS.has(op) && RUNTIME_TAG.test(op);
+export const isExecutionOp = (op: string | null | undefined): op is RuntimeTag =>
+    typeof op === "string" && !INTERNAL_ROW_OPS.has(op) && !isPlurnkOp(op) && RUNTIME_TAG.test(op);
 export const isExecution = <T extends { readonly op?: string | undefined }>(statement: T): statement is Extract<T, { runtime: RuntimeTag }> =>
     "runtime" in statement;
-// The heading token as written: an operation keyword, or an execution's runtime. This is the
+// The operation token as written: an operation keyword, or an execution's runtime. This is the
 // log row's `op`.
 export const writtenOp = <T extends PlurnkStatement>(statement: T): Exclude<T["op"], undefined> | RuntimeTag =>
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- an execution's op is its runtime tag; every other statement's op is its own

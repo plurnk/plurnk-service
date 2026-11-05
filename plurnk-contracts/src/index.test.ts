@@ -18,7 +18,6 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "InvalidProblemDetailsError",
         "LOG_ENTRY_KINDS",
         "MAX_TIMER_MS",
-        "PLURNK_FENCE",
         "PLURNK_OPS",
         "PROPOSAL_POLICIES",
         "PathSyntax",
@@ -200,10 +199,16 @@ test("{§startup-admission} {§acp-action-binding} formatServiceUpdateReport and
 });
 
 test("{§operation-fences} isPlurnkOp admits the operation alphabet and nothing else", () => {
-    for (const op of Contracts.PLURNK_OPS) assert.equal(Contracts.isPlurnkOp(op), true, op);
-    for (const other of ["find", "Read", "sh", "extension", "error", "", " FIND", null, undefined, 7, ["FIND"]]) {
+    for (const op of Contracts.PLURNK_OPS) {
+        assert.equal(Contracts.isPlurnkOp(op), true, op);
+        assert.equal(Contracts.isExecutionOp(op), false, op);
+    }
+    for (const other of ["FIND", "Read", "sh", "extension", "error", "", " find", null, undefined, 7, ["find"]]) {
         assert.equal(Contracts.isPlurnkOp(other), false, JSON.stringify(other));
     }
+    assert.equal(Contracts.isExecutionOp("sh"), true);
+    assert.equal(Contracts.isExecutionOp("extension"), false);
+    assert.equal(Contracts.isExecutionOp("error"), false);
 });
 
 test("{§parse-recovery} unknown statement position is one frozen contracts-owned value", () => {
@@ -228,7 +233,7 @@ test("{§turn-source-resources} {§db-migrations} LOG_ENTRY_KINDS and isLogEntry
 });
 
 test("{§op-shapes} {§acp-plurnk-metadata} parseTodoItems extracts steps from markdown lists, JSON arrays/objects, Open Work copies, and free text", () => {
-    assert.equal(Contracts.toolKindOf("TODO", null), "think");
+    assert.equal(Contracts.toolKindOf("todo", null), "think");
     assert.deepEqual(Contracts.parseTodoItems(null), []);
     assert.deepEqual(Contracts.parseTodoItems("   \n  "), []);
     assert.deepEqual(

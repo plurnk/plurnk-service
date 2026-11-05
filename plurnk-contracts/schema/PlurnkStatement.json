@@ -142,7 +142,7 @@
             "additionalProperties": false,
             "properties": {
                 "op": {
-                    "const": "FIND"
+                    "const": "find"
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
@@ -158,11 +158,11 @@
                 },
                 "matcher": {
                     "$ref": "#/$defs/MatcherBodyOrNull",
-                    "description": "The selection matcher lifted from the heading ({§parse-recovery}); null when the heading carries none."
+                    "description": "The selection matcher lifted from the `pattern` option ({§parse-recovery}); null when omitted."
                 },
                 "body": {
                     "type": "null",
-                    "description": "Retrieval bodies normalize to separate NOTE statements; selection belongs to the header ({§op-shapes})."
+                    "description": "Retrieval bodies normalize to separate `note` statements; selection belongs to the options ({§op-shapes})."
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"
@@ -184,7 +184,7 @@
             "additionalProperties": false,
             "properties": {
                 "op": {
-                    "const": "READ"
+                    "const": "read"
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
@@ -200,7 +200,7 @@
                 },
                 "matcher": {
                     "$ref": "#/$defs/MatcherBodyOrNull",
-                    "description": "The selection matcher lifted from the heading ({§parse-recovery}); null when the heading carries none."
+                    "description": "The selection matcher lifted from the `pattern` option ({§parse-recovery}); null when omitted."
                 },
                 "body": {
                     "type": "null"
@@ -225,7 +225,7 @@
             "additionalProperties": false,
             "properties": {
                 "op": {
-                    "const": "EDIT"
+                    "const": "edit"
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
@@ -241,7 +241,7 @@
                 },
                 "matcher": {
                     "$ref": "#/$defs/MatcherBodyOrNull",
-                    "description": "The selection matcher lifted from the heading ({§parse-recovery}); null when the heading carries none."
+                    "description": "The selection matcher lifted from the `pattern` option ({§parse-recovery}); null when omitted."
                 },
                 "body": {
                     "type": [
@@ -266,7 +266,7 @@
             "additionalProperties": false,
             "properties": {
                 "op": {
-                    "const": "COPY"
+                    "const": "copy"
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
@@ -294,7 +294,7 @@
             "additionalProperties": false,
             "properties": {
                 "op": {
-                    "const": "MOVE"
+                    "const": "move"
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
@@ -324,7 +324,7 @@
             "additionalProperties": false,
             "properties": {
                 "op": {
-                    "const": "SEND"
+                    "const": "send"
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
@@ -360,7 +360,7 @@
             "additionalProperties": false,
             "properties": {
                 "op": {
-                    "const": "DONE"
+                    "const": "done"
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
@@ -396,7 +396,7 @@
             "additionalProperties": false,
             "properties": {
                 "op": {
-                    "const": "FAIL"
+                    "const": "fail"
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
@@ -432,7 +432,7 @@
             "additionalProperties": false,
             "properties": {
                 "runtime": {
-                    "description": "The runtime tag the fence names, in its registered lowercase spelling. An execution has no operation keyword: the fence name is the runtime, and the log row's op shows it as written.",
+                    "description": "The runtime tag the call names, in its registered lowercase spelling. An execution has no operation keyword: the call name is the runtime, and the log row's op shows it as written.",
                     "type": "string",
                     "pattern": "^[a-z][a-z0-9+._-]*$",
                     "tsType": "Lowercase<string>"
@@ -479,7 +479,7 @@
             "additionalProperties": false,
             "properties": {
                 "op": {
-                    "const": "BARE"
+                    "const": "bare"
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
@@ -516,7 +516,7 @@
             "additionalProperties": false,
             "properties": {
                 "op": {
-                    "const": "KILL"
+                    "const": "kill"
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
@@ -533,11 +533,11 @@
                 },
                 "matcher": {
                     "$ref": "#/$defs/MatcherBodyOrNull",
-                    "description": "The selection matcher lifted from the heading ({§parse-recovery}); null when the heading carries none."
+                    "description": "The selection matcher lifted from the `pattern` option ({§parse-recovery}); null when omitted."
                 },
                 "body": {
                     "type": ["string", "null"],
-                    "description": "A `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-scope}). Other KILLs take no body; their matcher rides on the heading line ({§parse-recovery})."
+                    "description": "A `log:///` `kill` carries its optional distillation, kept as the model's own `note` row ({§log-kill-scope}). Other `kill` statements take no body; their matcher rides on the `pattern` option ({§parse-recovery})."
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"
@@ -558,7 +558,7 @@
             "additionalProperties": false,
             "properties": {
                 "op": {
-                    "const": "WORK"
+                    "const": "work"
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
@@ -594,7 +594,7 @@
             "additionalProperties": false,
             "properties": {
                 "op": {
-                    "const": "FORK"
+                    "const": "fork"
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
@@ -631,7 +631,7 @@
             "additionalProperties": false,
             "properties": {
                 "op": {
-                    "enum": ["WAIT"]
+                    "enum": ["wait"]
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
@@ -646,7 +646,7 @@
                     "type": "null"
                 },
                 "seconds": {
-                    "description": "Optional maximum park duration from [seconds] metadata; zero continues without parking.",
+                    "description": "Optional maximum park duration from `timeout` option; zero continues without parking.",
                     "type": ["number", "null"],
                     "minimum": 0
                 },
@@ -663,7 +663,7 @@
             "required": ["op", "aside", "metadata", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "NOTE" },
+                "op": { "const": "note" },
                 "aside": { "$ref": "#/$defs/AsideOrNull" },
                 "metadata": { "type": "null" },
                 "target": { "type": "null" },
@@ -677,7 +677,7 @@
             "required": ["op", "aside", "metadata", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
-                "op": { "const": "TODO" },
+                "op": { "const": "todo" },
                 "aside": { "$ref": "#/$defs/AsideOrNull" },
                 "metadata": { "type": "null" },
                 "target": { "type": "null" },

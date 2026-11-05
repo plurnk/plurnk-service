@@ -461,7 +461,7 @@ test("{§diagnostic-observation} ProblemDetails accepts an RFC 9457 occurrence w
         title: "Result range unavailable",
         status: 416,
         detail: "Matcher `heading` selected 0 rows, so result range `<30,100>` is invalid.",
-        instance: "log:///1/2/3/READ",
+        instance: "log:///1/2/3/read",
         stage: "matcher",
         matched: 0,
         requested: [30, 100],
@@ -525,7 +525,7 @@ test("{§diagnostic-observation} Problems projects one exact Problem without row
         416,
         "The requested line range exceeds the available extent.",
         {
-            instance: "log:///1/2/3/READ",
+            instance: "log:///1/2/3/read",
             stage: "projection",
             recovery: "Choose a range within the available extent.",
             retryable: false,
@@ -565,7 +565,7 @@ test("{§diagnostic-observation} Problems projects one exact Problem without row
 
 test("{§diagnostic-observation} Problems rejects a status contradiction and leaves exact instance identity outside the projection", () => {
     const problem = Problems.create("scheme:file", "not-found", 404, "The resource does not exist.", {
-        instance: "log:///1/2/3/READ",
+        instance: "log:///1/2/3/read",
     });
 
     assert.throws(
@@ -662,19 +662,21 @@ test("{§capability-policy-cascade} CapabilityPolicy accepts only its canonical 
         traits: ["web"],
     };
     const capabilities: CapabilityPolicy = {
-        only: [{ operation: "READ" as const }, { runtime: "brave" }],
+        only: [{ operation: "read" as const }, { runtime: "brave" }],
         deny: [{ traits: ["interaction"] }],
     };
     assert.equal(Validator.assertCapabilityDescriptor(descriptor), descriptor);
     assert.equal(Validator.assertCapabilityPolicy(capabilities), capabilities);
 
-    for (const invalid of [{}, { operation: "READ", extra: true }, { traits: ["WEB"] }]) {
+    for (const invalid of [{}, { operation: "read", extra: true }, { traits: ["WEB"] }]) {
         assert.throws(() => Validator.assertCapabilityDescriptor(invalid), TypeError);
     }
     for (const invalid of [
         { deny: [{}] },
         { only: [{ operation: "SCAN" }] },
         { deny: [{ operation: "JUMP" }] },
+        { only: [{ operation: "note" }] },
+        { deny: [{ operation: "wait" }] },
         { extra: [] },
     ]) {
         assert.throws(() => Validator.assertCapabilityPolicy(invalid), TypeError);
@@ -700,7 +702,7 @@ test("{§capability-policy-cascade} ProposalProjection validates one complete di
         turnId: 4,
         session: "primary",
         coordinate: "1/4/2",
-        op: "SEND" as const,
+        op: "send" as const,
         target: { scheme: null, authority: null, pathname: null },
         body: "",
         attrs: { question: "Which environment?" },
@@ -719,12 +721,12 @@ test("{§capability-policy-cascade} ProposalProjection validates one complete di
     assert.equal(Validator.assertProposalProjection(withCommandSubject), withCommandSubject);
     const withToolSubject = {
         ...proposal,
-        op: "EDIT" as const,
-        selector: { operation: "EDIT" as const, scheme: "file", access: "mutate" as const },
+        op: "edit" as const,
+        selector: { operation: "edit" as const, scheme: "file", access: "mutate" as const },
         subject: {
             type: "tool_call" as const,
             kind: "edit" as const,
-            title: "EDIT (README.md)",
+            title: "edit (README.md)",
             locations: [{ path: "README.md" }],
             diff: { path: "README.md", patch: "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-old\n+new" },
         },
@@ -802,9 +804,9 @@ test("{§text-region} EntryReadResult validates one exact client entry projectio
 });
 
 test("{§text-region} assertPlurnkStatement returns the statement its schema accepts and refuses the rest", () => {
-    const note = { op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body: "kept", position: UNKNOWN_POSITION };
+    const note = { op: "note", aside: null, metadata: null, target: null, lineMarker: null, body: "kept", position: UNKNOWN_POSITION };
     assert.equal(Validator.assertPlurnkStatement(note), note);
-    assert.throws(() => Validator.assertPlurnkStatement({ op: "NOTE" }), TypeError);
+    assert.throws(() => Validator.assertPlurnkStatement({ op: "note" }), TypeError);
 });
 
 test("{§matcher-prefix-claims} Validator: TextLineMarker accepts a five-character Base62 anchor that ordinary LineMarker rejects", () => {
@@ -869,7 +871,7 @@ test("{§matcher-prefix-claims} Validator: MatcherBody accepts only canonical si
 });
 
 test("{§op-shapes} {§matcher-prefix-claims} {§parse-recovery} {§whitespace-contract} {§contract-representations} PlurnkStatement schema validates operation shapes, scopes, and required fields", () => {
-    const matcherOps = new Set(["FIND", "READ", "EDIT", "KILL"]);
+    const matcherOps = new Set(["find", "read", "edit", "kill"]);
     const baseFields = (op: string) => ({
         op,
         aside: null,
@@ -877,7 +879,7 @@ test("{§op-shapes} {§matcher-prefix-claims} {§parse-recovery} {§whitespace-c
         metadata: null,
         lineMarker: null,
         ...(matcherOps.has(op) ? { matcher: null } : {}),
-        ...(op === "WAIT" ? { seconds: null } : {}),
+        ...(op === "wait" ? { seconds: null } : {}),
         body: null,
         position: { line: 1, column: 0 },
     });
@@ -902,7 +904,7 @@ test("{§op-shapes} {§matcher-prefix-claims} {§parse-recovery} {§whitespace-c
         query: null,
         fragment: null,
     });
-    const transferFields = (op: "COPY" | "MOVE") => ({
+    const transferFields = (op: "copy" | "move") => ({
         op,
         aside: null,
         source: { target: { kind: "local" as const, raw: "source" }, metadata: null, lineMarker: null, matcher: null },
@@ -910,22 +912,22 @@ test("{§op-shapes} {§matcher-prefix-claims} {§parse-recovery} {§whitespace-c
         position: { line: 1, column: 0 },
     });
 
-    const missingBare = baseFields("BARE");
+    const missingBare = baseFields("bare");
     assert.equal(Validator.validatePlurnkStatement(missingBare).valid, false);
     assert.equal(Validator.validatePlurnkStatement({ ...missingBare, body: "prompt" }).valid, true);
     assert.equal(Validator.validatePlurnkStatement({ ...missingBare, body: "prompt", target: { kind: "local", raw: "prompt.md" } }).valid, true);
     assert.equal(Validator.validatePlurnkStatement({ ...missingBare, body: "prompt", lineMarker: { marks: [1] } }).valid, false);
 
-    for (const op of ["WORK", "FORK"]) {
+    for (const op of ["work", "fork"]) {
         const missing = baseFields(op);
         assert.equal(Validator.validatePlurnkStatement(missing).valid, false);
         assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "Do the assigned work" }).valid, true);
     }
 
-    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("WAIT"), body: null, seconds: 30 }).valid, true);
+    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("wait"), body: null, seconds: 30 }).valid, true);
     assert.equal(Validator.validatePlurnkStatement({ ...execFields(), runtime: "js", target: { kind: "local", raw: "tool.py" }, lineMarker: { marks: [60, 5] } }).valid, true);
 
-    const task = { ...baseFields("WAIT"), body: null };
+    const task = { ...baseFields("wait"), body: null };
     assert.equal(Validator.validatePlurnkStatement(task).valid, true);
     assert.equal(Validator.validatePlurnkStatement({ ...task, seconds: 0 }).valid, true);
     for (const target of [
@@ -945,9 +947,9 @@ test("{§op-shapes} {§matcher-prefix-claims} {§parse-recovery} {§whitespace-c
         assert.equal(Validator.validatePlurnkStatement({ ...task, ...patch }).valid, false, JSON.stringify(patch));
     }
 
-    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("FIND"), lineMarker: { marks: [1, 10] } }).valid, true);
+    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("find"), lineMarker: { marks: [1, 10] } }).valid, true);
 
-    const copy = transferFields("COPY");
+    const copy = transferFields("copy");
     assert.equal(Validator.validatePlurnkStatement(copy).valid, true);
     const { destination: _destination, ...missingDestination } = copy;
     assert.equal(Validator.validatePlurnkStatement(missingDestination).valid, false);
@@ -968,20 +970,20 @@ test("{§op-shapes} {§matcher-prefix-claims} {§parse-recovery} {§whitespace-c
         },
     }).valid, true);
 
-    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("SEND"), body: "just a string" }).valid, false);
-    for (const op of ["DONE", "FAIL"]) {
+    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("send"), body: "just a string" }).valid, false);
+    for (const op of ["done", "fail"]) {
         assert.equal(Validator.validatePlurnkStatement(baseFields(op)).valid, true, `${op} accepts empty body`);
         assert.equal(Validator.validatePlurnkStatement({ ...baseFields(op), body: { raw: "done", json: null } }).valid, true, `${op} accepts SendBody`);
         assert.equal(Validator.validatePlurnkStatement({ ...baseFields(op), lineMarker: { marks: [1] } }).valid, false, `${op} refuses lineMarker`);
     }
-    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("EDIT"), body: "some markdown content" }).valid, true);
-    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("EDIT"), body: { dialect: "glob", raw: "*.xml" } }).valid, false);
+    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("edit"), body: "some markdown content" }).valid, true);
+    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("edit"), body: { dialect: "glob", raw: "*.xml" } }).valid, false);
     assert.equal(Validator.validatePlurnkStatement({ ...baseFields("DROP") }).valid, false);
 
-    const missingPos: Record<string, unknown> = baseFields("EDIT");
+    const missingPos: Record<string, unknown> = baseFields("edit");
     delete missingPos.position;
     assert.equal(Validator.validatePlurnkStatement(missingPos).valid, false);
-    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("EDIT"), surprise: "field" }).valid, false);
+    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("edit"), surprise: "field" }).valid, false);
 });
 
 test("{§contract-representations}: dynamic schemas resolve contracts-owned references", () => {
@@ -1002,7 +1004,7 @@ test("{§contract-representations}: dynamic schemas resolve contracts-owned refe
 test("{§notifications} dispatch observations preserve the phase/result boundary", () => {
     const start = {
         sessionId: 7, loopId: 9, turnId: 11, sequence: 2, origin: "model", projectRoot: null, phase: "started",
-        statement: { op: "READ", target: { kind: "local", raw: "README.md" },
+        statement: { op: "read", target: { kind: "local", raw: "README.md" },
             aside: null, metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION },
     };
     const validate = (value: unknown) => Validator.validateJsonSchemaInstance(applicationOperationEventSchema, value);
@@ -1022,14 +1024,14 @@ test("{§notifications} dispatch observations preserve the phase/result boundary
 
 describe("CapabilityAdmission", () => {
 const readFile: CapabilityDescriptor = {
-    operation: "READ",
+    operation: "read",
     scheme: "file",
     access: "observe",
     traits: [],
 };
 
 const editFile: CapabilityDescriptor = {
-    operation: "EDIT",
+    operation: "edit",
     scheme: "file",
     access: "mutate",
     traits: [],
@@ -1045,9 +1047,9 @@ const search: CapabilityDescriptor = {
 };
 
 test("{§capability-policy-cascade} capability selectors match every declared field and treat omissions as wildcards", () => {
-    assert.equal(CapabilityAdmission.matches({ operation: "READ" }, readFile), true);
-    assert.equal(CapabilityAdmission.matches({ operation: "READ", scheme: "file" }, readFile), true);
-    assert.equal(CapabilityAdmission.matches({ operation: "READ", scheme: "https" }, readFile), false);
+    assert.equal(CapabilityAdmission.matches({ operation: "read" }, readFile), true);
+    assert.equal(CapabilityAdmission.matches({ operation: "read", scheme: "file" }, readFile), true);
+    assert.equal(CapabilityAdmission.matches({ operation: "read", scheme: "https" }, readFile), false);
     assert.equal(CapabilityAdmission.matches({ traits: ["web"] }, search), true);
     assert.equal(CapabilityAdmission.matches({ runtime: "brave", tool: "issue_read" }, search), false);
 });
@@ -1070,20 +1072,20 @@ test("{§capability-policy-cascade} layers intersect and no narrower layer can r
     const service: CapabilityPolicy = { deny: [{ traits: ["web"] }] };
     const session: CapabilityPolicy = { only: [{ runtime: "brave" }] };
     assert.equal(CapabilityAdmission.allowsAcross([service, session], search), false);
-    assert.equal(CapabilityAdmission.allowsAcross([{}, { deny: [{ operation: "EDIT" }] }], editFile), false);
+    assert.equal(CapabilityAdmission.allowsAcross([{}, { deny: [{ operation: "edit" }] }], editFile), false);
     assert.equal(CapabilityAdmission.allowsAcross([{}, {}], readFile), true);
 });
 
 test("{§capability-policy-cascade} policy intersection preserves conjunctive only semantics without a policy stack", () => {
     const normalized = CapabilityAdmission.intersect([
-        { only: [{ operation: "READ" }, { runtime: "brave", traits: ["web"] }] },
+        { only: [{ operation: "read" }, { runtime: "brave", traits: ["web"] }] },
         { only: [{ scheme: "file" }, { tool: "brave_web_search", traits: ["web"] }] },
         { deny: [{ access: "mutate" }] },
     ]);
     assert.deepEqual(normalized, {
         only: [
-            { operation: "READ", scheme: "file" },
-            { operation: "READ", tool: "brave_web_search", traits: ["web"] },
+            { operation: "read", scheme: "file" },
+            { operation: "read", tool: "brave_web_search", traits: ["web"] },
             { runtime: "brave", tool: "brave_web_search", traits: ["web"] },
             { runtime: "brave", scheme: "file", traits: ["web"] },
         ],
@@ -1093,7 +1095,7 @@ test("{§capability-policy-cascade} policy intersection preserves conjunctive on
         assert.equal(
             CapabilityAdmission.allows(normalized, descriptor),
             CapabilityAdmission.allowsAcross([
-                { only: [{ operation: "READ" }, { runtime: "brave", traits: ["web"] }] },
+                { only: [{ operation: "read" }, { runtime: "brave", traits: ["web"] }] },
                 { only: [{ scheme: "file" }, { tool: "brave_web_search", traits: ["web"] }] },
                 { deny: [{ access: "mutate" }] },
             ], descriptor),
@@ -1107,7 +1109,7 @@ test("{§capability-policy-cascade} allow pre-approves admitted demands and neve
         deny: [{ tool: "brave_web_search" }],
     };
     const workspace: CapabilityPolicy = {
-        allow: [{ operation: "EDIT", scheme: "file" }, { runtime: "brave" }],
+        allow: [{ operation: "edit", scheme: "file" }, { runtime: "brave" }],
     };
     const effective = CapabilityAdmission.intersect([service, workspace]);
 

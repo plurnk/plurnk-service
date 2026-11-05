@@ -3,7 +3,7 @@ import type { DispositionStatement } from "./types.generated.ts";
 // {§op-shapes} — numeric lifecycle outcomes are derived, not model operands.
 export default class TurnDisposition {
     static isOp(op: string): op is DispositionStatement["op"] {
-        return op === "WAIT";
+        return op === "wait";
     }
 
     static is(statement: { op?: string | undefined }): statement is DispositionStatement {

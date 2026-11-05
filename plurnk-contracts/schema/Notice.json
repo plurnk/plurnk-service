@@ -64,7 +64,7 @@
                 },
                 "op": {
                     "type": "string",
-                    "description": "Optional op token (FIND/READ/EDIT/...) at the coordinate, for human-readable rendering."
+                    "description": "Optional op token (find/read/edit/...) at the coordinate, for human-readable rendering."
                 }
             }
         }

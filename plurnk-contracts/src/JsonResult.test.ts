@@ -81,21 +81,21 @@ test("{§acp-plurnk-metadata} addressOf formats scheme URIs, file paths, and nul
 });
 
 test("{§acp-plurnk-metadata} {§capability-policy-cascade} toolKindOf maps verbs and schemes to canonical tool-call kinds", () => {
-    assert.equal(toolKindOf("READ", "file"), "read");
-    assert.equal(toolKindOf("READ", "http"), "fetch");
-    assert.equal(toolKindOf("READ", "https"), "fetch");
-    assert.equal(toolKindOf("EDIT", "file"), "edit");
-    assert.equal(toolKindOf("COPY", "file"), "edit");
-    assert.equal(toolKindOf("MOVE", "file"), "move");
-    assert.equal(toolKindOf("KILL", "file"), "delete");
-    assert.equal(toolKindOf("FIND", "workspace"), "search");
-    assert.equal(toolKindOf("NOTE", null), "think");
-    assert.equal(toolKindOf("WAIT", null), "think");
-    assert.equal(toolKindOf("SEND", null), "other");
-    assert.equal(toolKindOf("DONE", null), "other");
-    assert.equal(toolKindOf("FAIL", null), "other");
-    assert.equal(toolKindOf("WORK", null), "execute");
-    assert.equal(toolKindOf("FORK", null), "execute");
+    assert.equal(toolKindOf("read", "file"), "read");
+    assert.equal(toolKindOf("read", "http"), "fetch");
+    assert.equal(toolKindOf("read", "https"), "fetch");
+    assert.equal(toolKindOf("edit", "file"), "edit");
+    assert.equal(toolKindOf("copy", "file"), "edit");
+    assert.equal(toolKindOf("move", "file"), "move");
+    assert.equal(toolKindOf("kill", "file"), "delete");
+    assert.equal(toolKindOf("find", "workspace"), "search");
+    assert.equal(toolKindOf("note", null), "think");
+    assert.equal(toolKindOf("wait", null), "think");
+    assert.equal(toolKindOf("send", null), "other");
+    assert.equal(toolKindOf("done", null), "other");
+    assert.equal(toolKindOf("fail", null), "other");
+    assert.equal(toolKindOf("work", null), "execute");
+    assert.equal(toolKindOf("fork", null), "execute");
     assert.equal(toolKindOf("sh", "sh"), "execute");
     assert.equal(toolKindOf(null, null), "other");
 });
