@@ -177,7 +177,7 @@ export const buildDiffChanges = (args: {
 }): DiffChange[] => {
     const attrs = args.attrs ?? {};
     const txRec = isRecord(args.parsedTx) ? args.parsedTx : null;
-    if (args.op === "MOVE" || args.op === "COPY") {
+    if (args.op === "move" || args.op === "copy") {
         const oldPath =
             (typeof attrs.oldPath === "string" && attrs.oldPath.length > 0 ? attrs.oldPath : null) ??
             (typeof attrs.from === "string" && attrs.from.length > 0 ? attrs.from : null) ??
@@ -189,13 +189,13 @@ export const buildDiffChanges = (args: {
             extractOperandPath(txRec?.destination) ??
             args.path;
         if (oldPath.length > 0 && destPath.length > 0) {
-            return args.op === "MOVE"
+            return args.op === "move"
                 ? [{ operation: "move", oldPath, path: destPath }]
                 : [{ operation: "copy", oldPath, path: destPath }];
         }
     }
     if (
-        args.op === "KILL" ||
+        args.op === "kill" ||
         attrs.operation === "delete" ||
         attrs.deleted === true ||
         (typeof attrs.original === "string" &&

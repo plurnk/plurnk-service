@@ -685,8 +685,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         id: 10,
                         session_id: 1,
                         sequence: 2,
-                        op: "EDIT",
-                        tx: { op: "EDIT", aside: "update x" },
+                        op: "edit",
+                        tx: { op: "edit", aside: "update x" },
                         attrs: {
                             path: "/workspace/alpha/file.ts",
                             original: "const x = 1;\n",
@@ -729,7 +729,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         turn_seq: 2,
                         sequence: 1,
                         origin: "system",
-                        op: "READ",
+                        op: "read",
                         source: "sh://11",
                         attrs: { invocation: "1/1/3" },
                         rx: { status: 200, content: "hi\n", mimetype: "text/plain" },
@@ -744,8 +744,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         sequence: 2,
                         op: "error",
                         status_rx: 400,
-                        attrs: { attempt: { verb: "READ", text: "READ bad" } },
-                        rx: { status: 400, content: "Refused READ", mimetype: "text/plain" },
+                        attrs: { attempt: { verb: "read", text: "plurnk.read(bad)" } },
+                        rx: { status: 400, content: "Refused read", mimetype: "text/plain" },
                     }),
                 });
 
@@ -755,8 +755,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_id: 1,
                         turn_seq: 2,
                         sequence: 3,
-                        op: "TODO",
-                        tx: { op: "TODO", body: "- Step 1\n- Step 2\n- Step 3\n" },
+                        op: "todo",
+                        tx: { op: "todo", body: "- Step 1\n- Step 2\n- Step 3\n" },
                         rx: { status: 200, content: "- Step 1\n- Step 2\n- Step 3\n", mimetype: "text/plain" },
                     }),
                 });
@@ -767,8 +767,8 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_id: 1,
                         turn_seq: 2,
                         sequence: 4,
-                        op: "TODO",
-                        tx: { op: "TODO", body: "- Step 2\n- Step 3\n" },
+                        op: "todo",
+                        tx: { op: "todo", body: "- Step 2\n- Step 3\n" },
                         rx: { status: 200, content: "- Step 2\n- Step 3\n", mimetype: "text/plain" },
                     }),
                 });
@@ -779,7 +779,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_id: 1,
                         turn_seq: 2,
                         sequence: 5,
-                        op: "WORK",
+                        op: "work",
                         status_rx: 200,
                         attrs: { session: "helper", message: "message://helper/1" },
                         rx: { status: 200, content: "", mimetype: "text/plain" },
@@ -792,7 +792,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_id: 1,
                         turn_seq: 2,
                         sequence: 6,
-                        op: "WAIT",
+                        op: "wait",
                         status_rx: 202,
                         attrs: { waiting: 30 },
                         rx: { status: 202, content: "", mimetype: "text/plain" },
@@ -806,9 +806,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         turn_seq: 3,
                         sequence: 1,
                         origin: "_plurnk",
-                        op: "SEND",
+                        op: "send",
                         source: "session://helper",
-                        answering: "log:///1/2/5/WORK",
+                        answering: "log:///1/2/5/work",
                         attrs: { body: "Intermediate progress" },
                         rx: { status: 200, content: "Intermediate progress", mimetype: "text/markdown" },
                     }),
@@ -828,7 +828,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_id: 1,
                         turn_seq: 3,
                         sequence: 2,
-                        op: "KILL",
+                        op: "kill",
                         attrs: { path: "log:///1/2/3" },
                         rx: { status: 200, content: "", mimetype: "text/plain" },
                     }),
@@ -853,7 +853,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_name: "helper",
                         loop_id: 2,
                         turn_id: 2,
-                        op: "SEND",
+                        op: "send",
                         attrs: { kind: "message", to: "session://user", body: "Child progress" },
                         rx: { status: 200, content: "Child progress", mimetype: "text/markdown" },
                         mimetype_rx: "text/markdown",
@@ -948,7 +948,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         (u) =>
                             u.sessionUpdate === "tool_call_update" &&
                             u.toolCallId === "1/2/5" &&
-                            u.name === "WORK" &&
+                            u.name === "work" &&
                             u.status === "completed" &&
                             Array.isArray(u.locations) &&
                             (u.locations[0] as { path?: string } | undefined)?.path === "session://helper",
@@ -959,7 +959,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         (u) =>
                             u.sessionUpdate === "tool_call_update" &&
                             u.toolCallId === "1/2/6" &&
-                            u.name === "WAIT" &&
+                            u.name === "wait" &&
                             u.status === "completed",
                     ),
                 );
@@ -967,7 +967,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     updates.some((u) => {
                         if (u.sessionUpdate !== "user_message_chunk") return false;
                         const plurnk = (u._meta as { plurnk?: { answering?: string; source?: string } } | undefined)?.plurnk;
-                        return plurnk?.answering === "log:///1/2/5/WORK" && plurnk?.source === "session://helper";
+                        return plurnk?.answering === "log:///1/2/5/work" && plurnk?.source === "session://helper";
                     }),
                 );
                 assert.ok(updates.some((u) => u.sessionUpdate === "notice"));
@@ -1096,10 +1096,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     h.port.listSessionLoops = origListLoops;
                 }
 
-                const entryUrl = `${h.baseUrl}/1/1/entry?target=${encodeURIComponent("log:///1/1/2/EDIT")}`;
+                const entryUrl = `${h.baseUrl}/1/1/entry?target=${encodeURIComponent("log:///1/1/2/edit")}`;
                 const entryRes = await fetch(entryUrl);
                 assert.equal(entryRes.status, 200);
-                assert.equal(await entryRes.text(), "Body for log:///1/1/2/EDIT");
+                assert.equal(await entryRes.text(), "Body for log:///1/1/2/edit");
 
                 const missingTarget = await fetch(`${h.baseUrl}/1/1/entry`);
                 assert.equal(missingTarget.status, 400);
@@ -1312,7 +1312,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
         }
     });
 
-    test("{§acp-topology-scope} {§acp-proposal-resolve}: sibling sessions never leak subagent updates, session messages, or gates across actor boundaries, bodiless SEND omits session_message, and 409 gate settlements are idempotent", async () => {
+    test("{§acp-topology-scope} {§acp-proposal-resolve}: sibling sessions never leak subagent updates, session messages, or gates across actor boundaries, bodiless send omits session_message, and 409 gate settlements are idempotent", async () => {
         const h = await createHarness();
         try {
             h.port.sessions.push(
@@ -1397,7 +1397,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_name: "major",
                         loop_id: 3,
                         turn_id: 1,
-                        op: "SEND",
+                        op: "send",
                         attrs: { kind: "message", to: "acp://operator", body: "Sibling reply" },
                         rx: { status: 200, content: "Sibling reply", mimetype: "text/markdown" },
                         mimetype_rx: "text/markdown",
@@ -1406,7 +1406,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 h.port.emitEvent(1, "loop/proposal", siblingProposal);
                 h.port.emitEvent(1, "loop/terminated", makeTerminatedEvent({ sessionId: 3, loopId: 3 }));
 
-                // Bodiless DONE on descendant session 2 ("helper") emits subagent_update but NOT session_message("DONE")
+                // Bodiless done on descendant session 2 ("helper") emits subagent_update but NOT session_message("done")
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 711,
@@ -1414,7 +1414,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_name: "helper",
                         loop_id: 2,
                         turn_id: 1,
-                        op: "DONE",
+                        op: "done",
                         attrs: {},
                         rx: { status: 204, completion: 200, content: "", mimetype: "text/plain" },
                     }),
@@ -1436,7 +1436,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.equal(
                     updates.some((u) => u.sessionUpdate === "session_message"),
                     false,
-                    "neither sibling SEND nor bodiless descendant SEND emits session_message",
+                    "neither sibling send nor bodiless descendant send emits session_message",
                 );
                 assert.equal(
                     permissionRequests.length,
@@ -1501,7 +1501,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     turn_seq: 1,
                     sequence: 1,
                     origin: "system",
-                    op: "SEND",
+                    op: "send",
                     source: "acp://operator/sessions/1%23user/messages/m1",
                     attrs: { kind: "message", body: "Loop 1 question" },
                     rx: { status: 200, content: "Loop 1 question", mimetype: "text/markdown" },
@@ -1516,7 +1516,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     turn_seq: 1,
                     sequence: 2,
                     origin: "model",
-                    op: "DONE",
+                    op: "done",
                     attrs: { kind: "message", to: "acp://operator", body: "Loop 1 answer" },
                     rx: { status: 200, completion: 200, content: "Loop 1 answer", mimetype: "text/markdown" },
                     mimetype_rx: "text/markdown",
@@ -1530,7 +1530,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     turn_seq: 1,
                     sequence: 1,
                     origin: "system",
-                    op: "SEND",
+                    op: "send",
                     source: "acp://operator/sessions/1%23user/messages/m2",
                     attrs: { kind: "message", body: "Loop 2 question" },
                     rx: { status: 200, content: "Loop 2 question", mimetype: "text/markdown" },
@@ -1545,7 +1545,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     turn_seq: 1,
                     sequence: 2,
                     origin: "model",
-                    op: "FAIL",
+                    op: "fail",
                     attrs: { kind: "message", to: "acp://operator", body: "X".repeat(600) },
                     rx: { status: 200, completion: 499, content: "X".repeat(600), mimetype: "text/markdown" },
                     mimetype_rx: "text/markdown",
@@ -1853,16 +1853,16 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     cwd: "/workspace/alpha",
                 });
 
-                // 1. DiffChange: add (201), delete (KILL), move (MOVE), and 1-based line on READ/EDIT
+                // 1. DiffChange: add (201), delete (kill), move (move), and 1-based line on read/edit
                 h.port.emitEvent(1, "log/entry", {
                     entry: makeLogEntry({
                         id: 801,
                         session_id: 1,
                         sequence: 1,
-                        op: "EDIT",
+                        op: "edit",
                         pathname: "/workspace/alpha/created.ts",
                         status_rx: 201,
-                        tx: { op: "EDIT", lineMarker: { marks: [12] } },
+                        tx: { op: "edit", lineMarker: { marks: [12] } },
                         attrs: { original: "", patched: "export const x = 1;\n" },
                         rx: { status: 201 },
                     }),
@@ -1872,7 +1872,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         id: 802,
                         session_id: 1,
                         sequence: 2,
-                        op: "KILL",
+                        op: "kill",
                         pathname: "/workspace/alpha/deleted.ts",
                         status_rx: 204,
                         attrs: { original: "old\n", patched: "" },
@@ -1884,7 +1884,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         id: 803,
                         session_id: 1,
                         sequence: 3,
-                        op: "MOVE",
+                        op: "move",
                         pathname: "/workspace/alpha/new-name.ts",
                         status_rx: 200,
                         attrs: { oldPath: "/workspace/alpha/old-name.ts", to: "/workspace/alpha/new-name.ts" },
@@ -1962,7 +1962,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         turn_seq: 1,
                         sequence: 1,
                         origin: "model",
-                        op: "DONE",
+                        op: "done",
                         attrs: { body: "Done working" },
                         rx: { status: 200, completion: 200, content: "Done working" },
                     }),
@@ -2382,7 +2382,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     sequence: 1,
                     origin: "_plurnk",
                     source: "acp://operator/sessions/1%23user/messages/msg-published",
-                    op: "SEND",
+                    op: "send",
                     state: "resolved",
                     status_rx: 200,
                     tx: JSON.stringify({ body: "Already published" }),
@@ -2605,7 +2605,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     turn_seq: 1,
                     sequence: 1,
                     origin: "model",
-                    op: "NOTE",
+                    op: "note",
                     status_rx: 200,
                     reasoning: "Logged reasoning chunk",
                     attrs: { body: "note body" },

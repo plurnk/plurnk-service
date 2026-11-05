@@ -120,13 +120,13 @@ test(
                 assert.equal(
                     parentLogs.some(
                         (e) =>
-                            e.op === "READ" &&
+                            e.op === "read" &&
                             e.scheme === "session" &&
                             e.hostname === "parent" &&
                             e.pathname === "/AGENTS.md",
                     ),
                     false,
-                    "Turn 0 does not foist READ (session://parent/AGENTS.md)",
+                    "Turn 0 does not foist read (session://parent/AGENTS.md)",
                 );
                 const parentPacket: { packet: string } | undefined = await db.engine_session_latest_packet.get({
                     session_id: parentRow.id,
@@ -181,13 +181,13 @@ test(
                 assert.equal(
                     spawnedLogs.some(
                         (e) =>
-                            e.op === "READ" &&
+                            e.op === "read" &&
                             e.scheme === "session" &&
                             e.hostname === "spawned" &&
                             e.pathname === "/AGENTS.md",
                     ),
                     false,
-                    "Post-Turn-0 session/resume with systemPrompt does not foist READ (session://spawned/AGENTS.md)",
+                    "Post-Turn-0 session/resume with systemPrompt does not foist read (session://spawned/AGENTS.md)",
                 );
                 const spawnedPacket: { packet: string } | undefined = await db.engine_session_latest_packet.get({
                     session_id: spawnedRow.id,
@@ -365,19 +365,19 @@ test(
                     sessionId: rootSession.id,
                 });
                 assert.ok(
-                    rootLogs.some((e) => e.op === "FIND" && e.scheme === "persona" && e.pathname === "/PERSONA.md"),
+                    rootLogs.some((e) => e.op === "find" && e.scheme === "persona" && e.pathname === "/PERSONA.md"),
                     "Turn 0 surveys persona://*/PERSONA.md when personas exist",
                 );
                 assert.equal(
                     rootLogs.some(
                         (e) =>
-                            e.op === "READ" &&
+                            e.op === "read" &&
                             e.scheme === "session" &&
                             e.hostname === rootSession.name &&
                             e.pathname === "/AGENTS.md",
                     ),
                     false,
-                    "Turn 0 does not foist READ (session://<root>/AGENTS.md)",
+                    "Turn 0 does not foist read (session://<root>/AGENTS.md)",
                 );
                 const rootPacket: { packet: string } | undefined = await db.engine_session_latest_packet.get({
                     session_id: rootSession.id,
@@ -406,13 +406,13 @@ test(
                 assert.equal(
                     childLogs.some(
                         (e) =>
-                            e.op === "READ" &&
+                            e.op === "read" &&
                             e.scheme === "session" &&
                             e.hostname === "subreviewer" &&
                             e.pathname === "/AGENTS.md",
                     ),
                     false,
-                    "Child session does not foist READ (session://subreviewer/AGENTS.md)",
+                    "Child session does not foist read (session://subreviewer/AGENTS.md)",
                 );
                 const childPacket: { packet: string } | undefined = await db.engine_session_latest_packet.get({
                     session_id: childSession.id,
@@ -424,14 +424,14 @@ test(
                     "Child session receives session://subreviewer/AGENTS.md copied from persona://reviewer/PERSONA.md in system-policy",
                 );
 
-                // Exercise EDIT and KILL on persona:// and workspace.personas.list
+                // Exercise edit and kill on persona:// and workspace.personas.list
                 const edited = await daemon.dispatchClientAction({
                     workspaceId: workspace.id,
                     actor: "operator",
                     contextSessionId: rootSession.id,
                     statements: [
                         {
-                            op: "EDIT",
+                            op: "edit",
                             target: {
                                 kind: "url",
                                 raw: "persona://professor.md",
@@ -461,7 +461,7 @@ test(
                     contextSessionId: rootSession.id,
                     statements: [
                         {
-                            op: "KILL",
+                            op: "kill",
                             target: {
                                 kind: "url",
                                 raw: "persona://professor.md",

@@ -303,7 +303,7 @@ export const applySystemPrompt = async (
         contextSessionId: sessionId,
         statements: [
             {
-                op: "EDIT",
+                op: "edit",
                 aside: null,
                 metadata: null,
                 target: {
@@ -347,7 +347,7 @@ const clearSystemPrompt = async (
         contextSessionId: sessionId,
         statements: [
             {
-                op: "KILL",
+                op: "kill",
                 aside: null,
                 metadata: null,
                 target: {
@@ -1710,7 +1710,7 @@ export const listSessionsOverview = async (
                       ...reply,
                       body: {
                           url: `${origin}/acp/${s.workspaceId}/${s.id}/entry?target=${encodeURIComponent(
-                              `log:///${reply.coordinate}/${reply.completion === 499 ? "FAIL" : "DONE"}`,
+                              `log:///${reply.coordinate}/${reply.completion === 499 ? "fail" : "done"}`,
                           )}`,
                           mimeType: "text/plain",
                       },

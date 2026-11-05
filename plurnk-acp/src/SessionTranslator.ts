@@ -206,7 +206,7 @@ export default class SessionTranslator {
 
         // 1. Agent response message
         const isResponse = isResponseMessage(entry, parsedRx, attrs, text, this.#acpSessionId);
-        const isBodiedWait = entry.origin === "model" && entry.op === "WAIT" && text.trim().length > 0;
+        const isBodiedWait = entry.origin === "model" && entry.op === "wait" && text.trim().length > 0;
         const opMeta = {
             id: entry.id,
             sessionId: entry.session_id,
@@ -276,7 +276,7 @@ export default class SessionTranslator {
         const targetCallId = invocationCoordinate(rawInvocation);
         if (targetCallId !== null) {
             const dischargeStatus = SessionTranslator.toolStatusOf(entry);
-            const dischargeContent: ToolCallContent[] = (entry.op === "SEND" || entry.op === "DONE" || entry.op === "FAIL") && text.length > 0
+            const dischargeContent: ToolCallContent[] = (entry.op === "send" || entry.op === "done" || entry.op === "fail") && text.length > 0
                 ? [{ type: "content", content: { type: "text", text } }]
                 : contentBlocks;
             updates.push({
@@ -297,7 +297,7 @@ export default class SessionTranslator {
         // 3. User message
         if (
             (entry.origin === "_plurnk" || entry.origin === "system")
-            && entry.op === "SEND"
+            && entry.op === "send"
             && (attrs.kind === "message" || typeof entry.answering === "string")
         ) {
             const messageId = extractMessageId(entry.source, this.#acpSessionId) ?? coordinate;
@@ -333,7 +333,7 @@ export default class SessionTranslator {
         }
 
         // 4. Failed tool attempt or error row
-        if (entry.op === "error" || entry.op === "ERROR") {
+        if (entry.op === "error") {
             const attempt = isRecord(attrs.attempt) ? attrs.attempt : null;
             if (entry.origin === "model" && attempt !== null && typeof attempt.verb === "string") {
                 const verb = attempt.verb;
@@ -383,7 +383,7 @@ export default class SessionTranslator {
         }
 
         // 5. Standard tool call
-        if (entry.op !== null && entry.op !== "error" && entry.op !== "ERROR") {
+        if (entry.op !== null && entry.op !== "error") {
             this.#toolCallIdByEntryId.set(entry.id, coordinate);
             if (typeof attrs.stream === "string" && attrs.stream.length > 0) {
                 this.#toolCallIdByStreamTarget.set(attrs.stream, coordinate);
@@ -442,7 +442,7 @@ export default class SessionTranslator {
                         text: buildUnifiedDiff(path, attrs.original, attrs.patched),
                     },
                 });
-            } else if (entry.op === "MOVE" || entry.op === "COPY") {
+            } else if (entry.op === "move" || entry.op === "copy") {
                 const path = address ?? entry.pathname ?? "";
                 const changes = buildDiffChanges({
                     op: entry.op,
@@ -487,7 +487,7 @@ export default class SessionTranslator {
             const cancellable =
                 status === "in_progress" ||
                 status === "pending" ||
-                ((entry.op === "WORK" || entry.op === "FORK") &&
+                ((entry.op === "work" || entry.op === "fork") &&
                     status === "completed" &&
                     typeof attrs.session === "string" &&
                     attrs.session.length > 0);
@@ -566,7 +566,7 @@ export default class SessionTranslator {
                 loopSeq: entry.loop_seq,
                 sequence: entry.sequence,
             };
-            if (entry.op === "TODO" && status === "completed") {
+            if (entry.op === "todo" && status === "completed") {
                 const currentItems = parseTodoItems(text);
                 const currentSet = new Set(currentItems);
                 const priorCompleted = this.#todoHistory.filter((item) => !currentSet.has(item));
@@ -592,7 +592,7 @@ export default class SessionTranslator {
                         },
                     });
                 }
-            } else if (entry.op === "KILL" && status === "completed") {
+            } else if (entry.op === "kill" && status === "completed") {
                 const removedPlanIds = new Set<string>();
                 if (address !== null) {
                     const logPrefix = "log:///";

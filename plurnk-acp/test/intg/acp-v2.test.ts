@@ -178,7 +178,7 @@ test("{§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 
                 loopId: 1,
                 turnId: 2,
                 coordinate: "1/2/1",
-                op: "EDIT",
+                op: "edit",
                 target: { scheme: "file", authority: null, pathname: "/workspace/alpha/notes.txt" },
                 attrs: {},
                 body: "updated content",

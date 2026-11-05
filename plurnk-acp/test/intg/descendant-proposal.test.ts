@@ -107,10 +107,10 @@ test(
                 );
             });
 
-            assert.equal(permissionRequests.length, 1, "child EDIT proposal delivered to parent session");
+            assert.equal(permissionRequests.length, 1, "child edit proposal delivered to parent session");
             const reqMeta = permissionRequests[0]?._meta;
             assert.ok(isRecord(reqMeta) && isRecord(reqMeta.plurnk) && isRecord(reqMeta.plurnk.proposal));
-            assert.equal(reqMeta.plurnk.proposal.op, "EDIT");
+            assert.equal(reqMeta.plurnk.proposal.op, "edit");
             assert.equal(reqMeta.plurnk.proposal.session, "guesser1");
             assert.ok(
                 updates.some((u) => u.sessionUpdate === "subagent_update"),
@@ -120,7 +120,7 @@ test(
             assert.equal(
                 await readFile(join(root, "child.txt"), "utf8"),
                 "created by child",
-                "resolving the parent-delivered gate applies the child's proposed EDIT",
+                "resolving the parent-delivered gate applies the child's proposed edit",
             );
         } finally {
             await daemon.stop();

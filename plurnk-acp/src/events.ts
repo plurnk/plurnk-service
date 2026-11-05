@@ -191,11 +191,11 @@ export const dispatchDaemonEvent = (
                 gates.cancelProposalIfSettled(workspaceId, entryId, entryRec.state);
             }
             if (
-                entryRec.op === "SEND" ||
-                entryRec.op === "DONE" ||
-                entryRec.op === "FAIL" ||
-                entryRec.op === "WORK" ||
-                entryRec.op === "FORK" ||
+                entryRec.op === "send" ||
+                entryRec.op === "done" ||
+                entryRec.op === "fail" ||
+                entryRec.op === "work" ||
+                entryRec.op === "fork" ||
                 typeof entryRec.state === "string"
             ) {
                 ctx.scheduleOverviewRefresh?.();
@@ -203,7 +203,7 @@ export const dispatchDaemonEvent = (
             if (isLogEntryPayload(params)) {
                 enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
                     broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.logEntry(params));
-                    if (entryRec.origin === "_plurnk" && entryRec.op === "SEND") {
+                    if (entryRec.origin === "_plurnk" && entryRec.op === "send") {
                         const rawInbox = await seam.readInbox({ workspaceId, sessionId });
                         broadcastSessionUpdate(workspaceId, sessionId, (s) => [
                             {
@@ -304,7 +304,7 @@ export const dispatchDaemonEvent = (
                                 state: { state: "running" },
                                 _meta: enrichedChildMeta,
                             });
-                            if ((entryRec.op === "SEND" || entryRec.op === "DONE" || entryRec.op === "FAIL") && messageText.length > 0) {
+                            if ((entryRec.op === "send" || entryRec.op === "done" || entryRec.op === "fail") && messageText.length > 0) {
                                 const isChildToParent = entryRec.origin === "model";
                                 notifyPeerSession(peer, session.acpSessionId, {
                                     sessionUpdate: "session_message",

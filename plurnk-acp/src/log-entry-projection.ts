@@ -126,7 +126,7 @@ export const isResponseMessage = (
     sessionId: string,
 ): boolean => {
     if ("inherited_history" in entry && entry.inherited_history === 1) return false;
-    if (entry.op !== "SEND" && entry.op !== "DONE" && entry.op !== "FAIL" && entry.op !== "KILL") return false;
+    if (entry.op !== "send" && entry.op !== "done" && entry.op !== "fail" && entry.op !== "kill") return false;
     const statusRx = statusOf(entry);
     if (statusRx < 200 || statusRx >= 300) return false;
     if (text.trim().length === 0) return false;
@@ -142,7 +142,7 @@ export const isResponseMessage = (
     if (typeof attrs.to === "string" && (attrs.to.startsWith("session://") || attrs.to.startsWith("workspace://"))) return false;
     if (isRecord(parsedRx) && Array.isArray(parsedRx.repliedTo)) return true;
     if (attrs.kind === "response" || attrs.kind === "message") return true;
-    if ((entry.op === "SEND" || entry.op === "DONE" || entry.op === "FAIL") && (entry.scheme === null || entry.scheme === undefined || entry.scheme === "acp") && !entry.pathname) return true;
+    if ((entry.op === "send" || entry.op === "done" || entry.op === "fail") && (entry.scheme === null || entry.scheme === undefined || entry.scheme === "acp") && !entry.pathname) return true;
     return false;
 };
 

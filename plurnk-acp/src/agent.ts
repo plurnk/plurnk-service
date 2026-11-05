@@ -963,7 +963,7 @@ export const createConnectionAgent = (
             const matchedRow = logRows.find(
                 (r) =>
                     `${r.loop_seq}/${r.turn_seq}/${r.sequence}` === toolCallId &&
-                    (r.op === "WORK" || r.op === "FORK"),
+                    (r.op === "work" || r.op === "fork"),
             );
             if (matchedRow !== undefined) {
                 const attrs = attrRecord(matchedRow.attrs);

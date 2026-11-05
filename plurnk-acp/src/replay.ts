@@ -138,7 +138,7 @@ export const replaySessionHistory = (
         const publishedSources = new Set<string>();
         const publishedMessageIds = new Set<string>();
         for (const row of activeRows) {
-            if (row.op !== "SEND") continue;
+            if (row.op !== "send") continue;
             if (typeof row.source === "string" && row.source.length > 0) {
                 publishedSources.add(row.source);
                 const mid = extractMessageId(row.source, translator.acpSessionId);

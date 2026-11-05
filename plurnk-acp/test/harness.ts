@@ -453,7 +453,7 @@ export const createHarness = async (options?: {
                         id: logs.length + 1,
                         session_id: sessionId,
                         session_name: sessions.find((w) => w.id === sessionId)?.name ?? "user",
-                        op: "DONE",
+                        op: "done",
                         attrs: { kind: "message", to: "acp://operator", body: `Echo: ${prompt}` },
                         rx: { status: 200, completion: 200, content: `Echo: ${prompt}`, mimetype: "text/markdown" },
                         mimetype_rx: "text/markdown",
@@ -498,7 +498,7 @@ export const createHarness = async (options?: {
         dispatchClientAction: async ({ statements }) => {
             for (const stmt of statements) {
                 if (
-                    stmt.op === "EDIT" &&
+                    stmt.op === "edit" &&
                     stmt.target?.kind === "url" &&
                     typeof stmt.body === "string"
                 ) {
