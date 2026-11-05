@@ -15,7 +15,7 @@ before it cannot do:
   the cascade, or a definition in `mcp.json`, a skill root, or a persona root.
 - **Operating policy** (`AGENTS.md` / `AGENTS.local.md`) when standing instructions
   apply to every turn in a user environment, project, or session (`session://<session>/AGENTS.md`).
-- **A persona** (`persona://<name>/PERSONA.md`, managed via `plurnk_personas` or `EDIT`)
+- **A persona** (`persona://<name>/PERSONA.md`, managed via `plurnk (personas)` or `EDIT`)
   when a reusable operating identity, optional model/effort route, and instruction body
   can be selected per session or copied to `session://<session>/AGENTS.md`.
 - **A skill** when the model needs knowledge, or a script it runs with its existing
@@ -42,9 +42,9 @@ before it cannot do:
 | Plugin | a directory holding `plugin.json`, `skills/`, `personas/`, and `mcp.json` | its skills, personas, and MCP servers | none, unless it declares an extension |
 | Extension | a package declaring one kind | a runtime, an address scheme, a media-type reader, a model provider, a page materializer, or what a module contributes | trusted, in the daemon |
 
-Personas, skills, and MCP servers are definitions. The `plurnk_personas`, `plurnk_skills`, and
-`plurnk_mcp` runtimes (`add`, `replace`, `enable`, `disable`, and `remove` tools; personas also accept `EDIT` and `KILL` on `persona://`) manage them in the current workspace,
-and `mcp:///plurnk_personas.md`, `mcp:///plurnk_skills.md`, and `mcp:///plurnk_mcp.md` show each
+Personas, skills, and MCP servers are definitions. The `plurnk` runtime
+(`personas`, `skills`, and `mcp` tools; personas also accept `EDIT` and `KILL` on `persona://`) manages them in the current workspace,
+and `mcp:///plurnk.md` and `mcp:///plurnk/<tool>.json` show each
 definition's form. A definition needs no restart; an extension loads only when
 the daemon starts.
 

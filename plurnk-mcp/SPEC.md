@@ -61,7 +61,7 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
 
 | Precedence | Source | Location / Key |
 | --- | --- | --- |
-| 1 | Workspace overlay | `plurnk_mcp` `add` / `replace` state (never writes/deletes host `mcp.json` files) |
+| 1 | Workspace overlay | `plurnk (mcp)` `add` / `replace` state (never writes/deletes host `mcp.json` files) |
 | 2 | Environment | `PLURNK_MCP_<alias>` (complete `McpServerDefinition` JSON; transport and auth replace together) |
 | 3 | Project | `<project>/.agents/mcp.json`, then selected project plugins |
 | 4 | Plurnk-only | `$XDG_CONFIG_HOME/plurnk/mcp.json`, then selected Plurnk plugins |
@@ -128,7 +128,7 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
 
 - **Workspace & session bindings (`plurnkWorkspace`, `plurnkSession`):** Optional fields on `McpServerDefinition` ({§mcp-server-definition}) and `PLURNK_MCP_<alias>_WORKSPACE` / `PLURNK_MCP_<alias>_SESSION` settings ({§mcp-configuration}).
   - **Operator-scoped definitions** (`PLURNK_MCP_<alias>`, `$XDG_CONFIG_HOME/plurnk/mcp.json`, `~/.agents/mcp.json`, non-project plugins, or an operator `PLURNK_MCP_<alias>_WORKSPACE` setting) may bind a single workspace name, an array of unique workspace names, or `"*"` (multi-workspace router); when pinned to specific workspace name(s), the server is enabled only in matching workspace(s).
-  - **Workspace-scoped definitions** (`plurnk_mcp` `add` / `replace`, `<project>/.agents/mcp.json`, project plugins) are confined to their own workspace; binding `"*"` or another workspace name fails with `403 workspace-scope-forbidden`.
+  - **Workspace-scoped definitions** (`plurnk (mcp)` `add` / `replace`, `<project>/.agents/mcp.json`, project plugins) are confined to their own workspace; binding `"*"` or another workspace name fails with `403 workspace-scope-forbidden`.
 - **Daemon-start residency (`Module.start(seam)`):** Enabled operator-scoped servers declaring a workspace or session binding ensure their target workspace(s) and static session(s) exist at `start(seam)`, activate those workspaces, keep `subscriptions/listen` open (`resident: true`), and hold a workspace residency lease while active.
 - **Bidirectional `_meta` & auto-creation:**
   - **Outbound (`Plurnk` $\to$ `MCP`):** `tools/call`, `resources/read`, and `prompts/get` stamp unforgeable `params._meta: { plurnkWorkspace, plurnkSession }` identifying the calling workspace and session.

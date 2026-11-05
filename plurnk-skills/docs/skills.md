@@ -20,7 +20,7 @@ A `project` skill shadows a `plurnk` one of the same name, which shadows an
 `xdg-global` one, which shadows a `global` one, which shadows a `service` one. Plugin skills join their installation's
 scope after standalone skills; npm bundles follow global roots. These are read-only inputs.
 The cascading environment can replace a whole definition above them;
-`plurnk_skills (add)` creates a workspace override above that. Declared skills are
+`plurnk (skills)` creates a workspace override above that. Declared skills are
 enabled by default. A disabled skill remains listed but has no resource tree.
 
 ```sh
@@ -60,13 +60,13 @@ Companion scripts, references, and assets live beside `SKILL.md` under
 `.agents/skills/<name>/` and accept normal `<@hash>` regional `EDIT`s. To author
 a user-wide skill under `~/.config/plurnk/skills/<name>/SKILL.md` (or
 `~/.agents/skills/<name>/SKILL.md`), admit the directory with
-`plurnk_members (add)` first. The service rescans standard skill roots before
+`plurnk (members)` first. The service rescans standard skill roots before
 every turn and hot-loads created, edited, or removed skills into
-`skill://<name>/` automatically without `plurnk_skills (add)`.
+`skill://<name>/` automatically without `plurnk (skills)`.
 
 ## discover
 
-`discover` lists the skills one source carries: `{"source": "..."}` returns one
+`discover` lists the skills one source carries: `{"discover": "..."}` returns one
 candidate per skill with the exact definition to add. A source is a git remote
 as a full https or ssh URL, an MCP server (`<server>:///`, `<server>:///skills`,
 or `<server>:///skills/<name>`), a folder, a lone `SKILL.md`, or a zip or tar
@@ -76,7 +76,7 @@ archive. Discovery never installs anything.
 
 `add` binds one skill from its source to this workspace and enables it:
 
-```plurnk_skills (add) <!-- from a discover candidate -->
+```plurnk (skills) <!-- from a discover candidate -->
 {"alias": "sql-formatter", "source": "https://git.example/acme/skills.git"}
 ```
 

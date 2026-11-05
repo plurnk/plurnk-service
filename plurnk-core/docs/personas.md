@@ -20,7 +20,7 @@ A `project` persona shadows a `plurnk` one of the same name, which shadows an
 `xdg-global` one, which shadows a `global` one. Plugin personas join their
 installation's scope after standalone personas; npm bundles follow global roots.
 The cascading environment can define or replace a persona above them;
-`plurnk_personas (add)` or `EDIT (persona://<name>/PERSONA.md)` creates a
+`plurnk (personas)` or `EDIT (persona://<name>/PERSONA.md)` creates a
 workspace override above that. Declared personas are enabled by default. A
 disabled persona remains listed but has no resource tree.
 
@@ -64,8 +64,8 @@ any inherited definition) or disables an inherited service persona.
 ## discover
 
 `discover` lists candidate personas from active roots and plugins when called
-with `{}` or `{"query": "..."}`, or inspects a specific file or directory when
-called with `{"source": "..."}`, returning one candidate per persona with the
+with `{"discover": true}` or `{"discover": "..."}`, or inspects a specific file or directory when
+called with `{"discover": {"source": "..."}}`, returning one candidate per persona with the
 exact definition to add.
 
 ## Adding and managing
@@ -75,7 +75,7 @@ inline (`description` + `body`, plus optional `model` and `effort`) or from a
 local `source` path (`.md` file or `<name>/PERSONA.md` directory, relative to
 the project root or absolute):
 
-```plurnk_personas (add)
+```plurnk (personas)
 {"alias": "professor", "description": "Rigorous first-principles teacher.", "body": "Explain from invariants before examples.", "effort": "high"}
 ```
 

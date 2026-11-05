@@ -9,7 +9,7 @@ session's overrides. `list` shows the effective values and their origins.
 reach every session's commands and newly started MCP servers, without depending
 on which session starts them:
 
-```plurnk_env (add)
+```plurnk (env)
 {"scope":"workspace","alias":"NODE_ENV","value":"production"}
 ```
 
@@ -62,7 +62,7 @@ not the command's lifetime.
 Plurnk configuration belongs in the environment cascade;
 READ `skill://plurnk/.env.defaults` for its reference. An MCP definition can
 explicitly bind an operator credential without adding it to every command's
-environment; READ `mcp:///plurnk_mcp.md` for that setup.
+environment; READ `mcp:///plurnk/mcp.json` for that setup.
 
 ## Finding a name
 

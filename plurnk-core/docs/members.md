@@ -43,7 +43,7 @@ glob previews what `add` would resolve to.
 
 ## When a file you need is not a member
 
-`plurnk_members (discover)` with `{"query": "build/report.json"}` answers with one
+`plurnk (members)` with `{"discover": "build/report.json"}` answers with one
 candidate: its `provenance.kind` is the verdict and its `summary` the reason.
 
 | kind | summary |
@@ -58,7 +58,7 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
   proposes its admission and, accepted, admits and reads it in one operation. With
   auto-add off, an accepted `add` makes it a member before the next operation.
 
-  ```plurnk_members (add) <!-- include the generated reports; each glob is one definition -->
+  ```plurnk (members) <!-- include the generated reports; each glob is one definition -->
   {"files": ["build/*.json"]}
   ```
 
@@ -100,8 +100,8 @@ operator's environment, `workspace` from an `add`) and whether it is enabled. `e
 `disable` flip one definition, and `remove` forgets a workspace definition and restores
 inheritance, each named by the glob as `list` shows it:
 
-```plurnk_members (disable)
-{"file": "build/*.json"}
+```plurnk (members)
+{"file": "build/*.json", "enabled": false}
 ```
 
 Inherited definitions cannot be removed here. Changes apply to every session. Each enabled

@@ -1,4 +1,4 @@
-# plurnk_mcp
+# mcp
 
 An MCP server publishes tools, and an enabled server is a runtime here under
 its own name. A tool runs the way `sh` or `js` runs: a fenced call names the
@@ -19,7 +19,7 @@ definitions without reading the whole catalog:
 ```READ (mcp:///files.json) $.tools[?(@.name=="list_directory")]
 ```
 
-The turn-0 `plurnk_mcp (list)` receipt shows every server, including disabled
+The turn-0 `plurnk (mcp)` receipt shows every server, including disabled
 ones and unavailable ones with their exact Problem; `enable` turns a server on,
 and `FIND (mcp:///*.md)` surveys active servers' Markdown documents. An unavailable server's Problem
 reports elapsed preparation time, its configured timeout, and any bounded,
@@ -28,14 +28,14 @@ redacted connection diagnostic or session stderr available to the host.
 ## discover, then add
 
 `discover` is present when the operator configures an MCP Registry. It takes
-`{"query": "<name>"}` and searches that registry; each candidate carries the
+`{"discover": "<name>"}` and searches that registry; each candidate carries the
 exact definition to add. Discovery never persists or enables anything.
 
 `add` saves and enables a workspace definition, then reports its connection
 state. It is a host effect, subject to approval. Inspect that state:
 saved configuration does not imply a connected server.
 
-```plurnk_mcp (add)
+```plurnk (mcp)
 {"alias": "files", "type": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"]}
 ```
 
@@ -84,12 +84,12 @@ source. A complete workspace override replaces these plugin semantics too.
 
 A local server's inherited environment excludes Plurnk settings and model
 provider keys; explicit definition bindings are separate.
-Workspace variables set with `plurnk_env` (`mcp:///plurnk_env.md`) apply on top at
+Workspace variables set with `plurnk (env)` (`mcp:///plurnk/env.json`) apply on top at
 every server launch; session-local overrides do not. A running server keeps its
 launch environment; `disable` then `enable` restarts it with the current
 workspace values, without a daemon restart.
 
-```plurnk_env (add)
+```plurnk (env)
 {"scope": "workspace", "alias": "SERVICE_TOKEN", "value": "<credential>"}
 ```
 
@@ -106,7 +106,7 @@ Structured authorization secrets must be references, not literal credentials.
 
 For an OAuth server, start by adding its URL; the client supplies the callback.
 
-```plurnk_mcp (add)
+```plurnk (mcp)
 {"alias": "remote", "type": "streamable-http", "url": "https://example.com/mcp"}
 ```
 
