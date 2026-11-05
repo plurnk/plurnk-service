@@ -58,18 +58,24 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "TODO",
         target: "todo",
-        summary: "Replace the session's remaining TODO list (empty when finished).",
+        summary: "Replace the session's remaining TODO list.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
+            required: ["items"],
             properties: {
-                text: { type: "string", description: "Markdown checklist of remaining steps (omit or empty string when finished)." },
+                items: {
+                    type: "array",
+                    minItems: 1,
+                    items: { type: "string", minLength: 1 },
+                    description: "Non-empty list of remaining steps (omit `todo` when finished).",
+                },
             },
         },
         details: [
             "## Examples",
             "",
-            "await plurnk.todo({ text: \"- The first step.\\n- The second step.\" });",
+            "await plurnk.todo({ items: [\"The first step.\", \"The second step.\"] });",
         ].join("\n"),
     },
     {

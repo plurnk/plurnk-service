@@ -132,6 +132,7 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.todo();',
             'await plurnk.todo(["First task", { text: "Second task", status: "done" }, { text: "Third task", status: "in_progress" }]);',
             'await plurnk.todo({ items: ["Item A"] });',
+            'await plurnk.todo({ todos: ["Item B"] });',
             'await plurnk.work("session://helper", "Run checks.");',
             'await plurnk.work("Run checks in new session.");',
             'await plurnk.fork({ session: "branch_1", model: "fast", effort: "low", persona: "reviewer", prompt: "Review diff." });',
@@ -150,21 +151,22 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.wait("Waiting for child.");',
             'await plurnk.wait({ session: "helper", seconds: 10, text: "Polling." });',
         ].join("\n"));
-        assert.equal(ops.length, 22);
+        assert.equal(ops.length, 23);
         assert.equal((ops[0] as NoteStatement).body, null);
         assert.equal((ops[1] as NoteStatement).body, "Quick note.");
         assert.equal((ops[2] as TodoStatement).body, null);
         assert.equal((ops[3] as TodoStatement).body, "- [ ] First task\n- [x] Second task\n- [~] Third task");
         assert.equal((ops[4] as TodoStatement).body, "- [ ] Item A");
-        assert.equal((ops[5] as WorkStatement).target?.raw, "session://helper");
-        assert.equal((ops[6] as WorkStatement).body, "Run checks in new session.");
-        assert.equal((ops[7] as ForkStatement).target?.raw, "session://branch_1");
-        assert.deepEqual((ops[7] as ForkStatement).metadata, ['{"model":"fast","effort":"low","persona":"reviewer"}']);
-        assert.equal((ops[13] as SendStatement).body?.raw, '{"ok":true}');
-        assert.equal((ops[16] as DoneStatement).target?.raw, "message://main/1");
-        assert.equal((ops[17] as FailStatement).body?.raw, '{"error":"failed"}');
-        assert.equal((ops[19] as DispositionStatement).seconds, 15);
-        assert.equal((ops[21] as DispositionStatement).target?.raw, "session://helper");
+        assert.equal((ops[5] as TodoStatement).body, "- [ ] Item B");
+        assert.equal((ops[6] as WorkStatement).target?.raw, "session://helper");
+        assert.equal((ops[7] as WorkStatement).body, "Run checks in new session.");
+        assert.equal((ops[8] as ForkStatement).target?.raw, "session://branch_1");
+        assert.deepEqual((ops[8] as ForkStatement).metadata, ['{"model":"fast","effort":"low","persona":"reviewer"}']);
+        assert.equal((ops[14] as SendStatement).body?.raw, '{"ok":true}');
+        assert.equal((ops[17] as DoneStatement).target?.raw, "message://main/1");
+        assert.equal((ops[18] as FailStatement).body?.raw, '{"error":"failed"}');
+        assert.equal((ops[20] as DispositionStatement).seconds, 15);
+        assert.equal((ops[22] as DispositionStatement).target?.raw, "session://helper");
     });
 
     test("{§op-shapes}: standalone executors, plurnk Functionality tools, and MCP tools compile to ExecStatement", () => {

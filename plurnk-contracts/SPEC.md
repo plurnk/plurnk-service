@@ -138,7 +138,7 @@ await <service>.<tool>({ ... });
 | `plurnk.done` | optional `target` (`message://`) | none | optional `text` final deliverable |
 | `plurnk.fail` | optional `target` (`message://`) | none | optional `text` final failure explanation |
 | `plurnk.note` | none | none | `text` literal working memory |
-| `plurnk.todo` | none | none | `text` or `items` remaining step list (`parseTodoItems`) |
+| `plurnk.todo` | none | none | required `items` remaining step list (or tolerated `todos` / `text`) |
 | `plurnk.wait` | optional `target` label | optional `seconds` | `text` wait explanation |
 
 - **Retrieval annotations**: Nonblank bodies beneath `FIND` or `READ` normalize into a preceding `NOTE` statement.

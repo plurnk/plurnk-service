@@ -1694,8 +1694,9 @@ export const parseCodeMode = (
             return emitStatement({ op: "TODO", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body, position: pos });
         }
         if (isRecord(first)) {
-            if (Array.isArray(first.items)) {
-                const body = first.items.length === 0 ? null : first.items.map(formatTodoItem).join("\n");
+            const rawItems = Array.isArray(first.items) ? first.items : (Array.isArray(first.todos) ? first.todos : null);
+            if (rawItems !== null) {
+                const body = rawItems.length === 0 ? null : rawItems.map(formatTodoItem).join("\n");
                 return emitStatement({ op: "TODO", aside: resolveAside(first), target: null, metadata: null, lineMarker: null, body, position: pos });
             }
             const rawText = first.text ?? first.content ?? first.body;

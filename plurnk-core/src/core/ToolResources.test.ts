@@ -483,6 +483,10 @@ test("{§functionality-model-projection} {§tools-resource-materialization} rend
     });
     const indexDoc = rendered.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk.md");
     assert.ok(indexDoc);
+    assert.match(
+        indexDoc.content,
+        /^await plurnk\.todo\(\{"items": \[\]\}\); \/\/ Replace the session's remaining TODO list\. Schema: mcp:\/\/\/plurnk\/todo\.json$/m,
+    );
     for (const tool of ALL_CORE_OPERATION_TOOLS) {
         assert.ok(indexDoc.content.includes(`await plurnk.${tool.target}(`), `mcp:///plurnk.md includes ${tool.target}`);
         assert.ok(indexDoc.content.includes(`Schema: mcp:///plurnk/${tool.target}.json`), `mcp:///plurnk.md links to ${tool.target}.json`);
