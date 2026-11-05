@@ -37,6 +37,7 @@ SELECT e.id AS entry_id, e.scheme, e.authority, e.pathname, ec.name AS channel, 
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 WHERE e.workspace_id = $workspace_id
+  AND ec.content IS NOT NULL
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
 -- PREP: search_index_entry_body

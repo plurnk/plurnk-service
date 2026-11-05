@@ -1219,7 +1219,7 @@ sequenceDiagram
 | `strike-threshold` | 508 / 500 | Repetition crossed the strike threshold (508), or another strike source crossed it (500), under {§engine-rails}. |
 | `loop-running` | 425 | The addressed execution has not concluded. |
 | `loop-cancelled` | 499 | The loop was cancelled; detail preserves the cancellation reason. |
-| `loop-threw` | 500 | The loop failed outside its operation result contract. |
+| `loop-threw` | 500 | The loop failed outside its operation result contract: *cause*. |
 | `narration-failed` | 500 | Filesystem divergence narration failed before its operation turn settled. |
 | `provider-contract-violation` | 502 | The provider failed without returning its required Problem Details. |
 | `active-session-limit-reached` | 508 | The workspace's active sessions reach its configured limit. |
@@ -1303,7 +1303,7 @@ sequenceDiagram
 | `invalid-body` | 400 | A question body is not JSON, or lacks its nonempty message or requested schema. |
 | `offset-invalid` | 400 | An entry offset is not a nonnegative safe integer. |
 | `userinfo-not-allowed` | 400 | An entry target URL contains userinfo. |
-| `action-threw` / `dispatch-threw` | 500 | The client action or Plurnk actor failed outside its operation result contract. |
+| `action-threw` / `dispatch-threw` | 500 | The client action or Plurnk actor failed outside its operation result contract: *cause*. |
 | `operation-cancelled` | 499 | The client operation was cancelled: *reason* ({§connection-lifecycle}). |
 | `message-already-accepted` | 409 | The message address was already accepted in this workspace. |
 | `message-address-reused` | 422 | The message address was already accepted in this workspace with other words. |

@@ -12,6 +12,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
+import ErrorDetail from "../core/ErrorDetail.ts";
 import Envelope from "./envelope.ts";
 import Turn from "../core/Turn.ts";
 import TurnOps from "../core/TurnOps.ts";
@@ -74,13 +75,16 @@ export default class DispatchAsPlurnk {
             await Envelope.closeClientLoop(db, loopId, { status: 200 });
         } catch (cause) {
             console.error(`_plurnk dispatch failed for session ${sessionId}, loop ${loopId}:`, cause);
+            const detail = ErrorDetail.preview(cause);
             const failure = cause instanceof OperationFailureError
                 ? cause.result
                 : Results.failure(
                     "daemon:plurnk-actor",
                     "dispatch-threw",
                     500,
-                    "The Plurnk actor failed outside its operation result contract.",
+                    detail.length > 0
+                        ? `The Plurnk actor failed outside its operation result contract: ${detail}`
+                        : "The Plurnk actor failed outside its operation result contract.",
                     {},
                     {
                         stage: "dispatch",

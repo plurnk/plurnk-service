@@ -263,8 +263,8 @@ export default class SearchIndex {
         let acquiredBytes = 0;
         const candidates = await db.search_index_entry_candidates.all<EntryCandidate>({ workspace_id: workspaceId });
         const acquire = async (entryId: number, channel: string, storedHash: string | null): Promise<string | null> => {
-            const row = await db.search_index_entry_body.get<{ content: string }>({ entry_id: entryId, channel, content_hash: storedHash });
-            if (row === undefined) return null;
+            const row = await db.search_index_entry_body.get<{ content: string | null }>({ entry_id: entryId, channel, content_hash: storedHash });
+            if (row === undefined || row.content === null) return null;
             acquiredBytes += row.content.length;
             return row.content;
         };

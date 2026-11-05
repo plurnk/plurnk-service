@@ -579,13 +579,16 @@ export default class DrainSupervisor {
         const { workspaceId, sessionId, first } = scope;
         console.error(`drain error (workspace ${workspaceId}, session ${sessionId}, loop ${currentLoopId ?? "?"}):`, err);
         if (currentLoopId !== null) {
+            const cause = ErrorDetail.preview(err);
             const failure = err instanceof OperationFailureError
                 ? err.result
                 : Results.failure(
                     "daemon:drain",
                     "loop-threw",
                     500,
-                    "The loop failed outside its operation result contract.",
+                    cause.length > 0
+                        ? `The loop failed outside its operation result contract: ${cause}`
+                        : "The loop failed outside its operation result contract.",
                     {},
                     {
                         stage: "loop",

@@ -38,6 +38,7 @@ const supervisor = (
     return new DrainSupervisor({
         db: {
             drain_find_slept_loop: { get: async () => undefined },
+            session_parent_id: { get: async () => undefined },
         } as unknown as Db,
         engine: {
             ...defaultEngine,
@@ -461,4 +462,55 @@ test("{§packet-inject} every wake reads the card afresh and hands that reading 
     await drains.idle();
     assert.equal(reads, 3, "three wakes, three readings; none is held");
     assert.deepEqual(handed, ["card 1", "card 2", "card 3"]);
+});
+
+test("{§session-loop-lifecycle} {§operation-results}: an uncaught loop failure includes its bounded cause in loop-threw detail", async (t) => {
+    t.mock.method(console, "error", () => {});
+    let claimed = false;
+    let settledFailure: unknown = null;
+    const drains = supervisor(async () => "system", () => {}, {
+        db: {
+            drain_ready_loop: { get: async () => ({ id: 7 }) },
+            drain_claim_next_loop: {
+                get: async () => {
+                    if (claimed) return undefined;
+                    claimed = true;
+                    return { id: 7, max_turns: 4, prompt: "hello" };
+                },
+            },
+            drain_find_slept_loop: { get: async () => undefined },
+            session_parent_id: { get: async () => undefined },
+        } as unknown as Db,
+        lifecycle: {
+            observation: async () => ({ loopSeq: 1, claimedAt: 1_000, terminatedAt: 2_000, packetCount: 0 }),
+            finish: async (loopId: number, result: unknown) => {
+                assert.equal(loopId, 7);
+                settledFailure = result;
+                return result;
+            },
+            cancelled: async () => false,
+            turnIds: async () => [],
+            parked: async () => [],
+        } as never,
+        runLoop: async () => {
+            throw new TypeError("Cannot read properties of null (reading 'length')");
+        },
+    });
+    drains.start();
+    const handle = await drains.ensureDrain({ workspaceId: 1, sessionId: 2, systemPrompt: "system" });
+    assert.notEqual(handle, null);
+    await assert.rejects(handle!.firstLoopPromise, /Cannot read properties of null/);
+    await assert.rejects(handle!.drainPromise, /Cannot read properties of null/);
+    await drains.idle();
+    assert.deepEqual(settledFailure, {
+        status: 500,
+        problem: {
+            type: "https://problems.plurnk.xyz/daemon/drain/loop-threw",
+            title: "Loop threw",
+            status: 500,
+            detail: "The loop failed outside its operation result contract: Cannot read properties of null (reading 'length')",
+            stage: "loop",
+            retryable: false,
+        },
+    });
 });

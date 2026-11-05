@@ -5,6 +5,7 @@ import { isRecord, Validator, type PlurnkStatement, type RollbackReport } from "
 import ChannelWrite from "../core/ChannelWrite.ts";
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
+import ErrorDetail from "../core/ErrorDetail.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
 import RuntimeSession from "../core/RuntimeSession.ts";
 import Turn from "../core/Turn.ts";
@@ -27,11 +28,14 @@ const clientOperationCancelled = (reason: unknown): SchemeResult => {
 const clientActionFailure = (error: unknown): SchemeResult => {
     if (error instanceof OperationFailureError) return error.result;
     console.error("Client action failed outside its operation result contract:", error);
+    const cause = ErrorDetail.preview(error);
     return Results.failure(
         "daemon:client",
         "action-threw",
         500,
-        "The client action failed outside its operation result contract.",
+        cause.length > 0
+            ? `The client action failed outside its operation result contract: ${cause}`
+            : "The client action failed outside its operation result contract.",
         {},
         {
             stage: "client-action",
