@@ -117,11 +117,11 @@ test("{§executor-policy} discover: normalizes attribution once per package; run
         plurnk: { kind: "exec", attribution: ["acme", "foo"], runtimes: [runtime("foo")] },
     });
     const noneDir = await makePkg({
-        name: "@acme/acme-execs-bare",
-        plurnk: { kind: "exec", runtimes: [runtime("bare")] },
+        name: "@acme/acme-execs-plain",
+        plurnk: { kind: "exec", runtimes: [runtime("plain")] },
     });
     const { registry, packageAttributions } = await Discover.scan({ packageDirs: [strDir, arrDir, noneDir] });
-    for (const tag of ["alpha", "beta", "foo", "bare"]) {
+    for (const tag of ["alpha", "beta", "foo", "plain"]) {
         assert.ok(!("attribution" in (registry.get(tag) as object)), `${tag} carries identity, not attribution`);
     }
     assert.deepEqual(
@@ -231,6 +231,15 @@ test("{§executor-discovery} #105: dynamic runtime tags use canonical scheme nam
     await assert.rejects(
         Discover.scan({ packageDirs: [reserved] }),
         /runtime declaration invalid: @plurnk\/plurnk-execs-dynamic-fixture name 'only' is reserved by PLURNK_EXECS_ONLY/,
+    );
+
+    const reservedOp = await makeDynamicPkg(
+        "@plurnk/plurnk-execs-dynamic-fixture",
+        `export default () => [{ name: "read" }];`,
+    );
+    await assert.rejects(
+        Discover.scan({ packageDirs: [reservedOp] }),
+        /runtime declaration invalid: @plurnk\/plurnk-execs-dynamic-fixture name 'read' is reserved by plurnk\.read\(\.\.\.\)/,
     );
 });
 

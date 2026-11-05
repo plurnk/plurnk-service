@@ -67,7 +67,7 @@ test("{§http-lifecycle} manifest: documentation is loaded verbatim from docs/ht
     assert.equal(Http.manifest.documentation, fromFile);
     assert.match(Http.manifest.documentation ?? "", /^# https:\/\//);
     assert.match(Http.manifest.documentation ?? "", /^## Summary$/m);
-    for (const op of ["READ", "EDIT", "SEND"]) assert.ok(fromFile.includes(`\`\`\`${op} (`), `${op} remains illustrated in the discoverable reference`);
+    for (const op of ["read", "edit", "send"]) assert.ok(fromFile.includes(`await plurnk.${op}(`), `${op.toUpperCase()} remains illustrated in the discoverable reference`);
 });
 
 test("{§http-host-policy} ready validates the fetch ceiling without making a provider request", async () => {

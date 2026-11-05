@@ -10,6 +10,6 @@ also for `session://` and `skill://` targets.
 Relative imports resolve from the script; ordinary relative filesystem paths
 resolve from the working directory. Environment, working directory, channels,
 output on completion, and exit status are every subprocess executor's,
-as `plurnk:///sh.md` states. Stdout is text, so structured output is serialized
+as `mcp:///plurnk/sh.json` states. Stdout is text, so structured output is serialized
 (`console.log(JSON.stringify(value))`); a thrown error exits nonzero with its
 stack on stderr.

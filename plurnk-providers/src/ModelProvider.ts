@@ -902,17 +902,6 @@ export default class ModelProvider implements Provider {
         }
 
         let notices: ProviderNotice[] | undefined;
-        const nativeCalls = raw.finishReason === "tool_calls" || raw.wire.toolCalls.length > 0;
-        if (nativeCalls) {
-            (notices ??= []).push({
-                source: this.#source,
-                kind: "provider_warning",
-                level: "warn",
-                directive: "YOU MUST NOT emit native tool calls.",
-                message: "The response included native tool calls, but no tools were declared.",
-                position: null,
-            });
-        }
         if (recoveredAfterOutput && accounting.at(-1)?.outcome === "response") {
             (notices ??= []).push({
                 source: this.#source,
@@ -931,7 +920,6 @@ export default class ModelProvider implements Provider {
             : undefined;
 
         const assistant = {
-            ...(nativeCalls ? { nativeToolCalls: true } : {}),
             content: raw.content,
             reasoning: raw.reasoning.length > 0 ? raw.reasoning : null,
             model: raw.model,

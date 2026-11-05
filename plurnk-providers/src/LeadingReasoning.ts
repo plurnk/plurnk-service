@@ -70,7 +70,19 @@ export default class LeadingReasoning {
     static project(content: string, reasoning: string, envelopes: readonly ReasoningEnvelope[]): {
         content: string; reasoning: string; projected: boolean;
     } {
-        if (reasoning.length > 0) return { content, reasoning, projected: false };
+        if (reasoning.length > 0) {
+            for (const [opening, closing] of envelopes) {
+                const closeIdx = content.indexOf(closing);
+                if (closeIdx !== -1 && !content.slice(0, closeIdx).includes(opening)) {
+                    return {
+                        content: content.slice(closeIdx + closing.length).replace(/^\r?\n+/u, ""),
+                        reasoning: reasoning + content.slice(0, closeIdx),
+                        projected: true,
+                    };
+                }
+            }
+            return { content, reasoning, projected: false };
+        }
         const parser = new LeadingReasoning(envelopes);
         parser.push(content);
         parser.finish();

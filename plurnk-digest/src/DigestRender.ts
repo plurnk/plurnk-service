@@ -70,14 +70,14 @@ export default class DigestRender {
         const parsedAttrs = parseJson(row.attrs, {});
         const attrs: Readonly<Record<string, unknown>> = isRecord(parsedAttrs) ? parsedAttrs : {};
         // {§turn-source-resources}: the announcement of an admitted emission, and whether the model retired it.
-        if (row.op === "READ" && attrs.kind === "emission") {
+        if (row.op === "read" && attrs.kind === "emission") {
             return DigestRender.#renderOpLine(row, row.projection_active === 1 ? "emission" : "emission (killed)", environmentOf(row, m));
         }
         // {§turn-source-resources}: the turn's reasoning landed as a row, and whether the model retired it.
-        if (row.op === "READ" && attrs.kind === "reasoning") {
+        if (row.op === "read" && attrs.kind === "reasoning") {
             return DigestRender.#renderOpLine(row, row.projection_active === 1 ? "reasoning" : "reasoning (killed)", environmentOf(row, m));
         }
-        const materialized = row.origin === "_plurnk" && row.op === "EDIT" && attrs.kind === "entry_materialized";
+        const materialized = row.origin === "_plurnk" && row.op === "edit" && attrs.kind === "entry_materialized";
         const actionlessKind = row.op === null ? attrs.kind : null;
         const label = actionlessKind === "emissionAttempt"
             ? "emission attempt"
@@ -241,7 +241,7 @@ export default class DigestRender {
             `Wire:       ${wireStr}`,
             `Room:       ${renderRoom(session, m)}`,
             `Op mix:     ${opMix.length > 0 ? opMix : "(no ops)"}`,
-            `EDITs:      ${renderEditCensus(editCensus(m).bySession.get(session.id))}`,
+            `Edits:      ${renderEditCensus(editCensus(m).bySession.get(session.id))}`,
             `Emissions:  ${renderEmissions(session, m)}`,
             `Reasonings: ${renderReasonings(session, m)}`,
         ].join("\n");
@@ -259,7 +259,7 @@ export default class DigestRender {
         const bareCalls = m.modelCalls.filter((call) => call.kind === "bare").length;
         const pendingRequests = m.providerRequests.filter((req) => req.state === "pending").length;
         const packetFailures = m.turns.filter((turn) => m.evidence.packet(turn).packetFailure !== null).length;
-        lines.push(`Workspaces: ${m.workspaces.length}  Sessions: ${m.sessions.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Inference calls: ${m.inferenceCalls.length} (${bareCalls} BARE, ${erroredCalls} errored, ${pendingCalls} open)  Emission attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected)  Provider requests: ${m.providerRequests.length} (${pendingRequests} open)  Log entries: ${m.logEntries.length}`);
+        lines.push(`Workspaces: ${m.workspaces.length}  Sessions: ${m.sessions.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Inference calls: ${m.inferenceCalls.length} (${bareCalls} bare, ${erroredCalls} errored, ${pendingCalls} open)  Emission attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected)  Provider requests: ${m.providerRequests.length} (${pendingRequests} open)  Log entries: ${m.logEntries.length}`);
         if (packetFailures > 0) lines.push(`Stored packet failures: ${packetFailures}`);
         lines.push(`Search: channels=${m.search.channel_entries} attached=${m.search.derivation_complete} (indexed=${m.search.indexed} excluded=${m.search.excluded} unsearchable=${m.search.unsearchable} failed=${m.search.failed}) unattached=${m.search.unfinished} artifacts=${m.search.derivation_artifacts_complete} complete/${m.search.derivation_artifacts_building} building`);
         const health = m.loops.map((l) => loopHealth(l, m));

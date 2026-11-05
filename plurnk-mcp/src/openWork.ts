@@ -497,7 +497,7 @@ export class OpenWorkCoordinator {
         if (workspaceId === null || !isRecord(params)) return;
         if (method === "log/entry") {
             const entry = isRecord(params.entry) ? params.entry : params;
-            if (entry.op === "WAIT" && (entry.status_rx === 202 || entry.status_rx === 102) && entry.origin === "model") {
+            if (entry.op === "wait" && (entry.status_rx === 202 || entry.status_rx === 102) && entry.origin === "model") {
                 const loopId = typeof entry.loop_id === "number" ? entry.loop_id : undefined;
                 const sessionId = typeof entry.session_id === "number" ? entry.session_id : undefined;
                 for (const waiter of this.#pending.values()) {
@@ -507,7 +507,7 @@ export class OpenWorkCoordinator {
                 }
                 return;
             }
-            if ((entry.op !== "SEND" && entry.op !== "DONE" && entry.op !== "FAIL") || entry.status_rx !== 200 || !isRecord(entry.rx)) return;
+            if ((entry.op !== "send" && entry.op !== "done" && entry.op !== "fail") || entry.status_rx !== 200 || !isRecord(entry.rx)) return;
             const tx = isRecord(entry.tx) ? entry.tx : {};
             const txBody = typeof tx.body === "string"
                 ? tx.body

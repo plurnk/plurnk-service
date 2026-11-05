@@ -167,7 +167,7 @@ test("{§executor-discovery} rejects incomplete, ambiguous, and typo-bearing dec
 });
 
 test("{§executor-discovery} literal nested programs remain body text in generated invocations", () => {
-    const value = { body: { role: "query", required: true }, example: { body: "````READ (elsewhere)````" } };
+    const value = { body: { role: "query", required: true }, example: { body: "await plurnk.read({ path: \"elsewhere\" });" } };
     assert.equal(assertInvocation(value).example?.body, value.example.body);
 });
 
@@ -271,7 +271,7 @@ test("{§executor-discovery} validates one closed set of exact literal targets",
                 },
             }],
         }, "@plurnk/plurnk-mcp", "gitea"),
-        /target 'issue<read' must render one valid executor fence/,
+        /target 'issue<read' must render one valid executor call/,
     );
     assert.throws(
         () => RuntimeInvocation.assertToolRegistry({

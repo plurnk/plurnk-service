@@ -15,18 +15,14 @@ with the current time in the effective zone and previews the first occurrences,
 and whose definition carries the rule as it would be stored. Nothing is
 persisted.
 
-```plurnk (schedule) <!-- what time is it, and when would this fire -->
-{"discover": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20"}
-```
+await plurnk.schedule({ discover: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20" }); // what time is it, and when would this fire
 
 ## add
 
 `add` persists the rule for this workspace and arms its next occurrence, if any.
 It is a host effect and requires approval.
 
-```plurnk (schedule)
-{"alias": "daily", "rule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20", "target": "session://exampleSessionName", "prompt": "Text delivered at each occurrence."}
-```
+await plurnk.schedule({ alias: "daily", rule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20", target: "session://exampleSessionName", prompt: "Text delivered at each occurrence." });
 
 - `rule`: bare `FREQ=…` parts, or a `DTSTART` line and an `RRULE` line. A
   workspace rule ends: it carries `COUNT` or `UNTIL`. Without a `DTSTART` the

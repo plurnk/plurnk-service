@@ -238,14 +238,14 @@ test("{§digest-forensic-fidelity}: a loop that concluded under a binding budget
         rx, mimetype_rx: "application/json", status_rx, state: "resolved", outcome: null, initial_folded: "[]", projection_active: 1 as const, projection_folded: "[]",
     });
     const capacity = [
-        row(1, "model", "READ", 413, problem("engine/context/result-exceeds-budget", 413, "106 lines, 2303 tokens; 1073 tokens remain: 42 lines delivered; READ a range, or KILL first.")),
-        row(2, "_plurnk", "error", 413, problem("engine/context/packet-exceeds-budget", 413, "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn.")),
+        row(1, "model", "read", 413, problem("engine/context/result-exceeds-budget", 413, "106 lines, 2303 tokens; 1073 tokens remain: 42 lines delivered; plurnk.read a range, or plurnk.kill first.")),
+        row(2, "_plurnk", "error", 413, problem("engine/context/packet-exceeds-budget", 413, "Context exceeds budget. YOU MUST ONLY emit plurnk.kill, plurnk.move or plurnk.note this turn.")),
     ];
     const executor = [
-        row(1, "_plurnk", "READ", 500, problem("executor/sh/spawn-failed", 500, "Could not start sh.")),
-        row(2, "_plurnk", "READ", 500, problem("executor/sh/spawn-failed", 500, "Could not start sh.")),
+        row(1, "_plurnk", "read", 500, problem("executor/sh/spawn-failed", 500, "Could not start sh.")),
+        row(2, "_plurnk", "read", 500, problem("executor/sh/spawn-failed", 500, "Could not start sh.")),
     ];
-    const refusal = row(3, "model", "FIND", 400, problem("scheme/log/kill-failed", 400, "The log target 'garbage' is malformed."));
+    const refusal = row(3, "model", "find", 400, problem("scheme/log/kill-failed", 400, "The log target 'garbage' is malformed."));
     const render = async (name: string, logEntries: ReturnType<typeof row>[]): Promise<string> => {
         const digestDir = join(root, name);
         const dbPath = join(root, `${name}.db`);

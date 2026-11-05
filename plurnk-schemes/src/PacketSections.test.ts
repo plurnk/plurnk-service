@@ -110,10 +110,10 @@ test("{§message-source-scheme} MessageScheme resolves read addresses, refuses w
 
     const position = { line: 1, column: 1 };
     assert.deepEqual(await scheme.prepareRepresentation({ target, metadata: null, authority: "alice", pathname: "/msg(1)" }, ctx), { status: 200 });
-    assert.deepEqual(await scheme.prepareFind({ op: "FIND", target, lineMarker: null, matcher: null, metadata: null, aside: null, body: null, position }, ctx), { status: 200 });
+    assert.deepEqual(await scheme.prepareFind({ op: "find", target, lineMarker: null, matcher: null, metadata: null, aside: null, body: null, position }, ctx), { status: 200 });
     assert.deepEqual(prepared, [target.raw, undefined]);
 
-    assert.deepEqual(await scheme.send({ op: "SEND", target, lineMarker: null, metadata: null, aside: null, body: null, position }, ctx), { status: 200 });
+    assert.deepEqual(await scheme.send({ op: "send", target, lineMarker: null, metadata: null, aside: null, body: null, position }, ctx), { status: 200 });
     assert.equal(replied, true);
 });
 

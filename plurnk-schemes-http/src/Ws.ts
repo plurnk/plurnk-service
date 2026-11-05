@@ -461,31 +461,31 @@ export default class Ws implements SchemeHandler {
                 },
             );
         }
-        const open = this.#openFor(statement.target, ctx, "EDIT");
+        const open = this.#openFor(statement.target, ctx, "edit");
         if (!open.ok) return open.result;
-        return Ws.#propose("EDIT", statement.target, statement.body ?? "");
+        return Ws.#propose("edit", statement.target, statement.body ?? "");
     }
 
-    // {§op-shapes} — SEND is messaging; a KILL closes the owner.
+    // {§op-shapes} — send is messaging; a kill closes the owner.
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (statement.metadata !== null) return Ws.#metadataUnsupported();
         if (statement.target === null || statement.target.kind !== "url") {
-            return Ws.#bad(400, "bad-target", "SEND requires a ws(s):// URL target.", {
+            return Ws.#bad(400, "bad-target", "send requires a ws(s):// URL target.", {
                 stage: "target-validation",
                 recovery: "Provide a ws(s):// URL target.",
                 retryable: false,
             });
         }
-        const open = this.#openFor(statement.target, ctx, "SEND");
+        const open = this.#openFor(statement.target, ctx, "send");
         if (!open.ok) return open.result;
-        return Ws.#propose("SEND", statement.target, statement.body?.raw ?? "");
+        return Ws.#propose("send", statement.target, statement.body?.raw ?? "");
     }
 
-    // {§http-manifest} — a frame is data leaving the process, so EDIT and SEND propose
+    // {§http-manifest} — a frame is data leaving the process, so edit and send propose
     // and write on the settlement. The socket is live, so this admission runs twice: once before
     // the proposal, so nobody is asked to approve a frame on a socket that is not open, and again
     // at apply, because it may have closed while the question was open.
-    static #propose(operation: "EDIT" | "SEND", target: UrlPath, body: string): ProposalResult {
+    static #propose(operation: "edit" | "send", target: UrlPath, body: string): ProposalResult {
         return {
             shape: "proposal",
             status: 202,
@@ -503,7 +503,7 @@ export default class Ws implements SchemeHandler {
         const url = Validator.assertParsedPath(target);
         if (url.kind !== "url") throw new Error("A WebSocket proposal's target is a URL.");
         // This scheme proposes exactly two operations; a settlement never widens that set.
-        if (operation !== "EDIT" && operation !== "SEND") {
+        if (operation !== "edit" && operation !== "send") {
             throw new Error(`A WebSocket proposal named an operation this scheme never proposes: ${String(operation)}.`);
         }
         const body = request.body ?? (typeof attrs.body === "string" ? attrs.body : "");
@@ -513,7 +513,7 @@ export default class Ws implements SchemeHandler {
     #openFor(
         target: UrlPath,
         ctx: SchemeCtx,
-        operation: "EDIT" | "SEND",
+        operation: "edit" | "send",
     ): OpenSocket {
         const address = Ws.#address(target);
         if (!(address instanceof NetworkAddress)) return { ok: false, result: address };
@@ -559,7 +559,7 @@ export default class Ws implements SchemeHandler {
         target: UrlPath,
         body: string,
         ctx: SchemeCtx,
-        operation: "EDIT" | "SEND",
+        operation: "edit" | "send",
     ): Promise<PassthroughResult> {
         const open = this.#openFor(target, ctx, operation);
         if (!open.ok) return open.result;

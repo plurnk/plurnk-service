@@ -119,7 +119,7 @@ export const editCensus = (m: DigestModel): { bySession: Map<number, EditCensus>
             census.forms[form] = (census.forms[form] ?? 0) + 1;
             if (row.status_rx >= 400) census.refused += 1;
             const at = ordinal.get(row.turn_id);
-            if (at === undefined) throw new TypeError(`EDIT ${row.id} sits on a turn no model produced`);
+            if (at === undefined) throw new TypeError(`edit ${row.id} sits on a turn no model produced`);
             if (row.pathname !== null) {
                 const previous = lastEdited.get(row.pathname);
                 if (previous !== undefined && previous < at && at - previous <= 2) { census.revisits += 1; revisitById.add(row.id); }

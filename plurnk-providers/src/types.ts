@@ -205,8 +205,6 @@ export interface ProviderAssistant<TFinish extends ProviderAttemptFinishReason =
     readonly reasoning: string | null;
     readonly finishReason: TFinish;
     readonly model: string;
-    // {§provider-failure-normalization}: unexecuted structured calls, independently of the finish reason.
-    readonly nativeToolCalls?: boolean;
     // Per-token logprobs, present only when PLURNK_PROVIDERS_TOP_LOGPROBS is set
     // AND the backend returned them. Absent otherwise — NEVER synthesized. Opt-in,
     // per-alias: a scraping alias enables it; serving turns carry nothing.

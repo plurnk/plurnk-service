@@ -249,5 +249,17 @@ test("{§provider-interface}: an incomplete opener, later tags, and structured r
     assert.deepEqual(LeadingReasoning.project("<think>literal</think>", "native", LeadingReasoning.THINK), {
         content: "<think>literal</think>", reasoning: "native", projected: false,
     });
+    assert.deepEqual(
+        LeadingReasoning.project(
+            "<tool_call>\nawait plurnk.read({ path: \"a.ts\" });\n</tool_call>\nWait, check the card first.\n</think>\nawait plurnk.read({ path: \"b.ts\" });",
+            "Initial thought before tool_call.\n",
+            LeadingReasoning.THINK,
+        ),
+        {
+            content: "await plurnk.read({ path: \"b.ts\" });",
+            reasoning: "Initial thought before tool_call.\n<tool_call>\nawait plurnk.read({ path: \"a.ts\" });\n</tool_call>\nWait, check the card first.\n",
+            projected: true,
+        },
+    );
 });
 }

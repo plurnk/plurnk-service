@@ -32,7 +32,7 @@ const makeEvidence = (rows: Partial<EvidenceRows>, packets = new Map<number, Evi
 });
 
 const SYSTEM = "You are the analyst. Keep the system prompt byte-identical across turns.";
-const LOG = ["1: READ docs/a.md", "2: READ docs/b.md", "3: EDIT docs/a.md"];
+const LOG = ["1: read docs/a.md", "2: read docs/b.md", "3: edit docs/a.md"];
 
 const makePacket = (turn: number, systemContent = SYSTEM): EvidencePacket => {
     const userContent = `## Log\n\n${LOG.slice(0, turn).join("\n")}`;

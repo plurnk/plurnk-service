@@ -166,7 +166,7 @@ export type RuntimeInvocation = RuntimeInvocationShape & (
         readonly inputSchema?: never;
     }
     | {
-        readonly example?: never;
+        readonly example?: RuntimeInvocationExample;
         readonly signature?: never;
         readonly inputSchema: JsonSchema;
     }

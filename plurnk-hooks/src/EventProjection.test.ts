@@ -5,7 +5,7 @@ import EventProjection from "./EventProjection.ts";
 
 const started: ApplicationOperationEvent = {
     sessionId: 7, loopId: 9, turnId: 11, sequence: 2, origin: "model", projectRoot: "/project", phase: "started",
-    statement: { op: "READ", target: { kind: "local", raw: "README.md" },
+    statement: { op: "read", target: { kind: "local", raw: "README.md" },
         aside: null, metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION },
 };
 
@@ -21,7 +21,7 @@ test("{§hooks-event-projection} operation phase/status select hooks without tre
             }
             assert.deepEqual(event, {
                 hook_event_name: status >= 400 ? "PostToolUseFailure" : "PostToolUse",
-                session_id: "7", cwd: "/project", tool_use_id: "11/2", tool_name: "READ",
+                session_id: "7", cwd: "/project", tool_use_id: "11/2", tool_name: "read",
                 tool_input: started.statement, tool_response: result,
                 plurnk: { workspaceId: 42, method: "operation/event", params },
             });
@@ -31,7 +31,7 @@ test("{§hooks-event-projection} operation phase/status select hooks without tre
     assert.equal(headless?.hook_event_name, "PreToolUse");
     assert.equal(Object.hasOwn(headless, "cwd"), false);
     assert.equal(Object.hasOwn(headless, "tool_response"), false);
-    assert.equal(EventProjection.project(42, "log/entry", { entry: { op: "READ" } }), null);
+    assert.equal(EventProjection.project(42, "log/entry", { entry: { op: "read" } }), null);
     assert.equal(EventProjection.project(42, "stream/concluded", { result: { status: 200 } }), null);
 });
 

@@ -1,14 +1,12 @@
 # mcp
 
 An MCP server publishes tools, and an enabled server is a runtime here under
-its own name. A tool runs the way `sh` or `js` runs: a fenced call names the
-server and the tool, and its body is the tool's JSON arguments.
+its own name. A tool runs as a statement naming the
+server and the tool with its JSON arguments:
 
-```files (list_directory) <!-- server (tool) -->
-{"path": "/absolute/project/path"}
-```
+await files.list_directory({ path: "/absolute/project/path" });
 
-One fenced call runs one tool, and the result is that call's output.
+One statement runs one tool, and the result is that call's output.
 `mcp:///<server>.md` lists a server's invocations and their
 required top-level inputs; each invocation links to the complete raw input
 schema. Its sibling `<server>.json` contains `{"tools":[...]}` with complete
@@ -16,12 +14,11 @@ tool definitions, including input/output schemas, descriptions, and annotations.
 Both documents reflect the same enabled tools. JSONPath selects individual
 definitions without reading the whole catalog:
 
-```READ (mcp:///files.json) $.tools[?(@.name=="list_directory")]
-```
+await plurnk.read({ path: "mcp:///files.json", pattern: "$.tools[?(@.name==\"list_directory\")]" });
 
-The turn-0 `plurnk (mcp)` receipt shows every server, including disabled
+The turn-0 `plurnk.mcp` receipt shows every server, including disabled
 ones and unavailable ones with their exact Problem; `enable` turns a server on,
-and `FIND (mcp:///*.md)` surveys active servers' Markdown documents. An unavailable server's Problem
+and `await plurnk.find({ path: "mcp:///*.md" });` surveys active servers' Markdown documents. An unavailable server's Problem
 reports elapsed preparation time, its configured timeout, and any bounded,
 redacted connection diagnostic or session stderr available to the host.
 
@@ -35,9 +32,7 @@ exact definition to add. Discovery never persists or enables anything.
 state. It is a host effect, subject to approval. Inspect that state:
 saved configuration does not imply a connected server.
 
-```plurnk (mcp)
-{"alias": "files", "type": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"]}
-```
+await plurnk.mcp({ alias: "files", type: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"] });
 
 A complete definition names `alias` and one transport: `stdio` has `command` and optional
 `args`, `env`, `cwd`; `streamable-http` has `url` and optional `headers`,
@@ -70,8 +65,8 @@ own workspace). Read-only host variables `PLURNK_WORKSPACE`, `PLURNK_SESSION`
 (when bound), `PLURNK_PROJECT_ROOT` (when present), and `PLURNK_STATE_DIR` are
 available to `${NAME}` expansion and `stdio` subprocesses. Inbound
 `sampling/createMessage` requests arrive as Open Messages at
-`<server>:///messages/<id>` and are answered with `DONE` (or declined with
-`FAIL`); subscribable resources (`READ (<server>:///resources/<uri>)`) open
+`<server>:///messages/<id>` and are answered with `plurnk.done` (or declined with
+`plurnk.fail`); subscribable resources (`await plurnk.read({ path: "<server>:///resources/<uri>" });`) open
 a stream that wakes the session when `notifications/resources/updated` arrives.
 
 Installed Agent Plugins contribute servers from their root `mcp.json` through
@@ -84,14 +79,12 @@ source. A complete workspace override replaces these plugin semantics too.
 
 A local server's inherited environment excludes Plurnk settings and model
 provider keys; explicit definition bindings are separate.
-Workspace variables set with `plurnk (env)` (`mcp:///plurnk/env.json`) apply on top at
+Workspace variables set with `plurnk.env` (`mcp:///plurnk/env.json`) apply on top at
 every server launch; session-local overrides do not. A running server keeps its
 launch environment; `disable` then `enable` restarts it with the current
 workspace values, without a daemon restart.
 
-```plurnk (env)
-{"scope": "workspace", "alias": "SERVICE_TOKEN", "value": "<credential>"}
-```
+`await plurnk.env({ scope: "workspace", alias: "SERVICE_TOKEN", value: "<credential>" });`
 
 Native definitions resolve `${NAME}` once against the operator's environment
 with workspace values and masks applied, in arguments, environment values,
@@ -106,9 +99,7 @@ Structured authorization secrets must be references, not literal credentials.
 
 For an OAuth server, start by adding its URL; the client supplies the callback.
 
-```plurnk (mcp)
-{"alias": "remote", "type": "streamable-http", "url": "https://example.com/mcp"}
-```
+`await plurnk.mcp({ alias: "remote", type: "streamable-http", url: "https://example.com/mcp" });`
 
 When a server requires OAuth sign-in, Plurnk notifies the user in the client and
 holds `add`, `replace`, or `enable` until sign-in completes. Once the operation

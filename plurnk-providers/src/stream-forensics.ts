@@ -300,6 +300,11 @@ export const extractFromAssistantMessage = (message: AssistantMessage | undefine
             });
         }
     }
+    const closeThink = content.indexOf("</think>");
+    if (reasoning.length > 0 && closeThink !== -1 && !content.slice(0, closeThink).includes("<think>")) {
+        reasoning += content.slice(0, closeThink);
+        content = content.slice(closeThink + "</think>".length).replace(/^\r?\n+/u, "");
+    }
     const normalized = normalizeStopReason(message.stopReason, message.rawStopReason);
     const finishReason = (normalized.finishReason === "error" || normalized.finishReason === "length")
         && toolCalls.length === 0

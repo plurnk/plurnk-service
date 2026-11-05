@@ -20,7 +20,7 @@ A `project` skill shadows a `plurnk` one of the same name, which shadows an
 `xdg-global` one, which shadows a `global` one, which shadows a `service` one. Plugin skills join their installation's
 scope after standalone skills; npm bundles follow global roots. These are read-only inputs.
 The cascading environment can replace a whole definition above them;
-`plurnk (skills)` creates a workspace override above that. Declared skills are
+`plurnk.skills` creates a workspace override above that. Declared skills are
 enabled by default. A disabled skill remains listed but has no resource tree.
 
 ```sh
@@ -36,33 +36,26 @@ independently of the definition; an empty definition is invalid.
 
 ## Reading a skill
 
-The instructions are the skill: `READ (skill://<name>/SKILL.md)` for the
-procedure and `FIND (skill://<name>/**)` for its files. Scripts run with their
-registered executor, for example `js (skill://<name>/scripts/program.js)` with
-any arguments in the fence body, subject to ordinary operation approval. Skill
+The instructions are the skill: `await plurnk.read({ path: "skill://<name>/SKILL.md" });` for the
+procedure and `await plurnk.find({ path: "skill://<name>/**" });` for its files. Scripts run with their
+registered executor, for example `await plurnk.js({ path: "skill://<name>/scripts/program.js", args: ["..."] });`,
+subject to ordinary operation approval. Skill
 resources are read-only through `skill://`.
 
 ## Authoring a skill
 
-Author or revise a project skill directly in the filesystem with `EDIT` (and
-retire it with `KILL`), never `sh`:
+Author or revise a project skill directly in the filesystem with `plurnk.edit` (and
+retire it with `plurnk.kill`), never `sh`:
 
-```EDIT (.agents/skills/code-review/SKILL.md)
----
-name: code-review
-description: Check diffs for contract, test, and migration regressions.
----
-
-Inspect changed files against the owning `SPEC.md` before approving.
-```
+await plurnk.edit({ path: ".agents/skills/code-review/SKILL.md", content: "---\nname: code-review\ndescription: Check diffs for contract, test, and migration regressions.\n---\n\nInspect changed files against the owning `SPEC.md` before approving." });
 
 Companion scripts, references, and assets live beside `SKILL.md` under
-`.agents/skills/<name>/` and accept normal `<@hash>` regional `EDIT`s. To author
+`.agents/skills/<name>/` and accept normal `@hash` regional `plurnk.edit` calls. To author
 a user-wide skill under `~/.config/plurnk/skills/<name>/SKILL.md` (or
 `~/.agents/skills/<name>/SKILL.md`), admit the directory with
-`plurnk (members)` first. The service rescans standard skill roots before
+`plurnk.members` first. The service rescans standard skill roots before
 every turn and hot-loads created, edited, or removed skills into
-`skill://<name>/` automatically without `plurnk (skills)`.
+`skill://<name>/` automatically without `plurnk.skills`.
 
 ## discover
 
@@ -76,9 +69,7 @@ archive. Discovery never installs anything.
 
 `add` binds one skill from its source to this workspace and enables it:
 
-```plurnk (skills) <!-- from a discover candidate -->
-{"alias": "sql-formatter", "source": "https://git.example/acme/skills.git"}
-```
+`await plurnk.skills({ alias: "sql-formatter", source: "https://git.example/acme/skills.git" }); // from a discover candidate`
 
 The alias must equal the skill's standard `name`, which selects it from a source
 carrying several. Local folders and their `SKILL.md` files stay live references:

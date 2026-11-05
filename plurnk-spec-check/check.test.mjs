@@ -237,7 +237,7 @@ test("{§spec-check-tags} a heading-looking line in a fenced block does not decl
 
 test("{§spec-check-tags} a backtick code span at column zero does not hide subsequent declarations", () => {
     const files = [{ name: "alpha/SPEC.md", text: [
-        "```READ (notes.md)```",
+        "```await plurnk.read({ path: \"notes.md\" });```",
         "",
         `## ${declare("after-span")} The following contract remains visible`,
         "",

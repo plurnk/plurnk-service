@@ -945,15 +945,15 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
         const createdWs = workspaces.find((ws) => ws.name === "matrix-room")!;
         assert.ok(createdWs);
 
-        // Emit progressive chunk (no completion) then final DONE
+        // Emit progressive chunk (no completion) then final done
         listener!(createdWs.id, "log/entry", {
-            op: "SEND",
+            op: "send",
             status_rx: 200,
             rx: { repliedTo: ["telegram:///messages/msg-1"] },
             tx: { body: "Part 1." },
         });
         listener!(createdWs.id, "log/entry", {
-            op: "DONE",
+            op: "done",
             status_rx: 200,
             rx: { completion: 200, repliedTo: ["telegram:///messages/msg-1"] },
             tx: { body: "All green." },
@@ -967,7 +967,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
             stopReason: "endTurn",
         });
 
-        // 2. Rejects when FAIL declines the message
+        // 2. Rejects when fail declines the message
         const declinedPromise = coordinator.sample({
             server: "telegram",
             binding: {
@@ -985,7 +985,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
         });
         await delay(10);
         listener!(1, "log/entry", {
-            op: "FAIL",
+            op: "fail",
             status_rx: 200,
             rx: { completion: 499, repliedTo: ["telegram:///messages/msg-2"] },
             tx: { body: "Cannot fulfill request." },
@@ -1095,7 +1095,7 @@ test("{§mcp-open-work} OpenWorkCoordinator admits sampling/createMessage as an 
         assert.equal(selectedAlias, "sonnet");
         assert.equal(admittedMessages.at(-1)?.body, "Summarize:\n\n[tool_result: call-1]\nStatus: OK");
         listener!(1, "log/entry", {
-            op: "SEND",
+            op: "send",
             status_rx: 200,
             rx: { completion: 200, repliedTo: ["telegram:///messages/msg-4"] },
             tx: { body: "Summary complete.<STOP>Extra trailing text" },

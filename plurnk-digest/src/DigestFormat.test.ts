@@ -6,7 +6,7 @@ test("{§share-packet-names}: readable requests retain roles, order and complete
     const messages = [
         { role: "system" as const, content: "Rules\n" },
         { role: "user" as const, content: "## Log\n\n1: ## 3. assistant" },
-        { role: "assistant" as const, content: "````EDIT (a.md)\n```NOTE\nLiteral nested example\n```\n````" },
+        { role: "assistant" as const, content: "await plurnk.edit({ path: \"a.md\", content: \"```ts\\nawait plurnk.note({ text: \\\"Literal nested example\\\" });\\n```\\n\" });" },
         { role: "user" as const, content: "## Session\n{}" },
     ];
     const rendered = DigestRender.request(messages);
@@ -22,11 +22,11 @@ test("{§provider-failure-normalization} the digest reads a blank emission from 
         content: "", reasoning: "Let me read it.",
         wire: {
             chunks: 8, emptyChunks: 4, fields: { reasoning_content: 1, tool_calls: 2, refusal: 1 }, channels: { refusal: "no" },
-            toolCalls: [{ index: 0, id: "call-1", type: "function", name: "READ", arguments: "{\"path\": \"django/views/debug.py\"}" }],
+            toolCalls: [{ index: 0, id: "call-1", type: "function", name: "read", arguments: "{\"path\": \"django/views/debug.py\"}" }],
             finishReasons: ["stop"],
         },
     });
-    assert.equal(line, "  ↳ wire: 8 chunks, 4 carried nothing, reasoning_content×1, tool_calls×2, refusal×1, tool call READ({\"path\": \"django/views/debug.py\"}), refusal: no");
+    assert.equal(line, "  ↳ wire: 8 chunks, 4 carried nothing, reasoning_content×1, tool_calls×2, refusal×1, tool call read({\"path\": \"django/views/debug.py\"}), refusal: no");
     assert.equal(DigestRender.wireLine({ content: "" }), null, "a record without a wire says nothing about it");
     assert.equal(DigestRender.wireLine({ wire: { chunks: 1, unmappedChunks: [{ type: "message", content: [] }] } }),
         "  ↳ wire: 1 chunks, 1 unmapped frames retained", "unmapped native envelopes are not reported as empty");

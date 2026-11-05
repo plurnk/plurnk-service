@@ -215,7 +215,7 @@ export default class RuntimeInvocation {
             position: UNKNOWN_POSITION,
         }]);
         if (!oneExecSection(source, runtime, example.target)) {
-            fail("invocation.example must render one valid executor fence");
+            fail("invocation.example must render one valid executor call");
         }
 
         return { ...shape, example };
@@ -259,7 +259,7 @@ export default class RuntimeInvocation {
                 position: UNKNOWN_POSITION,
             }]);
             if (!oneExecSection(targetCheckSource, runtime, exactTarget)) {
-                fail(`tool registry.tools[${index}] target '${exactTarget}' must render one valid executor fence`);
+                fail(`tool registry.tools[${index}] target '${exactTarget}' must render one valid executor call`);
             }
             const invocation = RuntimeInvocation.assert(tool.invocation, packageName, runtime);
             if (

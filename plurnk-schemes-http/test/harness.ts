@@ -205,20 +205,20 @@ export const readStmt = (
     lineMarker: ReadStatement["lineMarker"] = null,
     metadata: ReadStatement["metadata"] = null,
 ): ReadStatement => ({
-    op: "READ", aside: null, target, metadata, lineMarker, matcher: null, body: null,
+    op: "read", aside: null, target, metadata, lineMarker, matcher: null, body: null,
     position: { line: 0, column: 0 },
 });
 export const sendStmt = (target: UrlPath | null, body?: string, metadata: SendStatement["metadata"] = null): SendStatement => ({
-    op: "SEND", aside: null, target, metadata, lineMarker: null,
+    op: "send", aside: null, target, metadata, lineMarker: null,
     body: body === undefined ? null : { raw: body, json: null },
     position: { line: 0, column: 0 },
 });
 export const editStmt = (target: UrlPath | null, body: string | null, lineMarker: ResolvedEditStatement["lineMarker"] = null, metadata: ResolvedEditStatement["metadata"] = null): ResolvedEditStatement => ({
-    op: "EDIT", aside: null, target, metadata, lineMarker, matcher: null, body,
+    op: "edit", aside: null, target, metadata, lineMarker, matcher: null, body,
     position: { line: 0, column: 0 },
 });
 export const killStmt = (target: UrlPath | null, matcher: KillStatement["matcher"] = null, metadata: KillStatement["metadata"] = null): KillStatement => ({
-    op: "KILL", aside: null, target, metadata, lineMarker: null, matcher, body: null,
+    op: "kill", aside: null, target, metadata, lineMarker: null, matcher, body: null,
     position: { line: 0, column: 0 },
 });
 export const settle = async (http: Http, ctx: SchemeCtx, metadata: readonly string[] | null, result: SchemeResult): Promise<SchemeResult> => {
@@ -236,7 +236,7 @@ export const httpEdit = (statement: ResolvedEditStatement, ctx: SchemeCtx): Prom
 export const httpKill = (statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult> => killSettled(new Http(), statement, ctx);
 
 export const findStmt = (target: UrlPath | null, matcher: FindStatement["matcher"] = null, metadata: FindStatement["metadata"] = null): FindStatement => ({
-    op: "FIND", aside: null, target, metadata, lineMarker: null, matcher, body: null,
+    op: "find", aside: null, target, metadata, lineMarker: null, matcher, body: null,
     position: { line: 0, column: 0 },
 });
 export const prepareExactFind = (http: Http, statement: FindStatement, ctx: SchemeCtx): Promise<RepresentationPreparationResult> => {

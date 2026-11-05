@@ -193,15 +193,15 @@ const wss = (raw: string, pathname: string): UrlPath => {
         pathname, query: url.search === "" ? null : url.search.slice(1), fragment: null,
     };
 };
-const readStmt = (target: UrlPath): ReadStatement => ({ op: "READ", aside: null, target, metadata: null, lineMarker: null, matcher: null, body: null, position: { line: 0, column: 0 } });
+const readStmt = (target: UrlPath): ReadStatement => ({ op: "read", aside: null, target, metadata: null, lineMarker: null, matcher: null, body: null, position: { line: 0, column: 0 } });
 const editStmt = (
     target: UrlPath,
     body: string | null,
     lineMarker: ResolvedEditStatement["lineMarker"] = null,
-): ResolvedEditStatement => ({ op: "EDIT", aside: null, target, metadata: null, lineMarker, matcher: null, body, position: { line: 0, column: 0 } });
+): ResolvedEditStatement => ({ op: "edit", aside: null, target, metadata: null, lineMarker, matcher: null, body, position: { line: 0, column: 0 } });
 const prepareRepresentation = (ws: Ws, statement: ReadStatement, ctx: SchemeCtx) => {
     const target = statement.target;
-    if (target === null || target.kind !== "url") throw new TypeError("WebSocket READ requires a URL target");
+    if (target === null || target.kind !== "url") throw new TypeError("WebSocket read requires a URL target");
     const address = NetworkAddress.from(target);
     return ws.prepareRepresentation({
         target: { ...target, fragment: null },
@@ -210,8 +210,8 @@ const prepareRepresentation = (ws: Ws, statement: ReadStatement, ctx: SchemeCtx)
         pathname: address.pathname,
     }, ctx);
 };
-const sendStmt = (target: UrlPath, body?: string): SendStatement => ({ op: "SEND", aside: null, target, metadata: null, lineMarker: null, body: body === undefined ? null : { raw: body, json: null }, position: { line: 0, column: 0 } });
-const killStmt = (target: UrlPath): KillStatement => ({ op: "KILL", aside: null, target, metadata: null, lineMarker: null, matcher: null, body: null, position: { line: 0, column: 0 } });
+const sendStmt = (target: UrlPath, body?: string): SendStatement => ({ op: "send", aside: null, target, metadata: null, lineMarker: null, body: body === undefined ? null : { raw: body, json: null }, position: { line: 0, column: 0 } });
+const killStmt = (target: UrlPath): KillStatement => ({ op: "kill", aside: null, target, metadata: null, lineMarker: null, matcher: null, body: null, position: { line: 0, column: 0 } });
 
 // {§http-manifest} — a frame is data leaving the process, so EDIT and SEND propose. A test
 // that means to observe the FRAME settles the proposal the way the dispatcher does on accept; a
@@ -240,7 +240,7 @@ test("{§ws-lifecycle} manifest: documentation is loaded verbatim from docs/wss.
     assert.equal(Ws.manifest.documentation, fromFile);
     assert.match(Ws.manifest.documentation ?? "", /^# wss:\/\//);
     assert.match(Ws.manifest.documentation ?? "", /^## Summary$/m);
-    for (const op of ["READ", "EDIT", "SEND"]) assert.ok(fromFile.includes(`\`\`\`${op} (`), `${op} remains illustrated in the discoverable reference`);
+    for (const op of ["read", "edit", "send"]) assert.ok(fromFile.includes(`await plurnk.${op}(`), `${op.toUpperCase()} remains illustrated in the discoverable reference`);
 });
 
 test("{§ws-lifecycle} READ: inbound frames stream into messages; socket close settles done", async () => {
@@ -1040,8 +1040,8 @@ test("{§http-manifest} EDIT and SEND propose with the host effect, and no frame
     await flush();
 
     const cases = [
-        ["SEND", () => ws.send(sendStmt(target, "payload"), ctx)],
-        ["EDIT", () => ws.editBatch([editStmt(target, "payload")], ctx)],
+        ["send", () => ws.send(sendStmt(target, "payload"), ctx)],
+        ["edit", () => ws.editBatch([editStmt(target, "payload")], ctx)],
     ] as const;
     for (const [operation, propose] of cases) {
         const before = sock.sent.length;

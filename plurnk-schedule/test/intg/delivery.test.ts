@@ -77,7 +77,7 @@ const assertDelivery = async (sessionName: string): Promise<void> => {
         await terminated;
 
         const rows = await db.test_log_entries_by_loop.all({ loop_id: (await db.test_all_loops.all() as Array<{ id: number; session_id: number }>).find((loop) => loop.session_id === sessionId)!.id }) as LogRow[];
-        const arrivals = rows.filter((row) => row.op === "SEND" && row.origin === "_plurnk" && (JSON.parse(row.attrs) as { kind?: string }).kind === "message");
+        const arrivals = rows.filter((row) => row.op === "send" && row.origin === "_plurnk" && (JSON.parse(row.attrs) as { kind?: string }).kind === "message");
         assert.equal(arrivals.length, 1, "the delivery published exactly one arrival row");
         assert.equal(arrivals[0].source, "schedule://beat", "the arrival names the schedule as its causal source");
 
