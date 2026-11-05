@@ -82,7 +82,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "find",
         target: "find",
-        summary: "List matching paths, or match locations inside a path.",
+        summary: "List matching paths, or match locations inside a path; range pages results.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
@@ -236,7 +236,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "work",
         target: "work",
-        summary: "Delegate a task to a child session with a fresh log.",
+        summary: "Delegate a task to a session://<name> child session with a fresh log.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
@@ -256,7 +256,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "fork",
         target: "fork",
-        summary: "Delegate a task to a child session initialized with a copy of this session's log.",
+        summary: "Delegate a task to a session://<name> child session initialized with a copy of this session's log.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
@@ -315,13 +315,13 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "send",
         target: "send",
-        summary: "Deliver a progress update or send a message to a target session or stream.",
+        summary: "Deliver a continuing progress update, or send a message to a session://<name> or stream target.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
             required: ["text"],
             properties: {
-                target: { type: "string", description: "Optional recipient URI (e.g. \"session://child\" or \"message:///...\"); omit to send a progress update." },
+                target: { type: "string", description: "Optional recipient URI (e.g. \"session://child\" or \"message:///...\"); omit to send a continuing progress update." },
                 range: { type: "string", description: "Optional range when addressing a stream or resource." },
                 text: { type: "string", description: "Message text to deliver." },
                 metadata: METADATA_SCHEMA,

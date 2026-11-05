@@ -74,7 +74,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
     readonly scheme: ScheduleResources;
     readonly family = SCHEDULE_FAMILY;
     readonly namespaceOwner = SCHEDULE_OWNER;
-    readonly summary = "Manage scheduled activity";
+    readonly summary = "List ({}) or manage scheduled activity";
     readonly definitionSchema: JsonSchema = DEFINITION_SCHEMA;
     readonly example = {
         alias: "daily",

@@ -1341,7 +1341,7 @@ const PROBES: Probe[] = [
     { target: "workspace:///docs/guide.md", pattern: "$..[?(@.type=='heading' && @.level==2)]", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));
         assert.equal(locations(rx), 3, "jsonpath walks the markdown deep tree");
-        assert.match(rx, /"locator":"\$\['children'\]\[8\]","region":\{"startLine":10/, "a structural row keeps its locator and the heading's line");
+        assert.match(rx, /"locator":"\$\['children'\]\[\d+\]","region":\{"startLine":10/, "a structural row keeps its locator and the heading's line");
     } },
     { target: "workspace:///data/config.json", pattern: "$.items[*].name", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));

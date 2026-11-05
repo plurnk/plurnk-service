@@ -47,16 +47,20 @@ export const testDeferredProviderCapacity = (source = "core:test-fixture"): Prov
 // output policy. Conclusion fixtures stay viable as teaching grows; pressure
 // tests pin their own envelopes. Resolve the shipped percentage or an operator's
 // absolute through the production contract instead of reproducing its syntax.
-const [plurnkToolsDoc] = ToolResources.render({
+const plurnkToolDocs = ToolResources.render({
     runtime: plurnkRuntimeDecl.name,
     ...plurnkRuntimeDecl,
     details: plurnkRuntimeDecl.details ?? "",
     registry: { tools: [...ALL_CORE_OPERATION_TOOLS] },
 });
+const plurnkToolsDoc = plurnkToolDocs[0];
+const plurnkEditDoc = plurnkToolDocs.find(({ pathname }) => pathname === "/plurnk/edit.json");
 const _testInputCapacity = (
     contentWeight(await readFile(Paths.instructionsSystem, "utf8"))
     + contentWeight(await readFile(Paths.teachingSource(TEACHING_CORPUS.skill), "utf8"))
+    + contentWeight(await readFile(Paths.teachingSource(TEACHING_CORPUS.docs.pattern.source), "utf8"))
     + contentWeight(plurnkToolsDoc?.content ?? "")
+    + contentWeight(plurnkEditDoc?.content ?? "")
 ) * 3;
 
 let _viableWindow: number | undefined;

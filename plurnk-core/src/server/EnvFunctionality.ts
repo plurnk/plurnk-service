@@ -61,7 +61,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     readonly scheme: RuntimeSchemeFacet | undefined;
     readonly family = ENV_FAMILY;
     readonly namespaceOwner = ENV_OWNER;
-    readonly summary = "Manage environment variables";
+    readonly summary = "List ({}) or manage environment variables";
     readonly definitionSchema = DEFINITION;
     readonly scopes = ["session", "workspace"] as const;
     readonly aliasPattern = NAME;

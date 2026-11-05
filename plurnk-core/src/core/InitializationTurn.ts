@@ -164,7 +164,7 @@ export default class InitializationTurn {
         initializationPolicies: CapabilityPolicy[];
         filesItems: number;
     }): Promise<Array<FindStatement | ReadStatement | ExecStatement>> {
-        const { db, schemes, executors, workspaceId, sessionName, filesItems } = args;
+        const { db, schemes, executors, capabilities, workspaceId, sessionName, initializationPolicies, filesItems } = args;
         const catalogSchemes = await db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
         const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
         const mcpEntries = catalogSchemes.find(({ scheme }) => scheme === "mcp")?.entries ?? 0;
@@ -262,6 +262,10 @@ export default class InitializationTurn {
                 if (!canAutoRead()) return false;
                 const scheme = statement.target?.kind === "url" ? statement.target.scheme : "file";
                 if (scheme === "mcp") {
+                    if (statement.target?.kind === "url" && statement.target.pathname === "/plurnk/edit.json"
+                        && !capabilities.allowsCoreOperationAcross("edit", workspaceId, initializationPolicies)) {
+                        return false;
+                    }
                     return mcpEntries > 0 && schemes.get("mcp", workspaceId) !== undefined;
                 }
                 return schemes.get(scheme, workspaceId) !== undefined;
