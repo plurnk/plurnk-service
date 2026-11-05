@@ -79,7 +79,7 @@ export const plurnkRuntimeDecl: RuntimeDecl & { readonly glyph: string } = {
     glyph: "🔌",
     summary: {
         from: "tools",
-        description: "Manage workspace capabilities and ask the user questions.",
+        description: "Manage env, mcp, members, personas, schedule, and skills; ask the user questions.",
     },
     resourcesPath: "/tools",
     invocation: {
@@ -88,7 +88,7 @@ export const plurnkRuntimeDecl: RuntimeDecl & { readonly glyph: string } = {
         example: { target: "members", body: "{}" },
     },
     details: [
-        "Pass an empty body (or `{\"scope\": \"session\" | \"workspace\"}`) to list current definitions.",
+        "Pass an empty body (`{}`) to list current definitions.",
         "Pass `{\"discover\": \"...\"}` (or `{\"discover\": {...}}`) to search for candidates without installing them.",
         "Pass a definition object to add or update it (`add` / `replace` automatically).",
         "Pass `{\"alias\": \"...\", \"enabled\": true | false}` (or `\"file\"` for `members`) to enable or disable a definition.",
@@ -415,14 +415,27 @@ export default class FunctionalityManager extends BaseExecutor {
         return { tools };
     }
 
+    static #hasScope(entry: FunctionalityFamilyEntry): boolean {
+        const listProps = isRecord(entry.inputSchemas.list) && isRecord(entry.inputSchemas.list.properties)
+            ? entry.inputSchemas.list.properties
+            : null;
+        return listProps !== null && Object.hasOwn(listProps, "scope");
+    }
+
     static #resolveInvocation(
         entry: FunctionalityFamilyEntry,
         verbs: readonly FunctionalityVerb[],
-        parsed: Record<string, unknown> | null,
+        rawParsed: Record<string, unknown> | null,
     ): { verb: FunctionalityVerb; params: Record<string, unknown> } {
-        if (parsed === null) {
+        if (rawParsed === null) {
             return { verb: "list", params: {} };
         }
+        const parsed = !FunctionalityManager.#hasScope(entry) && rawParsed.scope === "workspace"
+            ? (() => {
+                const { scope: _scope, ...rest } = rawParsed;
+                return rest;
+            })()
+            : rawParsed;
         const keys = Object.keys(parsed);
         const nonScopeKeys = keys.filter((key) => key !== "scope");
         if (nonScopeKeys.length === 0) {
@@ -569,7 +582,11 @@ export default class FunctionalityManager extends BaseExecutor {
         const inProcessServers = entry.family === "mcp"
             ? (this.#executors?.()?.inProcessToolServers(this.#workspaceId) ?? [])
             : [];
-        const partialMcpList = verb === "list" && entry.family === "mcp" && refusal !== null && inProcessServers.length > 0;
+        const partialMcpList = verb === "list"
+            && entry.family === "mcp"
+            && refusal !== null
+            && refusal.status >= 500
+            && inProcessServers.length > 0;
         args.setState(CHANNEL, "active");
         const formatted = verb === "list" && (refusal === null || partialMcpList)
             ? FunctionalityManager.#formatListBody(
@@ -604,6 +621,7 @@ export default class FunctionalityManager extends BaseExecutor {
                     const detail = isRecord(item.detail) ? item.detail : null;
                     return {
                         alias: item.alias,
+                        ...(item.origin === undefined ? {} : { origin: item.origin }),
                         state: item.state,
                         ...(detail !== null && typeof detail.description === "string" ? { description: detail.description } : {}),
                         ...(detail !== null ? { docs: typeof detail.docs === "string" ? detail.docs : `mcp:///${String(item.alias)}.md` } : {}),
@@ -611,6 +629,7 @@ export default class FunctionalityManager extends BaseExecutor {
                         ...(detail !== null && typeof detail.resourceTemplates === "number" && detail.resourceTemplates > 0 ? { resourceTemplates: detail.resourceTemplates } : {}),
                         ...(detail !== null && typeof detail.prompts === "number" && detail.prompts > 0 ? { prompts: detail.prompts } : {}),
                         ...(detail !== null && Array.isArray(detail.skills) && detail.skills.length > 0 ? { skills: detail.skills } : {}),
+                        ...(item.provenance === undefined ? {} : { provenance: item.provenance }),
                         ...(item.authorization === undefined ? {} : { authorization: item.authorization }),
                         ...(item.problem === undefined ? {} : { problem: item.problem }),
                     };

@@ -758,13 +758,16 @@ test("{§functionality-model-projection} an empty target or body defaults to lis
     const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas });
     assert.equal((await manager.run(args("fx", "   ").args)).status, 200);
     assert.deepEqual(invocations.at(-1), { family: "fx", verb: "list", params: {}, caller: "operation" });
+    assert.equal((await manager.run(args("fx", '{"scope":"workspace"}').args)).status, 200);
+    assert.deepEqual(invocations.at(-1), { family: "fx", verb: "list", params: {}, caller: "operation" },
+        "a workspace-only family accepts redundant scope=workspace without forwarding an undeclared property");
     const refused = await manager.run(args("fx", "not json").args);
     assert.equal(refused.status, 400);
     assert.equal(refused.problem?.type, "https://problems.plurnk.xyz/functionality/arguments-not-json");
     const unknown = await manager.run(args("destroy", "{}").args);
     assert.equal(unknown.status, 400);
     assert.equal(unknown.problem?.type, "https://problems.plurnk.xyz/functionality/verb-unknown");
-    assert.equal(invocations.length, 1, "refusals never reach the coordinator");
+    assert.equal(invocations.length, 2, "refusals never reach the coordinator");
 });
 
 // {§functionality-coordinator} — the published manager closes over the coordinator; Core binds the invoking
