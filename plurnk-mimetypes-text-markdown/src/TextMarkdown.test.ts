@@ -305,6 +305,28 @@ describe("{§mimetype-query} structural dialects query the tree, regex the raw b
         assert.deepEqual(rows.map((m) => (m.matched as { text: string }).text), ["Build", "Testing", "Style"]);
         assert.deepEqual(rows.map((m) => m.regions?.[0]?.startLine), [5, 10, 14]);
     });
+
+    it("{§markdown-symbols} xpath and jsonpath select GFM table blocks with exact source regions", async () => {
+        const h = new TextMarkdown(metadata);
+        const withTable = [
+            "# Title",
+            "",
+            "## Table Section",
+            "",
+            "| Col A | Col B |",
+            "| --- | --- |",
+            "| 1 | 2 |",
+            "| 3 | 4 |",
+            "",
+            "After table.",
+        ].join("\n");
+        const xpathMatches = await h.query(withTable, "xpath", "//table");
+        assert.equal(xpathMatches.length, 1);
+        assert.deepEqual(xpathMatches[0].regions, [{ startLine: 5, startColumn: 1, endLine: 8, endColumn: 10 }]);
+        const jsonpathMatches = await h.query(withTable, "jsonpath", "$.children[?(@.type=='table')]");
+        assert.equal(jsonpathMatches.length, 1);
+        assert.deepEqual(jsonpathMatches[0].regions, [{ startLine: 5, startColumn: 1, endLine: 8, endColumn: 10 }]);
+    });
 });
 }
 

@@ -1,4 +1,4 @@
-import { Lexer, Tokenizer, type Token, type TokensList } from "marked";
+import { defaults, Lexer, Tokenizer, type Token, type TokensList } from "marked";
 import { TextCoordinates, type TextRegion } from "@plurnk/plurnk-mimetypes";
 
 const BLOCK_METHODS = ["space", "code", "fences", "heading", "hr", "blockquote", "list", "html", "def", "table", "lheading", "paragraph", "text"] as const;
@@ -26,7 +26,7 @@ export default class MarkdownSource extends Lexer {
                 return token;
             } });
         }
-        super({ tokenizer });
+        super({ ...defaults, tokenizer });
         this.#context = context;
         this.#starts = starts;
         this.#coordinates = new TextCoordinates(normalized);
