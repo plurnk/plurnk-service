@@ -114,7 +114,7 @@ WHERE id = $id
 -- PREP: envelope_list_workspace_prompts
 -- {§methods-workspace-create}: nonempty loop seeds a client addressed to a model session,
 -- newest-first, optionally one session's. Authorship is the seed message's address: a session-issued
--- seed (WORK, FORK, SEND to a session) carries none, so the model's own task prompts are not history
+-- seed (work, fork, send to a session) carries none, so the model's own task prompts are not history
 -- whichever session they seeded, and a human prompt at a forked session is.
 SELECT l.prompt
 FROM loops l

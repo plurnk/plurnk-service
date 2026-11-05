@@ -41,7 +41,7 @@ WHERE session_id = $session_id
   AND namespace_owner = $namespace_owner;
 
 -- INIT: sessions_inherit_module_state
--- {§functionality-coordinator} — a Session created with a parent (WORK and FORK alike) starts with a copy
+-- {§functionality-coordinator} — a Session created with a parent (work and fork alike) starts with a copy
 -- of the parent's session-scoped state, taken at creation: the child owns its copy, and neither
 -- side's later edits reach the other. Each copied entry names its source Session (`inherited`),
 -- preserved across generations, so `list` renders provenance rather than claiming the child set it.

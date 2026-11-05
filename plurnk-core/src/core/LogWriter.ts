@@ -114,7 +114,7 @@ export default class LogWriter {
         if ((isExecution(statement) || result.problem !== undefined) && seqs === undefined) {
             throw new Error(`Dispatcher.#writeLog: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
         }
-        if (statement.op === "READ") Results.assertReadResult(result);
+        if (statement.op === "read") Results.assertReadResult(result);
         const coordinate = seqs === undefined ? null : LogEntryProjection.coordinate(
             `${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`,
             { op: writtenOp(durableStatement), origin, tx: durableStatement, attrs: attrsObj },

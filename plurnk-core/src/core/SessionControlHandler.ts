@@ -55,14 +55,14 @@ export default class SessionControlHandler {
         if (prompt.trim() === "") {
             return this.#failure("spawn-prompt-empty", 422, `${statement.op} has no prompt text.`, {}, {
                 operation: statement.op,
-                recovery: `Write the prompt on the lines beneath the ${statement.op} fence line.`,
+                recovery: `Provide a non-empty prompt in \`await plurnk.${statement.op.toLowerCase()}({ prompt: "..." });\`.`,
                 retryable: false,
             });
         }
 
-        // {§session-scheme} — WORK to a name a session holds is the voice door ({§session-scheme}):
+        // {§session-scheme} — work to a name a session holds is the voice door ({§session-scheme}):
         // the body is that session's message and nothing is created.
-        if (statement.op === "WORK" && name !== undefined) {
+        if (statement.op === "work" && name !== undefined) {
             const held = await this.#db.session_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
             if (held !== undefined) return this.#message(ctx, name, held.id, prompt);
         }
@@ -74,7 +74,7 @@ export default class SessionControlHandler {
             sessionId = created.id;
         } catch (error) {
             if (!(error instanceof SessionNameConflictError)) throw error;
-            if (statement.op === "WORK") {
+            if (statement.op === "work") {
                 // The name was claimed between the lookup and the claim: it is held now, so the body is its message.
                 const held = await this.#db.session_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: error.sessionName });
                 if (held !== undefined) return this.#message(ctx, error.sessionName, held.id, prompt);
@@ -88,7 +88,7 @@ export default class SessionControlHandler {
                 {
                     operation: statement.op,
                     session: error.sessionName,
-                    recovery: `WORK or SEND (session://${error.sessionName}) delivers a message to the live session; FORK with a name no session holds.`,
+                    recovery: `await plurnk.work({ target: "session://${error.sessionName}", prompt: "..." }); or await plurnk.send({ target: "session://${error.sessionName}", text: "..." }); delivers a message to the live session; fork with a name no session holds.`,
                     retryable: false,
                 },
             );
@@ -133,9 +133,9 @@ export default class SessionControlHandler {
         return { status: 200, body: name, attrs: { session: SessionControlAddress.render(name), delivered: "message", ...(opener === undefined ? {} : { message }) } };
     }
 
-    // {§machine-processes} Every session WORK or FORK creates is a model's. A model's is its child; a
-    // person's operation acts for them ({§connection-lifecycle}): their WORK starts a root session they
-    // own, and their FORK branches the session they act for.
+    // {§machine-processes} Every session work or fork creates is a model's. A model's is its child; a
+    // person's operation acts for them ({§connection-lifecycle}): their work starts a root session they
+    // own, and their fork branches the session they act for.
     async #createSession(
         statement: WorkStatement | ForkStatement,
         ctx: PlurnkSchemeContext,
@@ -145,16 +145,16 @@ export default class SessionControlHandler {
             ? SessionName.claimAuto(this.#db, options)
             : SessionName.claimNamed(this.#db, name, options);
         if (ctx.client === undefined) {
-            if (statement.op === "FORK") return { id: await Fork.fork(this.#db, ctx.sessionId, name) };
+            if (statement.op === "fork") return { id: await Fork.fork(this.#db, ctx.sessionId, name) };
             const parent = await this.#db.session_get.get<{ workspace_id: number }>({ id: ctx.sessionId });
             if (parent?.workspace_id !== ctx.workspaceId) throw new Error("session control: parent is absent from this workspace");
             return claim({ workspaceId: ctx.workspaceId, parentSessionId: ctx.sessionId });
         }
-        if (statement.op === "FORK") {
+        if (statement.op === "fork") {
             const acted = ctx.client.contextSessionId;
             if (acted === null) {
-                return this.#failure("fork-unaddressed", 404, "This client operation acts for no session, so FORK has no log to branch.", {}, {
-                    operation: "FORK", retryable: false,
+                return this.#failure("fork-unaddressed", 404, "This client operation acts for no session, so fork has no log to branch.", {}, {
+                    operation: "fork", retryable: false,
                 });
             }
             return { id: await Fork.fork(this.#db, acted, name) };

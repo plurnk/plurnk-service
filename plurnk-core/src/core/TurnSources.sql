@@ -36,7 +36,7 @@ WHERE w.workspace_id = $workspace_id AND w.name = $session_name AND l.sequence =
 
 -- PREP: turn_source_candidates
 -- {§message-completion}: `ops://<session>/<loop>` is a resource of its own beside each turn's emission, so
--- a FIND over a session's programs also finds what its loops said.
+-- a find over a session's programs also finds what its loops said.
 -- $scope_prefix: the literal pathname prefix before any glob syntax, or NULL
 -- for no prefix. TypeScript applies the authoritative shell-glob match; this
 -- query supplies only a safe candidate superset.

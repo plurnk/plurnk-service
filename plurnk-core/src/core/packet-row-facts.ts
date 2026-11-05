@@ -64,7 +64,7 @@ export default class PacketRowFacts {
     // {§message-arrival} — an inbound SEND row: harness-published, the sender's statement as its
     // sent side. {§message-arrival}: a `source` names the actor; absence is the owner.
     static isArrival(e: { readonly op?: unknown; readonly origin?: unknown; readonly attrs?: unknown }): boolean {
-        if (e.op !== "SEND" || e.origin !== "_plurnk") return false;
+        if (e.op !== "send" || e.origin !== "_plurnk") return false;
         const attrs: unknown = typeof e.attrs === "string" ? JSON.parse(e.attrs) : e.attrs;
         return isRecord(attrs) && attrs.kind === "message";
     }
@@ -114,10 +114,10 @@ export default class PacketRowFacts {
         const tx: StatementTx | null = isRecord(parsedTx) ? parsedTx : null;
         const replay = options.paired?.get(String(e.coordinate));
         const paired = replay !== undefined;
-        if (!paired && op !== "NOTE" && op !== "TODO" && typeof tx?.aside === "string") meta.aside = tx.aside;
+        if (!paired && op !== "note" && op !== "todo" && typeof tx?.aside === "string") meta.aside = tx.aside;
         const authored = PacketRowFacts.#authoredPath(tx?.target);
         const target = PacketRowFacts.#operandPath(e.target ?? PacketRowFacts.#actionTarget(tx?.target), options.projectRoot ?? null, authored);
-        const pair = op === "COPY" || op === "MOVE";
+        const pair = op === "copy" || op === "move";
         const selections: Array<StatementTx | null> = pair
             ? [PacketRowFacts.#selection(tx?.source), PacketRowFacts.#selection(tx?.destination)]
             : [{ ...tx, target: e.target ?? tx?.target }];
@@ -150,13 +150,13 @@ export default class PacketRowFacts {
         const description = op === "error" || op === "extension" || parts.length === 0 ? null
             : !paired ? parts.join(" ") : operands.length > 0 ? operands : null;
         // {§execution-output-identity} The created identity is an outcome, not an authored target.
-        if ((op === "WORK" || op === "FORK") && typeof attrs.session === "string") {
+        if ((op === "work" || op === "fork") && typeof attrs.session === "string") {
             meta.session = attrs.session;
             // {§session-scheme} — a WORK that reached a session the name already held says so.
             if (attrs.delivered === "message") meta.delivered = "message";
         }
         // {§session-wait-timing} — the accepted bound, not elapsed time or the current configuration.
-        if (op === "WAIT" && Object.hasOwn(attrs, "waiting")) {
+        if (op === "wait" && Object.hasOwn(attrs, "waiting")) {
             const seconds = attrs.waiting;
             if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
                 throw new TypeError("A WAIT receipt carries a malformed waiting bound.");
@@ -182,7 +182,7 @@ export default class PacketRowFacts {
     // structured mutation receipts. Returns what the body projection needs to know about the result.
     static rowResultFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null, fullBody: ResolvedLogBody): RowResultFacts {
         const { meta, op } = identity;
-        if ((op === "SEND" || op === "DONE" || op === "FAIL") && rx !== null && typeof rx === "object" && Array.isArray(rx.attachments) && rx.attachments.length > 0) {
+        if ((op === "send" || op === "done" || op === "fail") && rx !== null && typeof rx === "object" && Array.isArray(rx.attachments) && rx.attachments.length > 0) {
             meta.attachments = rx.attachments.map(({ name, mediaType, target }) => ({ name, mediaType, path: target }));
         }
         // {§log-wire-format}: preserve the returned address, not a second authored target.
@@ -196,7 +196,7 @@ export default class PacketRowFacts {
         const structuredMutationReceipt = PacketRowFacts.#mutationReceiptFacts(meta, op, rx);
         return {
             findItems, range, structuredMutationReceipt,
-            ...(op === "READ" && rx?.matches !== undefined
+            ...(op === "read" && rx?.matches !== undefined
                 ? { matches: SchemeResults.assertMatchEvidenceList(rx.matches) } : {}),
         };
     }
@@ -236,7 +236,7 @@ export default class PacketRowFacts {
     // {§exec-stream}: explicit and automatic READs preserve the same
     // durable liveness facts, including an empty active channel.
     static #streamReadFacts(meta: RowIdentity["meta"], op: RowIdentity["op"], rx: RxView | null): void {
-        if (op === "READ" && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "terminal")) {
+        if (op === "read" && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "terminal")) {
             if (typeof rx.terminal !== "boolean") {
                 throw new TypeError("A stream READ result carries a malformed terminal flag.");
             }
@@ -285,18 +285,18 @@ export default class PacketRowFacts {
         let findItems: number | null = null;
         let range: RangeExtent | null = null;
         const patterned = tx !== null && tx !== undefined && typeof tx === "object" && isRecord(tx.matcher) && typeof tx.matcher.raw === "string";
-        if (patterned && op !== "FIND" && rx !== null && typeof rx === "object" && typeof rx.matched === "number") meta.matched = rx.matched;
+        if (patterned && op !== "find" && rx !== null && typeof rx === "object" && typeof rx.matched === "number") meta.matched = rx.matched;
         // {§channel-selection} — a READ names the resource's other channels with their
         // tokens, so the row itself shows the choice a FIND listing would.
-        if (op === "READ" && rx !== null && typeof rx === "object" && rx.channels !== null && typeof rx.channels === "object") {
+        if (op === "read" && rx !== null && typeof rx === "object" && rx.channels !== null && typeof rx.channels === "object") {
             meta.channels = rx.channels;
         }
         // {§message-completion} — a reply's row names the prompts it answered.
-        if ((op === "SEND" || op === "DONE" || op === "FAIL" || op === "KILL") && rx !== null && typeof rx === "object" && Array.isArray(rx.repliedTo)) {
+        if ((op === "send" || op === "done" || op === "fail" || op === "kill") && rx !== null && typeof rx === "object" && Array.isArray(rx.repliedTo)) {
             meta.repliedTo = rx.repliedTo;
         }
-        if (op === "READ" || op === "FIND") {
-            if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
+        if (op === "read" || op === "find") {
+            if (op === "find" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
                 const parsed = PacketRowFacts.safeParse(rx.content);
                 if (Array.isArray(parsed)) findItems = parsed.length;
             }
@@ -317,17 +317,17 @@ export default class PacketRowFacts {
                 // A row whose Problem does not own the range retrieved successfully, even when it
                 // carries its execution's failure: its extent takes the one scope notation.
                 meta.range = ScopeFormat.range(range, sparse);
-            } else if (range === null && !problemOwnsRange && op === "READ" && rx !== null && typeof rx === "object" && rx.region !== undefined) {
+            } else if (range === null && !problemOwnsRange && op === "read" && rx !== null && typeof rx === "object" && rx.region !== undefined) {
                 delete meta.scope;
                 meta.range = ScopeFormat.region(Validator.assertTextRegion(rx.region));
             }
             // These are underlying selected-content weights, distinct from
             // the emitted body's generic `tokens` measurement.
-            if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.itemsWeightTotal === "number" && rx.itemsWeightTotal > 0) {
+            if (op === "find" && rx !== null && typeof rx === "object" && typeof rx.itemsWeightTotal === "number" && rx.itemsWeightTotal > 0) {
                 meta.itemsTokenTotal = rx.itemsWeightTotal;
             }
             if (
-                op === "FIND"
+                op === "find"
                 && rx !== null
                 && typeof rx === "object"
                 && typeof rx.returnedItemsWeightTotal === "number"
@@ -337,7 +337,7 @@ export default class PacketRowFacts {
                 meta.returnedItemsTokenTotal = rx.returnedItemsWeightTotal;
             }
             if (
-                op === "FIND"
+                op === "find"
                 && patterned
                 && range?.unit === "resource"
                 && rx !== null
@@ -356,12 +356,12 @@ export default class PacketRowFacts {
     // optional receipts describe scoped textual materializations.
     static #mutationReceiptFacts(meta: RowIdentity["meta"], op: RowIdentity["op"], rx: RxView | null): boolean {
         let structuredMutationReceipt = false;
-        if ((op === "EDIT" || op === "KILL") && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "receipt")) {
+        if ((op === "edit" || op === "kill") && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "receipt")) {
             Object.assign(meta, PacketRowFacts.#receiptMeta(rx.receipt));
             structuredMutationReceipt = true;
         }
         if (
-            (op === "COPY" || op === "MOVE")
+            (op === "copy" || op === "move")
             && rx !== null
             && typeof rx === "object"
             && Object.hasOwn(rx, "effects")

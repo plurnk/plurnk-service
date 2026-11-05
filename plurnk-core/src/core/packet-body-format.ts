@@ -167,7 +167,7 @@ export default class PacketBodyFormat {
     // the packet: not the model's own row, not a retrieval (paged at its source), not an emission row,
     // and not the operator's message, which keeps its own rule ({§message-arrival}).
     static #receivedBody(e: LogEntryView, op: string | null): boolean {
-        if (e.origin === "model" || op === "READ" || op === "FIND" || LogEntryProjection.isEmission(e)) return false;
+        if (e.origin === "model" || op === "read" || op === "find" || LogEntryProjection.isEmission(e)) return false;
         if (PacketRowFacts.isArrival(e)) {
             const source = typeof e.source === "string" ? e.source : null;
             return source !== null && source.startsWith("session://");
@@ -255,13 +255,13 @@ export default class PacketBodyFormat {
             ...fullBody,
             content: bodyVisibility.fullyFolded ? bodyVisibility.readableContent : bodyVisibility.content,
         };
-        const emptyFind = op === "FIND" && e.status === 200 && facts.findItems === 0;
-        const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;
-        const lineNumberWidth = op === "READ" ? e.lineNumberWidth ?? null : null;
+        const emptyFind = op === "find" && e.status === 200 && facts.findItems === 0;
+        const lineAnchors = op === "read" ? e.lineAnchors ?? null : null;
+        const lineNumberWidth = op === "read" ? e.lineNumberWidth ?? null : null;
         if (lineAnchors !== null) {
             LineAnchors.assertProjection(fullBody.content, lineAnchors);
         }
-        const findRange = op === "FIND" ? facts.range : null;
+        const findRange = op === "find" ? facts.range : null;
         const bodyStartLine = findRange?.returned?.[0] ?? fullBody.startLine;
         const numericLineNumberWidth = findRange === null
             ? bodyStartLine === null || bodyVisibility.totalLines === 0
@@ -308,7 +308,7 @@ export default class PacketBodyFormat {
         // lines beside tokens on a non-retrieval row with a navigable body — the count of
         // `N:`-numbered lines (fences and unnumbered prose don't count), so the model can plan
         // a <start,end> slice before paying for a READ. READ/FIND own typed extents instead.
-        if (fullBody.content.length > 0 && op !== "READ" && op !== "FIND") {
+        if (fullBody.content.length > 0 && op !== "read" && op !== "find") {
             meta.lines = bodyVisibility.totalLines;
         }
 

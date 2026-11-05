@@ -212,7 +212,7 @@ export default class File extends CoreSchemeAdapterBase {
         if (key === null) return null;
         const occupant = await File.#occupant(root, key);
         if (!File.#beyondRoot(key) && occupant?.isDirectory() === true) {
-            const { code, detail, extensions } = File.#directoryFacts(key, "READ", root);
+            const { code, detail, extensions } = File.#directoryFacts(key, "read", root);
             return Results.failure("scheme:file", code, 404, detail, fields, extensions);
         }
         const occupied = occupant !== null && (!File.#beyondRoot(key) || occupant.isFile());
@@ -239,7 +239,7 @@ export default class File extends CoreSchemeAdapterBase {
                         : ignoredBy !== null
                             // {§membership}
                             ? `Git ignores it (\`${ignoredBy.file}\` line ${ignoredBy.line}): a client or operator members definition can include it, a model definition cannot.`
-                            : "Admit it with `plurnk (members)` and a `{\"files\": [\"<path>\"]}` body."
+                            : "Admit it with `await plurnk.members({ files: [\"<path>\"] });`."
                     : fileMissRecovery(named),
                 retryable: false,
             },
@@ -257,13 +257,13 @@ export default class File extends CoreSchemeAdapterBase {
 
     // {§fs-namespace} — a directory inside the root is named as one, never as a missing or non-member
     // file; a READ or KILL of it carries the listing that shows its files ({§diagnostic-observation}).
-    static #directoryFacts(key: string, op: "READ" | "EDIT" | "KILL", root: string): { code: "path-is-directory"; detail: string; extensions: { target: string; recovery?: string; retryable: false } } {
+    static #directoryFacts(key: string, op: "read" | "edit" | "kill", root: string): { code: "path-is-directory"; detail: string; extensions: { target: string; recovery?: string; retryable: false } } {
         const target = entryAddress("file", "", key, root);
-        const listing = `\`FIND (${target}/)\` lists its files.`;
+        const listing = `\`await plurnk.find({ path: ${JSON.stringify(`${target}/`)} });\` lists its files.`;
         const { detail, recovery } = {
-            READ: { detail: `'${key}' is a directory, not a file; READ reads one file.`, recovery: listing },
-            EDIT: { detail: `'${key}' is a directory, not a file; EDIT writes one file.`, recovery: undefined },
-            KILL: { detail: `'${key}' is a directory, not a file; KILL removes one file.`, recovery: listing },
+            read: { detail: `'${key}' is a directory, not a file; read reads one file.`, recovery: listing },
+            edit: { detail: `'${key}' is a directory, not a file; edit writes one file.`, recovery: undefined },
+            kill: { detail: `'${key}' is a directory, not a file; kill removes one file.`, recovery: listing },
         }[op];
         return { code: "path-is-directory", detail, extensions: { target, ...(recovery === undefined ? {} : { recovery }), retryable: false } };
     }
@@ -365,7 +365,7 @@ export default class File extends CoreSchemeAdapterBase {
             // {§fs-namespace} — the occupancy fact (POSIX O_EXCL precedent): something invisible
             // occupies the path; existence leaks, content stays dark. The model picks another name.
             if (member === undefined && !isMount && (await lstat(requested)).isDirectory()) {
-                return { ok: false, status: 403, ...File.#directoryFacts(rel, "EDIT", root) };
+                return { ok: false, status: 403, ...File.#directoryFacts(rel, "edit", root) };
             }
             if (member === undefined) {
                 return {
@@ -508,7 +508,7 @@ export default class File extends CoreSchemeAdapterBase {
                     400,
                     "EDIT of an existing file requires a line marker.",
                     {
-                        recovery: "Name the lines to replace with `<@hash>` or `<@start,@end>` from a READ of the file; `<L,1,L,1>` inserts before line L, and `<1,-1>` replaces the whole file.",
+                        recovery: "Name the lines to replace with `range: \"@hash\"` or `range: \"@start,@end\"` from a READ of the file; `range: \"L,1,L,1\"` inserts before line L, and `range: \"1,-1\"` replaces the whole file.",
                         retryable: false,
                     },
                 );
@@ -923,7 +923,7 @@ export default class File extends CoreSchemeAdapterBase {
         if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", pathname), {}, missExtensions("file", entryAddress("file", "", pathname, root)));
         const member = await core.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null; mimetype: string | null }>({ workspace_id: core.workspaceId, scheme: "file", authority: "", pathname: rel });
         if (member === undefined && !rel.startsWith("../") && (await File.#occupant(root, rel))?.isDirectory() === true) {
-            const { code, detail, extensions } = File.#directoryFacts(rel, "KILL", root);
+            const { code, detail, extensions } = File.#directoryFacts(rel, "kill", root);
             return Results.failure("scheme:file", code, 404, detail, {}, extensions);
         }
         if (member === undefined) {

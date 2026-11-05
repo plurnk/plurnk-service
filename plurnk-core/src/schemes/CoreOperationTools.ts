@@ -1,6 +1,7 @@
-import type { CapabilityPolicy, JsonSchema, PlurnkOp } from "@plurnk/plurnk-contracts";
+import { isExecutionOp, type CapabilityPolicy, type JsonSchema, type PlurnkOp } from "@plurnk/plurnk-contracts";
 import type { RuntimeRegisteredTool } from "@plurnk/plurnk-execs";
 import type CapabilityResolver from "../core/CapabilityResolver.ts";
+import type ExecutorRegistry from "../core/ExecutorRegistry.ts";
 
 interface CoreOperationToolSpec {
     readonly op: PlurnkOp;
@@ -38,7 +39,7 @@ const SELECTION_ENDPOINT_SCHEMA = {
 
 const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
-        op: "NOTE",
+        op: "note",
         target: "note",
         summary: "Persist a decision, hypothesis, or fact in working memory.",
         inputSchema: {
@@ -56,7 +57,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         ].join("\n"),
     },
     {
-        op: "TODO",
+        op: "todo",
         target: "todo",
         summary: "Replace the session's remaining TODO list.",
         inputSchema: {
@@ -79,16 +80,16 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         ].join("\n"),
     },
     {
-        op: "FIND",
+        op: "find",
         target: "find",
         summary: "List matching paths, or match locations inside a path.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
             properties: {
-                path: { type: "string", description: "Target path, URI, or glob/extglob pattern." },
+                path: { type: "string", description: "Target path, URI, or glob/extglob pattern (percent-encode `(` as `%28` and `)` as `%29`)." },
                 range: { type: "string", description: "Result page range (e.g. \"1,50\" or \"1,-1\")." },
-                pattern: { type: "string", description: "Content matcher (/regex/, //xpath, $.jsonpath, ~fts, &symbol, or glob)." },
+                pattern: { type: "string", description: "Content matcher (/regex/i, //xpath, $.jsonpath, ~fts5, &sym / &<sym / &>sym, or literal/glob/extglob; see skill://plurnk/pattern.md)." },
                 metadata: METADATA_SCHEMA,
             },
         },
@@ -99,7 +100,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         ].join("\n"),
     },
     {
-        op: "READ",
+        op: "read",
         target: "read",
         summary: "Read files, entries, streams, or only the lines a pattern selects.",
         inputSchema: {
@@ -107,9 +108,9 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["path"],
             properties: {
-                path: { type: "string", minLength: 1, description: "Target path, URI, or glob/extglob pattern (append #channel for a non-default channel)." },
+                path: { type: "string", minLength: 1, description: "Target path, URI, or glob/extglob pattern (append #channel for a non-default channel; percent-encode `(` as `%28` and `)` as `%29`)." },
                 range: { type: "string", description: "Line or character range (e.g. \"1,100\", \"1,-1\", \"@start,@end\")." },
-                pattern: { type: "string", description: "Select only matching lines or nodes (/regex/, //xpath, $.jsonpath, ~fts, &symbol)." },
+                pattern: { type: "string", description: "Select only matching lines or nodes (/regex/i, //xpath, $.jsonpath, ~fts5, &sym / &<sym / &>sym, or literal/glob/extglob; see skill://plurnk/pattern.md)." },
                 metadata: METADATA_SCHEMA,
             },
         },
@@ -122,7 +123,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         ].join("\n"),
     },
     {
-        op: "EDIT",
+        op: "edit",
         target: "edit",
         summary: "Create a file or entry, or replace existing text by range or pattern.",
         inputSchema: {
@@ -130,14 +131,29 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["path"],
             properties: {
-                path: { type: "string", minLength: 1, description: "Target file or entry path (or glob/extglob for bulk edits)." },
-                range: { type: "string", description: "Line or column range (e.g. \"@abcde\", \"@abcde,@fghij\", \"@abcde,1,@abcde,1\", \"0\", \"-1\")." },
-                pattern: { type: "string", description: "Pattern whose matches are replaced by content." },
-                content: { type: "string", description: "Replacement or file content (empty string deletes the selected range or match)." },
+                path: { type: "string", minLength: 1, description: "Target file or entry path, or glob/extglob for bulk edits (percent-encode `(` as `%28` and `)` as `%29`)." },
+                range: { type: "string", description: "1-based line or Unicode code-point column range (\"L\", \"@hash\", \"SL,EL\", \"@start,@end\", \"SL,SC,EL,EC\", \"L,1,L,1\", \"@hash,1,@hash,1\", \"0\", \"-1\")." },
+                pattern: { type: "string", description: "Pattern whose matches are replaced by content (/regex/i, //xpath, $.jsonpath, ~fts5, &sym / &<sym / &>sym, or literal/glob/extglob; see skill://plurnk/pattern.md)." },
+                content: { type: "string", description: "Literal replacement or file content (replaces the entire selected span; empty string deletes the selected range or match)." },
                 metadata: METADATA_SCHEMA,
             },
         },
         details: [
+            "## `range`",
+            "",
+            "Text scopes use 1-based lines and Unicode code-point columns across textual mimetypes.",
+            "",
+            "| form | endpoint rule |",
+            "| --- | --- |",
+            "| `\"L\"`, `\"@hash\"` | one line |",
+            "| `\"SL,EL\"`, `\"@start,@end\"` | lines SL through EL, inclusive |",
+            "| `\"SL,SC,EL,EC\"` | start included, end excluded — `\"@abcde,5,@abcde,8\"` is `bar` in line 42 `foo bar baz` |",
+            "| `\"L,1,L,1\"`, `\"@hash,1,@hash,1\"` | insert before that line |",
+            "| `\"0\"`, `\"-1\"` | prepend / append on mutations; as an end line, `-1` is the last line |",
+            "",
+            "Patterns select source text as written, and `content` replaces all of it: `//book/@lang` selects `lang=\"en\"`; `$.lang` selects `\"en\"` with its quotes.",
+            "`path` may be a glob/extglob, permitting bulk operations.",
+            "",
             "## Examples",
             "",
             "await plurnk.edit({ path: \"example.md\", range: \"@abcde\", content: \"bar\" }); // READ showed 42<@abcde>foo bar baz; content replaces line 42",
@@ -156,7 +172,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         ].join("\n"),
     },
     {
-        op: "COPY",
+        op: "copy",
         target: "copy",
         summary: "Copy files, entries, streams, or text regions.",
         inputSchema: {
@@ -175,7 +191,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         ].join("\n"),
     },
     {
-        op: "MOVE",
+        op: "move",
         target: "move",
         summary: "Move files, entries, streams, or text regions.",
         inputSchema: {
@@ -194,7 +210,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         ].join("\n"),
     },
     {
-        op: "KILL",
+        op: "kill",
         target: "kill",
         summary: "Delete an entry, stop a process or child session, or retire log items.",
         inputSchema: {
@@ -202,7 +218,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["path"],
             properties: {
-                path: { type: "string", minLength: 1, description: "Target entry, stream, child session, or log item path (e.g. \"log:///1/[1-7]/*/{READ,emission}\")." },
+                path: { type: "string", minLength: 1, description: "Target entry, stream, child session, or log item path (log item paths nest as `log:///1/2/3/read` for loop/turn/item/OP; globs/extglobs like \"log:///1/[1-7]/*/{read,emission}\" retire in bulk)." },
                 range: { type: "string", description: "Optional range to delete." },
                 pattern: { type: "string", description: "Optional pattern to delete." },
                 note: { type: "string", description: "Distillation note that survives in working memory when retiring log items." },
@@ -210,13 +226,15 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             },
         },
         details: [
+            "Log item paths nest: `log:///1/2/3/read` is `loop/turn/item/OP`.",
+            "",
             "## Examples",
             "",
-            "await plurnk.kill({ path: \"log:///1/[1-7]/*/{READ,emission}\", note: \"example distillation or summarization\" }); // old results, in bulk; note survives as a NOTE",
+            "await plurnk.kill({ path: \"log:///1/[1-7]/*/{read,emission}\", note: \"example distillation or summarization\" }); // old results, in bulk; note survives as a NOTE",
         ].join("\n"),
     },
     {
-        op: "WORK",
+        op: "work",
         target: "work",
         summary: "Delegate a task to a child session with a fresh log.",
         inputSchema: {
@@ -236,7 +254,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         ].join("\n"),
     },
     {
-        op: "FORK",
+        op: "fork",
         target: "fork",
         summary: "Delegate a task to a child session initialized with a copy of this session's log.",
         inputSchema: {
@@ -256,7 +274,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         ].join("\n"),
     },
     {
-        op: "BARE",
+        op: "bare",
         target: "bare",
         summary: "Run a single stateless, toolless model call.",
         inputSchema: {
@@ -276,7 +294,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         ].join("\n"),
     },
     {
-        op: "WAIT",
+        op: "wait",
         target: "wait",
         summary: "Yield the turn until open streams or child sessions settle, or until seconds elapse.",
         inputSchema: {
@@ -295,7 +313,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         ].join("\n"),
     },
     {
-        op: "SEND",
+        op: "send",
         target: "send",
         summary: "Deliver a progress update or send a message to a target session or stream.",
         inputSchema: {
@@ -316,7 +334,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         ].join("\n"),
     },
     {
-        op: "DONE",
+        op: "done",
         target: "done",
         summary: "Deliver the final response and resolve an Open Message.",
         inputSchema: {
@@ -336,7 +354,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         ].join("\n"),
     },
     {
-        op: "FAIL",
+        op: "fail",
         target: "fail",
         summary: "Report an unrecoverable failure and resolve an Open Message as failed.",
         inputSchema: {
@@ -380,6 +398,77 @@ const toRegisteredTool = (spec: CoreOperationToolSpec): RuntimeRegisteredTool =>
     };
 };
 
+const executionOperationTools = (
+    capabilities: CapabilityResolver,
+    workspaceId: number,
+    policies: readonly CapabilityPolicy[],
+    executors?: ExecutorRegistry,
+): readonly RuntimeRegisteredTool[] => {
+    if (executors === undefined) return [];
+    const out: RuntimeRegisteredTool[] = [];
+    for (const tag of executors.availableRuntimes(workspaceId)) {
+        if (!isExecutionOp(tag) || tag === "plurnk") continue;
+        if (executors.toolRegistry(tag, workspaceId) !== null) continue;
+        if (!capabilities.allowsRuntimeAcross(tag, null, workspaceId, policies)) continue;
+        const entry = executors.entry(tag, workspaceId);
+        if (entry === undefined) continue;
+        const bodyKey = tag === "sh" ? "command" : (tag === "js" || tag === "python3" ? "code" : "body");
+        const bodyLabel = tag === "sh"
+            ? "Shell command to run."
+            : tag === "js"
+                ? "JavaScript code to run."
+                : tag === "python3"
+                    ? "Python 3 code to run."
+                    : "Program to run.";
+        const inputSchema: JsonSchema = {
+            type: "object",
+            additionalProperties: false,
+            anyOf: [{ required: [bodyKey] }, { required: ["script"] }],
+            properties: {
+                [bodyKey]: { type: "string", description: bodyLabel },
+                cwd: { type: "string", description: "Working directory for an inline program." },
+                script: { type: "string", description: "Script path or URI to execute." },
+                args: {
+                    oneOf: [
+                        { type: "array", items: { type: "string" } },
+                        { type: "string" },
+                    ],
+                    description: "Script arguments.",
+                },
+                range: { type: "string", description: "Optional output range." },
+                metadata: METADATA_SCHEMA,
+            },
+        };
+        const summary = typeof entry.summary === "string"
+            ? entry.summary
+            : (entry.summary.description ?? `${tag} runtime.`);
+        const details = entry.details.trim();
+        const description = details.length > 0 ? `${summary}\n\n${details}` : summary;
+        const exampleBody = entry.invocation.example?.body;
+        out.push({
+            target: tag,
+            summary,
+            invocation: {
+                body: {
+                    role: "JSON arguments",
+                    required: true,
+                    mimetype: "application/json",
+                },
+                target: { role: "Plurnk tool", required: true, kind: "literal" },
+                ...(exampleBody === undefined ? {} : { example: { body: JSON.stringify({ [bodyKey]: exampleBody }) } }),
+                inputSchema,
+            },
+            ...(details.length > 0 ? { details } : {}),
+            definition: {
+                name: tag,
+                description,
+                inputSchema,
+            },
+        });
+    }
+    return out;
+};
+
 export const ALL_CORE_OPERATION_TOOLS: readonly RuntimeRegisteredTool[] = Object.freeze(
     CORE_OPERATION_SPECS.map(toRegisteredTool),
 );
@@ -388,7 +477,10 @@ export const coreOperationTools = (
     capabilities: CapabilityResolver,
     workspaceId: number,
     policies: readonly CapabilityPolicy[],
-): readonly RuntimeRegisteredTool[] =>
-    CORE_OPERATION_SPECS
+    executors?: ExecutorRegistry,
+): readonly RuntimeRegisteredTool[] => [
+    ...CORE_OPERATION_SPECS
         .filter((spec) => capabilities.allowsCoreOperationAcross(spec.op, workspaceId, policies))
-        .map(toRegisteredTool);
+        .map(toRegisteredTool),
+    ...executionOperationTools(capabilities, workspaceId, policies, executors),
+];

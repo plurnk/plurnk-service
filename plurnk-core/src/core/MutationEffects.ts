@@ -386,7 +386,7 @@ export default class MutationEffects {
             ...exact,
             problem: {
                 ...exact.problem,
-                operation: "MOVE",
+                operation: "move",
                 destinationWritten: true,
                 destination,
             },

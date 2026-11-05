@@ -124,7 +124,7 @@ SELECT session_id, op, COUNT(*) AS n
 FROM log_entries
 WHERE op IS NOT NULL
   -- {§turn-source-resources}: harness announcement rows for turn sources are not model-authored operations.
-  AND NOT (origin = '_plurnk' AND op = 'READ' AND scheme IN ('ops', 'reasoning'))
+  AND NOT (origin = '_plurnk' AND op = 'read' AND scheme IN ('ops', 'reasoning'))
 GROUP BY session_id, op
 ORDER BY session_id, n DESC, op;
 
@@ -143,13 +143,13 @@ WHERE json_extract(le.attrs, '$.kind') = 'emission'
 ORDER BY le.id;
 
 -- PREP: digest_edit_statements
--- {§digest-forensic-fidelity}: every model-authored EDIT with the scope it authored, the pattern the
+-- {§digest-forensic-fidelity}: every model-authored edit with the scope it authored, the pattern the
 -- durable statement carried, and how it landed. tx is the statement (application/json).
 SELECT id, session_id, loop_id, turn_id, sequence, pathname, status_rx,
        lineMarker AS line_marker,
        CASE WHEN json_valid(tx) THEN json_extract(tx, '$.matcher.raw') END AS pattern
 FROM log_entries
-WHERE op = 'EDIT' AND origin = 'model'
+WHERE op = 'edit' AND origin = 'model'
 ORDER BY session_id, turn_id, sequence;
 
 -- PREP: digest_curation_effects

@@ -23,23 +23,23 @@ export default class LogEntryProjection {
     static op(row: LogEntryProjectionRow): string | null {
         const op = typeof row.op === "string" && row.op.length > 0 ? row.op : null;
         const attrs = LogEntryProjection.#decode(row.attrs, "attrs");
-        const materializedEntry = row.origin === "_plurnk" && op === "EDIT"
+        const materializedEntry = row.origin === "_plurnk" && op === "edit"
             && attrs !== null && typeof attrs === "object"
             && (attrs as { kind?: unknown }).kind === "entry_materialized";
-        return materializedEntry ? "READ" : op;
+        return materializedEntry ? "read" : op;
     }
 
-    // {§turn-source-resources}: the announcement of an admitted emission, stored as the harness's READ of its
+    // {§turn-source-resources}: the announcement of an admitted emission, stored as the harness's read of its
     // own turn's ops source and addressed by its own leaf. The schema admits the kind only on that shape.
     static isEmission(row: LogEntryProjectionRow): boolean {
-        if (row.op !== "READ") return false;
+        if (row.op !== "read") return false;
         const attrs = LogEntryProjection.#decode(row.attrs, "attrs");
         return attrs !== null && typeof attrs === "object" && (attrs as { kind?: unknown }).kind === "emission";
     }
 
-    // {§turn-source-resources}: the harness's READ of the turn's reasoning source, addressed by its own leaf.
+    // {§turn-source-resources}: the harness's read of the turn's reasoning source, addressed by its own leaf.
     static isReasoning(row: LogEntryProjectionRow): boolean {
-        if (row.op !== "READ") return false;
+        if (row.op !== "read") return false;
         const attrs = LogEntryProjection.#decode(row.attrs, "attrs");
         return attrs !== null && typeof attrs === "object" && (attrs as { kind?: unknown }).kind === "reasoning";
     }

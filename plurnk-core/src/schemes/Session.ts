@@ -121,10 +121,10 @@ export default class Session extends CoreSchemeAdapterBase {
                 "scheme:session",
                 "control-address-invalid",
                 400,
-                "READ requires an authority-only session:// control address.",
+                "read requires an authority-only session:// control address.",
                 {},
                 {
-                    operation: "READ",
+                    operation: "read",
                     recovery: "Provide one session authority and remove every other URI component.",
                     retryable: false,
                 },
@@ -311,7 +311,7 @@ export default class Session extends CoreSchemeAdapterBase {
         if (Session.#entryPath(statement.target) !== "") {
             return EntrySend.sendToWorkspaceEntry(statement, core, Session.manifest);
         }
-        const address = SessionControlAddress.resolve(statement.target, "SEND");
+        const address = SessionControlAddress.resolve(statement.target, "send");
         if (!address.ok) return address.result;
         // {§op-shapes} — a session SEND takes no scope.
         if (statement.lineMarker !== null) {

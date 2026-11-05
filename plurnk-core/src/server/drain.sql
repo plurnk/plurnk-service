@@ -92,7 +92,7 @@ SELECT path FROM message_sources WHERE id = $id;
 
 -- PREP: drain_unpublished_messages_for_loop
 -- {§message-arrival}: the messages the loop contains but has not yet published, oldest
--- first; the next turn boundary publishes each as an inbound SEND row exactly once.
+-- first; the next turn boundary publishes each as an inbound send row exactly once.
 SELECT id, ordinal, source, body, open_paths, key_path AS path, path AS durable_path
 FROM message_sources
 WHERE loop_id = $loop_id AND log_entry_id IS NULL
@@ -107,7 +107,7 @@ WHERE loop_id = $loop_id AND log_entry_id IS NULL
 LIMIT 1;
 
 -- PREP: drain_publish_message
--- The inbox row's one publication: the inbound SEND row it became.
+-- The inbox row's one publication: the inbound send row it became.
 UPDATE loop_messages SET log_entry_id = $log_entry_id
 WHERE id = $id AND log_entry_id IS NULL
 RETURNING id;

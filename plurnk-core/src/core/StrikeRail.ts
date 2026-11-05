@@ -31,10 +31,10 @@ const isUnreadablePattern = ({ problemType }: StrikeOutcome): boolean => problem
 // {§engine-rails} — only an operation that acts on the task and succeeds is progress;
 // NOTE, WAIT and a targetless message reply do not act on task resources.
 export const isProgress = (statement: PlurnkStatement, status: number): boolean => status < 400
-    && statement.op !== "NOTE"
-    && statement.op !== "TODO"
-    && statement.op !== "WAIT"
-    && !((statement.op === "SEND" || statement.op === "DONE" || statement.op === "FAIL") && statement.target === null);
+    && statement.op !== "note"
+    && statement.op !== "todo"
+    && statement.op !== "wait"
+    && !((statement.op === "send" || statement.op === "done" || statement.op === "fail") && statement.target === null);
 
 const SOURCE_DECORATION = new Set(["aside", "position"]);
 
@@ -62,7 +62,7 @@ export default class StrikeRail {
             const result = results?.[index];
             // {§engine-rails}: NOTE's assigned source coordinate is storage,
             // not an observation; its complete authored content remains in operation.
-            const evidence = statement.op === "NOTE" && result !== undefined ? withoutResource(result) : result;
+            const evidence = statement.op === "note" && result !== undefined ? withoutResource(result) : result;
             return [[operation, observedResult(evidence)]];
         });
         const canonical = JSON.stringify(activity, (_key, value) =>

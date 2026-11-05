@@ -1,5 +1,5 @@
 // {§persona-discovery} — workspace personas as a workspace Functionality family (`personas`,
-// `plurnk (personas)`, `PLURNK_PERSONAS_*`) discovered across the 4-tier configuration cascade
+// `await plurnk.personas(...)`, `PLURNK_PERSONAS_*`) discovered across the 4-tier configuration cascade
 // (<project>/.agents/personas, $XDG_CONFIG_HOME/plurnk/personas, $XDG_CONFIG_HOME/agents/personas,
 // ~/.agents/personas), enabled workspace plugins, environment definitions, and workspace overrides,
 // exposed through `persona://<name>/PERSONA.md` (`READ`, `FIND`, `EDIT`, `KILL`) and `listPersonas`.
@@ -1392,7 +1392,7 @@ export class PersonaScheme extends ResourceTreeScheme {
                 "One EDIT sets one persona definition, whole.",
                 {},
                 {
-                    recovery: "EDIT (persona://<name>/PERSONA.md) with the complete persona Markdown or JSON definition.",
+                    recovery: "await plurnk.edit({ path: \"persona://<name>/PERSONA.md\", content: \"...\" }); with the complete persona Markdown or JSON definition.",
                     retryable: false,
                 },
             );

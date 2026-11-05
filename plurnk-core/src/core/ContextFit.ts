@@ -49,7 +49,7 @@ export const unfitResult = (
     size: ResultSize,
     tokens: number,
     remaining: number,
-    verb: "READ" | "FIND" = "READ",
+    verb: "read" | "find" = "read",
     delivered = 0,
 ): DispatchResult => Results.failure(
     "engine:context",
@@ -57,7 +57,7 @@ export const unfitResult = (
     413,
     `${size.total} ${size.unit}${size.total === 1 ? "" : "s"}, ${tokens} tokens; ${remaining} tokens remain: `
         + (delivered > 0 ? `${delivered} ${size.unit}${delivered === 1 ? "" : "s"} delivered; ` : "")
-        + `${verb === "FIND" ? "FIND with a scope" : "READ a range"}, or KILL first.`,
+        + `${verb === "find" ? "find with a scope" : "read a range"}, or kill first.`,
     fields,
     { [`${size.unit}s`]: size.total, tokens, remaining, ...(delivered > 0 ? { delivered } : {}) },
 );

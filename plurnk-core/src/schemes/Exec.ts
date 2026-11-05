@@ -114,7 +114,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         volatile: true,
         modelVisible: true,
         metadataModifier: true,
-        documentation: "The opening fence names a registered executor or MCP service; its target, body, metadata, and timing follow that tool's invocation contract. Output streams into the workspace's `<executor>:///<id>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, the packet's `## Open Work` streams list reports channel size and growth and READ can inspect any range; when it finishes, one terminal READ becomes visible automatically.",
+        documentation: "An execution statement names a registered executor (`await plurnk.<executor>({ ... });`) or MCP service (`await <server>.<tool>({ ... });`); its arguments follow that tool's invocation contract. Output streams into the workspace's `<executor>:///<id>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, the packet's `## Open Work` streams list reports channel size and growth and `plurnk.read` can inspect any range; when it finishes, one terminal `READ` becomes visible automatically.",
     };
 
     // The web-fetch the entry sink calls on content:null ({§execution-output-identity}); default = the
@@ -767,7 +767,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             throw new InvalidOperationResultError("The accepted execution proposal has an invalid scheme source address.");
         }
         const source = await this.readExecSource({
-            op: "READ",
+            op: "read",
             aside: null,
             target: sourceTarget,
             metadata: null,

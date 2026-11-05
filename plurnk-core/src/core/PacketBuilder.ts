@@ -1,5 +1,5 @@
 import SessionOwners from "./SessionOwners.ts";
-import type { Notice } from "@plurnk/plurnk-contracts";
+import { type Notice } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import type HostPaths from "./HostPaths.ts";
@@ -10,6 +10,7 @@ import SessionName from "./SessionName.ts";
 import { renderAddress } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
 import { coreOperationTools } from "../schemes/CoreOperationTools.ts";
+import PlurnkSkill from "../server/PlurnkSkill.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 import { readGlobalAgents, readGlobalLocalAgents, readPacketInject, readSystemPolicy } from "./packet-inject.ts";
@@ -415,7 +416,8 @@ export default class PacketBuilder {
         const layers = await CapabilityPolicies.layers(this.#db, workspaceId);
         const policies = layers.map((layer) => layer.policy);
         const out: Array<{ scheme: "plurnk" | "mcp"; pathname: string; content: string }> = (await this.#schemes.docs(workspaceId))
-            .filter(({ scheme }) => scheme === null || this.#capabilities.allowsSchemeAcross(scheme, workspaceId, policies))
+            .filter(({ name, scheme }) => !PlurnkSkill.CHAPTER_NAMES.has(name)
+                && (scheme === null || this.#capabilities.allowsSchemeAcross(scheme, workspaceId, policies)))
             .map(({ name, content }) => ({
                 scheme: "plurnk" as const,
                 pathname: `/${name}.md`,
@@ -432,24 +434,25 @@ export default class PacketBuilder {
             out.push({ scheme: "plurnk", pathname: "/AGENTS.local.md", content: globalLocalAgents });
         }
         const executors = this.#executors();
+        let renderedPlurnk = false;
         if (executors !== undefined) {
             for (const tag of executors.availableRuntimes(workspaceId)) {
                 const entry = executors.entry(tag, workspaceId);
                 if (entry === undefined) continue;
                 const registry = executors.toolRegistry(tag, workspaceId);
+                if (registry === null) continue;
+                if (tag === "plurnk") renderedPlurnk = true;
                 const coreTools = tag === "plurnk"
-                    ? coreOperationTools(this.#capabilities, workspaceId, policies)
+                    ? coreOperationTools(this.#capabilities, workspaceId, policies, executors)
                     : [];
-                const filteredRegistry = registry === null ? null : {
+                const filteredRegistry = {
                     tools: [
                         ...coreTools,
                         ...registry.tools.filter((tool) =>
                             this.#capabilities.allowsRuntimeAcross(tag, tool.target, workspaceId, policies)),
                     ],
                 };
-                if (registry === null) {
-                    if (!this.#capabilities.allowsRuntimeAcross(tag, null, workspaceId, policies)) continue;
-                } else if (filteredRegistry!.tools.length === 0) continue;
+                if (filteredRegistry.tools.length === 0) continue;
                 out.push(...ToolResources.render({
                     runtime: tag,
                     summary: entry.summary,
@@ -457,6 +460,23 @@ export default class PacketBuilder {
                     details: entry.details,
                     registry: filteredRegistry,
                     ...(entry.resourcesPath === undefined ? {} : { resourcesPath: entry.resourcesPath }),
+                }));
+            }
+        }
+        if (!renderedPlurnk) {
+            const coreTools = coreOperationTools(this.#capabilities, workspaceId, policies, executors);
+            if (coreTools.length > 0) {
+                out.push(...ToolResources.render({
+                    runtime: "plurnk",
+                    summary: { from: "tools", description: "Core operations and workspace functionality." },
+                    invocation: {
+                        body: { role: "JSON arguments", required: false, mimetype: "application/json" },
+                        target: { role: "Plurnk tool", required: true, kind: "literal" },
+                        example: { target: coreTools[0].target },
+                    },
+                    details: "",
+                    registry: { tools: [...coreTools] },
+                    resourcesPath: "/tools",
                 }));
             }
         }

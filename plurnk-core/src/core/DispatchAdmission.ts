@@ -10,14 +10,14 @@ import type { PlurnkSchemeContext, WriterTier } from "./scheme-types.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
-// READ/FIND are not gated — they read, never mutating an entry.
-const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "KILL", "FORK", "WORK"]);
+// read/find are not gated — they read, never mutating an entry.
+const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["edit", "send", "copy", "move", "kill", "fork", "work"]);
 
 export default class DispatchAdmission {
     // {§matcher-prefix-claims} — a matcher the parser could not read refuses its one operation with the parser's
     // diagnostic and working form: the operation's own row, soft on the rail, never a contract strike.
     static unreadableMatcher(statement: PlurnkStatement): DispatchResult | null {
-        const matchers = statement.op === "COPY" || statement.op === "MOVE"
+        const matchers = statement.op === "copy" || statement.op === "move"
             ? [statement.source.matcher, statement.destination.matcher]
             : ["matcher" in statement ? statement.matcher : null];
         const unreadable = matchers.find((matcher) => matcher !== null && matcher !== undefined && matcher.dialect === "unreadable");
@@ -52,7 +52,7 @@ export default class DispatchAdmission {
     // - MOVE: both src (delete) and dst (write) schemes' writableBy apply.
     checkWritable(statement: PlurnkStatement, origin: WriterTier, workspaceId: number): DispatchResult | null {
         if (!isExecution(statement) && !MUTATING_OPS.has(statement.op)) return null;
-        if (TurnDisposition.is(statement) || statement.op === "SEND" && statement.target === null) return null;
+        if (TurnDisposition.is(statement) || statement.op === "send" && statement.target === null) return null;
 
         // An execution's operation authority always belongs to the exec scheme;
         // runtime-specific resource authority is gated separately below.
@@ -60,29 +60,29 @@ export default class DispatchAdmission {
             return this.#denyIfDisallowed("exec", origin, workspaceId);
         }
 
-        // {§stream-control}: process control and facet-claimed SEND are not writes to
-        // stored output. The workspace execution binding owns KILL and SEND.
-        if (statement.op === "KILL" || statement.op === "SEND") {
+        // {§stream-control}: process control and facet-claimed send are not writes to
+        // stored output. The workspace execution binding owns kill and send.
+        if (statement.op === "kill" || statement.op === "send") {
             const target = schemeNameOf(statement.target);
             if (target !== null && this.#schemes.isRuntimeScheme(target, workspaceId)) {
                 const handler = this.#schemes.get(target, workspaceId);
-                if (statement.op === "SEND" || !(handler instanceof ExecOutputScheme) || handler.kills(statement.target)) {
+                if (statement.op === "send" || !(handler instanceof ExecOutputScheme) || handler.kills(statement.target)) {
                     return null;
                 }
             }
         }
 
-        // Session control (FORK/WORK → session://<name>, spawn or fork) is gated by session://'s writableBy — its
-        // body is a seed prompt, not a dst path, so the entry-COPY dst-parse below doesn't apply.
+        // Session control (fork/work → session://<name>, spawn or fork) is gated by session://'s writableBy — its
+        // body is a seed prompt, not a dst path, so the entry-copy dst-parse below doesn't apply.
         // {§machine-processes}
         if (this.#isSessionControl(statement)) return this.#denyIfDisallowed("session", origin, workspaceId, statement.target);
 
-        if (statement.op === "COPY" || statement.op === "MOVE") {
+        if (statement.op === "copy" || statement.op === "move") {
             const dst = statement.destination.target;
             const dstScheme = schemeNameOf(dst);
             const dstDenial = this.#denyIfDisallowed(dstScheme, origin, workspaceId, dst);
             if (dstDenial !== null) return dstDenial;
-            if (statement.op === "MOVE") {
+            if (statement.op === "move") {
                 const srcScheme = schemeNameOf(statement.source.target);
                 if (srcScheme !== dstScheme) {
                     const srcDenial = this.#denyIfDisallowed(srcScheme, origin, workspaceId, statement.source.target);
@@ -94,19 +94,19 @@ export default class DispatchAdmission {
 
         const target = schemeNameOf(statement.target);
         const denial = this.#denyIfDisallowed(target, origin, workspaceId, statement.target);
-        // {§send} — SEND addresses recipients, not otherwise
+        // {§send} — send addresses recipients, not otherwise
         // read-only resources. State that boundary without guessing whether the
         // model intended a reply, deletion, or directed message.
-        if (denial !== null && statement.op === "SEND" && origin === "model") {
+        if (denial !== null && statement.op === "send" && origin === "model") {
             return this.#failure(
                 "send-target-not-a-recipient",
                 400,
-                "The addressed scheme is not a SEND recipient.",
+                "The addressed scheme is not a send recipient.",
                 {},
                 {
                     target: statement.target?.raw ?? String(target),
                     stage: "dispatch",
-                    recovery: "Name a message address or a recipient that implements SEND.",
+                    recovery: "Name a message address or a recipient that implements send.",
                     retryable: false,
                 },
             );
@@ -191,6 +191,6 @@ export default class DispatchAdmission {
     // is the new session's seed prompt, not a destination path. The COPY gates and ResourceMutations.handleCopy
     // branch on this so they never parse the prompt as a dst path.
     #isSessionControl(statement: PlurnkStatement): statement is ForkStatement | WorkStatement {
-        return statement.op === "FORK" || statement.op === "WORK"; // session control targets session://<name> (grammar 0.74.55)
+        return statement.op === "fork" || statement.op === "work"; // session control targets session://<name> (grammar 0.74.55)
     }
 }

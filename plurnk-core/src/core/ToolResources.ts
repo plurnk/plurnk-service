@@ -244,7 +244,6 @@ export default class ToolResources {
             content: JSON.stringify({ tools: tools.map(({ definition }) => definition) }, null, 2),
         }];
         const schemaPath = (target: string): string => `${childrenRoot}/${ToolResources.targetSegment(target)}.json`;
-        const schemaUri = (target: string): string => `${scheme}://${schemaPath(target)}`;
         // {§find} — the runtime's summary is its complete menu: every tool inside
         // the invocation form, shown whole by the catalog, so the discovery row invokes without a READ.
         const summary = typeof source.summary === "string" ? authoredSummary(source, source.summary) : summaryWitness(
@@ -259,7 +258,7 @@ export default class ToolResources {
             {
                 exactTarget: tool.target,
                 aside: tool.summary,
-                schemaPath: tool.invocation.inputSchema === undefined ? undefined : schemaUri(tool.target),
+                includeSchemaNote: tool.invocation.inputSchema !== undefined,
                 body: invocationInput(tool.invocation) ?? null,
             },
         ));
@@ -284,7 +283,6 @@ export default class ToolResources {
             [
                 ...(runtimeDetails.length === 0 ? [] : [runtimeDetails, ""]),
                 "## Tools", "",
-                ...catalog.map((tool) => `Complete tool definitions: ${inlineCode(`${scheme}://${tool.pathname}`)}.\n`),
                 toolInvocations.join("\n\n"),
             ],
             sections.join("\n\n"),

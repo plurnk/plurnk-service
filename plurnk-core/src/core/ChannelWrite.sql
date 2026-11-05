@@ -71,7 +71,7 @@ WHERE entry_id = $entry_id AND closed_at IS NULL;
 
 -- PREP: find_open_subscriptions_for_session
 -- The session's still-open subscriptions — the registry-routed reap ({§session-causal-admission}):
--- loop.cancel / KILL / shutdown iterate these and abort each via the owning scheme, so a
+-- loop.cancel / kill / shutdown iterate these and abort each via the owning scheme, so a
 -- backgrounded exec is reaped independent of any in-process AbortSignal-listener timing.
 SELECT id, scheme
 FROM subscriptions
@@ -110,7 +110,7 @@ WHERE session_id = $session_id AND closed_at IS NULL AND turn_scoped = 1;
 
 -- PREP: find_exec_close_status
 -- Terminal outcome of a finished exec stream, addressed by its coordinate
--- pathname — the KILL-on-a-non-running-exec lookup. 499 (aborted) = killed
+-- pathname — the kill-on-a-non-running-exec lookup. 499 (aborted) = killed
 -- earlier; any other terminal status = exited naturally; no row = unknown exec.
 SELECT s.close_status
 FROM entries e
@@ -122,7 +122,7 @@ ORDER BY s.closed_at DESC
 LIMIT 1;
 
 -- PREP: find_exec_runtimes_at_pathname
--- The runtimes holding an execution at one coordinate pathname: what a KILL or input of the same
+-- The runtimes holding an execution at one coordinate pathname: what a kill or input of the same
 -- id under another runtime names ({§exec-target-routing}).
 SELECT DISTINCT e.scheme
 FROM entries e
@@ -230,9 +230,9 @@ BEGIN
 END;
 
 -- INIT: log_entries_advance_subscription_publication
--- The generated READ and its cursor transition are one SQLite statement. A
--- later log KILL removes evidence from active context without rewinding the
--- subscription/channel publication state. {§exec-stream} A FORK's copy records
+-- The generated read and its cursor transition are one SQLite statement. A
+-- later log kill removes evidence from active context without rewinding the
+-- subscription/channel publication state. {§exec-stream} A fork's copy records
 -- what its original published and advances nothing.
 DROP TRIGGER IF EXISTS log_entries_advance_subscription_publication;
 CREATE TRIGGER log_entries_advance_subscription_publication
@@ -241,7 +241,7 @@ WHEN NEW.subscription_publication_id IS NOT NULL AND NEW.inherited_history = 0
 BEGIN
     SELECT CASE WHEN
         NEW.origin != '_plurnk'
-        OR NEW.op != 'READ'
+        OR NEW.op != 'read'
         OR json_type(NEW.attrs, '$.streamEnd') IS NOT 'integer'
         OR json_extract(NEW.attrs, '$.streamEnd') < 0
         OR coalesce(json_type(NEW.rx, '$.terminal'), '') NOT IN ('true', 'false')

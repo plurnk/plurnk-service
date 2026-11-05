@@ -2,7 +2,7 @@
 import type { ParsedPath, PlurnkStatement, TextLineMarker } from "@plurnk/plurnk-contracts";
 
 export const primaryTargetOf = (statement: PlurnkStatement): ParsedPath | null =>
-    statement.op === "COPY" || statement.op === "MOVE" ? statement.source.target : statement.target;
+    statement.op === "copy" || statement.op === "move" ? statement.source.target : statement.target;
 
 export const primaryLineMarkerOf = (statement: PlurnkStatement): TextLineMarker | null =>
-    statement.op === "COPY" || statement.op === "MOVE" ? statement.source.lineMarker : statement.lineMarker;
+    statement.op === "copy" || statement.op === "move" ? statement.source.lineMarker : statement.lineMarker;

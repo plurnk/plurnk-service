@@ -128,8 +128,8 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
             );
         }
         return Results.failure("scheme:exec", "operation-not-implemented", 501,
-            `Scheme '${this.#manifest.name}' does not implement EDIT.`, { entryId: null, channel: null },
-            { scheme: this.#manifest.name, operation: "EDIT", retryable: false });
+            `Scheme '${this.#manifest.name}' does not implement edit.`, { entryId: null, channel: null },
+            { scheme: this.#manifest.name, operation: "edit", retryable: false });
     }
 
     // {§execution-output-identity} A claimed resource's SEND is its facet's; stored output has none.
@@ -139,8 +139,8 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
             return facet.send(statement, await this.#facetContext(ctx, statement.target));
         }
         return Results.failure("scheme:exec", "operation-not-implemented", 501,
-            `Scheme '${this.#manifest.name}' does not implement SEND.`, {},
-            { scheme: this.#manifest.name, operation: "SEND", retryable: false });
+            `Scheme '${this.#manifest.name}' does not implement send.`, {},
+            { scheme: this.#manifest.name, operation: "send", retryable: false });
     }
 
     // A facet that proposed its own operation applies its own settlement.

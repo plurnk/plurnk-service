@@ -2,7 +2,7 @@ import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import type { SchemeResultBase } from "@plurnk/plurnk-schemes";
 import Results from "./results.ts";
 
-type SessionControlOperation = "WORK" | "FORK" | "SEND" | "READ" | "KILL";
+type SessionControlOperation = "work" | "fork" | "send" | "read" | "kill";
 
 type SessionControlAddressResolution =
     | { readonly ok: true; readonly authority: string }

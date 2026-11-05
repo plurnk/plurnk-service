@@ -125,7 +125,7 @@ export default class ResourceTransfers {
         if (MutationEffects.isDispatchResult(resolvedSource)) return resolvedSource;
         const resolvedDestination = await this.#selection.resolveResourceSelection(destination, ctx);
         if (MutationEffects.isDispatchResult(resolvedDestination)) return resolvedDestination;
-        const selected = await this.#selection.selectSource(resolvedSource, ctx, "COPY");
+        const selected = await this.#selection.selectSource(resolvedSource, ctx, "copy");
         if (MutationEffects.isDispatchResult(selected)) return selected;
         const result = await this.writeDestination(statement, selected, resolvedDestination, ctx);
         return ResourceTransfers.#withMatched(MutationEffects.prependScopeNormalizations(result, selected.scopeNormalizations), selected);
@@ -156,7 +156,7 @@ export default class ResourceTransfers {
         if (MutationEffects.isDispatchResult(resolvedSource)) return resolvedSource;
         const resolvedDestination = await this.#selection.resolveResourceSelection(destination, ctx);
         if (MutationEffects.isDispatchResult(resolvedDestination)) return resolvedDestination;
-        const selected = await this.#selection.selectSource(resolvedSource, ctx, "MOVE");
+        const selected = await this.#selection.selectSource(resolvedSource, ctx, "move");
         if (MutationEffects.isDispatchResult(selected)) return selected;
 
         const handler = this.#schemes.get(resolvedSource.scheme, ctx.workspaceId);
@@ -166,7 +166,7 @@ export default class ResourceTransfers {
             return MutationEffects.failure(
                 "channel-derived", 400,
                 `#${resolvedSource.channel} is derived from its source channel and cannot be moved.`,
-                {}, { scheme: resolvedSource.scheme, channel: resolvedSource.channel, operation: "MOVE", retryable: false },
+                {}, { scheme: resolvedSource.scheme, channel: resolvedSource.channel, operation: "move", retryable: false },
             );
         }
         // {§copy} — a curated source retires rows, not lines of its projection.
@@ -174,7 +174,7 @@ export default class ResourceTransfers {
             return MutationEffects.failure(
                 "pattern-unsupported", 400,
                 `MOVE cannot retire lines of the '${resolvedSource.scheme}' projection by pattern.`,
-                {}, { scheme: resolvedSource.scheme, operation: "MOVE", retryable: false },
+                {}, { scheme: resolvedSource.scheme, operation: "move", retryable: false },
             );
         }
         if (!ResourceTransfers.#curatedSource(resolvedSource)) {
@@ -298,7 +298,7 @@ export default class ResourceTransfers {
         const resolvedDestination = this.#selection.resolveResourceLineMarker(
             destination,
             source.completeContent,
-            "MOVE",
+            "move",
         );
         if ("result" in resolvedDestination) return resolvedDestination.result;
         const precondition = MutationEffects.mergeLineAnchorPreconditions(
@@ -352,7 +352,7 @@ export default class ResourceTransfers {
     ): Promise<DispatchResult> {
         if (source.fileRevision !== undefined) ctx = { ...ctx, fileRevision: source.fileRevision };
         if (source.bytePrecondition !== undefined) {
-            const current = await this.#selection.selectSource({ ...source, lineMarker: null, matcher: null }, ctx, "COPY");
+            const current = await this.#selection.selectSource({ ...source, lineMarker: null, matcher: null }, ctx, "copy");
             if (MutationEffects.isDispatchResult(current)) return current;
             if (current.bytes === undefined || contentHash(current.bytes) !== source.bytePrecondition) {
                 return EditCollision.result(MutationEffects.resourceAddress(source));
@@ -376,7 +376,7 @@ export default class ResourceTransfers {
                 throw new InvalidOperationResultError(`Resolved MOVE source scheme '${source.scheme}' curates nothing.`);
             }
             const curated = await handler.kill(
-                { op: "KILL", target: source.target, lineMarker: source.lineMarker, metadata: source.metadata,
+                { op: "kill", target: source.target, lineMarker: source.lineMarker, metadata: source.metadata,
                     matcher: null, body: null, aside: statement.aside, position: statement.position },
                 new SchemeCtxImpl(ctx, source.scheme, source.manifest, this.#liveSubscriptions, { authority: source.authority }),
             );
@@ -818,17 +818,17 @@ export default class ResourceTransfers {
             return MutationEffects.failure(
                 "operation-not-implemented",
                 501,
-                `Scheme '${selection.scheme}' does not implement EDIT batches.`,
+                `Scheme '${selection.scheme}' does not implement edit batches.`,
                 {},
                 {
                     scheme: selection.scheme,
-                    operation: "EDIT",
+                    operation: "edit",
                     retryable: false,
                 },
             );
         }
         const statements: ResolvedEditStatement[] = edits.map(({ marker, body, position }) => ({
-            op: "EDIT",
+            op: "edit",
             aside: null,
             signal: null,
             target: selection.target,
@@ -878,18 +878,18 @@ export default class ResourceTransfers {
         } catch (err) {
             if (err instanceof InvalidOperationResultError) throw err;
             console.error(
-                `Scheme '${selection.scheme}' COPY/MOVE edit threw outside its operation result contract:`,
+                `Scheme '${selection.scheme}' copy/move edit threw outside its operation result contract:`,
                 err,
             );
             return MutationEffects.failure(
                 "scheme-handler-threw",
                 500,
-                `The '${selection.scheme}' scheme did not produce a COPY/MOVE edit result.`,
+                `The '${selection.scheme}' scheme did not produce a copy/move edit result.`,
                 {},
                 {
                     stage: "scheme-dispatch",
                     scheme: selection.scheme,
-                    operation: "EDIT",
+                    operation: "edit",
                 },
             );
         }
@@ -913,7 +913,7 @@ export default class ResourceTransfers {
         ctx: PlurnkSchemeContext;
         ids: ProposalIds;
     }): Promise<ProposalSettlement> {
-        if (statement.op !== "MOVE") return settlement;
+        if (statement.op !== "move") return settlement;
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§move}: a MOVE's proposal attrs are the orchestration attrs this module wrote when it decomposed the MOVE
         const attrs = result.attrs as OrchestrationProposalAttrs | undefined;
         if (attrs?.moveDestinationWritten !== undefined) {

@@ -69,8 +69,8 @@ export default class LogVisibility {
     ): LogVisibilityScopeResolution {
         // {§log-kill-scope} — every refusal ends in the forms that work on this row, never a rebuild of the
         // written scope ({§diagnostic-observation}).
-        const retire = `KILL (${identity}) with no scope retires the whole row`;
-        const refuse = (detail: string, recovery = `Trim one line with <L> or lines L through M with <L,M>; ${retire}.`) =>
+        const retire = `await plurnk.kill({ path: ${JSON.stringify(identity)} }); with no range retires the whole row`;
+        const refuse = (detail: string, recovery = `Trim one line with range "L" or lines L through M with range "L,M"; ${retire}.`) =>
             ({ ok: false, status: 400, code: "curation-scope-invalid", detail, recovery }) as const;
         const total = TextCoordinates.lineCount(content);
         if (marker === null) {

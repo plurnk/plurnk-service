@@ -667,7 +667,7 @@ export default class TurnRunner {
         let nextActionIndex = fromSequence;
         for (const [index, raw] of openPaths.entries()) {
             const resourceRead: ReadStatement = {
-                op: "READ", aside: null, lineMarker: null, matcher: null,
+                op: "read", aside: null, lineMarker: null, matcher: null,
                 target: parsePath(PathSyntax.escapeTarget(raw)),
                 metadata: null,
                 body: null, position: UNKNOWN_POSITION,
@@ -930,7 +930,7 @@ export default class TurnRunner {
         // words. An empty turn has its own no-operation row instead.
         const ops = split.packetAssistant.ops;
         if ((executed.status === 102 || executed.status === 202) && ops.length > 0
-            && !ops.some((statement) => "op" in statement && (statement.op === "NOTE" || statement.op === "TODO" || statement.op === "DONE" || statement.op === "FAIL"))) {
+            && !ops.some((statement) => "op" in statement && (statement.op === "note" || statement.op === "todo" || statement.op === "done" || statement.op === "fail"))) {
             this.#notices.push(workspaceId, sessionId, loopId, {
                 source: "engine:turn", kind: "continued_without_note", level: "warn", directive: DIRECTIVE.note, message: CONTINUED_WITHOUT_NOTE,
             });

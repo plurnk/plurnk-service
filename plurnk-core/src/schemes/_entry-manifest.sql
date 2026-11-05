@@ -1,4 +1,4 @@
--- EntryManifest: the catalog listing a turn 0 FIND presents.
+-- EntryManifest: the catalog listing a turn 0 find presents.
 
 -- PREP: engine_list_catalog_entries
 -- {§execution-output-identity}: canonical entries in one workspace.

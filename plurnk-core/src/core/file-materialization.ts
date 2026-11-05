@@ -97,7 +97,7 @@ export default class FileMaterialization {
                 target: pathname,
                 maximumBytes: metadata.maximumBytes,
                 observedBytes: metadata.observedBytes,
-                recovery: `Use an executor fence for bounded access, hide the file, or raise ${CONFIG_NAME} up to ${STORAGE_MAXIMUM_BYTES}.`,
+                recovery: `Use an executor call for bounded access, hide the file, or raise ${CONFIG_NAME} up to ${STORAGE_MAXIMUM_BYTES}.`,
                 retryable: false,
             },
         };

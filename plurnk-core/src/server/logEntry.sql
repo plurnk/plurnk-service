@@ -22,7 +22,7 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
            )
        END AS reasoning,
        -- {§methods-invocation} The request that streamed it: the turn's accepted model call and that
-       -- call's response request. History a FORK inherited names none.
+       -- call's response request. History a fork inherited names none.
        CASE WHEN le.origin = 'model' AND le.op IS NOT NULL THEN
            (SELECT s.model_call_id FROM turn_sources s WHERE s.turn_id = le.turn_id AND s.kind = 'ops' AND s.sequence = 0)
        END AS reasoning_model_call_id,
@@ -88,7 +88,7 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
            )
        END AS reasoning,
        -- {§methods-invocation} The request that streamed it: the turn's accepted model call and that
-       -- call's response request. History a FORK inherited names none.
+       -- call's response request. History a fork inherited names none.
        CASE WHEN le.origin = 'model' AND le.op IS NOT NULL THEN
            (SELECT s.model_call_id FROM turn_sources s WHERE s.turn_id = le.turn_id AND s.kind = 'ops' AND s.sequence = 0)
        END AS reasoning_model_call_id,

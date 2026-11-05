@@ -468,7 +468,7 @@ export default class ProposalLifecycle {
         target: { scheme: string | null; authority: string | null; pathname: string | null },
         attrs: Record<string, unknown>,
     ): { selector: CapabilitySelector; descriptor: CapabilityDescriptor } | null {
-        if (op === "NOTE" || op === "TODO" || op === "WAIT" || op === "DONE" || op === "FAIL") return null;
+        if (op === "note" || op === "todo" || op === "wait" || op === "done" || op === "fail") return null;
         if (isExecutionOp(op)) {
             const registry = this.#executors()?.toolRegistry(op, row.workspaceId) ?? null;
             const tool = registry !== null && typeof attrs.target === "string" && attrs.target.length > 0
@@ -499,13 +499,13 @@ export default class ProposalLifecycle {
         }
         const scheme = target.scheme ?? "file";
         const traits = [...(this.#schemes.manifestFor(scheme, row.workspaceId)?.traits ?? [])].toSorted();
-        const access = op === "READ" || op === "FIND"
+        const access = op === "read" || op === "find"
             ? "observe"
-            : op === "WORK" || op === "FORK"
+            : op === "work" || op === "fork"
                 ? "control"
-                : op === "BARE"
+                : op === "bare"
                     ? "execute"
-                    : (op === "KILL" || op === "SEND") && (scheme === "session" || this.#executors()?.entry(scheme, row.workspaceId) !== undefined)
+                    : (op === "kill" || op === "send") && (scheme === "session" || this.#executors()?.entry(scheme, row.workspaceId) !== undefined)
                         ? "control"
                         : "mutate";
         return {
@@ -647,7 +647,7 @@ export default class ProposalLifecycle {
     ): { scheme: string | null; authority: string | null; pathname: string | null } {
         const routed = attrs.proposalTarget;
         if (routed === undefined) {
-            if (op === "COPY" || op === "MOVE") {
+            if (op === "copy" || op === "move") {
                 throw new Error(`Pending proposal ${row.logEntryId} has no canonical ${op} proposal target.`);
             }
             if (row.pathname === null) {
@@ -732,9 +732,9 @@ export default class ProposalLifecycle {
         // {§move}: once the destination is written, approval applies
         // to the source operand, including its metadata and manifest binding.
         const attrs = isRecord(originalResult.attrs) ? originalResult.attrs : undefined;
-        const operand = statement.op === "MOVE" && attrs?.moveDestinationWritten !== undefined
+        const operand = statement.op === "move" && attrs?.moveDestinationWritten !== undefined
             ? statement.source
-            : statement.op === "COPY" || statement.op === "MOVE" ? statement.destination : statement;
+            : statement.op === "copy" || statement.op === "move" ? statement.destination : statement;
         const routedScheme = attrs?.proposalScheme;
         const schemeName = typeof routedScheme === "string"
             ? routedScheme

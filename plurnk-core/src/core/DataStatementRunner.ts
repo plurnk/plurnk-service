@@ -60,8 +60,8 @@ export default class DataStatementRunner {
     // The op's result shape with nothing in it: what a refusal carries so the receipt keeps the
     // op's own fields ({§operation-results}).
     static #emptyFields(op: string): Readonly<Record<string, unknown>> {
-        if (op === "READ") return { content: null, mimetype: null, channel: null };
-        if (op === "FIND") {
+        if (op === "read") return { content: null, mimetype: null, channel: null };
+        if (op === "find") {
             return {
                 content: null,
                 mimetype: null,
@@ -111,10 +111,10 @@ export default class DataStatementRunner {
                 400,
                 `${writtenOp(statement)} requires a target path.`,
                 DataStatementRunner.#emptyFields(writtenOp(statement)),
-                { operation: writtenOp(statement), recovery: `Write the target in parentheses on the opening fence line: \`${writtenOp(statement)} (path)\`.`, retryable: false },
+                { operation: writtenOp(statement), recovery: `Provide the target path: \`await plurnk.${writtenOp(statement).toLowerCase()}({ path: "..." });\`.`, retryable: false },
             );
         }
-        const resourceRead = statement.op === "READ" || statement.op === "FIND";
+        const resourceRead = statement.op === "read" || statement.op === "find";
         const binding = resourceRead ? await ResourceBindings.resolve(statement.target, ctx) : undefined;
         const manifest = resourceRead ? binding?.manifest : this.#schemes.manifestAt(schemeName, statement.target, ctx.workspaceId);
         const handler = resourceRead ? binding?.handler : this.#schemes.get(schemeName, ctx.workspaceId);
@@ -137,7 +137,7 @@ export default class DataStatementRunner {
         const method = (handler as SchemeMethods)[methodName];
         const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
         if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
-        if (statement.op !== "SEND" && statement.metadata !== null && manifest.metadataModifier !== true) {
+        if (statement.op !== "send" && statement.metadata !== null && manifest.metadataModifier !== true) {
             return this.#failure(
                 "scheme-metadata-unsupported",
                 400,
@@ -186,15 +186,15 @@ export default class DataStatementRunner {
             schemeName, statement, ctx, manifest, handler, method, addressedScheme,
             publishedChannel, authoredCoordinate, addressResolution, schemeCtx,
         };
-        if (statement.op === "READ") return this.#runRead(bound);
-        if (statement.op === "FIND" && manifest.category === "data") return this.#runFind(bound);
+        if (statement.op === "read") return this.#runRead(bound);
+        if (statement.op === "find" && manifest.category === "data") return this.#runFind(bound);
         return this.#runMethod(bound);
     }
 
-    // READ: a core representation, a data entry, or the scheme's own method, in that order.
+    // read: a core representation, a data entry, or the scheme's own method, in that order.
     async #runRead(bound: BoundStatement): Promise<DispatchResult> {
         const { statement } = bound;
-        if (statement.op !== "READ") throw new TypeError(`READ runner given ${statement.op}`);
+        if (statement.op !== "read") throw new TypeError(`read runner given ${statement.op}`);
         const grant = await this.#lineAnchorGrant(bound);
         if (grant.refusal !== null) return grant.refusal;
         const coreRepresentation = coreRepresentationProvider(bound.handler);
@@ -280,7 +280,7 @@ export default class DataStatementRunner {
         if (prepared.result !== null) return prepared.result;
         const resolved = prepared.address;
         if (statement.target !== null && resolved === null) {
-            return this.#entryNotFound(schemeName, statement.target, "READ");
+            return this.#entryNotFound(schemeName, statement.target, "read");
         }
         const storageScheme = resolved?.scheme ?? manifest.storedScheme ?? addressedScheme ?? schemeName;
         const projected = Results.assertReadResult(await EntryOps.readWorkspaceEntry(
@@ -309,11 +309,11 @@ export default class DataStatementRunner {
         return await this.#missRefusal(handler, resolved, ctx) ?? projected;
     }
 
-    // FIND on a data scheme: an exact target is one entry's own search; a glob, a collection, or
+    // find on a data scheme: an exact target is one entry's own search; a glob, a collection, or
     // no target is the scheme's method, its prepared find, or the workspace's entries.
     async #runFind(bound: BoundStatement): Promise<DispatchResult> {
         const { statement, manifest, authoredCoordinate } = bound;
-        if (statement.op !== "FIND") throw new TypeError(`FIND runner given ${statement.op}`);
+        if (statement.op !== "find") throw new TypeError(`find runner given ${statement.op}`);
         const targetPathname = bound.addressResolution?.address?.pathname ?? authoredCoordinate.pathname;
         const collectionTarget = manifest.folderScopes === true
             && (targetPathname === "" || targetPathname.endsWith("/"));
@@ -346,7 +346,7 @@ export default class DataStatementRunner {
             ...(addressResolution === null ? {} : { resolved: addressResolution }),
         });
         if (prepared.result !== null) return prepared.result;
-        if (prepared.address === null) return this.#entryNotFound(schemeName, target, "FIND");
+        if (prepared.address === null) return this.#entryNotFound(schemeName, target, "find");
         const storageScheme = prepared.address.scheme
             ?? manifest.storedScheme
             ?? addressedScheme

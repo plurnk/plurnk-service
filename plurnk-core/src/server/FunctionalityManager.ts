@@ -86,13 +86,7 @@ export const plurnkRuntimeDecl: RuntimeDecl & { readonly glyph: string } = {
         target: { role: "Plurnk tool", required: true, kind: "literal" },
         example: { target: "members", body: "{}" },
     },
-    details: [
-        "Pass an empty body (`{}`) to list current definitions.",
-        "Pass `{\"discover\": \"...\"}` (or `{\"discover\": {...}}`) to search for candidates without installing them.",
-        "Pass a definition object to add or update it (`add` / `replace` automatically).",
-        "Pass `{\"alias\": \"...\", \"enabled\": true | false}` (or `\"file\"` for `members`) to enable or disable a definition.",
-        "Pass `{\"alias\": \"...\", \"remove\": true}` (or `\"file\"` for `members`) to remove the local definition and restore inheritance.",
-    ].join("\n\n"),
+    details: "",
 };
 
 export default class FunctionalityManager extends BaseExecutor {

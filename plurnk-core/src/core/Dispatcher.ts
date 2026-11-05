@@ -116,7 +116,7 @@ export type ClientEntryAcquisition =
     | { readonly kind: "refused"; readonly result: DispatchResult };
 
 export type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
-export type UnaryStatement = Exclude<PlurnkStatement, { op: "COPY" | "MOVE" }>;
+export type UnaryStatement = Exclude<PlurnkStatement, { op: "copy" | "move" }>;
 type LogCurationHandler = {
     curate(statement: KillStatement, ctx: SchemeCtx, maxLogEntryId: number): Promise<LogCurationOutcome>;
 };
@@ -328,11 +328,11 @@ export default class Dispatcher {
     readonly #distillations = new WeakMap<NoteStatement, string>();
 
     #scopedEntryEdit(statement: PlurnkStatement, workspaceId: number): EditStatement | null {
-        if (statement.op === "EDIT") return statement;
-        // {§op-invariants} a scoped KILL of an entry empties the span; {§op-invariants} a KILL with
+        if (statement.op === "edit") return statement;
+        // {§op-invariants} a scoped kill of an entry empties the span; {§op-invariants} a kill with
         // a matcher removes each selected span, inside its scope when one is given.
-        // Both are emptying EDITs; the log and every scheme with its own kill() keep their own path.
-        if (statement.op !== "KILL" || (statement.lineMarker === null && statement.matcher === null)) return null;
+        // Both are emptying edits; the log and every scheme with its own kill() keep their own path.
+        if (statement.op !== "kill" || (statement.lineMarker === null && statement.matcher === null)) return null;
         const cached = this.#scopedEntryEdits.get(statement);
         if (cached !== undefined) return cached;
         const schemeName = schemeNameOf(statement.target);
@@ -340,7 +340,7 @@ export default class Dispatcher {
         const handler = this.#schemes.get(schemeName, workspaceId);
         if (handler === undefined || ("kill" in handler && typeof handler.kill === "function")) return null;
         const edit: EditStatement = {
-            op: "EDIT",
+            op: "edit",
             aside: statement.aside,
             metadata: statement.metadata,
             target: statement.target,
@@ -364,8 +364,8 @@ export default class Dispatcher {
     // {§fs-namespace} Authored operands, once, before internal fan-out: an absolute or home spelling
     // whose canonical address reads differently — the key inside the root, the absolute path beyond it.
     async #noticeFilePaths({ statement, origin, workspaceId, sessionId, loopId }: Pick<DispatchContext, "statement" | "origin" | "workspaceId" | "sessionId" | "loopId">): Promise<void> {
-        if (origin !== "model" || isExecution(statement) || TurnDisposition.is(statement) || statement.op === "NOTE" || statement.op === "TODO") return;
-        const targets = statement.op === "COPY" || statement.op === "MOVE"
+        if (origin !== "model" || isExecution(statement) || TurnDisposition.is(statement) || statement.op === "note" || statement.op === "todo") return;
+        const targets = statement.op === "copy" || statement.op === "move"
             ? [statement.source.target, statement.destination.target]
             : [statement.target];
         const normalized = targets.flatMap((target) => {
@@ -407,22 +407,22 @@ export default class Dispatcher {
         const execution = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context),
             (ctx) => this.#dispatchOne(context, ctx, targetsResolved));
         let { result } = execution;
-        const edit = context.statement.op === "EDIT"
+        const edit = context.statement.op === "edit"
             ? context.statement
-            : context.statement.op === "KILL" ? this.#scopedEntryEdits.get(context.statement) : undefined;
+            : context.statement.op === "kill" ? this.#scopedEntryEdits.get(context.statement) : undefined;
         if (edit !== undefined) {
             // {§op-methods-op-dispatch} — a proposal's apply result replaces the projected one; the
-            // statement's merge facts ride every EDIT result, whichever route produced it.
+            // statement's merge facts ride every edit result, whichever route produced it.
             result = this.#resourceMutations.withMergeFacts(edit, result);
             this.#resourceMutations.settleEdit(edit, result);
         }
-        // {§log-kill-scope} — a log KILL's body is the model's own NOTE row whatever the kill's
+        // {§log-kill-scope} — a log kill's body is the model's own note row whatever the kill's
         // outcome: written after the kill's receipt at the next sequence, so it never falls inside the
         // kill's own selection, and kept when the kill misses, because what the model wrote about its
         // environment is the model's to retire, never the daemon's to drop.
         const distillation = Dispatcher.#distillationOf(context.statement);
         if (distillation !== null) {
-            const note: NoteStatement = { op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body: distillation.body, position: context.statement.position };
+            const note: NoteStatement = { op: "note", aside: null, metadata: null, target: null, lineMarker: null, body: distillation.body, position: context.statement.position };
             this.#distillations.set(note, distillation.target);
             const noteContext: DispatchContext = { ...context, statement: note, sequence: context.sequence + 1 };
             delete noteContext.fanout;
@@ -434,11 +434,11 @@ export default class Dispatcher {
     }
 
     static #distillationOf(statement: PlurnkStatement): { body: string; target: string } | null {
-        if (statement.op !== "KILL" || statement.target === null || schemeNameOf(statement.target) !== "log" || typeof statement.body !== "string") return null;
+        if (statement.op !== "kill" || statement.target === null || schemeNameOf(statement.target) !== "log" || typeof statement.body !== "string") return null;
         return statement.body.trim() === "" ? null : { body: statement.body, target: statement.target.raw };
     }
 
-    // {§op-methods-op-dispatch} — the paths a FIND matched: each catalog item's, never a scope group's.
+    // {§op-methods-op-dispatch} — the paths a find matched: each catalog item's, never a scope group's.
     static #matchedPaths(results: unknown): string[] {
         const items: unknown[] = Array.isArray(results) ? results : [];
         return items.flatMap((item): string[] => {
@@ -464,26 +464,26 @@ export default class Dispatcher {
             : [];
         const matched = typeof found.matchingPathCount === "number" ? found.matchingPathCount : paths.length;
         if (survey.lineMarker !== null && matched !== paths.length) {
-            throw new InvalidOperationResultError("Unbounded FIND did not return its complete resource selection.");
+            throw new InvalidOperationResultError("Unbounded find did not return its complete resource selection.");
         }
         const targets = paths.map((path) => {
             const selected = survey.target?.fragment == null ? path : `${path.split("#")[0]}#${survey.target.fragment}`;
             const target = parsePath(selected);
-            if (target === null) throw new InvalidOperationResultError(`FIND named an unparseable path: ${selected}`);
+            if (target === null) throw new InvalidOperationResultError(`find named an unparseable path: ${selected}`);
             return target;
         });
         return { targets, matched };
     }
 
     async #selectTargets(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<TargetSelection | null> {
-        if (statement.op === "COPY" || statement.op === "MOVE") {
+        if (statement.op === "copy" || statement.op === "move") {
             if (![statement.source, statement.destination].some(({ target }) => Dispatcher.#globTarget(target))) return null;
             const resolved = { ...statement };
             for (const operand of ["source", "destination"] as const) {
                 const selection = statement[operand];
                 if (!Dispatcher.#globTarget(selection.target)) continue;
                 const found = await this.#findTargets({
-                    ...selection, op: "FIND", matcher: null, lineMarker: { marks: [1, -1] },
+                    ...selection, op: "find", matcher: null, lineMarker: { marks: [1, -1] },
                     aside: statement.aside, position: statement.position, body: null,
                 }, ctx);
                 if ("result" in found) return found;
@@ -494,22 +494,22 @@ export default class Dispatcher {
             }
             return { statements: [resolved] };
         }
-        if (!(statement.op === "READ" || statement.op === "EDIT" || statement.op === "KILL")) return null;
-        if (!Dispatcher.#globTarget(statement.target) || (statement.op === "KILL" && schemeNameOf(statement.target) === "log")) return null;
+        if (!(statement.op === "read" || statement.op === "edit" || statement.op === "kill")) return null;
+        if (!Dispatcher.#globTarget(statement.target) || (statement.op === "kill" && schemeNameOf(statement.target) === "log")) return null;
         const found = await this.#findTargets({
-            op: "FIND", aside: statement.aside, target: statement.target, metadata: statement.metadata,
-            matcher: statement.op === "READ" ? statement.matcher : null,
-            lineMarker: statement.op === "READ" ? null : { marks: [1, -1] }, body: null, position: statement.position,
+            op: "find", aside: statement.aside, target: statement.target, metadata: statement.metadata,
+            matcher: statement.op === "read" ? statement.matcher : null,
+            lineMarker: statement.op === "read" ? null : { marks: [1, -1] }, body: null, position: statement.position,
         }, ctx);
         if ("result" in found) return found;
-        if (found.targets.length === 0) return { result: Results.assert(statement.op === "READ" && statement.matcher !== null
+        if (found.targets.length === 0) return { result: Results.assert(statement.op === "read" && statement.matcher !== null
             ? { status: 204, matched: 0, matcher: statement.matcher.raw, detail: `No line under ${statement.target!.raw} matched the pattern.` }
             : { status: 204, detail: `No path matched ${statement.target!.raw}.` }) };
-        if (statement.op === "READ" && found.matched > found.targets.length) {
+        if (statement.op === "read" && found.matched > found.targets.length) {
             this.#notices.push(ctx.workspaceId, ctx.sessionId, ctx.loopId, {
                 source: "engine:dispatcher", kind: "read_fanout_bounded", level: "warn",
-                directive: "YOU SHOULD narrow the glob, or FIND first.",
-                message: `READ ${statement.target!.raw} matched ${found.matched} paths; the first ${found.targets.length} were selected.`,
+                directive: "YOU SHOULD narrow the glob, or find first.",
+                message: `read ${statement.target!.raw} matched ${found.matched} paths; the first ${found.targets.length} were selected.`,
             });
         }
         return { statements: found.targets.map((target) => ({ ...statement, target })), fanout: { target: statement.target!.raw, matched: found.matched } };
@@ -620,25 +620,25 @@ export default class Dispatcher {
                     resolved = selection;
                 } else if (selection !== null) {
                     result = selection.result;
-                } else if (statement.op === "EDIT") {
+                } else if (statement.op === "edit") {
                     result = await this.#resourceMutations.edit(statement, schemeCtx, context.editSequence);
-                } else if (statement.op === "DONE" || statement.op === "FAIL" || (statement.op === "SEND" && statement.target === null)) {
+                } else if (statement.op === "done" || statement.op === "fail" || (statement.op === "send" && statement.target === null)) {
                     result = await this.#respond(statement, schemeCtx, loopId);
-                } else if (statement.op === "NOTE") {
+                } else if (statement.op === "note") {
                     await Turn.recordSource(this.#db, turnId, "note", statement.body ?? "", { sequence });
                     const coordinate = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: loopId, turn_id: turnId });
-                    if (coordinate === undefined) throw new Error(`NOTE has no turn coordinate for ${turnId}`);
+                    if (coordinate === undefined) throw new Error(`note has no turn coordinate for ${turnId}`);
                     const sessionName = await SessionName.forId(this.#db, sessionId);
                     const distilled = this.#distillations.get(statement);
                     result = { ...(distilled === undefined ? {} : { attrs: { distilled } }), status: 200, resource: renderAddress({ scheme: "note", authority: sessionName, pathname: `/${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` }) };
-                } else if (statement.op === "TODO") {
+                } else if (statement.op === "todo") {
                     result = { status: 200 };
                 } else if (TurnDisposition.is(statement)) {
-                    // {§op-shapes} — WAIT is the park; whatever it names is its label in the
+                    // {§op-shapes} — wait is the park; whatever it names is its label in the
                     // row, never a selected waker; arrivals or its duration end the park.
                     result = await this.#disposition.handle({ sessionId, loopId, turnId, origin }, statement);
                 } else if (
-                    statement.op === "KILL" && schemeNameOf(statement.target) === "log"
+                    statement.op === "kill" && schemeNameOf(statement.target) === "log"
                 ) {
                     const curation = await this.#runLogCuration(
                         statement,
@@ -647,17 +647,17 @@ export default class Dispatcher {
                     );
                     result = curation.result;
                     curationPlan = curation.plan;
-                } else if (statement.op === "FORK" || statement.op === "WORK") {
+                } else if (statement.op === "fork" || statement.op === "work") {
                     // {§session-scheme} — a non-address path is the child's prompt resource.
                     const seeded = await this.#seedSpawnPrompt(statement, schemeCtx);
                     result = "result" in seeded ? seeded.result : await this.#sessionControl.handleSessionControl(seeded.statement, schemeCtx);
-                } else if (statement.op === "COPY") {
+                } else if (statement.op === "copy") {
                     result = await this.#resourceMutations.handleCopy(statement, schemeCtx);
-                } else if (statement.op === "MOVE") {
+                } else if (statement.op === "move") {
                     result = await this.#resourceMutations.handleMove(statement, schemeCtx);
-                } else if (statement.op === "KILL" && this.#scopedEntryEdit(statement, workspaceId) !== null) {
+                } else if (statement.op === "kill" && this.#scopedEntryEdit(statement, workspaceId) !== null) {
                     result = await this.#resourceMutations.edit(this.#scopedEntryEdits.get(statement)!, schemeCtx, context.editSequence);
-                } else if (statement.op === "KILL") {
+                } else if (statement.op === "kill") {
                     result = await this.#kill.handleKill(statement, schemeCtx);
                 } else if (isExecution(statement)) {
                     // An execution routes unconditionally to its operation owner after
@@ -693,13 +693,13 @@ export default class Dispatcher {
     }
 
     // {§configuration-repair-path} {§proposal-disposition} Whether a proposal settles itself under the effect
-    // policy, decided before its row is persisted: an execution or a runtime-scheme SEND must declare its effect, the
+    // policy, decided before its row is persisted: an execution or a runtime-scheme send must declare its effect, the
     // runtime actor never grants itself authority, and a policy the configuration cannot read is the row's failure.
     #proposalAdmission(statement: PlurnkStatement, result: DispatchResult, workspaceId: number, origin: DispatchContext["origin"]): { autoAccept: boolean; result: DispatchResult } {
         let autoAccept = false;
         if (Dispatcher.#isProposal(statement, result)) {
             const effect = isRecord(result.attrs) ? result.attrs.effect : undefined;
-            const mustDeclareEffect = isExecution(statement) || (statement.op === "SEND"
+            const mustDeclareEffect = isExecution(statement) || (statement.op === "send"
                 && this.#schemes.isRuntimeScheme(schemeNameOf(statement.target) ?? "", workspaceId));
             if (mustDeclareEffect || effect !== undefined) {
                 if (!EffectPolicy.isEffect(effect)) {
@@ -781,7 +781,7 @@ export default class Dispatcher {
     // otherwise the row is its size and address — a READ of lines above the longest prefix of them that
     // fits — and the result stays where it was read from.
     async #fitResult(context: DispatchContext, statement: PlurnkStatement, result: DispatchResult): Promise<DispatchResult> {
-        if (context.fit === undefined || (statement.op !== "READ" && statement.op !== "FIND")) return result;
+        if (context.fit === undefined || (statement.op !== "read" && statement.op !== "find")) return result;
         if (result.status >= 300 || typeof result.content !== "string" || result.content.length === 0) return result;
         const remaining = await context.fit.remaining();
         if (remaining === null) return result;
@@ -789,11 +789,11 @@ export default class Dispatcher {
         if (tokens <= remaining) return result;
         const range = result.range === undefined ? undefined : Validator.assertRangeExtent(result.range);
         const size = resultSize({ range, content: result.content });
-        const retained = statement.op === "READ"
+        const retained = statement.op === "read"
             ? { content: null, mimetype: null, channel: result.channel ?? null, ...(range === undefined ? {} : { range }) }
             : { ...(range === undefined ? {} : { range }), ...Object.fromEntries(["matchingPathCount", "matchLocationCount", "itemsWeightTotal"].flatMap((key) => key in result ? [[key, result[key]]] : [])) };
         const receipt = (delivered: number): DispatchResult => unfitResult(retained, size, tokens, remaining, statement.op, delivered);
-        if (statement.op !== "READ" || size.unit !== "line") return receipt(0);
+        if (statement.op !== "read" || size.unit !== "line") return receipt(0);
         const whole: DispatchResult & { readonly content: string } = { ...result, content: result.content };
         const withPrefix = (count: number): DispatchResult => {
             const prefix = resultPrefix(whole, count);
@@ -945,19 +945,19 @@ export default class Dispatcher {
         ctx: PlurnkSchemeContext,
     ): Promise<{ statement: WorkStatement | ForkStatement } | { result: DispatchResult }> {
         if (statement.target === null || SessionControlAddress.isSessionScheme(statement.target)) return { statement };
-        const read: ReadStatement = { ...statement, op: "READ", matcher: null, body: null, lineMarker: { marks: [1, -1] } };
+        const read: ReadStatement = { ...statement, op: "read", matcher: null, body: null, lineMarker: { marks: [1, -1] } };
         const denial = await this.#admission.checkCapabilities(read, ctx);
         if (denial !== null) return { result: denial };
         const result = Results.assertReadResult(await this.#dataRun.run(schemeNameOf(read.target), read, ctx));
         if (result.status !== 200 && result.status !== 204) return { result };
         if (result.content !== null && typeof result.content !== "string") {
-            throw new InvalidOperationResultError(`${statement.op} prompt resource READ returned non-text content.`);
+            throw new InvalidOperationResultError(`${statement.op} prompt resource read returned non-text content.`);
         }
         const prompt = [result.content ?? "", statement.body ?? ""].filter((part) => part !== "").join("\n\n");
         if (prompt.trim() === "") {
             return { result: Dispatcher.#failure(
                 "spawn-prompt-empty", 422, `${statement.op} has no prompt text: the resource is empty and there is no body.`, {},
-                { recovery: `Write the prompt on the lines beneath the ${statement.op} fence line, or name a resource that holds it.`, retryable: false },
+                { recovery: `Provide a non-empty prompt in \`await plurnk.${statement.op.toLowerCase()}({ prompt: "..." });\`, or name a resource that holds it.`, retryable: false },
             ) };
         }
         return { statement: { ...statement, target: null, body: prompt } };
@@ -980,7 +980,7 @@ export default class Dispatcher {
 
     // {§message-completion}: message content is literal; only its header selects a destination.
     async #respond(statement: SendStatement | DoneStatement | FailStatement, schemeCtx: PlurnkSchemeContext, loopId: number): Promise<DispatchResult> {
-        const completion = statement.op === "DONE" ? 200 : statement.op === "FAIL" ? 499 : null;
+        const completion = statement.op === "done" ? 200 : statement.op === "fail" ? 499 : null;
         const target = statement.target;
         let repliedTo: string[];
         let speechOnly = false;
@@ -1030,7 +1030,7 @@ export default class Dispatcher {
         if (held.messages === 1) pending.push("messages");
         const boundaries = await this.#nextPacketBoundaries(sessionId, turnId);
         const receipts = [...new Set(boundaries.operations
-            .filter(({ op }) => op !== "KILL")
+            .filter(({ op }) => op !== "kill")
             .map((row) => LogEntryProjection.leaf(row)))];
         if (boundaries.streamTerminations.length > 0) receipts.push("stream completion");
         if (receipts.length > 0) pending.push("receipts");
@@ -1116,7 +1116,7 @@ export default class Dispatcher {
     ): Promise<ProposalSettlement> {
         const { statement, workspaceId, sessionId, loopId, turnId } = context;
         const admission = AmbientMembers.admissionOf(result);
-        if (admission === null || (statement.op !== "READ" && statement.op !== "FIND")) {
+        if (admission === null || (statement.op !== "read" && statement.op !== "find")) {
             return this.#proposals.sessionApply(statement, result, resolution, { workspaceId, sessionId, loopId, turnId, logEntryId, resources: schemeCtx.resources });
         }
         if (resolution.decision !== "accept") return { resolution };

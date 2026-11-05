@@ -104,7 +104,7 @@ export default class TurnMaterialization {
                     : await loopOutcome(this.#db, workspaceId, r.hostname, sequence);
                 const resource = outcome?.resource ?? `ops://${r.hostname}${r.pathname}`;
                 rx = JSON.stringify(await ReadProjector.project({
-                    statement: { op: "READ", target: null, lineMarker: null, matcher: null, metadata: null,
+                    statement: { op: "read", target: null, lineMarker: null, matcher: null, metadata: null,
                         body: null, aside: null, position: { line: 1, column: 1 } },
                     manifest: TurnSource.manifestFor("ops"), publishesLineAnchors: false,
                     target: resource, identity: resource, mimetypes: this.#mimetypes,
@@ -246,7 +246,7 @@ export default class TurnMaterialization {
                 ...(page.range !== undefined || page.region === undefined ? {} : { region: page.region }),
             });
             const streamRow = (rendered: SchemeResult): StoredLogRow => ({
-                id: null, loop_seq: 0, turn_seq: 0, sequence, origin: "_plurnk", op: "READ", signal: null,
+                id: null, loop_seq: 0, turn_seq: 0, sequence, origin: "_plurnk", op: "read", signal: null,
                 scheme: ch.runtime, username: null, password: null, hostname: targetParts.hostname, port: targetParts.port,
                 pathname: ch.coord, query: null, fragment: visibleFragment,
                 status_rx: rendered.status, rx: JSON.stringify(rendered), mimetype_rx: "application/json",
@@ -270,7 +270,7 @@ export default class TurnMaterialization {
                     turn_id: turnId,
                 });
                 if (seqs === undefined) throw new Error(`stream delta has no log coordinate for loop=${loopId} turn=${turnId}`);
-                Results.attachInstance(result, `log:///${seqs.loop_seq}/${seqs.turn_seq}/${sequence}/READ`);
+                Results.attachInstance(result, `log:///${seqs.loop_seq}/${seqs.turn_seq}/${sequence}/read`);
             }
             const rx = JSON.stringify(result);
             const inserted = await this.#db.engine_insert_stream_delta.get<{ id: number }>({
@@ -280,7 +280,7 @@ export default class TurnMaterialization {
                 pathname: ch.coord, fragment: visibleFragment,
                 rx,
                 weight: LogBody.weight({
-                    op: "READ",
+                    op: "read",
                     attrs: {},
                     tx: "",
                     rx,
@@ -348,7 +348,7 @@ export default class TurnMaterialization {
                 await this.#db.engine_insert_log_entry.get({
                     session_id: sessionId, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
                     origin: "_plurnk", source: "file", model_call_id: null,
-                    op: "EDIT", signal: null,
+                    op: "edit", signal: null,
                     // Match Dispatcher.#extractTarget: a bare file address has NULL scheme
                     // only in log target metadata; its entry identity remains `file`.
                     scheme: null, username: null, password: null, hostname: null, port: null,
@@ -357,7 +357,7 @@ export default class TurnMaterialization {
                     rx, mimetype_rx: "application/json",
                     status_rx: 200,
                     weight: LogBody.weight({
-                        op: "EDIT",
+                        op: "edit",
                         attrs,
                         tx: "",
                         rx,
@@ -429,11 +429,11 @@ export default class TurnMaterialization {
         // with its size beside it: a fact, not an error; its body stays READable at the row.
         fit?: ContextFit;
     }): Promise<number> {
-        const tx = JSON.stringify({ op: "SEND", aside: null, target: null, metadata: null, lineMarker: null, matcher: null, body: { raw: body } });
+        const tx = JSON.stringify({ op: "send", aside: null, target: null, metadata: null, lineMarker: null, matcher: null, body: { raw: body } });
         const rx = JSON.stringify({ status: 200, resource });
         const baseAttrs: Record<string, unknown> = selfAddressed ? { kind: "message", selfAddressed: true } : { kind: "message" };
         const unfit = await this.#unfit(workspaceId, loopId, turnId, fit, body, (seqs) => ({
-            id: null, loop_seq: seqs.loop_seq, turn_seq: seqs.turn_seq, sequence, origin: "_plurnk", op: "SEND", signal: null,
+            id: null, loop_seq: seqs.loop_seq, turn_seq: seqs.turn_seq, sequence, origin: "_plurnk", op: "send", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null, pathname: null, query: null, fragment: null,
             status_rx: 200, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
             initial_folded: LogVisibility.serialize(LogVisibility.OPEN), folded: LogVisibility.serialize(LogVisibility.OPEN),
@@ -448,7 +448,7 @@ export default class TurnMaterialization {
             origin: "_plurnk",
             source,
             model_call_id: null,
-            op: "SEND",
+            op: "send",
             signal: null,
             scheme: null,
             username: null,
@@ -465,7 +465,7 @@ export default class TurnMaterialization {
             mimetype_rx: "application/json",
             status_rx: 200,
             weight: LogBody.weight({
-                op: "SEND",
+                op: "send",
                 attrs,
                 tx,
                 rx,

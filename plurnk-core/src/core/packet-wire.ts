@@ -299,7 +299,7 @@ export default class PacketWire {
         const rx: unknown = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx;
         // {§tokenomics} — a READ row's anchors ride with its lines whatever its status: a receipt that
         // carries a prefix carries the prefix's anchors.
-        const readResult = LogEntryProjection.op(r) === "READ" && isRecord(rx) && typeof rx.content === "string" ? rx : null;
+        const readResult = LogEntryProjection.op(r) === "read" && isRecord(rx) && typeof rx.content === "string" ? rx : null;
         const rawLineAnchors = readResult !== null && Object.hasOwn(readResult, "lineAnchors") ? readResult.lineAnchors : undefined;
         if (rawLineAnchors !== undefined && !(Array.isArray(rawLineAnchors) && rawLineAnchors.every((anchor): anchor is string => typeof anchor === "string"))) {
             throw new TypeError("A READ result's lineAnchors field must be an array of strings.");
@@ -362,7 +362,7 @@ export default class PacketWire {
     ): RenderedLogRow {
         const { meta, op, coordinate, path, target } = identity;
         const { body, display } = projected;
-        const nativeCandidate = op === "READ" && typeof e.status === "number" && e.status >= 200 && e.status < 300
+        const nativeCandidate = op === "read" && typeof e.status === "number" && e.status >= 200 && e.status < 300
             ? PacketWire.#attachmentOf(e.rx, e.target, coordinate, target) : null;
         const native = nativeCandidate !== null && (options.acceptedAttachmentKinds?.has(nativeCandidate.kind) ?? true)
             ? nativeCandidate : null;
@@ -485,13 +485,13 @@ export default class PacketWire {
     }
 
     // {§log-wire-format} — the part's identity: a native part on the user turn otherwise reads as
-    // an arrival, and the model cannot tell that the READ row is what keeps it in the packet.
+    // an arrival, and the model cannot tell that the read row is what keeps it in the packet.
     static attachmentCaption(attachment: PacketAttachment): string {
         const facts = [attachment.mimetype];
         if (attachment.width !== undefined && attachment.height !== undefined) facts.push(`${attachment.width}×${attachment.height} px`);
         if (attachment.pages !== undefined) facts.push(`${attachment.pages} pages`);
         if (attachment.duration !== undefined) facts.push(`${attachment.duration} s`);
-        return `log:///${attachment.coordinate}/READ (${attachment.path}) (${facts.join(", ")}): the bytes of that READ row, retained until it is KILLed. Not a new arrival.`;
+        return `log:///${attachment.coordinate}/read (${attachment.path}) (${facts.join(", ")}): the bytes of that read row, retained until it is killed. Not a new arrival.`;
     }
 
     // {§packet-inject}: the count line, then one bounded line per non-empty class. Untracked paths are

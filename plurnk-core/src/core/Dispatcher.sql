@@ -3,7 +3,7 @@
 -- PREP: engine_log_selection_high_water
 -- An admitted program resolves log curation against the event journal as it
 -- existed on entry. Later statements may observe earlier effects, but a broad
--- KILL cannot capture operation rows the same program is still emitting.
+-- kill cannot capture operation rows the same program is still emitting.
 SELECT COALESCE(MAX(id), 0) AS max_id
 FROM log_entries
 WHERE session_id = $session_id;
@@ -16,11 +16,11 @@ WHERE turn_id = $turn_id
   AND origin = 'model'
   AND source IS NULL
   AND inherited_history = 0
-  AND op NOT IN ('SEND', 'DONE', 'FAIL', 'NOTE', 'TODO', 'WAIT')
+  AND op NOT IN ('send', 'done', 'fail', 'note', 'todo', 'wait')
 ORDER BY sequence, id;
 
 -- PREP: engine_session_has_undelivered_stream_term
--- A stream may finish between its EXEC and a same-turn SEND. It is then no longer
+-- A stream may finish between its exec and a same-turn send. It is then no longer
 -- live, but its terminal outcome has not crossed the pre-turn observation boundary:
 -- one or more selected channel publication rows remain nonterminal. Treat that
 -- closed result like a same-turn retrieval or child termination so an empty

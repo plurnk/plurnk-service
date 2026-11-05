@@ -46,7 +46,7 @@ export default class DispatchAsPlurnk {
         const program: PlurnkStatement[] = [
             ...statements,
             {
-                op: "NOTE",
+                op: "note",
                 aside: null,
                 target: null,
                 metadata: null,

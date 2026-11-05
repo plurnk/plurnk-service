@@ -197,14 +197,14 @@ export default class ExecEntrySink {
             if (written.problem !== undefined) {
                 const narrationCoordinate = LogEntryProjection.coordinate(
                     `${narration.loopSeq}/${narration.turnSeq}/${sequence}`,
-                    { origin: "_plurnk", op: "EDIT", attrs: narrationAttrs },
+                    { origin: "_plurnk", op: "edit", attrs: narrationAttrs },
                 );
                 Results.attachInstance(
                     written,
                     `log:///${narrationCoordinate}`,
                 );
             }
-            const tx = JSON.stringify({ op: "EDIT", body: source });
+            const tx = JSON.stringify({ op: "edit", body: source });
             const rx = JSON.stringify(written.problem === undefined
                 ? {
                     ...written,
@@ -218,7 +218,7 @@ export default class ExecEntrySink {
             const logRow = await db.engine_insert_log_entry.get<{ id: number }>({
                 session_id: narration.sessionId, loop_id: narration.loopId, turn_id: narration.turnId, sequence,
                 origin: "_plurnk", source: causalSource, model_call_id: null,
-                op: "EDIT", signal: null,
+                op: "edit", signal: null,
                 scheme, username: null, password: null,
                 hostname: address === null ? null : parsed.hostname,
                 port: address === null ? null : parsed.port,
@@ -230,7 +230,7 @@ export default class ExecEntrySink {
                 mimetype_rx: "application/json",
                 status_rx: written.status,
                 weight: LogBody.weight({
-                    op: "EDIT",
+                    op: "edit",
                     attrs,
                     tx,
                     rx,

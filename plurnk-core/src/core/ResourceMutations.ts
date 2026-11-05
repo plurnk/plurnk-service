@@ -102,7 +102,7 @@ export default class ResourceMutations {
         });
         // {§op-methods-op-dispatch} — the applied result is what the row records; the statement's
         // merge facts ride it here, whichever route settled the proposal.
-        const editStatement = statement.op === "EDIT" ? statement : null;
+        const editStatement = statement.op === "edit" ? statement : null;
         const facts = editStatement === null ? [] : (this.#edits.mergeFacts(editStatement));
         const effective: ProposalSettlement = editStatement === null || facts.length === 0
             ? settledMove

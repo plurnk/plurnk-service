@@ -835,7 +835,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const selected = await this.#find(
             {
                 ...statement,
-                op: "FIND",
+                op: "find",
                 body: null,
                 lineMarker: { marks: [1, -1] },
             },
@@ -984,7 +984,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const result = row.mimetype_rx === "application/json"
             ? JSON.parse(row.rx) as unknown
             : null;
-        const rawAnchors = LogEntryProjection.op(row) === "READ" && isRecord(result) && Object.hasOwn(result, "lineAnchors")
+        const rawAnchors = LogEntryProjection.op(row) === "read" && isRecord(result) && Object.hasOwn(result, "lineAnchors")
             ? result.lineAnchors
             : [];
         if (!Array.isArray(rawAnchors)) {
@@ -1026,7 +1026,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                         {},
                         {
                             target: identity,
-                            recovery: `KILL (${identity}) retires it.`,
+                            recovery: `await plurnk.kill({ path: ${JSON.stringify(identity)} }); retires it.`,
                             retryable: false,
                         },
                     ),

@@ -78,7 +78,7 @@ export default class LoopDocs {
         for (const [key, { scheme, pathname }] of current) {
             if (desired.has(key)) continue;
             statements.push({
-                op: "KILL", aside: null,
+                op: "kill", aside: null,
                 target: LoopDocs.#target(scheme, pathname),
                 metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
             } satisfies KillStatement);
@@ -86,7 +86,7 @@ export default class LoopDocs {
         for (const [key, { scheme, pathname, content }] of desired) {
             if (current.get(key)?.content === content) continue;
             statements.push({
-                op: "EDIT", aside: null,
+                op: "edit", aside: null,
                 target: LoopDocs.#target(scheme, pathname),
                 metadata: null, lineMarker: { marks: [1, -1] }, matcher: null, body: content, position: UNKNOWN_POSITION,
             });

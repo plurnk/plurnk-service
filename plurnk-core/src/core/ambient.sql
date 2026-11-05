@@ -17,7 +17,7 @@ END;
 DROP TRIGGER IF EXISTS log_entries_deliver_replies;
 CREATE TRIGGER log_entries_deliver_replies
 AFTER INSERT ON log_entries
-WHEN NEW.op IN ('SEND', 'DONE', 'FAIL', 'KILL') AND NEW.state = 'resolved' AND NEW.status_rx BETWEEN 200 AND 299
+WHEN NEW.op IN ('send', 'done', 'fail', 'kill') AND NEW.state = 'resolved' AND NEW.status_rx BETWEEN 200 AND 299
   AND NEW.source IS NULL AND NEW.inherited_history = 0
   AND json_type(CASE WHEN json_valid(NEW.rx) THEN NEW.rx END, '$.repliedTo') = 'array'
 BEGIN
@@ -73,7 +73,7 @@ BEGIN
            0, 'loop_termination', NEW.id, NULL,
            -- {§message-completion} the child's conclusion reaches its parent at the child's own loop
            -- address, where its answer lives; materialization renders that answer as this row.
-           'READ', 'ops', w.name, '/' || NEW.sequence, NULL,
+           'read', 'ops', w.name, '/' || NEW.sequence, NULL,
            '', 'text/plain', NEW.terminal_result, 'application/json',
            json_extract(NEW.terminal_result, '$.status'), 'resolved', NEW.terminated_by,
            '{}'

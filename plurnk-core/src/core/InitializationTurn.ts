@@ -1,7 +1,7 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import {
     UNKNOWN_POSITION, isExecution,
-    type CapabilityPolicy, type ExecStatement, type FindStatement, type ReadStatement, type TodoStatement, type UrlPath,
+    type CapabilityPolicy, type ExecStatement, type FindStatement, type ReadStatement, type TodoStatement,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -16,19 +16,6 @@ import WorkspaceSettings from "./workspace-settings.ts";
 import { readExecConcurrency } from "../schemes/ExecScheduler.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
 
-const plurnkCatalogTarget = (): UrlPath => ({
-    kind: "url",
-    raw: "plurnk:///*.md",
-    scheme: "plurnk",
-    username: null,
-    password: null,
-    hostname: null,
-    port: null,
-    pathname: "/*.md",
-    query: null,
-    fragment: null,
-});
-
 // PLURNK_SERVICE_FILES_ITEMS — the turn-0 catalog preview. null = off;
 // -1 = the ordinary markerless page; positive N explicitly caps file rows. 0 / unset = off.
 const normalizeFilesItems = (n: number): number | null => (!Number.isFinite(n) || n === 0 ? null : n < 0 ? -1 : n);
@@ -41,13 +28,13 @@ const readFilesItems = (): number | null => {
 // {§session-initialization-entry} — the two TODOs that open and close the initialization surveys:
 // the session's initial steps, then the remaining step after surveying.
 const INITIALIZATION_TODO: TodoStatement = {
-    op: "TODO", aside: null, metadata: null, target: null, lineMarker: null,
-    body: ["- Survey the environment.", "- Resolve all Open Work."].join("\n"),
+    op: "todo", aside: null, metadata: null, target: null, lineMarker: null,
+    body: ["Survey the environment.", "Resolve all Open Work."].join("\n"),
     position: UNKNOWN_POSITION,
 };
 const INITIALIZATION_CLOSING_TODO: TodoStatement = {
-    op: "TODO", aside: null, metadata: null, target: null, lineMarker: null,
-    body: "- Resolve all Open Work.", position: UNKNOWN_POSITION,
+    op: "todo", aside: null, metadata: null, target: null, lineMarker: null,
+    body: "Resolve all Open Work.", position: UNKNOWN_POSITION,
 };
 
 export default class InitializationTurn {
@@ -101,9 +88,24 @@ export default class InitializationTurn {
             // except the session's own scratch survey (`session://<session>/*`), which always runs so the model
             // sees its session namespace even when empty.
             if (
-                statement.op === "FIND"
+                statement.op === "find"
                 && !(statement.target?.kind === "url" && statement.target.scheme === "session")
                 && !await dispatcher.selects(statement, {
+                    workspaceId, sessionId, loopId, turnId: initializationTurn.id, origin: "_plurnk",
+                })
+            ) continue;
+            if (
+                statement.op === "read"
+                && !await dispatcher.selects({
+                    op: "find",
+                    aside: null,
+                    target: statement.target,
+                    metadata: null,
+                    matcher: null,
+                    body: null,
+                    lineMarker: { marks: [1, -1] },
+                    position: UNKNOWN_POSITION,
+                }, {
                     workspaceId, sessionId, loopId, turnId: initializationTurn.id, origin: "_plurnk",
                 })
             ) continue;
@@ -114,10 +116,10 @@ export default class InitializationTurn {
             await Turn.complete(db, initializationTurn.id, 200);
             return;
         }
-        // {§session-initialization-entry} — the example turn shows the TODO practice the card teaches:
-        // when the surveys run, one TODO opens them and one closes them.
+        // {§session-initialization-entry} — the example turn shows the todo practice the card teaches:
+        // when the surveys run, one todo opens them and one closes them.
         const programStatements: Array<TodoStatement | FindStatement | ReadStatement | ExecStatement> =
-            admittedInitializationStatements.some((statement) => statement.op === "FIND" || isExecution(statement))
+            admittedInitializationStatements.some((statement) => statement.op === "find" || statement.op === "read" || isExecution(statement))
                 ? [INITIALIZATION_TODO, ...admittedInitializationStatements, INITIALIZATION_CLOSING_TODO]
                 : admittedInitializationStatements;
         const program = TurnOps.renderInternal(programStatements);
@@ -167,33 +169,39 @@ export default class InitializationTurn {
         const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
         const mcpEntries = catalogSchemes.find(({ scheme }) => scheme === "mcp")?.entries ?? 0;
         const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
+        const canAutoRead = (): boolean => {
+            try {
+                return EffectPolicy.decide("read") === "auto";
+            } catch {
+                return false;
+            }
+        };
         const canRunPlurnk = (): boolean => {
             const registry = executors();
             if (registry?.availableRuntimes(workspaceId).includes("plurnk") !== true) return false;
             try {
                 readExecConcurrency();
-                if (EffectPolicy.decide("read") !== "auto") return false;
+                return canAutoRead();
             } catch {
                 return false;
             }
-            return true;
         };
         const surveys: Array<FindStatement | ReadStatement | ExecStatement> = [
             {
-                op: "FIND", aside: null,
+                op: "find", aside: null,
                 target: { kind: "url", raw: "skill://*/SKILL.md", scheme: "skill", username: null, password: null, hostname: "*", port: null, pathname: "/SKILL.md", query: null, fragment: null },
                 metadata: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "FIND", aside: null,
-                target: { kind: "url", raw: "persona://*/PERSONA.md", scheme: "persona", username: null, password: null, hostname: "*", port: null, pathname: "/PERSONA.md", query: null, fragment: null },
+                op: "read", aside: null,
+                target: { kind: "url", raw: "skill://plurnk/SKILL.md", scheme: "skill", username: null, password: null, hostname: "plurnk", port: null, pathname: "/SKILL.md", query: null, fragment: null },
                 metadata: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "FIND", aside: null,
-                target: plurnkCatalogTarget(),
+                op: "find", aside: null,
+                target: { kind: "url", raw: "persona://*/PERSONA.md", scheme: "persona", username: null, password: null, hostname: "*", port: null, pathname: "/PERSONA.md", query: null, fragment: null },
                 metadata: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
@@ -207,13 +215,19 @@ export default class InitializationTurn {
                 position: UNKNOWN_POSITION,
             },
             {
-                op: "READ", aside: null,
+                op: "read", aside: null,
                 target: { kind: "url", raw: "mcp:///plurnk.md", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/plurnk.md", query: null, fragment: null },
                 metadata: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "FIND", aside: "project root member files",
+                op: "read", aside: "Use mcp:///<server>.json or mcp:///<server>/<tool>.json for tool schemas.",
+                target: { kind: "url", raw: "mcp:///plurnk/todo.json", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/plurnk/todo.json", query: null, fragment: null },
+                metadata: null,
+                matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
+            },
+            {
+                op: "find", aside: "project root member files",
                 target: { kind: "local", raw: "*" },
                 metadata: null,
                 matcher: null,
@@ -222,13 +236,13 @@ export default class InitializationTurn {
                 position: UNKNOWN_POSITION,
             },
             {
-                op: "FIND", aside: "workspace knowledgebase entries",
+                op: "find", aside: "workspace knowledgebase entries",
                 target: { kind: "url", raw: "workspace:///*", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
                 metadata: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
-                op: "FIND", aside: "session knowledgebase entries",
+                op: "find", aside: "session knowledgebase entries",
                 target: { kind: "url", raw: `session://${sessionName}/*`, scheme: "session", username: null, password: null, hostname: sessionName, port: null, pathname: "/*", query: null, fragment: null },
                 metadata: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
@@ -238,8 +252,13 @@ export default class InitializationTurn {
             if (isExecution(statement)) {
                 return canRunPlurnk();
             }
-            if (statement.op === "READ") {
-                return mcpEntries > 0 && canRunPlurnk() && schemes.get("mcp", workspaceId) !== undefined;
+            if (statement.op === "read") {
+                if (!canAutoRead()) return false;
+                const scheme = statement.target?.kind === "url" ? statement.target.scheme : "file";
+                if (scheme === "mcp") {
+                    return mcpEntries > 0 && schemes.get("mcp", workspaceId) !== undefined;
+                }
+                return schemes.get(scheme, workspaceId) !== undefined;
             }
             return schemes.get(statement.target?.kind === "url" ? statement.target.scheme : "file", workspaceId) !== undefined;
         });

@@ -24,8 +24,8 @@ import { ENGINE_PROBLEMS } from "./turn-signals.ts";
 import type { ParseErrorInfo } from "./EmissionSplit.ts";
 import type { EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult, AdmittedTextSource } from "./TurnRunner.ts";
 
-// SEND/DONE/FAIL recipients own their input; resource operations use the manifest.
-const OWNS_METADATA: ReadonlySet<string> = new Set(["SEND", "DONE", "FAIL"]);
+// send/done/fail recipients own their input; resource operations use the manifest.
+const OWNS_METADATA: ReadonlySet<string> = new Set(["send", "done", "fail"]);
 
 // The exec scheme's turn settlement: its own hook, read where a turn settles.
 const settlesTurnSpawns = (handler: object | undefined): handler is {
@@ -146,7 +146,7 @@ export default class AdmittedTurnExecutor {
                 result: Results.failure("engine:rail", problem.code, problem.status, problem.detail, {}, extensions),
             });
         };
-        const emptyTurnExtensions = { stage: "dispatch-admission", recovery: "Emit at least one fenced operation.", retryable: true };
+        const emptyTurnExtensions = { stage: "dispatch-admission", recovery: "Emit at least one Code Mode statement (`await plurnk.<op>({ ... });`).", retryable: true };
         const waits: DispositionStatement[] = [];
         const pendingEngineErrors: EngineProblemKind[] = [];
         let realCommands = 0;
@@ -160,7 +160,7 @@ export default class AdmittedTurnExecutor {
             throw new Error(`log selection boundary could not be resolved for session ${sessionId}`);
         }
         const editSequence = scheduled.some((statement) =>
-            (statement.op === "EDIT" || statement.op === "KILL") && LineAnchors.hasAnchor(statement.lineMarker))
+            (statement.op === "edit" || statement.op === "kill") && LineAnchors.hasAnchor(statement.lineMarker))
             ? new EditSequence() : undefined;
         let bareResults: ReadonlyMap<BareStatement, BareBatchResult> = new Map();
         const outcomes: StrikeOutcome[] = [];
@@ -240,7 +240,7 @@ export default class AdmittedTurnExecutor {
             if ("metadata" in statement && statement.metadata !== null && !(isExecution(statement) || OWNS_METADATA.has(statement.op))) {
                 const target = (statement as { target?: { kind: string; scheme?: string } | null }).target;
                 const schemeName = target === null || target === undefined
-                    ? (statement.op === "WORK" || statement.op === "FORK" ? "session" : null)
+                    ? (statement.op === "work" || statement.op === "fork" ? "session" : null)
                     : target.kind === "url" ? target.scheme ?? null : "file";
                 const manifest = schemeName === null ? undefined : this.#schemes.manifestFor(schemeName, workspaceId);
                 if (manifest !== undefined && manifest.metadataModifier !== true) {
@@ -262,14 +262,14 @@ export default class AdmittedTurnExecutor {
                     let dispatchResult: DispatchResult;
                     let executedCount = 1;
                     let omittedCount = 0;
-                    if (statement.op === "BARE") {
+                    if (statement.op === "bare") {
                         if (bare === undefined) {
-                            throw new Error(`${origin} turnOps cannot execute BARE without provider acquisition context`);
+                            throw new Error(`${origin} turnOps cannot execute bare without provider acquisition context`);
                         }
                         if (!bareResults.has(statement)) {
                             const bareStatements: BareStatement[] = [];
                             for (const candidate of scheduled.slice(index)) {
-                                if (candidate.op !== "BARE" || bareStatements.length >= maxCommands - realCommands) break;
+                                if (candidate.op !== "bare" || bareStatements.length >= maxCommands - realCommands) break;
                                 bareStatements.push(candidate);
                             }
                             const batch = await this.#bareBatch.runBareBatch({

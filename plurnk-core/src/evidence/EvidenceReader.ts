@@ -112,7 +112,7 @@ export default class EvidenceReader implements DigestEvidence {
         const loopSequences = new Map(rows.loops.map(({ id, sequence }) => [id, sequence]));
         const turnSequences = new Map(rows.turns.map(({ id, sequence }) => [id, sequence]));
         const reasoningRows: ReasoningRow[] = rows.logEntries
-            .filter((row) => row.origin === "_plurnk" && row.op === "READ" && row.scheme === "reasoning")
+            .filter((row) => row.origin === "_plurnk" && row.op === "read" && row.scheme === "reasoning")
             .toSorted((a, b) => a.id - b.id)
             .map((row) => {
                 const parsed: unknown = row.rx === null ? null : JSON.parse(row.rx);

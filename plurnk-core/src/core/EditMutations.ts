@@ -65,7 +65,7 @@ export default class EditMutations {
         if (statement.target === null) throw new InvalidOperationResultError("An admitted resource edit has no target.");
         const selection = await this.#selection.resolveResourceSelection({ target: statement.target, metadata: statement.metadata, lineMarker: null, matcher: null }, ctx, "read");
         if ("status" in selection) return selection;
-        const source = await this.#selection.selectSource(selection, ctx, "EDIT");
+        const source = await this.#selection.selectSource(selection, ctx, "edit");
         if ("status" in source) return source;
         return {
             status: source.completeContent.length === 0 ? 204 : 200,
@@ -114,7 +114,7 @@ export default class EditMutations {
                     {},
                     {
                         scheme: schemeName,
-                        operation: "EDIT",
+                        operation: "edit",
                         recovery: "Remove the scope and submit the scheme's complete editable unit.",
                         retryable: false,
                     },
@@ -301,13 +301,13 @@ export default class EditMutations {
         const manifest = this.#schemes.manifestAt(schemeName, statement.target, ctx.workspaceId);
         if (handler === undefined || manifest === undefined) {
             return MutationEffects.failure("operation-not-implemented", 501,
-                `Scheme '${schemeName}' does not implement EDIT.`, {},
-                { scheme: schemeName, operation: "EDIT", retryable: false });
+                `Scheme '${schemeName}' does not implement edit.`, {},
+                { scheme: schemeName, operation: "edit", retryable: false });
         }
         if (statement.metadata !== null && manifest.metadataModifier !== true) {
             return MutationEffects.failure("scheme-metadata-unsupported", 400,
-                `EDIT on '${schemeName}' does not accept the [metadata] modifier.`, {},
-                { scheme: schemeName, operation: "EDIT", retryable: false });
+                `edit on '${schemeName}' does not accept the [metadata] modifier.`, {},
+                { scheme: schemeName, operation: "edit", retryable: false });
         }
         const addressedScheme = statement.target.kind === "url" ? statement.target.scheme : schemeName;
         const publishedChannel = statement.target.fragment ?? manifest.defaultChannel;
@@ -317,8 +317,8 @@ export default class EditMutations {
         if (binding?.result !== null && binding?.result !== undefined) return binding.result;
         if (handler.editBatch === undefined) {
             return MutationEffects.failure("operation-not-implemented", 501,
-                `Scheme '${schemeName}' does not implement EDIT.`, {},
-                { scheme: schemeName, operation: "EDIT", retryable: false });
+                `Scheme '${schemeName}' does not implement edit.`, {},
+                { scheme: schemeName, operation: "edit", retryable: false });
         }
         if (binding !== null && binding.address === null) {
             return MutationEffects.failure("entry-not-found", 404, "The EDIT target could not be resolved.");
@@ -387,7 +387,7 @@ export default class EditMutations {
     ): Promise<{ statements: ResolvedEditStatement[]; matched: number; precondition: LineAnchorPrecondition; identity: string } | { result: DispatchResult }> {
         const matcher = resolved.matcher;
         if (matcher === null) throw new Error("expandPattern requires a matcher");
-        const operation = "EDIT";
+        const operation = "edit";
         const refuse = (code: string, status: number, detail: string): { result: DispatchResult } => ({
             result: PatternSelection.refuse(code, status, detail, schemeName, operation),
         });

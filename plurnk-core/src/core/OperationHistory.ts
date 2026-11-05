@@ -43,7 +43,7 @@ export default class OperationHistory {
             const key = `${OperationHistory.#turn(entry)}/${ordinal}`;
             if (seen.has(key)) continue;
             seen.add(key);
-            const replay = statement.op === "KILL" && statement.target?.kind === "url" && statement.target.scheme === "log"
+            const replay = statement.op === "kill" && statement.target?.kind === "url" && statement.target.scheme === "log"
                 ? { ...statement, body: null } : statement;
             const text = TurnOps.renderEmission([replay]);
             operations.set(coordinate, text);

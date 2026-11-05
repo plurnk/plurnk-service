@@ -56,13 +56,13 @@ export default class ResourceSelector {
                     "An attachment selects one exact resource address.", {}, { retryable: false }) };
             }
             const denial = await this.#admitRead({
-                op: "READ", target, lineMarker: null, matcher: null, metadata: null, body: null, aside: null,
+                op: "read", target, lineMarker: null, matcher: null, metadata: null, body: null, aside: null,
                 position: { line: 0, column: 0 },
             }, ctx);
             if (denial !== null) return { failure: denial };
             const selection = await this.resolveResourceSelection({ target, metadata: null, lineMarker: null, matcher: null }, ctx, "read");
             if ("status" in selection) return { failure: selection };
-            const selected = await this.selectSource(selection, ctx, "SEND");
+            const selected = await this.selectSource(selection, ctx, "send");
             if ("status" in selected) return { failure: selected };
             const bytes = selected.bytes ?? new TextEncoder().encode(selected.content);
             attachments.push({
@@ -205,7 +205,7 @@ export default class ResourceSelector {
     async selectSource(
         selection: AddressedResourceSelection,
         ctx: PlurnkSchemeContext,
-        operation: "COPY" | "MOVE" | "SEND" | "EDIT",
+        operation: "copy" | "move" | "send" | "edit",
     ): Promise<SelectedSource | DispatchResult> {
         const handler = (await ResourceBindings.resolve(selection.target, ctx))?.handler;
         if (handler === undefined) {
@@ -245,7 +245,7 @@ export default class ResourceSelector {
         const sourceMimetype = typeof sourceProjection?.mimetype === "string" ? sourceProjection.mimetype : selected.mimetype;
         const binary = await MimetypeBinary.isBinaryMimetype(sourceMimetype, ctx.mimetypes);
         if (binary) {
-            if (operation === "EDIT") return PatternSelection.refuse("binary-edit-unsupported", 415, "Text edits do not author native bytes.", selection.scheme, operation);
+            if (operation === "edit") return PatternSelection.refuse("binary-edit-unsupported", 415, "Text edits do not author native bytes.", selection.scheme, operation);
             const marker = ByteView.marker(selection.lineMarker);
             if ("result" in marker) return marker.result;
         }
@@ -295,7 +295,7 @@ export default class ResourceSelector {
                 bytes = Buffer.concat(spans.map((span) => complete!.subarray(span.startLine - 1, span.endColumn === 1 ? span.endLine - 1 : span.endLine)));
                 matchedScopes = spans.map((span) => ({ marks: span.endColumn === 1 ? [span.startLine] : [span.startLine, span.endLine] }));
             } else {
-                if (operation === "MOVE") complete = size === 0 ? new Uint8Array() : await byteSource.read(1, size);
+                if (operation === "move") complete = size === 0 ? new Uint8Array() : await byteSource.read(1, size);
                 bytes = window.start === null || window.end === null ? new Uint8Array()
                     : complete?.subarray(window.start! - 1, window.end) ?? await byteSource.read(window.start!, window.end!);
             }
@@ -307,7 +307,7 @@ export default class ResourceSelector {
                 bytes,
                 ...(identity === undefined ? {} : { identity }),
                 ...(matchedScopes === undefined ? {} : { matchedScopes }),
-                ...(operation === "MOVE" ? { bytePrecondition: contentHash(complete!) } : {}),
+                ...(operation === "move" ? { bytePrecondition: contentHash(complete!) } : {}),
                 mimetype: sourceMimetype,
                 lineAnchorPrecondition: resolvedMarker.precondition,
             };
@@ -353,7 +353,7 @@ export default class ResourceSelector {
         resolvedMarker: { readonly selection: ResolvedResourceSelection; readonly precondition: LineAnchorPrecondition | null },
         selected: { readonly content: string; readonly mimetype: string },
         retained: readonly number[] | undefined,
-        operation: "COPY" | "MOVE" | "SEND" | "EDIT",
+        operation: "copy" | "move" | "send" | "edit",
         ctx: PlurnkSchemeContext,
         identity: string | undefined,
     ): Promise<{ spans: readonly TextRegion[]; precondition: LineAnchorPrecondition | null } | { result: DispatchResult }> {
@@ -431,7 +431,7 @@ export default class ResourceSelector {
     resolveResourceLineMarker(
         selection: AddressedResourceSelection,
         content: string,
-        operation: "COPY" | "MOVE" | "SEND" | "EDIT",
+        operation: "copy" | "move" | "send" | "edit",
         identity?: string,
     ): { readonly selection: ResolvedResourceSelection; readonly precondition: LineAnchorPrecondition | null }
         | { readonly result: DispatchResult } {

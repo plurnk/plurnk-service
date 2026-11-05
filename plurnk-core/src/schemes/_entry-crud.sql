@@ -1,5 +1,5 @@
 -- Entry CRUD primitives (SPEC {§scheme-manifest}). Used by entry-bearing schemes and
--- the engine for cross-scheme COPY/MOVE/KILL.
+-- the engine for cross-scheme copy/move/kill.
 
 -- INIT: support_floor_guard
 -- {§db-migrations} Refuse databases from before the 5.0.0 support floor or from a newer schema version, naming both versions read.
@@ -7,13 +7,13 @@ CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);
 CREATE TEMP TRIGGER _support_floor_guard BEFORE INSERT ON _support_floor_probe
 WHEN (EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspaces')
   AND NOT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_references'))
-  OR (SELECT user_version FROM pragma_user_version) BETWEEN 14 AND 2147483646
+  OR (SELECT user_version FROM pragma_user_version) BETWEEN 15 AND 2147483646
 BEGIN
     SELECT CASE
         WHEN EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspaces')
          AND NOT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_references')
         THEN RAISE(ABORT, 'database schema (version ' || (SELECT user_version FROM pragma_user_version) || ') precedes the 5.0.0 support floor (schema version 11); point PLURNK_SERVICE_DB_PATH at a new file or move the database and its -wal and -shm sidecars aside once every daemon holding it has stopped ({§db-migrations})')
-        ELSE RAISE(ABORT, 'database schema (version ' || (SELECT user_version FROM pragma_user_version) || ') is newer than this build (schema version 13); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file ({§db-migrations})')
+        ELSE RAISE(ABORT, 'database schema (version ' || (SELECT user_version FROM pragma_user_version) || ') is newer than this build (schema version 14); run the @plurnk/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file ({§db-migrations})')
     END;
 END;
 INSERT INTO _support_floor_probe (id) VALUES (1);
@@ -54,7 +54,7 @@ RETURNING (SELECT id FROM entries WHERE workspace_id = entry_publication.workspa
 -- PREP: crud_register_workspace_member
 -- Idempotent bare-membership insert (SPEC {§membership} D4 — git ls-files membership).
 -- A git-tracked file is a workspace member by virtue of being tracked; the row
--- is the membership marker the File read-gate checks and FIND globs by path.
+-- is the membership marker the File read-gate checks and find globs by path.
 -- Channel-less by design — disk stays the truth (D3). Re-resolution updates
 -- only provenance so an explicit pick can supersede Git (including outside-root
 -- write authority) and removing that pick can return ownership to Git.
@@ -257,7 +257,7 @@ DELETE FROM entry_channels WHERE entry_id = $entry_id AND name = 'readable';
 -- INIT: entry_channels_invalidate_derivation
 -- A changed channel representation cannot retain search evidence derived from
 -- its predecessor. This trigger is the one invalidation owner for every write
--- path, including model EDIT, extension channel capabilities, and streams.
+-- path, including model edit, extension channel capabilities, and streams.
 DROP TRIGGER IF EXISTS entry_channels_invalidate_derivation;
 CREATE TRIGGER entry_channels_invalidate_derivation
 AFTER UPDATE OF content_id, buffer, mimetype ON entry_channel_rows

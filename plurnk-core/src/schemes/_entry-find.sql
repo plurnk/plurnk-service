@@ -1,5 +1,5 @@
--- FIND candidate selection for entry-bearing
--- schemes (SPEC {§find}; plurnk.md FIND row).
+-- find candidate selection for entry-bearing
+-- schemes (SPEC {§find}; plurnk.md find row).
 --
 -- Scope (target) only. The body matcher does NOT belong here:
 -- per plurnk.md "Pattern Filtering" it runs against entry CONTENT, which

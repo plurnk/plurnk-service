@@ -1,5 +1,5 @@
 -- log:/// scheme — read by (loop_sequence, turn_sequence, sequence)
--- coordinate; KILL mutates only the active projection.
+-- coordinate; kill mutates only the active projection.
 
 -- PREP: log_read_by_coordinate
 SELECT le.id, le.origin, le.op, le.scheme, le.pathname, le.status_rx, le.folded,
@@ -26,7 +26,7 @@ JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.session_id = $session_id
   AND le.state = 'resolved' AND le.status_rx < 300
-  AND le.op IN ('EDIT', 'COPY', 'MOVE', 'KILL')
+  AND le.op IN ('edit', 'copy', 'move', 'kill')
   AND (l.sequence > $loop_seq
        OR (l.sequence = $loop_seq AND t.sequence > $turn_seq)
        OR (l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence > $sequence))
@@ -109,9 +109,9 @@ WHERE log_entry_projections.log_entry_id = json_extract(plan.value, '$.id')
 RETURNING log_entry_id AS id;
 
 -- PREP: log_find_candidates
--- {§find} ÷ {§log-history-projection} — the session's log rows as FIND candidates,
+-- {§find} ÷ {§log-history-projection} — the session's log rows as find candidates,
 -- three-part-coordinate-prefix-scoped (the same candidate semantics log_match_coordinates curates by), each with the
--- fields Log's rx projection renders (FIND must match exactly what READ shows). Coordinate-ordered.
+-- fields Log's rx projection renders (find must match exactly what read shows). Coordinate-ordered.
 SELECT
     (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
     le.origin, le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.weight, le.deep_hash, le.attrs, le.folded
@@ -130,7 +130,7 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- PREP: log_derivation_rows
 -- Every log row in a workspace, with its stable model-facing coordinate and
 -- current derivation attachment. The TypeScript projection resolves rx to the
--- exact body/mimetype READ and FIND expose before hashing or deriving it.
+-- exact body/mimetype read and find expose before hashing or deriving it.
 SELECT
     le.id,
     (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
@@ -183,12 +183,12 @@ END;
 -- their before/after projection, and the resulting current
 -- state. Trigger failure rolls the operation row and all effects back together.
 -- The private plan is erased before INSERT returns.
--- {§log-kill-scope} — a log KILL either retires a row whole (active 1→0, visibility untouched)
+-- {§log-kill-scope} — a log kill either retires a row whole (active 1→0, visibility untouched)
 -- or folds a span of its body (active stays 1, visibility changes).
 DROP TRIGGER IF EXISTS log_entries_apply_curation;
 CREATE TRIGGER log_entries_apply_curation
 AFTER INSERT ON log_entries
-WHEN NEW.op = 'KILL'
+WHEN NEW.op = 'kill'
  AND NEW.status_rx < 400
  AND NEW.scheme = 'log'
  AND json_type(NEW.attrs, '$.__plurnk_curation') = 'object'

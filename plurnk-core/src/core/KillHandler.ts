@@ -57,9 +57,9 @@ export default class KillHandler {
         this.#failure = failure;
     }
 
-    // {§scheme-operation-dispatch} The resource owner receives the complete KILL.
+    // {§scheme-operation-dispatch} The resource owner receives the complete kill.
     async handleKill(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
-        if (statement.op !== "KILL") throw new Error("unreachable");
+        if (statement.op !== "kill") throw new Error("unreachable");
         const path = statement.target;
         if (path === null) {
             return this.#failure("kill-target-required", 400, "KILL requires a target path.", {}, { retryable: false });
@@ -152,7 +152,7 @@ export default class KillHandler {
                 if (cancelled !== null) return cancelled;
                 return await sessionHandler.killEntry(statement, handlerCtx);
             }
-            const address = SessionControlAddress.resolve(path, "KILL");
+            const address = SessionControlAddress.resolve(path, "kill");
             if (!address.ok) return address.result;
             // An idle session is a no-op 200; a missing named session is 404. {§session-scheme}
             const name = address.authority;

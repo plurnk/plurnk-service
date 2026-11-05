@@ -45,7 +45,7 @@ WHERE id = $publication_id
 
 -- PREP: engine_insert_stream_delta
 -- {§exec-stream} / {§env-delta} — materialize a channel's next publishable content as a
--- foisted READ row (the model READs the stream it never typed). origin=_plurnk; fragment is
+-- foisted read row (the model reads the stream it never typed). origin=_plurnk; fragment is
 -- the channel; subscription_publication_id retains the invocation relationship;
 -- attrs.streamEnd is the next turn's cursor; rx.terminal owns the observation's liveness. Only terminal observations
 -- materialize here, initially visible; active progress stays in the Open Work streams list. {§exec-stream}
@@ -56,6 +56,6 @@ INSERT INTO log_entries (
 ) VALUES (
     $session_id, $loop_id, $turn_id, $sequence, '_plurnk', NULL,
     $subscription_publication_id,
-    'READ', $scheme, $hostname, $port, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $weight, $attrs, $folded
+    'read', $scheme, $hostname, $port, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $weight, $attrs, $folded
 )
 RETURNING id;

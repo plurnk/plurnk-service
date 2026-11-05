@@ -3,7 +3,7 @@
 --   crud_find_workspace_entry, crud_write_tag
 
 -- PREP: ops_insert_workspace_entry_if_absent
--- EDIT creation claims identity without surfacing a uniqueness exception when
+-- edit creation claims identity without surfacing a uniqueness exception when
 -- another correct writer wins the same resource concurrently.
 INSERT INTO entries (workspace_id, scheme, authority, pathname)
 SELECT $workspace_id, $scheme, $authority, $pathname
@@ -12,7 +12,7 @@ ON CONFLICT (workspace_id, scheme, authority, pathname) DO NOTHING
 RETURNING id;
 
 -- PREP: ops_insert_channel_if_absent
--- The creation half of EDIT's atomic landing. A concurrent creator wins cleanly;
+-- The creation half of edit's atomic landing. A concurrent creator wins cleanly;
 -- the caller translates an empty RETURNING set to the shared edit-collision.
 INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, state, producer_result)
 SELECT $entry_id, $name, $content, $mimetype, $weight, $content_hash, 'static', NULL
@@ -20,7 +20,7 @@ WHERE NOT EXISTS (SELECT 1 FROM entry_channel_rows WHERE entry_id = $entry_id AN
 RETURNING name;
 
 -- PREP: ops_update_channel_if_content
--- The replacement half of EDIT's atomic landing. The exact representation used
+-- The replacement half of edit's atomic landing. The exact representation used
 -- to calculate line edits remains the compare-and-swap precondition at mutation.
 UPDATE entry_channels
 SET content = $content,
@@ -35,7 +35,7 @@ WHERE entry_id = $entry_id
 RETURNING name;
 
 -- PREP: ops_read_channel
--- READ targeting a specific channel of an entry — identity is
+-- read targeting a specific channel of an entry — identity is
 -- (owner, scheme, authority, pathname); owner determines workspace.
 SELECT ec.content, ec.mimetype, ec.producer_result
 FROM entries e

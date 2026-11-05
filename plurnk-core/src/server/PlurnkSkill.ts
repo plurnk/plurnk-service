@@ -12,16 +12,33 @@ const SERVICE = "@plurnk/plurnk-service";
 
 // {§tools-resource-materialization} Core composes sources; their packages remain their authors.
 export default class PlurnkSkill implements SkillTree {
+    static readonly CHAPTER_NAMES: ReadonlySet<string> = new Set([
+        "configuration",
+        "copy-move",
+        "delegation",
+        "extensibility",
+        "https",
+        "models",
+        "pattern",
+        "session",
+        "wss",
+    ]);
+
     readonly document: SkillDocument;
     readonly #nodeModules: string;
     readonly #files = new Map([
         ["SKILL.md", Paths.teachingSource(TEACHING_CORPUS.skill)],
-        ["plurnk.nginx.conf", Paths.nginxConfig],
-        ["plurnk.service", Paths.systemdUnit],
-        ["references/configuration.md", Paths.configuration],
-        ["references/copy-move.md", resolve(dirname(Paths.configuration), "docs/copy-move.md")],
-        ["references/extensibility.md", Paths.teachingSource(TEACHING_CORPUS.skillChapters.extensibility)],
-        ["references/models.md", resolve(dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-providers/package.json"))), "docs/models.md")],
+        ["configuration.md", Paths.configuration],
+        ["configuration/plurnk.nginx.conf", Paths.nginxConfig],
+        ["configuration/plurnk.service", Paths.systemdUnit],
+        ["copy-move.md", resolve(dirname(Paths.configuration), "docs/copy-move.md")],
+        ["delegation.md", Paths.teachingSource(TEACHING_CORPUS.docs.delegation.source)],
+        ["extensibility.md", Paths.teachingSource(TEACHING_CORPUS.skillChapters.extensibility)],
+        ["https.md", resolve(dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-schemes-http/package.json"))), "docs/https.md")],
+        ["models.md", resolve(dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-providers/package.json"))), "docs/models.md")],
+        ["pattern.md", Paths.teachingSource(TEACHING_CORPUS.docs.pattern.source)],
+        ["session.md", Paths.teachingSource(TEACHING_CORPUS.docs.session.source)],
+        ["wss.md", resolve(dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-schemes-http/package.json"))), "docs/wss.md")],
     ]);
 
     private constructor(document: SkillDocument, nodeModules: string) {
@@ -35,7 +52,7 @@ export default class PlurnkSkill implements SkillTree {
     }
 
     async list(): Promise<string[]> {
-        return [...this.#files.keys(), ".env.defaults", ...(await this.#contracts()).keys()].toSorted();
+        return [...this.#files.keys(), "configuration/.env.defaults", ...(await this.#contracts()).keys()].toSorted();
     }
 
     resource(pathname: string): ByteSource {
@@ -43,7 +60,7 @@ export default class PlurnkSkill implements SkillTree {
         if (file !== undefined) return new FileByteSource(async () => file);
         if (pathname.startsWith("packages/")) return new FileByteSource(async () => (await this.#contracts()).get(pathname) ?? null);
         return new GeneratedByteSource(async () => {
-            if (pathname !== ".env.defaults") return null;
+            if (pathname !== "configuration/.env.defaults") return null;
             const sources = await EnvDefaults.collect(dirname(Paths.configuration), this.#nodeModules);
             return new TextEncoder().encode(EnvDefaults.renderCatalog(sources.files));
         });

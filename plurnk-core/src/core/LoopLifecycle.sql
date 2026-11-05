@@ -193,7 +193,7 @@ SELECT streams, sessions, messages FROM loop_obligations WHERE loop_id = $loop_i
 -- the current loop (id at or below this loop's) of the topmost non-runtime ancestor-or-self session
 -- that has one: for a tree a client started, the root session's loop current when this loop began; a loop
 -- with no such ancestor owns its own budget. Every model call on the owner's loop and on any
--- later loop of the owner's descendants spends it, emission and BARE alike, open or settled, one
+-- later loop of the owner's descendants spends it, emission and bare alike, open or settled, one
 -- per call however many physical requests it took.
 WITH RECURSIVE up(id, parent_session_id, origin, depth) AS (
     SELECT w.id, w.parent_session_id, w.origin, 0 FROM sessions w

@@ -129,13 +129,13 @@ export default class LogBody {
             return { ...(contentBody ?? EMPTY_BODY), provenance: "authored" };
         }
 
-        if (row.op === "READ" || row.op === "FIND" || row.op === "BARE") {
+        if (row.op === "read" || row.op === "find" || row.op === "bare") {
             return contentBody ?? EMPTY_BODY;
         }
 
         // Historical reply receipts remain readable after their former operation is retired.
         const reply = isRecord(rx) && Array.isArray(rx.repliedTo);
-        if (row.op === "EDIT" || row.op === "KILL" && !reply) {
+        if (row.op === "edit" || row.op === "kill" && !reply) {
             if (isRecord(rx)) {
                 const result = rx;
                 if (Object.hasOwn(result, "receipt")) {
@@ -148,7 +148,7 @@ export default class LogBody {
                         ...(last !== undefined && last !== null ? [assertEditReceipt({ ...receipt, effect: last })] : []),
                     ]);
                 }
-                if (row.op === "EDIT" && typeof result.span === "string") {
+                if (row.op === "edit" && typeof result.span === "string") {
                     return {
                         provenance: "returned",
                         content: result.span,
@@ -160,7 +160,7 @@ export default class LogBody {
             return EMPTY_BODY;
         }
 
-        if (row.op === "COPY" || row.op === "MOVE") {
+        if (row.op === "copy" || row.op === "move") {
             if (isRecord(rx)) {
                 const result = rx;
                 if (Object.hasOwn(result, "effects")) {
@@ -184,7 +184,7 @@ export default class LogBody {
             }
         }
 
-        if (row.op !== null && (TurnDisposition.isOp(row.op) || row.op === "NOTE" || row.op === "TODO")) {
+        if (row.op !== null && (TurnDisposition.isOp(row.op) || row.op === "note" || row.op === "todo")) {
             const body = tx !== null && typeof tx === "object"
                 ? (tx as { body?: unknown }).body
                 : undefined;
@@ -197,7 +197,7 @@ export default class LogBody {
             };
         }
 
-        if (row.op === "SEND" || row.op === "DONE" || row.op === "FAIL" || row.op === "KILL" || row.op === "WORK" || row.op === "FORK") {
+        if (row.op === "send" || row.op === "done" || row.op === "fail" || row.op === "kill" || row.op === "work" || row.op === "fork") {
             if (tx !== null && typeof tx === "object") {
                 const body = (tx as { body?: unknown }).body;
                 const content = typeof body === "string"
@@ -214,7 +214,7 @@ export default class LogBody {
                     };
                 }
             }
-            if ((row.op === "SEND" || row.op === "DONE" || row.op === "FAIL") && typeof rx === "string" && rx.length > 0) {
+            if ((row.op === "send" || row.op === "done" || row.op === "fail") && typeof rx === "string" && rx.length > 0) {
                 return {
                     provenance: "returned",
                     content: rx,

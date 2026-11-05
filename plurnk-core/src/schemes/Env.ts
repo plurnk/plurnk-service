@@ -76,10 +76,10 @@ export default class EnvScheme implements RuntimeSchemeFacet {
         return Results.failure(OWNER, "entry-not-found", 404, `No name ${name} is in effect for this Session's commands.`, {}, { target: `env:///${name}` });
     }
 
-    static #whole(name: string, op: "EDIT" | "KILL"): SchemeResult {
+    static #whole(name: string, op: "edit" | "kill"): SchemeResult {
         return Results.failure(OWNER, "value-whole", 400, `env:///${name} is one value: a scope or a pattern selects nothing in it.`, {}, {
             target: `env:///${name}`, retryable: false,
-            recovery: op === "EDIT" ? `EDIT (env:///${name}) with the whole value as the body.` : `KILL (env:///${name}) retires the name.`,
+            recovery: op === "edit" ? `await plurnk.edit({ path: "env:///${name}", content: "..." }); sets the whole value.` : `await plurnk.kill({ path: "env:///${name}" }); retires the name.`,
         });
     }
 
@@ -139,12 +139,12 @@ export default class EnvScheme implements RuntimeSchemeFacet {
         const statement = statements[0];
         if (statement === undefined || statements.length > 1) {
             return Results.failure(OWNER, "value-whole", 400, "One EDIT sets one value, whole.", {}, {
-                recovery: "EDIT (env:///NAME) with the value as the body, one statement per name.", retryable: false,
+                recovery: "await plurnk.edit({ path: \"env:///NAME\", content: \"...\" }); sets one value per statement.", retryable: false,
             });
         }
         const named = EnvScheme.#named(statement.target);
         if ("status" in named) return named;
-        if (statement.lineMarker !== null || statement.matcher !== null) return EnvScheme.#whole(named.name, "EDIT");
+        if (statement.lineMarker !== null || statement.matcher !== null) return EnvScheme.#whole(named.name, "edit");
         const layer = await this.#layer(ctx.workspaceId, ctx.sessionId);
         const refused = await this.#write("replace", { alias: named.name, value: statement.body ?? "" }, ctx, layer);
         if (refused !== null) return refused;
@@ -157,7 +157,7 @@ export default class EnvScheme implements RuntimeSchemeFacet {
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult> {
         const named = EnvScheme.#named(statement.target);
         if ("status" in named) return named;
-        if (statement.lineMarker !== null || statement.matcher !== null) return EnvScheme.#whole(named.name, "KILL");
+        if (statement.lineMarker !== null || statement.matcher !== null) return EnvScheme.#whole(named.name, "kill");
         const entry = (await this.#resolve(ctx.workspaceId, ctx.sessionId)).record[named.name];
         if (entry === undefined || entry.source === "masked" || entry.value === undefined) return EnvScheme.#missing(named.name);
         const layer = await this.#layer(ctx.workspaceId, ctx.sessionId);

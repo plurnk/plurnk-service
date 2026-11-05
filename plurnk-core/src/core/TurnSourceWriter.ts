@@ -110,7 +110,7 @@ export default class TurnSourceWriter {
         if (content.length === 0) throw new Error("Dispatcher.writeEmission: an admitted emission is never empty");
         const pathname = `/${loopSeq}/${turnSeq}`;
         const statement: ReadStatement = {
-            op: "READ", aside: null, metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
+            op: "read", aside: null, metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
             target: {
                 kind: "url", raw: `ops://${sessionName}${pathname}`, scheme: "ops",
                 username: null, password: null, hostname: sessionName, port: null, pathname, query: null, fragment: null,
@@ -122,7 +122,7 @@ export default class TurnSourceWriter {
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
             origin: "_plurnk", source: null, model_call_id: null,
-            op: "READ", signal: null,
+            op: "read", signal: null,
             scheme: "ops", username: null, password: null, hostname: sessionName, port: null,
             pathname, query: null, fragment: null, lineMarker: null,
             tx, mimetype_tx: "application/json",
@@ -130,7 +130,7 @@ export default class TurnSourceWriter {
             mimetype_rx: "application/json",
             status_rx: 200,
             weight: LogBody.weight({
-                op: "READ",
+                op: "read",
                 attrs: durableAttrs,
                 tx,
                 rx,
@@ -161,7 +161,7 @@ export default class TurnSourceWriter {
         const lineMarker = tail === null || tail.whole ? null : tail.marker;
         const projected = lineMarker === null ? null : await ReadResolve.resolve({ content: reasoning, mimetype: "text/markdown", lineMarker });
         const statement: ReadStatement = {
-            op: "READ", aside: null, metadata: null, lineMarker, matcher: null, body: null, position: UNKNOWN_POSITION,
+            op: "read", aside: null, metadata: null, lineMarker, matcher: null, body: null, position: UNKNOWN_POSITION,
             target: {
                 kind: "url", raw: `reasoning://${sessionName}${pathname}`, scheme: "reasoning",
                 username: null, password: null, hostname: sessionName, port: null, pathname, query: null, fragment: null,
@@ -173,7 +173,7 @@ export default class TurnSourceWriter {
             ? { status: 200, content: reasoning, mimetype: "text/markdown" }
             : { ...projected, mimetype: "text/markdown" });
         const weight = LogBody.weight({
-            op: "READ", attrs: durableAttrs, tx, rx, mimetypeTx: "application/json", mimetypeRx: "application/json",
+            op: "read", attrs: durableAttrs, tx, rx, mimetypeTx: "application/json", mimetypeRx: "application/json",
         }, this.#weighContent);
         if (fit !== undefined) {
             const remaining = await fit.remaining();
@@ -182,7 +182,7 @@ export default class TurnSourceWriter {
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
             origin: "_plurnk", source: null, model_call_id: null,
-            op: "READ", signal: null,
+            op: "read", signal: null,
             scheme: "reasoning", username: null, password: null, hostname: sessionName, port: null,
             pathname, query: null, fragment: null, lineMarker: lineMarker === null ? null : JSON.stringify(lineMarker),
             tx, mimetype_tx: "application/json",
@@ -221,7 +221,7 @@ export default class TurnSourceWriter {
         if (statement.target !== null) {
             const read: ReadStatement = {
                 ...statement,
-                op: "READ",
+                op: "read",
                 matcher: null,
                 body: null,
                 lineMarker: { marks: [1, -1] },
@@ -238,7 +238,7 @@ export default class TurnSourceWriter {
         if (prompt.trim() === "") {
             return { result: this.#failure(
                 "bare-prompt-empty", 422,
-                `BARE has no prompt text: the prompt is the fence body, a resource path, or both.${statement.aside === null || statement.aside === "" ? "" : " Its aside was not read as the prompt."}`,
+                `BARE has no prompt text: the prompt is the prompt string, a resource path, or both.${statement.aside === null || statement.aside === "" ? "" : " Its aside was not read as the prompt."}`,
                 {}, { retryable: false },
             ) };
         }

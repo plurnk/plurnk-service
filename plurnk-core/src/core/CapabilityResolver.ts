@@ -109,47 +109,47 @@ export default class CapabilityResolver {
             return required;
         }
         switch (statement.op) {
-            case "FIND":
-            case "READ":
+            case "find":
+            case "read":
                 return demands(describe(statement.op, "observe", statement.target));
-            case "EDIT":
+            case "edit":
                 return demands(describe(statement.op, "mutate", statement.target));
-            case "COPY":
+            case "copy":
                 return composedDemands(
-                    describe("COPY", "observe", statement.source.target),
-                    describe("COPY", "mutate", statement.destination.target),
+                    describe("copy", "observe", statement.source.target),
+                    describe("copy", "mutate", statement.destination.target),
                 );
-            case "MOVE":
+            case "move":
                 return composedDemands(
-                    describe("MOVE", "observe", statement.source.target),
-                    describe("MOVE", "mutate", statement.source.target),
-                    describe("MOVE", "mutate", statement.destination.target),
+                    describe("move", "observe", statement.source.target),
+                    describe("move", "mutate", statement.source.target),
+                    describe("move", "mutate", statement.destination.target),
                 );
-            case "WORK":
-            case "FORK":
+            case "work":
+            case "fork":
                 return demands(describe(statement.op, "control", statement.target));
-            case "BARE":
+            case "bare":
                 return demands(
-                    [{ operation: "BARE", access: "execute", traits: [] }],
-                    describe("BARE", "observe", statement.target),
+                    [{ operation: "bare", access: "execute", traits: [] }],
+                    describe("bare", "observe", statement.target),
                 );
-            case "KILL": {
+            case "kill": {
                 const scheme = schemeNameOf(statement.target);
                 if (scheme === "log") return [];
                 const control = scheme === "session" || (scheme !== null && this.#executors()?.entry(scheme, workspaceId) !== undefined);
-                return demands(describe("KILL", control ? "control" : "mutate", statement.target));
+                return demands(describe("kill", control ? "control" : "mutate", statement.target));
             }
-            case "NOTE":
-            case "TODO":
-            case "WAIT":
-            case "DONE":
-            case "FAIL":
+            case "note":
+            case "todo":
+            case "wait":
+            case "done":
+            case "fail":
                 return [];
-            case "SEND": {
+            case "send": {
                 if (statement.target === null) return [];
                 const scheme = schemeNameOf(statement.target);
                 const control = scheme === "session" || (scheme !== null && this.#executors()?.entry(scheme, workspaceId) !== undefined);
-                return demands(describe("SEND", control ? "control" : "mutate", statement.target));
+                return demands(describe("send", control ? "control" : "mutate", statement.target));
             }
         }
     }
@@ -275,19 +275,19 @@ export default class CapabilityResolver {
         // registry is present, else the runtimes the policies themselves name.
         const runtimes = (this.#executors()?.availableRuntimes(workspaceId)
             ?? policies.flatMap((policy) => [...(policy.only ?? []), ...(policy.deny ?? [])]).map((selector) => selector.operation)).filter(isExecutionOp);
-        const observers: readonly CapabilityDescriptor["operation"][] = ["READ", "COPY", "BARE", ...runtimes];
+        const observers: readonly CapabilityDescriptor["operation"][] = ["read", "copy", "bare", ...runtimes];
         if (readable && observers.some((operation) => allows(operation, "observe"))) return true;
-        if ((entryBearing || typeof handler.find === "function") && allows("FIND", "observe")) return true;
+        if ((entryBearing || typeof handler.find === "function") && allows("find", "observe")) return true;
         if (!manifest.writableBy.includes("model")) return false;
-        if (entryBearing && allows("COPY", "mutate")) return true;
-        if (typeof handler.editBatch === "function" && allows("EDIT", "mutate")) return true;
+        if (entryBearing && allows("copy", "mutate")) return true;
+        if (typeof handler.editBatch === "function" && allows("edit", "mutate")) return true;
         const access = scheme === "session" ? "control" : "mutate";
-        if (typeof handler.send === "function" && allows("SEND", access)) return true;
+        if (typeof handler.send === "function" && allows("send", access)) return true;
         if (entryBearing || typeof handler.kill === "function") {
-            if (scheme === "log" || allows("KILL", access)) return true;
-            if (readable && allows("MOVE", "observe") && allows("MOVE", "mutate")) return true;
+            if (scheme === "log" || allows("kill", access)) return true;
+            if (readable && allows("move", "observe") && allows("move", "mutate")) return true;
         }
-        return scheme === "session" && (allows("WORK", "control") || allows("FORK", "control"));
+        return scheme === "session" && (allows("work", "control") || allows("fork", "control"));
     }
 
     allowsCoreOperationAcross(
@@ -299,39 +299,39 @@ export default class CapabilityResolver {
         const allowsScheme = (operation: CapabilityDescriptor["operation"], access: CapabilityDescriptor["access"], scheme: string): boolean =>
             CapabilityAdmission.allowsAcross(policies, this.#schemeDescriptor(operation, access, scheme, workspaceId));
         switch (op) {
-            case "NOTE":
-            case "TODO":
-            case "WAIT":
-            case "SEND":
-            case "KILL":
-            case "DONE":
-            case "FAIL":
+            case "note":
+            case "todo":
+            case "wait":
+            case "send":
+            case "kill":
+            case "done":
+            case "fail":
                 return true;
-            case "BARE":
-                return CapabilityAdmission.allowsAcross(policies, { operation: "BARE", access: "execute", traits: [] });
-            case "WORK":
-            case "FORK":
+            case "bare":
+                return CapabilityAdmission.allowsAcross(policies, { operation: "bare", access: "execute", traits: [] });
+            case "work":
+            case "fork":
                 return this.#schemes.has("session", workspaceId) && allowsScheme(op, "control", "session");
-            case "FIND":
-            case "READ":
+            case "find":
+            case "read":
                 return schemes.some((scheme) => allowsScheme(op, "observe", scheme));
-            case "EDIT":
+            case "edit":
                 return schemes.some((scheme) =>
                     this.#schemes.manifestFor(scheme, workspaceId)?.writableBy.includes("model") === true
-                    && allowsScheme("EDIT", "mutate", scheme));
-            case "COPY":
-                return schemes.some((scheme) => allowsScheme("COPY", "observe", scheme))
+                    && allowsScheme("edit", "mutate", scheme));
+            case "copy":
+                return schemes.some((scheme) => allowsScheme("copy", "observe", scheme))
                     && schemes.some((scheme) =>
                         this.#schemes.manifestFor(scheme, workspaceId)?.writableBy.includes("model") === true
-                        && allowsScheme("COPY", "mutate", scheme));
-            case "MOVE":
+                        && allowsScheme("copy", "mutate", scheme));
+            case "move":
                 return schemes.some((scheme) =>
                     this.#schemes.manifestFor(scheme, workspaceId)?.writableBy.includes("model") === true
-                    && allowsScheme("MOVE", "observe", scheme)
-                    && allowsScheme("MOVE", "mutate", scheme))
+                    && allowsScheme("move", "observe", scheme)
+                    && allowsScheme("move", "mutate", scheme))
                     && schemes.some((scheme) =>
                         this.#schemes.manifestFor(scheme, workspaceId)?.writableBy.includes("model") === true
-                        && allowsScheme("MOVE", "mutate", scheme));
+                        && allowsScheme("move", "mutate", scheme));
         }
     }
 

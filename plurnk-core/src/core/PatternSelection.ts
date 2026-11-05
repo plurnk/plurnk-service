@@ -7,7 +7,7 @@ import Results from "./results.ts";
 import type { DispatchResult } from "./mutation-types.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 
-export type PatternOperation = "EDIT" | "KILL" | "COPY" | "MOVE" | "SEND";
+export type PatternOperation = "edit" | "kill" | "copy" | "move" | "send";
 
 // {§edit-pattern} {§op-invariants} {§copy} — the half of a pattern operation that
 // every mutation shares once the resource's text is in hand: the match itself and
