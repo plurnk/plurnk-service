@@ -56,6 +56,7 @@ export interface LogCurationPlan {
     }[];
     readonly add: readonly string[];
     readonly remove: readonly string[];
+    readonly killedPlurnkDocs?: boolean;
 }
 
 export interface LogCurationOutcome {
@@ -247,18 +248,23 @@ type LogProjection = { key: string } & ReturnType<typeof LogBody.readable>;
 
 // A row selected for curation, as the turn reads it: its body, its visibility and whether it is natively active.
 type CurationTargetRow = {
-id: number;
-coordinate: string;
-origin: string;
-op: string | null;
-tx: string;
-mimetype_tx: string;
-rx: string;
-mimetype_rx: string;
-attrs: string;
-folded: string;
-native_active: number;
+    id: number;
+    coordinate: string;
+    origin: string;
+    op: string | null;
+    scheme: string | null;
+    pathname: string | null;
+    tx: string;
+    mimetype_tx: string;
+    rx: string;
+    mimetype_rx: string;
+    attrs: string;
+    folded: string;
+    native_active: number;
 };
+
+const isPlurnkDocsRead = (row: { readonly op: string | null; readonly scheme: string | null; readonly pathname: string | null }): boolean =>
+    row.op === "read" && row.scheme === "mcp" && row.pathname === "/plurnk.md";
 
 export default class Log extends CoreSchemeAdapterBase implements CoreRepresentationProvider, Pick<SchemeHandler, "kill"> {
     static manifest: SchemeManifest = {
@@ -1097,7 +1103,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             return { result: Results.assert({ status: selected.status, problem: selected.problem }), plan: null };
         }
         if (selected.status !== 200) return Log.#selectionFailure(selected, pathname, ctx, maxLogEntryId, "kill-failed");
-        const rows = await ctx.db.log_curation_targets.all<{ id: number; folded: string }>({
+        const rows = await ctx.db.log_curation_targets.all<{ id: number; op: string | null; scheme: string | null; pathname: string | null; folded: string }>({
             ids: JSON.stringify(selected.ids),
             turn_id: ctx.turnId,
         });
@@ -1119,6 +1125,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 }),
                 add: [],
                 remove: [],
+                ...(rows.some(isPlurnkDocsRead) ? { killedPlurnkDocs: true } : {}),
             },
         };
     }

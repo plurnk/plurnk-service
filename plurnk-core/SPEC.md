@@ -536,7 +536,7 @@ The session log (`log:///<L>/<T>/<A>[/<leaf>]`) is an append-only SQLite ledger 
 ### §log-kill-scope Scoped curation, distillation & readable projection
 
 - **Row retirement vs. line trimming**: An unscoped `plurnk.kill({ path: "log:///<target>" })` (including globs, folder scopes `log:///1/`, and brace sets `{READ,NOTE}`) retires matched rows (`active = 0`). A scoped `plurnk.kill({ path: "log:///<L>/<T>/<A>", range, pattern })` folds the selected 1-indexed body lines into canonical merged intervals in `log_entry_projection.folded`. Scope `<0,-1>` fails `416` with recovery guidance.
-- **Distillation**: A `plurnk.kill` on `log:///...` with a non-whitespace body writes a model `NOTE` row at the next sequence with `attrs.distilled` naming the target as written (even if the `KILL` missed with `404`), retaining the note as a `note://` turn source.
+- **Distillation**: A `plurnk.kill` on `log:///...` with a non-whitespace body writes a model `NOTE` row at the next sequence with `attrs.distilled` naming the target as written (even if the `KILL` missed with `404`), retaining the note as a `note://` turn source. When an unscoped `KILL` retires a `READ` of `mcp:///plurnk.md`, the distillation `NOTE` appends (or creates, when the `KILL` omitted a body) `The plurnk server tool documentation has been killed. To restore it: await plurnk.read({ path: "mcp:///plurnk.md" })`.
 - **Readable projection**: `READ`, `FIND`, `COPY`, and `MOVE` against `log:///` operate on the curated projection in original physical line coordinates—omitting folded lines, pricing only visible lines, invalidating stale search derivations on trim, and decomposing `MOVE` from `log:///` into `COPY` + `KILL`.
 
 ### §log-wire-format Wire format, patch, extent & native attachments

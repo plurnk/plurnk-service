@@ -326,6 +326,7 @@ export default class Dispatcher {
     readonly #scopedEntryEdits = new WeakMap<KillStatement, EditStatement>();
     // {§log-kill-scope} — the NOTE a log KILL's body becomes, keyed so its row names what it distilled.
     readonly #distillations = new WeakMap<NoteStatement, string>();
+    readonly #curationPlans = new WeakMap<PlurnkStatement, LogCurationPlan>();
 
     #scopedEntryEdit(statement: PlurnkStatement, workspaceId: number): EditStatement | null {
         if (statement.op === "edit") return statement;
@@ -420,7 +421,7 @@ export default class Dispatcher {
         // outcome: written after the kill's receipt at the next sequence, so it never falls inside the
         // kill's own selection, and kept when the kill misses, because what the model wrote about its
         // environment is the model's to retire, never the daemon's to drop.
-        const distillation = Dispatcher.#distillationOf(context.statement);
+        const distillation = Dispatcher.#distillationOf(context.statement, this.#curationPlans.get(context.statement));
         if (distillation !== null) {
             const note: NoteStatement = { op: "note", aside: null, metadata: null, target: null, lineMarker: null, body: distillation.body, position: context.statement.position };
             this.#distillations.set(note, distillation.target);
@@ -433,9 +434,20 @@ export default class Dispatcher {
         return { ...execution, result };
     }
 
-    static #distillationOf(statement: PlurnkStatement): { body: string; target: string } | null {
-        if (statement.op !== "kill" || statement.target === null || schemeNameOf(statement.target) !== "log" || typeof statement.body !== "string") return null;
-        return statement.body.trim() === "" ? null : { body: statement.body, target: statement.target.raw };
+    static readonly #PLURNK_DOCS_KILLED_MESSAGE =
+        'The plurnk server tool documentation has been killed. To restore it: await plurnk.read({ path: "mcp:///plurnk.md" })';
+
+    static #distillationOf(statement: PlurnkStatement, curationPlan?: LogCurationPlan): { body: string; target: string } | null {
+        if (statement.op !== "kill" || statement.target === null || schemeNameOf(statement.target) !== "log") return null;
+        const authored = typeof statement.body === "string" && statement.body.trim() !== "" ? statement.body : null;
+        const killedPlurnkDocs = curationPlan?.killedPlurnkDocs === true;
+        if (authored === null && !killedPlurnkDocs) return null;
+        const body = authored === null
+            ? Dispatcher.#PLURNK_DOCS_KILLED_MESSAGE
+            : killedPlurnkDocs
+                ? `${authored.replace(/\n+$/u, "")}\n${Dispatcher.#PLURNK_DOCS_KILLED_MESSAGE}`
+                : authored;
+        return { body, target: statement.target.raw };
     }
 
     // {§op-methods-op-dispatch} — the paths a find matched: each catalog item's, never a scope group's.
@@ -553,6 +565,7 @@ export default class Dispatcher {
         const routed = await this.#route(context, schemeCtx, targetsResolved);
         let { result } = routed;
         const { resolved, curationPlan } = routed;
+        if (curationPlan !== null) this.#curationPlans.set(statement, curationPlan);
         // Child dispatch includes persistence and proposal settlement; their failures are
         // internal, not exceptions from a scheme handler.
         if (resolved !== null) return this.#dispatchSelection(context, resolved);

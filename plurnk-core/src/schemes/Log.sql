@@ -69,6 +69,8 @@ SELECT
     (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
     le.origin,
     le.op,
+    le.scheme,
+    le.pathname,
     le.tx,
     le.mimetype_tx,
     le.rx,

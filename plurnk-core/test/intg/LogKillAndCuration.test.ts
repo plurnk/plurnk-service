@@ -1052,6 +1052,8 @@ const rows = (log: string, op: string): Array<Record<string, unknown>> =>
     parseLogRecords(log).filter(({ logPath: path }) => typeof path === "string" && path.endsWith(`/${op}`));
 
 const distillation = "wcs.py: _array_converter returns early on empty input; the fix is its return path.";
+const plurnkDocsKilledNotice = "The plurnk server tool documentation has been killed. To restore it: await plurnk.read({ path: \"mcp:///plurnk.md\" })";
+const distillationWithDocsKilled = `${distillation}\n${plurnkDocsKilledNotice}`;
 
 test("{§log-kill-scope} a log KILL's body lands as the model's own NOTE row after the kill, named by what it distilled", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
@@ -1075,7 +1077,7 @@ await plurnk.note({"text":"curated"});`,
             assert.ok(ids.length >= 5, `init + four model turns; got ${ids.length}`);
             const afterCuration = logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[3] }))!.packet);
             const notes = rows(afterCuration, "note");
-            assert.deepEqual(notes.map(({ body }) => body), [`1:${distillation}\n`, undefined], "distillation remains bodied; the authored NOTE is paired with its replay");
+            assert.deepEqual(notes.map(({ body }) => body), [`1:${distillation}\n2:${plurnkDocsKilledNotice}\n`, undefined], "distillation remains bodied and appends the plurnk.md restoration notice; the authored NOTE is paired with its replay");
             assert.match(afterCuration, /### log:\/\/\/1\/3\/\d+\/note · \d+/u, "the curating turn's NOTE keeps its receipt");
             assert.equal(rows(afterCuration, "kill").length, 0, "both kills succeeded, so neither receipt renders");
             assert.equal(rows(afterCuration, "read").length, 0);
@@ -1093,10 +1095,10 @@ await plurnk.note({"text":"curated"});`,
             const [kill, note, plainKill] = curation;
             assert.equal((JSON.parse(kill.tx) as { body: string | null }).body, distillation, "the kill's own record keeps the body it was emitted with");
             assert.deepEqual(JSON.parse(note.attrs ?? "{}"), { distilled: "log:///1/**/{read,note}" }, "the NOTE row names the selection it distilled");
-            assert.equal((JSON.parse(note.tx) as { op: string; body: string }).body, distillation);
+            assert.equal((JSON.parse(note.tx) as { op: string; body: string }).body, distillationWithDocsKilled);
             assert.equal((JSON.parse(plainKill.tx) as { body: string | null }).body, null, "whitespace is no distillation");
             const programs = await db.test_turn_sources.all<{ kind: string; turn_id: number; content: string }>({ session_id: result.modelSessionId! });
-            assert.ok(programs.some(({ kind, turn_id, content }) => kind === "note" && turn_id === ids[2] && content === distillation),
+            assert.ok(programs.some(({ kind, turn_id, content }) => kind === "note" && turn_id === ids[2] && content === distillationWithDocsKilled),
                 "the distillation is retained as a note source exactly as a NOTE's body is");
         } finally { ws.close(); }
     });
