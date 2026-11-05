@@ -29,7 +29,7 @@ test("{§tokenomics} below pressure the gauge names its exact render-weight, its
 });
 
 test("{§tokenomics} the percent is the gauge's own final tokens over its budget, on every packet with a budget", () => {
-    const items = [{ path: "log:///1/1/1/READ", tokens: 110 }];
+    const items = [{ path: "log:///1/1/1/read", tokens: 110 }];
     for (const base of [0, 700, 801, 950, 1_100]) {
         const { usage, gauge } = resolve(1_000, base, items);
         assert.equal(gauge.tokens, usage);
@@ -41,7 +41,7 @@ test("{§tokenomics} the percent is the gauge's own final tokens over its budget
 });
 
 test("{§tokenomics} inventory appears strictly above pressure, after the share, never with a warning or mandate", () => {
-    const items = [{ path: "log:///1/1/1/READ", tokens: 110 }];
+    const items = [{ path: "log:///1/1/1/read", tokens: 110 }];
     for (const base of [0, 700, 950]) {
         const { content, usage, gauge } = resolve(1_000, base, items);
         assert.doesNotMatch(content, /WARNING|MUST/u, `at ${base} of 1000 the gauge carries no mandate`);
@@ -65,7 +65,7 @@ test("{§tokenomics} the share converges when its own width moves the packet acr
 });
 
 test("{§tokenomics} threshold eligibility excludes the inventory's own weight", () => {
-    const items = [{ path: `log:///${"1".repeat(400)}/READ`, tokens: 110 }];
+    const items = [{ path: `log:///${"1".repeat(400)}/read`, tokens: 110 }];
     for (const [weight, expected] of [[799, undefined], [800, undefined], [801, items]] as const) {
         const measure = (content: string): number => weight + (content.includes('"largest"') ? 250 : 0);
         const content = BudgetReadout.resolve(BudgetReadout.draft(1_000), measure, items).gauge;
@@ -77,7 +77,7 @@ test("{§tokenomics} threshold eligibility excludes the inventory's own weight",
 });
 
 test("{§tokenomics} the configured pressure threshold controls inventory eligibility", () => {
-    const items = [{ path: "log:///1/1/1/READ", tokens: 110 }];
+    const items = [{ path: "log:///1/1/1/read", tokens: 110 }];
     const prior = process.env.PLURNK_SERVICE_BUDGET_PRESSURE;
     try {
         process.env.PLURNK_SERVICE_BUDGET_PRESSURE = "60%";
@@ -108,21 +108,21 @@ test("{§tokenomics} BudgetReadout: decimal-width boundaries converge without of
 
 test("{§tokenomics} largest: ranked by tokens then path and bounded by PLURNK_SERVICE_BUDGET_LARGEST_ITEMS", () => {
     const items = [
-        { path: "log:///1/1/6/READ", tokens: 70 },
-        { path: "log:///1/1/2/READ", tokens: 110 },
-        { path: "log:///1/1/5/READ", tokens: 80 },
-        { path: "log:///1/1/4/READ", tokens: 90 },
-        { path: "log:///1/1/3/READ", tokens: 100 },
-        { path: "log:///1/1/1/READ", tokens: 110 },
+        { path: "log:///1/1/6/read", tokens: 70 },
+        { path: "log:///1/1/2/read", tokens: 110 },
+        { path: "log:///1/1/5/read", tokens: 80 },
+        { path: "log:///1/1/4/read", tokens: 90 },
+        { path: "log:///1/1/3/read", tokens: 100 },
+        { path: "log:///1/1/1/read", tokens: 110 },
     ];
     const { content, usage, gauge } = resolve(1_500, 1_250, items);
     assert.match(content, /^\{"tokens":\s*\d+,"budget":1500,"percent":\s*\d+,"largest":\[/u, "one JSON payload with the inventory folded in after the share");
     assert.deepEqual(gauge.largest, [
-        { path: "log:///1/1/1/READ", tokens: 110 },
-        { path: "log:///1/1/2/READ", tokens: 110 },
-        { path: "log:///1/1/3/READ", tokens: 100 },
-        { path: "log:///1/1/4/READ", tokens: 90 },
-        { path: "log:///1/1/5/READ", tokens: 80 },
+        { path: "log:///1/1/1/read", tokens: 110 },
+        { path: "log:///1/1/2/read", tokens: 110 },
+        { path: "log:///1/1/3/read", tokens: 100 },
+        { path: "log:///1/1/4/read", tokens: 90 },
+        { path: "log:///1/1/5/read", tokens: 80 },
     ], "rank by tokens, break ties by path, and bound the inventory at the shipped five");
     assert.equal(gauge.tokens, usage, "the displayed total includes the inventory");
     const prior = process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS;
@@ -137,8 +137,8 @@ test("{§tokenomics} largest: ranked by tokens then path and bounded by PLURNK_S
 });
 
 test("{§tokenomics} the complete configured inventory remains visible over budget", () => {
-    const wide = { path: `log:///${"1".repeat(200)}/READ`, tokens: 110 };
-    const narrow = { path: "log:///1/1/2/READ", tokens: 90 };
+    const wide = { path: `log:///${"1".repeat(200)}/read`, tokens: 110 };
+    const narrow = { path: "log:///1/1/2/read", tokens: 90 };
     const { usage, gauge } = resolve(1_000, 900, [narrow, wide]);
     assert.deepEqual(gauge.largest, [wide, narrow], "every ranked row is named, whatever it costs the gauge");
     assert.ok(usage > 1_000, "an over-budget packet reports its tokens honestly ({§tokenomics})");
@@ -149,7 +149,7 @@ test("{§tokenomics} the complete configured inventory remains visible over budg
 });
 
 test("{§tokenomics} without a budget the gauge carries tokens alone", () => {
-    const items = [{ path: "log:///1/1/1/READ", tokens: 110 }, { path: "log:///1/1/2/READ", tokens: 100 }];
+    const items = [{ path: "log:///1/1/1/read", tokens: 110 }, { path: "log:///1/1/2/read", tokens: 100 }];
     const { usage, gauge } = resolve(null, 100, items);
     assert.deepEqual(Object.keys(gauge), ["tokens"]);
     assert.equal(gauge.tokens, usage);
@@ -169,7 +169,7 @@ test("{§operation-results} (#826) the readout carries curation state alone", ()
 test("{§tokenomics} a converted budget changes the room without changing cost units", () => {
     const prefix = "x".repeat(85 * 2);
     const measure = (content: string): number => contentWeight(prefix + content);
-    const items = [{ path: "log:///1/2/3/READ", tokens: 44 }];
+    const items = [{ path: "log:///1/2/3/read", tokens: 44 }];
     for (const budget of [100, 200]) {
         const rendered = BudgetReadout.resolve(BudgetReadout.draft(budget), measure, items).gauge;
         const usage = measure(rendered);

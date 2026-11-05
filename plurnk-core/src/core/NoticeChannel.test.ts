@@ -165,7 +165,7 @@ test("{§operation-results} assert rejects a bare failure and mismatched statuse
 
 test("{§operation-results} attachInstance records the durable log URI", () => {
     const result = Results.failure("scheme:file", "entry-not-found", 404, "Missing.");
-    Results.attachInstance(result, "log:///5/2/1/READ");
-    assert.equal(result.problem?.instance, "log:///5/2/1/READ");
+    Results.attachInstance(result, "log:///5/2/1/read");
+    assert.equal(result.problem?.instance, "log:///5/2/1/read");
 });
 });

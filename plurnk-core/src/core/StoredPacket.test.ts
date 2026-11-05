@@ -26,7 +26,7 @@ test("{§packet} StoredPacket: request-only round trip preserves the exact measu
 test("{§packet}: assistant-role sections retain their bodies and position", () => {
     const packet: RequestPacket = { ...request(), sections: [
         request().sections[0],
-        { name: "emission-history", slot: "assistant", header: null, content: "```EDIT (a)\nwhole body\n```", weight: 15 },
+        { name: "emission-history", slot: "assistant", header: null, content: "await plurnk.edit({\"path\":\"a\",\"content\":\"whole body\"});", weight: 15 },
         { name: "session", slot: "user", header: "Session", content: '{"turn":3}', weight: 9 },
     ] };
     assert.deepEqual(StoredPacket.parse(JSON.stringify(packet)), packet);

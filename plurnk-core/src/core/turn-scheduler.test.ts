@@ -29,7 +29,7 @@ test("{§op-methods-op-dispatch} operations retain authored order across mutatio
 
     assert.deepEqual(
         scheduleTurnOps(authored).map(writtenOp),
-        ["READ", "sh", "EDIT", "FIND", "BARE", "WORK", "KILL", "SEND", "WAIT"],
+        ["read", "sh", "edit", "find", "bare", "work", "kill", "send", "wait"],
     );
 });
 
@@ -47,16 +47,16 @@ test("{§op-methods-op-dispatch} scheduling preserves operation identity and doe
 });
 
 test("{§op-methods-op-dispatch} every disposition follows trailing operations without reordering those operations", () => {
-    for (const op of ["WAIT"] as const) {
+    for (const op of ["wait"] as const) {
         const authored = statements([
             'await plurnk.wait({ text: "Observe the results." });',
             'await plurnk.send({ target: "session://reviewer", text: "Message." });',
             'await plurnk.read({ path: "notes.md" });',
-            'await plurnk.kill({ path: "log:///1/2/3/READ" });',
+            'await plurnk.kill({ path: "log:///1/2/3/read" });',
         ].join("\n"));
         const disposition = authored[0];
         const scheduled = scheduleTurnOps(authored);
-        assert.deepEqual(scheduled.map((item) => item.op), ["SEND", "READ", "KILL", op], op);
+        assert.deepEqual(scheduled.map((item) => item.op), ["send", "read", "kill", op], op);
         assert.equal(scheduled.at(-1), disposition, op);
         assert.equal(authored[0], disposition, "scheduling never rewrites authored order");
     }

@@ -7,7 +7,7 @@ import { type BareStatement, type ExecStatement, type ReadStatement, type Operat
 describe("StrikeRail", () => {
 test("{§engine-rails} network query and channel coordinates remain distinct cycle fingerprints", () => {
     const statement = (raw: string): ReadStatement => ({
-        op: "READ",
+        op: "read",
         aside: null,
         target: parsePath(raw),
         metadata: null,
@@ -38,7 +38,7 @@ test("{§engine-rails} execution bodies that share a long boilerplate prefix rem
 
 test("{§engine-rails} distinct BARE prompts remain distinct cycle activities", () => {
     const statement = (body: string): BareStatement => ({
-        op: "BARE",
+        op: "bare",
         aside: null,
         target: null,
         metadata: null,
@@ -114,12 +114,12 @@ test("{§engine-rails} engine-assigned problem instances do not conceal repeated
         status: 404,
         problem: { type: "https://problems.plurnk.xyz/scheme/file/entry-not-found", title: "Not found", status: 404, detail: "No entry exists.", instance },
     });
-    assert.equal(fingerprint(source, [failure("log:///1/2/2/READ")]),
-        fingerprint(source, [failure("log:///1/3/2/READ")]));
-    assert.notEqual(fingerprint(source, [failure("log:///1/2/2/READ")]),
+    assert.equal(fingerprint(source, [failure("log:///1/2/2/read")]),
+        fingerprint(source, [failure("log:///1/3/2/read")]));
+    assert.notEqual(fingerprint(source, [failure("log:///1/2/2/read")]),
         fingerprint(source, [{
             status: 404,
-            problem: { type: "https://problems.plurnk.xyz/scheme/file/entry-not-found", title: "Not found", status: 404, detail: "Different cause.", instance: "log:///1/3/2/READ" },
+            problem: { type: "https://problems.plurnk.xyz/scheme/file/entry-not-found", title: "Not found", status: 404, detail: "Different cause.", instance: "log:///1/3/2/read" },
         }]));
 });
 });

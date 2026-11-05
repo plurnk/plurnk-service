@@ -18,13 +18,13 @@ test("{§log-kill-scope} LogVisibility composes whole and surgical scoped KILLs 
 
 test("{§log-kill-scope} LogVisibility intersects bulk numeric scopes with each body", () => {
     assert.deepEqual(
-        LogVisibility.resolveScope({ marks: [17, -1] }, "log:///1/1/1/READ", "short\nbody"),
+        LogVisibility.resolveScope({ marks: [17, -1] }, "log:///1/1/1/read", "short\nbody"),
         { ok: true, range: null },
     );
     assert.deepEqual(
         LogVisibility.resolveScope(
             { marks: [17, -1] },
-            "log:///1/1/2/READ",
+            "log:///1/1/2/read",
             Array.from({ length: 20 }, (_, index) => String(index + 1)).join("\n"),
         ),
         { ok: true, range: [17, -1] },
@@ -33,7 +33,7 @@ test("{§log-kill-scope} LogVisibility intersects bulk numeric scopes with each 
 
 test("{§log-kill-scope} LogVisibility resolves both published and log-bound anchors in the immutable body", () => {
     const content = "alpha\nbeta\ngamma";
-    const identity = "log:///1/2/3/READ";
+    const identity = "log:///1/2/3/read";
     const logAnchor = LineAnchors.token(identity, 2, content);
     const published = LineAnchors.tokens("workspace:///source.md", content);
     assert.deepEqual(
@@ -45,7 +45,7 @@ test("{§log-kill-scope} LogVisibility resolves both published and log-bound anc
         { ok: true, range: [2, 2] },
     );
     assert.deepEqual(
-        LogVisibility.resolveScope({ marks: [logAnchor] }, "log:///1/2/4/READ", content),
+        LogVisibility.resolveScope({ marks: [logAnchor] }, "log:///1/2/4/read", content),
         { ok: true, range: null },
     );
 });
@@ -58,7 +58,7 @@ test("{§log-kill-scope} LogVisibility rejects character regions but treats abse
             status: 400,
             code: "curation-scope-invalid",
             detail: "Log-body scopes require one line or an inclusive two-line range; received 4 coordinates.",
-            recovery: "Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/1/1) with no scope retires the whole row.",
+            recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/1/1\" }); with no range retires the whole row.",
         },
     );
     assert.deepEqual(
@@ -72,20 +72,20 @@ test("{§log-kill-scope} LogVisibility rejects character regions but treats abse
             status: 400,
             code: "curation-scope-invalid",
             detail: "Range <3,2> runs backward; a range names its first line first.",
-            recovery: "Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/1/1) with no scope retires the whole row.",
+            recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/1/1\" }); with no range retires the whole row.",
         },
     );
 });
 
 // {§log-kill-scope} {§diagnostic-observation} — every refusal ends in the same forms; the written scope is never rebuilt.
 test("{§log-kill-scope} {§slicer-text-algebra}: a zero or backward log-body scope is refused with the forms that work on the row", () => {
-    const refusal = (marks: [number] | [number, number], content = "a\nb\nc") => LogVisibility.resolveScope({ marks }, "log:///1/9/2/READ", content);
+    const refusal = (marks: [number] | [number, number], content = "a\nb\nc") => LogVisibility.resolveScope({ marks }, "log:///1/9/2/read", content);
     assert.deepEqual(refusal([0, -1]), {
         ok: false,
         status: 416,
         code: "range-not-satisfiable",
         detail: "Range <0,-1> starts at 0, which is not a line; lines are numbered from 1.",
-        recovery: "Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/9/2/READ) with no scope retires the whole row.",
+        recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/9/2/read\" }); with no range retires the whole row.",
     });
     assert.deepEqual(refusal([0, -1], ""), refusal([0, -1]), "an empty body is refused by the same rule, never clamped");
     assert.deepEqual(refusal([0, 17]), {
@@ -93,24 +93,24 @@ test("{§log-kill-scope} {§slicer-text-algebra}: a zero or backward log-body sc
         status: 416,
         code: "range-not-satisfiable",
         detail: "Range <0,17> starts at 0, which is not a line; lines are numbered from 1.",
-        recovery: "Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/9/2/READ) with no scope retires the whole row.",
+        recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/9/2/read\" }); with no range retires the whole row.",
     });
     assert.deepEqual(refusal([0]), {
         ok: false,
         status: 400,
         code: "curation-scope-invalid",
         detail: "<0> is not a line of a log body; lines are numbered from 1.",
-        recovery: "Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/9/2/READ) with no scope retires the whole row.",
+        recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/9/2/read\" }); with no range retires the whole row.",
     });
     assert.deepEqual(refusal([2, 0]), {
         ok: false,
         status: 400,
         code: "curation-scope-invalid",
         detail: "Range <2,0> ends at 0, which is not a line; a range ends at a line from 1, or at -1 for the last line.",
-        recovery: "Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/9/2/READ) with no scope retires the whole row.",
+        recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/9/2/read\" }); with no range retires the whole row.",
     });
     for (const [marks, range] of [[[1, -1], [1, -1]], [[1], [1, 1]], [[2, 3], [2, 3]]] as const) {
-        assert.deepEqual(LogVisibility.resolveScope({ marks: [...marks] }, "log:///1/9/2/READ", "a\nb\nc"), { ok: true, range: [...range] }, "the forms the recoveries name work");
+        assert.deepEqual(LogVisibility.resolveScope({ marks: [...marks] }, "log:///1/9/2/read", "a\nb\nc"), { ok: true, range: [...range] }, "the forms the recoveries name work");
     }
 });
 
@@ -120,10 +120,10 @@ test("{§line-anchors}: log curation uses published contextual anchors even when
     const source = `${block("a")}\n${block("b")}`;
     const anchors = LineAnchors.tokens("workspace:///source.md", source);
     assert.notEqual(anchors[3], anchors[10]);
-    assert.deepEqual(LogVisibility.resolveScope({ marks: [anchors[3]] }, "log:///1/2/3/READ", "target", [anchors[3]]), {
+    assert.deepEqual(LogVisibility.resolveScope({ marks: [anchors[3]] }, "log:///1/2/3/read", "target", [anchors[3]]), {
         ok: true, range: [1, 1],
     });
-    assert.deepEqual(LogVisibility.resolveScope({ marks: [anchors[10]] }, "log:///1/2/3/READ", "target", [anchors[3]]), {
+    assert.deepEqual(LogVisibility.resolveScope({ marks: [anchors[10]] }, "log:///1/2/3/read", "target", [anchors[3]]), {
         ok: true, range: null,
     });
 });
@@ -142,15 +142,15 @@ for (const runtime of ["sh", "python3", "brave", "search-api", "tool.v2+json"]) 
             assert.equal(LogEntryProjection.base("1/2/3"), "1/2/3");
             assert.equal(LogEntryProjection.accepts(runtime.toUpperCase(), row), true);
             assert.equal(LogEntryProjection.accepts(null, row), true);
-            assert.equal(LogEntryProjection.accepts("READ", row), false);
+            assert.equal(LogEntryProjection.accepts("read", row), false);
         }
     });
 }
 
 test("{§log-history-projection}: native operations and actionless identities are unchanged", () => {
-    assert.equal(LogEntryProjection.leaf({ op: "READ" }), "READ");
+    assert.equal(LogEntryProjection.leaf({ op: "read" }), "read");
     assert.equal(LogEntryProjection.leaf({ op: null, attrs: { kind: "emissionAttempt" } }), "attempt");
     assert.equal(LogEntryProjection.leaf({ op: null, attrs: { kind: "emissionAttempt" } }), "attempt");
-    assert.equal(LogEntryProjection.leaf({ op: "EDIT", origin: "_plurnk", attrs: { kind: "entry_materialized" } }), "READ");
+    assert.equal(LogEntryProjection.leaf({ op: "edit", origin: "_plurnk", attrs: { kind: "entry_materialized" } }), "read");
 });
 });

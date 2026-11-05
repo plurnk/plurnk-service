@@ -48,22 +48,22 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
         expected: readonly CapabilityDescriptor[];
     }[] = [
         { source: 'await plurnk.note({ text: "Continue the task." });', expected: [] },
-        { source: 'await plurnk.find({ path: "README.md" });', expected: [{ operation: "FIND", scheme: "file", access: "observe", traits: [] }] },
-        { source: 'await plurnk.read({ path: "README.md" });', expected: [{ operation: "READ", scheme: "file", access: "observe", traits: [] }] },
-        { source: 'await plurnk.edit({ path: "workspace:///notes.md", content: "replacement" });', expected: [{ operation: "EDIT", scheme: "workspace", access: "mutate", traits: [] }] },
+        { source: 'await plurnk.find({ path: "README.md" });', expected: [{ operation: "find", scheme: "file", access: "observe", traits: [] }] },
+        { source: 'await plurnk.read({ path: "README.md" });', expected: [{ operation: "read", scheme: "file", access: "observe", traits: [] }] },
+        { source: 'await plurnk.edit({ path: "workspace:///notes.md", content: "replacement" });', expected: [{ operation: "edit", scheme: "workspace", access: "mutate", traits: [] }] },
         {
             source: 'await plurnk.copy({ from: "README.md", to: "workspace:///copy.md" });',
             expected: [
-                { operation: "COPY", scheme: "file", access: "observe", traits: [] },
-                { operation: "COPY", scheme: "workspace", access: "mutate", traits: [] },
+                { operation: "copy", scheme: "file", access: "observe", traits: [] },
+                { operation: "copy", scheme: "workspace", access: "mutate", traits: [] },
             ],
         },
         {
             source: 'await plurnk.move({ from: "README.md", to: "workspace:///moved.md" });',
             expected: [
-                { operation: "MOVE", scheme: "file", access: "observe", traits: [] },
-                { operation: "MOVE", scheme: "file", access: "mutate", traits: [] },
-                { operation: "MOVE", scheme: "workspace", access: "mutate", traits: [] },
+                { operation: "move", scheme: "file", access: "observe", traits: [] },
+                { operation: "move", scheme: "file", access: "mutate", traits: [] },
+                { operation: "move", scheme: "workspace", access: "mutate", traits: [] },
             ],
         },
         { source: 'await plurnk.note({ text: "continue" });', expected: [] },
@@ -73,14 +73,14 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
         { source: 'await plurnk.done({ text: "complete" });', expected: [] },
         { source: 'await plurnk.fail({ text: "cannot complete" });', expected: [] },
         { source: 'await plurnk.sh({ command: "git status --short" });', expected: [{ operation: "sh", scheme: "exec", runtime: "sh", access: "execute", traits: [] }] },
-        { source: 'await plurnk.bare({ prompt: "What is 2 + 2?" });', expected: [{ operation: "BARE", access: "execute", traits: [] }] },
+        { source: 'await plurnk.bare({ prompt: "What is 2 + 2?" });', expected: [{ operation: "bare", access: "execute", traits: [] }] },
         { source: 'await plurnk.bare({ target: "session://alice/prompt.md", prompt: "" });', expected: [
-            { operation: "BARE", access: "execute", traits: [] },
-            { operation: "BARE", scheme: "session", access: "observe", traits: [] },
+            { operation: "bare", access: "execute", traits: [] },
+            { operation: "bare", scheme: "session", access: "observe", traits: [] },
         ] },
-        { source: 'await plurnk.work({ target: "session://child", prompt: "Investigate." });', expected: [{ operation: "WORK", scheme: "session", access: "control", traits: [] }] },
-        { source: 'await plurnk.fork({ target: "session://child", prompt: "Investigate." });', expected: [{ operation: "FORK", scheme: "session", access: "control", traits: [] }] },
-        { source: 'await plurnk.kill({ path: "README.md" });', expected: [{ operation: "KILL", scheme: "file", access: "mutate", traits: [] }] },
+        { source: 'await plurnk.work({ target: "session://child", prompt: "Investigate." });', expected: [{ operation: "work", scheme: "session", access: "control", traits: [] }] },
+        { source: 'await plurnk.fork({ target: "session://child", prompt: "Investigate." });', expected: [{ operation: "fork", scheme: "session", access: "control", traits: [] }] },
+        { source: 'await plurnk.kill({ path: "README.md" });', expected: [{ operation: "kill", scheme: "file", access: "mutate", traits: [] }] },
     ];
 
     const covered = new Set<string>();
@@ -95,11 +95,11 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
 test("{§capability-admission} classifies target-dependent control and curation routes", () => {
     assert.deepEqual(
         resolver.descriptors(statement('await plurnk.send({ target: "session://child", text: "Continue." });'), 1),
-        [{ operation: "SEND", scheme: "session", access: "control", traits: [] }],
+        [{ operation: "send", scheme: "session", access: "control", traits: [] }],
     );
     assert.deepEqual(
         resolver.descriptors(statement('await plurnk.kill({ path: "session://child" });'), 1),
-        [{ operation: "KILL", scheme: "session", access: "control", traits: [] }],
+        [{ operation: "kill", scheme: "session", access: "control", traits: [] }],
     );
     assert.deepEqual(
         resolver.descriptors(statement('await plurnk.kill({ path: "log:///1/2/3" });'), 1),
@@ -155,15 +155,15 @@ test("{§session-scheme} intrinsic mutations preserve each external transfer dem
     const external = "session://alice/notes.md";
     assert.deepEqual(resolver.descriptors(statement(`await plurnk.edit({ path: "${own}", content: "reference" });`), 1, "_plurnk"), []);
     assert.deepEqual(resolver.descriptors(statement(`await plurnk.copy({ from: "${external}", to: "${own}" });`), 1, "_plurnk"), [
-        { operation: "COPY", scheme: "session", access: "observe", traits: [] },
+        { operation: "copy", scheme: "session", access: "observe", traits: [] },
     ]);
     assert.deepEqual(resolver.descriptors(statement(`await plurnk.move({ from: "${external}", to: "${own}" });`), 1, "_plurnk"), [
-        { operation: "MOVE", scheme: "session", access: "observe", traits: [] },
-        { operation: "MOVE", scheme: "session", access: "mutate", traits: [] },
+        { operation: "move", scheme: "session", access: "observe", traits: [] },
+        { operation: "move", scheme: "session", access: "mutate", traits: [] },
     ]);
     assert.deepEqual(resolver.descriptors(statement(`await plurnk.move({ from: "${own}", to: "${external}" });`), 1, "_plurnk"), [
-        { operation: "MOVE", scheme: "plurnk", access: "observe", traits: [] },
-        { operation: "MOVE", scheme: "session", access: "mutate", traits: [] },
+        { operation: "move", scheme: "plurnk", access: "observe", traits: [] },
+        { operation: "move", scheme: "session", access: "mutate", traits: [] },
     ]);
     for (const path of [external, "workspace:///notes.md", "file:///notes.md"]) {
         assert.equal(resolver.descriptors(statement(`await plurnk.edit({ path: "${path}", content: "content" });`), 1, "_plurnk").length, 1, path);
@@ -176,25 +176,25 @@ test("{§session-scheme} intrinsic mutations preserve each external transfer dem
 test("{§tools-resource-materialization} scheme references follow supported capabilities, not illustrative operations", () => {
     const registry = new SchemeRegistry();
     const scoped = new CapabilityResolver({} as Db, registry, () => undefined);
-    for (const operation of ["READ", "FIND", "EDIT", "COPY", "MOVE", "SEND", "KILL", "WORK", "FORK"] as const) {
+    for (const operation of ["read", "find", "edit", "copy", "move", "send", "kill", "work", "fork"] as const) {
         assert.equal(scoped.allowsSchemeAcross("session", 1, [{ only: [{ operation }] }]), true, operation);
     }
-    for (const operation of ["READ", "FIND", "EDIT", "COPY", "MOVE", "KILL"] as const) {
+    for (const operation of ["read", "find", "edit", "copy", "move", "kill"] as const) {
         assert.equal(scoped.allowsSchemeAcross("workspace", 1, [{ only: [{ operation }] }]), true, operation);
     }
-    for (const operation of ["READ", "FIND", "EDIT", "COPY", "MOVE", "KILL", "sh", "BARE"] as const) {
+    for (const operation of ["read", "find", "edit", "copy", "move", "kill", "sh", "bare"] as const) {
         assert.equal(scoped.allowsSchemeAcross("file", 1, [{ only: [{ operation }] }]), true, operation);
     }
     assert.equal(scoped.allowsSchemeAcross("session", 1, [{ only: [{ access: "observe" }] }]), true);
     assert.equal(scoped.allowsSchemeAcross("session", 1, [{ only: [] }]), false);
-    assert.equal(scoped.allowsSchemeAcross("session", 1, [{ only: [{ operation: "READ" }] }, { deny: [{ scheme: "session" }] }]), false);
+    assert.equal(scoped.allowsSchemeAcross("session", 1, [{ only: [{ operation: "read" }] }, { deny: [{ scheme: "session" }] }]), false);
     assert.equal(scoped.allowsSchemeAcross("missing", 1, [{}]), false);
 
     for (const op of PLURNK_OPS) {
         assert.equal(scoped.allowsCoreOperationAcross(op, 1, [{}]), true, `${op} is admitted under default policy`);
     }
-    assert.equal(scoped.allowsCoreOperationAcross("BARE", 1, [{ deny: [{ operation: "BARE" }] }]), false);
-    assert.equal(scoped.allowsCoreOperationAcross("WORK", 1, [{ deny: [{ operation: "WORK" }] }]), false);
-    assert.equal(scoped.allowsCoreOperationAcross("EDIT", 1, [{ deny: [{ access: "mutate" }] }]), false);
-    assert.equal(scoped.allowsCoreOperationAcross("NOTE", 1, [{ only: [] }]), true);
+    assert.equal(scoped.allowsCoreOperationAcross("bare", 1, [{ deny: [{ operation: "bare" }] }]), false);
+    assert.equal(scoped.allowsCoreOperationAcross("work", 1, [{ deny: [{ operation: "work" }] }]), false);
+    assert.equal(scoped.allowsCoreOperationAcross("edit", 1, [{ deny: [{ access: "mutate" }] }]), false);
+    assert.equal(scoped.allowsCoreOperationAcross("note", 1, [{ only: [] }]), true);
 });

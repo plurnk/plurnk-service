@@ -38,7 +38,7 @@ const creationReceipt = (context: string) => {
 };
 
 test("{§zero-width-column-one-insert} LogBody resolves built-in result-backed bodies", () => {
-    for (const op of ["READ", "FIND", "BARE", "prompt"]) {
+    for (const op of ["read", "find", "bare", "prompt"]) {
         assert.deepEqual(
             LogBody.resolve({ op, tx: "", rx: content(`${op} body`) }),
             { content: `${op} body`, mimetype: "text/markdown", startLine: 1, provenance: "returned" },
@@ -60,7 +60,7 @@ test("{§zero-width-column-one-insert} LogBody resolves built-in result-backed b
 
     assert.deepEqual(
         LogBody.resolve({
-            op: "EDIT",
+            op: "edit",
             tx: { body: "input" },
             rx: {
                 receipt: receipt("10:before\n11:after"),
@@ -71,7 +71,7 @@ test("{§zero-width-column-one-insert} LogBody resolves built-in result-backed b
 
     assert.deepEqual(
         LogBody.resolve({
-            op: "EDIT",
+            op: "edit",
             tx: { body: "model edit" },
             rx: {
                 receipt: {
@@ -97,7 +97,7 @@ test("{§zero-width-column-one-insert} LogBody resolves built-in result-backed b
 
     assert.equal(
         LogBody.resolve({
-            op: "EDIT",
+            op: "edit",
             tx: { body: "another model edit" },
             rx: {
                 receipt: {
@@ -115,7 +115,7 @@ test("{§zero-width-column-one-insert} LogBody resolves built-in result-backed b
     );
 
     for (const [op, rx] of [
-        ["EDIT", { span: "1:edited" }],
+        ["edit", { span: "1:edited" }],
     ] as const) {
         assert.equal(LogBody.resolve({ op, tx: "", rx }).content, Object.values(rx)[0], op);
     }
@@ -123,8 +123,8 @@ test("{§zero-width-column-one-insert} LogBody resolves built-in result-backed b
 
 test("{§tokenomics} LogBody weighs complete canonical content without persistence-envelope or presentation overhead", () => {
     const row = {
-        op: "READ",
-        tx: JSON.stringify({ op: "READ", target: "notes.md" }),
+        op: "read",
+        tx: JSON.stringify({ op: "read", target: "notes.md" }),
         rx: JSON.stringify({ status: 200, content: "alpha\nbeta", mimetype: "text/plain" }),
         mimetypeTx: "application/json",
         mimetypeRx: "application/json",
@@ -140,7 +140,7 @@ test("{§tokenomics} LogBody weighs complete canonical content without persisten
 test("{§zero-width-column-one-insert} LogBody resolves COPY/MOVE bodies only from ordered textual effects", () => {
     assert.deepEqual(
         LogBody.resolve({
-            op: "COPY",
+            op: "copy",
             tx: "",
             rx: {
                 effects: [{
@@ -154,7 +154,7 @@ test("{§zero-width-column-one-insert} LogBody resolves COPY/MOVE bodies only fr
     );
     assert.deepEqual(
         LogBody.resolve({
-            op: "COPY",
+            op: "copy",
             tx: "",
             rx: {
                 effects: [{
@@ -168,7 +168,7 @@ test("{§zero-width-column-one-insert} LogBody resolves COPY/MOVE bodies only fr
     );
     assert.deepEqual(
         LogBody.resolve({
-            op: "MOVE",
+            op: "move",
             tx: "",
             rx: {
                 effects: [
@@ -194,7 +194,7 @@ test("{§zero-width-column-one-insert} LogBody resolves COPY/MOVE bodies only fr
     );
     assert.equal(
         LogBody.resolve({
-            op: "MOVE",
+            op: "move",
             tx: "",
             rx: {
                 effects: [
@@ -214,27 +214,27 @@ test("{§op-invariants}: LogBody projects scoped entry KILL through the ordinary
         ...base.effect, removed: 2, inserted: 0, removedText: "deleted\nlines",
     } } };
     assert.deepEqual(
-        LogBody.resolve({ op: "KILL", tx: "", rx }),
+        LogBody.resolve({ op: "kill", tx: "", rx }),
         { content: "8:before\n9:after", mimetype: "text/plain", startLine: null, provenance: "returned" },
     );
     assert.deepEqual(
-        LogBody.resolve({ op: "KILL", tx: "", rx }),
-        LogBody.resolve({ op: "EDIT", tx: { body: "" }, rx }),
+        LogBody.resolve({ op: "kill", tx: "", rx }),
+        LogBody.resolve({ op: "edit", tx: { body: "" }, rx }),
     );
     for (const bodyless of [{ status: 200 }, { status: 200, span: "not an entry edit receipt" }]) {
-        assert.equal(LogBody.resolve({ op: "KILL", tx: "", rx: bodyless }).content, "");
+        assert.equal(LogBody.resolve({ op: "kill", tx: "", rx: bodyless }).content, "");
     }
 });
 
 test("{§edit-result-receipt-projection} {§edit-result-receipt-projection} LogBody rejects malformed EDIT, KILL and COPY/MOVE result receipts", () => {
-    for (const op of ["EDIT", "KILL"]) {
+    for (const op of ["edit", "kill"]) {
         assert.throws(
             () => LogBody.resolve({ op, tx: "", rx: { receipt: { effect: { context: "x" } } } }),
             /EDIT receipt/,
         );
     }
     assert.throws(
-        () => LogBody.resolve({ op: "COPY", tx: "", rx: { effects: [] } }),
+        () => LogBody.resolve({ op: "copy", tx: "", rx: { effects: [] } }),
         /non-empty array/,
     );
 });
@@ -242,11 +242,11 @@ test("{§edit-result-receipt-projection} {§edit-result-receipt-projection} LogB
 test("{§zero-width-column-one-insert} LogBody resolves built-in statement-backed and pushed bodies", () => {
     assert.equal(LogBody.resolve({ op: "sh", tx: { body: "jq ." }, rx: null }).content, "jq .");
 
-    for (const op of ["SEND", "WORK", "FORK"]) {
+    for (const op of ["send", "work", "fork"]) {
         assert.equal(LogBody.resolve({ op, tx: { body: `${op} body` }, rx: null }).content, `${op} body`, op);
     }
 
-    for (const op of ["NOTE", "WAIT"]) {
+    for (const op of ["note", "wait"]) {
         assert.deepEqual(
             LogBody.resolve({ op, tx: { body: "Retain this.\nAnd this." }, rx: null }),
             { content: "Retain this.\nAnd this.", mimetype: "text/plain", startLine: 1, provenance: "authored" },
@@ -259,7 +259,7 @@ test("{§zero-width-column-one-insert} LogBody resolves built-in statement-backe
     }
 
     assert.equal(
-        LogBody.resolve({ op: "SEND", tx: "", rx: "child deliverable", mimetypeRx: "text/markdown" }).content,
+        LogBody.resolve({ op: "send", tx: "", rx: "child deliverable", mimetypeRx: "text/markdown" }).content,
         "child deliverable",
     );
     assert.equal(
@@ -271,7 +271,7 @@ test("{§zero-width-column-one-insert} LogBody resolves built-in statement-backe
 test("{§zero-width-column-one-insert} LogBody treats a completion observation as an ordinary READ", () => {
     for (const attrs of [undefined, { kind: "loop_termination", terminatedBy: "cancel" }]) {
         assert.deepEqual(LogBody.resolve({
-            op: "READ", attrs, tx: "",
+            op: "read", attrs, tx: "",
             rx: { status: 499, content: "[ session cancelled ] Stopped.", mimetype: "text/markdown", startLine: 1 },
             mimetypeRx: "application/json",
         }), { content: "[ session cancelled ] Stopped.", mimetype: "text/markdown", startLine: 1, provenance: "returned" });
@@ -293,7 +293,7 @@ test("{§zero-width-column-one-insert} LogBody gives extension rows the same str
 test("{§packet} LogBody decodes persisted JSON envelopes before resolving", () => {
     assert.deepEqual(
         LogBody.resolve({
-            op: "READ",
+            op: "read",
             tx: "",
             rx: JSON.stringify({ content: "persisted", mimetype: "text/markdown", startLine: null }),
             mimetypeRx: "application/json",
@@ -306,12 +306,12 @@ test("{§edit-result-receipt-projection} a pattern batch's first and last contex
     const first = receipt("1<@aaaaa>alphA\n2<@bbbbb>betA");
     const last = { ...first.effect, requested: "<4,5,4,6>", source: "<4,5,4,6>", result: "<4,5,4,6>", context: "3<@ccccc>gammA\n4<@ddddd>deltA" };
     assert.deepEqual(
-        LogBody.resolve({ op: "EDIT", tx: { body: "A" }, rx: { status: 200, matched: 4, receipt: first, last } }),
+        LogBody.resolve({ op: "edit", tx: { body: "A" }, rx: { status: 200, matched: 4, receipt: first, last } }),
         { content: "1<@aaaaa>alphA\n2<@bbbbb>betA\n3<@ccccc>gammA\n4<@ddddd>deltA", mimetype: "text/plain", startLine: null, provenance: "returned" },
         "the boundaries follow each other; a blank line would be an unframed packet line",
     );
     assert.deepEqual(
-        LogBody.resolve({ op: "EDIT", tx: { body: "A" }, rx: { status: 200, matched: 4, receipt: first, last: { ...last, context: first.effect.context } } }),
+        LogBody.resolve({ op: "edit", tx: { body: "A" }, rx: { status: 200, matched: 4, receipt: first, last: { ...last, context: first.effect.context } } }),
         { content: "1<@aaaaa>alphA\n2<@bbbbb>betA", mimetype: "text/plain", startLine: null, provenance: "returned" },
         "a last boundary whose context equals the first's is shown once",
     );

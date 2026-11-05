@@ -249,7 +249,7 @@ test("{§line-anchors}: residual short-hash ambiguity is refused rather than cho
 
 test("{§scheme-operation-dispatch} LineAnchors: unresolved model syntax fails hard at the scheme boundary", () => {
     const statement: EditStatement = {
-        op: "EDIT",
+        op: "edit",
         aside: null,
         target: null,
         metadata: null,

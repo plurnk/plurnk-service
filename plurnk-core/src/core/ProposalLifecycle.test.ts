@@ -91,7 +91,7 @@ test("{§proposal-projection} pending projection rejects malformed durable revie
         sessionId: 12,
         loopId: 13,
         turnId: 14,
-        op: "EDIT",
+        op: "edit",
         scheme: "session",
         pathname: "/x",
         rx: JSON.stringify({ status: 202 }),
@@ -161,7 +161,7 @@ test("{§proposal} sessionApply invokes a discovered scheme through the public p
         entryAddresses: new EntryAddressBinding(),
     });
     const statement = {
-        op: "EDIT",
+        op: "edit",
         metadata: ["Authorization: secret"],
         target: {
             kind: "url",
@@ -217,9 +217,9 @@ test("{§proposal} applyResolution preserves an accepted scheme's failed result 
                 loop_seq: 2,
                 turn_seq: 3,
                 sequence: 4,
-                op: "EDIT",
+                op: "edit",
                 attrs: "{}",
-                tx: JSON.stringify({ op: "EDIT", body: "stale proposal body" }),
+                tx: JSON.stringify({ op: "edit", body: "stale proposal body" }),
                 mimetype_tx: "application/json",
                 mimetype_rx: "application/json",
             }),
@@ -248,7 +248,7 @@ test("{§proposal} applyResolution preserves an accepted scheme's failed result 
         target: "notes.md",
         recovery: "READ the target again before selecting current coordinates.",
         retryable: false,
-        instance: "log:///2/3/4/EDIT",
+        instance: "log:///2/3/4/edit",
     });
     assert.equal(persisted?.status_rx, 409);
     assert.equal(persisted?.state, "failed");

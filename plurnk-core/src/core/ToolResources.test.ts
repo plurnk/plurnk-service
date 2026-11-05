@@ -284,7 +284,8 @@ test("{§executor-discovery} catalogs required top-level fields in the skeleton,
     assert.equal(family?.pathname, "/gitea.md");
     assert.equal(detail?.scheme, "mcp");
     assert.equal(detail?.pathname, "/gitea/issue%2Fread.json");
-    assert.match(family.content, /await gitea\["issue\/read"\]\(\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\); \/\/ List issues\. \(filter: \{state\?: "open"\|"closed"\}, mode: "open"\|"all"; page\?: integer\) Schema: mcp:\/\/\/gitea\/issue%2Fread\.json/);
+    assert.match(family.content, /^await gitea\["issue\/read"\]\(\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\); \/\/ List issues\. \(filter: \{state\?: "open"\|"closed"\}, mode: "open"\|"all"; page\?: integer\)$/m);
+    assert.doesNotMatch(family.content, /Schema:/);
     assert.doesNotMatch(family.content, /oneOf|Selection|minItems/);
     const parsed = JSON.parse(detail.content) as Record<string, unknown>;
     assert.equal(parsed.description, description, "complete multiline description is preserved");
@@ -302,13 +303,13 @@ test("{§executor-discovery} top-level object unions preview the first branch an
         { properties: { second: { type: "number" } }, required: ["second"] },
     ] };
     const [family, detail] = render("conditional", conditional);
-    assert.match(family.content, /await conditional\["issue\/read"\]\(\{"first": ""\}\); \/\/ List issues\. \(\{first: string\}\|\{second: number\}\) Schema: mcp:\/\/\/conditional\/issue%2Fread\.json/);
+    assert.match(family.content, /^await conditional\["issue\/read"\]\(\{"first": ""\}\); \/\/ List issues\. \(\{first: string\}\|\{second: number\}\)$/m);
     assert.doesNotMatch(family.content, /oneOf/);
     const parsed = JSON.parse(detail.content) as Record<string, unknown>;
     assert.deepEqual(parsed.oneOf, conditional.oneOf);
 });
 
-test("{§executor-discovery} links an exact JSON catalog without changing the compact summary", () => {
+test("{§executor-discovery} materializes an exact JSON catalog alongside the compact summary", () => {
     const definitions = [{ name: "issue/read", description, inputSchema: schema,
         outputSchema: { type: "object" }, annotations: { readOnlyHint: true },
         _meta: { vendor: { revision: 1 } },
@@ -330,7 +331,7 @@ test("{§executor-discovery} links an exact JSON catalog without changing the co
     assert.ok(catalog, "the family has a sibling JSON catalog");
     assert.deepEqual(JSON.parse(catalog.content), { tools: definitions });
     assert.equal(catalog.content, JSON.stringify({ tools: definitions }, null, 2));
-    assert.match(resources[0].content, /mcp:\/\/\/gitea\.json/);
+    assert.doesNotMatch(resources[0].content, /mcp:\/\/\/gitea\.json/);
     assert.doesNotMatch(resources[0].content, /outputSchema|vendor|revision/);
     assert.deepEqual(resources.slice(1, 3).map(({ pathname }) => pathname), [
         "/gitea/issue%2Fread.json", "/gitea/issue_write.json",
@@ -369,9 +370,9 @@ test("{§tools-resource-materialization} a featured exact tool includes its requ
     ]) assert.equal(family(authored), authored);
 });
 
-test("{§tools-resource-materialization} aside normalization cannot rewrite schema addresses", () => {
-    const [family, detail] = render("gitea--private");
-    assert.ok(family.content.includes(`Schema: mcp://${detail.pathname}`));
+test("{§tools-resource-materialization} aside normalization preserves double-hyphen runtime schema paths", () => {
+    const [, detail] = render("gitea--private");
+    assert.equal(detail.pathname, "/gitea--private/issue%2Fread.json");
 });
 
 test("{§executor-discovery} general schema-backed runtimes also expose an on-demand schema", () => {
@@ -398,7 +399,7 @@ test("{§executor-discovery} includes original repository-owned referenced schem
     assert.equal((JSON.parse(extDetail.content) as Record<string, unknown>).$ref, external.$ref);
 });
 
-test("{§executor-discovery} surfaces optional properties, nested object/array shapes, and bounded tails before the schema pointer (#1228)", () => {
+test("{§executor-discovery} surfaces optional properties, nested object/array shapes, and bounded tails in the aside (#1228)", () => {
     const withOptions = ToolResources.render({
         runtime: "gitea", resourcesPath: "/tools", summary: { from: "tools" }, details: "",
         invocation: { body: { role: "JSON arguments", required: true }, target: { role: "tool", required: true, kind: "literal" }, example: { target: "search" } },
@@ -420,7 +421,7 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
             },
         }] },
     })[0].content;
-    assert.match(withOptions, /await gitea\.search\(\{"query": ""\}\); \/\/ Search repos\. \(page\?: integer, sort\?: string, state\?: "open"\|"closed"\|"all", labels\?: string\[\]\) Schema: mcp:\/\/\/gitea\/search\.json/);
+    assert.match(withOptions, /^await gitea\.search\(\{"query": ""\}\); \/\/ Search repos\. \(page\?: integer, sort\?: string, state\?: "open"\|"closed"\|"all", labels\?: string\[\]\)$/m);
 
     const fillForm = {
         type: "object",
@@ -466,12 +467,12 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
             },
         }] },
     })[0].content;
-    assert.match(noOptions, /await gitea\.search\(\{"query": ""\}\); \/\/ Search repos\. Schema: mcp:\/\/\/gitea\/search\.json/);
+    assert.match(noOptions, /^await gitea\.search\(\{"query": ""\}\); \/\/ Search repos\.$/m);
 });
 
 test("{§functionality-model-projection} {§tools-resource-materialization} renders all 15 Core VM operations on mcp:///plurnk.md with parseable examples", () => {
     assert.deepEqual(
-        ALL_CORE_OPERATION_TOOLS.map(({ target }) => target.toUpperCase()).toSorted(),
+        ALL_CORE_OPERATION_TOOLS.map(({ target }) => target).toSorted(),
         [...PLURNK_OPS].toSorted(),
         "every Core VM operation is registered as a plurnk tool",
     );
@@ -485,11 +486,11 @@ test("{§functionality-model-projection} {§tools-resource-materialization} rend
     assert.ok(indexDoc);
     assert.match(
         indexDoc.content,
-        /^await plurnk\.todo\(\{"items": \[\]\}\); \/\/ Replace the session's remaining TODO list\. Schema: mcp:\/\/\/plurnk\/todo\.json$/m,
+        /^await plurnk\.todo\(\{"items": \[\]\}\); \/\/ Replace the session's remaining TODO list\.$/m,
     );
+    assert.doesNotMatch(indexDoc.content, /Schema: mcp:\/\/\/plurnk\//);
     for (const tool of ALL_CORE_OPERATION_TOOLS) {
         assert.ok(indexDoc.content.includes(`await plurnk.${tool.target}(`), `mcp:///plurnk.md includes ${tool.target}`);
-        assert.ok(indexDoc.content.includes(`Schema: mcp:///plurnk/${tool.target}.json`), `mcp:///plurnk.md links to ${tool.target}.json`);
         const schemaDoc = rendered.find(({ scheme, pathname }) => scheme === "mcp" && pathname === `/plurnk/${tool.target}.json`);
         assert.ok(schemaDoc, `mcp:///plurnk/${tool.target}.json is materialized`);
         const parsedSchema = JSON.parse(schemaDoc.content) as { title: string; description: string };

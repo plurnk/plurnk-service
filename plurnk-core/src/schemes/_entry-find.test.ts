@@ -5,7 +5,7 @@ import { projectFindResult, type CatalogMatch } from "./_entry-find.ts";
 import { pathScope } from "./_path-scope.ts";
 
 const statement: FindStatement = {
-    op: "FIND",
+    op: "find",
     aside: null,
     target: {
         kind: "url",

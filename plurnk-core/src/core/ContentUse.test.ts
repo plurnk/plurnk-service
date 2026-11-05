@@ -47,7 +47,7 @@ test("{§matcher-dispatch}: new consumers wait for collection, including failed 
 describe("PatternSelection", () => {
 const ctx = { mimetypes: new Mimetypes() } as unknown as PlurnkSchemeContext;
 const match = (content: string, marks: readonly number[]) => PatternSelection.match({
-    matcher: { dialect: "glob", raw: "old*" }, content, mimetype: "text/plain", target: parsePath("workspace:///entry")!, marks, ctx, scheme: "workspace", operation: "EDIT",
+    matcher: { dialect: "glob", raw: "old*" }, content, mimetype: "text/plain", target: parsePath("workspace:///entry")!, marks, ctx, scheme: "workspace", operation: "edit",
 });
 
 test("{§mimetype-error-policy} a pattern scope's -1 is the last logical line whether or not the text ends in a newline", async () => {
@@ -70,7 +70,7 @@ test("{§zero-width-column-one-insert} an exact-source operation never widens an
         const source = { mimetypes: { query: async () => [evidence] } } as unknown as PlurnkSchemeContext;
         const result = await PatternSelection.match({
             matcher: { dialect: "xpath", raw: "//name" }, content: "abc", mimetype: "text/test",
-            target: parsePath("workspace:///entry")!, marks: undefined, ctx: source, scheme: "workspace", operation: "EDIT",
+            target: parsePath("workspace:///entry")!, marks: undefined, ctx: source, scheme: "workspace", operation: "edit",
         });
         assert.ok("result" in result, JSON.stringify(result));
         assert.equal(result.result.status, 422);

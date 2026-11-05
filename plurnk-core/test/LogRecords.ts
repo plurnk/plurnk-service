@@ -9,9 +9,9 @@ const COORDINATE = /^(?: *[1-9]\d*:| *[1-9]\d*<@[0-9A-Za-z]{5}>)/;
 const operands = (description: string, op: string): Record<string, unknown> => {
     // Fixture addresses are whitespace-free. Cases with spaces and literal arrows assert
     // the physical heading directly rather than interpreting a descriptive record as an OP.
-    if (op === "COPY" || op === "MOVE") {
+    if (op === "copy" || op === "move") {
         const pair = /^\((\S+)\)(?: (.*?))? \((\S+)\)(?: (.*))?$/u.exec(description);
-        assert.ok(pair, "a COPY/MOVE fixture heading retains both resource addresses");
+        assert.ok(pair, "a copy/move fixture heading retains both resource addresses");
         return { from: pair[1], to: pair[3], ...(pair[2] === undefined ? {} : { matcher: pair[2] }) };
     }
     const operand = /^\((\S+)\)(?: (.*))?$/u.exec(description);

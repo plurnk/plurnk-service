@@ -13,7 +13,7 @@ const url = (raw: string): UrlPath => {
 test("{§log-history-projection} DurableStatement projects URL credential slots without mutating execution input", () => {
     const target = url("https://user:password@example.test/path?#body");
     const statement: ReadStatement = {
-        op: "READ",
+        op: "read",
         aside: null,
         target,
         metadata: ["Set-Cookie: a=1", "Set-Cookie: b=2"],
@@ -23,7 +23,7 @@ test("{§log-history-projection} DurableStatement projects URL credential slots 
     };
 
     const projected = DurableStatement.project(statement);
-    if (projected.op !== "READ" || projected.target?.kind !== "url") {
+    if (projected.op !== "read" || projected.target?.kind !== "url") {
         throw new Error("projected READ lost its URL target");
     }
     assert.equal(projected.target.raw, "https://__redacted__:__redacted__@example.test/path?#body");
@@ -38,7 +38,7 @@ test("{§log-history-projection} DurableStatement projects URL credential slots 
 
 test("{§log-history-projection} DurableStatement applies the same projection to both COPY operands", () => {
     const statement: CopyStatement = {
-        op: "COPY",
+        op: "copy",
         aside: null,
         source: { target: url("https://user:password@example.test/source"), metadata: ["Authorization: source-secret"], lineMarker: null, matcher: null },
         destination: { target: url("https://:password@example.test/destination"), metadata: ["Authorization: destination-secret"], lineMarker: { marks: [1, 1] }, matcher: null },
@@ -46,7 +46,7 @@ test("{§log-history-projection} DurableStatement applies the same projection to
     };
 
     const projected = DurableStatement.project(statement);
-    if (projected.op !== "COPY" || projected.destination.target.kind !== "url") {
+    if (projected.op !== "copy" || projected.destination.target.kind !== "url") {
         throw new Error("projected COPY lost its URL destination");
     }
     assert.equal(projected.destination.target.raw, "https://:__redacted__@example.test/destination");
@@ -59,7 +59,7 @@ test("{§log-history-projection} DurableStatement applies the same projection to
 
 test("{§log-history-projection} DurableStatement leaves query text, authored bodies, and local targets exact", () => {
     const statement: EditStatement = {
-        op: "EDIT",
+        op: "edit",
         aside: null,
         target: url("https://example.test/path?authored=query-secret"),
         metadata: ["Authorization: header-secret"],
@@ -68,7 +68,7 @@ test("{§log-history-projection} DurableStatement leaves query text, authored bo
         position: { line: 1, column: 0 },
     };
     const projected = DurableStatement.project(statement);
-    if (projected.op !== "EDIT" || projected.target?.kind !== "url") {
+    if (projected.op !== "edit" || projected.target?.kind !== "url") {
         throw new Error("projected EDIT lost its URL target");
     }
     assert.equal(projected.target.query, "authored=query-secret");

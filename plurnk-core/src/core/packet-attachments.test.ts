@@ -8,7 +8,7 @@ const weigh = (text: string): number => Math.ceil(text.length / 2);
 const contentHash = "a".repeat(64);
 const readRow = (extra: Record<string, unknown> = {}) => ({
     coordinate: "1/1/2",
-    op: "READ",
+    op: "read",
     origin: "model",
     status: 200,
     target: { kind: "url", raw: "file:///logo.png", scheme: "file", pathname: "/logo.png" },
@@ -53,7 +53,7 @@ test("{§log-wire-format} audio duration weighs the retained source, with a byte
     const bytes = new Uint8Array([82, 73, 70, 70]);
     const user = (await PacketWire.wireMessages(packet, async () => bytes)).at(-1)!;
     assert.ok(Array.isArray(user.content));
-    assert.deepEqual(user.content[1], { type: "text", text: "log:///1/1/2/READ (file:///clip.wav) (audio/wav, 1.25 s): the bytes of that READ row, retained until it is KILLed. Not a new arrival." });
+    assert.deepEqual(user.content[1], { type: "text", text: "log:///1/1/2/read (file:///clip.wav) (audio/wav, 1.25 s): the bytes of that read row, retained until it is killed. Not a new arrival." });
     assert.deepEqual(user.content[2], { type: "file", data: bytes, mediaType: "audio/wav" });
 });
 
@@ -62,7 +62,7 @@ test("{§log-wire-format} a visible READ of an image weighs the picture and beco
     assert.equal(imageWeight(640, 480), 410);
     assert.deepEqual(rendered.attachments, [{ contentHash, coordinate: "1/1/2", path: "file:///logo.png", scheme: "file", pathname: "/logo.png", mimetype: "image/png", kind: "image", width: 640, height: 480, weight: 410 }]);
     assert.match(rendered.content, /"tokensAttachment":410/);
-    const active = Number(/^### log:\/\/\/1\/1\/2\/READ \(file:\/\/\/logo\.png\) · (\d+)$/m.exec(rendered.content)?.[1]);
+    const active = Number(/^### log:\/\/\/1\/1\/2\/read \(file:\/\/\/logo\.png\) · (\d+)$/m.exec(rendered.content)?.[1]);
     assert.ok(active > 410, `tokens carries the picture: ${active}`);
 });
 
@@ -134,9 +134,9 @@ test("{§log-wire-format} retained native parts follow the packet text without e
     assert.equal(typeof system.content, "string");
     assert.ok(Array.isArray(user.content));
     assert.equal(user.content[0]?.type, "text");
-    assert.deepEqual(user.content[1], { type: "text", text: "log:///1/1/2/READ (logo.png) (image/png, 640×480 px): the bytes of that READ row, retained until it is KILLed. Not a new arrival." }, "every native part is captioned as the model's own READ, never an arrival");
+    assert.deepEqual(user.content[1], { type: "text", text: "log:///1/1/2/read (logo.png) (image/png, 640×480 px): the bytes of that read row, retained until it is killed. Not a new arrival." }, "every native part is captioned as the model's own READ, never an arrival");
     assert.deepEqual(user.content[2], { type: "file", data: png, mediaType: "image/png" });
-    assert.deepEqual(user.content[3], { type: "text", text: "log:///1/1/3/READ (contract.pdf) (application/pdf, 3 pages): the bytes of that READ row, retained until it is KILLed. Not a new arrival." });
+    assert.deepEqual(user.content[3], { type: "text", text: "log:///1/1/3/read (contract.pdf) (application/pdf, 3 pages): the bytes of that read row, retained until it is killed. Not a new arrival." });
     assert.deepEqual(user.content[4], { type: "file", data: pdf, mediaType: "application/pdf" });
     assert.equal(user.content.length, 5);
     const imageOnly = (await PacketWire.wireMessages(packet, bytesOf, (kind) => kind === "image")).at(-1)!;
@@ -158,11 +158,11 @@ test("{§log-wire-format} a stored packet admits attachments of a known kind and
 
 test("{§packet-assembly}: historical unbound native attachments retain their recorded whole-log placement", async () => {
     const emissionRow = {
-        coordinate: "1/1/1", op: "READ", origin: "_plurnk", producer: "model", status: 200,
+        coordinate: "1/1/1", op: "read", origin: "_plurnk", producer: "model", status: 200,
         attrs: { kind: "emission" },
         target: { kind: "url", raw: "ops://w/1/1", scheme: "ops", hostname: "w", pathname: "/1/1" },
         tx: { target: { kind: "url", raw: "ops://w/1/1", scheme: "ops", hostname: "w", pathname: "/1/1" } },
-        rx: { status: 200, content: "```READ (logo.png)\n```", mimetype: "text/vnd.plurnk" },
+        rx: { status: 200, content: "await plurnk.read({\"path\":\"logo.png\"});", mimetype: "text/vnd.plurnk" },
         mimetype_rx: "application/json", initial_folded: [[1, -1]], folded: [],
     };
     const rendered = PacketWire.renderLogWithAccounting([emissionRow, readRow()], weigh);
@@ -193,9 +193,9 @@ test("{§packet-assembly}: historical unbound native attachments retain their re
 test("{§log-wire-format} native-only observations are weighed and reclaimable", () => {
     const row = readRow({ id: 42, rx: { content: "", mimetype: "text/markdown", image: { mimetype: "image/png", width: 640, height: 480, bytes: 12345 } } });
     const rendered = PacketWire.renderLogWithAccounting([row], weigh);
-    const charge = Number(/^### log:\/\/\/1\/1\/2\/READ \(file:\/\/\/logo\.png\) · (\d+)$/mu.exec(rendered.content)?.[1]);
+    const charge = Number(/^### log:\/\/\/1\/1\/2\/read \(file:\/\/\/logo\.png\) · (\d+)$/mu.exec(rendered.content)?.[1]);
     assert.equal(charge, weigh(rendered.content) + 410);
-    assert.deepEqual(rendered.curationTargets, [{ path: "log:///1/1/2/READ", tokens: charge }]);
+    assert.deepEqual(rendered.curationTargets, [{ path: "log:///1/1/2/read", tokens: charge }]);
     assert.equal(rendered.attachments.length, 1);
     const folded = PacketWire.renderLogWithAccounting([readRow({ ...row, initial_folded: [[1, -1]] })], weigh);
     assert.equal(folded.attachments.length, 1, "a bodyless native row folds nothing: the picture is the row");
@@ -203,7 +203,7 @@ test("{§log-wire-format} native-only observations are weighed and reclaimable",
 
 test("{§packet-assembly} historical native requests retain their recorded previous-program role and tail", async () => {
     const rendered = PacketWire.renderLogWithAccounting([readRow()], weigh);
-    const program = "```READ (logo.png)\n```";
+    const program = "await plurnk.read({\"path\":\"logo.png\"});";
     const packet: RequestPacket = {
         weight: 1000, attributions: [], attachments: [...rendered.attachments],
         sections: [
@@ -227,12 +227,12 @@ test("{§packet-assembly} historical native requests retain their recorded previ
 
 test("{§log-wire-format} interpolated native parts remain at their READ boundary as history grows", async () => {
     const attachment = { ...PacketWire.renderLogWithAccounting([readRow()], weigh).attachments[0], section: "log/1/1/2" };
-    const record = "### log:///1/1/2/READ (logo.png) · 410";
+    const record = "### log:///1/1/2/read (logo.png) · 410";
     const packet: RequestPacket = {
         weight: 500, attributions: [], attachments: [attachment],
         sections: [
             { name: "log", slot: "user", header: "Log", content: "### log:///1/1/1/emission · 25", weight: 25 },
-            { name: "emission-history/1/1/1", slot: "assistant", header: null, content: "```READ (logo.png)\n```", weight: 12 },
+            { name: "emission-history/1/1/1", slot: "assistant", header: null, content: "await plurnk.read({\"path\":\"logo.png\"});", weight: 12 },
             { name: attachment.section, slot: "user", header: null, content: record, weight: 410 },
             { name: "session", slot: "user", header: "Session", content: '{"turn":2}', weight: 10 },
         ],
@@ -253,7 +253,7 @@ test("{§log-wire-format} interpolated native parts remain at their READ boundar
         sections: [
             ...packet.sections.slice(0, -1),
             { name: "log/1/2/1", slot: "user" as const, header: null, content: "### log:///1/2/1/emission · 25", weight: 25 },
-            { name: "emission-history/1/2/1", slot: "assistant" as const, header: null, content: "```SEND\nProgress.\n```", weight: 10 },
+            { name: "emission-history/1/2/1", slot: "assistant" as const, header: null, content: "await plurnk.send({\"text\":\"Progress.\"});", weight: 10 },
             { ...packet.sections.at(-1)!, content: '{"turn":3}' },
         ],
     };

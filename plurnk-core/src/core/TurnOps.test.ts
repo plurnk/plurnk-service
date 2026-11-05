@@ -67,9 +67,9 @@ test("{§outside-text} prose lines outside Code Mode statements are retained as 
     ].join("\n\n");
     const parsed = PlurnkParser.parse(emitted);
     const statements = parsed.items.filter((item) => item.kind === "statement").map((item) => (item as { statement: PlurnkStatement }).statement);
-    assert.deepEqual(statements.map(({ op }) => op), ["EDIT", "DONE"]);
+    assert.deepEqual(statements.map(({ op }) => op), ["edit", "done"]);
     assert.equal((statements[0] as EditStatement).body, "complete body");
-    assert.equal(statements[1]?.op === "DONE" ? statements[1].body?.raw : null, "The answer.");
+    assert.equal(statements[1]?.op === "done" ? statements[1].body?.raw : null, "The answer.");
     assert.deepEqual(parsed.items.filter((item) => item.kind === "text").map((item) => (item as { content: string }).content.trim()),
         ["Interstitial commentary.", "Trailing commentary."]);
 });
@@ -77,19 +77,19 @@ test("{§outside-text} prose lines outside Code Mode statements are retained as 
 test("{§op-methods-op-dispatch} internal programs may omit a disposition without inventing one", () => {
     const source = 'await plurnk.read({"path":"workspace:///notes.md"});';
     const parsed = TurnOps.parseInternal(source);
-    assert.deepEqual(parsed.map(({ op }) => op), ["READ"]);
+    assert.deepEqual(parsed.map(({ op }) => op), ["read"]);
     assert.equal(TurnOps.renderInternal(parsed), source);
 });
 
 test("{§turn-record} TurnOps: internal source round-trips through the public parser", () => {
     const statements: [FindStatement, DispositionStatement] = [
         {
-            op: "FIND", aside: "workspace files",
+            op: "find", aside: "workspace files",
             target: { kind: "local", raw: "*" },
             metadata: ['{"trace": "one", "shape": {"nested": true}}'], lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: UNKNOWN_POSITION,
         },
         {
-            op: "WAIT", aside: null, target: null, metadata: null, seconds: null,
+            op: "wait", aside: null, target: null, metadata: null, seconds: null,
             lineMarker: null, body: "Observe the results.", position: UNKNOWN_POSITION,
         },
     ];
@@ -100,25 +100,25 @@ test("{§turn-record} TurnOps: internal source round-trips through the public pa
         'await plurnk.wait({"text":"Observe the results."});',
     ].join("\n"));
     const parsed = TurnOps.parseInternal(source);
-    assert.deepEqual(parsed.map(({ op }) => op), ["FIND", "WAIT"]);
-    assert.deepEqual(parsed[0]?.op === "FIND" ? parsed[0].metadata : undefined, ['{"trace": "one", "shape": {"nested": true}}']);
-    assert.equal(parsed[1]?.op === "WAIT" ? parsed[1].body : null, statements[1].body);
+    assert.deepEqual(parsed.map(({ op }) => op), ["find", "wait"]);
+    assert.deepEqual(parsed[0]?.op === "find" ? parsed[0].metadata : undefined, ['{"trace": "one", "shape": {"nested": true}}']);
+    assert.equal(parsed[1]?.op === "wait" ? parsed[1].body : null, statements[1].body);
 });
 
 test("{§turn-record} TurnOps: internal source preserves trailing body newlines across a section boundary", () => {
     const edit: EditStatement = {
-        op: "EDIT", aside: null,
+        op: "edit", aside: null,
         target: { kind: "local", raw: "AGENTS.md" }, metadata: null, lineMarker: null,
         matcher: null, body: "# Policy\nBe exact.\n", position: UNKNOWN_POSITION,
     };
     const statements: [EditStatement, DispositionStatement] = [
         edit,
         {
-            op: "WAIT", aside: null, target: null, metadata: null, seconds: null,
+            op: "wait", aside: null, target: null, metadata: null, seconds: null,
             lineMarker: null, body: "Edit applied.", position: UNKNOWN_POSITION,
         },
     ];
     const parsed = TurnOps.parseInternal(TurnOps.renderInternal(statements));
-    assert.equal(parsed[0]?.op, "EDIT");
+    assert.equal(parsed[0]?.op, "edit");
     assert.equal((parsed[0]).body, edit.body);
 });

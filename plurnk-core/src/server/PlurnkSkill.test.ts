@@ -12,18 +12,31 @@ test("{§teaching-corpus} {§tools-resource-materialization} listing is lazy and
     assert.equal(tree.document.name, "plurnk");
     assert.ok(tree.document.description);
     const listed = await tree.list();
-    assert.deepEqual(listed.filter((path) => !path.startsWith("packages/")),
-        [".env.defaults", "SKILL.md", "plurnk.nginx.conf", "plurnk.service", "references/configuration.md", "references/copy-move.md", "references/extensibility.md", "references/models.md"]);
+    assert.deepEqual(listed.filter((path) => !path.startsWith("packages/")), [
+        "SKILL.md",
+        "configuration.md",
+        "configuration/.env.defaults",
+        "configuration/plurnk.nginx.conf",
+        "configuration/plurnk.service",
+        "copy-move.md",
+        "delegation.md",
+        "extensibility.md",
+        "https.md",
+        "models.md",
+        "pattern.md",
+        "session.md",
+        "wss.md",
+    ]);
     assert.deepEqual(listed, listed.toSorted(), "the tree lists in one order");
-    assert.equal(await tree.resource("plurnk.service").nativePath?.(), Paths.systemdUnit);
-    assert.equal(await tree.resource("plurnk.nginx.conf").nativePath?.(), Paths.nginxConfig);
-    const configuration = tree.resource("references/configuration.md");
+    assert.equal(await tree.resource("configuration/plurnk.service").nativePath?.(), Paths.systemdUnit);
+    assert.equal(await tree.resource("configuration/plurnk.nginx.conf").nativePath?.(), Paths.nginxConfig);
+    const configuration = tree.resource("configuration.md");
     assert.equal(await configuration.nativePath?.(), Paths.configuration);
     const size = await configuration.size();
     assert.notEqual(size, null);
     assert.equal(new TextDecoder().decode(await configuration.read(1, size!)), await readFile(Paths.configuration, "utf8"));
-    assert.equal(await tree.resource("references/copy-move.md").nativePath?.(), resolve(dirname(Paths.configuration), "docs/copy-move.md"));
-    assert.equal("nativePath" in tree.resource(".env.defaults"), false);
+    assert.equal(await tree.resource("copy-move.md").nativePath?.(), resolve(dirname(Paths.configuration), "docs/copy-move.md"));
+    assert.equal("nativePath" in tree.resource("configuration/.env.defaults"), false);
     assert.equal(await tree.resource("../.env").size(), null);
     assert.equal(await tree.resource("/SKILL.md").size(), null);
 });
@@ -79,12 +92,12 @@ test("{§tools-resource-materialization} only reading generated defaults collect
         reports: [], configurationErrors: [],
     }));
     await tree.list();
-    const source = tree.resource(".env.defaults");
+    const source = tree.resource("configuration/.env.defaults");
     assert.equal(collect.mock.callCount(), 0);
     const size = await source.size();
     assert.notEqual(size, null);
     assert.match(new TextDecoder().decode(await source.read(1, size!)), /# fixture\nKNOB=1/);
     assert.equal(collect.mock.callCount(), 1);
-    await tree.resource(".env.defaults").size();
+    await tree.resource("configuration/.env.defaults").size();
     assert.equal(collect.mock.callCount(), 2, "a later resource acquisition observes the current catalog");
 });
