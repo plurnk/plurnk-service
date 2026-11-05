@@ -4,72 +4,66 @@ import { UNKNOWN_POSITION, type EditStatement, type FindStatement, type Disposit
 import TurnOps from "./TurnOps.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 
-
-test("{§turn-source-resources} the frozen projection keeps every header and body whole, and adds no nested operations", () => {
-    const headers = [
-        "READ (workspace:///notes.md) <1,-1> /needle/ <!-- inspect -->",
-        "EDIT (workspace:///notes.md) <@abcde> <!-- replace -->",
-        "COPY (workspace:///a.md) <2,4> (workspace:///b.md) <0>",
-        "MOVE (workspace:///b.md) <1,2> (workspace:///c.md) <-1>",
-        "sh [{\"env\":{\"LANG\":\"C\"}}] <!-- verify -->",
-        "gitea (list_issues)",
-        "WORK (session://helper)",
-        "SEND (session://helper)",
-        "NOTE",
-        "DONE",
-        "FAIL",
+test("{§turn-source-resources} the frozen projection keeps every statement and body whole, and adds no nested operations", () => {
+    const lines = [
+        'await plurnk.read({"path":"workspace:///notes.md","range":"1,-1","pattern":"/needle/"}); // inspect',
+        'await plurnk.edit({"path":"workspace:///notes.md","range":"@abcde","content":"A literal example:\\n```KILL (workspace:///not-an-operation)\\n```\\nReplacement text."}); // replace',
+        'await plurnk.copy({"from":{"path":"workspace:///a.md","range":"2,4"},"to":{"path":"workspace:///b.md","range":"0"}});',
+        'await plurnk.move({"from":{"path":"workspace:///b.md","range":"1,2"},"to":{"path":"workspace:///c.md","range":"-1"}});',
+        'await plurnk.sh({"metadata":["{\\"env\\":{\\"LANG\\":\\"C\\"}}"],"command":"printf \'%s\\\\n\' verification"}); // verify',
+        'await gitea.list_issues({"repository":"example"});',
+        'await plurnk.work({"target":"session://helper","prompt":"Investigate the project."});',
+        'await plurnk.send({"target":"session://helper","text":"Coordinate the investigation."});',
+        'await plurnk.note({"text":"Remember the conclusion."});',
+        'await plurnk.done({"text":"The complete final answer."});',
+        'await plurnk.fail({"text":"The failure explanation."});',
     ];
-    const bodies = [
-        null,
-        "A literal example:\n```KILL (workspace:///not-an-operation)\n```\nReplacement text.",
-        null,
-        null,
-        "printf '%s\\n' verification",
-        '{"repository":"example"}',
-        "Investigate the project.",
-        "Coordinate the investigation.",
-        "Remember the conclusion.",
-        "The complete final answer.",
-        "The failure explanation.",
-    ];
-    const source = headers.map((header, index) => PlurnkParser.frame(header, bodies[index])).join("\n\n");
+    const source = lines.join("\n\n");
     const parsed = PlurnkParser.parse(source, { executors: ["sh", "gitea"] });
     const statements = parsed.items.filter((item): item is { kind: "statement"; statement: PlurnkStatement } => item.kind === "statement")
         .map(({ statement }) => statement);
-    assert.equal(statements.length, headers.length, "nested literal fences do not add operations");
+    assert.equal(statements.length, lines.length, "nested literal fences do not add operations");
     const original = structuredClone(statements);
-    assert.equal(TurnOps.renderEmission(statements), headers.map((header, index) => PlurnkParser.frame(header, bodies[index])).join("\n\n"),
-        "every statement is its own original operation, whole");
+    assert.equal(TurnOps.renderEmission(statements), source, "every statement is its own original operation, whole");
     assert.deepEqual(statements, original, "projection never changes the statements that execute");
 });
 
-for (const [name, body] of [
-    ["absent", null],
+for (const [name, content] of [
+    ["absent", undefined],
     ["empty", ""],
     ["nonempty", "The original body."],
 ] as const) {
-    for (const header of ["EDIT (workspace:///notes.md)", "SEND (session://helper)"]) {
-        test(`{§turn-source-resources} ${header}: an ${name} body renders as the session wrote it`, () => {
-            const source = PlurnkParser.frame(header, body);
-            const statements = TurnOps.parseInternal(source);
-            assert.equal(statements.length, 1);
-            assert.equal(TurnOps.renderEmission(statements), PlurnkParser.frame(header, body === "" ? null : body));
-        });
-    }
+    test(`{§turn-source-resources} EDIT: an ${name} body renders as the session wrote it`, () => {
+        const expected = content === undefined || content === ""
+            ? 'await plurnk.edit({"path":"workspace:///notes.md"});'
+            : `await plurnk.edit(${JSON.stringify({ path: "workspace:///notes.md", content })});`;
+        const statements = TurnOps.parseInternal(expected);
+        assert.equal(statements.length, 1);
+        assert.equal(TurnOps.renderEmission(statements), expected);
+    });
+    test(`{§turn-source-resources} SEND: an ${name} body renders as the session wrote it`, () => {
+        const expected = content === undefined || content === ""
+            ? 'await plurnk.send({"target":"session://helper"});'
+            : `await plurnk.send(${JSON.stringify({ target: "session://helper", text: content })});`;
+        const statements = TurnOps.parseInternal(expected);
+        assert.equal(statements.length, 1);
+        assert.equal(TurnOps.renderEmission(statements), expected);
+    });
 }
 
 test("{§turn-source-resources} a long body is frozen whole", () => {
-    const body = Array.from({ length: 120 }, (_line, index) => `line ${index + 1}`).join("\n");
-    const statements = TurnOps.parseInternal(PlurnkParser.frame("EDIT (workspace:///notes.md)", body));
-    assert.equal(TurnOps.renderEmission(statements), PlurnkParser.frame("EDIT (workspace:///notes.md)", body));
+    const content = Array.from({ length: 120 }, (_line, index) => `line ${index + 1}`).join("\n");
+    const expected = `await plurnk.edit(${JSON.stringify({ path: "workspace:///notes.md", content })});`;
+    const statements = TurnOps.parseInternal(expected);
+    assert.equal(TurnOps.renderEmission(statements), expected);
 });
 
-
-test("{§outside-text} comments outside operation fences are not part of a reply", () => {
+test("{§outside-text} prose lines outside Code Mode statements are retained as outside text", () => {
     const emitted = [
-        `${PlurnkParser.frame("EDIT (workspace:///notes.md)", "complete body")} <!-- imitated aside -->`,
-        PlurnkParser.frame("DONE", "The answer."),
-        "<!-- a trailing comment of its own -->",
+        'await plurnk.edit({"path":"workspace:///notes.md","content":"complete body"});',
+        "Interstitial commentary.",
+        'await plurnk.done({"text":"The answer."});',
+        "Trailing commentary.",
     ].join("\n\n");
     const parsed = PlurnkParser.parse(emitted);
     const statements = parsed.items.filter((item) => item.kind === "statement").map((item) => (item as { statement: PlurnkStatement }).statement);
@@ -77,14 +71,14 @@ test("{§outside-text} comments outside operation fences are not part of a reply
     assert.equal((statements[0] as EditStatement).body, "complete body");
     assert.equal(statements[1]?.op === "DONE" ? statements[1].body?.raw : null, "The answer.");
     assert.deepEqual(parsed.items.filter((item) => item.kind === "text").map((item) => (item as { content: string }).content.trim()),
-        ["<!-- imitated aside -->", "<!-- a trailing comment of its own -->"]);
+        ["Interstitial commentary.", "Trailing commentary."]);
 });
 
 test("{§op-methods-op-dispatch} internal programs may omit a disposition without inventing one", () => {
-    const source = "```READ (workspace:///notes.md)```";
+    const source = 'await plurnk.read({"path":"workspace:///notes.md"});';
     const parsed = TurnOps.parseInternal(source);
     assert.deepEqual(parsed.map(({ op }) => op), ["READ"]);
-    assert.equal(TurnOps.renderInternal(parsed), "```READ (workspace:///notes.md)\n```");
+    assert.equal(TurnOps.renderInternal(parsed), source);
 });
 
 test("{§turn-record} TurnOps: internal source round-trips through the public parser", () => {
@@ -101,12 +95,9 @@ test("{§turn-record} TurnOps: internal source round-trips through the public pa
     ];
     const source = TurnOps.renderInternal(statements);
     assert.equal(source, [
-        "```FIND (*) <1,-1> [{\"trace\": \"one\", \"shape\": {\"nested\": true}}] <!-- workspace files -->",
-        "```",
+        'await plurnk.find({"path":"*","range":"1,-1","metadata":["{\\"trace\\": \\"one\\", \\"shape\\": {\\"nested\\": true}}"]}); // workspace files',
         "",
-        "```WAIT",
-        "Observe the results.",
-        "```",
+        'await plurnk.wait({"text":"Observe the results."});',
     ].join("\n"));
     const parsed = TurnOps.parseInternal(source);
     assert.deepEqual(parsed.map(({ op }) => op), ["FIND", "WAIT"]);

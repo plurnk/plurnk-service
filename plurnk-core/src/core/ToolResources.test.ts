@@ -25,13 +25,13 @@ test("{§tools-resource-materialization} renders a general runtime as one self-d
     assert.match(content, /^# example$/m);
     assert.match(
         content,
-        /^## Summary\n\n```example <!-- Compute a thing\. -->\nsomething\n```$/m,
+        /^## Summary\n\nawait plurnk\.example\("something"\); \/\/ Compute a thing\.$/m,
     );
     assert.match(content, /^## Invocation$/m);
     assert.match(content, /^\| body \| required: query \|$/m);
-    assert.match(content, /```example <!-- Compute a thing\. -->\nsomething\n```/);
+    assert.match(content, /await plurnk\.example\("something"\); \/\/ Compute a thing\./);
     const summary = content.split("## Summary\n\n")[1].split("\n\n")[0];
-    assert.equal(Lexer.lex(summary)[0]?.type, "code", "the generic Markdown Summary projection can discover the fenced invocation");
+    assert.equal(Lexer.lex(summary)[0]?.type, "paragraph", "the generic Markdown Summary projection can discover the Code Mode invocation");
     const parsed = PlurnkParser.parseStatements(summary, { executors: ["example", "fixture", "brave", "sh"] });
     assert.equal(parsed.items.length, 1);
     assert.equal(parsed.items[0]?.kind, "statement");
@@ -86,18 +86,17 @@ test("{§tools-resource-materialization} retains authored non-schema invocations
     );
     const runtimeDoc = resources[0]?.content ?? "";
     assert.match(runtimeDoc, /^## Summary\n\nUse enabled tools from the gitea MCP server\.$/m);
-    assert.match(runtimeDoc, /^## Tools\n\n```gitea[\s\S]*\n```$/m);
+    assert.match(runtimeDoc, /^## Tools\n\nawait gitea[\s\S]*$/m);
     assert.match(
         runtimeDoc,
-        /^```gitea \(index\) <!-- List repository issues\. -->\n\{"owner"\?: string\}\n```$/m,
+        /^await gitea\.index\(\{"owner"\?: string\}\); \/\/ List repository issues\.$/m,
         "the invocation line is the whole teaching for a detail-less tool — no pointer",
     );
     assert.match(
         runtimeDoc,
-        /^```gitea \(issue\/read\) <!-- Read one issue and its discussion\. -->\n\{"owner": string, "repo": string, "index": integer\}\n```$/m,
+        /^await gitea\["issue\/read"\]\(\{"owner": string, "repo": string, "index": integer\}\); \/\/ Read one issue and its discussion\.$/m,
     );
     assert.doesNotMatch(runtimeDoc, /Schema: session:/, "no schema is fabricated for authored signatures");
-    assert.doesNotMatch(runtimeDoc, /```FIND/);
     assert.doesNotMatch(runtimeDoc, /tool_name/, "the runtime document cannot advertise a rejected generic target");
     // A tool's details are a SECTION of the runtime document, its headings demoted.
     assert.match(runtimeDoc, /^## `issue\/read`$/m);
@@ -130,7 +129,7 @@ test("{§capability-admission} derives an inventory summary from the effective e
     });
 
     const runtimeDoc = resources[0]?.content ?? "";
-    assert.match(runtimeDoc, /^## Summary\n\n```fixture \(echo\)\n\{"message": string\}\n```$/m);
+    assert.match(runtimeDoc, /^## Summary\n\nawait fixture\.echo\(\{"message": string\}\);$/m);
     assert.doesNotMatch(runtimeDoc, /fail/);
 });
 
@@ -160,7 +159,7 @@ test("{§find} a large runtime's inventory summary names every tool", () => {
     const runtimeDoc = resources[0]?.content ?? "";
     const summary = /^## Summary\n\n(.*)$/m.exec(runtimeDoc)?.[1] ?? "";
     assert.ok(Array.from(summary).length > EntryManifest.summaryCodePoints(), "the complete menu is longer than the prose bound");
-    assert.match(summary, new RegExp(`^\`\`\`gitea \\(${targets.join("\\|")}\\)`), "every tool is named, in declaration order");
+    assert.match(summary, new RegExp(`^await gitea\\["${targets.join("\\|")}"\\]\\(\\)`), "every tool is named, in declaration order");
     assert.doesNotMatch(summary, /…/);
 
     const small = ToolResources.render({
@@ -174,11 +173,11 @@ test("{§find} a large runtime's inventory summary names every tool", () => {
         details: "",
         registry: { tools: ["brave_web_search", "brave_news_search"].map(tool) },
     });
-    assert.match(small[0]?.content ?? "", /^## Summary\n\n```brave \(brave_web_search\|brave_news_search\) <!-- Brave Search MCP Server -->/m, "a runtime that fits lists every tool");
+    assert.match(small[0]?.content ?? "", /^## Summary\n\nawait brave\["brave_web_search\|brave_news_search"\]\(\); \/\/ Brave Search MCP Server/m, "a runtime that fits lists every tool");
 });
 
-test("{§tools-resource-materialization} keeps a concrete invocation's multiline body inside the summary fence", () => {
-    const summary = "```fixture (echo) <!-- Echo structured input -->```";
+test("{§tools-resource-materialization} keeps a concrete invocation's multiline body inside the summary witness", () => {
+    const summary = "await fixture.echo(); // Echo structured input";
     const body = '{\n  "message": "hello"\n}';
     const resources = ToolResources.render({
         runtime: "fixture", summary, details: "",
@@ -194,16 +193,14 @@ test("{§tools-resource-materialization} keeps a concrete invocation's multiline
     });
     const document = resources[0].content;
     const renderedSummary = document.split("## Summary\n\n")[1].split("\n\n")[0];
-    assert.equal(renderedSummary, `${summary.slice(0, -3)}\n${body}\n\`\`\``);
-    assert.ok(document.includes(`\`\`\`fixture (echo) <!-- Echo structured input. -->
-${body}
-\`\`\``), "the full invocation retains its physical newlines");
+    assert.equal(renderedSummary, `await fixture.echo(${body}); // Echo structured input`);
+    assert.ok(document.includes(`await fixture.echo(${body}); // Echo structured input.`), "the full invocation retains its physical newlines");
 });
 
 test("{§tools-resource-materialization} a registry-less runtime with no details is marked invocation-only in its summary", () => {
     const invocation = { body: { role: "the program", required: false }, example: { body: "1+1" } };
     const [bare] = ToolResources.render({ runtime: "calc", summary: "Evaluate calculations.", invocation, details: "   ", registry: null });
-    assert.match(bare.content, /^```calc <!-- Evaluate calculations\. \(invocation only\) -->/mu, "the summary line, and so the catalog row, says the document is header-only");
+    assert.match(bare.content, /^await plurnk\.calc\("1\+1"\); \/\/ Evaluate calculations\. \(invocation only\)$/mu, "the summary line, and so the catalog row, says the document is header-only");
     const [taught] = ToolResources.render({ runtime: "calc", summary: "Evaluate calculations.", invocation, details: "Set `scale` first.", registry: null });
     assert.doesNotMatch(taught.content, /invocation only/u, "a runtime with a body is not marked");
     assert.ok(taught.content.endsWith("Set `scale` first."), "the body closes the document");
@@ -218,7 +215,7 @@ test("{§functionality-model-projection} plurnk runtime summary advertises effec
             })) },
         });
         const summary = resource.content.split("## Summary\n\n")[1].split("\n\n")[0];
-        assert.equal(summary, `\`\`\`plurnk (${tools.join("|")}) <!-- Manage env, mcp, members, personas, schedule, and skills; ask the user questions. -->\n\`\`\``);
+        assert.equal(summary, `await plurnk[${JSON.stringify(tools.join("|"))}](); // Manage env, mcp, members, personas, schedule, and skills; ask the user questions.`);
     }
 });
 
@@ -286,7 +283,7 @@ test("{§executor-discovery} catalogs required top-level fields in the skeleton,
     assert.equal(family?.pathname, "/gitea.md");
     assert.equal(detail?.scheme, "mcp");
     assert.equal(detail?.pathname, "/gitea/issue%2Fread.json");
-    assert.match(family.content, /```gitea \(issue\/read\) <!-- List issues\. \(filter: \{state\?: "open"\|"closed"\}, mode: "open"\|"all"; page\?: integer\) Schema: mcp:\/\/\/gitea\/issue%2Fread\.json -->\n\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\n```/);
+    assert.match(family.content, /await gitea\["issue\/read"\]\(\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\); \/\/ List issues\. \(filter: \{state\?: "open"\|"closed"\}, mode: "open"\|"all"; page\?: integer\) Schema: mcp:\/\/\/gitea\/issue%2Fread\.json/);
     assert.doesNotMatch(family.content, /oneOf|Selection|minItems/);
     const parsed = JSON.parse(detail.content) as Record<string, unknown>;
     assert.equal(parsed.description, description, "complete multiline description is preserved");
@@ -304,7 +301,7 @@ test("{§executor-discovery} top-level object unions preview the first branch an
         { properties: { second: { type: "number" } }, required: ["second"] },
     ] };
     const [family, detail] = render("conditional", conditional);
-    assert.match(family.content, /\(\{first: string\}\|\{second: number\}\) Schema: mcp:\/\/\/conditional\/issue%2Fread\.json -->\n\{"first": ""\}\n/);
+    assert.match(family.content, /await conditional\["issue\/read"\]\(\{"first": ""\}\); \/\/ List issues\. \(\{first: string\}\|\{second: number\}\) Schema: mcp:\/\/\/conditional\/issue%2Fread\.json/);
     assert.doesNotMatch(family.content, /oneOf/);
     const parsed = JSON.parse(detail.content) as Record<string, unknown>;
     assert.deepEqual(parsed.oneOf, conditional.oneOf);
@@ -361,20 +358,19 @@ test("{§tools-resource-materialization} a featured exact tool includes its requ
         runtime: "brave", summary, details: "", invocation: tool.invocation,
         registry: { tools: [tool, { ...tool, target: "news" }] },
     })[0].content.split("## Summary\n\n")[1].split("\n\n")[0];
-    const heading = "```brave (search) <!-- Search documents -->";
-    assert.equal(family(`${heading}\`\`\``), `${heading}\n{"query": ""}\n\`\`\``);
+    assert.equal(family("await brave.search(); // Search documents"), 'await brave.search({"query": ""}); // Search documents');
     for (const authored of [
         "Search documents and news.",
-        "```brave (search|news)```",
-        "```brave (disabled)```",
-        "```other (search)```",
-        `${heading}\n{"query":"example"}\n\`\`\``,
+        'await brave["search|news"]();',
+        "await brave.disabled();",
+        "await other.search();",
+        'await brave.search({"query":"example"}); // Search documents',
     ]) assert.equal(family(authored), authored);
 });
 
 test("{§tools-resource-materialization} aside normalization cannot rewrite schema addresses", () => {
     const [family, detail] = render("gitea--private");
-    assert.ok(family.content.includes(`Schema: mcp://${detail.pathname} -->`));
+    assert.ok(family.content.includes(`Schema: mcp://${detail.pathname}`));
 });
 
 test("{§executor-discovery} general schema-backed runtimes also expose an on-demand schema", () => {
@@ -384,7 +380,7 @@ test("{§executor-discovery} general schema-backed runtimes also expose an on-de
     });
     assert.equal(detail.scheme, "plurnk");
     assert.equal(detail.pathname, "/query/input.json");
-    assert.ok(family.content.includes(`Schema: plurnk://${detail.pathname} -->`));
+    assert.ok(family.content.includes(`Schema: plurnk://${detail.pathname}`));
     assert.ok(family.content.includes('{"repo_id": 0, "filter": {}, "labels": [], "mode": "open", "selector": null}'));
     assert.deepEqual((JSON.parse(detail.content) as Record<string, unknown>).properties, schema.properties);
 });
@@ -423,7 +419,7 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
             },
         }] },
     })[0].content;
-    assert.match(withOptions, /```gitea \(search\) <!-- Search repos\. \(page\?: integer, sort\?: string, state\?: "open"\|"closed"\|"all", labels\?: string\[\]\) Schema: mcp:\/\/\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
+    assert.match(withOptions, /await gitea\.search\(\{"query": ""\}\); \/\/ Search repos\. \(page\?: integer, sort\?: string, state\?: "open"\|"closed"\|"all", labels\?: string\[\]\) Schema: mcp:\/\/\/gitea\/search\.json/);
 
     const fillForm = {
         type: "object",
@@ -451,7 +447,7 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
             target: { role: "MCP tool", required: true, kind: "literal" },
             inputSchema: fillForm,
         }, "browser_fill_form"),
-        '```browser (browser_fill_form) <!-- (fields: {target: string, name: string, type: "textbox"|"checkbox"|"radio"|"combobox"|"slider", value: string, element?: string}[]) -->\n{"fields": []}\n```',
+        'await browser.browser_fill_form({"fields": []}); // (fields: {target: string, name: string, type: "textbox"|"checkbox"|"radio"|"combobox"|"slider", value: string, element?: string}[])',
     );
 
     const noOptions = ToolResources.render({
@@ -469,6 +465,6 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
             },
         }] },
     })[0].content;
-    assert.match(noOptions, /```gitea \(search\) <!-- Search repos\. Schema: mcp:\/\/\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
+    assert.match(noOptions, /await gitea\.search\(\{"query": ""\}\); \/\/ Search repos\. Schema: mcp:\/\/\/gitea\/search\.json/);
 });
 });

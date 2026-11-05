@@ -43,11 +43,7 @@ const estimatedCost = (usage: ProviderUsage) => ({
 
 const valid = (body = "done", usage?: ProviderUsage): MockResponse => ({
     assistant: {
-        content: `
-\`\`\`\`DONE
-${body}
-\`\`\`\`
-`,
+        content: `await plurnk.done({"text":"${body}"});`,
         reasoning: null,
     },
     ...(usage === undefined ? {} : { usage, cost: estimatedCost(usage) }),
@@ -55,11 +51,9 @@ ${body}
 
 const continuing = (body = "continue"): MockResponse => ({
     assistant: {
-        content: `
-\`\`\`\`FIND (log:///**) <1,1>\`\`\`\`
-\`\`\`\`NOTE
-${body}
-\`\`\`\``,
+        content: `await plurnk.find({"path":"log:///**","range":"1,1"});
+
+await plurnk.note({"text":"${body}"});`,
         reasoning: null,
     },
 });
@@ -151,7 +145,7 @@ test("{§provider-failure-normalization}: one model call durably settles a trans
                         },
                     );
                 }
-                const content = "\n````DONE\nrecovered\n````";
+                const content = "await plurnk.done({\"text\":\"recovered\"});";
                 const body = [
                     `data: ${JSON.stringify({
                         id: "connectivity-response",
@@ -222,7 +216,7 @@ test("{§provider-failure-normalization}: one model call durably settles a trans
 test("{§outside-text} separator-free provider preamble does not reject a complete model turn", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const content = "harmless status.````SEND\ndone\n````";
+        const content = "harmless status. await plurnk.send({\"text\":\"done\"});";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid(content)],
@@ -256,9 +250,9 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
     try {
         const source = [
             "Prelude: preparing the edit.",
-            PlurnkParser.frame("EDIT (workspace:///proof.md)", "Actual body."),
+            "await plurnk.edit({\"path\":\"workspace:///proof.md\",\"content\":\"Actual body.\"});",
             "3 — invented result, not a receipt.",
-            PlurnkParser.frame("SEND", "Only this message is sent."),
+            "await plurnk.send({\"text\":\"Only this message is sent.\"});",
             "Postscript: not a second message.",
         ].join("\n");
         const result = await engine.runTurn({
@@ -285,8 +279,8 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
         assert.equal(landed?.content, "Actual body.");
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: result.turnId });
         const readSource = [
-            PlurnkParser.frame(`READ (ops://subject/1/${turn!.sequence}) <1,-1>`, null),
-            PlurnkParser.frame("NOTE", "Inspect the original emission."),
+            `await plurnk.read({"path":"ops://subject/1/${turn!.sequence}","range":"1,-1"});`,
+            "await plurnk.note({\"text\":\"Inspect the original emission.\"});",
         ].join("\n");
         const review = await engine.runTurn({
             provider: new AttemptWitness({ contextWindow: 100_000, responses: [invalid(readSource)] }),
@@ -310,8 +304,8 @@ test("{§emission-admission} invalid emissions retry beneath one turn against th
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("````READ (workspace:///prose-without-a-turn", requestUsage(10, 2, 1, 4)),
-                invalid("````READ (workspace:///broken", requestUsage(20, 3, 2, 5)),
+                invalid("await plurnk.read({\"path\":\"workspace:///prose-without-a-turn", requestUsage(10, 2, 1, 4)),
+                invalid("await plurnk.read({\"path\":\"workspace:///broken", requestUsage(20, 3, 2, 5)),
                 valid("accepted", requestUsage(30, 4, 3, 6)),
             ],
         });
@@ -360,7 +354,7 @@ test("{§emission-admission} invalid emissions retry beneath one turn against th
         );
         const turn = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } };
-        assert.equal(packet.assistant?.content, "\n````DONE\naccepted\n````\n");
+        assert.equal(packet.assistant?.content, "await plurnk.done({\"text\":\"accepted\"});");
         assert.doesNotMatch(JSON.stringify(packet), /prose without|workspace:\/\/\/broken/, "rejected emissions never enter packet history");
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string }>({ turn_id: result.turnId });
@@ -386,7 +380,7 @@ test("{§emission-admission} invalid emissions retry beneath one turn against th
 test("{§emission-admission}: an emission that writes the harness log is resampled, and nothing in it runs", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const fabricated = "### log:///1/1/2/READ (notes.md) · 12\n{\"range\":\"<1,1> of 1 lines\"}\n1:corrupted\n\n````READ (notes.md)\n````\n";
+        const fabricated = "### log:///1/1/2/READ (notes.md) · 12\n{\"range\":\"<1,1> of 1 lines\"}\n1:corrupted\n\nawait plurnk.read({\"path\":\"notes.md\"});";
         const provider = new AttemptWitness({ contextWindow: 100_000, responses: [invalid(fabricated), valid("accepted")] });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "do the task" }] });
         assert.equal(result.status, 200);
@@ -409,7 +403,7 @@ test("{§provider-interface} repeated reasoning and its final answer settle once
     try {
         const line = "if app_configs is None:\n";
         const reasoning = Array.from({ length: 40 }, (_, index) => `${line}    candidate_${index}()\n`);
-        const content = "\n````DONE\ncomplete answer\n````";
+        const content = "await plurnk.done({\"text\":\"complete answer\"});";
         const chunk = (delta: Record<string, string>, finish: string | null = null): string => `data: ${JSON.stringify({ id: "r", object: "chat.completion.chunk", created: 1, model: "repeat-witness", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
         const usage = `data: ${JSON.stringify({ id: "r", object: "chat.completion.chunk", created: 1, model: "repeat-witness", choices: [], usage: { prompt_tokens: 10, completion_tokens: 100, total_tokens: 110, completion_tokens_details: { reasoning_tokens: 80 } } })}\n\n`;
         let calls = 0;
@@ -459,7 +453,7 @@ test("{§whitespace-contract} a valid operation without a lifecycle verb is admi
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [invalid("````EDIT (workspace:///proof.md)\nlanded\n````")],
+            responses: [invalid("await plurnk.edit({\"path\":\"workspace:///proof.md\",\"content\":\"landed\"});")],
         });
 
         const result = await engine.runTurn({
@@ -508,7 +502,7 @@ test("{§whitespace-contract} a valid operation without a lifecycle verb is admi
 test("{§fence-pairing} a literal nested NOTE remains data in the complete operation replay and its landed edit window", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const source = "````EDIT (workspace:///example.md)\nExample for later:\n```READ (package.json)```\n```NOTE\ninspect\n```\n````";
+        const source = "await plurnk.edit({\"path\":\"workspace:///example.md\",\"content\":\"Example for later:\\n```READ (package.json)```\\n```NOTE\\ninspect\\n```\"});";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid(source), valid()],
@@ -534,7 +528,7 @@ test("{§fence-pairing} a literal nested NOTE remains data in the complete opera
         const row = await db.test_get_packet.get<{ packet: string }>({ id: second.turnId });
         const log = packetSection(JSON.parse(row!.packet), "log");
         assert.match(log, /### log:\/\/\/1\/2\/\d+\/EDIT/u, "the next model turn receives the EDIT receipt");
-        assert.match(packetSection(JSON.parse(row!.packet), "emission-history"), /EDIT \(workspace:\/\/\/example\.md\)/u, "the operation supplies its addressed path");
+        assert.match(packetSection(JSON.parse(row!.packet), "emission-history"), /plurnk\.edit\(\{"path":"workspace:\/\/\/example\.md"/u, "the operation supplies its addressed path");
     } finally {
         await db.close();
     }
@@ -592,8 +586,8 @@ test("{§emission-admission} finish=length is forensic evidence: a frame that lo
     try {
         const lostPrefix = [
             "",
-            "````READ (workspace:///missing)````",
-            "````EDIT (workspace:///notes.md",
+            "await plurnk.read({\"path\":\"workspace:///missing\"});",
+            "await plurnk.edit({\"path\":\"workspace:///notes.md",
         ].join("\n");
         const provider = new AttemptWitness({
             contextWindow: 100_000,
@@ -636,10 +630,13 @@ test("{§emission-admission} finish=length is forensic evidence: a frame that lo
     }
 });
 
-test("{§slot-order}: a malformed continuation heading preserves siblings without authorizing completion", async () => {
+test("{§slot-order}: a malformed continuation statement preserves siblings without authorizing completion", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const rejected = "````EDIT (workspace:///proof.md)\nthe valid sibling is written\n````\n````NOTE [{\"content\":\"keep\nthis\",\"status\":\"pending\"}]\n````";
+        const rejected = [
+            "await plurnk.edit({\"path\":\"workspace:///proof.md\",\"content\":\"the valid sibling is written\"});",
+            "await plurnk.read();",
+        ].join("\n");
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid(rejected)],
@@ -653,7 +650,7 @@ test("{§slot-order}: a malformed continuation heading preserves siblings withou
             messages: [{ role: "user", content: "do the task" }],
         });
 
-        assert.equal(result.status, 102, "the visible heading failure prevents same-turn completion");
+        assert.equal(result.status, 102, "the visible statement failure prevents same-turn completion");
         assert.equal(result.emissionAttempts, 1);
         const attempts = await db.test_turn_attempts.all<{
             accepted: number;
@@ -661,9 +658,9 @@ test("{§slot-order}: a malformed continuation heading preserves siblings withou
         }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
         const parseErrors = JSON.parse(attempts[0].parse_errors) as Array<{ message: string; line: number; source: string }>;
-        assert.equal(parseErrors.length, 1, "one bounded diagnostic for the malformed continuation heading");
-        assert.equal(parseErrors[0]?.message, "unexpected `[` (`[metadata]` modifier opener); expected operation fence header, operation-heading line ending, closing fence, or body content");
-        assert.deepEqual({ line: parseErrors[0]?.line, source: parseErrors[0]?.source }, { line: 4, source: "parser" });
+        assert.equal(parseErrors.length, 1, "one bounded diagnostic for the malformed continuation statement");
+        assert.equal(parseErrors[0]?.message, "READ requires a target.");
+        assert.deepEqual({ line: parseErrors[0]?.line, source: parseErrors[0]?.source }, { line: 2, source: "parser" });
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({
             turn_id: result.turnId,
@@ -683,12 +680,12 @@ test("{§slot-order}: a malformed continuation heading preserves siblings withou
 test("{§operation-results} {§matcher-prefix-claims} a syntactically legal $fC matcher failure is the operation's own refusal, admitted once, and made model-visible (#12/#16)", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const malformed = "\n````FIND (workspace:///x) $fC````\n\n````NOTE\ninspect the results next\n````";
+        const malformed = "await plurnk.find({\"path\":\"workspace:///x\",\"pattern\":\"$fC\"});\n\nawait plurnk.note({\"text\":\"inspect the results next\"});";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
                 invalid(malformed),
-                invalid("\n````SEND\nthe matcher was malformed\n````"),
+                invalid("await plurnk.send({\"text\":\"the matcher was malformed\"});"),
             ],
         });
 
@@ -773,12 +770,12 @@ test("{§op-shapes}: a READ carrying pasted lines keeps them as a NOTE without t
             contextWindow: 100_000,
             responses: [
                 invalid([
-                    `\`\`\`\`READ (evaluator/functions.go) <2286,2292>
-${renderedRead}
-\`\`\`\``,
-                    "````NOTE\ninspect the result\n````",
+                    `await plurnk.note({"text":${JSON.stringify(renderedRead)}});
+
+await plurnk.read({"path":"evaluator/functions.go","range":"2286,2292"});`,
+                    "await plurnk.note({\"text\":\"inspect the result\"});",
                 ].join("\n\n")),
-                invalid("\n````SEND\ndone\n````"),
+                invalid("await plurnk.send({\"text\":\"done\"});"),
             ],
         });
 
@@ -824,7 +821,7 @@ ${renderedRead}
         const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(packetRow?.packet ?? "{}");
         const log = packetSection(packet, "log");
-        assert.match(packetSection(packet, "emission-history"), /```NOTE\n2286<@et6xE>/u, "pasted text is literal memory");
+        assert.match(packetSection(packet, "emission-history"), /await plurnk\.note\(\{"text":"2286<@et6xE>/u, "pasted text is literal memory");
         assert.doesNotMatch(packetSection(packet, "notices"), /takes no body|not used/u, "normalization adds no repair lecture");
         assert.doesNotMatch(
             log,
@@ -842,7 +839,7 @@ test("{§matcher-prefix-claims} a bounded malformed operation defers same-turn c
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("\n````FIND (**) /unterminated[````\n\n````SEND\ndone\n````"),
+                invalid("await plurnk.find({\"path\":\"**\",\"pattern\":\"/unterminated[\"});\n\nawait plurnk.send({\"text\":\"done\"});"),
             ],
         });
 
@@ -884,18 +881,19 @@ test("{§matcher-prefix-claims} a bounded malformed operation defers same-turn c
     }
 });
 
-test("{§matcher-prefix-claims}: a third COPY operand preserves siblings, source evidence, and the actual parser diagnostic", async () => {
+test("{§matcher-prefix-claims}: a malformed COPY statement preserves siblings, source evidence, and the actual parser diagnostic", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         await seedEntryWithChannel(db, {
             workspaceId, scheme: "workspace", pathname: "/src.md",
             content: "one\ntwo\nthree", mimetype: "text/markdown",
         });
+        const badCopy = "await plurnk.copy({\"from\":\"workspace:///src.md\"});";
         const source = [
             "Unexecuted interstitial text.",
-            PlurnkParser.frame("READ (workspace:///src.md) <1>", null),
-            PlurnkParser.frame("COPY (workspace:///src.md) <2,3> (to) (workspace:///slice.md)", null),
-            PlurnkParser.frame("READ (workspace:///src.md) <3>", null),
+            "await plurnk.read({\"path\":\"workspace:///src.md\",\"range\":\"1\"});",
+            badCopy,
+            "await plurnk.read({\"path\":\"workspace:///src.md\",\"range\":\"3\"});",
         ].join("\n\n");
         const provider = new AttemptWitness({ contextWindow: 100_000, responses: [invalid(source), valid()] });
         const context = { workspaceId, sessionId, loopId };
@@ -903,7 +901,7 @@ test("{§matcher-prefix-claims}: a third COPY operand preserves siblings, source
         assert.equal(first.status, 102);
         assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["NOTE", 200], ["READ", 200], ["READ", 200], [null, 400]], "the interstitial text is the turn's NOTE beside the operations ({§outside-text})");
         const { sequence } = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
-        const [readSource] = PlurnkParser.parseStatements(PlurnkParser.frame(`READ (ops://subject/1/${sequence}) <1,-1>`, null)).items;
+        const [readSource] = PlurnkParser.parseStatements(`await plurnk.read({"path":"ops://subject/1/${sequence}","range":"1,-1"});`).items;
         assert.ok(readSource.kind === "statement");
         // Source identity never depends on the reader ({§turn-source-resources}); the subject's next packet is under test.
         const observer = await insertSession(db, workspaceId, null, "observer");
@@ -920,54 +918,19 @@ test("{§matcher-prefix-claims}: a third COPY operand preserves siblings, source
         assert.equal(failures.length, 1, "only the malformed COPY has a failure receipt");
         const problem = failures[0].problem as Record<string, unknown>;
         assert.equal(problem.type, "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax");
-        assert.equal(problem.detail,
-            "unexpected `(` (`(path)` slot opener); expected operation fence header, operation-heading line ending, or closing fence");
+        assert.equal(problem.detail, "COPY requires both from and to targets.");
         assert.equal(problem.siblingsRetained, true);
-        assert.equal(problem.line, 6);
-        assert.equal(problem.column, 41);
+        assert.equal(problem.line, 5);
+        assert.equal(problem.column, 0);
         // {§parse-recovery} The row records the statement the parser refused, as written; the packet shows the model nothing new.
         const [refused] = await db.test_log_entries_by_session_op_full.all<{ attrs: string }>({ session_id: sessionId, op: "error" });
         const attempt = (JSON.parse(refused.attrs) as { attempt?: { verb: string; text: string } }).attempt;
         assert.equal(attempt?.verb, "COPY");
-        assert.ok(attempt?.text.startsWith(PlurnkParser.frame("COPY (workspace:///src.md) <2,3> (to) (workspace:///slice.md)", null).split("\n")[0]), attempt?.text);
+        assert.equal(attempt?.text, badCopy);
         assert.equal(Object.hasOwn(problem, "attempt"), false);
         assert.equal(JSON.stringify(failures[0]).includes("attempt"), false, "the attempt never reaches the model's packet");
     } finally { await db.close(); }
 });
-
-for (const heading of ["KILL <1> (workspace:///trim.md)", "KILL → workspace:///trim.md <1>"]) {
-    test(`{§fence-pairing}: ${heading} missing its closer preserves the following READ and its result`, async () => {
-        const { db, workspaceId, sessionId, loopId, engine } = await setup();
-        try {
-            await seedEntryWithChannel(db, {
-                workspaceId, scheme: "workspace", pathname: "/trim.md",
-                content: "one\ntwo\nthree", mimetype: "text/markdown",
-            });
-            const source = [`\`\`\`${heading}`, "```READ (workspace:///trim.md) <1,-1>", "```"].join("\n");
-            const provider = new AttemptWitness({ contextWindow: 100_000, responses: [invalid(source), valid()] });
-            const context = { workspaceId, sessionId, loopId };
-            const first = await engine.runTurn({ ...context, provider, messages: [] });
-            assert.equal(first.status, 102, "the addressed KILL is a mutation, not completion");
-            assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["KILL", 200], ["READ", 200]]);
-
-            const { sequence } = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
-            const [readSource] = PlurnkParser.parseStatements(PlurnkParser.frame(`READ (ops://subject/1/${sequence}) <1,-1>`, null)).items;
-            assert.ok(readSource.kind === "statement");
-            // Source identity never depends on the reader ({§turn-source-resources}); the subject's next packet is under test.
-            const observer = await insertSession(db, workspaceId, null, "observer");
-            const retained = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: readSource.statement });
-            assert.equal(retained.status, 200);
-            assert.ok("content" in retained);
-            assert.equal(retained.content, source, "recovery preserves the original emission");
-
-            const next = await engine.runTurn({ ...context, provider, messages: [] });
-            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-            const observations = logEntries(packet).filter(({ logPath }) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(logPath));
-            assert.equal(observations.length, 1, "the following turn receives the recovered READ's result");
-            assert.match(String(observations[0].body), /^1<@[0-9A-Za-z]{5}>two\n2<@[0-9A-Za-z]{5}>three\n$/);
-        } finally { await db.close(); }
-    });
-}
 
 test("{§op-shapes} a malformed COPY destination cannot dispatch or materialize", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
@@ -981,7 +944,7 @@ test("{§op-shapes} a malformed COPY destination cannot dispatch or materialize"
         });
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [invalid("````COPY (workspace:///src.md) <2,3> (workspace:///slice.md) <0>:````\n````NOTE\ninspect the copy result\n````")],
+            responses: [invalid("await plurnk.copy({\"from\":{\"path\":\"workspace:///src.md\",\"range\":\"2,3\"},\"to\":{\"path\":\"workspace:///slice.md\",\"range\":\"invalid\"}});\n\nawait plurnk.note({\"text\":\"inspect the copy result\"});")],
         });
 
         const result = await engine.runTurn({
@@ -1028,7 +991,7 @@ test("{§op-shapes} two WAITs keep the single-turn boundary: the program is admi
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("````WAIT\nWait.\n````\n````WAIT\nContinue the task.\n````\n\n````EDIT (workspace:///two-waits.md)\nvalue\n````"),
+                invalid("await plurnk.wait({\"text\":\"Wait.\"});\n\nawait plurnk.wait({\"text\":\"Continue the task.\"});\n\nawait plurnk.edit({\"path\":\"workspace:///two-waits.md\",\"content\":\"value\"});"),
             ],
         });
 
@@ -1057,14 +1020,14 @@ test("{§op-shapes} two WAITs keep the single-turn boundary: the program is admi
 test("{§parse-recovery} {§parse-recovery}: a boundary lost after a statement is a row, not a resample: the prefix runs and the next packet carries the lexer's reason", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const body = "The example:\n```ts\nconst value = 42;\n```\nVerified.";
+        const body = "The example:\n\nawait plurnk.ts(\"const value = 42;\");\n\nVerified.";
         // An unfinished target slot at the end of the input is the one boundary loss left; a missing
         // or mismatched closer never is ({§operation-fences}).
         const lost = [
-            PlurnkParser.frame("EDIT (workspace:///before-loss.md)", "kept"),
-            "````SEND (session://reviewer",
+            "await plurnk.edit({\"path\":\"workspace:///before-loss.md\",\"content\":\"kept\"});",
+            "await plurnk.send({\"target\":\"session://reviewer",
         ].join("\n");
-        const corrected = PlurnkParser.frame("DONE", body);
+        const corrected = `await plurnk.done({"text":${JSON.stringify(body)}});`;
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid(lost), invalid(corrected)],
@@ -1078,7 +1041,7 @@ test("{§parse-recovery} {§parse-recovery}: a boundary lost after a statement i
         const [, lossTurn, replyTurn] = result.turnIds;
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: lossTurn });
         assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors).map(({ line, column, source }: { line: number; column: number; source: string }) => ({ line, column, source }))]), [[1, [{
-            line: 4, column: 0, source: "grammar",
+            line: 2, column: 0, source: "grammar",
         }]]], "one admitted attempt, the tail preserved as its diagnostic");
         const [{ message }] = JSON.parse(attempts[0].parse_errors) as [{ message: string }];
         assert.equal(provider.packets.length, 2, "no private resample: the loss is the model's to see");
@@ -1100,13 +1063,13 @@ test("{§parse-recovery} {§parse-recovery}: a boundary lost after a statement i
 
 test("{§emission-admission} exhausted private attempts expose the latest response and the parser's diagnostic on one recovery turn", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
-    const latestRejected = "\n````READ (file:///main.go";
+    const latestRejected = "\nawait plurnk.read({\"path\":\"file:///main.go";
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("````READ (workspace:///first-private-invalid"),
-                invalid("````READ (workspace:///second-private-invalid"),
+                invalid("await plurnk.read({\"path\":\"workspace:///first-private-invalid"),
+                invalid("await plurnk.read({\"path\":\"workspace:///second-private-invalid"),
                 invalid(latestRejected),
                 continuing("recovered"),
                 valid("finished"),
@@ -1141,11 +1104,11 @@ test("{§emission-admission} exhausted private attempts expose the latest respon
         assert.equal(new Set(provider.packets.slice(0, 3)).size, 1, "private attempts retain one exact packet");
         assert.notEqual(provider.packets[3], provider.packets[2], "the informed recovery has its own packet");
         assert.match(provider.packets[3], /Response rejected before dispatch; no operations were performed\./);
-        assert.match(provider.packets[3], /2:````READ \(file:\/\/\/main\.go/);
+        assert.match(provider.packets[3], /2:await plurnk\.read\(\{\\"path\\":\\"file:\/\/\/main\.go/);
         assert.doesNotMatch(provider.packets[3], /first private invalid|second private invalid/);
         // {§emission-admission} — the informed turn carries the parser's diagnostic and position.
         assert.match(provider.packets[3], /Parser: .+ @ \d+:\d+/, "the parser's diagnosis reaches the informed turn");
-        assert.doesNotMatch(provider.packets[4], /2:````READ \(file:\/\/\/main\.go/, "the rejected emission is projected only into its recovery packet");
+        assert.doesNotMatch(provider.packets[4], /2:await plurnk\.read\(\{\\"path\\":\\"file:\/\/\/main\.go/, "the rejected emission is projected only into its recovery packet");
 
         const [, failedTurnId, recoveryTurnId, finalTurnId] = result.turnIds;
         const failedTurn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: failedTurnId });
@@ -1175,7 +1138,7 @@ test("{§emission-admission} exhausted private attempts expose the latest respon
         assert.equal(rejectedMirror.turn_seq, 2, "the rejected emission belongs to the first packet-bearing turn");
         assert.equal(rejectedMirror.initial_folded, "[[1,-1]]", "the rejected model item remains durably body-suppressed");
         assert.equal(rejectedMirror.folded, "[]", "the rejected program remains readable");
-        assert.match(rejectedMirror.rx, /````READ \(file:\/\/\/main\.go/);
+        assert.match(rejectedMirror.rx, /await plurnk\.read\(\{\\"path\\":\\"file:\/\/\/main\.go/);
         assert.equal(rows.filter((row) => row.origin === "model" && row.op === "READ").length, 0, "no rejected operation dispatches");
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "the lifeline does not fabricate an operation failure");
     } finally {
@@ -1214,7 +1177,7 @@ test("{§provider-failure-normalization} {§engine-rails} a provider-declared ge
     process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF = "60000";
     try {
         const provider = new GarbageProvider(1, [
-            { assistant: { content: "\n````DONE\ndone\n````", reasoning: null } },
+            { assistant: { content: "await plurnk.done({\"text\":\"done\"});", reasoning: null } },
         ], "generation_failed");
         const started = Date.now();
         const result = await engine.runLoop({
@@ -1238,7 +1201,7 @@ test("{§provider-failure-normalization} {§engine-rails} three consecutive gene
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(3, [
-            { assistant: { content: "\n````DONE\nnever reached\n````", reasoning: null } },
+            { assistant: { content: "await plurnk.done({\"text\":\"never reached\"});", reasoning: null } },
         ], "generation_failed");
         const result = await engine.runLoop({
             provider, workspaceId, sessionId, loopId,
@@ -1255,7 +1218,7 @@ test("{§engine-rails} Contract Strikes: one invalid provider response strikes; 
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(1, [
-            { assistant: { content: "\n````DONE\ndone\n````", reasoning: null } },
+            { assistant: { content: "await plurnk.done({\"text\":\"done\"});", reasoning: null } },
         ]);
         const result = await engine.runLoop({
             provider, workspaceId, sessionId, loopId,
@@ -1271,7 +1234,7 @@ test("{§engine-rails} Contract Strikes: three consecutive invalid provider resp
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(3, [
-            { assistant: { content: "\n````DONE\nnever reached\n````", reasoning: null } },
+            { assistant: { content: "await plurnk.done({\"text\":\"never reached\"});", reasoning: null } },
         ]);
         const result = await engine.runLoop({
             provider, workspaceId, sessionId, loopId,
@@ -1288,13 +1251,11 @@ test("{§engine-rails} Contract Strikes: consecutive emission exhaustions strike
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         // {§parse-recovery} — an unfinished target at the end of the input is the exhaustion shape.
-        const cut = { assistant: { content: "````READ (workspace:///no-ops-here", reasoning: null } };
-        const good = (body: string) => ({ assistant: { content: `
-\`\`\`\`FIND (log:///**) <1,1>\`\`\`\`
-\`\`\`\`NOTE
-${body}
-\`\`\`\``, reasoning: null } });
-        const done = { assistant: { content: "\n````DONE\nfinished\n````", reasoning: null } };
+        const cut = { assistant: { content: "await plurnk.read({\"path\":\"workspace:///no-ops-here", reasoning: null } };
+        const good = (body: string) => ({ assistant: { content: `await plurnk.find({"path":"log:///**","range":"1,1"});
+
+await plurnk.note({"text":"${body}"});`, reasoning: null } });
+        const done = { assistant: { content: "await plurnk.done({\"text\":\"finished\"});", reasoning: null } };
         // Two exhaustions (3 attempts each), a clean turn clearing the streak,
         // then three consecutive exhaustions striking out on the third.
         const provider = new AttemptWitness({
@@ -1322,15 +1283,12 @@ ${body}
 test("{§emission-admission} a frame exhaustion shares prior contract strikes and retains evidence without another request", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        // {§parse-recovery} — only an unfinished heading slot at the end of the input rejects.
-        const rejected = "````READ (workspace:///unfinished";
+        const rejected = "await plurnk.read({\"path\":\"workspace:///unfinished";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                // Two admitted turns each struck by a bounded heading failure, a third COPY operand
-                // ({§matcher-prefix-claims}); a fumbled matcher would not strike ({§matcher-prefix-claims}).
-                invalid("````READ (workspace:///absent)````\n````COPY (workspace:///a) (workspace:///b) (workspace:///c)````"),
-                invalid("````READ (workspace:///absent)````\n````COPY (workspace:///a) (workspace:///b) (workspace:///c)````"),
+                invalid("await plurnk.read({\"path\":\"workspace:///absent\"});\nawait plurnk.copy({\"from\":\"workspace:///a\"});"),
+                invalid("await plurnk.read({\"path\":\"workspace:///absent\"});\nawait plurnk.copy({\"from\":\"workspace:///a\"});"),
                 invalid(rejected), invalid(rejected), invalid(rejected),
                 valid("Not requested."),
             ],
@@ -1361,7 +1319,7 @@ test("{§turn-source-resources} digest preserves rejected emissions as forensic 
         const { db, workspaceId, sessionId, loopId, engine } = await setup(dbPath);
         // A workspace entry, so the workspace survey selects something and the initialization program exists.
         await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
-        const rejected = "````READ (workspace:///😀rejected bytes";
+        const rejected = "await plurnk.read({\"path\":\"workspace:///😀rejected bytes";
         try {
             const provider = new AttemptWitness({
                 contextWindow: 100_000,
@@ -1402,7 +1360,7 @@ test("{§turn-source-resources} digest preserves rejected emissions as forensic 
             );
             assert.equal(
                 await readFile(join(digestDir, `${stems[1]}.assistant.md`), "utf8"),
-                "\n````DONE\naccepted bytes\n````\n",
+                "await plurnk.done({\"text\":\"accepted bytes\"});",
             );
             const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
             assert.match(markdown, /rejected-emissions=1\/2/);
@@ -1410,7 +1368,7 @@ test("{§turn-source-resources} digest preserves rejected emissions as forensic 
             const reasoning = await readFile(join(digestDir, "reasoning.md"), "utf8");
             assert.match(reasoning, /Attempt 1 - rejected/);
             assert.match(reasoning, /rejected reasoning/);
-            assert.match(reasoning, /never closed - add `\)`/, "the rejected attempt's own diagnostic is in the reasoning chronology");
+            assert.match(reasoning, /Unterminated Code Mode statement/, "the rejected attempt's own diagnostic is in the reasoning chronology");
             assert.match(reasoning, /Attempt 2 - admitted/);
             const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
                 turn_attempts: Array<{ accepted: boolean }>;
@@ -1430,7 +1388,7 @@ test("{§engine-rails} a provider outage after a rejected emission is absorbed i
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("````READ (workspace:///rejected-before-outage", requestUsage(10, 2)),
+                invalid("await plurnk.read({\"path\":\"workspace:///rejected-before-outage", requestUsage(10, 2)),
                 valid("done", requestUsage(10, 2)),
             ],
         });
@@ -1637,7 +1595,7 @@ test("{§provider-surface} Core rejects a ProviderError whose accounting differs
 test("{§engine-rails} a complete-looking resource-interrupted attempt is persisted, never admitted or replayed, and the call is re-issued", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const content = "\n````SEND\nmust never dispatch\n````";
+        const content = "await plurnk.send({\"text\":\"must never dispatch\"});";
         const requestAccounting: ProviderRequestAccounting = {
             provider: "provider:mock",
             model: "interrupted-model",
@@ -1824,13 +1782,13 @@ test("{§emission-admission} a valid turn with a failed operation remains recove
             responses: [
                 {
                     assistant: {
-                        content: "\n````EDIT (sealed:///x)\nvalue\n````\n\n````SEND\ndone\n````",
+                        content: "await plurnk.edit({\"path\":\"sealed:///x\",\"content\":\"value\"});\n\nawait plurnk.send({\"text\":\"done\"});",
                         reasoning: null,
                     },
                 },
                 {
                     assistant: {
-                        content: "\n````DONE\ncannot write that resource\n````",
+                        content: "await plurnk.done({\"text\":\"cannot write that resource\"});",
                         reasoning: null,
                     },
                 },
@@ -1849,7 +1807,7 @@ test("{§emission-admission} a valid turn with a failed operation remains recove
         const row = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
         assert.match(packetSection(packet, "errors"), /"status":403,"path":"log:\/\//, "the operation failure reaches the recovery turn");
-        assert.match(packetSection(packet, "emission-history"), /EDIT \(sealed:\/\/\/x\)/u, "the failed operation remains in model-visible history");
+        assert.match(packetSection(packet, "emission-history"), /plurnk\.edit\(\{"path":"sealed:\/\/\/x"/u, "the failed operation remains in model-visible history");
         assert.match(packetSection(packet, "log"), /### log:\/\/\/1\/2\/\d+\/EDIT[^\n]*\n[^\n]*"status":403/u, "the failure stays beside it");
     } finally {
         await db.close();
@@ -1862,8 +1820,8 @@ test("{§operation-results} a length finish surfaces the output allowance on the
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                { assistant: { content: "````SEND\nbig write, cut mid-wo\n````", reasoning: null, finishReason: "length" } },
-                { assistant: { content: "\n````DONE\ndone\n````", reasoning: null, finishReason: "stop" } },
+                { assistant: { content: "await plurnk.send({\"text\":\"big write, cut mid-wo\"});", reasoning: null, finishReason: "length" } },
+                { assistant: { content: "await plurnk.done({\"text\":\"done\"});", reasoning: null, finishReason: "stop" } },
             ],
         });
         const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "go" }] });
@@ -1948,7 +1906,7 @@ test("{§parse-recovery} {§provider-failure-normalization} {§outside-text}: Mo
                             model: "seam-witness",
                             choices: [{
                                 index: 0,
-                                delta: { content: "````EDIT (workspace:///seams.md)\nrepaired\n````*\n\n```NOTE\nkept\n```*" },
+                                delta: { content: "await plurnk.edit({\"path\":\"workspace:///seams.md\",\"content\":\"repaired\"});\n\nawait plurnk.note({\"text\":\"kept\"});" },
                                 finish_reason: "MALFORMED_RESPONSE",
                             }],
                             usage: { prompt_tokens: 14, completion_tokens: 12, total_tokens: 26 },
@@ -1963,7 +1921,7 @@ test("{§parse-recovery} {§provider-failure-normalization} {§outside-text}: Mo
                         model: "seam-witness",
                         choices: [{
                             index: 0,
-                            delta: { content: "````DONE\nall seams green\n```!] Nail it.\n````" },
+                            delta: { content: "await plurnk.done({\"text\":\"all seams green\"});" },
                             finish_reason: "length",
                         }],
                         usage: { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28 },

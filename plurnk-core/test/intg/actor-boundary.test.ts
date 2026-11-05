@@ -111,9 +111,9 @@ test("{§connection-lifecycle} origin is attribution (provenance), never read to
 test("{§env-delta} an idle session wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 8192, responses: [
-        makeMockResponse("````DONE\nfirst done\n````", 10),
-        makeMockResponse("````DONE\nwoke done\n````", 10),
-        makeMockResponse("````DONE\nextra\n````", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"first done\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"woke done\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"extra\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -155,7 +155,7 @@ test("{§session-initialization-entry} runtime-owned entry work is an ordinary a
     await mkdir(join(dir, "node_modules", "dep"), { recursive: true });
     await writeFile(join(dir, "node_modules", "dep", "AGENTS.md"), "never seen", "utf8");
     try {
-        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
+        const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -210,7 +210,7 @@ test("{§session-initialization-entry} runtime-owned entry work is an ordinary a
                 assert.deepEqual(adminOps.slice(-1), ["NOTE"], "the maintenance program records its purpose without inventing a terminal operation");
                 assert.equal(adminRows.find(({ op }) => op === "EDIT")?.folded, "[]", "maintenance visibility is a render rule, not a fabricated self-curation effect");
                 const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: await RuntimeSession.ensure(db, workspaceId) });
-                assert.ok(programs.some(({ turn_id, kind, content }) => turn_id === matEdit.turn_id && kind === "ops" && content.includes("```NOTE")),
+                assert.ok(programs.some(({ turn_id, kind, content }) => turn_id === matEdit.turn_id && kind === "ops" && content.includes("await plurnk.note(")),
                     "maintenance retains its exact source independently of packet visibility");
 
                 const modelLoopLog = await db.test_log_entries_by_loop.all<{
@@ -859,7 +859,7 @@ test("{§session-ownership}: only the recorded owner resolves a proposal, includ
         const { workspaceId } = await daemon.createWorkspace({ name: "owner-resolution" });
         await daemon.registerSessionOwner(workspaceId, owner);
         const { sessionId } = await daemon.createSession({ workspaceId, name: "controlled", owner: owner.address });
-        const statement = PlurnkParser.parseStatements(PlurnkParser.frame("sh", "echo owner-approved")).items.find((item) => item.kind === "statement");
+        const statement = PlurnkParser.parseStatements("await plurnk.sh({\"command\":\"echo owner-approved\"});").items.find((item) => item.kind === "statement");
         assert.equal(statement?.kind, "statement");
         // The session's own operation: its owner reviews it.
         const operation = modelOperation(daemon, db, { workspaceId, sessionId, statement: statement.statement });
@@ -887,7 +887,7 @@ test("{§session-ownership}: runtime-owned work cannot hang awaiting a reviewer 
     await withDaemon(null, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "owner-incapable" });
         const { sessionId } = await daemon.createSession({ workspaceId, name: "unclaimed" });
-        const statement = PlurnkParser.parseStatements(PlurnkParser.frame("sh", "echo must-not-run")).items.find((item) => item.kind === "statement");
+        const statement = PlurnkParser.parseStatements("await plurnk.sh({\"command\":\"echo must-not-run\"});").items.find((item) => item.kind === "statement");
         assert.equal(statement?.kind, "statement");
         const operation = modelOperation(daemon, db, { workspaceId, sessionId, statement: statement.statement });
         try {
@@ -1007,7 +1007,7 @@ describe("client-isolation", () => {
 test("{§machine-processes} a client operation cannot SEND the runtime actor into model inference", async () => {
     const mock = new Mock({
         contextWindow: 8192,
-        responses: [makeMockResponse("````DONE\nthis must remain unused\n````", 50)],
+        responses: [makeMockResponse("await plurnk.done({\"text\":\"this must remain unused\"});", 50)],
     });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1027,7 +1027,7 @@ test("{§machine-processes} a client operation cannot SEND the runtime actor int
 
 test("{§connection-lifecycle} {§actor-boundary} a client op.* journals in the runtime session and never enters the model's packet", async () => {
     // The model just terminates; we only care where the client op landed.
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50)] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1062,7 +1062,7 @@ test("{§connection-lifecycle} {§actor-boundary} a client op.* journals in the 
 });
 
 test("{§connection-lifecycle} a connection reads the model session by id — loop.run returns modelSessionId, log.read targets it, ownership-gated", async () => {
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50)] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1103,7 +1103,7 @@ test("{§connection-lifecycle} a connection reads the model session by id — lo
 });
 
 test("{§connection-lifecycle} workspace.sessions tags each session with its actor — the model session is found by origin, not name", async () => {
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1162,7 +1162,7 @@ class ProposingTest {
 }
 
 test("{§op-methods-op-dispatch}: each EDIT waits for its own proposal before preparing the next", async () => {
-    const dsl = "````EDIT (proposing-test://x) <1>\none\n````\n\n````EDIT (proposing-test://x) <3>\nthree\n````\n\n````SEND\ndone\n````";
+    const dsl = "await plurnk.edit({\"path\":\"proposing-test://x\",\"range\":\"1\",\"content\":\"one\"});\n\nawait plurnk.edit({\"path\":\"proposing-test://x\",\"range\":\"3\",\"content\":\"three\"});\n\nawait plurnk.send({\"text\":\"done\"});";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const scheme = new ProposingTest();
@@ -1202,10 +1202,10 @@ test("{§op-methods-op-dispatch}: each EDIT waits for its own proposal before pr
 
 test("{§session-ownership} server acceptance resolves through Core without a client resolver", async (t) => {
     serverProposals(t, "accept");
-    const first = "````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````";
+    const first = "await plurnk.edit({\"path\":\"proposing-test://x\",\"content\":\"y\"});\n\nawait plurnk.send({\"text\":\"done\"});";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse(first, 50),
-        makeMockResponse("````DONE\ndone\n````", 0),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 0),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());
@@ -1227,8 +1227,8 @@ test("{§session-ownership} server acceptance resolves through Core without a cl
 test("{§proposal-disposition} server rejection settles the same admitted proposal without becoming a capability denial", async (t) => {
     serverProposals(t, "reject");
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````", 50),
-        makeMockResponse("````DONE\nthe edit was declined; concluding\n````", 50),
+        makeMockResponse("await plurnk.edit({\"path\":\"proposing-test://x\",\"content\":\"y\"});\n\nawait plurnk.send({\"text\":\"done\"});", 50),
+        makeMockResponse("await plurnk.done({\"text\":\"the edit was declined; concluding\"});", 50),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());
@@ -1257,7 +1257,7 @@ test("{§proposal-disposition} server rejection settles the same admitted propos
 
 test("{§notifications} proposal notification projects the durable owner and selected disposition", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````", 50),
+        makeMockResponse("await plurnk.edit({\"path\":\"proposing-test://x\",\"content\":\"y\"});\n\nawait plurnk.send({\"text\":\"done\"});", 50),
     ] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());

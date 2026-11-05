@@ -54,11 +54,8 @@ test("{§engine-rails} distinct BARE prompts remain distinct cycle activities", 
 });
 
 describe("StrikeRail.activity", () => {
-// Fixture executors: every fence tag this file's DSL text writes opens as an executor.
-const fixtureExecutors = (text: string): readonly string[] => [...new Set([...text.matchAll(/^`{3,}[0-9]*([a-z][A-Za-z0-9_.+-]*)/gmu)].map((match) => match[1]))];
-
 const statements = (source: string) => {
-    const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
+    const parsed = PlurnkParser.parseStatements(source);
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
     return parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 };
@@ -67,42 +64,42 @@ const fingerprint = (source: string, results?: readonly OperationResult[]) =>
 
 test("{§engine-rails} every operational operand distinguishes activity", () => {
     for (const [first, second] of [
-        ["````EDIT (notes.md) <1>\none\n````", "````EDIT (notes.md) <1>\ntwo\n````"],
-        ["````EDIT (notes.md) <1>\none\n````", "````EDIT (notes.md) <2>\none\n````"],
-        ["````COPY (a) <1> (b) <0>````", "````COPY (a) <1> (c) <0>````"],
-        ["````MOVE (a) <1> (b) <0>````", "````MOVE (a) <2> (b) <0>````"],
-        ["````COPY (a) <1> (b) <0>````", "````COPY (a) <1> (b) <-1>````"],
-        ["````READ (https://example.test/) [{\"Accept\": \"text/plain\"}]````", "````READ (https://example.test/) [{\"Accept\": \"application/json\"}]````"],
-        ["````SEND (session://child)\none\n````", "````SEND (session://child)\ntwo\n````"],
-        ["````WORK (session://child)\none\n````", "````WORK (session://child)\ntwo\n````"],
-        ["````READ (a)````\n````EDIT (b) <1>\nx\n````", "````EDIT (b) <1>\nx\n````\n````READ (a)````"],
+        ['await plurnk.edit({ path: "notes.md", range: "1", content: "one" });', 'await plurnk.edit({ path: "notes.md", range: "1", content: "two" });'],
+        ['await plurnk.edit({ path: "notes.md", range: "1", content: "one" });', 'await plurnk.edit({ path: "notes.md", range: "2", content: "one" });'],
+        ['await plurnk.copy({ from: { path: "a", range: "1" }, to: { path: "b", range: "0" } });', 'await plurnk.copy({ from: { path: "a", range: "1" }, to: { path: "c", range: "0" } });'],
+        ['await plurnk.move({ from: { path: "a", range: "1" }, to: { path: "b", range: "0" } });', 'await plurnk.move({ from: { path: "a", range: "2" }, to: { path: "b", range: "0" } });'],
+        ['await plurnk.copy({ from: { path: "a", range: "1" }, to: { path: "b", range: "0" } });', 'await plurnk.copy({ from: { path: "a", range: "1" }, to: { path: "b", range: "-1" } });'],
+        ['await plurnk.read({ path: "https://example.test/", metadata: [{"Accept": "text/plain"}] });', 'await plurnk.read({ path: "https://example.test/", metadata: [{"Accept": "application/json"}] });'],
+        ['await plurnk.send({ target: "session://child", text: "one" });', 'await plurnk.send({ target: "session://child", text: "two" });'],
+        ['await plurnk.work({ target: "session://child", prompt: "one" });', 'await plurnk.work({ target: "session://child", prompt: "two" });'],
+        ['await plurnk.read({ path: "a" });\nawait plurnk.edit({ path: "b", range: "1", content: "x" });', 'await plurnk.edit({ path: "b", range: "1", content: "x" });\nawait plurnk.read({ path: "a" });'],
     ]) {
         assert.notEqual(fingerprint(first), fingerprint(second), `${first} differs from ${second}`);
     }
 });
 
 test("{§engine-rails} source decoration does not disguise a cycle", () => {
-    assert.equal(fingerprint("````READ (a) <1>````\n````NOTE\ncontinue\n````"),
-        fingerprint("\n````READ (a) <1> <!-- another aside -->````\n````NOTE\ncontinue\n````"));
+    assert.equal(fingerprint('await plurnk.read({ path: "a", range: "1" });\nawait plurnk.note({ text: "continue" });'),
+        fingerprint('\nawait plurnk.read({ path: "a", range: "1" }); // another aside\nawait plurnk.note({ text: "continue" });'));
 });
 
 test("{§engine-rails} note content and lifecycle changes distinguish authored activity", () => {
-    assert.notEqual(fingerprint(PlurnkParser.frame("WAIT", "Inspect.")), fingerprint(PlurnkParser.frame("NOTE", "Inspect.")));
-    assert.notEqual(fingerprint(PlurnkParser.frame("NOTE", "Inspect.")), fingerprint(PlurnkParser.frame("NOTE", "Implement.")));
+    assert.notEqual(fingerprint('await plurnk.wait({ text: "Inspect." });'), fingerprint('await plurnk.note({ text: "Inspect." });'));
+    assert.notEqual(fingerprint('await plurnk.note({ text: "Inspect." });'), fingerprint('await plurnk.note({ text: "Implement." });'));
 });
 
 test("{§engine-rails} a note's assigned storage coordinate does not disguise repetition", () => {
-    const note = PlurnkParser.frame("NOTE", "Retain this determination.");
+    const note = 'await plurnk.note({ text: "Retain this determination." });';
     assert.equal(fingerprint(note, [{ status: 200, resource: "note://alice/1/2/1" }]),
         fingerprint(note, [{ status: 200, resource: "note://alice/1/3/1" }]));
     assert.notEqual(fingerprint(note, [{ status: 200, resource: "note://alice/1/2/1" }]),
-        fingerprint(PlurnkParser.frame("NOTE", "A different determination."), [{ status: 200, resource: "note://alice/1/3/1" }]));
+        fingerprint('await plurnk.note({ text: "A different determination." });', [{ status: 200, resource: "note://alice/1/3/1" }]));
     assert.notEqual(fingerprint(note, [{ status: 200, resource: "note://alice/1/2/1" }]),
         fingerprint(note, [{ status: 500 }]));
 });
 
 test("{§engine-rails} changing observations distinguish otherwise identical requests", () => {
-    const source = "````READ (notes.md)````";
+    const source = 'await plurnk.read({ path: "notes.md" });';
     assert.notEqual(fingerprint(source, [{ status: 200, content: "one" }]),
         fingerprint(source, [{ status: 200, content: "two" }]));
     assert.notEqual(fingerprint(source, [{ status: 200, content: "one" }]),
@@ -112,7 +109,7 @@ test("{§engine-rails} changing observations distinguish otherwise identical req
 });
 
 test("{§engine-rails} engine-assigned problem instances do not conceal repeated failures", () => {
-    const source = "````READ (missing.md)````";
+    const source = 'await plurnk.read({ path: "missing.md" });';
     const failure = (instance: string): OperationResult => ({
         status: 404,
         problem: { type: "https://problems.plurnk.xyz/scheme/file/entry-not-found", title: "Not found", status: 404, detail: "No entry exists.", instance },
@@ -120,10 +117,9 @@ test("{§engine-rails} engine-assigned problem instances do not conceal repeated
     assert.equal(fingerprint(source, [failure("log:///1/2/2/READ")]),
         fingerprint(source, [failure("log:///1/3/2/READ")]));
     assert.notEqual(fingerprint(source, [failure("log:///1/2/2/READ")]),
-        fingerprint(source, [{ status: 200, content: "found" }]));
-});
-
-test("{§engine-rails} dispatch results must correspond to the executed statements", () => {
-    assert.throws(() => fingerprint("````READ (a)````", []), /cycle evidence requires one result per executed operation/);
+        fingerprint(source, [{
+            status: 404,
+            problem: { type: "https://problems.plurnk.xyz/scheme/file/entry-not-found", title: "Not found", status: 404, detail: "Different cause.", instance: "log:///1/3/2/READ" },
+        }]));
 });
 });

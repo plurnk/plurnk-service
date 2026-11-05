@@ -277,7 +277,6 @@ test("{§scheme-manifest} a rejected channel rolls back the whole replacement, i
 });
 
 describe("lifecycle-notes", () => {
-const frame = PlurnkParser.frame;
 
 test("{§turn-source-resources} #713: notes have durable sources, normal log curation, and do not block completion", async () => {
     const db = await openMigrated();
@@ -287,11 +286,11 @@ test("{§turn-source-resources} #713: notes have durable sources, normal log cur
         const loopId = await insertLoop(db, sessionId, 1, "Inspect the parser and report the result.");
         const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const reasoning = frame("EDIT (should-not-exist.txt)", "Never execute reasoning edits.");
+        const reasoning = "await plurnk.edit({\"path\":\"should-not-exist.txt\",\"content\":\"Never execute reasoning edits.\"});";
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: [frame("NOTE", "The network is not the cause."), frame("NOTE", "Inspect the parser next.")].join("\n\n"), reasoning } },
-            { assistant: { content: frame("KILL (log:///1/2/*/NOTE)", null), reasoning: null } },
-            { assistant: { content: [frame("NOTE", "Both checks passed."), frame("DONE", "Finished.")].join("\n\n"), reasoning: null } },
+            { assistant: { content: ["await plurnk.note({\"text\":\"The network is not the cause.\"});", "await plurnk.note({\"text\":\"Inspect the parser next.\"});"].join("\n\n"), reasoning } },
+            { assistant: { content: "await plurnk.kill({\"path\":\"log:///1/2/*/NOTE\"});", reasoning: null } },
+            { assistant: { content: ["await plurnk.note({\"text\":\"Both checks passed.\"});", "await plurnk.done({\"text\":\"Finished.\"});"].join("\n\n"), reasoning: null } },
         ] });
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
@@ -304,36 +303,36 @@ test("{§turn-source-resources} #713: notes have durable sources, normal log cur
         // Source identity never depends on the reader ({§turn-source-resources}); alice's later packets are under test.
         const observer = await insertSession(db, workspaceId, null, "observer");
         const read = (source: string, reader = observer) => clientRead(engine, db, { workspaceId, sessionId: reader, statement: parseSingleStatement(source) });
-        const firstSource = await read(frame(`READ (${String(notes[0].resource)}) <1,-1>`, null));
+        const firstSource = await read(`await plurnk.read({"path":"${String(notes[0].resource)}","range":"1,-1"});`);
         assert.equal(firstSource.status, 200);
         assert.equal(firstSource.content, "The network is not the cause.");
         const contentNote = /^log:\/\/\/(1\/2\/\d+)\/NOTE$/u.exec(notes[1].logPath)?.[1];
         assert.ok(contentNote, "the content NOTE has its own receipt coordinate");
-        const secondSource = await read(frame(`READ (note://alice/${contentNote}) <1,-1>`, null));
+        const secondSource = await read(`await plurnk.read({"path":"note://alice/${contentNote}","range":"1,-1"});`);
         assert.equal(secondSource.content, "Inspect the parser next.", "the receipt coordinate reads the content NOTE's durable source");
         const final = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(final.status, 200, "an extracted note is not an unseen external result");
         const finalPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: final.turnId }))!.packet);
         assert.equal(logEntries(finalPacket).filter((row) => /^log:\/\/\/1\/2\/\d+\/NOTE$/.test(row.logPath)).length, 0);
-        const sourceAgain = await read(frame(`READ (${String(notes[0].resource)}) <1,-1>`, null));
+        const sourceAgain = await read(`await plurnk.read({"path":"${String(notes[0].resource)}","range":"1,-1"});`);
         assert.equal(sourceAgain.content, "The network is not the cause.", "curating the log does not delete the source note");
-        const rawReasoning = await read(frame("READ (reasoning://alice/1/2) <1,-1>", null));
+        const rawReasoning = await read("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"});");
         assert.equal(rawReasoning.content, reasoning);
         const found = await engine.dispatch({ ...context, turnId: final.turnId, sequence: 40, origin: "model",
-            statement: parseSingleStatement(frame("FIND (note://alice/1/2/*) /parser/", null)),
+            statement: parseSingleStatement("await plurnk.find({\"path\":\"note://alice/1/2/*\",\"pattern\":\"/parser/\"});"),
         });
         assert.equal(found.status, 200);
         assert.deepEqual(resourcePaths(found as FindResult), [`note://alice/${contentNote}`], "source search still works after log curation");
         const fork = await Fork.fork(db, sessionId, "branch");
-        const inherited = await read(frame(`READ (${String(notes[0].resource).replace("note://alice/", "note://branch/")}) <1,-1>`, null), fork);
+        const inherited = await read(`await plurnk.read({"path":"${String(notes[0].resource).replace("note://alice/", "note://branch/")}","range":"1,-1"});`, fork);
         assert.equal(inherited.content, firstSource.content, "FORK preserves source identity and content");
         for (const op of ["EDIT", "KILL"]) {
             const refused = await engine.dispatch({ ...context, turnId: final.turnId, sequence: op === "EDIT" ? 50 : 51, origin: "model",
-                statement: parseSingleStatement(frame(`${op} (${String(notes[0].resource)})`, op === "EDIT" ? "Changed" : null)),
+                statement: parseSingleStatement(`await plurnk.${op.toLowerCase()}(${JSON.stringify({ path: String(notes[0].resource), ...(op === "EDIT" ? { content: "Changed" } : {}) })});`),
             });
             assert.equal(refused.status, 403, `${op} cannot change immutable note evidence`);
         }
-        const missing = await read(frame("READ (note://alice/1/2/99)", null));
+        const missing = await read("await plurnk.read({\"path\":\"note://alice/1/2/99\"});");
         assert.equal(missing.status, 404, "an absent note is not an invented empty source");
     } finally { await db.close(); }
 });
@@ -347,9 +346,9 @@ test("{§loop-completion} empty WAIT falls through and SEND plus a retrieval obs
         const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: frame("WAIT", "Wait for results."), reasoning: null } },
-            { assistant: { content: [frame("SEND", "The answer."), frame("READ (ops://alice/1/1) <1,-1>", null)].join("\n\n"), reasoning: null } },
-            { assistant: { content: frame("DONE", null), reasoning: null } },
+            { assistant: { content: "await plurnk.wait({\"text\":\"Wait for results.\"});", reasoning: null } },
+            { assistant: { content: ["await plurnk.send({\"text\":\"The answer.\"});", "await plurnk.read({\"path\":\"ops://alice/1/1\",\"range\":\"1,-1\"});"].join("\n\n"), reasoning: null } },
+            { assistant: { content: "await plurnk.done({});", reasoning: null } },
         ] });
         assert.equal((await engine.runTurn({ ...context, provider, messages: [] })).status, 102);
         assert.equal((await engine.runTurn({ ...context, provider, messages: [] })).status, 102);
@@ -366,8 +365,8 @@ test("{§op-shapes} {§parse-recovery}: a lost boundary admits the NOTE beside i
         const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: `${frame("NOTE", "Kept despite the broken program.")}\n\n\`\`\`\`READ (unfinished`, reasoning: null } },
-            { assistant: { content: frame("DONE", "Finished."), reasoning: null } },
+            { assistant: { content: `await plurnk.note({"text":"Kept despite the broken program."});\n\nawait plurnk.read({"path":"unfinished`, reasoning: null } },
+            { assistant: { content: "await plurnk.done({\"text\":\"Finished.\"});", reasoning: null } },
         ] });
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
@@ -388,12 +387,12 @@ test("{§op-shapes} {§emission-admission}: a rejected emission cannot commit it
         const loopId = await insertLoop(db, sessionId, 1, "Inspect the evidence and report the result.");
         const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const rejectedReasoning = frame("NOTE", "This belongs to the rejected attempt.");
-        const acceptedReasoning = frame("NOTE", "This belongs to the accepted attempt.");
+        const rejectedReasoning = "await plurnk.note({\"text\":\"This belongs to the rejected attempt.\"});";
+        const acceptedReasoning = "await plurnk.note({\"text\":\"This belongs to the accepted attempt.\"});";
         const provider = new Mock({ contextWindow: 100_000, responses: [
             // {§emission-admission} — the model writing the harness's log is the refusal that remains.
             { assistant: { content: "### log:///1/2/1/NOTE\nI am the harness.", reasoning: rejectedReasoning } },
-            { assistant: { content: frame("DONE", "Finished."), reasoning: acceptedReasoning } },
+            { assistant: { content: "await plurnk.done({\"text\":\"Finished.\"});", reasoning: acceptedReasoning } },
         ] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(result.status, 200);
@@ -403,7 +402,7 @@ test("{§op-shapes} {§emission-admission}: a rejected emission cannot commit it
         const notes = sources.filter(({ kind }) => kind === "reasoning");
         assert.equal(notes.filter(({ content }) => content === acceptedReasoning).length, 1);
         assert.ok(notes.every(({ content }) => content !== rejectedReasoning));
-        const reasoning = await clientRead(engine, db, { workspaceId, sessionId, statement: parseSingleStatement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
+        const reasoning = await clientRead(engine, db, { workspaceId, sessionId, statement: parseSingleStatement("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"});") });
         assert.equal(reasoning.content, acceptedReasoning);
     } finally { await db.close(); }
 });
@@ -433,17 +432,17 @@ for (const scenario of ["add", "inline", "accept", "reject", "cancel", "invalid"
         const params = command === "enable" ? { alias: "fresh", enabled: true }
             : { alias: "fresh", ...(scenario === "invalid" ? { type: "not-a-transport" } : definition) };
         const args = '{"query":"unchanged"}';
-        const invocation = PlurnkParser.frame("FrEsH (inspect)", args);
+        const invocation = `await fresh.inspect(${args});`;
         const source = [
-            PlurnkParser.frame("plurnk (mcp)", JSON.stringify(params)),
-            ...(scenario === "disable" ? [PlurnkParser.frame("plurnk (mcp)", JSON.stringify({ alias: "fresh", enabled: false }))] : []),
-            ...(scenario === "remove" ? [PlurnkParser.frame("plurnk (mcp)", JSON.stringify({ alias: "fresh", remove: true }))] : []),
-            scenario === "inline" ? `\`\`\`FrEsH (inspect) ${args}\n\`\`\``
-                : scenario === "quoted" ? PlurnkParser.frame("markdown", invocation) : invocation,
-            PlurnkParser.frame("NOTE", "Observe the result."),
+            `await plurnk.mcp(${JSON.stringify(params)});`,
+            ...(scenario === "disable" ? [`await plurnk.mcp(${JSON.stringify({ alias: "fresh", enabled: false })});`] : []),
+            ...(scenario === "remove" ? [`await plurnk.mcp(${JSON.stringify({ alias: "fresh", remove: true })});`] : []),
+            scenario === "inline" ? `await fresh.inspect(${args});`
+                : scenario === "quoted" ? `\`\`\`markdown\n${invocation}\n\`\`\`` : invocation,
+            "await plurnk.note({\"text\":\"Observe the result.\"});",
         ].join("\n\n");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
-            makeRawMockResponse(source), makeRawMockResponse(PlurnkParser.frame("DONE", "Finished.")),
+            makeRawMockResponse(source), makeRawMockResponse("await plurnk.done({\"text\":\"Finished.\"});"),
         ] });
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider, hostPaths });
@@ -514,7 +513,7 @@ for (const shape of ["separate", "glob", "final"] as const) {
             seedEntryWithChannel(db, { workspaceId, pathname, content: "original" })));
         const paths = shape === "glob" ? ["workspace:///*.txt"]
             : shape === "separate" ? ["workspace:///a.txt", "workspace:///b.txt"] : ["workspace:///a.txt"];
-        const source = paths.map((path) => PlurnkParser.frame(`EDIT (${path}) <1,-1>`, "changed")).join("\n\n");
+        const source = paths.map((path) => `await plurnk.edit({"path":"${path}","range":"1,-1","content":"changed"});`).join("\n\n");
         const provider = new Mock({ contextWindow: 100_000, responses: [makeRawMockResponse(source, 37)] });
         const abort = new AbortController();
         const reason = new Error("cancel after the first committed effect");
@@ -561,8 +560,7 @@ describe("packet-envelope", () => {
 
 
 const say = (content: string, reasoning: string | null = null) => ({ assistant: { content, reasoning } });
-const frame = PlurnkParser.frame;
-const surveyRead = frame("READ (reasoning://analyst/1/1)", null);
+const surveyRead = "await plurnk.read({\"path\":\"reasoning://analyst/1/1\"});";
 const userText = (request: readonly ChatMessage[]): string => request.filter(({ role }) => role === "user").map(chatMessageText).join("\n\n");
 const previous = (request: readonly ChatMessage[]): string => request.filter(({ role }) => role === "assistant").map(chatMessageText).join("\n\n");
 
@@ -584,17 +582,17 @@ const run = async (name: string, prompt: string, responses: ReturnType<typeof sa
 
 test("{§emission-history}: curation removes memory receipts; source READ still restores exact bodies", async (t) => {
     const body = Array.from({ length: 120 }, (_, index) => `FULL-BODY line ${index + 1}`).join("\n");
-    const first = `${frame("EDIT (workspace:///memory.md) <!-- remember -->", body)}\n\n${frame("NOTE", "CURATABLE-MEMORY: retain the actual observation.")}`;
-    const curate = frame("KILL (log:///1/2/*/NOTE)", null);
-    const read = frame("READ (ops://analyst/1/2) <1,-1>", null);
+    const first = `await plurnk.edit({"path":"workspace:///memory.md","content":${JSON.stringify(body)}}); // remember\n\nawait plurnk.note({"text":"CURATABLE-MEMORY: retain the actual observation."});`;
+    const curate = "await plurnk.kill({\"path\":\"log:///1/2/*/NOTE\"});";
+    const read = "await plurnk.read({\"path\":\"ops://analyst/1/2\",\"range\":\"1,-1\"});";
     const { db, result, provider, rows, sessionId } = await run("envelope-source", "Work, curate, then inspect your original program.", [
-        say(first, frame("NOTE", "REASONING-MEMORY: independent reasoning note.")),
-        say(curate), say(read), say(frame("DONE", "Complete.")),
+        say(first, "await plurnk.note({\"text\":\"REASONING-MEMORY: independent reasoning note.\"});"),
+        say(curate), say(read), say("await plurnk.done({\"text\":\"Complete.\"});"),
     ], 5);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 4);
-    const edit = frame("EDIT (workspace:///memory.md) <!-- remember -->", body);
+    const edit = `await plurnk.edit({"path":"workspace:///memory.md","content":${JSON.stringify(body)}}); // remember`;
     assert.equal(previous(provider.received[1]), first, "EDIT and NOTE replay whole");
     assert.doesNotMatch(userText(provider.received[1]), /REASONING-MEMORY/u);
     assert.doesNotMatch(userText(provider.received[1]), /CURATABLE-MEMORY/u, "the paired NOTE receipt does not duplicate its body");
@@ -609,9 +607,9 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
 });
 
 test("{§turn-source-resources}: initialization has no replay; canonical content carries interstitial text as the NOTEs it became and preserves row chronology", async (t) => {
-    const canonical = `${frame("NOTE", "Let me look around first.")}\n\n${surveyRead}\n\n${frame("NOTE", "Bearings: nothing read yet.")}\n\n${frame("NOTE", "Done for now.")}`;
+    const canonical = `await plurnk.note({"text":"Let me look around first."});\n\n${surveyRead}\n\nawait plurnk.note({"text":"Bearings: nothing read yet."});\n\nawait plurnk.note({"text":"Done for now."});`;
     const { db, result, provider, rows } = await run("envelope-chronology", "Answer.", [
-        say(`Let me look around first.\n\n${surveyRead}\n\n${frame("NOTE", "Bearings: nothing read yet.")}\n\nDone for now.`), say(frame("DONE", "Answer.")),
+        say(`Let me look around first.\n\n${surveyRead}\n\nawait plurnk.note({"text":"Bearings: nothing read yet."});\n\nDone for now.`), say("await plurnk.done({\"text\":\"Answer.\"});"),
     ], 3);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
@@ -638,12 +636,12 @@ test("{§turn-source-resources}: curation retires the immediately preceding emis
     const mode = process.env.PLURNK_SERVICE_EMISSION_HISTORY;
     process.env.PLURNK_SERVICE_EMISSION_HISTORY = "latest";
     t.after(() => { if (mode === undefined) delete process.env.PLURNK_SERVICE_EMISSION_HISTORY; else process.env.PLURNK_SERVICE_EMISSION_HISTORY = mode; });
-    const newest = frame("NOTE", "Newest memory.");
-    const f = await run("envelope-retire", "Work.", [say(`${surveyRead}\n\n${frame("NOTE", "Older memory.")}`), say(`${newest}\n\n${frame("SEND", "Newest program.")}`)], 2);
+    const newest = "await plurnk.note({\"text\":\"Newest memory.\"});";
+    const f = await run("envelope-retire", "Work.", [say(`${surveyRead}\n\nawait plurnk.note({"text":"Older memory."});`), say(`${newest}\n\nawait plurnk.send({"text":"Newest program."});`)], 2);
     t.after(() => f.db.close());
     const builder = new PacketBuilder({ db: f.db, schemes: f.schemes, executors: () => undefined });
     const build = () => builder.buildRequestPacket({ ...f, initialMessages: [], currentTurnSeq: 5, gitStatus: null });
-    assert.equal(PacketWire.sectionContent(await build(), "emission-history"), `${newest}\n\n${frame("SEND", "Newest program.")}`);
+    assert.equal(PacketWire.sectionContent(await build(), "emission-history"), `${newest}\n\nawait plurnk.send({"text":"Newest program."});`);
     const last = f.rows.at(-1)!;
     const turnId = await insertTurn(f.db, f.loopId, 4);
     const result = await f.engine.dispatch({ ...f, turnId, sequence: 1, origin: "model", statement: killStmt(urlPath("log", `/${last.coordinate}/emission`)) });
@@ -654,10 +652,10 @@ test("{§turn-source-resources}: curation retires the immediately preceding emis
 
 test("{§turn-source-resources}: a scoped KILL cannot partially curate a program; a sweep preserves it and an unscoped KILL retires it", async (t) => {
     const { db, result, provider, rows } = await run("envelope-scope", "Answer.\nSecond line.\nThird line.", [
-        say(frame("EDIT (workspace:///scope.md)", "line one\nline two\nline three")),
-        say(frame("KILL (log:///1/2/2/emission) <1,-1>", null)),
-        say(frame("KILL (log:///1/2/*) <2,3>", null)),
-        say(frame("KILL (log:///1/2/2/emission)", null)), say(frame("DONE", "Answer.")),
+        say("await plurnk.edit({\"path\":\"workspace:///scope.md\",\"content\":\"line one\\nline two\\nline three\"});"),
+        say("await plurnk.kill({\"path\":\"log:///1/2/2/emission\",\"range\":\"1,-1\"});"),
+        say("await plurnk.kill({\"path\":\"log:///1/2/*\",\"range\":\"2,3\"});"),
+        say("await plurnk.kill({\"path\":\"log:///1/2/2/emission\"});"), say("await plurnk.done({\"text\":\"Answer.\"});"),
     ], 6);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
@@ -674,14 +672,14 @@ test("{§turn-source-resources}: a scoped KILL cannot partially curate a program
 
 test("{§turn-source-resources} {§emission-admission}: an echoed emission heading is tolerated and dropped, never a NOTE, never replayed", async (t) => {
     const { db, result, provider, rows } = await run("envelope-echo", "Answer.", [
-        say(`### log:///1/2/2/emission (ops://exampleSessionName/1/2) · 30\n\n${surveyRead}\n\n${frame("NOTE", "Noted.")}`), say(frame("DONE", "Answer.")),
+        say(`### log:///1/2/2/emission (ops://exampleSessionName/1/2) · 30\n\n${surveyRead}\n\nawait plurnk.note({"text":"Noted."});`), say("await plurnk.done({\"text\":\"Answer.\"});"),
     ], 3);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 2);
-    assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate === "1/2/2")!.rx) as { content: string }).content, `${surveyRead}\n\n${frame("NOTE", "Noted.")}`,
+    assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate === "1/2/2")!.rx) as { content: string }).content, `${surveyRead}\n\nawait plurnk.note({"text":"Noted."});`,
         "the echo is absent from the canonical program; the text beside the operations that was not an echo would be a NOTE");
-    assert.equal(previous(provider.received[1]), `${surveyRead}\n\n${frame("NOTE", "Noted.")}`, "the replay carries the admitted operations, not the echo");
+    assert.equal(previous(provider.received[1]), `${surveyRead}\n\nawait plurnk.note({"text":"Noted."});`, "the replay carries the admitted operations, not the echo");
 });
 });
 
@@ -716,7 +714,7 @@ test("{§execution-output-identity} parser roundtrip: EDIT writes the resource",
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-edit");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const stmt = parseOne("````EDIT (workspace:///countries/france/capital)\nParis\n````") as EditStatement;
+        const stmt = parseOne("await plurnk.edit({\"path\":\"workspace:///countries/france/capital\",\"content\":\"Paris\"});") as EditStatement;
         const result = await engine.dispatch({
             statement: stmt,
             workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
@@ -740,8 +738,8 @@ test("{§fence-pairing} parser roundtrip: an empty EDIT section performs a scope
         const env = await seedEnvelope(db, "ws-roundtrip-empty-edit");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const statements = [
-            parseOne("````EDIT (workspace:///scoped-delete)\nalpha\nbeta\ngamma\n````"),
-            parseOne("````EDIT (workspace:///scoped-delete) <2>````"),
+            parseOne("await plurnk.edit({\"path\":\"workspace:///scoped-delete\",\"content\":\"alpha\\nbeta\\ngamma\"});"),
+            parseOne("await plurnk.edit({\"path\":\"workspace:///scoped-delete\",\"range\":\"2\"});"),
         ];
 
         assert.deepEqual(await dispatch(engine, env, statements), [201, 200]);
@@ -755,17 +753,7 @@ test("{§op-methods-op-dispatch} parser roundtrip: multi-statement text parses +
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-multi");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const text = `\`\`\`\`EDIT (workspace:///a)
-first
-\`\`\`\`
-
-\`\`\`\`EDIT (workspace:///b)
-second
-\`\`\`\`
-
-\`\`\`\`EDIT (workspace:///c)
-third
-\`\`\`\``;
+        const text = "await plurnk.edit({\"path\":\"workspace:///a\",\"content\":\"first\"});\n\nawait plurnk.edit({\"path\":\"workspace:///b\",\"content\":\"second\"});\n\nawait plurnk.edit({\"path\":\"workspace:///c\",\"content\":\"third\"});";
         const statements = parseAll(text);
         assert.equal(statements.length, 3);
         const statuses = await dispatch(engine, env, statements);
@@ -785,13 +773,13 @@ test("{§scheme-surface} parser roundtrip: EDIT followed by READ reads back what
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         await engine.dispatch({
-            statement: parseOne("````EDIT (workspace:///france)\nThe capital is Paris.\n````"),
+            statement: parseOne("await plurnk.edit({\"path\":\"workspace:///france\",\"content\":\"The capital is Paris.\"});"),
             workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
 
         const readResult = await engine.dispatch({
-            statement: parseOne("````READ (workspace:///france)````"),
+            statement: parseOne("await plurnk.read({\"path\":\"workspace:///france\"});"),
             workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
@@ -806,7 +794,7 @@ test("{§scheme-address} parser roundtrip: HTTP-shape path still decomposes auth
         const env = await seedEnvelope(db, "ws-roundtrip-http");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
-        const stmt = parseOne("````READ (https://en.wikipedia.org/wiki/Paris)````") as ReadStatement;
+        const stmt = parseOne("await plurnk.read({\"path\":\"https://en.wikipedia.org/wiki/Paris\"});") as ReadStatement;
         await engine.dispatch({
             statement: stmt,
             workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
@@ -825,7 +813,7 @@ test("{§operation-fences} parser roundtrip: real DSL preserves serialized query
         const env = await seedEnvelope(db, "ws-roundtrip-params");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
-        const stmt = parseOne("````READ (workspace:///france?lang=fr#History)````") as ReadStatement;
+        const stmt = parseOne("await plurnk.read({\"path\":\"workspace:///france?lang=fr#History\"});") as ReadStatement;
         await engine.dispatch({
             statement: stmt,
             workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
@@ -846,38 +834,38 @@ const stripVolatile = (stmt: PlurnkStatement): object => {
     return rest;
 };
 
-for (const [header, body] of [
-    ["EDIT (workspace:///countries/france/capital)", "Paris"],
-    ["FIND (workspace:///users.json) $.name", ""],
-    ["SEND (workspace:///result)", "Paris"],
-    ["sh", "uname -r"],
-]) {
-    test(`{§operation-fences} parser: fence length does not change the AST (${header})`, () => {
-        const lines = body === "" ? "" : `${body}\n`;
-        const short = parseOne(`\`\`\`\`${header}\n${lines}\`\`\`\``);
-        const long = parseOne(`\`\`\`\`\`${header}\n${lines}\`\`\`\`\``);
+for (const [label, canonical, terse] of [
+    ["EDIT", 'await plurnk.edit({"path":"workspace:///countries/france/capital","content":"Paris"});', 'plurnk.edit({"path":"workspace:///countries/france/capital","content":"Paris"})'],
+    ["FIND", 'await plurnk.find({"path":"workspace:///users.json","pattern":"$.name"});', 'plurnk.find({"path":"workspace:///users.json","pattern":"$.name"})'],
+    ["SEND", 'await plurnk.send({"target":"workspace:///result","text":"Paris"});', 'plurnk.send({"target":"workspace:///result","text":"Paris"})'],
+    ["sh", 'await plurnk.sh({"command":"uname -r"});', 'plurnk.sh({"command":"uname -r"})'],
+] as const) {
+    test(`{§operation-fences} parser: optional await and semicolon do not change the AST (${label})`, () => {
+        const short = parseOne(canonical);
+        const long = parseOne(terse);
         assert.deepEqual(stripVolatile(short), stripVolatile(long));
     });
 }
 
-test("{§operation-fences} parser: a 3-backtick block stays literal in a 4-backtick body", () => {
-    const body = "quoted section:\n```EDIT (workspace:///inner)\nhello\n```";
-    const stmts = parseAll(`\`\`\`\`EDIT (workspace:///demo)\n${body}\n\`\`\`\``);
-    assert.equal(stmts.length, 1, "a shorter inner fence never closes the body");
+test("{§operation-fences} parser: a 3-backtick block stays literal in a Code Mode string body", () => {
+    const body = "quoted section:\n\nawait plurnk.edit({\"path\":\"workspace:///inner\",\"content\":\"hello\"});";
+    const stmts = parseAll(`await plurnk.edit(${JSON.stringify({ path: "workspace:///demo", content: body })});`);
+    assert.equal(stmts.length, 1, "a nested call string never closes the body");
     assert.equal(stmts[0]?.op, "EDIT");
     assert.equal((stmts[0]).body, body);
 });
 
-// {§fence-pairing}: an example inside an EDIT is written with a wider fence; at the
-// EDIT's own width a native heading is an operation, closed or not.
-test("{§fence-pairing} parser: an equal-width EDIT heading inside an EDIT body runs; a wider fence holds it as body", () => {
-    const body = "quoted section:\n````EDIT (workspace:///inner)\nhello\n````";
-    const bare = parseAll("````EDIT (workspace:///demo)\n" + body + "\n````");
-    assert.deepEqual(bare.map(({ op }) => op), ["EDIT", "EDIT"], "at equal width the inner heading is a second mutation");
+test("{§fence-pairing} parser: a top-level EDIT after an EDIT runs; a quoted EDIT inside content stays body", () => {
+    const body = "quoted section:\n\nawait plurnk.edit({\"path\":\"workspace:///inner\",\"content\":\"hello\"});";
+    const bare = parseAll([
+        'await plurnk.edit({"path":"workspace:///demo","content":"quoted section:"});',
+        'await plurnk.edit({"path":"workspace:///inner","content":"hello"});',
+    ].join("\n\n"));
+    assert.deepEqual(bare.map(({ op }) => op), ["EDIT", "EDIT"], "two top-level statements produce two mutations");
     assert.equal((bare[0] as EditStatement).body, "quoted section:");
     assert.equal((bare[1] as EditStatement).body, "hello");
-    const wider = parseAll("`````EDIT (workspace:///demo)\n" + body + "\n`````");
-    assert.equal(wider.length, 1, "a wider fence holds the quoted heading as body");
+    const wider = parseAll(`await plurnk.edit(${JSON.stringify({ path: "workspace:///demo", content: body })});`);
+    assert.equal(wider.length, 1, "the string literal holds the quoted statement as body");
     assert.equal((wider[0] as EditStatement).body, body);
 });
 });
@@ -890,7 +878,6 @@ test("{§op-methods-op-dispatch} escaped and URL selectors read and edit the int
     const root = await mkdtemp(join(tmpdir(), "plurnk-file-glob-"));
     const intended = String.raw`dir\name/a.txt`;
     const names = [intended, "dir/name/a.txt", "dirname/a.txt", "a*.txt", "a/b.txt"];
-    const frame = PlurnkParser.frame;
     const bare = PathSyntax.escapeTarget(String.raw`dir\\name/*.txt`);
     const url = `${pathToFileURL(join(root, String.raw`dir\name`)).href}/*.txt`;
     try {
@@ -902,11 +889,11 @@ test("{§op-methods-op-dispatch} escaped and URL selectors read and edit the int
         await execFileP("git", ["add", "--all"], { cwd: root, env: hermeticGitEnv() });
         const provider = new Mock({ contextWindow: 100_000, responses: [
             makeMockResponse([
-                ...[bare, url].flatMap((path) => [frame(`FIND (${path})`, null), frame(`READ (${path})`, null)]),
-                frame(`READ (${PathSyntax.escapeTarget(String.raw`a\*.txt`)})`, null),
+                ...[bare, url].flatMap((path) => [`await plurnk.find(${JSON.stringify({ path })});`, `await plurnk.read(${JSON.stringify({ path })});`]),
+                `await plurnk.read(${JSON.stringify({ path: PathSyntax.escapeTarget(String.raw`a\*.txt`) })});`,
             ].join("\n\n"), 50),
-            makeMockResponse(frame(`EDIT (${url}) <1,-1>`, "Revised\n"), 50),
-            makeMockResponse(frame("DONE", "Finished."), 50),
+            makeMockResponse(`await plurnk.edit({"path":"${url}","range":"1,-1","content":"Revised\\n"});`, 50),
+            makeMockResponse("await plurnk.done({\"text\":\"Finished.\"});", 50),
         ] });
         await withDaemon(provider, async (db, _daemon, addr) => {
             const client = await connect(addr);
@@ -1066,7 +1053,7 @@ for (const failOnOperationError of [false, true]) {
         const anchor = (read.lineAnchors as string[])[0];
         const execution = engine.executeAdmittedTurn({
             ...env, origin: "client", source: null, emission: null, fromSequence: 2, failOnOperationError,
-            statements: TurnOps.parseInternal(PlurnkParser.frame(`EDIT (workspace:///*.txt) <${anchor}>`, "updated")),
+            statements: TurnOps.parseInternal(`await plurnk.edit({"path":"workspace:///*.txt","range":"${anchor}","content":"updated"});`),
         });
         if (failOnOperationError) await assert.rejects(execution, OperationFailureError);
         else await execution;
@@ -1226,8 +1213,8 @@ describe("same-turn-visibility", () => {
 test("{§turn-record}: log KILL selects the pre-program snapshot, not rows emitted earlier by its own program", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        { assistant: { content: "````FIND (workspace:///*)````\n````KILL (log:///1/2/*)````\n````NOTE\nContinue after curating the observed pre-program row.\n````", reasoning: null } },
-        { assistant: { content: "````DONE\ndone\n````", reasoning: null } },
+        { assistant: { content: "await plurnk.find({\"path\":\"workspace:///*\"});\n\nawait plurnk.kill({\"path\":\"log:///1/2/*\"});\n\nawait plurnk.note({\"text\":\"Continue after curating the observed pre-program row.\"});", reasoning: null } },
+        { assistant: { content: "await plurnk.done({\"text\":\"done\"});", reasoning: null } },
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1266,8 +1253,8 @@ test("{§op-methods-op-dispatch}: FIND observes an entry created by EDIT in the 
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: write, then read-back in the same turn; continue (same-turn completion would
         // — correctly — trip the weigh-before-conclude 409; that gate is not under test here).
-        makeMockResponse("\n````EDIT (workspace:///abs/module-loader-spec.md)\nthe spec body\n````\n\n````FIND (workspace:///abs/**)````\n````NOTE\nwrote and listed\n````", 10),
-        makeMockResponse("````DONE\ndone\n````", 10),
+        makeMockResponse("await plurnk.edit({\"path\":\"workspace:///abs/module-loader-spec.md\",\"content\":\"the spec body\"});\n\nawait plurnk.find({\"path\":\"workspace:///abs/**\"});\n\nawait plurnk.note({\"text\":\"wrote and listed\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1288,9 +1275,9 @@ test("{§op-methods-op-dispatch}: FIND observes an entry created by EDIT in the 
 test("{§op-methods-op-dispatch}: each EDIT records its own revision; an earlier READ retains its snapshot", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("\n````EDIT (workspace:///mode.md)\none\ntwo\nthree\nfour\n````\n\n````NOTE\nfixture created\n````", 10),
-        makeMockResponse("\n````READ (workspace:///mode.md)````\n````EDIT (workspace:///mode.md) <4>\nFOUR\n````\n\n````EDIT (workspace:///mode.md) <2>\nTWO\n2.5\n````\n\n````NOTE\nmutated and observed\n````", 10),
-        makeMockResponse("\n````DONE\ndone\n````", 10),
+        makeMockResponse("await plurnk.edit({\"path\":\"workspace:///mode.md\",\"content\":\"one\\ntwo\\nthree\\nfour\"});\n\nawait plurnk.note({\"text\":\"fixture created\"});", 10),
+        makeMockResponse("await plurnk.read({\"path\":\"workspace:///mode.md\"});\n\nawait plurnk.edit({\"path\":\"workspace:///mode.md\",\"range\":\"4\",\"content\":\"FOUR\"});\n\nawait plurnk.edit({\"path\":\"workspace:///mode.md\",\"range\":\"2\",\"content\":\"TWO\\n2.5\"});\n\nawait plurnk.note({\"text\":\"mutated and observed\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1326,9 +1313,9 @@ test("{§op-methods-op-dispatch}: each EDIT records its own revision; an earlier
 test("{§op-methods-op-dispatch}: overlapping numeric EDITs apply to successive resource states", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````EDIT (workspace:///atomic.md)\none\ntwo\nthree\n````\n\n````NOTE\nfixture\n````", 10),
-        makeMockResponse("````EDIT (workspace:///atomic.md) <1,2>\nchanged\n````\n\n````EDIT (workspace:///atomic.md) <2,3>\nalso changed\n````\n\n````READ (workspace:///atomic.md)````\n````NOTE\nchecked\n````", 10),
-        makeMockResponse("````DONE\ndone\n````", 10),
+        makeMockResponse("await plurnk.edit({\"path\":\"workspace:///atomic.md\",\"content\":\"one\\ntwo\\nthree\"});\n\nawait plurnk.note({\"text\":\"fixture\"});", 10),
+        makeMockResponse("await plurnk.edit({\"path\":\"workspace:///atomic.md\",\"range\":\"1,2\",\"content\":\"changed\"});\n\nawait plurnk.edit({\"path\":\"workspace:///atomic.md\",\"range\":\"2,3\",\"content\":\"also changed\"});\n\nawait plurnk.read({\"path\":\"workspace:///atomic.md\"});\n\nawait plurnk.note({\"text\":\"checked\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1351,14 +1338,13 @@ test("{§edit}: a two-anchor whole-line range survives the composed EDIT path", 
     const content = "alpha\nbeta\ngamma\ndelta";
     const [alpha, beta] = LineAnchors.tokens("workspace:///anchored-range.md", content);
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("\n````EDIT (workspace:///anchored-range.md)\nalpha\nbeta\ngamma\ndelta\n````\n\n````NOTE\ncreated\n````", 10),
-        makeMockResponse(`
-\`\`\`\`EDIT (workspace:///anchored-range.md) <${alpha},${beta}>\`\`\`\`
-\`\`\`\`READ (workspace:///anchored-range.md)\`\`\`\`
-\`\`\`\`NOTE
-verify
-\`\`\`\``, 10),
-        makeMockResponse("\n````DONE\ndone\n````", 10),
+        makeMockResponse("await plurnk.edit({\"path\":\"workspace:///anchored-range.md\",\"content\":\"alpha\\nbeta\\ngamma\\ndelta\"});\n\nawait plurnk.note({\"text\":\"created\"});", 10),
+        makeMockResponse(`await plurnk.edit({"path":"workspace:///anchored-range.md","range":"${alpha},${beta}"});
+
+await plurnk.read({"path":"workspace:///anchored-range.md"});
+
+await plurnk.note({"text":"verify"});`, 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1381,25 +1367,17 @@ test("{§op-methods-op-dispatch}: an invalid anchored EDIT leaves the earlier ef
         content,
     );
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse(`
-\`\`\`\`EDIT (workspace:///anchor-batch.md)
-${content}
-\`\`\`\`
+        makeMockResponse(`await plurnk.edit(${JSON.stringify({ path: "workspace:///anchor-batch.md", content })});
 
-\`\`\`\`NOTE
-created
-\`\`\`\``, 10),
-        makeMockResponse(`
-\`\`\`\`EDIT (workspace:///anchor-batch.md) <${one},${two}>\`\`\`\`
-\`\`\`\`EDIT (workspace:///anchor-batch.md) <${three},${four},${five},${six},${seven},${eight}>
-replacement
-\`\`\`\`
+await plurnk.note({"text":"created"});`, 10),
+        makeMockResponse(`await plurnk.edit({"path":"workspace:///anchor-batch.md","range":"${one},${two}"});
 
-\`\`\`\`READ (workspace:///anchor-batch.md)\`\`\`\`
-\`\`\`\`NOTE
-verify
-\`\`\`\``, 10),
-        makeMockResponse("\n````DONE\ndone\n````", 10),
+await plurnk.edit({"path":"workspace:///anchor-batch.md","range":"${three},${four},${five},${six},${seven},${eight}","content":"replacement"});
+
+await plurnk.read({"path":"workspace:///anchor-batch.md"});
+
+await plurnk.note({"text":"verify"});`, 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

@@ -1,9 +1,6 @@
 # @plurnk/plurnk-parser
 
-The parser for the PLURNK model language: the ANTLR grammars, the generated
-lexer and parser, the AST builder, and path decomposition. It implements the
-language that [`@plurnk/plurnk-contracts`](../plurnk-contracts) specifies and
-teaches; the AST and wire types it produces are the contracts package's.
+The Code Mode parser for the PLURNK model language: unwrapped TypeScript/JavaScript statement admission (`await plurnk.<op>(...)` and `await <server>.<tool>(...)`), canonical serialization, and path decomposition. It implements the language that [`@plurnk/plurnk-contracts`](../plurnk-contracts) specifies and teaches; the AST and wire types it produces are the contracts package's.
 
 ## Install
 
@@ -30,19 +27,17 @@ for (const item of result.items) {
 ```
 
 Parse items are ordered and discriminate as `statement`, `error`, or `text`.
-In `parse()`, outside-block prose is preserved as `{ kind: "text", content, position }`; in `parseStatements()`, outside-block prose is ignored; literal bodies remain exact.
+In `parse()`, outside-block prose is preserved as `{ kind: "text", content, position }`; in `parseStatements()`, outside-block prose is ignored.
 The parser entry points deliberately accept different document tiers:
 
-| Entry point                    | Accepted input                                        |
-|--------------------------------|-------------------------------------------------------|
-| `PlurnkParser.parse`           | One operation-bearing model turn; omitted lifecycle declaration continues silently |
-| `PlurnkParser.parseStatements` | A sequence of protocol statements                     |
-| `PlurnkParser.stringify` / `frame` | Canonical fenced source serialization for one statement or a statement list |
-| `parsePath`                    | One path or URI using parser-equivalent decomposition |
+| Entry point | Accepted input |
+|---|---|
+| `PlurnkParser.parse` | One operation-bearing model turn (`await plurnk.<op>(...)` / `await <server>.<tool>(...)`) |
+| `PlurnkParser.parseStatements` | A sequence of protocol statements |
+| `PlurnkParser.stringify` | Canonical unwrapped Code Mode serialization for a statement list |
+| `parsePath` | One path or URI using parser-equivalent decomposition |
 
-See the contracts SPEC ({§whitespace-contract}) for the tier
-boundaries. The AST, parse-result, and wire types come from
-`@plurnk/plurnk-contracts`.
+See the contracts SPEC ({§whitespace-contract}) for the tier boundaries. The AST, parse-result, and wire types come from `@plurnk/plurnk-contracts`.
 
 ## CLI
 
@@ -61,9 +56,6 @@ npm run build
 npm test
 npm run test:installation
 ```
-
-`npm run build:grammar` regenerates the parser from `plurnkLexer.g4` and
-`plurnkParser.g4`. Change the grammar rather than editing generated output.
 
 ## License
 

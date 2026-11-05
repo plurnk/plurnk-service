@@ -1,5 +1,5 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { PathSyntax, Validator, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
+import { UNKNOWN_POSITION, Validator, isExecutionOp, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
 import type { RuntimeInvocation as RuntimeInvocationDecl } from "./types.ts";
 
 const objectOf = (value: unknown): JsonSchema => isRecord(value) ? value : {};
@@ -197,29 +197,7 @@ export default class ToolInputSchema {
             : ToolInputSchema.preview(invocation.inputSchema));
     }
 
-    static header(
-        runtime: string,
-        invocation: RuntimeInvocationDecl,
-        options: {
-            readonly exactTarget?: string;
-            readonly aside?: string;
-            readonly schemaPath?: string;
-            readonly includeSchemaNote?: boolean;
-        } = {},
-    ): string {
-        const target = options.exactTarget ?? invocation.example?.target;
-        const path = target === undefined ? "" : ` (${PathSyntax.escapeTarget(target)})`;
-        const showSchemaNote = options.includeSchemaNote ?? options.schemaPath !== undefined;
-        const schemaNote = showSchemaNote ? ToolInputSchema.asideNote(invocation.inputSchema) : undefined;
-        const note = [
-            ...(options.aside === undefined ? [] : [ToolInputSchema.asideText(options.aside)]),
-            ...(schemaNote === undefined ? [] : [schemaNote]),
-            ...(options.schemaPath === undefined ? [] : [`Schema: ${options.schemaPath.includes("://") ? options.schemaPath : `plurnk://${options.schemaPath}`}`]),
-        ].join(" ");
-        return `${runtime}${path}` + (note === "" ? "" : ` <!-- ${note} -->`);
-    }
-
-    // {§executor-discovery} — an invocation's copyable fence: its header, compact schema note, and input preview.
+    // {§executor-discovery} — an invocation's copyable witness: its Code Mode call, compact schema note, and input preview.
     static fence(
         runtime: string,
         invocation: RuntimeInvocationDecl,
@@ -228,12 +206,28 @@ export default class ToolInputSchema {
             readonly aside?: string;
             readonly schemaPath?: string;
             readonly includeSchemaNote?: boolean;
+            readonly body?: string | null;
         } = {},
     ): string {
-        return PlurnkParser.frame(
-            ToolInputSchema.header(runtime, invocation, { includeSchemaNote: true, ...options }),
-            ToolInputSchema.input(invocation) ?? null,
-        );
+        const target = options.exactTarget ?? invocation.example?.target;
+        const showSchemaNote = options.includeSchemaNote ?? (options.schemaPath !== undefined || !("body" in options));
+        const schemaNote = showSchemaNote ? ToolInputSchema.asideNote(invocation.inputSchema) : undefined;
+        const note = [
+            ...(options.aside === undefined ? [] : [ToolInputSchema.asideText(options.aside)]),
+            ...(schemaNote === undefined ? [] : [schemaNote]),
+            ...(options.schemaPath === undefined ? [] : [`Schema: ${options.schemaPath.includes("://") ? options.schemaPath : `plurnk://${options.schemaPath}`}`]),
+        ].join(" ");
+        const body = "body" in options ? (options.body ?? null) : (ToolInputSchema.input(invocation) ?? null);
+        const runtimeTag = isExecutionOp(runtime) ? runtime : "plurnk";
+        return PlurnkParser.stringify([{
+            runtime: runtimeTag,
+            aside: note === "" ? null : note,
+            target: target === undefined ? null : { kind: "local", raw: target },
+            lineMarker: null,
+            metadata: null,
+            body,
+            position: UNKNOWN_POSITION,
+        }]);
     }
 
     // Include known referenced documents verbatim. Do not inline, rewrite, or fetch schemas.

@@ -1657,7 +1657,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 const parsedOk = await ctx.request<{ results: Array<{ status: number }> }>("_plurnk/action", {
                     kind: "op.parse",
                     workspace: "alpha",
-                    params: { text: "```NOTE\nremember this\n```\n" },
+                    params: { text: "await plurnk.note({ text: \"remember this\" });\n" },
                 });
                 assert.ok(Array.isArray(parsedOk.results));
                 assert.equal(parsedOk.results[0]?.status, 200);

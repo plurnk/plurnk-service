@@ -210,7 +210,7 @@ test("{§digest-evidence-reader}: curation retains original approval in the repo
             decision: "accept", body: "reviewed override", outcome: "reviewed",
         });
         const decision = await db.test_proposal_decision.get({ id: logEntryId });
-        const [statement] = parseDsl("````KILL (log:///1/1/1/EDIT)\n````");
+        const [statement] = parseDsl("await plurnk.kill({\"path\":\"log:///1/1/1/EDIT\"});");
         assert.ok(statement);
         assert.equal((await ctx.engine.dispatch({ ...ctx, statement, sequence: 2, origin: "model" })).status, 200);
         const digestDir = join(directory, "digest");
@@ -504,7 +504,7 @@ test("{§proposal}: a WAIT over live work parks without a proposal", async () =>
         const proposed: number[] = [];
         ctx.engine.onProposalPending((event) => { proposed.push(event.logEntryId); });
 
-        const sendParked = parseDsl("````WAIT\nawaiting your reply\n````").find((s) => s.op === "WAIT");
+        const sendParked = parseDsl("await plurnk.wait({\"text\":\"awaiting your reply\"});").find((s) => s.op === "WAIT");
         assert.ok(sendParked, "fixture: the broadcast park parsed as a statement");
         const parkDeferred = deferred<number>();
         const parkResult = await ctx.engine.dispatch({
@@ -815,7 +815,7 @@ test("{§mcp-configuration} a stdio tool runs in retained workspace state and wr
     try {
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: "placement", projectRoot: project });
-        const source = PlurnkParser.frame("fixture (where)", "{}");
+        const source = "await fixture.where({});";
         const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) }).items[0];
         assert.equal(parsed?.kind, "statement");
         if (parsed?.kind !== "statement") throw new Error("Expected the tool operation");
@@ -981,7 +981,7 @@ test("{§membership-auto-add} READ: an untracked or outside-root file is admitte
     const sister = `plurnk-sister-${crypto.randomUUID()}.md`;
     await writeFile(join(h.root, "..", sister), "# sister\ngamma\n");
     t.after(async () => { await rm(join(h.root, "..", sister), { force: true }); });
-    const read = await h.model("````READ (loose.md)````") as { status: number; content?: string | null };
+    const read = await h.model("await plurnk.read({\"path\":\"loose.md\"});") as { status: number; content?: string | null };
     assert.equal(read.status, 200, JSON.stringify(read));
     assert.match(String(read.content), /# loose/u, "the admitted file is read in the same operation");
     assert.equal(await h.member("loose.md"), true);
@@ -995,17 +995,17 @@ test("{§membership-auto-add} READ: an untracked or outside-root file is admitte
     assert.doesNotMatch(h.notices[0], /"directive"/u, "the notice carries no directive");
 
     const sisterKey = `../${sister}`;
-    const readSister = await h.model(`\`\`\`\`READ (${sisterKey})\`\`\`\``) as { status: number; content?: string | null };
+    const readSister = await h.model(`await plurnk.read({"path":"${sisterKey}"});`) as { status: number; content?: string | null };
     assert.equal(readSister.status, 200, JSON.stringify(readSister));
     assert.match(String(readSister.content), /# sister/u, "the outside-root file is admitted and read in the same operation (#1330)");
     assert.equal(await h.member(sisterKey), true);
     assert.equal(h.notices.length, 2);
 
     for (const [program, code, pathname] of [
-        ["````READ (ignored.log)````", "entry-not-member", "ignored.log"],
-        ["````READ (loose2.md)````", "entry-not-member", "loose2.md"],
-        ["````READ (../outside.md)````", "entry-not-found", "../outside.md"],
-        ["````READ (docs)````", "path-is-directory", "docs"],
+        ["await plurnk.read({\"path\":\"ignored.log\"});", "entry-not-member", "ignored.log"],
+        ["await plurnk.read({\"path\":\"loose2.md\"});", "entry-not-member", "loose2.md"],
+        ["await plurnk.read({\"path\":\"../outside.md\"});", "entry-not-found", "../outside.md"],
+        ["await plurnk.read({\"path\":\"docs\"});", "path-is-directory", "docs"],
     ] as const) {
         const refused = await h.model(program) as { status: number; problem?: { type?: string } };
         assert.equal(refused.status, 404, `${program}: ${JSON.stringify(refused)}`);
@@ -1017,7 +1017,7 @@ test("{§membership-auto-add} READ: an untracked or outside-root file is admitte
 
 test("{§membership-auto-add} READ by glob: the universe fans out, and each untracked file read is admitted", { timeout: 60_000 }, async (t) => {
     const h = await harness(t, {});
-    await h.model("````READ (*.md) <1,2>````");
+    await h.model("await plurnk.read({\"path\":\"*.md\",\"range\":\"1,2\"});");
     assert.equal(await h.member("loose.md"), true, "the untracked file the glob reached was admitted");
     assert.equal(await h.member("loose2.md"), false, "an excluded file is outside the universe");
     assert.equal(await h.member("ignored.log"), false);
@@ -1026,7 +1026,7 @@ test("{§membership-auto-add} READ by glob: the universe fans out, and each untr
 
 test("{§membership-auto-add} FIND: a listing shows the universe without admitting; a text match admits; indexed dialects and binary candidates see members only", { timeout: 60_000 }, async (t) => {
     const h = await harness(t, {});
-    const listed = await h.model("````FIND (*)````") as { status: number; results?: unknown };
+    const listed = await h.model("await plurnk.find({\"path\":\"*\"});") as { status: number; results?: unknown };
     assert.equal(listed.status, 200, JSON.stringify(listed));
     const listing = h.paths(listed);
     for (const shown of ["README.md", "loose.md", "blob.bin"]) assert.match(listing, new RegExp(`"${shown}"`, "u"), `${shown} is listed`);
@@ -1035,17 +1035,17 @@ test("{§membership-auto-add} FIND: a listing shows the universe without admitti
     assert.equal(await h.member("loose.md"), false, "listing admits nothing");
     assert.equal(h.notices.length, 0);
 
-    const exact = await h.model("````FIND (loose.md)````") as { status: number };
+    const exact = await h.model("await plurnk.find({\"path\":\"loose.md\"});") as { status: number };
     assert.equal(exact.status, 200, "an exact FIND of a candidate lists it rather than missing");
     assert.equal(await h.member("loose.md"), false);
 
-    const fulltext = await h.model("````FIND (*) ~alpha````") as { status: number; results?: unknown };
+    const fulltext = await h.model("await plurnk.find({\"path\":\"*\",\"pattern\":\"~alpha\"});") as { status: number; results?: unknown };
     assert.equal(fulltext.status, 200, JSON.stringify(fulltext));
     assert.match(h.paths(fulltext), /README\.md/u);
     assert.doesNotMatch(h.paths(fulltext), /loose\.md/u, "an indexed dialect sees members only");
     assert.equal(await h.member("loose.md"), false);
 
-    const matched = await h.model("````FIND (*.md) loose````") as { status: number; results?: unknown };
+    const matched = await h.model("await plurnk.find({\"path\":\"*.md\",\"pattern\":\"loose\"});") as { status: number; results?: unknown };
     assert.equal(matched.status, 200, JSON.stringify(matched));
     assert.match(h.paths(matched), /loose\.md/u, "the candidate whose text matched is in the result");
     assert.doesNotMatch(h.paths(matched), /README\.md|loose2\.md/u);
@@ -1054,7 +1054,7 @@ test("{§membership-auto-add} FIND: a listing shows the universe without admitti
     assert.equal(h.notices.length, 1);
     assert.match(h.notices[0], /'loose\.md' is now a member/u);
 
-    const nested = await h.model("````FIND (docs/*.md) beta````") as { status: number; results?: unknown };
+    const nested = await h.model("await plurnk.find({\"path\":\"docs/*.md\",\"pattern\":\"beta\"});") as { status: number; results?: unknown };
     assert.equal(nested.status, 200);
     assert.equal(await h.member("docs/guide.md"), true, "a scoped glob reaches its directory's candidates");
     assert.equal(h.notices.length, 2);
@@ -1062,13 +1062,13 @@ test("{§membership-auto-add} FIND: a listing shows the universe without admitti
 
 test("{§membership-auto-add} scope none: the universe is listed, nothing is admitted, and no unadmitted content shows", { timeout: 60_000 }, async (t) => {
     const h = await harness(t, { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "none" });
-    const read = await h.model("````READ (loose.md)````") as { status: number; problem?: { type?: string; recovery?: string } };
+    const read = await h.model("await plurnk.read({\"path\":\"loose.md\"});") as { status: number; problem?: { type?: string; recovery?: string } };
     assert.equal(read.status, 404);
     assert.match(read.problem?.type ?? "", /entry-not-member$/u);
     assert.equal(await h.member("loose.md"), false);
-    const listed = await h.model("````FIND (*)````") as { status: number; results?: unknown };
+    const listed = await h.model("await plurnk.find({\"path\":\"*\"});") as { status: number; results?: unknown };
     assert.match(h.paths(listed), /loose\.md/u, "occupancy inside the root is not secret");
-    const matched = await h.model("````FIND (*.md) loose````") as { status: number; results?: unknown };
+    const matched = await h.model("await plurnk.find({\"path\":\"*.md\",\"pattern\":\"loose\"});") as { status: number; results?: unknown };
     assert.equal(matched.status, 204, "the only match was on what the scope refuses to admit, so nothing matched");
     assert.doesNotMatch(h.paths(matched), /loose\.md/u, "a match on what the scope refuses to admit is not shown");
     assert.equal(await h.member("loose.md"), false);
@@ -1077,13 +1077,13 @@ test("{§membership-auto-add} scope none: the universe is listed, nothing is adm
 
 test("{§membership-auto-add} knob off: today's contract holds unchanged", { timeout: 60_000 }, async (t) => {
     const h = await harness(t, { PLURNK_MEMBERS_AUTO_ADD: "0" });
-    const read = await h.model("````READ (loose.md)````") as { status: number; problem?: { type?: string; recovery?: string } };
+    const read = await h.model("await plurnk.read({\"path\":\"loose.md\"});") as { status: number; problem?: { type?: string; recovery?: string } };
     assert.equal(read.status, 404);
     assert.match(read.problem?.type ?? "", /entry-not-member$/u);
     assert.equal(read.problem?.recovery, "Admit it with `plurnk (members)` and a `{\"files\": [\"<path>\"]}` body.");
-    const listed = await h.model("````FIND (*)````") as { status: number; results?: unknown };
+    const listed = await h.model("await plurnk.find({\"path\":\"*\"});") as { status: number; results?: unknown };
     assert.doesNotMatch(h.paths(listed), /loose\.md/u, "members only");
-    const matched = await h.model("````FIND (*.md) loose````") as { status: number; results?: unknown };
+    const matched = await h.model("await plurnk.find({\"path\":\"*.md\",\"pattern\":\"loose\"});") as { status: number; results?: unknown };
     assert.doesNotMatch(h.paths(matched), /loose\.md/u);
     assert.equal(await h.member("loose.md"), false);
     assert.equal(h.notices.length, 0);
@@ -1092,11 +1092,11 @@ test("{§membership-auto-add} knob off: today's contract holds unchanged", { tim
 test("{§membership-auto-add} {§proposal} under review, a READ proposes the admission: accepted, it admits and reads; rejected, it admits nothing", { timeout: 60_000 }, async (t) => {
     const h = await harness(t, {});
     await h.attend();
-    const listed = await h.model("````FIND (*)````") as { status: number; results?: unknown };
+    const listed = await h.model("await plurnk.find({\"path\":\"*\"});") as { status: number; results?: unknown };
     assert.match(h.paths(listed), /loose\.md/u, "the universe is listed under review; listing proposes nothing");
     assert.equal(await h.member("loose.md"), false);
 
-    const accepted = await h.review("````READ (loose.md)````", "accept");
+    const accepted = await h.review("await plurnk.read({\"path\":\"loose.md\"});", "accept");
     assert.equal(accepted.proposal.op, "READ");
     assert.equal(accepted.proposal.body, JSON.stringify({ files: ["loose.md"] }), "the review material is the definition the acceptance admits");
     const read = accepted.result as { status: number; content?: string | null };
@@ -1106,14 +1106,14 @@ test("{§membership-auto-add} {§proposal} under review, a READ proposes the adm
     assert.equal((await h.definitions()).find(({ alias }) => alias === "loose.md")?.definition?.provenance?.kind, "model-proposal");
     assert.equal(h.notices.length, 1, "one member_added notice");
 
-    const rejected = await h.review("````READ (docs/guide.md)````", "reject");
+    const rejected = await h.review("await plurnk.read({\"path\":\"docs/guide.md\"});", "reject");
     const refused = rejected.result as { status: number; outcome?: string; problem?: { detail?: string } };
     assert.equal(refused.status, 400, JSON.stringify(refused));
     assert.equal(refused.outcome, "rejected", "{§proposal}");
     assert.match(String(refused.problem?.detail), /rejected/u, "{§proposal}: the detail names the outcome");
     assert.equal(await h.member("docs/guide.md"), false, "a rejected admission admits nothing");
     assert.equal(h.notices.length, 1, "and announces nothing");
-    const again = await h.review("````READ (docs/guide.md) <1,1>````", "reject");
+    const again = await h.review("await plurnk.read({\"path\":\"docs/guide.md\",\"range\":\"1,1\"});", "reject");
     assert.equal(again.proposal.op, "READ", "a rejection does not retire the file from the universe: the next read proposes again");
     assert.equal((again.result as { status: number }).status, 400);
 });
@@ -1121,7 +1121,7 @@ test("{§membership-auto-add} {§proposal} under review, a READ proposes the adm
 test("{§membership-auto-add} under review, a text FIND proposes the admission of what it matched; accepted, the selection runs over the members", { timeout: 60_000 }, async (t) => {
     const h = await harness(t, {});
     await h.attend();
-    const { result, proposal } = await h.review("````FIND (docs/*.md) beta````", "accept");
+    const { result, proposal } = await h.review("await plurnk.find({\"path\":\"docs/*.md\",\"pattern\":\"beta\"});", "accept");
     assert.equal(proposal.op, "FIND");
     assert.equal(proposal.body, JSON.stringify({ files: ["docs/guide.md"] }));
     const found = result as { status: number; results?: unknown };
@@ -1133,7 +1133,7 @@ test("{§membership-auto-add} under review, a text FIND proposes the admission o
 
 test("{§membership-auto-add} a client's READ never admits on the Session's behalf", { timeout: 60_000 }, async (t) => {
     const h = await harness(t, {});
-    const read = await h.client("````READ (loose.md)````") as { status: number };
+    const read = await h.client("await plurnk.read({\"path\":\"loose.md\"});") as { status: number };
     assert.equal(read.status, 404);
     assert.equal(await h.member("loose.md"), false);
     assert.equal(h.notices.length, 0);
@@ -1245,13 +1245,10 @@ for (const timing of ["before park", "after park"] as const) {
                 type: "object", properties: { branch: { type: "string" }, notes: { type: "string" } },
             } });
             const provider = new StreamMock({ contextWindow: 100_000, responses: [
-                makeMockResponse(`\`\`\`\`plurnk (question)
-${body}
-\`\`\`\`
-\`\`\`\`WAIT
-Waiting for your answer.
-\`\`\`\``),
-                makeMockResponse("````DONE\nThe answer arrived.\n````"),
+                makeMockResponse(`await plurnk.question(${body});
+
+await plurnk.wait({"text":"Waiting for your answer."});`),
+                makeMockResponse("await plurnk.done({\"text\":\"The answer arrived.\"});"),
             ] });
             try {
                 await withDaemon(provider, async (db, daemon) => {
@@ -1301,7 +1298,7 @@ Waiting for your answer.
 
 test("{§question-tool}: cancelling the session concludes a pending question as cancellation, not an executor crash", async () => {
     const provider = new StreamMock({ contextWindow: 100_000, responses: [makeMockResponse(
-        "````plurnk (question)\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n````\n````WAIT\nAwaiting an answer.\n````",
+        "await plurnk.question({\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}});\n\nawait plurnk.wait({\"text\":\"Awaiting an answer.\"});",
     )] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "question-user-cancel" });
@@ -1328,9 +1325,9 @@ test("{§question-tool}: cancelling the session concludes a pending question as 
 test("{§proposal-projection}: KILL ends the question's own waiter without cancelling its loop", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
-        makeMockResponse("````plurnk (question)\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n````\n````NOTE\nContinue while the question is pending.\n````"),
-        makeMockResponse("````KILL ($STREAM)````\n````NOTE\nCancel the question.\n````"),
-        makeMockResponse("````DONE\nDone.\n````"),
+        makeMockResponse("await plurnk.question({\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}});\n\nawait plurnk.note({\"text\":\"Continue while the question is pending.\"});"),
+        makeMockResponse("await plurnk.kill({\"path\":\"$STREAM\"});\n\nawait plurnk.note({\"text\":\"Cancel the question.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"Done.\"});"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "question-exec-cancel" });

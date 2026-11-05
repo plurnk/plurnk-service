@@ -9,12 +9,7 @@ export default class TurnOps {
     // {§turn-source-resources} — the frozen projection is the admitted program, canonical and whole; the wire derives
     // what the model is shown from it ({§packet-assembly}).
     static renderEmission(statements: readonly PlurnkStatement[]): string {
-        return statements.map((statement) => {
-            const body = "body" in statement && statement.body !== null
-                ? (typeof statement.body === "string" ? statement.body : statement.body.raw)
-                : "";
-            return PlurnkParser.frame(PlurnkParser.heading(statement), body.length === 0 ? null : body);
-        }).join("\n\n");
+        return PlurnkParser.stringify(statements);
     }
 
 

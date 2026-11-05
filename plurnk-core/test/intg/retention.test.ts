@@ -23,7 +23,6 @@ import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
 import { insertLoop, insertPacketTurn, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel, insertTurn } from "./_db.ts";
 // eslint-disable-next-line no-restricted-imports -- {§content-store}: witness reads sqlite_master after daemon close; no persistence happens outside SqlRite.
 import { DatabaseSync } from "node:sqlite";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { provider as reasoningProvider, statement as reasoningStatement } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -460,8 +459,8 @@ test("{§content-store}: stopping the daemon runs PRAGMA optimize on the writer,
         const sessionId = await insertSession(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, sessionId, 1);
         await daemon.engine.runTurn({ workspaceId, sessionId, loopId, provider: reasoningProvider("thought",
-            `${PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1>", null)}\n\n${PlurnkParser.frame("SEND", "Ready.")}`), messages: [] });
-        assert.equal((await clientRead(daemon.engine, db, { workspaceId, sessionId, statement: reasoningStatement("````READ (reasoning://alice/1/2) <1,-1>````") })).status, 200);
+            `await plurnk.read({"path":"reasoning://alice/1/2","range":"1,-1"});\n\nawait plurnk.send({"text":"Ready."});`), messages: [] });
+        assert.equal((await clientRead(daemon.engine, db, { workspaceId, sessionId, statement: reasoningStatement("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"});") })).status, 200);
         assert.equal(stat1(path), 0, "a fresh baseline carries no statistics");
     } finally {
         await daemon.stop();
@@ -507,13 +506,13 @@ for (const publicationFails of [false, true]) test(`{§content-store}: a native 
     const failure = new Error("fixture receipt write failed");
     if (publicationFails) {
         t.mock.method(db.engine_insert_log_entry, "get", async () => { throw failure; });
-        await assert.rejects(dispatch("````READ (workspace:///picture.png)\n````", 1), (cause) => cause === failure);
+        await assert.rejects(dispatch("await plurnk.read({\"path\":\"workspace:///picture.png\"});", 1), (cause) => cause === failure);
     } else {
-        const result = await dispatch("````READ (workspace:///picture.png)\n````", 1);
+        const result = await dispatch("await plurnk.read({\"path\":\"workspace:///picture.png\"});", 1);
         assert.equal(result.status, 200);
         assert.equal(result.nativeContentHash, hash);
-        assert.equal((await dispatch("````KILL (log:///1/1/1/READ)\n````", 2)).status, 200);
-        assert.equal((await dispatch("````KILL (workspace:///picture.png)\n````", 3)).status, 200);
+        assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/1/READ\"});", 2)).status, 200);
+        assert.equal((await dispatch("await plurnk.kill({\"path\":\"workspace:///picture.png\"});", 3)).status, 200);
     }
     assert.notEqual(hash, "", "the real READ path captured native bytes");
     await retention.run();
@@ -560,7 +559,7 @@ test("{§content-store}: message admission and attachment-only replies retain by
     serverProposals(t, "accept");
     await using db = await openMigrated();
     const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { reasoning: null,
-        content: '````DONE [{"attachments":["workspace:///reply.txt"]}]\n````\n\n````KILL (log:///**)\n````' } }] });
+        content: "await plurnk.done({\"metadata\":[\"{\\\"attachments\\\":[\\\"workspace:///reply.txt\\\"]}\"]});\n\nawait plurnk.kill({\"path\":\"log:///**\"});" } }] });
     const daemon = new Daemon({ db, provider });
     const retention = collector(db);
     const original = NativeContent.retain.bind(NativeContent);
@@ -577,7 +576,7 @@ test("{§content-store}: message admission and attachment-only replies retain by
         const { workspaceId } = await daemon.createWorkspace({ name: "native-message-retention", projectRoot: null });
         const sessionId = await namedModelSession(daemon, workspaceId, "main");
         const statements = (source: string) => parseDsl(source);
-        await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: statements("````EDIT (workspace:///reply.txt)\nOriginal answer.\n````") });
+        await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: statements("await plurnk.edit({\"path\":\"workspace:///reply.txt\",\"content\":\"Original answer.\"});") });
         const started = await daemon.runLoop({ workspaceId, sessionId, prompt: "Return the attachment.",
             attachments: [{ name: "input.bin", mediaType: "application/octet-stream", bytes: new Uint8Array([1, 2, 3, 4]) }] });
         const lifecycle = new LoopLifecycle(db);
@@ -588,8 +587,8 @@ test("{§content-store}: message admission and attachment-only replies retain by
             [[Buffer.from([1, 2, 3, 4])], [Buffer.from("Original answer.")]]);
         const input = messages[0].attachments[0].target;
         const results = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: sessionId, statements: statements([
-            `\`\`\`\`KILL (${input})\n\`\`\`\``,
-            "````KILL (workspace:///reply.txt)\n````",
+            `await plurnk.kill({"path":"${input}"});`,
+            "await plurnk.kill({\"path\":\"workspace:///reply.txt\"});",
         ].join("\n\n")) });
         assert.ok(results.every(({ status }) => status < 400), JSON.stringify(results));
         await retention.run();

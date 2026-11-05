@@ -18,7 +18,7 @@ import Turn, { type InferenceEvidence } from "./Turn.ts";
 import ModelCall, { ModelCallPersistenceError, ProviderAccountingIntegrityError } from "./ModelCall.ts";
 import ProviderRecovery from "./ProviderRecovery.ts";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
-import EmissionSplit, { type BodyCheck, type SplitProviderResponse } from "./EmissionSplit.ts";
+import EmissionSplit, { type SplitProviderResponse } from "./EmissionSplit.ts";
 import SessionOwners from "./SessionOwners.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
 import { observed } from "../observe/spans.ts";
@@ -64,8 +64,6 @@ export type ProviderAttempts = {
     wire: MaterializedModelRequest;
     response: ProviderAttempt | undefined;
     split: SplitProviderResponse | undefined;
-    // {§fence-pairing}: judges a body in its runtime's declared media type; undefined when none declares one.
-    wellFormed: BodyCheck | undefined;
     emissionAttempts: number;
     callInFlight: boolean;
     modelCallSequence: number;
@@ -228,7 +226,6 @@ export default class ProviderAttemptRunner {
             wire,
             response: undefined,
             split: undefined,
-            wellFormed: undefined,
             emissionAttempts: 0,
             callInFlight: false,
             modelCallSequence: 0,
@@ -254,7 +251,6 @@ export default class ProviderAttemptRunner {
         const { workspaceId, sessionId, loopId, signal } = args;
         // {§operation-results}: bracket the complete provider-attempt window with liveness notices.
         if (!signal?.aborted) this.#notices.push(workspaceId, sessionId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
-        attempts.wellFormed = await EmissionSplit.bodyChecks(workspaceId, this.#executors(), this.#mimetypes);
         const attemptLimit = readEmissionAttempts();
         for (let attempt = 1; attempt <= attemptLimit;) {
             const verdict = await this.#issueProviderCall(args, request, attempts, attempt);
@@ -367,7 +363,7 @@ export default class ProviderAttemptRunner {
         attempts.response = completedResponse;
         attempts.turnWireAccounting.push(...completedResponse.accounting);
         await modelCall.observeResponse(completedResponse, null, attempts.wire.nativeInputs);
-        const split = EmissionSplit.splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed);
+        const split = EmissionSplit.splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? []);
         attempts.split = split;
         await this.#classifyProviderAttempt(attempts, attemptRow.id, split, attempt, split.emissionValid);
         return split.emissionValid ? "admitted" : "rejected";
@@ -499,7 +495,7 @@ export default class ProviderAttemptRunner {
             // {§provider-failure-normalization} — the interrupted response stays durable
             // as an unaccepted attempt; it is never admitted or replayed.
             await modelCall.observeResponse(error.attempt, failure, attempts.wire.nativeInputs);
-            await this.#classifyProviderAttempt(attempts, attemptId, EmissionSplit.splitResponse(error.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed), attempts.currentEmissionAttempt, false);
+            await this.#classifyProviderAttempt(attempts, attemptId, EmissionSplit.splitResponse(error.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? []), attempts.currentEmissionAttempt, false);
         } else {
             await modelCall.fail(failure, error.capacity ?? null);
         }
@@ -561,7 +557,7 @@ export default class ProviderAttemptRunner {
         if (err instanceof ProviderError && err.attempt !== undefined) {
             attempts.response = err.attempt;
             await attempts.modelCall.observeResponse(err.attempt, failure, attempts.wire.nativeInputs);
-            attempts.split = EmissionSplit.splitResponse(err.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed);
+            attempts.split = EmissionSplit.splitResponse(err.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? []);
             await this.#classifyProviderAttempt(attempts, attempts.attemptId, attempts.split, attempts.currentEmissionAttempt, false);
         } else {
             await attempts.modelCall.fail(

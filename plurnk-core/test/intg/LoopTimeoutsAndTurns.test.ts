@@ -30,7 +30,7 @@ for (const wake of ["message", "same-drain", "restart"] as const) {
             else process.env.PLURNK_SERVICE_LOOP_TIMEOUT = previous;
         });
         const provider = new Mock({ contextWindow: 65536, responses: [
-            makeMockResponse("````WAIT\nResume the same task later.\n````"),
+            makeMockResponse("await plurnk.wait({\"text\":\"Resume the same task later.\"});"),
         ] });
         await withDaemon(provider, async (db, daemon) => {
             let activeDaemon = daemon;
@@ -184,7 +184,7 @@ test("{§operator-config-workspace-settings}: waiting preserves one execution al
         await insertLoop(db, childId, 1, "Live child work the wait joins.");
         const first = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeMockResponse("````WAIT\nWait before continuing.\n````"),
+            makeMockResponse("await plurnk.wait({\"text\":\"Wait before continuing.\"});"),
         ] });
         const generate = provider.generate.bind(provider);
         t.mock.method(provider, "generate", async (...args: Parameters<Mock["generate"]>) => {

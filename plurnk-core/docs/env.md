@@ -9,9 +9,7 @@ session's overrides. `list` shows the effective values and their origins.
 reach every session's commands and newly started MCP servers, without depending
 on which session starts them:
 
-```plurnk (env)
-{"scope":"workspace","alias":"NODE_ENV","value":"production"}
-```
+await plurnk.env({ scope: "workspace", alias: "NODE_ENV", value: "production" });
 
 Omitting `scope` selects your session. Its overrides do not configure shared MCPs.
 Workspace changes affect subsequent launches; running processes keep their
@@ -38,23 +36,15 @@ Your session overrides are yours: another session's commands do not see them. A 
 you spawn starts with a copy of them — `list` shows those as inherited from
 you — and its changes never reach yours. Workspace defaults remain shared, not copied.
 
-## `lifetime`: how long a command runs
+## Command execution and waiting
 
-The heading's `[metadata]` takes `lifetime` on a command fence. Absent, the
-run ends with the loop.
+Commands run with the session's active environment variables in the project root (or an explicit `cwd`):
 
-```sh [{"lifetime": "30m"}]
-npm run e2e
-```
+await plurnk.sh({ command: "npm run e2e" });
 
-```sh [{"lifetime": "detached"}]
-npm run dev
-```
+await plurnk.sh({ command: "npm run dev" });
 
-A duration (`30s`, `30m`, `2h`) kills the command at that deadline. `detached`
-outlives the loop: it runs until it exits or is KILLed. `turn` keeps the command
-only through the current turn. WAIT's duration bounds the wait for inspection,
-not the command's lifetime.
+WAIT's duration (`seconds`) bounds the wait for inspection while a command or child session runs.
 
 ## Names managed elsewhere
 

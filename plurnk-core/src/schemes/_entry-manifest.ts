@@ -52,7 +52,7 @@ type CatalogEntryState = {
 // one summary line) is shown whole with its newlines restored, so the row's JSON escapes each once.
 const catalogAside = (value: string | null): string | undefined => {
     if (value === null) return undefined;
-    if (value.startsWith("```")) return value.replaceAll("\\n", "\n");
+    if (value.startsWith("await ") || value.startsWith("plurnk.") || value.startsWith("mcp.")) return value.replaceAll("\\n", "\n");
     const points = Array.from(value);
     const shown = EntryManifest.summaryCodePoints();
     return points.length <= shown

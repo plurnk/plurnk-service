@@ -587,7 +587,7 @@ test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudg
                         role: "model",
                         parts: [
                             { text: "planning", thought: true },
-                            { text: "```NOTE\nPlan ready.\n```\n\n```DONE\nCompleted.\n```" },
+                            { text: "await plurnk.note({\"text\":\"Plan ready.\"});\n\nawait plurnk.done({\"text\":\"Completed.\"});" },
                         ],
                     },
                     finishReason: "MALFORMED_RESPONSE",
@@ -643,7 +643,7 @@ test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudg
                     role: "model",
                     parts: [
                         { text: "recovered thought", thought: true },
-                        { text: "```DONE\nRecovered.\n```" },
+                        { text: "await plurnk.done({\"text\":\"Recovered.\"});" },
                     ],
                 },
                 finishReason: "MAX_TOKENS",
@@ -673,7 +673,7 @@ test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudg
     }, "thinkingBudget is bounded by maxOutputTokens minus outputFloor");
     assert.equal(first?.assistant.finishReason, "stop");
     assert.equal((first?.assistantRaw as { rawFinishReason?: string } | undefined)?.rawFinishReason, "MALFORMED_RESPONSE");
-    assert.match(first?.assistant.content ?? "", /DONE/);
+    assert.match(first?.assistant.content ?? "", /plurnk\.done/);
 
     const adaptive = catalogProviderFromEnv("google", {
         ...env,
@@ -1159,7 +1159,7 @@ for (const [name, usage, expected] of [
     test(`{§provider-monetary-evidence} Z.ai glm-5.3-flash ${name} resolves to an exact catalog estimate, never unknown`, async () => {
         mock.method(globalThis, "fetch", async () => new Response([
             `data: ${JSON.stringify({ id: "zai", model: "glm-5.3-flash", choices: [{ index: 0, delta: { reasoning_content: "Read the widgets module." }, finish_reason: null }] })}`,
-            `data: ${JSON.stringify({ id: "zai", model: "glm-5.3-flash", choices: [{ index: 0, delta: { content: "```READ (django/forms/widgets.py) /class Media/\n```" }, finish_reason: "stop" }], usage })}`,
+            `data: ${JSON.stringify({ id: "zai", model: "glm-5.3-flash", choices: [{ index: 0, delta: { content: "await plurnk.read({\"path\":\"django/forms/widgets.py\",\"pattern\":\"/class Media/\"});" }, finish_reason: "stop" }], usage })}`,
             "data: [DONE]",
         ].join("\n\n"), { headers: { "content-type": "text/event-stream" } }));
         const info = lookupProvider("zai")!;

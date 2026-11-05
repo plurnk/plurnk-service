@@ -220,14 +220,10 @@ test("{§op-methods-op-dispatch}: resource prompts bypass line and size preview 
         const result = await engine.runTurn({
             workspaceId, sessionId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "````EDIT (workspace:///prompt.md)",
-                prompt,
-                "````",
-                "````BARE (workspace:///prompt.md)````",
-                "````BARE (workspace:///prompt.md)",
-                "Compare these findings.",
-                "````",
-                "````NOTE\nContinue the task.\n````",
+                `await plurnk.edit(${JSON.stringify({ path: "workspace:///prompt.md", content: prompt })});`,
+                "await plurnk.bare({\"target\":\"workspace:///prompt.md\",\"prompt\":\"\"});",
+                "await plurnk.bare({\"target\":\"workspace:///prompt.md\",\"prompt\":\"Compare these findings.\"});",
+                "await plurnk.note({\"text\":\"Continue the task.\"});",
             ].join("\n"))] }),
         });
         assert.equal(result.status, 102);
@@ -247,13 +243,9 @@ test("{§op-methods-op-dispatch}: missing resources preserve the source error wi
         const result = await engine.runTurn({
             workspaceId, sessionId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "````BARE (workspace:///missing.md)",
-                "Do not infer from this tail alone.",
-                "````",
-                "````BARE",
-                "survivor",
-                "````",
-                "````NOTE\nContinue the task.\n````",
+                "await plurnk.bare({\"target\":\"workspace:///missing.md\",\"prompt\":\"Do not infer from this tail alone.\"});",
+                "await plurnk.bare({\"prompt\":\"survivor\"});",
+                "await plurnk.note({\"text\":\"Continue the task.\"});",
             ].join("\n"))] }),
         });
         assert.deepEqual(child.completions, ["survivor"]);
@@ -290,14 +282,10 @@ test("{§op-methods-op-dispatch}: cancellation during source preparation leaves 
         await assert.rejects(engine.runTurn({
             workspaceId, sessionId, loopId, messages: [], childProvider: child, signal: controller.signal,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "````BARE",
-                "first prompt",
-                "````",
-                "````BARE (interrupted-prompt:///question.md)````",
-                "````BARE",
-                "last prompt",
-                "````",
-                "````NOTE\nContinue the task.\n````",
+                "await plurnk.bare({\"prompt\":\"first prompt\"});",
+                "await plurnk.bare({\"target\":\"interrupted-prompt:///question.md\",\"prompt\":\"\"});",
+                "await plurnk.bare({\"prompt\":\"last prompt\"});",
+                "await plurnk.note({\"text\":\"Continue the task.\"});",
             ].join("\n"))] }),
         }), (error: unknown) => error === cancellation);
         assert.equal(child.calls.length, 0);
@@ -324,13 +312,9 @@ for (const [denied, target] of [
             const result = await engine.runTurn({
                 workspaceId, sessionId, loopId, messages: [], childProvider: child,
                 provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                    "````EDIT (workspace:///prompt.md)",
-                    "secret prompt",
-                    "````",
-                    "````BARE" + target,
-                    "inline prompt",
-                    "````",
-                    "````NOTE\nContinue the task.\n````",
+                    "await plurnk.edit({\"path\":\"workspace:///prompt.md\",\"content\":\"secret prompt\"});",
+                    `await plurnk.bare(${JSON.stringify({ ...(target ? { target: "workspace:///prompt.md" } : {}), prompt: "inline prompt" })});`,
+                    "await plurnk.note({\"text\":\"Continue the task.\"});",
                 ].join("\n"))] }),
             });
             assert.equal(child.calls.length, 0);
@@ -347,13 +331,9 @@ test("{§op-methods-op-dispatch}: a log prompt uses only retained source lines",
         const first = await engine.runTurn({
             workspaceId, sessionId, loopId, messages: [],
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "````EDIT (workspace:///source.md)",
-                "first",
-                "superseded",
-                "last",
-                "````",
-                "````READ (workspace:///source.md) <1,-1>````",
-                "````NOTE\nContinue the task.\n````",
+                "await plurnk.edit({\"path\":\"workspace:///source.md\",\"content\":\"first\\nsuperseded\\nlast\"});",
+                "await plurnk.read({\"path\":\"workspace:///source.md\",\"range\":\"1,-1\"});",
+                "await plurnk.note({\"text\":\"Continue the task.\"});",
             ].join("\n"))] }),
         });
         const rows = await db.test_log_entries_by_turn.all<{ op: string; sequence: number; attrs: string }>({ turn_id: first.turnId });
@@ -366,9 +346,9 @@ test("{§op-methods-op-dispatch}: a log prompt uses only retained source lines",
         const second = await engine.runTurn({
             workspaceId, sessionId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "````KILL (" + (address) + ") <2>````",
-                "````BARE (" + (address) + ")````",
-                "````NOTE\nContinue the task.\n````",
+                `await plurnk.kill({"path":"${address}","range":"2"});`,
+                `await plurnk.bare({"target":"${address}","prompt":""});`,
+                "await plurnk.note({\"text\":\"Continue the task.\"});",
             ].join("\n"))] }),
         });
         assert.deepEqual(second.outcomes.filter(({ op }) => op === "BARE"), [{ op: "BARE", status: 200, problemType: null }]);
@@ -388,12 +368,9 @@ for (const [target, status, problem] of [
             const result = await engine.runTurn({
                 workspaceId, sessionId, loopId, messages: [], childProvider: child,
                 provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                    "````EDIT (workspace:///prompt.md)",
-                    "source prompt",
-                    "````",
-                    "````BARE" + (target === null ? "" : ` (${target})`),
-                    "````",
-                    "````NOTE\nContinue the task.\n````",
+                    "await plurnk.edit({\"path\":\"workspace:///prompt.md\",\"content\":\"source prompt\"});",
+                    `await plurnk.bare(${JSON.stringify({ ...(target === null ? {} : { target }), prompt: "" })});`,
+                    "await plurnk.note({\"text\":\"Continue the task.\"});",
                 ].join("\n"))] }),
             });
             const bare = result.outcomes.find(({ op }) => op === "BARE");
@@ -422,7 +399,7 @@ test("{§op-methods-op-dispatch}: an intervening operation separates concurrent 
         };
         const result = await engine.runTurn({
             workspaceId, sessionId, loopId, messages: [], childProvider: child,
-            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse("````BARE\nbefore\n````\n````EDIT (workspace:///between)\nwritten\n````\n````BARE\nafter\n````\n````NOTE\nContinue the task.\n````")] }),
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse("await plurnk.bare({\"prompt\":\"before\"});\n\nawait plurnk.edit({\"path\":\"workspace:///between\",\"content\":\"written\"});\n\nawait plurnk.bare({\"prompt\":\"after\"});\n\nawait plurnk.note({\"text\":\"Continue the task.\"});")] }),
         });
         assert.equal(result.status, 102);
         assert.deepEqual(observed, [undefined, "written"]);
@@ -437,7 +414,7 @@ test("{§provider-interface} BARE calls receive only their body prompts, run in 
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("````BARE\nslow\n````\n\n````BARE\nfast\n````\n\n````NOTE\nObserve both responses next turn.\n````")],
+            responses: [mainResponse("await plurnk.bare({\"prompt\":\"slow\"});\n\nawait plurnk.bare({\"prompt\":\"fast\"});\n\nawait plurnk.note({\"text\":\"Observe both responses next turn.\"});")],
         });
         const child = new BareWitness(2);
 
@@ -516,7 +493,7 @@ test("{§op-methods-op-dispatch} loop cancellation reaches every concurrent BARE
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("````BARE\nfirst\n````\n\n````BARE\nsecond\n````\n\n````NOTE\ncontinue\n````")],
+            responses: [mainResponse("await plurnk.bare({\"prompt\":\"first\"});\n\nawait plurnk.bare({\"prompt\":\"second\"});\n\nawait plurnk.note({\"text\":\"continue\"});")],
         });
         const child = new CancellingBareWitness(2);
         const controller = new AbortController();
@@ -548,7 +525,7 @@ test("{§op-methods-op-dispatch} one BARE provider failure is an ordered operati
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("````BARE\nfail\n````\n\n````BARE\nok\n````\n\n````NOTE\nInspect the isolated failure and success.\n````")],
+            responses: [mainResponse("await plurnk.bare({\"prompt\":\"fail\"});\n\nawait plurnk.bare({\"prompt\":\"ok\"});\n\nawait plurnk.note({\"text\":\"Inspect the isolated failure and success.\"});")],
         });
         const child = new BareWitness(2, "fail");
 
@@ -578,7 +555,7 @@ test("{§engine-rails}: an isolated call that drops once is re-issued; the recei
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("````BARE\nflaky\n````\n\n````BARE\nok\n````\n\n````NOTE\nInspect both answers.\n````")],
+            responses: [mainResponse("await plurnk.bare({\"prompt\":\"flaky\"});\n\nawait plurnk.bare({\"prompt\":\"ok\"});\n\nawait plurnk.note({\"text\":\"Inspect both answers.\"});")],
         });
         const child = new BareWitness(2, "flaky", 1);
         const result = await engine.runTurn({
@@ -610,7 +587,7 @@ test("{§op-methods-op-dispatch} a same-turn BARE response is unseen retrieval w
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("````BARE\nquestion\n````\n\n````SEND\ndone\n````")],
+            responses: [mainResponse("await plurnk.bare({\"prompt\":\"question\"});\n\nawait plurnk.send({\"text\":\"done\"});")],
         });
         const child = new BareWitness(1);
         const result = await engine.runTurn({
@@ -639,11 +616,7 @@ for (const state of ["WAIT", "SEND"] as const) {
             const result = await engine.runTurn({
                 provider: new Mock({
                     contextWindow: 32_768,
-                    responses: [mainResponse(`\`\`\`\`${state}
-\`\`\`\`
-\`\`\`\`BARE
-question
-\`\`\`\``)],
+                    responses: [mainResponse(`await plurnk.${state.toLowerCase()}({});\n\nawait plurnk.bare({"prompt":"question"});`)],
                 }),
                 childProvider: child,
                 workspaceId,
@@ -727,16 +700,16 @@ test("{§session-model-selection}: a smaller WORK provider carries through every
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
-            makeMockResponse("````WORK (session://child)\ndelegate once\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````DONE\ntree complete\n````"),
+            makeMockResponse("await plurnk.work({\"target\":\"session://child\",\"prompt\":\"delegate once\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});"),
+            makeMockResponse("await plurnk.done({\"text\":\"tree complete\"});"),
         ],
     });
     const child = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("````WORK (session://grandchild)\ndelegate again\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````DONE\nleaf complete\n````"),
-            makeMockResponse("````DONE\nchild complete\n````"),
+            makeMockResponse("await plurnk.work({\"target\":\"session://grandchild\",\"prompt\":\"delegate again\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});"),
+            makeMockResponse("await plurnk.done({\"text\":\"leaf complete\"});"),
+            makeMockResponse("await plurnk.done({\"text\":\"child complete\"});"),
         ],
     });
     ProviderInstantiate.registerInstance(parent, parentSpec);
@@ -786,13 +759,13 @@ test("{§session-model-selection}: the configured child alias supplies an omitte
     const parent = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("````WORK (session://child)\nuse configured child\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````DONE\nparent complete\n````"),
+            makeMockResponse("await plurnk.work({\"target\":\"session://child\",\"prompt\":\"use configured child\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});"),
+            makeMockResponse("await plurnk.done({\"text\":\"parent complete\"});"),
         ],
     });
     const child = new Mock({
         contextWindow: 8192,
-        responses: [makeMockResponse("````DONE\nchild complete\n````")],
+        responses: [makeMockResponse("await plurnk.done({\"text\":\"child complete\"});")],
     });
     ProviderInstantiate.registerInstance(parent, parentSpec);
     ProviderInstantiate.registerInstance(child, childSpec);
@@ -825,8 +798,8 @@ test("{§op-methods-op-dispatch}: BARE consumes the loop's durable child provide
     const parent = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("\n````BARE\nWhat is the capital of Germany?\n````\n\n````NOTE\nReview the answer.\n````"),
-            makeMockResponse("````DONE\nThe isolated answer was reviewed.\n````"),
+            makeMockResponse("await plurnk.bare({\"prompt\":\"What is the capital of Germany?\"});\n\nawait plurnk.note({\"text\":\"Review the answer.\"});"),
+            makeMockResponse("await plurnk.done({\"text\":\"The isolated answer was reviewed.\"});"),
         ],
     });
     const child = new Mock({
@@ -865,9 +838,9 @@ test("{§session-model-selection}: explicit inherit overrides configuration and 
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("````WORK (session://child)\ndo it\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````DONE\nchild complete\n````"),
-            makeMockResponse("````DONE\nparent complete\n````"),
+            makeMockResponse("await plurnk.work({\"target\":\"session://child\",\"prompt\":\"do it\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});"),
+            makeMockResponse("await plurnk.done({\"text\":\"child complete\"});"),
+            makeMockResponse("await plurnk.done({\"text\":\"parent complete\"});"),
         ],
     });
     ProviderInstantiate.registerInstance(mock, spec);
@@ -902,8 +875,8 @@ test("{§session-model-selection}: an oversized FORK fails as an ordinary child 
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
-            makeMockResponse("````FORK (session://branch)\ncontinue with inherited history\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````DONE\nobserved child failure\n````"),
+            makeMockResponse("await plurnk.fork({\"target\":\"session://branch\",\"prompt\":\"continue with inherited history\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});"),
+            makeMockResponse("await plurnk.done({\"text\":\"observed child failure\"});"),
         ],
     });
     // {§tokenomics} — a window whose wall cannot hold the inherited packet.

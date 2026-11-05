@@ -17,8 +17,8 @@ import { viableWindow } from "./_provider.ts";
 
 describe("Daemon.loop", () => {
 test("{§loop-completion} loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
-    const dsl = "````EDIT (workspace:///france/capital)\nParis\n````\n\n````SEND\nParis is the capital.\n````";
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142), makeMockResponse("````DONE\nParis is the capital.\n````", 0)] });
+    const dsl = "await plurnk.edit({\"path\":\"workspace:///france/capital\",\"content\":\"Paris\"});\n\nawait plurnk.send({\"text\":\"Paris is the capital.\"});";
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142), makeMockResponse("await plurnk.done({\"text\":\"Paris is the capital.\"});", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -47,7 +47,7 @@ test("{§loop-completion} loop.run accepts immediately (100); the loop's outcome
 test("{§message-arrival}: a trusted adapter source survives message publication", async () => {
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("````DONE\ndone\n````", 10)],
+        responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10)],
     });
 
     await withDaemon(mock, async (_db, daemon) => {
@@ -87,8 +87,8 @@ test("{§message-arrival}: a trusted adapter source survives message publication
 test("{§operation-results} loop.inject speaks into an existing session; errors when there's none", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````DONE\nfirst done\n````", 10),
-        makeMockResponse("````DONE\ninjected done\n````", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"first done\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"injected done\"});", 10),
     ] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -119,7 +119,7 @@ test("{§operation-results} loop.inject speaks into an existing session; errors 
 });
 
 test("{§operation-results} run.fork branches the model session into a named session; errors with no session", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````EDIT (workspace:///x)\nhi\n````\n\n````SEND\ndone\n````", 10), makeMockResponse("````DONE\ndone\n````", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("await plurnk.edit({\"path\":\"workspace:///x\",\"content\":\"hi\"});\n\nawait plurnk.send({\"text\":\"done\"});", 10), makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -160,8 +160,8 @@ test("{§operation-results} run.fork branches the model session into a named ses
 });
 
 test("{§turn-source-resources} loop.run streams log/entry notifications during execution", async () => {
-    const dsl = "````EDIT (workspace:///x)\nhello\n````\n\n````SEND\ndone\n````";
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("````DONE\ndone\n````", 0)] });
+    const dsl = "await plurnk.edit({\"path\":\"workspace:///x\",\"content\":\"hello\"});\n\nawait plurnk.send({\"text\":\"done\"});";
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("await plurnk.done({\"text\":\"done\"});", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -206,8 +206,8 @@ test("{§turn-source-resources} loop.run streams log/entry notifications during 
 });
 
 test("{§notifications} loop.run fires loop/terminated notification on completion", async () => {
-    const dsl = "````EDIT (workspace:///x)\nbody\n````\n\n````SEND\ndone\n````";
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("````DONE\ndone\n````", 0)] });
+    const dsl = "await plurnk.edit({\"path\":\"workspace:///x\",\"content\":\"body\"});\n\nawait plurnk.send({\"text\":\"done\"});";
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("await plurnk.done({\"text\":\"done\"});", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -236,7 +236,7 @@ test("{§notifications} loop.run fires loop/terminated notification on completio
 });
 
 test("{§engine-rails} loop.run still fires loop/terminated when the loop throws — no client hang", async () => {
-    const dsl = "````EDIT (workspace:///x)\niter\n````\n\n````NOTE\ncontinue\n````";
+    const dsl = "await plurnk.edit({\"path\":\"workspace:///x\",\"content\":\"iter\"});\n\nawait plurnk.note({\"text\":\"continue\"});";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 10)] });
     const logged: string[] = [];
     const realErr = console.error;
@@ -323,7 +323,7 @@ test("{§operation-results} loop.run requires non-empty prompt", async () => {
 });
 
 test("{§tokenomics} loop.run respects maxTurns cap when model emits non-terminal statuses repeatedly", async () => {
-    const dsl = "````EDIT (workspace:///x)\niter\n````\n\n````NOTE\ncontinue\n````";
+    const dsl = "await plurnk.edit({\"path\":\"workspace:///x\",\"content\":\"iter\"});\n\nawait plurnk.note({\"text\":\"continue\"});";
     const responses = Array.from({ length: 5 }, () => makeMockResponse(dsl, 10));
     const mock = new Mock({ contextWindow: 32768, responses });
 
@@ -341,7 +341,7 @@ test("{§tokenomics} loop.run respects maxTurns cap when model emits non-termina
 });
 
 test("{§methods-workspace-create}: a fresh loop foists one turn-zero READ per path", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````DONE\ndone\n````", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10)] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -365,7 +365,7 @@ test("{§methods-workspace-create}: a fresh loop foists one turn-zero READ per p
 });
 
 test("{§methods-workspace-create}: initial reads preserve file paths, scheme addresses and channels", async () => {
-    const mock = new Mock({ contextWindow: 32_768, responses: [makeMockResponse("````DONE\ndone\n````", 10)] });
+    const mock = new Mock({ contextWindow: 32_768, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10)] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -391,7 +391,7 @@ test("{§methods-workspace-create}: initial reads preserve file paths, scheme ad
 
 test("{§methods} a throwing seam subscriber never kills the loop — the transport's failure is its own", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````DONE\ndone\n````", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10)] });
     const logged: string[] = [];
     const realErr = console.error;
     console.error = (...a: unknown[]) => { logged.push(a.map(String).join(" ")); };
@@ -413,7 +413,7 @@ test("{§methods} a throwing seam subscriber never kills the loop — the transp
 
 describe("arrival-fold", () => {
 type LogRow = { origin: string; op: string; pathname: string; scheme: string; folded: string; turn_id: number };
-const mock = () => new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
+const mock = () => new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50)] });
 
 test("{§message-arrival} the arrival row and a normal same-turn op are both born open", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
@@ -435,7 +435,7 @@ test("{§message-arrival} the arrival row and a normal same-turn op are both bor
 });
 
 describe("arrival-preview", () => {
-const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("````DONE\ndone\n````", 40)] });
+const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 40)] });
 
 type LogRow = { op: string; origin: string; scheme: string | null; pathname: string | null; lineMarker: string | null; tx: string | null; rx: string | null; status_rx: number };
 

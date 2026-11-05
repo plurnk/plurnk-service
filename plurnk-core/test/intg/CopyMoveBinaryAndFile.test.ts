@@ -78,9 +78,7 @@ const runCopy = async (seed: Record<string, Buffer>, dsl: string) => {
     for (const [name, bytes] of Object.entries(seed)) await writeFile(join(root, name), bytes);
     const mock = new Mock({ contextWindow: viableWindow(), responses: [mockTurn(`${dsl}
 
-\`\`\`\`NOTE
-working
-\`\`\`\``), mockTurn("````DONE\ndone\n````")] });
+await plurnk.note({"text":"working"});`), mockTurn("await plurnk.done({\"text\":\"done\"});")] });
     let status = 0;
     let operations: Array<{ op: string; status_rx: number; rx: string | null }> = [];
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -104,7 +102,7 @@ working
 const gone = async (path: string): Promise<boolean> => access(path).then(() => false, () => true);
 
 test("{§binary-parity} COPY of a whole binary file reproduces its bytes exactly", async () => {
-    const { root } = await runCopy({ "logo.png": PNG }, "````COPY (logo.png) (copy.png)````");
+    const { root } = await runCopy({ "logo.png": PNG }, "await plurnk.copy({\"from\":\"logo.png\",\"to\":\"copy.png\"});");
     try {
         assert.ok(Buffer.from(await readFile(join(root, "copy.png"))).equals(PNG), "the copy is byte-identical");
         assert.ok(Buffer.from(await readFile(join(root, "logo.png"))).equals(PNG), "the source is untouched by COPY");
@@ -112,7 +110,7 @@ test("{§binary-parity} COPY of a whole binary file reproduces its bytes exactly
 });
 
 test("{§binary-parity} an empty binary file can be copied and moved as a whole resource", async () => {
-    const { root } = await runCopy({ "empty.png": Buffer.alloc(0) }, "````COPY (empty.png) (copied.png)````\n````MOVE (empty.png) <1,-1> (moved.png)````");
+    const { root } = await runCopy({ "empty.png": Buffer.alloc(0) }, "await plurnk.copy({\"from\":\"empty.png\",\"to\":\"copied.png\"});\n\nawait plurnk.move({\"from\":{\"path\":\"empty.png\",\"range\":\"1,-1\"},\"to\":\"moved.png\"});");
     try {
         assert.equal((await readFile(join(root, "copied.png"))).byteLength, 0);
         assert.equal((await readFile(join(root, "moved.png"))).byteLength, 0);
@@ -124,7 +122,7 @@ test("{§fs-write-surface} the four empty-destination scopes create identical bi
     const scopes = ["0", "1", "-1", "1,-1"];
     const { root } = await runCopy(
         { "logo.png": PNG },
-        scopes.map((scope, index) => `\`\`\`\`COPY (logo.png) (copy-${index}.png) <${scope}>\`\`\`\``).join("\n"),
+        scopes.map((scope, index) => `await plurnk.copy({"from":"logo.png","to":{"path":"copy-${index}.png","range":"${scope}"}});`).join("\n"),
     );
     try {
         for (const [index, scope] of scopes.entries()) {
@@ -134,7 +132,7 @@ test("{§fs-write-surface} the four empty-destination scopes create identical bi
 });
 
 test("{§binary-parity} new binary destinations still reject character-column regions", async () => {
-    const { root, operations } = await runCopy({ "logo.png": PNG }, "````MOVE (logo.png) (copy.png) <1,1,1,1>````");
+    const { root, operations } = await runCopy({ "logo.png": PNG }, "await plurnk.move({\"from\":\"logo.png\",\"to\":{\"path\":\"copy.png\",\"range\":\"1,1,1,1\"}});");
     try {
         const move = operations.find(({ op }) => op === "MOVE");
         assert.equal(move?.status_rx, 416);
@@ -147,8 +145,8 @@ test("{§binary-parity} new binary destinations still reject character-column re
 
 for (const operand of ["source", "destination"]) test(`{§binary-parity} a textual anchor on the byte ${operand} is a typed range refusal`, async () => {
     const dsl = operand === "source"
-        ? "````COPY (logo.png) <@abcde> (copy.png)````"
-        : "````COPY (logo.png) (copy.png) <@abcde>````";
+        ? "await plurnk.copy({\"from\":{\"path\":\"logo.png\",\"range\":\"@abcde\"},\"to\":\"copy.png\"});"
+        : "await plurnk.copy({\"from\":\"logo.png\",\"to\":{\"path\":\"copy.png\",\"range\":\"@abcde\"}});";
     const { root, operations } = await runCopy({ "logo.png": PNG }, dsl);
     try {
         const receipt = operations.find(({ op }) => op === "COPY");
@@ -160,7 +158,7 @@ for (const operand of ["source", "destination"]) test(`{§binary-parity} a textu
 });
 
 test("{§binary-parity} MOVE of a whole binary file relocates the bytes and deletes the source", async () => {
-    const { root } = await runCopy({ "a.png": PNG }, "````MOVE (a.png) (b.png)````");
+    const { root } = await runCopy({ "a.png": PNG }, "await plurnk.move({\"from\":\"a.png\",\"to\":\"b.png\"});");
     try {
         assert.ok(Buffer.from(await readFile(join(root, "b.png"))).equals(PNG), "the destination has the bytes");
         assert.ok(await gone(join(root, "a.png")), "the source is gone after MOVE");
@@ -168,14 +166,14 @@ test("{§binary-parity} MOVE of a whole binary file relocates the bytes and dele
 });
 
 test("{§binary-parity} <1,-1> is the whole resource, identical to unscoped", async () => {
-    const { root } = await runCopy({ "logo.png": PNG }, "````COPY (logo.png) <1,-1> (whole.png)````");
+    const { root } = await runCopy({ "logo.png": PNG }, "await plurnk.copy({\"from\":{\"path\":\"logo.png\",\"range\":\"1,-1\"},\"to\":\"whole.png\"});");
     try {
         assert.ok(Buffer.from(await readFile(join(root, "whole.png"))).equals(PNG), "<1,-1> copies every byte");
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("{§binary-parity} a byte range copies exactly those bytes (coordinate = byte)", async () => {
-    const { root } = await runCopy({ "logo.png": PNG }, "````COPY (logo.png) <1,8> (head.png)````");
+    const { root } = await runCopy({ "logo.png": PNG }, "await plurnk.copy({\"from\":{\"path\":\"logo.png\",\"range\":\"1,8\"},\"to\":\"head.png\"});");
     try {
         // The 8-byte PNG signature, 1-indexed bytes 1..8 inclusive.
         assert.ok(Buffer.from(await readFile(join(root, "head.png"))).equals(PNG.subarray(0, 8)), "bytes 1..8 are the PNG signature");
@@ -204,7 +202,7 @@ test("{§binary-parity} a byte-pattern COPY and MOVE select the same native frag
 });
 
 test("{§binary-parity} a scoped binary MOVE removes exactly the transferred source bytes", async () => {
-    const { root, operations } = await runCopy({ "source.png": PNG }, "````MOVE (source.png) <2,4> (move.png)````");
+    const { root, operations } = await runCopy({ "source.png": PNG }, "await plurnk.move({\"from\":{\"path\":\"source.png\",\"range\":\"2,4\"},\"to\":\"move.png\"});");
     try {
         assert.equal(operations.find(({ op }) => op === "MOVE")?.status_rx, 200);
         assert.deepEqual(await readFile(join(root, "move.png")), PNG.subarray(1, 4));
@@ -214,7 +212,7 @@ test("{§binary-parity} a scoped binary MOVE removes exactly the transferred sou
 
 test("{§binary-parity} a same-channel byte MOVE uses pre-mutation coordinates", async () => {
     const source = Buffer.from([0, 1, 2, 3, 4, 5]);
-    const { root, operations } = await runCopy({ "source.png": source }, "````MOVE (source.png) <2,3> (source.png) <-1>````");
+    const { root, operations } = await runCopy({ "source.png": source }, "await plurnk.move({\"from\":{\"path\":\"source.png\",\"range\":\"2,3\"},\"to\":{\"path\":\"source.png\",\"range\":\"-1\"}});");
     try {
         assert.equal(operations.find(({ op }) => op === "MOVE")?.status_rx, 200);
         assert.deepEqual(await readFile(join(root, "source.png")), Buffer.from([0, 3, 4, 5, 1, 2]));
@@ -222,7 +220,7 @@ test("{§binary-parity} a same-channel byte MOVE uses pre-mutation coordinates",
 });
 
 for (const target of ["source.png", "workspace:///source.png"]) test(`{§binary-parity} pattern EDIT of ${target} is a typed refusal, not an anchor invariant failure`, async () => {
-    const { root, operations } = await runCopy({ "source.png": PNG }, `${target.startsWith("workspace:") ? `\`\`\`\`COPY (source.png) (${target})\`\`\`\`\n` : ""}\`\`\`\`EDIT (${target}) /PNG/\nreplacement\n\`\`\`\``);
+    const { root, operations } = await runCopy({ "source.png": PNG }, `${target.startsWith("workspace:") ? `await plurnk.copy({"from":"source.png","to":"${target}"});\n\n` : ""}await plurnk.edit({"path":"${target}","pattern":"/PNG/","content":"replacement"});`);
     try {
         const edit = operations.find(({ op }) => op === "EDIT");
         assert.equal(edit?.status_rx, 415, JSON.stringify(edit));
@@ -236,7 +234,7 @@ const BIN16 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
 const PATCH = Buffer.from([0xaa, 0xbb, 0xcc, 0xdd]);
 
 test("{§binary-parity} a destination byte range is spliced: <c,d> becomes the source bytes, the rest untouched", async () => {
-    const { root } = await runCopy({ "target.png": BIN16, "patch.png": PATCH }, "````COPY (patch.png) <1,4> (target.png) <5,8>````");
+    const { root } = await runCopy({ "target.png": BIN16, "patch.png": PATCH }, "await plurnk.copy({\"from\":{\"path\":\"patch.png\",\"range\":\"1,4\"},\"to\":{\"path\":\"target.png\",\"range\":\"5,8\"}});");
     try {
         const expected = Buffer.concat([BIN16.subarray(0, 4), PATCH, BIN16.subarray(8)]);
         assert.ok(Buffer.from(await readFile(join(root, "target.png"))).equals(expected), "bytes 5..8 became the patch, every other byte kept");
@@ -245,7 +243,7 @@ test("{§binary-parity} a destination byte range is spliced: <c,d> becomes the s
 });
 
 test("{§binary-parity} a single destination byte position inserts the source bytes before it", async () => {
-    const { root } = await runCopy({ "target.png": BIN16, "patch.png": PATCH }, "````COPY (patch.png) <1,2> (target.png) <3>````");
+    const { root } = await runCopy({ "target.png": BIN16, "patch.png": PATCH }, "await plurnk.copy({\"from\":{\"path\":\"patch.png\",\"range\":\"1,2\"},\"to\":{\"path\":\"target.png\",\"range\":\"3\"}});");
     try {
         const expected = Buffer.concat([BIN16.subarray(0, 2), PATCH.subarray(0, 2), BIN16.subarray(2)]);
         assert.ok(Buffer.from(await readFile(join(root, "target.png"))).equals(expected), "the two patch bytes were inserted before byte 3");
@@ -260,15 +258,11 @@ const runRoundTrip = async (dsl0: string, dsl1: string) => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         mockTurn(`${dsl0}
 
-\`\`\`\`NOTE
-stashed
-\`\`\`\``),
+await plurnk.note({"text":"stashed"});`),
         mockTurn(`${dsl1}
 
-\`\`\`\`NOTE
-copied
-\`\`\`\``),
-        mockTurn("````DONE\ndone\n````"),
+await plurnk.note({"text":"copied"});`),
+        mockTurn("await plurnk.done({\"text\":\"done\"});"),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -291,7 +285,7 @@ copied
 };
 
 test("{§binary-parity} a binary lives in a session:// entry and round-trips to a file byte-for-byte", async () => {
-    const root = await runRoundTrip("````COPY (logo.png) (workspace:///stash.png)````", "````COPY (workspace:///stash.png) (out.png)````");
+    const root = await runRoundTrip("await plurnk.copy({\"from\":\"logo.png\",\"to\":\"workspace:///stash.png\"});", "await plurnk.copy({\"from\":\"workspace:///stash.png\",\"to\":\"out.png\"});");
     try {
         assert.ok(Buffer.from(await readFile(join(root, "out.png"))).equals(PNG), "the binary survived a session:// round-trip byte-for-byte");
     } finally { await rm(root, { recursive: true, force: true }); }
@@ -299,8 +293,10 @@ test("{§binary-parity} a binary lives in a session:// entry and round-trips to 
 
 for (const intermediate of ["copy.bin", "workspace:///stash"]) {
     test(`{§copy} binary transfers through ${intermediate} retain bytes and type across real turns`, async () => {
-        const root = await runRoundTrip(`\`\`\`\`COPY (logo.png) <1,8> (${intermediate})\`\`\`\``,
-            `\`\`\`\`COPY (logo.png) <9,-1> (${intermediate}) <-1>\`\`\`\`\n\`\`\`\`MOVE (${intermediate}) (output.png)\`\`\`\``);
+        const root = await runRoundTrip(`await plurnk.copy({"from":{"path":"logo.png","range":"1,8"},"to":"${intermediate}"});`,
+            `await plurnk.copy({"from":{"path":"logo.png","range":"9,-1"},"to":{"path":"${intermediate}","range":"-1"}});
+
+await plurnk.move({"from":"${intermediate}","to":"output.png"});`);
         try {
             assert.deepEqual(await readFile(join(root, "output.png")), PNG);
             assert.deepEqual(await readFile(join(root, "logo.png")), PNG);
@@ -314,7 +310,7 @@ for (const op of ["COPY", "MOVE"]) {
         test(`{§copy} ${op} refuses the known textual type of ${target} without changing either file`, async () => {
             const original = Buffer.from("retained text\n");
             const { root, operations } = await runCopy({ "logo.png": PNG, "existing.bin": original },
-                `\`\`\`\`${op} (logo.png) (${target}) <1,-1>\`\`\`\``);
+                `await plurnk.${op.toLowerCase()}({"from":"logo.png","to":{"path":"${target}","range":"1,-1"}});`);
             try {
                 const result = operations.find((operation) => operation.op === op);
                 assert.equal(result?.status_rx, 415, JSON.stringify(result));
@@ -330,15 +326,15 @@ for (const op of ["COPY", "MOVE"]) {
 }
 
 test("{§binary-parity} a byte range copies out of a session:// entry exactly (coordinate = byte)", async () => {
-    const root = await runRoundTrip("````COPY (logo.png) (workspace:///stash.png)````", "````COPY (workspace:///stash.png) <1,8> (head.png)````");
+    const root = await runRoundTrip("await plurnk.copy({\"from\":\"logo.png\",\"to\":\"workspace:///stash.png\"});", "await plurnk.copy({\"from\":{\"path\":\"workspace:///stash.png\",\"range\":\"1,8\"},\"to\":\"head.png\"});");
     try {
         assert.ok(Buffer.from(await readFile(join(root, "head.png"))).equals(PNG.subarray(0, 8)), "bytes 1..8 out of the entry are the PNG signature");
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("{§binary-parity} a stored binary supports the same destination splice and scoped MOVE as a file", async () => {
-    const root = await runRoundTrip("````COPY (logo.png) (workspace:///stash.png)````",
-        "````COPY (logo.png) <2,4> (workspace:///stash.png) <5,8>````\n````MOVE (workspace:///stash.png) <2,4> (moved.png)````\n````COPY (workspace:///stash.png) (remaining.png)````");
+    const root = await runRoundTrip("await plurnk.copy({\"from\":\"logo.png\",\"to\":\"workspace:///stash.png\"});",
+        "await plurnk.copy({\"from\":{\"path\":\"logo.png\",\"range\":\"2,4\"},\"to\":{\"path\":\"workspace:///stash.png\",\"range\":\"5,8\"}});\n\nawait plurnk.move({\"from\":{\"path\":\"workspace:///stash.png\",\"range\":\"2,4\"},\"to\":\"moved.png\"});\n\nawait plurnk.copy({\"from\":\"workspace:///stash.png\",\"to\":\"remaining.png\"});");
     try {
         assert.deepEqual(await readFile(join(root, "moved.png")), PNG.subarray(1, 4));
         assert.deepEqual(await readFile(join(root, "remaining.png")), Buffer.concat([PNG.subarray(0, 1), PNG.subarray(1, 4), PNG.subarray(8)]));

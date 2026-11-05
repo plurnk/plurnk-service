@@ -29,7 +29,7 @@ const assertDelivery = async (sessionName: string): Promise<void> => {
     ]);
     const provider = new Mock({
         contextWindow: 32768,
-        responses: [makeMockResponse("````SEND\nBeat taken.\n````", 10)],
+        responses: [makeMockResponse("await plurnk.send({\"text\":\"Beat taken.\"});", 10)],
     });
     // {§test-artifact-retention} — this lane's run directory, beside every other harness's.
     const db = await openMigrated(join(await testArtifactDirectory("schedule"), `db-${crypto.randomUUID()}.db`));

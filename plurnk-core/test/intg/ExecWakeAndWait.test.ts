@@ -34,13 +34,9 @@ describe("Daemon.exec-wake", () => {
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const execDsl = (command: string, disposition: "WAIT" | "NOTE" = "WAIT"): string =>
-    `\`\`\`\`sh
-${command}
-\`\`\`\`
+    `await plurnk.sh(${JSON.stringify({ command })});
 
-\`\`\`\`${disposition}
-Observe the command.
-\`\`\`\``;
+await plurnk.${disposition.toLowerCase()}({"text":"Observe the command."});`;
 
 const mockResponse = (dsl: string) => {
     return {
@@ -56,8 +52,8 @@ const mockResponse = (dsl: string) => {
 test("{§session-causal-admission}: a person's operation can cancel a workspace stream and wake its initiating waiting session", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 65536, responses: [
-        mockResponse("````sh\nsleep 30\n````\n````WAIT\nWait for the command's outcome.\n````"),
-        mockResponse("````DONE\nThe command was cancelled.\n````"),
+        mockResponse("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.wait({\"text\":\"Wait for the command's outcome.\"});"),
+        mockResponse("await plurnk.done({\"text\":\"The command was cancelled.\"});"),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -76,7 +72,7 @@ test("{§session-causal-admission}: a person's operation can cancel a workspace 
             assert.equal(subscriptions.length, 1);
             const subscription = await db.test_get_subscription.get<{ entry_id: number }>({ id: subscriptions[0].id });
             const resource = await db.test_get_entry_by_id.get<{ pathname: string; scheme: string }>({ id: subscription!.entry_id });
-            const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`KILL (${resource!.scheme}://${resource!.pathname})`, null), { executors: fixtureExecutors(PlurnkParser.frame(`KILL (${resource!.scheme}://${resource!.pathname})`, null)) }).items[0];
+            const parsed = PlurnkParser.parseStatements(`await plurnk.kill({"path":"${resource!.scheme}://${resource!.pathname}"});`, { executors: fixtureExecutors(`await plurnk.kill({"path":"${resource!.scheme}://${resource!.pathname}"});`) }).items[0];
             if (parsed?.kind !== "statement") throw new Error("Expected KILL");
             const [killed] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parsed.statement] });
             assert.equal(killed.status, 200, JSON.stringify(killed));
@@ -118,8 +114,8 @@ test("{§notifications}: a pending completion wake is not reported as an execute
         finally { settled.resolve(); }
     });
     const provider = new Mock({ contextWindow: 65536, responses: [
-        mockResponse("````sh\nsleep 30\n````\n````WAIT\nWait for the command.\n````"),
-        mockResponse("````DONE\nA cancelled task must not reach this turn.\n````"),
+        mockResponse("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.wait({\"text\":\"Wait for the command.\"});"),
+        mockResponse("await plurnk.done({\"text\":\"A cancelled task must not reach this turn.\"});"),
     ] });
     await withDaemon(provider, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -161,13 +157,13 @@ test("{§session-model-selection}: an async wake resumes with the loop's durable
     const releasePath = join(releaseDir, "release");
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("````DONE\nboot provider must never run this loop\n````")],
+        responses: [mockResponse("await plurnk.done({\"text\":\"boot provider must never run this loop\"});")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl(`while [ ! -f '${releasePath}' ]; do sleep 0.05; done; echo selected`)),
-            mockResponse("````DONE\nresumed on selected provider\n````"),
+            mockResponse("await plurnk.done({\"text\":\"resumed on selected provider\"});"),
         ],
     });
     const selectedSpec = { alias: "wakeb", provider: "openai", model: "wake-provider-b" } as const;
@@ -230,14 +226,14 @@ test("{§session-model-selection}: a selector-less continuation resumes the loop
     const releasePath = join(releaseDir, "release");
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("````DONE\nboot provider must never run this loop\n````")],
+        responses: [mockResponse("await plurnk.done({\"text\":\"boot provider must never run this loop\"});")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl(`while [ ! -f '${releasePath}' ]; do sleep 0.05; done; echo selected`)),
-            mockResponse("````NOTE\nawaiting the exec before concluding\n````"),
-            mockResponse("````DONE\nresumed on selected provider\n````"),
+            mockResponse("await plurnk.note({\"text\":\"awaiting the exec before concluding\"});"),
+            mockResponse("await plurnk.done({\"text\":\"resumed on selected provider\"});"),
         ],
     });
     const selectedSpec = { alias: "wakedefault", provider: "openai", model: "wake-provider-b" } as const;
@@ -282,13 +278,13 @@ test("{§session-model-selection}: a parked loop retains its provider across dae
     serverProposals(t, "accept");
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("````DONE\nboot provider must remain unused\n````")],
+        responses: [mockResponse("await plurnk.done({\"text\":\"boot provider must remain unused\"});")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl("sleep 30")),
-            mockResponse("````DONE\nresumed after restart on selected provider\n````"),
+            mockResponse("await plurnk.done({\"text\":\"resumed after restart on selected provider\"});"),
         ],
     });
     const selectedSpec = { alias: "restartb", provider: "openai", model: "restart-provider-b" } as const;
@@ -381,7 +377,7 @@ test("{§session-wait-timing} wake-on-completion: a slept (202) loop resumes IN 
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl("sleep 0.05; echo hi")),
-            mockResponse("````DONE\nsaw the wake\n````"),
+            mockResponse("await plurnk.done({\"text\":\"saw the wake\"});"),
         ],
     });
 
@@ -448,7 +444,7 @@ test("{§session-wait-timing} wake-on-completion preserves the durable loop's cu
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl("sleep 0.05; echo ceiling")),
-            mockResponse("````DONE\nmust not receive a second model turn\n````"),
+            mockResponse("await plurnk.done({\"text\":\"must not receive a second model turn\"});"),
         ],
     });
 
@@ -486,7 +482,7 @@ test("{§session-causal-admission} wake-on-completion: active loop → daemon do
     // Loop emits exec + an NOTE per turn — the loop
     // stays active across multiple turns. The exec finishes mid-loop;
     // wake should see active loop and skip.
-    const continueResponse = mockResponse("````NOTE\nthinking\n````");
+    const continueResponse = mockResponse("await plurnk.note({\"text\":\"thinking\"});");
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
@@ -494,7 +490,7 @@ test("{§session-causal-admission} wake-on-completion: active loop → daemon do
             continueResponse,
             continueResponse,
             continueResponse,
-            mockResponse("````DONE\ndone\n````"),
+            mockResponse("await plurnk.done({\"text\":\"done\"});"),
         ],
     });
 
@@ -532,9 +528,9 @@ test("{§session-causal-admission} wake-on-completion: streaming spawn outlives 
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse("````sh\nfor i in 5 4 3 2 1; do echo $i; sleep 0.4; done\n````\n\n````WAIT\nfire and forget\n````"),
+            mockResponse("await plurnk.sh({\"command\":\"for i in 5 4 3 2 1; do echo $i; sleep 0.4; done\"});\n\nawait plurnk.wait({\"text\":\"fire and forget\"});"),
             // Wake-opened loop just terminates so the test completes:
-            mockResponse("````DONE\nsaw the wake\n````"),
+            mockResponse("await plurnk.done({\"text\":\"saw the wake\"});"),
         ],
     });
 
@@ -591,8 +587,8 @@ test("{§session-loop-lifecycle} wake-on-completion: loop.cancel mid-spawn → d
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
-            mockResponse("````DONE\nnever\n````"),
+            mockResponse("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.note({\"text\":\"running\"});"),
+            mockResponse("await plurnk.done({\"text\":\"never\"});"),
         ],
     });
 
@@ -642,8 +638,8 @@ test("{§executor-subprocess} loop.cancel preserves partial stdout on the 499 co
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse("````sh\nprintf 'a\\nb\\n'; sleep 30\n````\n\n````NOTE\nrunning\n````"),
-            mockResponse("````DONE\nnever\n````"),
+            mockResponse("await plurnk.sh({\"command\":\"printf 'a\\\\nb\\\\n'; sleep 30\"});\n\nawait plurnk.note({\"text\":\"running\"});"),
+            mockResponse("await plurnk.done({\"text\":\"never\"});"),
         ],
     });
 
@@ -701,7 +697,7 @@ const mockTurn = (dsl: string) => ({
 
 // A host exec that arms itself against the polite signals, then sleeps. Only the housekeeping
 // SIGKILL (delivered to the whole process group) can end it — a bare HUP/TERM is trapped away.
-const stubbornSpawn = "````sh\ntrap '' HUP TERM; sleep 30\n````\n\n````WAIT\nparked with a stubborn spawn\n````";
+const stubbornSpawn = "await plurnk.sh({\"command\":\"trap '' HUP TERM; sleep 30\"});\n\nawait plurnk.wait({\"text\":\"parked with a stubborn spawn\"});";
 
 test("{§session-causal-admission} teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bounded housekeeping reap", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
@@ -849,8 +845,8 @@ test("{§op-shapes} a decorated WAIT parks on its actual live stream; the decora
     const fixture = await wire(() => completion.promise);
     try {
         const content = [
-            PlurnkParser.frame(fixture.tag, "go"),
-            PlurnkParser.frame("WAIT (session://absent) <0,0> [{\"timeout\":0}]", "Await results."),
+            `await plurnk[${JSON.stringify(fixture.tag)}](${JSON.stringify("go")});`,
+            "await plurnk.wait({\"target\":\"session://absent\",\"text\":\"Await results.\"});",
         ].join("\n\n");
         const result = await fixture.engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content, reasoning: null } }] }),
@@ -992,7 +988,7 @@ test("{§operation-results} cancelling a parked loop releases its undelivered fe
     const pushed = t.mock.method(NoticeChannel.prototype, "push");
     const deleted = t.mock.method(NoticeChannel.prototype, "delete");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeRawMockResponse("````sh\nsleep 30\n````\n\n````WAIT 15\n````", 10),
+        makeRawMockResponse("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.WAIT({\"seconds\":15});", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1018,15 +1014,17 @@ test("{§operation-results} cancelling a parked loop releases its undelivered fe
     });
 });
 
-for (const header of ["WAIT", "WAIT [0]"]) {
+for (const [header, seconds] of [["WAIT", undefined], ["WAIT [0]", 0]] as const) {
     test(`{§session-loop-lifecycle} ${header} resumes a loop without closing its open stream`, async (t) => {
         disableOptimisticWait(t);
         serverProposals(t, "accept");
         const previous = process.env.PLURNK_SERVICE_WAIT_SEC;
         process.env.PLURNK_SERVICE_WAIT_SEC = "1";
         const mock = new Mock({ contextWindow: 16384, responses: [
-            makeMockResponse(`\`\`\`\`sh [{"lifetime": "30m"}]\nsleep 30\n\`\`\`\`\n\n\`\`\`\`${header}\nawait the result\n\`\`\`\``, 10),
-            makeMockResponse("````SEND\nobserved the still-open stream\n````\n````KILL (session://root)\n````", 10),
+            makeMockResponse(`await plurnk.sh({"metadata":["{\\"lifetime\\": \\"30m\\"}"],"command":"sleep 30"});
+
+await plurnk.wait(${JSON.stringify({ ...(seconds === undefined ? {} : { seconds }), text: "await the result" })});`, 10),
+            makeMockResponse("await plurnk.send({\"text\":\"observed the still-open stream\"});\n\nawait plurnk.kill({\"path\":\"session://root\"});", 10),
         ] });
         try {
             await withDaemon(mock, async (db, daemon, addr) => {
@@ -1070,8 +1068,8 @@ test("{§session-loop-lifecycle} closure wakes the parked loop exactly once befo
     // The duration is far longer than the spawn: the only wake that can arrive is closure.
     process.env.PLURNK_SERVICE_WAIT_SEC = "600";
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````sh\nsleep 3; echo closed\n````\n\n````WAIT\nwaiting for closure\n````", 10),
-        makeMockResponse("````DONE\nobserved terminal closure\n````", 10),
+        makeMockResponse("await plurnk.sh({\"command\":\"sleep 3; echo closed\"});\n\nawait plurnk.wait({\"text\":\"waiting for closure\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"observed terminal closure\"});", 10),
     ] });
     try {
         await withDaemon(mock, async (_db, _daemon, addr) => {

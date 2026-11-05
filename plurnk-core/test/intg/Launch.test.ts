@@ -337,7 +337,7 @@ test("{§observability-boundary} specimen schedules deliver and shut down withou
     serverProposals(t, "accept");
     const provider = new Mock({
         contextWindow: 100_000,
-        responses: [makeMockResponse("````DONE\nScheduled message received.\n````", 10)],
+        responses: [makeMockResponse("await plurnk.done({\"text\":\"Scheduled message received.\"});", 10)],
     });
     t.mock.method(ProviderInstantiate, "loadActiveProvider", async () => provider);
     const inference = t.mock.method(provider, "generate");
@@ -684,7 +684,7 @@ const explosionProofLoop = async (): Promise<boolean> => {
             contextWindow: 16384,
             responses: [{
                 assistant: {
-                    content: "\n````DONE\nstill works.\n````",
+                    content: "await plurnk.done({\"text\":\"still works.\"});",
                     reasoning: null,
                 },
             }],
@@ -791,7 +791,7 @@ test("{§observability-boundary} observe: prompts, bodies, hosts, URLs, and secr
             contextWindow: 16384,
             responses: [{
                 assistant: {
-                    content: "\n````DONE\ntask complete.\n````",
+                    content: "await plurnk.done({\"text\":\"task complete.\"});",
                     reasoning: null,
                 },
             }],
@@ -845,13 +845,13 @@ test("{§observability-boundary} observe: an invalid first emission retries unde
                 {
                     assistant: {
                         // No executable operation or lifecycle declaration.
-                        content: "````READ (workspace:///not-a-plurnk-turn",
+                        content: "await plurnk.read({\"path\":\"workspace:///not-a-plurnk-turn",
                         reasoning: null,
                     },
                 },
                 {
                     assistant: {
-                        content: "\n````DONE\nrecovered.\n````",
+                        content: "await plurnk.done({\"text\":\"recovered.\"});",
                         reasoning: null,
                     },
                 },
@@ -928,7 +928,7 @@ test("{§observability-boundary} observe: a real loop emits the loop → turn �
                 responses: [{
                     assistant: {
                         // ops deliberately absent: the engine must parse this content.
-                        content: "\n````DONE\nobserved.\n````",
+                        content: "await plurnk.done({\"text\":\"observed.\"});",
                         reasoning: null,
                     },
                 }],

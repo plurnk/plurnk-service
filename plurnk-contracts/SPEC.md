@@ -22,8 +22,8 @@
 flowchart LR
     canon["Canonical model teaching<br/>plurnk.md"]
     free["Other admitted input"]
-    syntax["ANTLR lexer + parser<br/>syntax and document tier"]
-    ast["AstBuilder<br/>typed, serializable AST"]
+    syntax["Code Mode parser<br/>CodeMode.ts"]
+    ast["Typed, serializable AST<br/>PlurnkStatement"]
     runtime["Runtime owners<br/>stateful semantics and effects"]
     canon --> syntax
     canon --> free
@@ -35,13 +35,13 @@ flowchart LR
 | Layer | Owner or artifact | Contract |
 | --- | --- | --- |
 | Stable current law | `SPEC.md` | Owns invariants and boundaries; forge issues retain history |
-| Canonical model teaching | `plurnk.md` | Teaches the lean spelling and operational model the model should emit |
-| Accepted syntax | `plurnkLexer.g4`, `plurnkParser.g4` | Recognizes document tiers, operation fences, slot shape, and section boundaries |
-| Typed admission | `AstBuilder` | Produces JSON-serializable unions and validates deterministic body/path syntax |
+| Canonical model teaching | `plurnk.md` | Teaches the lean Code Mode call syntax and operational model the model should emit |
+| Accepted syntax | `CodeMode.ts`, `MatcherSyntax.ts`, `ScopeSyntax.ts`, `TargetSyntax.ts` | Recognizes declarative `await <service>.<tool>(args);` calls, literal argument shapes, and outside text |
+| Typed admission | `PlurnkStatement` AST | Produces JSON-serializable unions and validates deterministic path/scope/matcher syntax |
 | Shared wire data | `schema/*.json` | Defines runtime-neutral data shapes projected into generated TypeScript |
 | Stateful behavior | consuming runtime | Resolves addresses, permissions, selection arithmetic, effects, and lifecycle |
 
-- **Authoritative representations**: JSON Schema is authoritative for shared wire data shapes; TypeScript types are generated from `schema/*.json`; ANTLR grammars in `@plurnk/plurnk-parser` are authoritative for accepted model-language syntax.
+- **Authoritative representations**: JSON Schema is authoritative for shared wire data shapes; TypeScript types are generated from `schema/*.json`; `@plurnk/plurnk-parser` is authoritative for accepted Code Mode syntax.
 - **ACP discovery and schema enforcement**: `AcpDiscovery` enumerates the installed ACP v2 actions (`scope`, `inputSchema`, `outputSchema`), notifications (`payloadSchema`), and `display` capabilities. Boundary validators enforce these schemas without mutating them and report structured validation `issues` in RFC 9457 Problem `detail`.
 - **JSON result and document presentation**: `renderJsonResult` formats compact aggregate operation rows (placing top-level array items on individual lines without rewriting stored JSON coordinates). `formatJsonDocument` performs two-space whitespace-only formatting of complete strict JSON documents before representation storage.
 
@@ -87,68 +87,59 @@ flowchart LR
 
 ---
 
-## §operation-fences 2. Canonical statement form and operation fences
+## §operation-fences 2. Canonical Code Mode statement form
 
-`````text
-```OP (path)? <scope>? [metadata]? <!-- aside -->?
-body
+```ts
+await plurnk.<op>({ ... }); // optional aside
+
+await <service>.<tool>({ ... });
 ```
 
-```executor (program-or-tool)?
-input
-```
-`````
+- **Declarative top-level tool calls**: Every canonical statement is an unwrapped TypeScript/JavaScript `await <service>.<tool>(args);` call (with `await` and trailing `;` optional). `plurnk` is the built-in runtime service (`plurnk.read`, `plurnk.find`, `plurnk.edit`, `plurnk.copy`, `plurnk.move`, `plurnk.kill`, `plurnk.note`, `plurnk.todo`, `plurnk.work`, `plurnk.fork`, `plurnk.bare`, `plurnk.send`, `plurnk.done`, `plurnk.fail`, `plurnk.wait`, REPL tools `plurnk.sh`, `plurnk.js`, `plurnk.python3`, and Functionality tools `plurnk.env`, `plurnk.mcp`, `plurnk.members`, `plurnk.personas`, `plurnk.schedule`, `plurnk.skills`, `plurnk.question`). External MCP servers are peer top-level namespaces (`await <service>.<tool>(args);`).
+- **Bracket property access**: Non-identifier tool names use bracket notation (`await gitea["issue-read"]({ ... });`).
+- **No free JavaScript execution in the parser**: Top-level statements are parsed as declarative calls with literal arguments (`{ ... }`, `[ ... ]`, strings/backticks, numbers, booleans, `null`); variable declarations and control-flow constructs (`const`, `let`, `var`, `if`, `for`, `while`, `function`, `try`) are refused with a parser diagnostic directing JavaScript logic to `await plurnk.js({ code: "..." });`.
 
-- **Backtick block boundaries**: Every canonical statement is a fenced block opened at column 0–3 by three or more backticks (`PLURNK_FENCE` is ``` ``` ```) followed on the same physical line by an operation keyword (`FIND`, `READ`, `EDIT`, `COPY`, `MOVE`, `SEND`, `DONE`, `FAIL`, `BARE`, `WORK`, `FORK`, `KILL`, `NOTE`, `TODO`, `WAIT`) or a runtime executor name.
-- **Fence width and nesting**: The parser accepts three or more backticks and renders three; a wider outer fence encloses narrower inner fences verbatim without dispatching them. A block closes at a line with at least the opening backtick count and only horizontal whitespace (or an optional closer aside), or falls back at the next outer operation heading or end of input.
-- **Naked operation recovery**: A column-zero line outside any block containing only a native operation name and optional `<!-- aside -->` opens that operation with a warning-severity advisory naming three backticks as the taught form.
-
-### §fence-pairing Fence pairing, quotations, and native tool calls
-
-`FencePairing` runs ahead of the lexer as a least-cost bracket parse over all fence lines in the turn so nested code blocks, unclosed blocks, and quoted examples resolve globally:
+### §fence-pairing Statement boundaries, unwrapped tolerances, and canonical rendering
 
 | Rule | Contract |
 | --- | --- |
-| Complete vs. repaired readings | Complete nested interpretations take precedence over missing-closer repairs; among repaired readings, preserving authored operations outranks repair count. |
-| Unclosed mutation yields | An `EDIT` body never swallows a same-width native operation heading; a missing closer is supplied before the next native heading so both operations run. |
-| Prose code blocks and message run-on | Inside `SEND`, `DONE`, `FAIL`, `WORK`, `FORK`, or `BARE` bodies, executor headings (` ```sh `, ` ```python3 `) are literal code blocks shown in the message, and an unclosed message body runs to the end of the turn. |
-| Quotations and indented fences | A bare fence or non-operation info string opens an inert quotation block; fences indented by 4+ spaces or a tab are literal CommonMark indented code. |
-| Near-miss tolerances | Inline chains on a closer line, closing fences with stray non-heading trailing text (repaired with trailing characters and any immediately following retry closers discarded), transparent mid-heading closers, case-insensitive executor names, `js`/`ts`/`node` alias fallback, forgotten tag on the line below a bare fence, unclosed header asides, and `@<1-4 digits>` line anchors are recovered with deterministic advisories. |
-| Native tool-call recovery | When a model emits provider-native tool-call markup (`<tool_call>`, `<function=...>`, JSON tool calls) instead of fenced operations, the parser recovers recognizable PLURNK operations or emits a warning receipt for unexecuted markup. |
-| Statement rendering | `PlurnkParser.stringify` formats AST statements back into canonical three-backtick blocks (or wider when the body contains fences), normalizing empty optional bodies to `null`. |
+| Balanced call boundaries | A statement spans from its `<service>.<tool>(` head through its matching closing `)` and optional `;` and trailing `// aside` comment. Multi-line strings and template literals (`` `...` ``) preserve embedded newlines and treat unescaped `${...}` as literal text. |
+| Markdown fence unwrapping | Code Mode statements require no Markdown fence; if a model wraps `await plurnk.<op>(...)` or `await <service>.<tool>(...)` inside a balanced `ts`, `js`, or plain Markdown code fence, the parser unwraps the block with a warning-severity advisory. |
+| Case-insensitive method recovery | Uppercase or mixed-case method names (`plurnk.READ(...)`, `plurnk.SH(...)`) recover to their lowercase canonical tool name with a warning-severity advisory. |
+| Statement rendering | `PlurnkParser.stringify` formats AST statements back into canonical `await plurnk.<op>({ ... });` or `await <service>.<tool>({ ... });` statements, normalizing empty optional bodies to `null`. |
 
-### §slot-order Heading slot order, target groups, and metadata modifiers
-
-Producers write `(target) <scope> [metadata] <!-- aside -->` separated by single ASCII spaces; ANTLR tolerates adjacent slots and scope/metadata permutations within a resource selection.
+### §slot-order Argument shapes, target groups, and metadata modifiers
 
 | Construct | Contract |
 | --- | --- |
-| Target groups and multi-target slots | A `READ` or `KILL` heading may carry multiple `(path)` slots, and a `FIND`, `READ`, or `KILL` `(path)` slot may carry a comma/pipe/whitespace-separated list of explicit `scheme://` URIs or a comma/pipe-separated list of local paths/globs outside brackets/braces, compiling into one statement per target in authored order. |
-| Scope on scopeless OPs | A `<scope>` written on `WORK`, `FORK`, `BARE`, `NOTE`, `TODO`, `DONE`, `FAIL`, or targetless `SEND` is dropped with a warning advisory while the operation still runs. |
-| Heading inline body & bare options | Trailing text on the heading line is read as the matcher on `FIND`/`READ`/`KILL` (and sigil-led `EDIT`), as `[{...}]` metadata when a bare JSON object appears on `SEND`/`DONE`/`FAIL`/`WORK`/`FORK`/`BARE`, or as the first body line with a warning advisory. |
-| Scheme metadata modifier | `[metadata]` preserves balanced brackets and quoted strings as raw inner text for the target scheme or executor (`MetadataOptions` parses first-party arrays of option objects and reserves `env`). |
-| Operation aside | A trailing `<!-- aside -->` comment on the heading line is stripped into `aside` (`string` or `null`) as descriptive metadata. |
+| Object and positional argument forms | Core operations accept their canonical `{ ... }` options object (`{ path, range?, pattern?, content?, ... }`) as well as concise positional string/array shorthands (`plurnk.read("a.ts")`, `plurnk.copy("a.ts", "b.ts")`, `plurnk.note("text")`). |
+| Target groups and multi-target lists | `plurnk.read`, `plurnk.find`, and `plurnk.kill` accept `path` or `paths` as a string or array of strings; comma/pipe/whitespace-separated `scheme://` URI lists and comma/pipe-separated local path/glob lists outside brackets/braces expand into one statement per target in authored order. |
+| `note` annotation on retrievals | Providing `note` on `plurnk.read` or `plurnk.find` emits a preceding `NOTE` statement before the retrieval(s). |
+| Scheme metadata modifier | `metadata` (`string` or `string[]`) passes raw metadata options to the target scheme or executor (`MetadataOptions` parses first-party arrays of option objects and reserves `env`). |
+| Operation aside | A trailing `// aside` comment after `;` or `)` on the closing line of a statement is captured into `aside` (`string` or `null`) as descriptive metadata. |
 
 ---
 
 ## §op-shapes 3. Per-operation semantics and dispositions
 
-| OP | `(path)` | `<scope>` | `body` |
+| Call | Target field | Scope / matcher fields | Content / payload fields |
 | --- | --- | --- | --- |
-| `FIND` | required target or glob | optional result range | annotation normalized to `NOTE` |
-| `READ` | required target (exact or glob fan-out) | optional text region | annotation normalized to `NOTE` |
-| `EDIT` | required file or entry | required for existing target; omitted only for creation | literal replacement/creation text |
-| `COPY` / `MOVE` | required source and destination | optional region after each path | empty (any body is ignored with a warning) |
-| execution | fence name is runtime; optional `(program-or-tool)` | none (lifetime in `[metadata]`) | optional program/tool input |
-| `BARE` | optional prompt resource | none | prompt text |
-| `WORK` / `FORK` | optional `session://name` or prompt resource | none | task prompt |
-| `KILL` | required target | optional text region | distillation `NOTE` on `log:///`; empty otherwise |
-| `SEND` | optional recipient | none | message body |
-| `DONE` | optional `message://` target | none | final deliverable message body (optional) |
-| `FAIL` | optional `message://` target | none | final failure message body (optional) |
-| `NOTE` | none | none | literal working memory |
-| `TODO` | none | none | remaining step list (`parseTodoItems`) |
-| `WAIT` | optional label | none (`[seconds]` in metadata) | wait explanation |
+| `plurnk.find` | required `path` / `paths` | optional `range`, `pattern` | optional `note` normalized to preceding `NOTE` |
+| `plurnk.read` | required `path` / `paths` | optional `range`, `pattern` | optional `note` normalized to preceding `NOTE` |
+| `plurnk.edit` | required `path` | `range` or `pattern` or `oldText`/`newText` or `edits` for existing target; `content` alone creates | `content`, `newText`, or `edits` array |
+| `plurnk.copy` / `plurnk.move` | required `from` and `to` | optional `fromRange` / `toRange` (or inline `path<L,M>`) | none |
+| `plurnk.sh` / `plurnk.js` / `plurnk.python3` | optional `cwd`, `script` | optional `range`, `metadata` | `command` (`sh`) or `code` (`js`, `python3`), optional `args` |
+| `plurnk.<functionality>` | tool name (`env`, `mcp`, `members`, `personas`, `schedule`, `skills`, `question`) | none | JSON arguments object |
+| `<service>.<tool>` | external MCP `<service>` and `<tool>` | optional second `{ range, metadata }` options arg | JSON arguments object or string |
+| `plurnk.bare` | optional `target` prompt resource | none | `prompt` / `text` |
+| `plurnk.work` / `plurnk.fork` | optional `target` (`session://name` or prompt resource) | none | `prompt` / `text` |
+| `plurnk.kill` | required `path` / `paths` | optional `range`, `pattern` | optional `note` distillation on `log:///` |
+| `plurnk.send` | optional `target` recipient | none | `text` message body |
+| `plurnk.done` | optional `target` (`message://`) | none | optional `text` final deliverable |
+| `plurnk.fail` | optional `target` (`message://`) | none | optional `text` final failure explanation |
+| `plurnk.note` | none | none | `text` literal working memory |
+| `plurnk.todo` | none | none | `text` or `items` remaining step list (`parseTodoItems`) |
+| `plurnk.wait` | optional `target` label | optional `seconds` | `text` wait explanation |
 
 - **Retrieval annotations**: Nonblank bodies beneath `FIND` or `READ` normalize into a preceding `NOTE` statement.
 - **Text scope algebra**: `<N>` selects whole line `N` (`0` prepends, `-1` appends on mutation); `<N,M>` selects inclusive lines `N..M`; `<SL,SC,EL,EC>` selects an exact 1-based Unicode code-point region with exclusive end (three-integer scopes normalize to four).
@@ -186,9 +177,8 @@ Producers write `(target) <scope> [metadata] <!-- aside -->` separated by single
 
 ## §whitespace-contract 6. Parser architecture, whitespace, and public API
 
-- **Body framing and outside text**: Body framing strips only the opening header newline and the single newline before the closing fence. `PlurnkParser.parse` partitions a model turn into ordered `statement`, `error`, and outside `text` items, flagging unfenced operation-like lines at column 0 with `Unfenced \`OP\` ignored.` warnings.
-- **Recorded emissions corpus**: `test/fixtures/recorded-emissions.jsonl` regresses the parser against real model emissions across live and demo runs.
-- **Tier entry points and runtime-neutral root**: `PlurnkParser.parse` (model turn) and `PlurnkParser.parseStatements` (protocol statements) are exported by `@plurnk/plurnk-parser`. The `@plurnk/plurnk-contracts` root is closed (verified by `src/index.test.ts`) and browser/DOM runtime-neutral (`tsconfig.browser.json`), with Node HTTP host types isolated in `@plurnk/plurnk-contracts/port`.
+- **Statement scanning and outside text**: `PlurnkParser.parse` partitions a model turn into ordered `statement`, `error`, and outside `text` items (`emptyTurn` is `true` when no `statement` or `error` items are produced).
+- **Tier entry points and runtime-neutral root**: `PlurnkParser.parse` (model turn), `PlurnkParser.parseStatements` (protocol statements), and `PlurnkParser.stringify` (canonical Code Mode rendering) are exported by `@plurnk/plurnk-parser`. The `@plurnk/plurnk-contracts` root is closed (verified by `src/index.test.ts`) and browser/DOM runtime-neutral (`tsconfig.browser.json`), with Node HTTP host types isolated in `@plurnk/plurnk-contracts/port`.
 
 ---
 
@@ -243,7 +233,6 @@ Producers write `(target) <scope> [metadata] <!-- aside -->` separated by single
 
 | Mechanism | Contract |
 | --- | --- |
-| Working-form recovery & attempt | Every hard error (`severity: "error"`) populates `recovery` with the canonical syntax of the refused construct and `attempt` (`{ text, verb }`) with the refused statement's source text; `operationOmitted` marks unexecuted unfenced or native-call fragments. Each malformed statement produces at most one hard error. |
-| Regex and matcher tolerances | Lifts leading PCRE inline flags `(?ims)` with a warning; folds comma-separated `/pattern/` lists on `FIND` and `READ` into alternation with a warning while refusing numeric/open sed ranges (`/a/,+N`, `/a/,-1`, `/a/,`) and mutating `/a/,/b/` ranges; diagnoses trailing text after `/pattern/flags`; recovers unclosed `/pattern` at EOL; flags unused non-log `KILL` body lines (`This KILL takes no body; line 2 was not used.`). |
-| Heading & slot tolerances | Reads bare heading patterns (`naked-pattern`, treating bare `#channel` after a channelless target as its channel fragment), peels trailing `<scope>`/`[metadata]`/`<!-- aside -->` slots from the right of a matcher when the heading has a single target, refuses unparenthesized bare targets (`READ a.py <1,4>`), recovers bare `EDIT` anchors (`@abcde` -> `<@abcde>`) and combined `42<@abcde>` scopes, and sets `unparsedTail` when an unclosed `(target` or `[metadata` destroys statement boundaries. |
-| Log-heading notation recovery | Recovers copied log-heading forms with a warning advisory: `OP → path <scope>` is read as `(path)`; `· 900` / `· 320 tokens` token charges are dropped; `· note text` at the end of a heading is read as `<!-- note text -->` (or dropped when an explicit `<!-- aside -->` follows). |
+| Working-form recovery & attempt | Every hard error (`severity: "error"`) populates `recovery` with the canonical Code Mode syntax of the refused construct and `attempt` (`{ text, verb }`) with the refused statement's source text; `operationOmitted` marks unexecuted call fragments. Each malformed statement produces at most one hard error. |
+| Regex and matcher tolerances | Lifts leading PCRE inline flags `(?ims)` with a warning; folds comma-separated `/pattern/` lists on `FIND` and `READ` into alternation with a warning while refusing numeric/open sed ranges (`/a/,+N`, `/a/,-1`, `/a/,`) and mutating `/a/,/b/` ranges; diagnoses trailing text after `/pattern/flags`; recovers unclosed `/pattern` at EOL. |
+| Statement & argument tolerances | Lifts inline `<L,M>` scopes from `path<L,M>` strings with a warning; recovers bare `EDIT` anchors (`@abcde`) and combined `42<@abcde>` scopes; unwraps Markdown-fenced Code Mode statements with a warning; and sets `unparsedTail` when an unclosed string, comment, parenthesis, bracket, or brace reaches end of input. |

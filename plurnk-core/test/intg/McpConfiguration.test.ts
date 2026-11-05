@@ -44,7 +44,7 @@ test("{§mcp-configuration} a global mcp.json supplies callable servers without 
         alias: "fixture", origin: "service", state: "dormant",
         provenance: { kind: "file", source: file, reference: "/mcpServers/fixture" },
     }]);
-    const [result] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne("````fixture (echo)\n{\"message\":\"file-backed\"}\n````")] });
+    const [result] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne("await fixture.echo({\"message\":\"file-backed\"});")] });
     assert.equal(result.status, 200);
     const output = await awaitExecOutcome(db, { workspaceId, scheme: "fixture", channel: "json", after: 0 });
     assert.deepEqual(output.content, [{ type: "text", text: "file-backed" }]);
@@ -108,7 +108,7 @@ test("{§mcp-configuration} malformed files leave chat usable and normal turns p
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `mcp-file-repair-${crypto.randomUUID()}`);
     const model = await insertSession(db, workspaceId, null, "primary", "model");
-    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 5 }, () => makeMockResponse("````DONE\nConfiguration checked.\n````")) });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 5 }, () => makeMockResponse("await plurnk.done({\"text\":\"Configuration checked.\"});")) });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -161,9 +161,11 @@ test("{§configuration-repair-path} a model's EDIT and same-turn list observe th
     const content = JSON.stringify({ mcpServers: { repaired: stdioEntry("echo-server.mjs") } });
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse(`\`\`\`\`EDIT (.agents/mcp.json) <1,-1>\n${content}\n\`\`\`\`\n\n\`\`\`\`plurnk (mcp)\n\`\`\`\``),
-        makeMockResponse("````repaired (echo)\n{\"message\":\"same-turn-repair\"}\n````"),
-        makeMockResponse("````DONE\nConfiguration repaired.\n````"),
+        makeMockResponse(`await plurnk.edit(${JSON.stringify({ path: ".agents/mcp.json", range: "1,-1", content })});
+
+await plurnk.mcp();`),
+        makeMockResponse("await repaired.echo({\"message\":\"same-turn-repair\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"Configuration repaired.\"});"),
     ] });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
@@ -197,7 +199,7 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `mcp-configuration-${crypto.randomUUID()}`);
-    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 6 }, () => makeMockResponse("````DONE\ndone\n````", 20)) });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 6 }, () => makeMockResponse("await plurnk.done({\"text\":\"done\"});", 20)) });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env: mcpEnv }), "@plurnk/plurnk-mcp");
     const directory = join(hostPaths.plurnkPluginsDir, "added");
@@ -212,7 +214,7 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
     const listed = async (): Promise<Listed[]> => (await invoke<{ definitions: Listed[] }>("list", {})).definitions;
     const call = async (server: string, tool: string) => {
         const before = (await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: server, prefix: "/%" })).length;
-        const [result] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne(`\`\`\`\`${server} (${tool})\n{"message":"configuration"}\n\`\`\`\``)] });
+        const [result] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne(`await ${server}.${tool}({"message":"configuration"});`)] });
         assert.ok(result !== undefined);
         if (result.status === 200) {
             const output = await awaitExecOutcome(db, { workspaceId, scheme: server, channel: "json", after: before });
@@ -237,7 +239,7 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
         assert.ok(Object.hasOwn(mcpSchema.properties, field), `the tool schema names ${field}`);
     }
     assert.equal(Object.hasOwn(mcpSchema.properties, "discover"), false, "with no registry the tool schema has no discover");
-    const [unserved] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne("````plurnk (mcp)\n{\"discover\": \"echo\"}\n````")] });
+    const [unserved] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne("await plurnk.mcp({\"discover\": \"echo\"});")] });
     assert.ok(unserved !== undefined);
     assert.equal(unserved.status, 400, "a discover the family does not serve is refused by the family tool");
     assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: "fixture" })).definition.state, "disabled");
@@ -263,7 +265,7 @@ test("{§functionality-inspection} {§functionality-inspection} changed baseline
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `mcp-hotload-${crypto.randomUUID()}`);
     const model = await insertSession(db, workspaceId, null, "primary", "model");
-    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 6 }, () => makeMockResponse("````DONE\ndone\n````", 20)) });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 6 }, () => makeMockResponse("await plurnk.done({\"text\":\"done\"});", 20)) });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env: mcpEnv }), "@plurnk/plurnk-mcp");
     const events: Array<{ method: string; params: unknown }> = [];

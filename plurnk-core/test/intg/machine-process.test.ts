@@ -480,8 +480,8 @@ for (const operation of ["COPY", "MOVE"]) for (const destination of ["", "caller
         const turnId = await insertOperationTurn(db, loopId, 1, "client");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         let sequence = 0;
-        const run = (header: string, body: string | null = null) => {
-            const item = PlurnkParser.parseStatements(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) }).items[0];
+        const run = (source: string) => {
+            const item = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) }).items[0];
             assert.equal(item?.kind, "statement");
             if (item?.kind !== "statement") throw new Error("Expected an operation");
             return engine.dispatch({ workspaceId, sessionId, loopId, turnId, sequence: ++sequence, origin: "client",
@@ -489,11 +489,11 @@ for (const operation of ["COPY", "MOVE"]) for (const destination of ["", "caller
         };
         const source = "session://peer/source.md";
         const target = destination === "" ? "workspace:///copy.md" : `session://${destination}/copy.md`;
-        assert.equal((await run(`EDIT (${source})`, "first\nsecond\nthird")).status, 201);
-        assert.equal((await run(`${operation} (${source}) ${scoped ? "<1,2>" : ""} (${target})`)).status, 201);
-        const copied = await run(`READ (${target}) <1,-1>`);
+        assert.equal((await run(`await plurnk.edit(${JSON.stringify({ path: source, content: "first\nsecond\nthird" })});`)).status, 201);
+        assert.equal((await run(`await plurnk.${operation.toLowerCase()}(${JSON.stringify({ from: scoped ? { path: source, range: "1,2" } : source, to: target })});`)).status, 201);
+        const copied = await run(`await plurnk.read(${JSON.stringify({ path: target, range: "1,-1" })});`);
         assert.equal(String(copied.content).trimEnd(), scoped ? "first\nsecond" : "first\nsecond\nthird");
-        const original = await run(`READ (${source}) <1,-1>`);
+        const original = await run(`await plurnk.read(${JSON.stringify({ path: source, range: "1,-1" })});`);
         if (operation === "COPY") assert.equal(original.content, "first\nsecond\nthird");
         else if (scoped) assert.equal(String(original.content).trimEnd(), "third");
         else assert.equal(original.status, 404);
@@ -519,11 +519,11 @@ const row = (log: string, op: string): Record<string, unknown> | undefined => ro
 test("{§log-history-projection} a KILL that worked never renders; one that matched nothing renders once; errors, resource KILLs, and forensic evidence remain", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
-        "````EDIT (workspace:///note)\nfirst line\nsecond line\n````\n\n````READ (workspace:///note)````\n````NOTE\nwrote\n````",
-        "````KILL (log:///1/**/READ) <2,-1>````\n````KILL (log:///1/**/EDIT)````\n````KILL (log:///9/9/9)````\n````NOTE\ncurated\n````",
-        "````KILL (log:///1/**/EDIT)````\n````READ (log:///1/3/2/KILL)````\n````READ (workspace:///note)````\n````KILL (workspace:///note)````\n````NOTE\nverified\n````",
-        "````NOTE\nthe mismatch has been seen; moving on\n````",
-        "````DONE\ndone\n````",
+        "await plurnk.edit({\"path\":\"workspace:///note\",\"content\":\"first line\\nsecond line\"});\n\nawait plurnk.read({\"path\":\"workspace:///note\"});\n\nawait plurnk.note({\"text\":\"wrote\"});",
+        "await plurnk.kill({\"path\":\"log:///1/**/READ\",\"range\":\"2,-1\"});\n\nawait plurnk.kill({\"path\":\"log:///1/**/EDIT\"});\n\nawait plurnk.kill({\"path\":\"log:///9/9/9\"});\n\nawait plurnk.note({\"text\":\"curated\"});",
+        "await plurnk.kill({\"path\":\"log:///1/**/EDIT\"});\n\nawait plurnk.read({\"path\":\"log:///1/3/2/KILL\"});\n\nawait plurnk.read({\"path\":\"workspace:///note\"});\n\nawait plurnk.kill({\"path\":\"workspace:///note\"});\n\nawait plurnk.note({\"text\":\"verified\"});",
+        "await plurnk.note({\"text\":\"the mismatch has been seen; moving on\"});",
+        "await plurnk.done({\"text\":\"done\"});",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -970,7 +970,7 @@ test(`{§db-migrations} {§message-completion} {§env-delta}: a ${V5_0_0.label} 
         const engine = new Engine({ db: upgraded, schemes: new SchemeRegistry() });
         await engine.runTurn({
             workspaceId, sessionId: childId, loopId, messages: [],
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````DONE\nDone answer.\n````", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.done({\"text\":\"Done answer.\"});", reasoning: null } }] }),
         });
     } finally { await upgraded.close(); }
     const after = new DatabaseSync(path);

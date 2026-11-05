@@ -48,7 +48,7 @@ test("{§message-arrival} boot restores a drain for accepted queued work", async
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("````DONE\nrecovered queued work\n````")],
+        responses: [makeMockResponse("await plurnk.done({\"text\":\"recovered queued work\"});")],
     });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
@@ -95,7 +95,7 @@ test("{§message-arrival} boot restores a drain for accepted queued work", async
 
 test("{§session-wait-timing}: restart settles an interrupted child and wakes the parent parked on it", async () => {
     const db = await openMigrated();
-    const mock = new Mock({ contextWindow: 65536, responses: [makeMockResponse("````DONE\nThe child was interrupted.\n````")] });
+    const mock = new Mock({ contextWindow: 65536, responses: [makeMockResponse("await plurnk.done({\"text\":\"The child was interrupted.\"});")] });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
     try {
@@ -122,7 +122,7 @@ test("{§machine-processes}: boot rejects queued provider work owned by a non-mo
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("````DONE\nmust remain unused\n````")],
+        responses: [makeMockResponse("await plurnk.done({\"text\":\"must remain unused\"});")],
     });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
@@ -281,7 +281,7 @@ for (const staged of ["loop", "messages"] as const) {
         const db = await openMigrated();
         const firstProvider = new Mock({
             contextWindow: 16384,
-            responses: [makeMockResponse("````DONE\nFirst orphan recovered.\n````\n\n````DONE\nSecond orphan recovered.\n````")],
+            responses: [makeMockResponse("await plurnk.done({\"text\":\"First orphan recovered.\"});\n\nawait plurnk.done({\"text\":\"Second orphan recovered.\"});")],
         });
         ProviderInstantiate.registerInstance(firstProvider, providerSpec);
         const firstDaemon = new Daemon({ db, provider: firstProvider });
@@ -342,7 +342,7 @@ for (const staged of ["loop", "messages"] as const) {
 
             const secondProvider = new Mock({
                 contextWindow: 16384,
-                responses: [makeMockResponse("````DONE\nmust remain unused\n````")],
+                responses: [makeMockResponse("await plurnk.done({\"text\":\"must remain unused\"});")],
             });
             ProviderInstantiate.registerInstance(secondProvider, providerSpec);
             secondDaemon = new Daemon({ db, provider: secondProvider });
@@ -362,7 +362,7 @@ for (const staged of ["loop", "messages"] as const) {
 
 test("{§session-causal-admission}: cancelled undelivered messages stay cancelled across restart", async () => {
     const db = await openMigrated();
-    const mock = new Mock({ contextWindow: 65536, responses: [makeMockResponse("````DONE\nMust not execute.\n````")] });
+    const mock = new Mock({ contextWindow: 65536, responses: [makeMockResponse("await plurnk.done({\"text\":\"Must not execute.\"});")] });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
     try {
@@ -490,7 +490,7 @@ test("{§message-arrival} boot settles vanished owners and resumes the now-unblo
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("````DONE\nparent observed the interrupted child\n````")],
+        responses: [makeMockResponse("await plurnk.done({\"text\":\"parent observed the interrupted child\"});")],
     });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
@@ -567,7 +567,7 @@ test("{§message-arrival} a child drain exception still propagates the parent wa
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("````DONE\nparent handled child failure\n````")],
+        responses: [makeMockResponse("await plurnk.done({\"text\":\"parent handled child failure\"});")],
     });
     const generate = mock.generate.bind(mock);
     let calls = 0;
@@ -619,7 +619,7 @@ describe("Daemon.stop-pending-proposal", () => {
 test("{§session-causal-admission}: Daemon.stop terminates with a pending proposal", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         // A non-auto host execution proposes (202) and stops the world; nobody ever resolves it.
-        makeMockResponse("\n````sh\necho pending\n````\n\n````NOTE\nproposed\n````", 10),
+        makeMockResponse("await plurnk.sh({\"command\":\"echo pending\"});\n\nawait plurnk.note({\"text\":\"proposed\"});", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -665,7 +665,7 @@ test("{§turn-record}: cancellation during packet preparation completes the turn
         }
         return build.apply(this, args);
     });
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````DONE\ndone\n````")] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});")] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -696,8 +696,8 @@ test("{§turn-record}: cancellation during packet preparation completes the turn
 test("{§loop-completion}: cancelling a live loop records who and why", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
-        makeMockResponse("````DONE\ndone\n````"),
+        makeMockResponse("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.note({\"text\":\"running\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});"),
     ]});
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -756,8 +756,8 @@ test("{§methods}: cancelling a parked loop terminalizes it", async (t) => {
         else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previousSettlement;
     });
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````sh\nsleep 30\n````\n\n````WAIT\nawaiting the slow job\n````"),
-        makeMockResponse("````DONE\ndone\n````"),
+        makeMockResponse("await plurnk.sh({\"command\":\"sleep 30\"});\n\nawait plurnk.wait({\"text\":\"awaiting the slow job\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});"),
     ]});
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

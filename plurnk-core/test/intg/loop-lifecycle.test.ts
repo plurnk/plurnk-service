@@ -322,13 +322,10 @@ for (const op of ["WORK", "FORK"]) {
     test(`{§session-causal-admission}: ${op} cannot admit a child after its source task is cancelled`, async (t) => {
     serverProposals(t, "accept");
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeMockResponse(`\`\`\`\`${op} (session://late-child)
-Do the delegated task.
-\`\`\`\`
-\`\`\`\`WAIT
-Wait for the child.
-\`\`\`\``),
-            makeMockResponse("````WAIT\nChild task is still running.\n````"),
+            makeMockResponse(`await plurnk.${op.toLowerCase()}(${JSON.stringify({ target: "session://late-child", prompt: "Do the delegated task." })});
+
+await plurnk.wait({"text":"Wait for the child."});`),
+            makeMockResponse("await plurnk.wait({\"text\":\"Child task is still running.\"});"),
         ] });
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `cancel-late-${op}` });
@@ -374,8 +371,8 @@ Wait for the child.
 
 test("{§session-causal-admission}: cancellation wins over completion with an unread arrival and survives restart", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("````DONE\nFinished the original request.\n````"),
-        makeMockResponse("````DONE\nIndependent new request completed.\n````"),
+        makeMockResponse("await plurnk.done({\"text\":\"Finished the original request.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"Independent new request completed.\"});"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-prompt-promotion" });
@@ -433,10 +430,10 @@ test("{§session-causal-admission}: cancellation wins over completion with an un
 
 for (const recipientState of ["idle", "parked"]) {
     test(`{§session-causal-admission}: cancelled SEND cannot deliver to a ${recipientState} recipient`, async (t) => {
-        const wait = makeMockResponse("````WAIT\nWaiting for a message.\n````");
+        const wait = makeMockResponse("await plurnk.wait({\"text\":\"Waiting for a message.\"});");
         const provider = new Mock({ contextWindow: 100000, responses: [
             ...(recipientState === "parked" ? [wait] : []),
-            makeMockResponse("````SEND (session://recipient)\nThis message must not escape cancellation.\n````\n````SEND\nSent.\n````"),
+            makeMockResponse("await plurnk.send({\"target\":\"session://recipient\",\"text\":\"This message must not escape cancellation.\"});\n\nawait plurnk.send({\"text\":\"Sent.\"});"),
             wait,
         ] });
         await withDaemon(provider, async (db, daemon) => {
@@ -493,7 +490,7 @@ for (const recipientState of ["idle", "parked"]) {
 
 describe("Daemon.loop-address", () => {
 test("{§session-wait-timing}: explicit delivery wakes its addressed parked Loop, not the oldest", async (t) => {
-    const provider = new Mock({ contextWindow: 100_000, responses: Array.from({ length: 3 }, () => makeMockResponse("````WAIT\n````")) });
+    const provider = new Mock({ contextWindow: 100_000, responses: Array.from({ length: 3 }, () => makeMockResponse("await plurnk.wait({});")) });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "loop-address" });
         const sessionId = await namedModelSession(daemon, workspaceId, "main");
@@ -519,7 +516,7 @@ test("{§session-wait-timing}: explicit delivery wakes its addressed parked Loop
 });
 
 test("{§session-wait-timing}: terminal, foreign and missing recipients create no replacement work", async () => {
-    const provider = new Mock({ contextWindow: 100_000, responses: [answer("finished"), makeMockResponse("````WAIT\n````")] });
+    const provider = new Mock({ contextWindow: 100_000, responses: [answer("finished"), makeMockResponse("await plurnk.wait({});")] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "loop-address-refusal" });
         const sessionId = await namedModelSession(daemon, workspaceId, "main");
@@ -550,9 +547,9 @@ test("{§session-wait-timing}: a message's reported and actual receiving loop ag
     const provider = new Mock({
         contextWindow: 65536,
         responses: [
-            makeMockResponse("````WAIT\nFirst task waits.\n````"),
-            makeMockResponse("````WAIT\nSecond task waits.\n````"),
-            makeMockResponse("````NOTE\nThe new message reached the receiving task.\n````\n````WAIT\n````"),
+            makeMockResponse("await plurnk.wait({\"text\":\"First task waits.\"});"),
+            makeMockResponse("await plurnk.wait({\"text\":\"Second task waits.\"});"),
+            makeMockResponse("await plurnk.note({\"text\":\"The new message reached the receiving task.\"});\n\nawait plurnk.wait({});"),
         ],
     });
     await withDaemon(provider, async (db, daemon) => {
@@ -589,8 +586,8 @@ test("{§session-wait-timing}: a message's reported and actual receiving loop ag
 
 test("{§session-causal-admission}: a concurrent cancellation leaves no runnable orphan message", async (t) => {
     const provider = new Mock({ contextWindow: 65536, responses: [
-        makeMockResponse("````WAIT\nWait.\n````"),
-        makeMockResponse("````DONE\nMust not execute the cancelled follow-up.\n````"),
+        makeMockResponse("await plurnk.wait({\"text\":\"Wait.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"Must not execute the cancelled follow-up.\"});"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-admission-race" });

@@ -54,11 +54,11 @@ test("{§functionality-model-projection} MCP replacement precedes a tool invocat
     const { hostPaths, env } = await mcpFixture(t, { fixture: environmentEntry({ ENV_WITNESS: "original" }) });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeRawMockResponse([
-            PlurnkParser.frame("plurnk (mcp)", JSON.stringify({ alias: "fixture", ...environmentEntry({ ENV_WITNESS: "replacement" }) })),
-            PlurnkParser.frame("fixture (environment)", "{}"),
-            PlurnkParser.frame("NOTE", "Observe the new server's reply."),
+            `await plurnk.mcp(${JSON.stringify({ alias: "fixture", ...environmentEntry({ ENV_WITNESS: "replacement" }) })});`,
+            "await fixture.environment({});",
+            "await plurnk.note({\"text\":\"Observe the new server's reply.\"});",
         ].join("\n\n")),
-        makeRawMockResponse(PlurnkParser.frame("DONE", "Finished.")),
+        makeRawMockResponse("await plurnk.done({\"text\":\"Finished.\"});"),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, hostPaths });
@@ -132,8 +132,7 @@ test("{§mcp-module} a configured stdio server starts with the operator's enviro
         const unsubscribe = daemon.subscribeToEvents((_workspace, method, params) => {
             if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
         });
-        const run = async (runtime: string, heading: string, body: object, approve: boolean, status: number, channel = "results") => {
-            const source = PlurnkParser.frame(heading, JSON.stringify(body));
+        const run = async (runtime: string, source: string, approve: boolean, status: number, channel = "results") => {
             const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
             const op = parsed.items[0];
             assert.equal(op?.kind, "statement");
@@ -150,11 +149,11 @@ test("{§mcp-module} a configured stdio server starts with the operator's enviro
             return awaitExecOutcome(db, { workspaceId, scheme: runtime, after, channel, timeoutMs: 10000 });
         };
         try {
-            const changed = await run("plurnk", "plurnk (env)", { scope: "workspace", alias: "REF_VALUE", value: "workspace-reference" }, true, 201);
+            const changed = await run("plurnk", `await plurnk.env(${JSON.stringify({ scope: "workspace", alias: "REF_VALUE", value: "workspace-reference" })});`, true, 201);
             assert.equal((changed.definition as { origin: string }).origin, "workspace", "the accepted model verb uses the same workspace layer as client actions");
             await invoke("mcp", "disable", { alias: "explicit" });
             await invoke("mcp", "enable", { alias: "explicit" });
-            const received = await run("explicit", "explicit (environment)", {}, true, 200, "body");
+            const received = await run("explicit", "await explicit.environment({});", true, 200, "body");
             assert.equal(received.witness, "explicit", "the entry's env applies over the workspace layer");
             assert.equal(received.reference, "workspace-reference", "a workspace value replaces the operator's");
             assert.equal(received.private, null, "the invoking session never becomes the shared MCP's environment");
@@ -274,7 +273,7 @@ for (const { policy, decision } of [
             await ownSession(db, workspaceId, sessionId);
             const list = () => daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as Promise<FunctionalityListResult>;
             const definition = environmentEntry({ MCP_ENV_MARKER: marker, BOUND_VALUE: "${BOUND_VALUE}" });
-            const source = PlurnkParser.frame("plurnk (mcp)", JSON.stringify({ alias: "credential", ...definition }));
+            const source = `await plurnk.mcp(${JSON.stringify({ alias: "credential", ...definition })});`;
             const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
             const op = parsed.items[0];
             assert.ok(op?.kind === "statement");
@@ -384,7 +383,7 @@ const uri = "fixture://resource/item";
 const guardedUri = "fixture://resource/guarded";
 const multipartUri = "fixture://resource/multipart";
 const path = resourcePath(uri);
-const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "");
+const step = (op = "NOTE") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "NOTE" ? "Inspect the result." : "" })});`;
 
 const statement = (source: string) => {
     const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
@@ -465,7 +464,7 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
     };
     // A person's READ ({§connection-lifecycle}): no reader attaches the addressed runtime itself.
     const read = async (target: string) => (await daemon.dispatchClientAction({
-        workspaceId, actor: TEST_OWNER, statements: [statement(PlurnkParser.frame(`READ (${target}) <1,-1>`, null))],
+        workspaceId, actor: TEST_OWNER, statements: [statement(`await plurnk.read({"path":"${target}","range":"1,-1"});`)],
     }))[0];
     const setPolicy = (policy: CapabilityPolicy) => waitForDb(async () => {
         try {
@@ -556,7 +555,7 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
     test(`{§mcp-result-content}: a client can follow its saved result link with the attachment ${transition}`, { timeout: 20_000 }, async (t) => {
         const f = await fixture(t);
         const [invoked] = await f.daemon.dispatchClientAction({
-            workspaceId: f.workspaceId, actor: TEST_OWNER, statements: [statement(PlurnkParser.frame("shared (snapshot)", "{}"))],
+            workspaceId: f.workspaceId, actor: TEST_OWNER, statements: [statement("await shared.snapshot({});")],
         });
         assert.equal(invoked.status, 200, JSON.stringify(invoked));
         // The person's operation produced the result in the workspace's runtime session ({§connection-lifecycle}).
@@ -601,7 +600,7 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
         const directory = address.slice(0, address.lastIndexOf("/") + 1);
         const [catalog] = await f.daemon.dispatchClientAction({
             workspaceId: f.workspaceId, actor: TEST_OWNER,
-            statements: [statement(PlurnkParser.frame(`FIND (${directory})`, null))],
+            statements: [statement(`await plurnk.find({"path":"${directory}"});`)],
         });
         assert.equal(catalog.status, 200, JSON.stringify(catalog));
         assert.match(JSON.stringify(catalog), /snapshot\.txt/);
@@ -611,8 +610,8 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
 
 test("{§execution-output-identity}: MCP resource elicitation and its receipt belong to the requesting model operation", { timeout: 20_000 }, async (t) => {
     const f = await fixture(t, [
-        `${PlurnkParser.frame(`READ (other://${resourcePath(guardedUri)})`, null)}\n\n${step("NOTE")}`,
-        PlurnkParser.frame("DONE", "The resource was read."),
+        `await plurnk.read({"path":"other://${resourcePath(guardedUri)}"});\n\n${step("NOTE")}`,
+        "await plurnk.done({\"text\":\"The resource was read.\"});",
     ]);
     const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, sessionId: f.alice, prompt: "Read Bob's guarded resource." });
     const waiting = await waitForDb(() => f.daemon.pendingClientInteractions(f.workspaceId), (items) => items.length === 1);
@@ -634,7 +633,7 @@ test("{§execution-output-identity}: MCP resource elicitation and its receipt be
 
 test("{§execution-output-identity}: cancelling the requester settles its MCP interaction and releases the shared connection", { timeout: 20_000 }, async (t) => {
     const f = await fixture(t, [
-        `${PlurnkParser.frame(`READ (other://${resourcePath(guardedUri)})`, null)}\n\n${step("NOTE")}`,
+        `await plurnk.read({"path":"other://${resourcePath(guardedUri)}"});\n\n${step("NOTE")}`,
     ]);
     const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, sessionId: f.alice, prompt: "Read Bob's guarded resource." });
     const pending = await waitForDb(() => f.daemon.pendingClientInteractions(f.workspaceId), (items) => items.length === 1);
@@ -872,14 +871,14 @@ test("{§execution-output-identity}: a facet that states its representation owns
             return item.statement;
         };
 
-        const card = await clientRead(engine, db, { workspaceId, sessionId, statement: parse("````READ (peers://ada/card) <1,-1>````") });
+        const card = await clientRead(engine, db, { workspaceId, sessionId, statement: parse("await plurnk.read({\"path\":\"peers://ada/card\",\"range\":\"1,-1\"});") });
         assert.equal(card.content, "ada's card", "a fragmentless READ selects the facet's default channel, not the executor's");
 
         let sequence = 0;
         const dispatch = (body: string) => engine.dispatch({ workspaceId, sessionId, loopId, turnId, sequence: ++sequence, origin: "model", statement: parse(body) });
-        assert.equal((await dispatch("````SEND (peers://ada)\nhello\n````")).status, 200);
+        assert.equal((await dispatch("await plurnk.send({\"target\":\"peers://ada\",\"text\":\"hello\"});")).status, 200);
         assert.deepEqual(sent, ["hello"], "a claimed SEND is the facet's");
-        const stored = await dispatch("````SEND (peers:///1/1/1)\nstdin\n````");
+        const stored = await dispatch("await plurnk.send({\"target\":\"peers:///1/1/1\",\"text\":\"stdin\"});");
         assert.notEqual(stored.status, 200, "an unclaimed SEND is refused on stored execution output");
         assert.deepEqual(sent, ["hello"], "the facet never sees an execution coordinate");
 
@@ -933,7 +932,7 @@ test("{§capability-ctx} {§execution-output-identity}: READ, FIND, COPY, execut
         };
         const read = (uri: string) => clientRead(engine, db, {
             workspaceId, sessionId: alice,
-            statement: parse(`\`\`\`\`READ (${uri}) <1,-1>\`\`\`\``),
+            statement: parse(`await plurnk.read({"path":"${uri}","range":"1,-1"});`),
         });
         assert.equal((await read("myserver:///resources/item")).content, "shared's resource");
         assert.equal((await read("myserver:///resources/item")).content, "shared's resource");
@@ -947,10 +946,10 @@ test("{§capability-ctx} {§execution-output-identity}: READ, FIND, COPY, execut
             workspaceId, sessionId: alice, loopId, turnId, sequence: sequence++, origin: "model",
             statement: parse(body),
         });
-        const found = await dispatch("````FIND (myserver:///resources/*) <1,-1>````");
+        const found = await dispatch("await plurnk.find({\"path\":\"myserver:///resources/*\",\"range\":\"1,-1\"});");
         assert.equal(found.status, 200, JSON.stringify(found));
         assert.match(JSON.stringify(found.results), /myserver:\/\/\/resources\/item/);
-        const copied = await dispatch("````COPY (myserver:///resources/item) (workspace:///copy.txt)````");
+        const copied = await dispatch("await plurnk.copy({\"from\":\"myserver:///resources/item\",\"to\":\"workspace:///copy.txt\"});");
         assert.equal(copied.status, 201, JSON.stringify(copied));
         const copy = await read("workspace:///copy.txt");
         assert.equal(copy.content, "shared's resource");
@@ -970,7 +969,7 @@ test("{§capability-ctx} {§execution-output-identity}: READ, FIND, COPY, execut
                 },
             },
         });
-        const executed = await dispatch(PlurnkParser.frame("consumer (myserver:///resources/item)", "caller input"));
+        const executed = await dispatch("await consumer[\"myserver:///resources/item\"](\"caller input\");");
         assert.equal(executed.status, 200, JSON.stringify(executed));
         await (schemes.get("exec") as Exec).idle();
         assert.deepEqual(received, ["shared's resource"]);
@@ -979,8 +978,8 @@ test("{§capability-ctx} {§execution-output-identity}: READ, FIND, COPY, execut
         const result = await engine.runTurn({
             workspaceId, sessionId: alice, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: [
-                PlurnkParser.frame("BARE (myserver:///resources/item)", "Analyze this."),
-                PlurnkParser.frame("NOTE", "Inspect the answer."),
+                "await plurnk.bare({\"target\":\"myserver:///resources/item\",\"prompt\":\"Analyze this.\"});",
+                "await plurnk.note({\"text\":\"Inspect the answer.\"});",
             ].join("\n\n"), reasoning: null } }] }),
         });
         assert.equal(result.status, 102);
@@ -1010,7 +1009,7 @@ test("{§execution-output-identity}: retained output keeps its actual channel af
                 },
             },
         } }]);
-        const parsed = PlurnkParser.parseStatements(PlurnkParser.frame("myserver", "fixture"), { executors: fixtureExecutors(PlurnkParser.frame("myserver", "fixture")) }).items[0];
+        const parsed = PlurnkParser.parseStatements("await plurnk.myserver(\"fixture\");", { executors: fixtureExecutors("await plurnk.myserver(\"fixture\");") }).items[0];
         assert.equal(parsed?.kind, "statement");
         if (parsed?.kind !== "statement") throw new Error("Expected an operation");
         const invoked = await engine.dispatch({
@@ -1231,19 +1230,19 @@ test("{§mcp-open-work} MCP server auto-creates bound workspace and session, rou
         contextWindow: 1_000_000,
         responses: [
             makeRawMockResponse([
-                PlurnkParser.frame("telegram (ask-inbox)", "{}"),
-                PlurnkParser.frame("DONE", "Waiting for inbox approval."),
+                "await telegram[\"ask-inbox\"]({});",
+                "await plurnk.done({\"text\":\"Waiting for inbox approval.\"});",
             ].join("\n\n")),
             makeRawMockResponse(
-                PlurnkParser.frame("DONE (telegram:///messages/tg-42)", "Approved by inbox!"),
+                "await plurnk.done({\"target\":\"telegram:///messages/tg-42\",\"text\":\"Approved by inbox!\"});",
             ),
-            makeRawMockResponse(PlurnkParser.frame("DONE", "Caller observed approval.")),
+            makeRawMockResponse("await plurnk.done({\"text\":\"Caller observed approval.\"});"),
             makeRawMockResponse([
-                PlurnkParser.frame("READ (telegram:///resources/fixture%3A%2F%2Ffeed)", null),
-                PlurnkParser.frame("DONE", "Subscribed to feed."),
+                "await plurnk.read({\"path\":\"telegram:///resources/fixture%3A%2F%2Ffeed\"});",
+                "await plurnk.done({\"text\":\"Subscribed to feed.\"});",
             ].join("\n\n")),
-            makeRawMockResponse(PlurnkParser.frame("DONE", "Waiting for feed update.")),
-            makeRawMockResponse(PlurnkParser.frame("DONE", "Inbox observed feed-v2.")),
+            makeRawMockResponse("await plurnk.done({\"text\":\"Waiting for feed update.\"});"),
+            makeRawMockResponse("await plurnk.done({\"text\":\"Inbox observed feed-v2.\"});"),
         ],
     });
 

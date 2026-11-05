@@ -85,11 +85,11 @@ for (const decision of ["auto", "accept", "reject"] as const) test(`{§op-method
         const db = await openMigrated();
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeRawMockResponse([
-                PlurnkParser.frame("plurnk (members)", JSON.stringify({ files: ["loose.md"] })),
-                PlurnkParser.frame("READ (loose.md)", ""),
-                PlurnkParser.frame("NOTE", "Review the admitted file."),
+                `await plurnk.members(${JSON.stringify({ files: ["loose.md"] })});`,
+                "await plurnk.read({\"path\":\"loose.md\"});",
+                "await plurnk.note({\"text\":\"Review the admitted file.\"});",
             ].join("\n\n")),
-            makeMockResponse(PlurnkParser.frame("DONE", "Read the file.")),
+            makeMockResponse("await plurnk.done({\"text\":\"Read the file.\"});"),
         ] });
         const daemon = new Daemon({ db, provider });
         const results: Array<{ status: number; body?: string }> = [];
@@ -260,7 +260,7 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
             const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after: before, timeoutMs: 60_000 }) as Receipt & { problem?: { type?: string; recovery?: string } };
             return { result, outcome };
         };
-        const modelAdd = (...files: string[]) => accepted(`\`\`\`\`plurnk (members)\n${JSON.stringify({ files })}\n\`\`\`\``);
+        const modelAdd = (...files: string[]) => accepted(`await plurnk.members(${JSON.stringify({ files })});`);
         try {
             // {§functionality-replacement} — the surface: no replace, and the add and select inputs are the family's own.
             assert.deepEqual(
@@ -301,7 +301,7 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
             assert.ok((await rows(db, workspaceId)).includes("include docs/** members"), "a human-authored definition projects with source members");
             assert.deepEqual((await definitions())[0]?.detail, { effect: "include", pattern: "docs/**", matched: 1, files: ["docs/guide.md"], ignored: 0 });
             // {§tools-resource-materialization} — the document is named by the glob, percent-encoded as one segment.
-            await operate("````READ (plurnk:///members/docs%2F%2A%2A.md) <1,-1>````");
+            await operate("await plurnk.read({\"path\":\"plurnk:///members/docs%2F%2A%2A.md\",\"range\":\"1,-1\"});");
             const doc = (await db.engine_list_workspace_entries.all<{ scheme: string; pathname: string; channel: string; content: string }>({ workspace_id: workspaceId }))
                 .find((row) => row.scheme === "plurnk" && row.pathname === "/members/docs%2F%2A%2A.md" && row.channel === "body");
             assert.ok(doc !== undefined, "an enabled definition is one generated document under plurnk:///members/");
@@ -511,7 +511,7 @@ test("{§tools-resource-materialization} {§fs-namespace} a glob spelled absolut
         try {
             const operate = (program: string) => modelOperation(daemon, db, { workspaceId, sessionId: model, statement: parseOne(program) });
             const files = places.flatMap(({ dir, key }) => [`${key}/relative.md`, join(dir, "absolute.md"), `${key}/excluded.md`, `!${join(dir, "excluded.md")}`]);
-            await operate(`\`\`\`\`plurnk (members)\n${JSON.stringify({ files })}\n\`\`\`\``);
+            await operate(`await plurnk.members(${JSON.stringify({ files })});`);
             const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after: 0, timeoutMs: 30_000 }) as Receipt;
             assert.equal(outcome.status, 201);
             await daemon.settleFunctionality(workspaceId);
@@ -521,7 +521,7 @@ test("{§tools-resource-materialization} {§fs-namespace} a glob spelled absolut
                 for (const name of ["relative.md", "absolute.md"]) {
                     assert.equal(await memberOf(db, workspaceId, `${key}/${name}`), true, `${key}/${name} is a member`);
                     for (const spelling of [`${key}/${name}`, join(dir, name)]) {
-                        const read = await operate(`\`\`\`\`READ (${spelling})\`\`\`\``) as { status: number; content?: string | null };
+                        const read = await operate(`await plurnk.read(${JSON.stringify({ path: spelling })});`) as { status: number; content?: string | null };
                         assert.deepEqual([read.status, read.content], [200, `${dir}/${name}\n`], `READ ${spelling} reaches it`);
                     }
                 }
@@ -569,7 +569,7 @@ test("{§tools-resource-materialization} {§fs-write-surface}: outside-root Git 
             assert.equal(await memberOf(db, workspaceId, "../beta/ignored.log"), false, "gitignored file in attached Git repo is excluded");
 
             const operate = (program: string) => modelOperation(daemon, db, { workspaceId, sessionId: model, statement: parseOne(program) });
-            const created = await operate("````EDIT (../beta/created.md)\nhello beta\n````") as { status: number };
+            const created = await operate("await plurnk.edit({\"path\":\"../beta/created.md\",\"content\":\"hello beta\"});") as { status: number };
             assert.equal(created.status, 200, "creating a file inside an attached ../beta/** directory succeeds under root scope");
             assert.equal(await memberOf(db, workspaceId, "../beta/created.md"), true);
         } finally {
@@ -638,19 +638,19 @@ test("{§membership} {§session-initialization-entry} {§tools-resource-material
             assert.deepEqual([...await GitMembership.ignoredSubset(db, workspaceId, ["README.md", "sub/tracked.md", "sub/ignored.log"], undefined)], ["sub/ignored.log"]);
 
             const operate = (program: string) => modelOperation(daemon, db, { workspaceId, sessionId: model, statement: parseOne(program) });
-            const readIgnored = await operate("````READ (sub/ignored.log)````") as { status: number; problem?: { type?: string } };
+            const readIgnored = await operate("await plurnk.read({\"path\":\"sub/ignored.log\"});") as { status: number; problem?: { type?: string } };
             assert.equal(readIgnored.status, 404);
             assert.equal(readIgnored.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-member");
 
-            const readTracked = await operate("````READ (sub/tracked.md)````") as { status: number; content?: string | null };
+            const readTracked = await operate("await plurnk.read({\"path\":\"sub/tracked.md\"});") as { status: number; content?: string | null };
             assert.equal(readTracked.status, 200, "READ inside submodule auto-admits tracked file under root scope");
             assert.match(readTracked.content ?? "", /# submodule tracked/u);
 
-            const editIgnored = await operate("````EDIT (sub/created.log)\nblocked\n````") as { status: number; problem?: { type?: string } };
+            const editIgnored = await operate("await plurnk.edit({\"path\":\"sub/created.log\",\"content\":\"blocked\"});") as { status: number; problem?: { type?: string } };
             assert.equal(editIgnored.status, 403, "creating a gitignored file inside the submodule is refused by the submodule's .gitignore");
             assert.equal(editIgnored.problem?.type, "https://problems.plurnk.xyz/scheme/file/file-create-gitignored");
 
-            const editCreated = await operate("````EDIT (sub/created.md)\nhello sub\n````") as { status: number };
+            const editCreated = await operate("await plurnk.edit({\"path\":\"sub/created.md\",\"content\":\"hello sub\"});") as { status: number };
             assert.equal(editCreated.status, 200, "creating a non-ignored file inside the submodule succeeds");
 
             await daemon.invokeModuleAction("workspace.members.add", { files: ["sub/**"] }, workspaceContext(workspaceId));

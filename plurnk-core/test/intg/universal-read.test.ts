@@ -237,7 +237,7 @@ test("{§packet} entry-backed data schemes inherit exact READ projection", async
         });
 
         const result = await engine.dispatch({
-            statement: parseRead("````READ (entry-backed:///document.txt)````"),
+            statement: parseRead("await plurnk.read({\"path\":\"entry-backed:///document.txt\"});"),
             workspaceId,
             sessionId,
             loopId,
@@ -281,7 +281,7 @@ test("{§packet} inherited READ uses the scheme's canonical pathname and owner",
         });
 
         const result = await engine.dispatch({
-            statement: parseRead("````READ (resolved-entry:///alias_%28v1%29.txt#body) <1,-1>````"),
+            statement: parseRead("await plurnk.read({\"path\":\"resolved-entry:///alias_%28v1%29.txt#body\",\"range\":\"1,-1\"});"),
             workspaceId,
             sessionId,
             loopId,
@@ -308,7 +308,7 @@ test("{§packet} preparation capabilities bind to the already-resolved canonical
         const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseRead("````READ (owner-bound-preparation:///alias.txt) <1,-1>````"),
+            statement: parseRead("await plurnk.read({\"path\":\"owner-bound-preparation:///alias.txt\",\"range\":\"1,-1\"});"),
             workspaceId,
             sessionId,
             loopId,
@@ -337,7 +337,7 @@ test("{§scheme-operation-dispatch} scope-blind preparation durably composes pro
 
         for (const sequence of [1, 2]) {
             const result = await engine.dispatch({
-                statement: parseRead("````READ (archive:///aliases/latest) <17,18>````"),
+                statement: parseRead("await plurnk.read({\"path\":\"archive:///aliases/latest\",\"range\":\"17,18\"});"),
                 workspaceId,
                 sessionId,
                 loopId,
@@ -382,7 +382,7 @@ test("{§packet} core selects one channel before applying its independent durabl
         });
 
         const body = await dispatch(
-            parseRead("````READ (independent-channel:///item) <1,-1>````"),
+            parseRead("await plurnk.read({\"path\":\"independent-channel:///item\",\"range\":\"1,-1\"});"),
             1,
         );
         assert.equal(body.status, 200);
@@ -390,7 +390,7 @@ test("{§packet} core selects one channel before applying its independent durabl
 
         for (const sequence of [2, 3]) {
             const html = await dispatch(
-                parseRead("````READ (independent-channel:///item#html) <1,-1>````"),
+                parseRead("await plurnk.read({\"path\":\"independent-channel:///item#html\",\"range\":\"1,-1\"});"),
                 sequence,
             );
             assert.equal(html.status, 502);
@@ -417,7 +417,7 @@ test("{§packet} exact FIND shares representation preparation but retains univer
         const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseFind("````FIND (archive:///aliases/latest)````"),
+            statement: parseFind("await plurnk.find({\"path\":\"archive:///aliases/latest\"});"),
             workspaceId,
             sessionId,
             loopId,
@@ -593,7 +593,7 @@ test("{§packet} cold finite HTTP READ acquires before applying the exact text s
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const result = await engine.dispatch({
-            statement: parseRead("````READ (https://93.184.216.34/document.txt) <17,18>````"),
+            statement: parseRead("await plurnk.read({\"path\":\"https://93.184.216.34/document.txt\",\"range\":\"17,18\"});"),
             workspaceId,
             sessionId,
             loopId,
@@ -741,7 +741,7 @@ test("{§manifest} {§tools-resource-materialization}: stored packets carry lang
                 volatile: false,
                 modelVisible: true,
                 glyph: "GLYPH_MUST_STAY_CLIENT_SIDE",
-                documentation: "# Glyph test\n\n## Summary\n\nDiscover glyph-test resources.\n\n````READ (glyph-test:///example)````",
+                documentation: "# Glyph test\n\n## Summary\n\nDiscover glyph-test resources.\n\nawait plurnk.read({\"path\":\"glyph-test:///example\"});",
             },
         });
         const engine = new Engine({ db, schemes: registry });
@@ -760,7 +760,7 @@ test("{§manifest} {§tools-resource-materialization}: stored packets carry lang
         assert.doesNotMatch(JSON.stringify(system), /glyph-test|GLYPH_MUST_STAY_CLIENT_SIDE/, "neither references nor client glyphs are injected");
         const reference = (await engine.referenceEntries(workspaceId))
             .find(({ scheme, pathname }) => scheme === "plurnk" && pathname === "/glyph-test.md");
-        assert.match(reference?.content ?? "", /````READ \(glyph-test:\/\/\/example\)/, "the example remains available in its pull reference without a separate manifest example");
+        assert.match(reference?.content ?? "", /await plurnk\.read\(\{"path":"glyph-test:\/\/\/example"\}\);/, "the example remains available in its pull reference without a separate manifest example");
     } finally {
         await db.close();
     }
@@ -816,10 +816,7 @@ for (const op of ["FIND", "READ", "EDIT", "KILL"] as const) {
             const original = "keep first\nneedle one\nkeep last\nneedle two";
             try {
                 await seedEntryWithChannel(db, { workspaceId: env.workspaceId, scheme: "opaque", pathname: "/notes", content: original });
-                const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(
-                    `${op} (opaque:///notes) [{"accept":"text/plain"}] /${pattern}/`,
-                    op === "EDIT" ? "replacement" : null,
-                ));
+                const parsed = PlurnkParser.parseStatements(`await plurnk.${op.toLowerCase()}(${JSON.stringify({ path: "opaque:///notes", pattern: `/${pattern}/`, metadata: ['{"accept":"text/plain"}'], ...(op === "EDIT" ? { content: "replacement" } : {}) })});`);
                 assert.equal(parsed.items.length, 1);
                 const item = parsed.items[0];
                 assert.ok(item?.kind === "statement" && item.statement.op === op);
@@ -885,7 +882,7 @@ test("{§operation-results} scheme metadata remains outside the target and reach
 
     try {
         const supported = read(
-            "````READ (opaque:///record) [{\"first\": {\"nested\": true}}] [{\"second\": \"duplicate\"}]````",
+            "await plurnk.read({\"path\":\"opaque:///record\",\"metadata\":[\"{\\\"first\\\": {\\\"nested\\\": true}}\",\"{\\\"second\\\": \\\"duplicate\\\"}\"]});",
         );
         assert.equal(supported.target?.raw, "opaque:///record");
         assert.deepEqual(supported.metadata, ['{"first": {"nested": true}}', '{"second": "duplicate"}']);
@@ -899,7 +896,7 @@ test("{§operation-results} scheme metadata remains outside the target and reach
         assert.deepEqual(supportedMetadata, ['{"first": {"nested": true}}', '{"second": "duplicate"}']);
 
         const routedAlias = await engine.dispatch({
-            statement: read("````READ (http://example.test/record) [{\"Accept\": \"text/plain\"}]````"),
+            statement: read("await plurnk.read({\"path\":\"http://example.test/record\",\"metadata\":[\"{\\\"Accept\\\": \\\"text/plain\\\"}\"]});"),
             ...env,
             sequence: 2,
             origin: "model",
@@ -908,7 +905,7 @@ test("{§operation-results} scheme metadata remains outside the target and reach
         assert.deepEqual(routedAliasMetadata, ['{"Accept": "text/plain"}']);
 
         const rejected = await engine.dispatch({
-            statement: read("````READ (plain:///record) [{\"anything\": \"the scheme might define\"}]````"),
+            statement: read("await plurnk.read({\"path\":\"plain:///record\",\"metadata\":[\"{\\\"anything\\\": \\\"the scheme might define\\\"}\"]});"),
             ...env,
             sequence: 3,
             origin: "model",
@@ -966,7 +963,10 @@ for (const [op, proposed] of [["COPY", "neither"], ["MOVE", "neither"], ["MOVE",
                 await seedEntryWithChannel(db, { workspaceId: env.workspaceId, scheme: "opaque", pathname, content });
             }
             const parsed = PlurnkParser.parseStatements(
-                `\`\`\`\`${op} (opaque:///source) <2> [{"source": "true"}] (opaque:///destination) <2> [{"destination": "true"}]\`\`\`\``,
+                `await plurnk.${op.toLowerCase()}(${JSON.stringify({
+                    from: { path: "opaque:///source", range: "2", metadata: ['{"source": "true"}'] },
+                    to: { path: "opaque:///destination", range: "2", metadata: ['{"destination": "true"}'] },
+                })});`,
             );
             assert.equal(parsed.unparsedTail, undefined);
             assert.equal(parsed.items.length, 1);

@@ -282,7 +282,7 @@ for (const capture of [false, true]) {
         const dir = await mkdtemp(join(await testArtifactDirectory("core"), "failed-request-"));
         const dbPath = join(dir, "plurnk.db");
         const digestDir = join(dir, "digest");
-        const failedContent = "````EDIT (workspace:///never.txt)\nMust not execute.\n````";
+        const failedContent = "await plurnk.edit({\"path\":\"workspace:///never.txt\",\"content\":\"Must not execute.\"});";
         let calls = 0;
         const bodies: string[] = [];
         const provider = new ModelProvider({
@@ -297,7 +297,7 @@ for (const capture of [false, true]) {
                 return new Response(`data: ${JSON.stringify({
                     id: `request-${calls}`, model: "evidence",
                     choices: [{ index: 0, delta: {
-                        content: calls === 1 ? failedContent : "````DONE\nRecovered.\n````",
+                        content: calls === 1 ? failedContent : "await plurnk.done({\"text\":\"Recovered.\"});",
                         reasoning_content: calls === 1 ? "Partial failed reasoning." : "Fresh reasoning.",
                     }, finish_reason: calls === 1 ? null : "stop" }],
                     ...(calls === 1 ? {} : { usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 } }),
@@ -329,7 +329,7 @@ for (const capture of [false, true]) {
         assert.match(failed.evidence.error.message, /Stream ended without finish_reason/);
         assert.equal(recovered.accounting.outcome, "response");
         assert.equal(recovered.evidence.reasoning, "Fresh reasoning.");
-        assert.equal(recovered.evidence.content, "````DONE\nRecovered.\n````");
+        assert.equal(recovered.evidence.content, "await plurnk.done({\"text\":\"Recovered.\"});");
         assert.equal(digest.workspaces[0].accounting.costUsd, null);
         assert.equal(digest.workspaces[0].accounting.knownCostUsd, "0.25");
         assert.equal(digest.workspaces[0].accounting.usage, null);
@@ -425,8 +425,8 @@ test("{§share-packet-names}: pending, rejected and retired evidence remains dis
     const dir = await mkdtemp(join(await testArtifactDirectory("core"), "request-states-"));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
-    const rejectedContent = "````EDIT (a.txt)\nunterminated";
-    const reasoning = "## Heading in reasoning\n```text\nliteral\n```\n";
+    const rejectedContent = "await plurnk.edit({\"path\":\"a.txt\",\"content\":\"unterminated\"});";
+    const reasoning = "## Heading in reasoning\n\n```text\nliteral";
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "request-states");

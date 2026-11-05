@@ -497,8 +497,8 @@ test("{§fs-namespace} execution receipts and failed targets do not expose a red
         // A targetless command (its receipt names the root — the default), a command whose
         // target does not resolve, then a conclusion.
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````sh\nprintf ok\n````\n\n````sh (cwd: /nowhere)\nprintf never\n````\n\n````NOTE\nran\n````", 50),
-            makeMockResponse("````DONE\ndone\n````", 50),
+            makeMockResponse("await plurnk.sh({\"command\":\"printf ok\"});\n\nawait plurnk.sh({\"cwd\":\"cwd: /nowhere\",\"command\":\"printf never\"});\n\nawait plurnk.note({\"text\":\"ran\"});", 50),
+            makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -649,7 +649,7 @@ test("{§mimetype-parser-coordinates}: READ preserves an indented Python referen
         await EntryCrud.writeEntry({ authority: "", pathname: "reference.py" }, {
             channels: { body: { content, mimetype: "text/x-python" } },
         }, ctx, "file");
-        const result = await readFileScheme(parseRead("````READ (reference.py) <1,-1>\n````"), ctx);
+        const result = await readFileScheme(parseRead("await plurnk.read({\"path\":\"reference.py\",\"range\":\"1,-1\"});"), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, content);
         assert.equal(result.mimetype, "text/markdown");
@@ -788,7 +788,7 @@ test("{§packet} File.find: a binary member does not poison a body search across
             "file",
         );
 
-        const result = await new File().find(parseFind("````FIND (**) /needle/````"), ctx);
+        const result = await new File().find(parseFind("await plurnk.find({\"path\":\"**\",\"pattern\":\"/needle/\"});"), ctx);
         assert.equal(result.status, 200);
         assert.deepEqual(resourcePaths(result), ["readme.md"]);
     });
@@ -890,7 +890,7 @@ test("{§packet} File.read: bare relative path (no leading slash) normalizes to 
         await addMember(ctx, "notes.md");
         // The member and the authored path are both project-relative.
         // it copies from the catalog. READ must resolve it the way WRITE does.
-        const result = await readFileScheme(parseRead("````READ (notes.md)````"), ctx);
+        const result = await readFileScheme(parseRead("await plurnk.read({\"path\":\"notes.md\"});"), ctx);
         assert.equal(result.status, 200, "bare relative READ resolves to the notes.md member");
         assert.equal(result.content, "Codename: Bluejay\n");
     });
@@ -902,14 +902,14 @@ test("{§packet} File.read: a markerless exact READ is the first page, which hol
         await writeFile(join(root, "bounded.txt"), content);
         await addMember(ctx, "bounded.txt");
 
-        const whole = await readFileScheme(parseRead("````READ (bounded.txt)````"), ctx);
+        const whole = await readFileScheme(parseRead("await plurnk.read({\"path\":\"bounded.txt\"});"), ctx);
         assert.equal(whole.status, 200);
         assert.equal(whole.content, content);
         assert.equal(whole.range?.total, 20);
         assert.deepEqual(whole.range?.requested, [1, PAGE], "no scope means the first page");
         assert.deepEqual(whole.range?.returned, [1, 20]);
 
-        const all = await readFileScheme(parseRead("````READ (bounded.txt) <1,-1>````"), ctx);
+        const all = await readFileScheme(parseRead("await plurnk.read({\"path\":\"bounded.txt\",\"range\":\"1,-1\"});"), ctx);
         assert.equal(all.status, 200);
         assert.equal(all.content, content);
         assert.deepEqual(all.range?.returned, [1, 20]);
@@ -921,7 +921,7 @@ test("{§packet} File.read: bare nested relative path resolves to its member key
         await mkdir(join(root, "src"));
         await writeFile(join(root, "src", "app.js"), "// TODO: rename\n");
         await addMember(ctx, "src/app.js");
-        const result = await readFileScheme(parseRead("````READ (src/app.js)````"), ctx);
+        const result = await readFileScheme(parseRead("await plurnk.read({\"path\":\"src/app.js\"});"), ctx);
         assert.equal(result.status, 200, "bare nested relative READ resolves");
         assert.equal(result.content, "// TODO: rename\n");
     });
@@ -1029,13 +1029,13 @@ const turnRows = async (program: string | ((root: string) => string)) => {
 // (django) were answered "exists on disk but is not a member", steering the model to admit a directory.
 test("{§fs-namespace} {§diagnostic-observation}: a directory target says it is a directory; a READ or KILL carries the listing", async () => {
     const [read, slashed, listing, member, kill, edit] = await turnRows([
-        "````READ (changelog) <1,-1>````",
-        "````READ (tests/forms_tests/) <0> <!-- list directory structure -->````",
-        "````FIND (changelog/)````",
-        "````READ (changelog/7122.bugfix.rst)````",
-        "````KILL (changelog)````",
-        "````EDIT (changelog)\nx\n````",
-        "````WAIT````",
+        "await plurnk.read({\"path\":\"changelog\",\"range\":\"1,-1\"});",
+        "await plurnk.read({\"path\":\"tests/forms_tests/\",\"range\":\"0\"}); // list directory structure",
+        "await plurnk.find({\"path\":\"changelog/\"});",
+        "await plurnk.read({\"path\":\"changelog/7122.bugfix.rst\"});",
+        "await plurnk.kill({\"path\":\"changelog\"});",
+        "await plurnk.edit({\"path\":\"changelog\",\"content\":\"x\"});",
+        "await plurnk.wait({});",
     ].join("\n\n")).then((rows) => rows.filter(({ op }) => op !== "SEND"));
     assert.equal(read?.status, 404);
     assert.deepEqual([read?.problem?.type, read?.problem?.detail, read?.problem?.recovery], [
@@ -1072,8 +1072,8 @@ test("{§fs-namespace}: parsed FIND recognizes a directory with or without its t
         targets.push("packages/chord", "packages/chord/", `${root}/packages/chord`, "./packages/chord",
             "packages/other/../chord", `file://${root}/packages/chord`);
         return [
-            ...targets.map((target) => `\`\`\`FIND (${target})\n\`\`\``),
-            "```READ (packages/chord/README.md)\n```",
+            ...targets.map((target) => `await plurnk.find({"path":"${target}"});`),
+            "await plurnk.read({\"path\":\"packages/chord/README.md\"});",
         ].join("\n\n");
     });
     assert.equal(rows.length, targets.length + 1);
@@ -1089,12 +1089,12 @@ test("{§fs-namespace}: parsed FIND recognizes a directory with or without its t
 
 test("{§fs-namespace}: directory resolution retains FIND matching and pagination", async () => {
     const rows = await turnRows([
-        "```FIND (packages/chord) /API/\n```",
-        "```FIND (packages/chord/) /API/\n```",
-        "```FIND (packages/chord) <1>\n```",
-        "```FIND (packages/chord/) <1>\n```",
-        "```FIND (packages/chord) /absent/\n```",
-        "```FIND (packages/chord/) /absent/\n```",
+        "await plurnk.find({\"path\":\"packages/chord\",\"pattern\":\"/API/\"});",
+        "await plurnk.find({\"path\":\"packages/chord/\",\"pattern\":\"/API/\"});",
+        "await plurnk.find({\"path\":\"packages/chord\",\"range\":\"1\"});",
+        "await plurnk.find({\"path\":\"packages/chord/\",\"range\":\"1\"});",
+        "await plurnk.find({\"path\":\"packages/chord\",\"pattern\":\"/absent/\"});",
+        "await plurnk.find({\"path\":\"packages/chord/\",\"pattern\":\"/absent/\"});",
     ].join("\n\n"));
     assert.equal(rows.length, 6);
     assert.equal(rows[0]?.status, 200);
@@ -1109,7 +1109,7 @@ test("{§fs-namespace}: directory resolution retains FIND matching and paginatio
 
 test("{§fs-namespace}: empty and non-member-only directories are successful empty surveys", async () => {
     const rows = await turnRows(["empty", "empty/", "excluded", "excluded/"].map(
-        (target) => `\`\`\`FIND (${target})\n\`\`\``,
+        (target) => `await plurnk.find({"path":"${target}"});`,
     ).join("\n\n"));
     assert.equal(rows.length, 4);
     for (const row of rows) {
@@ -1120,12 +1120,12 @@ test("{§fs-namespace}: empty and non-member-only directories are successful emp
 
 test("{§fs-namespace}: exact files and missing targets retain their existing semantics", async () => {
     const rows = await turnRows([
-        "```FIND (packages/chord/README.md)\n```",
-        "```FIND (packages/chor)\n```",
-        "```FIND (packages/missing)\n```",
-        "```FIND (packages/missing/)\n```",
-        "```FIND (packages/chord*)\n```",
-        "```FIND (packages/chord/README.md/child)\n```",
+        "await plurnk.find({\"path\":\"packages/chord/README.md\"});",
+        "await plurnk.find({\"path\":\"packages/chor\"});",
+        "await plurnk.find({\"path\":\"packages/missing\"});",
+        "await plurnk.find({\"path\":\"packages/missing/\"});",
+        "await plurnk.find({\"path\":\"packages/chord*\"});",
+        "await plurnk.find({\"path\":\"packages/chord/README.md/child\"});",
     ].join("\n\n"));
     assert.equal(rows.length, 6);
     assert.equal(rows[0]?.status, 200);

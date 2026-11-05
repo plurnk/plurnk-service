@@ -7,7 +7,6 @@ import { entryAddress, fileMissRecovery, missDetail, missExtensions } from "../c
 import { relative, isAbsolute, join } from "node:path";
 import { createPatch } from "diff";
 import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
 import EntryManifest from "./_entry-manifest.ts";
 import GitMembership, { type FileCreationAdmission } from "../core/git-membership.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
@@ -95,7 +94,7 @@ export default class File extends CoreSchemeAdapterBase {
             "## Summary",
             "Project workspace files, addressed as bare paths relative to the project root.",
             "READ and FIND inspect member files; EDIT proposes a diff for review and writes to disk once accepted. Existing non-members are invisible (`mcp:///plurnk/members.json`); admitted absent paths are created by EDIT, COPY, or MOVE.",
-            PlurnkParser.frame("EDIT (src/greet.mjs) <!-- create the file from the body -->", "export const greet = (name) => `hello ${name}`;\n\nconsole.log(greet(\"world\"));"),
+            "await plurnk.edit({ path: \"src/greet.mjs\", content: \"export const greet = (name) => `hello ${name}`;\\n\\nconsole.log(greet(\\\"world\\\"));\" }); // create the file from the content",
             "A scoped EDIT replaces the addressed lines with the replacement text in its body.",
         ].join("\n\n"),
     };

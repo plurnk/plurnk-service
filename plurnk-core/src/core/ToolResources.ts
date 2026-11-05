@@ -58,14 +58,6 @@ const invocationRows = (
     ];
 };
 
-const invocationHeader = (
-    runtime: string,
-    invocation: RuntimeInvocationDecl,
-    exactTarget?: string,
-    aside?: string,
-    schemaPath?: string,
-): string => ToolInputSchema.header(runtime, invocation, { exactTarget, aside, schemaPath });
-
 // {§tools-resource-materialization} — summaries retain one-line invocation witnesses.
 const invocationInput = (invocation: RuntimeInvocationDecl): string | undefined =>
     ToolInputSchema.input(invocation);
@@ -76,15 +68,19 @@ const summaryWitness = (
     exactTarget: string | undefined,
     summary?: string,
 ): string => {
-    const header = invocationHeader(runtime, invocation, exactTarget, summary);
     const input = exactTarget === undefined && invocation.inputSchema === undefined
         ? invocation.example?.body
         : invocationInput(invocation);
-    return PlurnkParser.frame(header, input ?? null);
+    return ToolInputSchema.fence(runtime, invocation, {
+        exactTarget,
+        aside: summary,
+        includeSchemaNote: false,
+        body: input ?? null,
+    });
 };
 
 const authoredSummary = (source: ToolSource, summary: string): string => {
-    if (!summary.startsWith("```")) return summary;
+    if (!summary.startsWith("await ") && !summary.startsWith("plurnk.")) return summary;
     // {§operation-fences} — the source's own runtime is the known executor for its summary.
     const { items } = PlurnkParser.parseStatements(summary, { executors: [source.runtime] });
     const item = items[0];
@@ -94,8 +90,12 @@ const authoredSummary = (source: ToolSource, summary: string): string => {
     const invocation = source.registry?.tools.find(({ target }) => target === statement.target?.raw)?.invocation;
     const input = invocation === undefined ? undefined : invocationInput(invocation);
     if (input === undefined) return summary;
-    const header = invocationHeader(source.runtime, invocation!, statement.target.raw, statement.aside ?? undefined);
-    return PlurnkParser.frame(header, input);
+    return ToolInputSchema.fence(source.runtime, invocation!, {
+        exactTarget: statement.target.raw,
+        aside: statement.aside ?? undefined,
+        includeSchemaNote: false,
+        body: input,
+    });
 };
 
 const renderInvocation = (
@@ -109,10 +109,12 @@ const renderInvocation = (
     "",
     ...invocationRows(invocation, exactTarget),
     "",
-    PlurnkParser.frame(
-        invocationHeader(runtime, invocation, exactTarget, aside, schemaPath),
-        invocationInput(invocation) ?? null,
-    ),
+    ToolInputSchema.fence(runtime, invocation, {
+        exactTarget,
+        aside,
+        schemaPath,
+        body: invocationInput(invocation) ?? null,
+    }),
 ];
 
 const renderDocument = (
@@ -251,12 +253,15 @@ export default class ToolResources {
             tools.map(({ target }) => target).join("|"),
             source.summary.description,
         );
-        const toolInvocations = tools.map((tool) => PlurnkParser.frame(
-            invocationHeader(
-                source.runtime, tool.invocation, tool.target, tool.summary,
-                tool.invocation.inputSchema === undefined ? undefined : schemaUri(tool.target),
-            ),
-            invocationInput(tool.invocation) ?? null,
+        const toolInvocations = tools.map((tool) => ToolInputSchema.fence(
+            source.runtime,
+            tool.invocation,
+            {
+                exactTarget: tool.target,
+                aside: tool.summary,
+                schemaPath: tool.invocation.inputSchema === undefined ? undefined : schemaUri(tool.target),
+                body: invocationInput(tool.invocation) ?? null,
+            },
         ));
         // A target's details nest as `## <target>`; their own headings demote
         // one level so the target heading stays the section boundary.

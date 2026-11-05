@@ -109,9 +109,9 @@ test("{§share-packet-names}: restore preserves history, decisions and attachmen
     const snapshot = join(backup, "plurnk.db");
     const restoredPath = join(directory, "restored.db");
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        { assistant: { content: "````READ (doc.md)\n````", reasoning: "Inspect before editing." } },
-        { assistant: { content: "````EDIT (doc.md) <1,-1>\nPreserved project version.\n````", reasoning: "Apply the requested change." } },
-        { assistant: { content: "````DONE\nUpdated the document.\n````", reasoning: "The edit succeeded." },
+        { assistant: { content: "await plurnk.read({\"path\":\"doc.md\"});", reasoning: "Inspect before editing." } },
+        { assistant: { content: "await plurnk.edit({\"path\":\"doc.md\",\"range\":\"1,-1\",\"content\":\"Preserved project version.\"});", reasoning: "Apply the requested change." } },
+        { assistant: { content: "await plurnk.done({\"text\":\"Updated the document.\"});", reasoning: "The edit succeeded." },
             usage: { inputTokens: 50, outputTokens: 10, totalTokens: 60 },
             cost: { kind: "charged", amount: { amount: "0.01", currency: "USD" }, source: "fixture invoice" } },
     ] });
@@ -174,7 +174,7 @@ test("{§share-packet-names}: restore preserves history, decisions and attachmen
         assert.deepEqual(environment.definitions.find(({ alias }) => alias === "RESTORE_DURABLE")?.definition, { value: "workspace-owned" });
         assert.deepEqual(environment.definitions.find(({ alias }) => alias === "RESTORE_AMBIENT")?.definition, { value: "changed" },
             "ambient configuration is taken from this startup, not replayed from the database");
-        const [changed] = await restored.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: sessionId, statements: parseDsl("````READ (doc.md)\n````") });
+        const [changed] = await restored.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: sessionId, statements: parseDsl("await plurnk.read({\"path\":\"doc.md\"});") });
         assert.equal(changed?.status, 200);
         assert.equal(changed.content, "External edit after the snapshot.\n", "startup materializes current filesystem bytes, not the old database projection");
         assert.equal(await readFile(filePath, "utf8"), "External edit after the snapshot.\n");
@@ -190,7 +190,7 @@ test("{§share-packet-names}: restore preserves history, decisions and attachmen
             scope: "session", workspaceId, sessionId,
         }) as FunctionalityListResult;
         assert.deepEqual(environment.definitions.find(({ alias }) => alias === "RESTORE_AMBIENT")?.definition, { value: "original" });
-        const [restoredFile] = await reconfigured.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: sessionId, statements: parseDsl("````READ (doc.md)\n````") });
+        const [restoredFile] = await reconfigured.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: sessionId, statements: parseDsl("await plurnk.read({\"path\":\"doc.md\"});") });
         assert.equal(restoredFile?.status, 200);
         assert.equal(restoredFile.content, "Preserved project version.\n");
         assert.equal(idleProvider.received.length, 0);
@@ -409,7 +409,7 @@ test("{§schedule-family} a discovered schedule arms a persisted rule at restart
     assert.equal(added.status, 201);
     await first.stop();
 
-    const provider = new Mock({ contextWindow: 65_536, responses: [{ assistant: { content: "````DONE\nReceived.\n````", reasoning: null } }] });
+    const provider = new Mock({ contextWindow: 65_536, responses: [{ assistant: { content: "await plurnk.done({\"text\":\"Received.\"});", reasoning: null } }] });
     const second = new Daemon({ db, provider });
     t.after(async () => { await second.stop(); await db.close(); });
     await second.start();

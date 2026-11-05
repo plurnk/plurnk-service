@@ -774,7 +774,7 @@ test("{§methods}: a full L/T/S coordinate resolves the single entry's full shap
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "log-coord-test" });
             await rpcCall(ws, 2, "op.edit", { target: "workspace:///a", content: "alpha" });
-            await rpcCall(ws, 3, "op.dispatch", { statement: Dsl.parseSingleStatement("````SEND\nParis\n````") });
+            await rpcCall(ws, 3, "op.dispatch", { statement: Dsl.parseSingleStatement("await plurnk.send({\"text\":\"Paris\"});") });
 
             // Discover the SEND entry's DISPLAY coordinate (no hardcoded ids).
             const all = (await rpcCall(ws, 4, "log.read")).result as { entries: Array<{ id: number; op: string; loop_seq: number; turn_seq: number; sequence: number; tx: unknown }> };
@@ -1252,10 +1252,10 @@ for (const outcome of ["success", "failure", "delegation"] as const) {
     serverProposals(t, "accept");
         const db = await openMigrated();
         const provider = new Mock({ contextWindow: viableWindow() * 4, responses: (outcome === "delegation" ? [
-            "````WORK (session://child)\nComplete the delegated work.\n````\n\n````WAIT\nAwait the child.\n````",
-            "````DONE\nChild work completed.\n````",
-            "````DONE\nParent work completed.\n````",
-        ] : ["````DONE\nWork completed.\n````"]).map((response) => makeMockResponse(response)) });
+            "await plurnk.work({\"target\":\"session://child\",\"prompt\":\"Complete the delegated work.\"});\n\nawait plurnk.wait({\"text\":\"Await the child.\"});",
+            "await plurnk.done({\"text\":\"Child work completed.\"});",
+            "await plurnk.done({\"text\":\"Parent work completed.\"});",
+        ] : ["await plurnk.done({\"text\":\"Work completed.\"});"]).map((response) => makeMockResponse(response)) });
         if (outcome === "failure") {
             provider.generate = async () => { throw new ProviderError("mock", "request_rejected", "Fixture request rejected."); };
         }
@@ -1301,9 +1301,14 @@ for (const operation of ["READ", "EDIT", "KILL"]) test(`{§notifications} tool h
     serverProposals(t, "accept");
     const db = await openMigrated();
     const root = await mkdtemp(join(tmpdir(), "plurnk-hook-project-"));
+    const opCall = operation === "READ"
+        ? 'await plurnk.read({"path":"workspace:///*.txt"});'
+        : operation === "EDIT"
+            ? 'await plurnk.edit({"path":"workspace:///*.txt","range":"1,-1","content":"updated"});'
+            : 'await plurnk.kill({"path":"workspace:///*.txt"});';
     const provider = new Mock({ contextWindow: viableWindow() * 4, responses: [
-        makeMockResponse(`\`\`\`\`EDIT (workspace:///one.txt)\nalpha\n\`\`\`\`\n\n\`\`\`\`EDIT (workspace:///two.txt)\nbeta\n\`\`\`\`\n\n\`\`\`\`${operation} (workspace:///*.txt)${operation === "EDIT" ? " <1,-1>\nupdated" : ""}\n\`\`\`\`\n\n\`\`\`\`READ (workspace:///missing.txt)\n\`\`\`\``),
-        makeMockResponse("````DONE\nInspected both entries and the missing path.\n````"),
+        makeMockResponse(`await plurnk.edit({"path":"workspace:///one.txt","content":"alpha"});\n\nawait plurnk.edit({"path":"workspace:///two.txt","content":"beta"});\n\n${opCall}\n\nawait plurnk.read({"path":"workspace:///missing.txt"});`),
+        makeMockResponse("await plurnk.done({\"text\":\"Inspected both entries and the missing path.\"});"),
     ] });
     const daemon = new Daemon({ db, provider });
     t.after(async () => { await daemon.stop(); await db.close(); await rm(root, { recursive: true, force: true }); });
@@ -1349,8 +1354,8 @@ for (const operation of ["READ", "EDIT", "KILL"]) test(`{§notifications} tool h
 test("{§notifications} concurrent BARE starts precede inference and correlate with ordered settlement", { timeout: 20_000 }, async (t) => {
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: viableWindow() * 4, responses: [
-        makeMockResponse("````BARE\nFirst isolated question.\n````\n\n````BARE\nSecond isolated question.\n````"),
-        makeMockResponse("````DONE\nBoth calls answered.\n````"),
+        makeMockResponse("await plurnk.bare({\"prompt\":\"First isolated question.\"});\n\nawait plurnk.bare({\"prompt\":\"Second isolated question.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"Both calls answered.\"});"),
     ] });
     const daemon = new Daemon({ db, provider });
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -1392,8 +1397,10 @@ for (const decision of ["accept", "reject"] as const) {
         const release = join(root, "release");
         const command = `node -e 'const fs = require("node:fs"); const timer = setInterval(() => { if (fs.existsSync(process.argv[1])) { console.log("hook-stream-finished"); clearInterval(timer); } }, 10);' '${release}'`;
         const provider = new Mock({ contextWindow: viableWindow() * 4, responses: [
-            makeMockResponse(`\`\`\`\`sh\n${command}\n\`\`\`\`\n\n\`\`\`\`WAIT\nAwait the command.\n\`\`\`\``),
-            makeMockResponse("````DONE\nThe command settled.\n````"),
+            makeMockResponse(`await plurnk.sh(${JSON.stringify({ command })});
+
+await plurnk.wait({"text":"Await the command."});`),
+            makeMockResponse("await plurnk.done({\"text\":\"The command settled.\"});"),
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); await rm(root, { recursive: true, force: true }); });

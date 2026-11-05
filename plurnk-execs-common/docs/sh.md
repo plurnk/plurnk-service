@@ -1,19 +1,16 @@
 # sh
 
-The `sh` fence runs the body with `-c` in the shell its summary names: the
-environment's `$SHELL`, or `/bin/sh` when that names no executable file. The body
+`plurnk.sh` runs the `command` with `-c` in the shell its summary names: the
+environment's `$SHELL`, or `/bin/sh` when that names no executable file. The command
 reaches it character-perfect, whitespace included; write for that shell.
 
-```sh <!-- the body is the script itself -->
-printf 'hello\n' > hello.txt
-wc -l hello.txt
-```
+await plurnk.sh({ command: "printf 'hello\\n' > hello.txt\nwc -l hello.txt" }); // the command is the script itself
 
-A script target runs that script: `sh (greet.sh)` runs it with no arguments;
-a nonempty body is tokenized by shell quoting and passed as its arguments
+A `script` runs that script: `await plurnk.sh({ script: "greet.sh" });` runs it with no arguments;
+`args` (an array of argument strings or a shell-quoted string) is passed as its arguments
 (plain words split on whitespace, quoted arguments stay whole, nothing is
 expanded). The interpreter reads the script directly, so it needs no executable
-bit; a script path authored inside a shell body still follows the kernel's
+bit; a script path authored inside a shell `command` still follows the kernel's
 ordinary executable-bit rules. The same applies to local, `session://`, and
 `skill://` script targets across every interpreter.
 
@@ -27,8 +24,8 @@ with the `env` registry (`mcp:///plurnk/env.json`).
 ## Working directory
 
 The working directory is the workspace project root, or in a workspace without
-one the directory the shell would run in anyway. A directory in the `(target)`
-slot overrides it for an inline body (`sh (packages/api)`); a receipt names the
+one the directory the shell would run in anyway. Setting `cwd` overrides it for
+an inline command (`await plurnk.sh({ command: "npm test", cwd: "packages/api" });`); a receipt names the
 directory, relative to the project root, only when the command ran elsewhere.
 
 ## Channels
@@ -42,8 +39,7 @@ growth, and READ can inspect any range. On completion, the harness adds one
 otherwise a bodiless receipt naming its size, with the `range` extent and the
 terminal exit status. READ a range of the observation's `path` for any part:
 
-```READ (sh:///ab3d5678#stdout) <17,40>
-```
+await plurnk.read({ path: "sh:///ab3d5678#stdout", range: "17,40" });
 
 The observation carries the `exitCode`; a nonzero one is the command's answer,
 not a failure. Stdout and stderr are separate channels,
@@ -51,16 +47,3 @@ and a diagnostic may be on either. The `log:///…/sh` receipt's own body is the
 program exactly as sent, never output. A receipt with a non-200 status and no
 `stream` address ran nothing; its body is still the program, and its Problem
 says why it was refused.
-
-## Lifetime
-
-The heading's `lifetime` metadata bounds the command's total runtime, not idle
-time. This command is stopped after 30 seconds if it has not finished:
-
-```sh [{"lifetime": "30s"}]
-npm test
-```
-
-Expiry closes the stream with status 504. By contrast, `WAIT [30]` limits one
-wait to 30 seconds without stopping the command. Without `lifetime`,
-the command is loop-bound; see `mcp:///plurnk/env.json` for other `lifetime` values (`detached`, `turn`).

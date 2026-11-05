@@ -13,7 +13,7 @@ import { readThroughScheme, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.t
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { parsePath, PlurnkParser } from "@plurnk/plurnk-parser";
+import { parsePath } from "@plurnk/plurnk-parser";
 import { userText } from "./_mock.ts";
 import { serverProposals } from "./_approval.ts";
 import { Mock, chatMessageText, type InputModality, ProviderError, type ChatMessage, type MockResponse } from "@plurnk/plurnk-providers";
@@ -34,7 +34,7 @@ import { namedModelSession } from "./_sessions.ts";
 describe("READ.audio", () => {
 process.env.PLURNK_MEMBERS_task = "**";
 process.env.PLURNK_MEMBERS_ENABLED = "1";
-const next = "````NOTE\nInspect the audio.\n````";
+const next = "await plurnk.note({\"text\":\"Inspect the audio.\"});";
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 
 for (const modalities of [["audio"], []] as InputModality[][]) {
@@ -44,11 +44,19 @@ for (const modalities of [["audio"], []] as InputModality[][]) {
         const bytes = wav();
         await writeFile(join(root, "clip.wav"), bytes);
         const provider = new Mock({ contextWindow: viableWindow(), inputModalities: modalities, responses: [
-            turn(`\`\`\`\`READ (clip.wav#bytes) <1,4>\`\`\`\`\n${next}`),
-            turn(`\`\`\`\`KILL (clip.wav)\`\`\`\`\n${next}`),
-            turn(`\`\`\`\`READ (log:///1/2/4/READ)\`\`\`\`\n${next}`),
-            turn(`\`\`\`\`KILL (log:///1/2/4/READ) <42>\`\`\`\`\n${next}`),
-            turn("````DONE\nAudio inspection complete.\n````"),
+            turn(`await plurnk.read({"path":"clip.wav#bytes","range":"1,4"});
+
+${next}`),
+            turn(`await plurnk.kill({"path":"clip.wav"});
+
+${next}`),
+            turn(`await plurnk.read({"path":"log:///1/2/4/READ"});
+
+${next}`),
+            turn(`await plurnk.kill({"path":"log:///1/2/4/READ","range":"42"});
+
+${next}`),
+            turn("await plurnk.done({\"text\":\"Audio inspection complete.\"});"),
         ] });
         try {
             await withDaemon(provider, async (db, _daemon, addr) => {
@@ -283,7 +291,7 @@ class DropImageRequestOnce extends Mock {
 
 const runLoop = async (
     modalities: readonly InputModality[],
-    read = "````READ (logo.png)````",
+    read = "await plurnk.read({\"path\":\"logo.png\"});",
     renew = false,
     responses?: MockResponse[],
     provider?: Mock,
@@ -297,17 +305,13 @@ const runLoop = async (
         responses: responses ?? [
             mockTurn(`${read}
 
-\`\`\`\`NOTE
-looking
-\`\`\`\``),
+await plurnk.note({"text":"looking"});`),
             renew
                 ? mockTurn(`${read}
 
-\`\`\`\`NOTE
-keep looking
-\`\`\`\``)
-                : mockTurn("````NOTE\ncontinue inspecting\n````"),
-            mockTurn("````DONE\nseen\n````"),
+await plurnk.note({"text":"keep looking"});`)
+                : mockTurn("await plurnk.note({\"text\":\"continue inspecting\"});"),
+            mockTurn("await plurnk.done({\"text\":\"seen\"});"),
         ],
     });
     try {
@@ -336,7 +340,7 @@ test("{§log-wire-format} a seeing route receives the picture as a native part b
     const second = requests[1];
     assert.ok(second !== undefined && second.length >= 2, "the request after READ reached the provider");
     assert.deepEqual(second.map(({ role }) => role), ["system", "user", "assistant", "user"]);
-    assert.equal(second[2].content, "```READ (logo.png)\n```\n\n```NOTE\nlooking\n```", "the READ replays with its turn, before the native result");
+    assert.equal(second[2].content, "await plurnk.read({\"path\":\"logo.png\"});\n\nawait plurnk.note({\"text\":\"looking\"});", "the READ replays with its turn, before the native result");
     const user = second[3];
     assert.ok(user !== undefined && Array.isArray(user.content), `the user slot carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
     const text = userText(second);
@@ -354,12 +358,18 @@ test("{§tokenomics}: a READ that does not fit is a bodiless receipt; native out
     try {
         await writeFile(join(root, "logo.png"), PNG);
         await writeFile(join(root, "large.txt"), "evidence ".repeat(100_000));
-        const next = "````NOTE\nReview the evidence.\n````";
+        const next = "await plurnk.note({\"text\":\"Review the evidence.\"});";
         const provider = new Mock({ contextWindow: 36_000, inputModalities: ["image"], responses: [
-            mockTurn(`\`\`\`\`READ (logo.png)\`\`\`\`\n\`\`\`\`READ (large.txt) <1,-1>\`\`\`\`\n${next}`),
+            mockTurn(`await plurnk.read({"path":"logo.png"});
+
+await plurnk.read({"path":"large.txt","range":"1,-1"});
+
+${next}`),
             mockTurn(next),
-            mockTurn(`\`\`\`\`READ (logo.png)\`\`\`\`\n${next}`),
-            mockTurn("````DONE\nImage inspection complete.\n````"),
+            mockTurn(`await plurnk.read({"path":"logo.png"});
+
+${next}`),
+            mockTurn("await plurnk.done({\"text\":\"Image inspection complete.\"});"),
         ] });
         await withDaemon(provider, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -415,16 +425,16 @@ test("{§log-wire-format} completed responses retain native content alongside th
 });
 
 test("{§log-wire-format} repeating READ creates a new native delivery for the following request", async () => {
-    const requests = await runLoop(["image"], "````READ (logo.png)````", true);
+    const requests = await runLoop(["image"], "await plurnk.read({\"path\":\"logo.png\"});", true);
     assert.equal(nativeParts(requests[2]).filter((part) => part.type === "file").length, 2, "both retained observations contribute native content");
 });
 
 test("{§log-wire-format} invalid-emission rerolls reuse the same materialized native request", async () => {
-    const requests = await runLoop(["image"], "````READ (logo.png)````", false, [
-        mockTurn("````READ (logo.png)````\n````NOTE\nlooking\n````"),
-        { assistant: { content: "````READ (workspace:///not-a-plurnk-emission", reasoning: null }, assistantRaw: null },
-        mockTurn("````NOTE\nrecovered\n````"),
-        mockTurn("````DONE\nseen\n````"),
+    const requests = await runLoop(["image"], "await plurnk.read({\"path\":\"logo.png\"});", false, [
+        mockTurn("await plurnk.read({\"path\":\"logo.png\"});\n\nawait plurnk.note({\"text\":\"looking\"});"),
+        { assistant: { content: "await plurnk.read({\"path\":\"workspace:///not-a-plurnk-emission", reasoning: null }, assistantRaw: null },
+        mockTurn("await plurnk.note({\"text\":\"recovered\"});"),
+        mockTurn("await plurnk.done({\"text\":\"seen\"});"),
     ]);
     const attempted = requests.slice(1, 3);
     assert.equal(attempted.length, 2);
@@ -438,12 +448,12 @@ test("{§log-wire-format} a response-less network retry retains the same materia
         contextWindow: viableWindow(),
         inputModalities: ["image"],
         responses: [
-            mockTurn("````READ (logo.png)````\n````NOTE\nlooking\n````"),
-            mockTurn("````NOTE\nrecovered\n````"),
-            mockTurn("````DONE\nseen\n````"),
+            mockTurn("await plurnk.read({\"path\":\"logo.png\"});\n\nawait plurnk.note({\"text\":\"looking\"});"),
+            mockTurn("await plurnk.note({\"text\":\"recovered\"});"),
+            mockTurn("await plurnk.done({\"text\":\"seen\"});"),
         ],
     });
-    await runLoop(["image"], "````READ (logo.png)````", false, undefined, provider);
+    await runLoop(["image"], "await plurnk.read({\"path\":\"logo.png\"});", false, undefined, provider);
     assert.equal(provider.attempts.length, 4, "one initial call, the dropped image request, its retry, and the next turn");
     assert.equal(provider.attempts[1], provider.attempts[2], "the response-less retry receives the exact same image-bearing request");
     for (const index of [1, 3]) {
@@ -452,7 +462,7 @@ test("{§log-wire-format} a response-less network retry retains the same materia
 });
 
 test("{§binary-parity} {§log-wire-format} a ranged byte READ returns its hex slice and the complete native image", async () => {
-    const requests = await runLoop(["image"], "````READ (logo.png#bytes) <1,16>````");
+    const requests = await runLoop(["image"], "await plurnk.read({\"path\":\"logo.png#bytes\",\"range\":\"1,16\"});");
     const parts = nativeParts(requests[1]);
     const packetText = userText(requests[1] ?? []);
     const image = parts.find((part) => part.type === "file" && part.mediaType === "image/png");
@@ -463,7 +473,7 @@ test("{§binary-parity} {§log-wire-format} a ranged byte READ returns its hex s
 });
 
 test("{§binary-parity} {§log-wire-format} a ranged byte READ remains the same hex slice on a text-only route", async () => {
-    const requests = await runLoop([], "````READ (logo.png#bytes) <1,16>````");
+    const requests = await runLoop([], "await plurnk.read({\"path\":\"logo.png#bytes\",\"range\":\"1,16\"});");
     assert.ok(requests[1].every((message) => typeof message.content === "string"), "a text-only route receives no native part");
     const text = userText(requests[1]);
     assert.match(text, new RegExp(`"range":"<1,16> of ${PNG.length} bytes"`, "u"));
@@ -472,12 +482,16 @@ test("{§binary-parity} {§log-wire-format} a ranged byte READ remains the same 
 });
 
 test("{§log-wire-format} native content survives completed responses until scoped KILL retires its READ", async () => {
-    const next = "````NOTE\nInspect the picture.\n````";
+    const next = "await plurnk.note({\"text\":\"Inspect the picture.\"});";
     const requests = await runLoop(["image"], undefined, false, [
-        mockTurn(`\`\`\`\`READ (logo.png)\`\`\`\`\n${next}`),
+        mockTurn(`await plurnk.read({"path":"logo.png"});
+
+${next}`),
         mockTurn(next),
-        mockTurn(`\`\`\`\`KILL (log:///*/*/*/READ) <42>\`\`\`\`\n${next}`),
-        mockTurn("````DONE\nImage inspection complete.\n````"),
+        mockTurn(`await plurnk.kill({"path":"log:///*/*/*/READ","range":"42"});
+
+${next}`),
+        mockTurn("await plurnk.done({\"text\":\"Image inspection complete.\"});"),
     ]);
     for (const index of [1, 2]) {
         const content = nativeParts(requests[index]);
@@ -489,11 +503,15 @@ test("{§log-wire-format} native content survives completed responses until scop
 });
 
 test("{§log-wire-format} retained and forked READs preserve original bytes after source deletion", async () => {
-    const next = "````NOTE\nInspect the retained picture.\n````";
+    const next = "await plurnk.note({\"text\":\"Inspect the retained picture.\"});";
     const requests = await runLoop(["image"], undefined, false, [
-        mockTurn(`\`\`\`\`READ (logo.png)\`\`\`\`\n${next}`),
-        mockTurn(`\`\`\`\`KILL (logo.png)\`\`\`\`\n${next}`),
-        mockTurn("````DONE\nImage inspection complete.\n````"),
+        mockTurn(`await plurnk.read({"path":"logo.png"});
+
+${next}`),
+        mockTurn(`await plurnk.kill({"path":"logo.png"});
+
+${next}`),
+        mockTurn("await plurnk.done({\"text\":\"Image inspection complete.\"});"),
     ], undefined, async (root, db, loopId) => {
         await assert.rejects(readFile(join(root, "logo.png")), { code: "ENOENT" }, "the source was actually deleted");
         const loop = await db.drain_message_source.get<{ session_id: number }>({ loop_id: loopId });
@@ -510,12 +528,20 @@ test("{§log-wire-format} retained and forked READs preserve original bytes afte
 });
 
 test("{§log-wire-format} explicit log READ preserves its own observation after source deletion and curation", async () => {
-    const next = "````NOTE\nInspect history.\n````";
+    const next = "await plurnk.note({\"text\":\"Inspect history.\"});";
     const requests = await runLoop(["image"], undefined, false, [
-        mockTurn(`\`\`\`\`READ (logo.png)\`\`\`\`\n${next}`),
-        mockTurn(`\`\`\`\`KILL (logo.png)\`\`\`\`\n\`\`\`\`READ (log:///1/2/4/READ)\`\`\`\`\n${next}`),
-        mockTurn(`\`\`\`\`KILL (log:///1/2/4/READ) <42>\`\`\`\`\n${next}`),
-        mockTurn("````DONE\nImage inspection complete.\n````"),
+        mockTurn(`await plurnk.read({"path":"logo.png"});
+
+${next}`),
+        mockTurn(`await plurnk.kill({"path":"logo.png"});
+
+await plurnk.read({"path":"log:///1/2/4/READ"});
+
+${next}`),
+        mockTurn(`await plurnk.kill({"path":"log:///1/2/4/READ","range":"42"});
+
+${next}`),
+        mockTurn("await plurnk.done({\"text\":\"Image inspection complete.\"});"),
     ]);
     const copied = nativeParts(requests[2]);
     assert.equal(copied.filter((part) => part.type === "file").length, 2);
@@ -526,16 +552,20 @@ test("{§log-wire-format} explicit log READ preserves its own observation after 
 });
 
 test("{§log-kill-scope} a text-only route preserves ordinary scoped trimming of a media READ", async () => {
-    const next = "````NOTE\nInspect bytes.\n````";
+    const next = "await plurnk.note({\"text\":\"Inspect bytes.\"});";
     const requests = await runLoop([], undefined, false, [
-        mockTurn(`\`\`\`\`READ (logo.png#bytes) <1,16>\`\`\`\`\n${next}`),
-        mockTurn(`\`\`\`\`KILL (log:///1/2/4/READ) <1>\`\`\`\`\n${next}`),
-        mockTurn("````DONE\nImage inspection complete.\n````"),
+        mockTurn(`await plurnk.read({"path":"logo.png#bytes","range":"1,16"});
+
+${next}`),
+        mockTurn(`await plurnk.kill({"path":"log:///1/2/4/READ","range":"1"});
+
+${next}`),
+        mockTurn("await plurnk.done({\"text\":\"Image inspection complete.\"});"),
     ]);
     assert.ok(requests[2].every((message) => typeof message.content === "string"));
     const content = userText(requests[2]);
     assert.match(content, /### log:\/\/\/1\/2\/4\/READ \(logo\.png#bytes\) · \d+\n/, "the trimmed READ's receipt stays, naming its operand");
-    assert.ok(requests[2].some((message) => message.role === "assistant" && message.content === "```READ (logo.png#bytes) <1,16>\n```\n\n```NOTE\nInspect bytes.\n```"), "trimming the result leaves the READ's replay whole");
+    assert.ok(requests[2].some((message) => message.role === "assistant" && message.content === "await plurnk.read({\"path\":\"logo.png#bytes\",\"range\":\"1,16\"});\n\nawait plurnk.note({\"text\":\"Inspect bytes.\"});"), "trimming the result leaves the READ's replay whole");
     assert.doesNotMatch(content, /\n\s*1:89\n/u);
     assert.match(content, /\n\s*2:50\n/u);
 });
@@ -575,7 +605,7 @@ const runLoop = async (modalities: readonly InputModality[]) => {
     const mock = new Mock({
         contextWindow: viableWindow(),
         inputModalities: modalities,
-        responses: [mockTurn("````READ (contract.pdf)````\n````NOTE\nlooking\n````"), mockTurn("````DONE\nseen\n````")],
+        responses: [mockTurn("await plurnk.read({\"path\":\"contract.pdf\"});\n\nawait plurnk.note({\"text\":\"looking\"});"), mockTurn("await plurnk.done({\"text\":\"seen\"});")],
     });
     try {
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -615,7 +645,7 @@ test("{§log-wire-format} a document route receives the PDF as a native file par
     assert.doesNotMatch(userText(second), /1:looking/u, "the NOTE body appears only in assistant replay");
     assert.deepEqual(second[2], {
         role: "assistant",
-        content: `${PlurnkParser.frame("READ (contract.pdf)", null)}\n\n${PlurnkParser.frame("NOTE", "looking")}`,
+        content: `await plurnk.read({"path":"contract.pdf"});\n\nawait plurnk.note({"text":"looking"});`,
     }, "the READ's turn precedes its native result");
     const system = second.find((message) => message.role === "system");
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
@@ -639,7 +669,7 @@ process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
-const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Media inspected.");
+const step = (op = "NOTE") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "NOTE" ? "Inspect the result." : "Media inspected." })});`;
 
 class ResourceReader extends Mock {
     resource: string | undefined;
@@ -696,9 +726,15 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
         }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
         const served = await serveMcpHttp(t, handler);
         const provider = new ResourceReader({ contextWindow: 1_000_000, inputModalities: modalities, responses: [
-            turn(`\`\`\`\`fixture (observe)\n{}\n\`\`\`\`\n\n${step("WAIT")}`),
-            ...(form === "multipart" ? [turn(`\`\`\`\`READ ($RESOURCE)\`\`\`\`\n\n${step("NOTE")}`)] : []),
-            turn(`\`\`\`\`READ ($RESOURCE${form === "inline" || form === "link" ? "#bytes" : ""}) <1,3>\`\`\`\`\n\n${step("NOTE")}`),
+            turn(`await fixture.observe({});
+
+${step("WAIT")}`),
+            ...(form === "multipart" ? [turn(`await plurnk.read({"path":"$RESOURCE"});
+
+${step("NOTE")}`)] : []),
+            turn(`await plurnk.read({"path":"$RESOURCE${form === "inline" || form === "link" ? "#bytes" : ""}","range":"1,3"});
+
+${step("NOTE")}`),
             turn(step("NOTE")),
             turn(step("DONE")),
         ] });
@@ -762,7 +798,7 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
 
 describe("mcp-prompt-composition", () => {
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
-const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Media inspected.");
+const step = (op = "NOTE") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "NOTE" ? "Inspect the result." : "Media inspected." })});`;
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 
 class PromptReader extends Mock {
@@ -799,8 +835,12 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             return server;
         }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
         const provider = new PromptReader({ contextWindow: 1_000_000, inputModalities: modalities, responses: [
-            turn(`\`\`\`\`READ (fixture:///prompts/inspect) <1,-1>\n\`\`\`\`\n\n${step("NOTE")}`),
-            turn(`\`\`\`\`READ ($RESOURCE#bytes) <1,3>\n\`\`\`\`\n\n${step("NOTE")}`),
+            turn(`await plurnk.read({"path":"fixture:///prompts/inspect","range":"1,-1"});
+
+${step("NOTE")}`),
+            turn(`await plurnk.read({"path":"$RESOURCE#bytes","range":"1,3"});
+
+${step("NOTE")}`),
             turn(step("NOTE")),
             turn(step("DONE")),
         ] });
@@ -826,8 +866,8 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             assert.match(texts[1], /"role": "assistant"/u, "the supplied role remains visible as prompt data");
             // {§emission-history}: only admitted model operations have assistant authorship.
             const noted = step("NOTE");
-            const promptRead = PlurnkParser.frame("READ (fixture:///prompts/inspect) <1,-1>", null);
-            const mediaRead = PlurnkParser.frame(`READ (${provider.resource}#bytes) <1,3>`, null);
+            const promptRead = "await plurnk.read({\"path\":\"fixture:///prompts/inspect\",\"range\":\"1,-1\"});";
+            const mediaRead = `await plurnk.read({"path":"${provider.resource}#bytes","range":"1,3"});`;
             const previousPrograms = [
                 [],
                 [`${promptRead}\n\n${noted}`],

@@ -9,7 +9,6 @@ import Daemon from "../../src/server/Daemon.ts";
 import { mkdtemp, readFile, rm, access, mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ModelProvider, Mock, type MockResponse } from "@plurnk/plurnk-providers";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
 import { Digest, Share } from "@plurnk/plurnk-digest";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel, insertPacketTurn } from "./_db.ts";
@@ -27,11 +26,10 @@ test("{§emission-history} {§digest-forensic-fidelity}: stored and shared reque
     const dir = await mkdtemp(join(await testArtifactDirectory("core"), "interpolated-evidence-"));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
-    const frame = PlurnkParser.frame;
     const provider = new Mock({ contextWindow: 100000, responses: [
-        { assistant: { content: frame("EDIT (workspace:///memo.md)", "The complete replacement."), reasoning: null } },
-        { assistant: { content: frame("READ (workspace:///memo.md)", null), reasoning: null } },
-        { assistant: { content: frame("DONE", "Done."), reasoning: null } },
+        { assistant: { content: "await plurnk.edit({\"path\":\"workspace:///memo.md\",\"content\":\"The complete replacement.\"});", reasoning: null } },
+        { assistant: { content: "await plurnk.read({\"path\":\"workspace:///memo.md\"});", reasoning: null } },
+        { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
     ] });
     const db = await openMigrated(dbPath);
     try {
@@ -81,7 +79,7 @@ test("{§provider-failure-normalization}: blank emissions retain their wire chan
                 if (requests > 1) {
                     return new Response(`data: ${JSON.stringify({
                         id: "text", model: "wire-evidence",
-                        choices: [{ index: 0, delta: { content: "````DONE\nInspected.\n````" }, finish_reason: "stop" }],
+                        choices: [{ index: 0, delta: { content: "await plurnk.done({\"text\":\"Inspected.\"});" }, finish_reason: "stop" }],
                         usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 },
                     })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
                 }
@@ -123,7 +121,7 @@ test("{§provider-failure-normalization}: blank emissions retain their wire chan
             { index: 0, id: "call-1", type: "function", name: "READ", arguments: '{"path":"example.txt"}' },
         ]);
         assert.deepEqual(raw.wire.channels, { refusal: "retained vendor text" });
-        assert.equal(await readFile(join(digestDir, `${stems[2]}.assistant.md`), "utf8"), "````DONE\nInspected.\n````");
+        assert.equal(await readFile(join(digestDir, `${stems[2]}.assistant.md`), "utf8"), "await plurnk.done({\"text\":\"Inspected.\"});");
         const report = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.doesNotMatch(report, /rejected-emissions=/);
         assert.match(await readFile(join(digestDir, `${stems[2]}.user.md`), "utf8"), /native tool calls, but no tools were declared/);
@@ -201,7 +199,7 @@ test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence with
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const db = await openMigrated(dbPath);
-    const source = "````SEND\ndone\n````";
+    const source = "await plurnk.send({\"text\":\"done\"});";
     try {
         const workspaceId = await insertWorkspace(db, "unknown-source");
         const sessionId = await insertSession(db, workspaceId);
@@ -246,9 +244,9 @@ test("{§log-history-projection}: digest retains programs after all source READ 
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const sources = [
-        "````NOTE\nContinue one.\n````",
-        "````NOTE\nContinue two.\n````",
-        "````KILL (log:///1/[1-2]/*/READ)````\n````NOTE\nContinue three.\n````",
+        "await plurnk.note({\"text\":\"Continue one.\"});",
+        "await plurnk.note({\"text\":\"Continue two.\"});",
+        "await plurnk.kill({\"path\":\"log:///1/[1-2]/*/READ\"});\n\nawait plurnk.note({\"text\":\"Continue three.\"});",
     ];
     const db = await openMigrated(dbPath);
     try {
@@ -347,7 +345,7 @@ test("{§share-packet-names}: digest preserves source channels without fabricati
         const dbPath = join(dir, "plurnk.db");
         const digestDir = join(dir, "digest");
         const db = await openMigrated(dbPath);
-        const inferenceSource = "````SEND\ndone\n````";
+        const inferenceSource = "await plurnk.send({\"text\":\"done\"});";
         let initializationSource = "";
         try {
             const workspaceId = await insertWorkspace(db, "turn-artifacts");

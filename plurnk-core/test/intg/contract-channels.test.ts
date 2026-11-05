@@ -609,8 +609,8 @@ test("{§channels} channel state does not gate reads — errored/closed channels
 describe("Engine.channel-recovery", () => {
 const response = (operation: string, op = "NOTE") => ({
     assistant: { content: `${operation}
-\`\`\`\`${op}
-\`\`\`\``, reasoning: null },
+
+await plurnk.${op.toLowerCase()}({});`, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 
@@ -622,20 +622,20 @@ test("{§channel-selection} channel exploration across operation owners permits 
         const loopId = await insertLoop(db, sessionId, 1, "Retrieve the retained text.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const misses = [
-            "````READ (workspace:///note#stdout)````",
-            "````FIND (workspace:///note#stderr)````",
-            "````COPY (workspace:///note#results) (workspace:///copy)````",
-            "````COPY (workspace:///note) (workspace:///copy#results)````",
-            "````MOVE (workspace:///note#stdout) (workspace:///moved)````",
-            "````MOVE (workspace:///note) (workspace:///moved#stdout)````",
-            "````EDIT (workspace:///note#extra) <1>\nreplacement\n````",
-            "````EDIT (workspace:///note#constructor) <1>\nreplacement\n````",
+            "await plurnk.read({\"path\":\"workspace:///note#stdout\"});",
+            "await plurnk.find({\"path\":\"workspace:///note#stderr\"});",
+            "await plurnk.copy({\"from\":\"workspace:///note#results\",\"to\":\"workspace:///copy\"});",
+            "await plurnk.copy({\"from\":\"workspace:///note\",\"to\":\"workspace:///copy#results\"});",
+            "await plurnk.move({\"from\":\"workspace:///note#stdout\",\"to\":\"workspace:///moved\"});",
+            "await plurnk.move({\"from\":\"workspace:///note\",\"to\":\"workspace:///moved#stdout\"});",
+            "await plurnk.edit({\"path\":\"workspace:///note#extra\",\"range\":\"1\",\"content\":\"replacement\"});",
+            "await plurnk.edit({\"path\":\"workspace:///note#constructor\",\"range\":\"1\",\"content\":\"replacement\"});",
         ];
         const provider = new Mock({ contextWindow: 100000, responses: [
-            response("````EDIT (workspace:///note)\nretained text\n````"),
+            response("await plurnk.edit({\"path\":\"workspace:///note\",\"content\":\"retained text\"});"),
             ...misses.map((operation) => response(operation)),
-            response("````READ (workspace:///note)````"),
-            { assistant: { content: "````DONE\nRetrieved the retained text.\n````", reasoning: null } },
+            response("await plurnk.read({\"path\":\"workspace:///note\"});"),
+            { assistant: { content: "await plurnk.done({\"text\":\"Retrieved the retained text.\"});", reasoning: null } },
         ] });
         const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 15 });
         assert.equal(result.result.status, 200, JSON.stringify(result.result));
@@ -834,7 +834,7 @@ test("{§parse-recovery} {§channel-selection}: `READ (page.html) #readable`, th
         const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
         const written = await EntryCrud.writeEntry({ authority: "", pathname: "/roster.html" }, { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "workspace");
         assert.equal(written.status, 201);
-        const parsed = PlurnkParser.parseStatements("```READ (workspace:///roster.html) #readable\n```\n").items.flatMap((item) => item.kind === "statement" ? [item.statement] : [])[0] as ReadStatement;
+        const parsed = PlurnkParser.parseStatements("await plurnk.read({\"path\":\"workspace:///roster.html#readable\"});").items.flatMap((item) => item.kind === "statement" ? [item.statement] : [])[0] as ReadStatement;
         assert.equal(parsed.matcher, null, "the token is the channel, not a pattern");
         const read = await readThroughScheme("workspace", null, parsed, ctx);
         assert.equal(read.status, 200);

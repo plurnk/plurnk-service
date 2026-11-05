@@ -98,7 +98,7 @@ describe("{§json-strictness} every key at every depth is a field symbol", () =>
             '        "build": "tsc"',
             "    },",
             '    "dependencies": {',
-            '        "antlr4ng": "^3.0.0"',
+            '        "json-p3": "^2.3.1"',
             "    }",
             "}",
         ].join("\n");
@@ -108,7 +108,7 @@ describe("{§json-strictness} every key at every depth is a field symbol", () =>
         assert.ok(names.has("test"));
         assert.ok(names.has("build"));
         assert.ok(names.has("dependencies"));
-        assert.ok(names.has("antlr4ng"));
+        assert.ok(names.has("json-p3"));
     });
 
     it("{§json-strictness} emits separate symbols for the same key name at distinct positions", () => {

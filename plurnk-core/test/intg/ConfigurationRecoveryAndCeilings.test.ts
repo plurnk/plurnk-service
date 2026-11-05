@@ -50,8 +50,8 @@ test("{§configuration-repair-path} a misconfigured installed executor leaves it
     const workspaceId = await insertWorkspace(db, `constructor-repair-${crypto.randomUUID()}`);
     const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse("````brokenfixture\ninspect\n````\n\n````healthyfixture\ninspect\n````"),
-        makeMockResponse("````DONE\nThe healthy executor worked; the other needs its endpoint configured.\n````"),
+        makeMockResponse("await plurnk.brokenfixture(\"inspect\");\n\nawait plurnk.healthyfixture(\"inspect\");"),
+        makeMockResponse("await plurnk.done({\"text\":\"The healthy executor worked; the other needs its endpoint configured.\"});"),
     ] });
     const daemon = new Daemon({ db, provider });
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -88,8 +88,8 @@ test("{§configuration-repair-path} invalid scratch configuration does not block
     const workspaceId = await insertWorkspace(db, `inline-repair-${crypto.randomUUID()}`);
     const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse("````sh\nprintf inline-still-works\n````"),
-        makeMockResponse("````DONE\nThe inline program worked.\n````"),
+        makeMockResponse("await plurnk.sh({\"command\":\"printf inline-still-works\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"The inline program worked.\"});"),
     ] });
     const daemon = new Daemon({ db, provider });
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -105,9 +105,9 @@ test("{§configuration-repair-path} invalid scratch configuration does not block
 });
 
 for (const [key, invocation] of [
-    ["PLURNK_SERVICE_EXEC_CONCURRENCY", "sh"],
-    ["PLURNK_SERVICE_EXEC_PROBE_TIMEOUT_MS", "sh"],
-    ["PLURNK_SERVICE_EXEC_SCRATCH", "sh (workspace:///program.sh)"],
+    ["PLURNK_SERVICE_EXEC_CONCURRENCY", 'await plurnk.sh({"command":"printf should-not-run"});'],
+    ["PLURNK_SERVICE_EXEC_PROBE_TIMEOUT_MS", 'await plurnk.sh({"command":"printf should-not-run"});'],
+    ["PLURNK_SERVICE_EXEC_SCRATCH", 'await plurnk.sh({"script":"workspace:///program.sh","args":"printf should-not-run"});'],
 ] as const) {
     test(`{§configuration-repair-path} ${key} refuses the execution without blocking ordinary READ and EDIT`, { timeout: 30_000 }, async (t) => {
     serverProposals(t, "accept");
@@ -118,9 +118,11 @@ for (const [key, invocation] of [
         const workspaceId = await insertWorkspace(db, `executor-repair-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
-            makeMockResponse(`\`\`\`\`${invocation}\nprintf should-not-run\n\`\`\`\`\n\n\`\`\`\`EDIT (workspace:///repair.txt)\nrepair remains available\n\`\`\`\``),
-            makeMockResponse("````READ (workspace:///repair.txt)\n````"),
-            makeMockResponse("````DONE\nOrdinary editing and inspection still work.\n````"),
+            makeMockResponse(`${invocation}
+
+await plurnk.edit({"path":"workspace:///repair.txt","content":"repair remains available"});`),
+            makeMockResponse("await plurnk.read({\"path\":\"workspace:///repair.txt\"});"),
+            makeMockResponse("await plurnk.done({\"text\":\"Ordinary editing and inspection still work.\"});"),
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); });
@@ -160,8 +162,8 @@ for (const key of [
         const workspaceId = await insertWorkspace(db, `policy-repair-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
-            makeMockResponse("````plurnk (env)\n````"),
-            makeMockResponse("````DONE\nConfiguration is inspectable.\n````"),
+            makeMockResponse("await plurnk.env();"),
+            makeMockResponse("await plurnk.done({\"text\":\"Configuration is inspectable.\"});"),
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); });
@@ -187,8 +189,8 @@ test("{§configuration-repair-path} startup diagnostics reach the model and clie
     const key = "PLURNK_HOOKS_ARGS";
     await configuration.capture("hooks", () => { throw new ConfigurationError(key, `${key} must be a JSON array of strings.`); });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse("````plurnk (env)\n````"),
-        makeMockResponse("````DONE\nThe hook configuration needs repair; ordinary operations remain available.\n````"),
+        makeMockResponse("await plurnk.env();"),
+        makeMockResponse("await plurnk.done({\"text\":\"The hook configuration needs repair; ordinary operations remain available.\"});"),
     ] });
     const daemon = new Daemon({ db, provider, configuration });
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -235,8 +237,10 @@ for (const [family, key, value] of [
         const workspaceId = await insertWorkspace(db, `repair-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
-            makeMockResponse(`\`\`\`\`plurnk (${family})\n\`\`\`\`\n\n\`\`\`\`plurnk (env)\n\`\`\`\``),
-            makeMockResponse("````DONE\nThe configuration error is visible; this agent is still usable.\n````"),
+            makeMockResponse(`await plurnk.${family}();
+
+await plurnk.env();`),
+            makeMockResponse("await plurnk.done({\"text\":\"The configuration error is visible; this agent is still usable.\"});"),
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); });
@@ -283,8 +287,8 @@ describe("workspace-ceilings", () => {
 const execFileP = promisify(execFile);
 
 const twoEdits = () => new Mock({ contextWindow: viableWindow(), responses: [
-    makeMockResponse("````EDIT (workspace:///a.md)\naaa\n````\n\n````EDIT (workspace:///b.md)\nbbb\n````\n\n````NOTE\ncontinue\n````", 50),
-    makeMockResponse("````DONE\ndone\n````", 50),
+    makeMockResponse("await plurnk.edit({\"path\":\"workspace:///a.md\",\"content\":\"aaa\"});\n\nawait plurnk.edit({\"path\":\"workspace:///b.md\",\"content\":\"bbb\"});\n\nawait plurnk.note({\"text\":\"continue\"});", 50),
+    makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50),
 ] });
 const entryId = (db: Db, pathname: string) =>
     db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "workspace", pathname });
@@ -321,7 +325,7 @@ test("{§operator-config-workspace-settings} maxCommands:0 admits WAIT and drops
     try {
         process.env.PLURNK_SERVICE_MAX_COMMANDS = "99";
         const mock = new Mock({ contextWindow: viableWindow(), responses: [
-            makeMockResponse("````EDIT (workspace:///a.md)\naaa\n````\n\n````EDIT (workspace:///b.md)\nbbb\n````\n\n````SEND\ndone\n````\n````WAIT\n````", 50),
+            makeMockResponse("await plurnk.edit({\"path\":\"workspace:///a.md\",\"content\":\"aaa\"});\n\nawait plurnk.edit({\"path\":\"workspace:///b.md\",\"content\":\"bbb\"});\n\nawait plurnk.send({\"text\":\"done\"});\n\nawait plurnk.wait({});", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -369,7 +373,7 @@ test("{§operator-config} workspace settings.git:false denies git membership for
 });
 
 test("{§operator-config} workspace.create rejects malformed ceiling settings — fail hard, no silent accept", async () => {
-    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````DONE\ndone\n````", 50)] });
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("await plurnk.done({\"text\":\"done\"});", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

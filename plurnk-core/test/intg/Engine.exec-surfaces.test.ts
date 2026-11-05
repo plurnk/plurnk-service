@@ -23,7 +23,6 @@ import { testExecutors } from "./_execs.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { McpServer, createMcpHandler, fromJsonSchema } from "@modelcontextprotocol/server";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 
@@ -43,12 +42,18 @@ test("{§log-history-projection}: executor receipts keep one identity through pa
     serverProposals(approvalContext, "accept");
     const runtime = "search-api2";
     const path = `log:///1/2/2/${runtime}`;
-    const task = "````NOTE\nInspect the failed invocation.\n````";
+    const task = "await plurnk.note({\"text\":\"Inspect the failed invocation.\"});";
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse(`\`\`\`\`${runtime}\nidentityneedle\n\`\`\`\`\n${task}`, 10),
-        makeMockResponse(`\`\`\`\`READ (${path})\`\`\`\`\n\`\`\`\`FIND (log:///**/${runtime}) ~identityneedle\`\`\`\`\n${task}`, 10),
-        makeMockResponse(`\`\`\`\`KILL (log:///**/${runtime})\`\`\`\`\n${task}`, 10),
-        makeMockResponse("````DONE\nReviewed.\n````", 10),
+        makeMockResponse(`await plurnk["${runtime}"]("identityneedle");\n\n${task}`, 10),
+        makeMockResponse(`await plurnk.read({"path":"${path}"});
+
+await plurnk.find({"path":"log:///**/${runtime}","pattern":"~identityneedle"});
+
+${task}`, 10),
+        makeMockResponse(`await plurnk.kill({"path":"log:///**/${runtime}"});
+
+${task}`, 10),
+        makeMockResponse("await plurnk.done({\"text\":\"Reviewed.\"});", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -84,8 +89,8 @@ test("{§log-history-projection}: executor receipts keep one identity through pa
 test("{§log-history-projection}: rejected executor proposals use the same receipt identity as immediate failures", async (approvalContext) => {
     serverProposals(approvalContext, "reject");
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("````sh\nprintf rejected\n````\n````NOTE\nInspect the decision.\n````", 10),
-        makeMockResponse("````DONE\nThe command was not run.\n````", 10),
+        makeMockResponse("await plurnk.sh({\"command\":\"printf rejected\"});\n\nawait plurnk.note({\"text\":\"Inspect the decision.\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"The command was not run.\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -108,8 +113,8 @@ test("{§exec-stream} a model's execution result surfaces visibly in the next tu
     serverProposals(approvalContext, "accept");
     // {§exec-stream}: waiting joins the command; its result is visible before completion.
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("````sh\necho plurnk-index-probe\n````\n\n````WAIT\nwaiting\n````", 10),
-        makeMockResponse("````DONE\ndone\n````", 10),
+        makeMockResponse("await plurnk.sh({\"command\":\"echo plurnk-index-probe\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -146,8 +151,8 @@ test("{§exec-stream} a generated JSON result publishes whole with the extent th
     serverProposals(approvalContext, "accept");
     const program = "process.stdout.write(Array.from({ length: 30 }, (_, i) => JSON.stringify({ n: i + 1, payload: String(i + 1).padStart(100, '0') })).join('\\n'))";
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("````js\n" + program + "\n````\n````WAIT\nwaiting\n````", 10),
-        makeMockResponse("````DONE\ndone\n````", 10),
+        makeMockResponse(`await plurnk.js(${JSON.stringify({ code: program })});\n\nawait plurnk.wait({"text":"waiting"});`, 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -196,8 +201,8 @@ test("{§exec-stream} a generated JSON result publishes whole with the extent th
 test("{§exec-stream} a failed execution with output on both channels is one failure and one Errors pointer", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("````sh\nprintf 'partial output\\n'; printf 'last words\\n' >&2; kill -KILL $$\n````\n\n````WAIT\nwaiting\n````", 10),
-        makeMockResponse("````DONE\nfailure observed\n````", 10),
+        makeMockResponse("await plurnk.sh({\"command\":\"printf 'partial output\\\\n'; printf 'last words\\\\n' >&2; kill -KILL $$\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"failure observed\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -226,8 +231,8 @@ test("{§exec-stream} a failed execution with output on both channels is one fai
 test("{§executor-results} {§exec-stream} a nonzero exit reaches the model as the command's answer on its terminal READs", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("````sh\nprintf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3\n````\n\n````WAIT\nwaiting\n````", 10),
-        makeMockResponse("````DONE\nfailure observed\n````", 10),
+        makeMockResponse("await plurnk.sh({\"command\":\"printf 'partial output\\\\n'; printf 'compile diagnostic\\\\n' >&2; exit 3\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"failure observed\"});", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -284,10 +289,10 @@ test("{§exec-stream} the cursor-terminal race: a one-burst stream consumed befo
     // a slow-close command executes and the turn continues. Turn 2: the stream is active and represented
     // only by Child Streams. Turn 3: the terminal marker MUST land visibly despite no new bytes — never a silent skip.
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("````sh\necho burst-payload && sleep 2\n````\n\n````NOTE\nspawned\n````", 10),
-        makeMockResponse("````NOTE\nwaiting\n````", 10),
-        makeMockResponse("````NOTE\nchecking\n````", 10),
-        makeMockResponse("````DONE\ndone\n````", 10),
+        makeMockResponse("await plurnk.sh({\"command\":\"echo burst-payload && sleep 2\"});\n\nawait plurnk.note({\"text\":\"spawned\"});", 10),
+        makeMockResponse("await plurnk.note({\"text\":\"waiting\"});", 10),
+        makeMockResponse("await plurnk.note({\"text\":\"checking\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -315,9 +320,9 @@ test("{§exec-stream} the cursor-terminal race: a one-burst stream consumed befo
 test("{§exec-stream} a command that prints nothing on any channel lands exactly one bodyless conclusion row", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("````sh\ntrue\n````\n\n````NOTE\nspawned\n````", 10),
-        makeMockResponse("````NOTE\nchecking\n````", 10),
-        makeMockResponse("````DONE\ndone\n````", 10),
+        makeMockResponse("await plurnk.sh({\"command\":\"true\"});\n\nawait plurnk.note({\"text\":\"spawned\"});", 10),
+        makeMockResponse("await plurnk.note({\"text\":\"checking\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -750,7 +755,7 @@ const wire = async (run: Executor["run"]) => {
     const sessionId = await insertSession(db, workspaceId);
     const loopId = await insertLoop(db, sessionId, 1, "honesty test");
     await engine.runTurn({
-        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "```NOTE\nInspect execution results.\n```", reasoning: null } }] }),
+        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.note({\"text\":\"Inspect execution results.\"});", reasoning: null } }] }),
         workspaceId, sessionId, loopId, messages: [],
     });
     notices.length = 0;
@@ -1022,9 +1027,9 @@ test("{§exec-stream} a 40-line stream closes as its first page with the extent;
     const provider = new StreamMock({
         contextWindow: 100_000,
         responses: [
-            makeRawMockResponse("````sh\nseq 1 40\n````\n\n````NOTE\nlaunched the count\n````\n\n````WAIT\nwaiting\n````", 10),
-            makeMockResponse("````READ ($STREAM#stdout) <38,40>````\n````NOTE\nreading the tail\n````", 10),
-            makeMockResponse("````DONE\ndone\n````", 10),
+            makeRawMockResponse("await plurnk.sh({\"command\":\"seq 1 40\"});\n\nawait plurnk.note({\"text\":\"launched the count\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});", 10),
+            makeMockResponse("await plurnk.read({\"path\":\"$STREAM#stdout\",\"range\":\"38,40\"});\n\nawait plurnk.note({\"text\":\"reading the tail\"});", 10),
+            makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -1077,7 +1082,7 @@ test("{§exec-stream} a 40-line stream closes as its first page with the extent;
             const request = provider.received.at(-1)!;
             const launch = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes("seq 1 40"));
             const observed = request.findIndex((message) => message.role === "user" && chatMessageText(message).includes(`### ${terminal.logPath}`));
-            const tailRead = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes(`READ (${String(terminal.path)}) <38,40>`));
+            const tailRead = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes(`await plurnk.read({"path":"${String(terminal.path)}","range":"38,40"});`));
             assert.ok(launch >= 0 && observed > launch && tailRead > observed,
                 `{§emission-history}: launch ${launch}, asynchronous observation ${observed}, subsequent program ${tailRead} must remain in causal order`);
         } finally {
@@ -1091,10 +1096,10 @@ test("{§exec-stream} an active stream reaches the model only as an Open Work st
     const provider = new StreamMock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("````sh\nseq 1 5; sleep 2\n````\n\n````NOTE\nlet it run\n````", 10),
+            makeMockResponse("await plurnk.sh({\"command\":\"seq 1 5; sleep 2\"});\n\nawait plurnk.note({\"text\":\"let it run\"});", 10),
             // the stream is still running when this packet is built: only the pointer shows it
-            makeMockResponse("````WAIT\nwait for it\n````", 10),
-            makeMockResponse("````DONE\ndone\n````", 10),
+            makeMockResponse("await plurnk.wait({\"text\":\"wait for it\"});", 10),
+            makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
         ],
     });
     await withSettlement("200", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -1140,14 +1145,11 @@ for (const specimen of [
     serverProposals(approvalContext, "accept");
     const { content } = specimen;
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
-        makeMockResponse(`\`\`\`\`js
-process.stdout.write(${JSON.stringify(content)});
-\`\`\`\`
-\`\`\`\`WAIT
-waiting
-\`\`\`\``, 10),
-        makeMockResponse("````READ ($STREAM#stdout) <1,-1>````\n````NOTE\nRead the full result.\n````", 10),
-        makeMockResponse("````DONE\ndone\n````", 10),
+        makeMockResponse(`await plurnk.js(${JSON.stringify({ code: `process.stdout.write(${JSON.stringify(content)});` })});
+
+await plurnk.wait({"text":"waiting"});`, 10),
+        makeMockResponse("await plurnk.read({\"path\":\"$STREAM#stdout\",\"range\":\"1,-1\"});\n\nawait plurnk.note({\"text\":\"Read the full result.\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1187,9 +1189,9 @@ describe("find-over-stream", () => {
 test("{§exec-stream} FIND over an exec stream channel answers the match instead of throwing on the default channel", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new StreamMock({ contextWindow: 16384, responses: [
-        makeMockResponse("````sh\nprintf 'alpha\\nbeta\\n'\n````\n\n````WAIT\nwaiting\n````", 10),
-        makeMockResponse("````FIND ($STREAM#stdout) /beta/````\n\n````NOTE\nlooking\n````", 10),
-        makeMockResponse("````DONE\ndone\n````", 10),
+        makeMockResponse("await plurnk.sh({\"command\":\"printf 'alpha\\\\nbeta\\\\n'\"});\n\nawait plurnk.wait({\"text\":\"waiting\"});", 10),
+        makeMockResponse("await plurnk.find({\"path\":\"$STREAM#stdout\",\"pattern\":\"/beta/\"});\n\nawait plurnk.note({\"text\":\"looking\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1228,12 +1230,11 @@ for (const body of [null, '{"query":"fixture"}']) {
             return server;
         }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
         const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
-        const frame = PlurnkParser.frame;
         const provider = new StreamMock({ contextWindow: 100_000, responses: [
-            frame("fixture (inspect)", body),
-            frame("READ ($INVOCATION) <17,40>", null),
-            frame("READ ($STREAM) <17,40>", null),
-            frame("DONE", "The output's tail is result 40."),
+            `await fixture.inspect(${body ?? ""});`,
+            "await plurnk.read({\"path\":\"$INVOCATION\",\"range\":\"17,40\"});",
+            "await plurnk.read({\"path\":\"$STREAM\",\"range\":\"17,40\"});",
+            "await plurnk.done({\"text\":\"The output's tail is result 40.\"});",
         ].map((content) => ({ assistant: { content, reasoning: null } })) });
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider, hostPaths });
@@ -1258,7 +1259,7 @@ for (const body of [null, '{"query":"fixture"}']) {
         assert.ok(invocation);
         assert.equal(invocation.lines, undefined);
         assert.equal(invocation.path, "inspect", "the receipt names the invoked tool, as its paired operation does");
-        assert.ok(provider.received[1].some((message) => message.role === "assistant" && chatMessageText(message) === frame("fixture (inspect)", body)),
+        assert.ok(provider.received[1].some((message) => message.role === "assistant" && chatMessageText(message) === `await fixture.inspect(${body ?? ""});`),
             "the complete invocation remains distinct from its output");
         const automatic = observed.find((row) => row.path === invocation.stream && row.logPath.endsWith("/READ"));
         assert.ok(automatic);
@@ -1267,12 +1268,12 @@ for (const body of [null, '{"query":"fixture"}']) {
         assert.equal(automatic.range, "40 lines", "the automatic observation is a markerless READ: whole, because it fits ({§tokenomics})");
         const failed = (await packet(3)).find((row) => /^log:\/\/\/1\/3\/\d+\/READ$/u.test(row.logPath) && row.status === 416);
         assert.ok(failed);
-        assert.ok(provider.received[2].some((message) => message.role === "assistant" && chatMessageText(message) === frame(`READ (${invocation.logPath}) <17,40>`, null)));
+        assert.ok(provider.received[2].some((message) => message.role === "assistant" && chatMessageText(message) === `await plurnk.read({"path":"${invocation.logPath}","range":"17,40"});`));
         assert.equal((failed.problem as { range: { total: number } }).range.total, body === null ? 0 : 1);
         if (body === null) assert.equal((failed.problem as { stream: string }).stream, invocation.stream);
         const explicit = (await packet(4)).find((row) => /^log:\/\/\/1\/4\/\d+\/READ$/u.test(row.logPath) && row.origin === undefined);
         assert.ok(explicit, "the actual MCP output is read at the address advertised in the packet");
-        assert.ok(provider.received[3].some((message) => message.role === "assistant" && chatMessageText(message) === frame(`READ (${String(invocation.stream)}) <17,40>`, null)));
+        assert.ok(provider.received[3].some((message) => message.role === "assistant" && chatMessageText(message) === `await plurnk.read({"path":"${String(invocation.stream)}","range":"17,40"});`));
         assert.equal(explicit.terminal, true, "MCP's JSON channel declaration does not hide its lifecycle");
         assert.equal(explicit.range, "<17,40> of 40 lines");
         assert.match(String(explicit.body), /40:result 40\n$/u);
@@ -1293,7 +1294,6 @@ describe("stream-channel-deletion", () => {
 
 
 
-const frame = (heading: string, body: string | null = null) => PlurnkParser.frame(heading, body);
 const response = (content: string): MockResponse => ({ assistant: { content, reasoning: null } });
 
 // Text responses keep the seeded `readable`; a binary response without a projection drops it ({§channel-selection}).
@@ -1320,10 +1320,10 @@ for (const shape of RESPONSES) {
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
         await engine.injectIntoLoop(loopId, "Probe the endpoint.", [], "acp://operator/threads/probe/messages/question");
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            response(frame("SEND (https://93.184.216.34/mcp)", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}")),
-            response(frame("DONE", "Probed.")),
-            response(frame("NOTE", "Nothing remains.")),
-            response(frame("NOTE", "Nothing remains.")),
+            response("await plurnk.send({\"target\":\"https://93.184.216.34/mcp\",\"text\":\"{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":1,\\\"method\\\":\\\"initialize\\\"}\"});"),
+            response("await plurnk.done({\"text\":\"Probed.\"});"),
+            response("await plurnk.note({\"text\":\"Nothing remains.\"});"),
+            response("await plurnk.note({\"text\":\"Nothing remains.\"});"),
         ] });
         const statuses: number[] = [];
         while (statuses.length < 4 && ![200, 499].includes(statuses.at(-1) ?? 0)) {

@@ -35,15 +35,15 @@ test(
             provider: new Mock({
                 contextWindow: 32768,
                 responses: [
-                    makeMockResponse("````WORK (session://spawned)\nSay ready.\n````\n````WAIT\n````"),
-                    makeMockResponse("````DONE\nReady.\n````"),
-                    makeMockResponse("````DONE\nSpawned child.\n````"),
+                    makeMockResponse('await plurnk.work({ target: "session://spawned", prompt: "Say ready." });\nawait plurnk.wait({});'),
+                    makeMockResponse('await plurnk.done({ text: "Ready." });'),
+                    makeMockResponse('await plurnk.done({ text: "Spawned child." });'),
                     makeMockResponse(
-                        '````plurnk (question)\n{"message":"Proceed?","requestedSchema":{"type":"object","properties":{"proceed":{"type":"boolean"}},"required":["proceed"]}}\n````',
+                        'await plurnk.question({"message":"Proceed?","requestedSchema":{"type":"object","properties":{"proceed":{"type":"boolean"}},"required":["proceed"]}});',
                     ),
-                    makeMockResponse("````DONE\nChild answered.\n````"),
-                    makeMockResponse("````sh\necho helper-ok\n````"),
-                    makeMockResponse("````DONE\nHelper done.\n````"),
+                    makeMockResponse('await plurnk.done({ text: "Child answered." });'),
+                    makeMockResponse('await plurnk.sh({ command: "echo helper-ok" });'),
+                    makeMockResponse('await plurnk.done({ text: "Helper done." });'),
                 ],
             }),
         });
@@ -268,10 +268,10 @@ test(
                 contextWindow: 32768,
                 responses: [
                     makeMockResponse(
-                        "````COPY (persona://reviewer/PERSONA.md) (session://subreviewer/AGENTS.md)\n````\n````WORK (session://subreviewer)\nAudit auth.\n````\n````WAIT\n````",
+                        'await plurnk.copy({ from: "persona://reviewer/PERSONA.md", to: "session://subreviewer/AGENTS.md" });\nawait plurnk.work({ target: "session://subreviewer", prompt: "Audit auth." });\nawait plurnk.wait({});',
                     ),
-                    makeMockResponse("````DONE\nAudit complete.\n````"),
-                    makeMockResponse("````DONE\nAll reviewed.\n````"),
+                    makeMockResponse('await plurnk.done({ text: "Audit complete." });'),
+                    makeMockResponse('await plurnk.done({ text: "All reviewed." });'),
                 ],
             }),
         });

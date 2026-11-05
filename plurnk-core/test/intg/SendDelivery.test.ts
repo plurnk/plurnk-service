@@ -6,7 +6,6 @@ import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import MessageAbandonment from "../../src/server/MessageAbandonment.ts";
 import SessionOverview from "../../src/server/SessionOverview.ts";
 import { type Notice } from "@plurnk/plurnk-contracts";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock, type MockResponse, ModelProvider } from "@plurnk/plurnk-providers";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
@@ -22,9 +21,9 @@ describe("live-harness-response", () => {
 for (const cancelled of [false, true]) {
     test(`{§message-completion} the live harness retains the last SEND across ${cancelled ? "cancellation" : "completion"}`, async () => {
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            makeMockResponse("````FIND (workspace:///)\n````\n````SEND\nFirst answer.\n````"),
-            makeMockResponse("````FIND (workspace:///)\n````\n````SEND\nSecond answer.\n````"),
-            makeMockResponse(cancelled ? "````KILL (session://root)\n````" : "````DONE\n````"),
+            makeMockResponse("await plurnk.find({\"path\":\"workspace:///\"});\n\nawait plurnk.send({\"text\":\"First answer.\"});"),
+            makeMockResponse("await plurnk.find({\"path\":\"workspace:///\"});\n\nawait plurnk.send({\"text\":\"Second answer.\"});"),
+            makeMockResponse(cancelled ? "await plurnk.kill({\"path\":\"session://root\"});" : "await plurnk.done({});"),
         ] });
         await withDaemon(provider, async (db, daemon, addr) => {
             const ws = await connect(addr);
@@ -43,7 +42,7 @@ for (const cancelled of [false, true]) {
 
 test("{§message-completion} the live harness neither invents text nor acknowledges a request for blank SEND", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        makeMockResponse("````SEND\n````"),
+        makeMockResponse("await plurnk.send({});"),
     ] });
     await withDaemon(provider, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -66,14 +65,14 @@ test("{§message-completion}: a loop's address reads its SEND answer; running is
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const first = await insertLoop(db, sessionId, 1, "What is two plus two?");
         const observer = await insertSession(db, workspaceId, null, "observer");
-        const read = (address: string, reader = observer) => clientRead(engine, db, { workspaceId, sessionId: reader, statement: statement(`\`\`\`\`READ (${address})\`\`\`\``) });
+        const read = (address: string, reader = observer) => clientRead(engine, db, { workspaceId, sessionId: reader, statement: statement(`await plurnk.read({"path":"${address}"});`) });
 
         const running = await read("ops://alice/1");
         assert.equal(running.status, 425, "a loop still running has not answered yet");
         assert.equal(running.problem?.type, "https://problems.plurnk.xyz/scheme/ops/loop-running");
 
         const firstReply = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\nFour.\n````\n\n````DONE\n````", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.send({\"text\":\"Four.\"});\n\nawait plurnk.done({});", reasoning: null } }] }),
             workspaceId, sessionId, loopId: first, maxTurns: 3, messages: [{ role: "user", content: "What is two plus two?" }],
         });
         assert.equal(firstReply.result.status, 200);
@@ -84,7 +83,7 @@ test("{§message-completion}: a loop's address reads its SEND answer; running is
 
         const second = await insertLoop(db, sessionId, 2, "And three plus three?");
         const sent = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````DONE\nSix.\n````", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "await plurnk.done({\"text\":\"Six.\"});", reasoning: null } }] }),
             workspaceId, sessionId, loopId: second, maxTurns: 3, messages: [{ role: "user", content: "And three plus three?" }],
         });
         assert.equal(sent.result.status, 200);
@@ -106,7 +105,7 @@ test("{§message-completion}: a loop's address reads its SEND answer; running is
 
 for (const [shape, body] of [
     ["ordinary", "The draft is sound."],
-    ["early closer", "The draft is sound.\n````\n```EDIT (workspace:///must-not-execute)\nNot an operation.\n```\nThe entire report is the answer.\n````"],
+    ["nested code", "The draft is sound.\nawait plurnk.edit({\"path\":\"workspace:///must-not-execute\",\"content\":\"Not an operation.\"});\nThe entire report is the answer."],
 ] as const) test(`{§message-completion} {§message-completion}: a child's ${shape} answer survives delivery and reading at its own address`, async () => {
     const db = await openMigrated();
     try {
@@ -116,13 +115,13 @@ for (const [shape, body] of [
         const loopId = await insertLoop(db, childId, 1, "Review the draft.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: `\`\`\`\`DONE\n${body}${shape === "ordinary" ? "\n````" : ""}`, reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: `await plurnk.done(${JSON.stringify({ text: body })});`, reasoning: null } }] }),
             workspaceId, sessionId: childId, loopId, maxTurns: 3, messages: [{ role: "user", content: "Review the draft." }],
         });
         assert.equal(result.result.status, 200);
         const events = await db.test_loop_termination_events.all<{ rx: string }>({ recipient_session_id: parentId });
         assert.deepEqual(events.map(({ rx }) => JSON.parse(rx)), [{ status: 200 }], "the event retains the child's exact terminal result");
-        const answer = await clientRead(engine, db, { workspaceId, sessionId: parentId, statement: statement("````READ (ops://reviewer/1)````") });
+        const answer = await clientRead(engine, db, { workspaceId, sessionId: parentId, statement: statement("await plurnk.read({\"path\":\"ops://reviewer/1\"});") });
         assert.ok("content" in answer);
         assert.equal(answer.content, body, "the parent reads the complete answer where the termination points");
         const escaped = await db.test_get_channel_by_pathname.get({ pathname: "/must-not-execute", name: "body" });
@@ -143,7 +142,7 @@ for (const transport of ["text", "wire"] as const) {
                 await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "Original fact." });
                 const markup = '<tool_call><function=EDIT><parameter=old_string>Original fact.</parameter><parameter=new_string>Unadmitted change.</parameter></function></tool_call>';
                 const tool = { index: 0, id: "call-1", type: "function", function: { name: "EDIT", arguments: '{"path":"workspace:///fact.txt","body":"Unadmitted change."}' } };
-                const operation = withOperation ? PlurnkParser.frame("EDIT (workspace:///fact.txt) <1,-1>", "Admitted change.") : "";
+                const operation = withOperation ? "await plurnk.edit({\"path\":\"workspace:///fact.txt\",\"range\":\"1,-1\",\"content\":\"Admitted change.\"});" : "";
                 const content = transport === "text" ? `${operation}\n\n${markup}` : operation;
                 const notices: Notice[] = [];
                 let requests = 0;
@@ -154,7 +153,7 @@ for (const transport of ["text", "wire"] as const) {
                         requests += 1;
                         const first = requests === 1;
                         const delta = first ? { content, ...(transport === "wire" ? { tool_calls: [tool] } : {}) }
-                            : { content: PlurnkParser.frame("DONE", "Finished.") };
+                            : { content: "await plurnk.done({\"text\":\"Finished.\"});" };
                         return new Response(`data: ${JSON.stringify({
                             model: "fixture", choices: [{ index: 0, delta, finish_reason: first && transport === "wire" ? "tool_calls" : "stop" }],
                         })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
@@ -202,7 +201,7 @@ for (const finish of ["stop", "tool_calls"]) {
             temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "off", budget: null },
             fetch: async () => {
                 requests += 1;
-                const delta = requests === 1 ? { content: `${PlurnkParser.frame("READ (workspace:///fact.txt)", null)}\n${PlurnkParser.frame("DONE", "The fact.")}` }
+                const delta = requests === 1 ? { content: `await plurnk.read({"path":"workspace:///fact.txt"});\nawait plurnk.done({"text":"The fact."});` }
                     : requests === 2 ? { tool_calls: [tool] } : { content: "" };
                 return new Response(`data: ${JSON.stringify({ model: "fixture", choices: [{ index: 0, delta, finish_reason: requests === 2 ? finish : "stop" }] })}\n\ndata: [DONE]\n\n`,
                     { headers: { "content-type": "text/event-stream" } });
@@ -222,23 +221,25 @@ for (const finish of ["stop", "tool_calls"]) {
 describe("send-response", () => {
 // Every operation is on the line after its fence.
 const MISFENCED = [
-    "````\nsh <!-- brand presence -->\nprintf plurnk\n````",
-    "````\nREAD (workspace:///notes.md) <!-- retry the notes -->\n````",
-    "````\nWAIT\nResearch positioning.\n````",
+    "```sh <!-- brand presence -->\nprintf plurnk\n```",
+    "```ts\nawait plurnk.read({\"path\":\"workspace:///notes.md\"}); // retry the notes\n```",
+    "````\n```ts\nawait plurnk.wait({\"text\":\"Research positioning.\"});\n```\n````",
 ].join("\n\n");
 
 test("{§operation-fences}: a complete nested reply reaches the client without executing its examples", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const body = [
         "The syntax and command are examples:",
-        "```text", "````OP (path)? <scope>?", "body", "````", "```",
-        "````sh", "printf must-not-execute", "````",
+        "```ts", 'await plurnk.read({ path: "path", range: "1,50" });', "```",
+        "```ts", 'await plurnk.sh({ command: "printf must-not-execute" });', "```",
         "The rest of the answer survives intact. 🙂",
     ].join("\n");
-    const source = `\`\`\`\`SEND\n${body}\n\`\`\`\`\n\n\`\`\`\`DONE\n\`\`\`\``;
+    const source = `await plurnk.send(${JSON.stringify({ text: body })});
+
+await plurnk.done({});`;
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(source, 10),
-        makeMockResponse("````DONE\nUnexpected continuation.\n````", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"Unexpected continuation.\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -262,7 +263,7 @@ test("{§fence-pairing} {§op-shapes}: recovered READ preserves nested prose; a 
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(MISFENCED, 10),
-        makeMockResponse("````DONE\nthe answer\n````", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"the answer\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -274,12 +275,12 @@ test("{§fence-pairing} {§op-shapes}: recovered READ preserves nested prose; a 
             const model = rows.filter((r) => r.origin === "model").map(({ op, tx }) => ({ op, tx }));
             assert.ok(model.some(({ op }) => op === "READ"), "the READ under a bare fence ran");
             assert.ok(model.every(({ op }) => op !== "WAIT"), "the complete nested annotation remains literal under the same rule as NOTE and log KILL");
-            assert.ok(model.some(({ op, tx }) => op === "NOTE" && JSON.parse(tx).body === "````\n\n````\nWAIT\nResearch positioning."),
+            assert.ok(model.some(({ op, tx }) => op === "NOTE" && JSON.parse(tx).body.includes("````\n```ts\nawait plurnk.wait({\"text\":\"Research positioning.\"});\n```\n````")),
                 "the complete annotation survives rather than executing its quoted WAIT");
             assert.ok(model.some(({ op, tx }) => op === "NOTE" && /printf plurnk/u.test(JSON.parse(tx).body)), "a bare executor name is a word: its block stays quoted text, and beside the operations that text is the turn's NOTE ({§outside-text})");
             const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: modelSessionId! });
             assert.equal(sources.some((row) => row.kind === "outside"), false, "a turn with fenced operations keeps no outside source");
-            assert.match(JSON.stringify(mock.received[1]), /ran, though its fence was malformed: the opening fence, OP, parameters, and aside share one line/, "the next packet states the form once");
+            assert.match(JSON.stringify(mock.received[1]), /Code Mode statements need no Markdown fence/, "the next packet states the form once");
             assert.equal(await lastReply(db, loopId), "the answer");
             const shells = await db.test_get_entry_by_pathname_scheme.get({ scheme: "sh", pathname: "/1/1/1/sh" });
             assert.equal(shells, undefined, "no shell spawned");
@@ -290,8 +291,8 @@ test("{§fence-pairing} {§op-shapes}: recovered READ preserves nested prose; a 
 test("{§op-shapes}: messages that start with operation names remain literal replies", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````SEND\nREAD (belfry.md) returned nothing because the file is empty.\n````\n\n````SEND\nDone\n````\n\n````SEND\nsh is the default shell here.\n````", 10),
-        makeMockResponse("````DONE\n````", 10),
+        makeMockResponse("await plurnk.send({\"text\":\"READ (belfry.md) returned nothing because the file is empty.\"});\n\nawait plurnk.send({\"text\":\"Done\"});\n\nawait plurnk.send({\"text\":\"sh is the default shell here.\"});", 10),
+        makeMockResponse("await plurnk.done({});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -310,7 +311,7 @@ test("{§op-shapes}: messages that start with operation names remain literal rep
 test("{§message-completion}: a delivered reply names the open messages it answered", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````DONE\nthe answer\n````", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"the answer\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -340,8 +341,10 @@ test("{§log-wire-format} {§tokenomics}: a sent reply renders whole in the next
     serverProposals(approvalContext, "accept");
     const body = Array.from({ length: 40 }, (_, index) => `delivered line ${index + 1}`).join("\n");
     const mock = new Mock({ contextWindow: 100_000, responses: [
-        makeMockResponse(`\`\`\`\`SEND\n${body}\n\`\`\`\`\n\n\`\`\`\`DONE\n\`\`\`\``, 10),
-        makeMockResponse("````DONE\nNoted.\n````", 10),
+        makeMockResponse(`await plurnk.send(${JSON.stringify({ text: body })});
+
+await plurnk.done({});`, 10),
+        makeMockResponse("await plurnk.done({\"text\":\"Noted.\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -370,8 +373,8 @@ describe("send-target-recipient", () => {
 test("{§operation-results} a SEND addressed to a turn source the model may not write is refused 400 with neutral recipient guidance", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````SEND (reasoning://alice/1/1)\nthe answer\n````", 10),
-        makeMockResponse("````DONE\nthe answer\n````", 10),
+        makeMockResponse("await plurnk.send({\"target\":\"reasoning://alice/1/1\",\"text\":\"the answer\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"the answer\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -398,8 +401,8 @@ test("{§operation-results} a SEND addressed to a turn source the model may not 
 test("{§operation-results} a SEND addressed to a file path preserves the scheme's factual 501", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````SEND (.)\nwaiting\n````", 10),
-        makeMockResponse("````DONE\ndone\n````", 10),
+        makeMockResponse("await plurnk.send({\"target\":\".\",\"text\":\"waiting\"});", 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -419,7 +422,6 @@ test("{§operation-results} a SEND addressed to a file path preserves the scheme
 });
 
 describe("session-overview", () => {
-const frame = (heading: string, body: string | null = null) => PlurnkParser.frame(heading, body);
 const said = (...statements: string[]): MockResponse => ({ assistant: { content: statements.join("\n\n"), reasoning: null } });
 
 test("{§message-completion} {§application-session-observation} a session's latest finished reply is its newest delivered completion", async (t) => {
@@ -448,23 +450,23 @@ test("{§message-completion} {§application-session-observation} a session's lat
     };
 
     assert.equal(await replyOf(alice), null, "a session that never answered has no finished reply");
-    await run(alice, await ask(1), said(frame("SEND", "Still working on it.")));
+    await run(alice, await ask(1), said("await plurnk.send({\"text\":\"Still working on it.\"});"));
     assert.equal(await replyOf(alice), null, "a progress reply finishes nothing");
     const first = await ask(2);
-    await run(alice, first, said(frame("DONE", "First answer, in full.\nWith detail.")));
+    await run(alice, first, said("await plurnk.done({\"text\":\"First answer, in full.\\nWith detail.\"});"));
     const answered = await replyOf(alice);
     assert.deepEqual([answered?.completion, answered?.excerpt, answered?.continued, answered?.coordinate.split("/")[0]], [200, "First answer", true, "2"],
         "a completion reply finishes, its excerpt cut to the setting");
     assert.ok(typeof answered?.at === "number" && answered.at > 0, "its stamp is Unix milliseconds");
-    await run(alice, await ask(3), said(frame("FAIL", "Stopped: the input is missing.")));
+    await run(alice, await ask(3), said("await plurnk.fail({\"text\":\"Stopped: the input is missing.\"});"));
     const cancelled = await replyOf(alice);
     assert.deepEqual([cancelled?.completion, cancelled?.excerpt], [499, "Stopped: the"], "a cancelling reply finishes too");
     assert.ok((cancelled?.id ?? 0) > (answered?.id ?? 0));
-    await run(alice, await ask(4), said(frame("DONE"), frame("DONE", "Speech after the completion.")));
+    await run(alice, await ask(4), said("await plurnk.done({});", "await plurnk.done({\"text\":\"Speech after the completion.\"});"));
     const empty = await replyOf(alice);
     assert.deepEqual([empty?.completion, empty?.excerpt, empty?.continued], [200, "", false],
         "an empty completion is the latest finished reply, and speech that completed nothing never replaces it");
-    await run(alice, await ask(5), said(frame("DONE (acp://operator/threads/alice/messages/missing)", "Lost.")));
+    await run(alice, await ask(5), said("await plurnk.done({\"target\":\"acp://operator/threads/alice/messages/missing\",\"text\":\"Lost.\"});"));
     assert.equal((await replyOf(alice))?.id, empty?.id, "a failed delivery finishes nothing");
     // {§loop-completion}: a message another session sent, left open by a loop that ended.
     const abandoned = await ask(6, "session://boss");
@@ -474,9 +476,9 @@ test("{§message-completion} {§application-session-observation} a session's lat
     assert.notEqual(after?.lifecycle, "completed", "the lifecycle is the newest loop's, whatever the latest reply");
 
     const scout = await insertSession(db, workspaceId, alice, "scout");
-    await run(scout, await insertLoop(db, scout, 1, "Scout the field."), said(frame("DONE", "Scouted.")));
+    await run(scout, await insertLoop(db, scout, 1, "Scout the field."), said("await plurnk.done({\"text\":\"Scouted.\"});"));
     assert.deepEqual([(await replyOf(scout))?.excerpt, (await replyOf(alice))?.id], ["Scouted.", empty?.id], "a child's reply is the child's");
-    await run(alice, await ask(7), said(frame("FORK (session://twin)", "Carry on from here.")));
+    await run(alice, await ask(7), said("await plurnk.fork({\"target\":\"session://twin\",\"prompt\":\"Carry on from here.\"});"));
     const twin = (await read()).sessions.find(({ name }) => name === "twin");
     assert.deepEqual([twin?.kind, twin?.reply], ["fork", null], "a fork's copied history holds no reply of its own");
     await insertSession(db, workspaceId, null, `_bookkeeping-${crypto.randomUUID()}`, "_plurnk");

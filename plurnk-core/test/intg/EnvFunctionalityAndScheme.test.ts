@@ -32,11 +32,11 @@ for (const scope of ["session", "workspace"] as const) {
         const db = await openMigrated();
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeRawMockResponse([
-                PlurnkParser.frame("plurnk (env)", JSON.stringify({ scope, alias: "SETTLEMENT_WITNESS", value: "settled" })),
-                PlurnkParser.frame("sh", 'printf "%s" "$SETTLEMENT_WITNESS"'),
-                PlurnkParser.frame("NOTE", "Review the shell output."),
+                `await plurnk.env(${JSON.stringify({ scope, alias: "SETTLEMENT_WITNESS", value: "settled" })});`,
+                "await plurnk.sh({\"command\":\"printf \\\"%s\\\" \\\"$SETTLEMENT_WITNESS\\\"\"});",
+                "await plurnk.note({\"text\":\"Review the shell output.\"});",
             ].join("\n\n")),
-            makeRawMockResponse(PlurnkParser.frame("DONE", "Finished.")),
+            makeRawMockResponse("await plurnk.done({\"text\":\"Finished.\"});"),
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); });
@@ -201,12 +201,12 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
             const { status } = await modelOperation(daemon, db, { workspaceId, sessionId, statement: parseOne(program) });
             return { status, result: () => awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after, timeoutMs: 10_000 }) };
         };
-        const aliceList = await exec(alice, "````plurnk (env)````");
+        const aliceList = await exec(alice, "await plurnk.env();");
         assert.equal(aliceList.status, 200);
         const aliceView = await aliceList.result() as unknown as FunctionalityListResult;
         assert.equal(aliceView.definitions.find(({ alias }) => alias === "CARGO_TARGET_DIR")?.origin, "session");
         assert.equal(aliceView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "disabled");
-        const bobView = await (await exec(bob, "````plurnk (env)````")).result() as unknown as FunctionalityListResult;
+        const bobView = await (await exec(bob, "await plurnk.env();")).result() as unknown as FunctionalityListResult;
         assert.equal(bobView.definitions.some(({ alias }) => alias === "CARGO_TARGET_DIR"), false, "the binding is per operation: bob's list is bob's");
         assert.equal(bobView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "active");
 
@@ -239,14 +239,14 @@ test("{§functionality-coordinator} env projects session-scoped actions; its sta
         };
         try {
             const before = await outputs();
-            const bobAdded = await accepted(bob, `\`\`\`\`plurnk (env)\n${JSON.stringify({ alias: "BOB_ONLY", value: "1" })}\n\`\`\`\``);
+            const bobAdded = await accepted(bob, `await plurnk.env(${JSON.stringify({ alias: "BOB_ONLY", value: "1" })});`);
             assert.equal(bobAdded.status, 201, "the accepted add settled inside the operation");
             const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after: before, timeoutMs: 10_000 }) as unknown as FunctionalityMutationResult;
             assert.equal(outcome.definition?.origin, "session");
             assert.equal(await stateOf(bob, "BOB_ONLY"), "session:active", "an accepted model add persisted for the invoking session");
             assert.equal(await stateOf(alice, "BOB_ONLY"), undefined);
 
-            const command = "````sh\necho \"target=[$CARGO_TARGET_DIR] witness=[$ENV_WITNESS] bob=[$BOB_ONLY]\"\n````";
+            const command = "await plurnk.sh({\"command\":\"echo \\\"target=[$CARGO_TARGET_DIR] witness=[$ENV_WITNESS] bob=[$BOB_ONLY]\\\"\"});";
             // The record lives on the spawn's output entry ({§execution-output-identity}), never on the
             // model's own log row.
             const recorded = async (logEntryId: number) => {

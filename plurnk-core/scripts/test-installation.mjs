@@ -399,7 +399,7 @@ ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from 
 // consumer, not the workspace source condition. A successful run proves the
 // packed evidence/digest.sql resolved beside the core reader and the independent reporter ran.
 const packedDigestDir = resolve(sandbox, "packed-digest");
-const packedTurnOps = "````SEND\n````";
+const packedTurnOps = "await plurnk.send({});";
 // The schema's own indexes call `sha256` (migrations 003 and 005), so a connection that does not
 // register the packaged function module cannot even prepare a statement against it. The daemon
 // registers the same three; this fixture is a second consumer of the installed dist, not a
@@ -550,42 +550,35 @@ const skillBoot = await bootStart({ PLURNK_SERVICE_DB_PATH: packedSkillDb }, asy
     const anchorWorkspace = await acpAction(address, "workspace.create", { name: "packed-anchor-range" });
     const sourceTarget = "workspace:///installed.py";
     await acpAction(address, "op.parse", {
-        text: `\`\`\`\`EDIT (${sourceTarget})
-def target():
-    return 1
-\`\`\`\``,
+        text: `await plurnk.edit(${JSON.stringify({ path: sourceTarget, content: "def target():\n    return 1" })});`,
     }, anchorWorkspace.name);
     const sourceLookup = (await acpAction(address, "op.parse", {
-        text: `\`\`\`\`READ (${sourceTarget}) //function_definition\`\`\`\``,
+        text: `await plurnk.read(${JSON.stringify({ path: sourceTarget, pattern: "//function_definition" })});`,
     }, anchorWorkspace.name)).results[0];
     const sourceRead = (await acpAction(address, "op.parse", {
-        text: `\`\`\`\`READ (${sourceTarget}) <1,1,2,13>\`\`\`\``,
+        text: `await plurnk.read(${JSON.stringify({ path: sourceTarget, range: "1,1,2,13" })});`,
     }, anchorWorkspace.name)).results[0];
     const anchorTarget = "workspace:///packed-anchor.md";
     const anchorContent = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight";
     await acpAction(address, "op.parse", {
-        text: `\`\`\`\`EDIT (${anchorTarget})
-${anchorContent}
-\`\`\`\``,
+        text: `await plurnk.edit(${JSON.stringify({ path: anchorTarget, content: anchorContent })});`,
     }, anchorWorkspace.name);
     const anchoredRead = (await acpAction(address, "op.parse", {
-        text: `\`\`\`\`READ (${anchorTarget})\`\`\`\``,
+        text: `await plurnk.read(${JSON.stringify({ path: anchorTarget })});`,
     }, anchorWorkspace.name)).results[0];
     const [one, two] = anchoredRead.lineAnchors;
     const applied = await acpAction(address, "op.parse", {
-        text: `\`\`\`\`EDIT (${anchorTarget}) <${one},${two}>\`\`\`\``,
+        text: `await plurnk.edit(${JSON.stringify({ path: anchorTarget, range: `${one},${two}` })});`,
     }, anchorWorkspace.name);
     const landed = (await acpAction(address, "op.parse", {
-        text: `\`\`\`\`READ (${anchorTarget})\`\`\`\``,
+        text: `await plurnk.read(${JSON.stringify({ path: anchorTarget })});`,
     }, anchorWorkspace.name)).results[0];
     const [three, four, five, six, seven, eight] = landed.lineAnchors;
     const rejected = await acpAction(address, "op.parse", {
-        text: `\`\`\`\`EDIT (${anchorTarget}) <${three},${four},${five},${six},${seven},${eight}>
-replacement
-\`\`\`\``,
+        text: `await plurnk.edit(${JSON.stringify({ path: anchorTarget, range: `${three},${four},${five},${six},${seven},${eight}`, content: "replacement" })});`,
     }, anchorWorkspace.name);
     const unchanged = (await acpAction(address, "op.parse", {
-        text: `\`\`\`\`READ (${anchorTarget})\`\`\`\``,
+        text: `await plurnk.read(${JSON.stringify({ path: anchorTarget })});`,
     }, anchorWorkspace.name)).results[0];
     return {
         primary,
@@ -677,29 +670,27 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
     const listed = await acpAction(address, "workspace.mcp.list", {}, attached.name);
     await acpAction(address, "workspace.mcp.enable", { alias: "echo" }, attached.name);
     const skillCatalog = (await acpAction(address, "op.parse", {
-        text: "````FIND (skill://*/SKILL.md) <1,-1>````",
+        text: 'await plurnk.find({"path":"skill://*/SKILL.md","range":"1,-1"});',
     }, attached.name)).results[0];
     const skillRead = (await acpAction(address, "op.parse", {
-        text: "````READ (skill://inspect/SKILL.md) <1,-1>````",
+        text: 'await plurnk.read({"path":"skill://inspect/SKILL.md","range":"1,-1"});',
     }, attached.name)).results[0];
     const ownSkillReads = [];
     for (const pathname of ["SKILL.md", ".env.defaults", "plurnk.service", "plurnk.nginx.conf", "references/configuration.md", "references/copy-move.md", "references/models.md"]) {
         ownSkillReads.push((await acpAction(address, "op.parse", {
-            text: `\`\`\`\`READ (skill://plurnk/${pathname}) <1,-1>\`\`\`\``,
+            text: `await plurnk.read(${JSON.stringify({ path: `skill://plurnk/${pathname}`, range: "1,-1" })});`,
         }, attached.name)).results[0]);
     }
     await acpAction(address, "workspace.skills.disable", { alias: "plurnk" }, attached.name);
     const disabledSkillRead = (await acpAction(address, "op.parse", {
-        text: "````READ (skill://plurnk/.env.defaults) <1,-1>````",
+        text: 'await plurnk.read({"path":"skill://plurnk/.env.defaults","range":"1,-1"});',
     }, attached.name)).results[0];
     await acpAction(address, "workspace.skills.enable", { alias: "plurnk" }, attached.name);
     const executed = await acpRun(address, {
         workspace: attached.name,
         action: {
             kind: "op.parse",
-            text: `\`\`\`\`js (skill://inspect/scripts/main.mjs)
-'two words' '' 'quoted"value' '$(touch forbidden)'
-\`\`\`\``,
+            text: `await plurnk.js(${JSON.stringify({ script: "skill://inspect/scripts/main.mjs", args: `'two words' '' 'quoted"value' '$(touch forbidden)'` })});`,
         },
     });
     // {§acp-action-binding}: a person's explicit operation is their decision, not an approval request.
@@ -836,13 +827,13 @@ const searchBoot = await bootStart({
 }, async (address) => {
     const workspace = await acpAction(address, "workspace.create", { name: "installed-fulltext" });
     await acpAction(address, "op.parse", {
-        text: "````EDIT (workspace:///search.md)\nA reliable connection supports native search.\n````",
+        text: 'await plurnk.edit({"path":"workspace:///search.md","content":"A reliable connection supports native search."});',
     }, workspace.name);
     const found = await acpAction(address, "op.parse", {
-        text: "````FIND (workspace:///*.md) ~\"reliable connection\"````",
+        text: 'await plurnk.find({"path":"workspace:///*.md","pattern":"~\\"reliable connection\\""});',
     }, workspace.name);
     const locations = await acpAction(address, "op.parse", {
-        text: "````FIND (workspace:///search.md) ~\"reliable connection\"````",
+        text: 'await plurnk.find({"path":"workspace:///search.md","pattern":"~\\"reliable connection\\""});',
     }, workspace.name);
     return { found: found.results[0], locations: locations.results[0] };
 });

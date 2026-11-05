@@ -309,7 +309,7 @@ const runtime = async (t: TestContext) => {
             sequence: ++sequence, origin, statement: item.statement });
     };
     const read = async (target: string, origin: "model" | "_plurnk" = "model") =>
-        Results.assertReadResult(await run(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``, origin)) as AnchoredReadResult;
+        Results.assertReadResult(await run(`await plurnk.read({"path":"${target}","range":"1,-1"});`, origin)) as AnchoredReadResult;
     const seed = async (ownerId: number, target: string) => {
         const parsed = parsePath(target);
         const ctx = makeSchemeCtx({
@@ -392,11 +392,11 @@ for (const { target, editable, problem } of [
         for (const origin of ["model", "_plurnk"] as const) assertProjection(await read(target, origin), editable);
         if (editable) {
             const anchor = (await read(target)).lineAnchors![1];
-            assert.equal((await run(`\`\`\`\`EDIT (${target}) <${anchor}>\nchanged\n\`\`\`\``)).status, 200);
+            assert.equal((await run(`await plurnk.edit({"path":"${target}","range":"${anchor}","content":"changed"});`)).status, 200);
             assert.equal((await read(target)).content, "first\nchanged\nthird");
         } else {
             for (const scope of ["<1>", "<@abcde>"]) {
-                const denied = await run(`\`\`\`\`EDIT (${target}) ${scope}\nchanged\n\`\`\`\``);
+                const denied = await run(`await plurnk.edit({"path":"${target}","content":"${scope}\\nchanged"});`);
                 assert.equal(denied.status, 403);
                 assert.equal(denied.problem?.type, problem);
             }
@@ -413,7 +413,7 @@ test("{§line-anchors}: harness edits retain internal coordinate validation on g
     assertProjection(original, false);
     assert.equal(typeof original.lineAnchorIdentity, "string");
     const anchor = LineAnchors.tokens(original.lineAnchorIdentity!, source)[1];
-    const changed = await run(`\`\`\`\`EDIT (${target}) <${anchor}>\nupdated\n\`\`\`\``, "_plurnk");
+    const changed = await run(`await plurnk.edit({"path":"${target}","range":"${anchor}","content":"updated"});`, "_plurnk");
     assert.equal(changed.status, 200);
     const current = await read(target);
     assert.equal(current.content, "first\nupdated\nthird");
@@ -441,10 +441,10 @@ test("{§line-anchors}: file READ and EDIT share root and mounted-member write a
         } }, ctx, "file");
         assertProjection(await read(path), editable);
         if (!editable) {
-            const denied = await run(`\`\`\`\`EDIT (${path}) <@abcde>\nchanged\n\`\`\`\``);
+            const denied = await run(`await plurnk.edit({"path":"${path}","range":"@abcde","content":"changed"});`);
             assert.equal(denied.status, 403);
             assert.equal(denied.problem?.type, "https://problems.plurnk.xyz/scheme/file/member-read-only");
-            const killed = await run(PlurnkParser.frame(`KILL (${path})`, null));
+            const killed = await run(`await plurnk.kill({"path":"${path}"});`);
             assert.equal(killed.status, 403, JSON.stringify(killed));
             assert.equal(killed.problem?.type, denied.problem?.type, "the same member write authority governs deletion");
         }
@@ -708,7 +708,7 @@ class CapturingMock extends Mock {
 }
 
 const turn = (ops: string, terminal = false) => ({
-    assistant: { content: `${ops}\n${PlurnkParser.frame(terminal ? "DONE" : "NOTE", terminal ? "Skill inspected." : null)}`, reasoning: null },
+    assistant: { content: `${ops}\n${terminal ? 'await plurnk.done({"text":"Skill inspected."});' : 'await plurnk.note({});'}`, reasoning: null },
 });
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
@@ -794,7 +794,7 @@ test("{§skills-sources} live trees preserve authority isolation, pattern compos
         assert.match(String((await dispatch(readStmt(target))).content), /alpha current guidance/);
         await writeFile(join(root, ".agents", "skills", "alpha", "references", "guide.md"), "Changed on disk.\n");
         assert.match(String((await dispatch(readStmt(target))).content), /Changed on disk/);
-        for (const op of ["````EDIT (skill://alpha/references/guide.md) <1,-1>\nchanged\n````", "````KILL (skill://alpha/references/guide.md)````"]) {
+        for (const op of ["await plurnk.edit({\"path\":\"skill://alpha/references/guide.md\",\"range\":\"1,-1\",\"content\":\"changed\"});", "await plurnk.kill({\"path\":\"skill://alpha/references/guide.md\"});"]) {
             const parsed = PlurnkParser.parseStatements(op, { executors: fixtureExecutors(op) });
             const item = parsed.items.find((candidate) => candidate.kind === "statement");
             assert.ok(item?.kind === "statement");
@@ -838,8 +838,8 @@ for (const [proposals, withOptions] of [
             'console.log("NATIVE_EXEC_COMPLETE");',
         ].join("\n"));
         const provider = new CapturingMock({ contextWindow: 32768, responses: [
-            turn("````READ (skill://sample/scripts/main.mjs) <1,-1>````"),
-            turn(PlurnkParser.frame("js (skill://sample/scripts/main.mjs)", body)),
+            turn("await plurnk.read({\"path\":\"skill://sample/scripts/main.mjs\",\"range\":\"1,-1\"});"),
+            turn(`await plurnk.js({"cwd":"skill://sample/scripts/main.mjs","code":${JSON.stringify(body)}});`),
             turn("", true),
         ] });
         await withDaemon(provider, async (_db, _daemon, addr) => {
@@ -871,7 +871,7 @@ test("{§skills-sources} {§log-wire-format} a sliced skill asset READ retains i
     await writeFile(join(dir, "SKILL.md"), "---\nname: sample\ndescription: Inspect an image\n---\nSee assets/image.png.\n");
     await writeFile(join(dir, "assets", "image.png"), PNG);
     const provider = new CapturingMock({ contextWindow: 32768, inputModalities: ["image"], responses: [
-        turn("````READ (skill://sample/assets/image.png#bytes) <1,3>````"),
+        turn("await plurnk.read({\"path\":\"skill://sample/assets/image.png#bytes\",\"range\":\"1,3\"});"),
         turn(""),
         turn("", true),
     ] });
@@ -910,8 +910,8 @@ test("{§skills-module} a model discovers a skill and reads its original tree th
     await writeFile(join(dir, "references", "nested", "rules.md"), "NESTED_SENTINEL\n");
     await writeFile(join(dir, "assets", "sample.bin"), Buffer.from([0x00, 0xff, 0x81]));
     const provider = new CapturingMock({ contextWindow: 32768, responses: [
-        turn("````READ (skill://sample/SKILL.md) <1,-1>````"),
-        turn("````FIND (skill://sample/references/**) <1,-1>````\n````READ (skill://sample/references/guide.md) <1,-1>````\n````READ (skill://sample/references/nested/rules.md) <1,-1>````\n````READ (skill://sample/assets/sample.bin) <1,-1>````"),
+        turn("await plurnk.read({\"path\":\"skill://sample/SKILL.md\",\"range\":\"1,-1\"});"),
+        turn("await plurnk.find({\"path\":\"skill://sample/references/**\",\"range\":\"1,-1\"});\n\nawait plurnk.read({\"path\":\"skill://sample/references/guide.md\",\"range\":\"1,-1\"});\n\nawait plurnk.read({\"path\":\"skill://sample/references/nested/rules.md\",\"range\":\"1,-1\"});\n\nawait plurnk.read({\"path\":\"skill://sample/assets/sample.bin\",\"range\":\"1,-1\"});"),
         turn("", true),
     ] });
     await withDaemon(provider, async (_db, _daemon, addr) => {
@@ -927,7 +927,7 @@ test("{§skills-module} a model discovers a skill and reads its original tree th
         assert.match(provider.packets[1], /references\/guide\.md/, "source-relative links survive unchanged");
         assert.match(provider.packets[2], /REFERENCE_SENTINEL/);
         assert.match(provider.packets[2], /NESTED_SENTINEL/);
-        const binaryRequest = provider.packets[2].indexOf("```READ (skill://sample/assets/sample.bin) <1,-1>\n```");
+        const binaryRequest = provider.packets[2].indexOf("await plurnk.read({\"path\":\"skill://sample/assets/sample.bin\",\"range\":\"1,-1\"});");
         assert.ok(binaryRequest >= 0, "the complete binary READ replays with its turn, before the turn's results");
         const reads = provider.packets[2].slice(binaryRequest).split(/\n\n(?=### log:\/\/\/)/).filter((section) => /^### log:\/\/\/1\/3\/\d+\/READ \(skill:\/\/sample\/\S+\) · \d+$/m.test(section));
         assert.equal(reads.length, 3, "the turn's READ receipts follow it, in program order");

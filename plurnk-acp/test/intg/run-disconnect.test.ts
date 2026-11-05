@@ -31,8 +31,8 @@ test(
         const provider = new Mock({
             contextWindow: 32768,
             responses: [
-                makeMockResponse(`\`\`\`sh\n${command}\n\`\`\``),
-                makeMockResponse("````DONE\nCompleted.\n````"),
+                makeMockResponse(`await plurnk.sh(${JSON.stringify({ command })});`),
+                makeMockResponse('await plurnk.done({ text: "Completed." });'),
             ],
         });
         const db = await openTestDatabase();
@@ -202,7 +202,7 @@ test(
                             kind: "op.parse",
                             workspace: "script-disconnect",
                             params: {
-                                text: "````sh\nprintf ready; sleep 0.3; printf done\n````",
+                                text: 'await plurnk.sh({ command: "printf ready; sleep 0.3; printf done" });',
                             },
                         })
                         .catch(() => undefined);

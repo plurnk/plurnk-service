@@ -9,7 +9,6 @@ import ProblemLog from "../../src/core/ProblemLog.ts";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { urlPath, completeStmt, sendStmt, dispositionStmt, noteStmt } from "./_dsl.ts";
 import { TurnDisposition, type EditStatement, type LineMarker, type PlurnkStatement, type ReadStatement, Validator } from "@plurnk/plurnk-contracts";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type ReasoningEventNotify, type ReasoningEventPayload } from "../../src/core/ReasoningEvent.ts";
 import { type StoredPacketSection } from "../../src/core/StoredPacket.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
@@ -121,7 +120,7 @@ test("{§turn-record}: initialization and inference preserve turnOps beside ordi
         try {
             // A workspace entry, so the workspace survey selects something and the initialization program exists.
             await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
-            const source = "````DONE\ndone\n````";
+            const source = "await plurnk.done({\"text\":\"done\"});";
             const provider = new Mock({
                 contextWindow: 100000,
                 responses: [contentResp(source)],
@@ -157,9 +156,9 @@ test("{§turn-record}: initialization and inference preserve turnOps beside ordi
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; producer: string }>({ session_id: sessionId });
             const initializationSource = sources.find((row) => row.turn_id === turns[0].id && row.kind === "ops");
             assert.equal(initializationSource?.producer, "_plurnk");
-            assert.match(initializationSource.content, /^```/m);
-            assert.doesNotMatch(initializationSource.content, /^(`{4,})\w[^\n]*\1$/m, "initialization never teaches inline operation fences");
-            assert.match(initializationSource.content, /^```FIND [^\n]*\n```$/m, "the initialization program renders each operation with a separate closing line");
+            assert.match(initializationSource.content, /^await plurnk\./m);
+            assert.doesNotMatch(initializationSource.content, /^(`{3,})/m, "initialization never emits operation fences");
+            assert.match(initializationSource.content, /^await plurnk\.find\(\{"path":"workspace:\/\/\/\*"\}\);(?: \/\/ .*)?$/m, "the initialization program renders each operation in canonical Code Mode");
             assert.ok(!initializationRows.some(({ op }) => op === null));
             assert.ok(initializationRows.some(({ op }) => op === "FIND"), "source retention does not replace executed results");
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
@@ -232,8 +231,8 @@ test("{§notifications}: retries produce distinct physical-request reasoning seg
     const { db, engine, workspaceId, sessionId, loopId } = await setup((_workspaceId, event) => events.push(event));
     try {
         const provider = new Mock({ contextWindow: 100000, responses: [] });
-        const abandonedReasoning = PlurnkParser.frame("NOTE", "Abandoned retry note.");
-        const acceptedReasoning = PlurnkParser.frame("NOTE", "Accepted retry note.");
+        const abandonedReasoning = "await plurnk.note({\"text\":\"Abandoned retry note.\"});";
+        const acceptedReasoning = "await plurnk.note({\"text\":\"Accepted retry note.\"});";
         const failed = validateProviderRequestAccounting({
             provider: "provider:mock",
             model: provider.model,
@@ -531,12 +530,9 @@ test("{§edit} Engine.runLoop: three consecutive hard failures abandon at 500 wi
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 5 }, (_, i) => contentResp([
-                "````EDIT (sealed:///x-" + (i) + ")",
-                "v",
-                "````",
-                "````NOTE",
-                "going",
-                "````",
+                `await plurnk.edit({"path":"sealed:///x-${i}","content":"v"});`,
+                "",
+                'await plurnk.note({"text":"going"});',
             ].join("\n"))),
         });
         const result = await engine.runLoop({
@@ -662,7 +658,7 @@ test("{§engine-rails} creation differs from repeated period-1 no-op edits", asy
         // Creation returns 201; only the following 304 results repeat.
         const provider = new Mock({
             contextWindow: 100000,
-            responses: Array.from({ length: 8 }, () => contentResp("````EDIT (workspace:///fixed) <1,-1>\nv\n````\n````NOTE\ngo\n````")),
+            responses: Array.from({ length: 8 }, () => contentResp("await plurnk.edit({\"path\":\"workspace:///fixed\",\"range\":\"1,-1\",\"content\":\"v\"});\n\nawait plurnk.note({\"text\":\"go\"});")),
         });
         const result = await engine.runLoop({
             provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 20, maxStrikes: 3, minCycles: 3, maxCyclePeriod: 4,
@@ -1030,7 +1026,7 @@ test("{§outside-text}: free text is the turn's outside source, never delivered,
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [{ assistant: { content: "Just thinking out loud here.\n\n````SEND\ndone\n````", reasoning: null } }],
+            responses: [{ assistant: { content: "Just thinking out loud here.\n\nawait plurnk.send({\"text\":\"done\"});", reasoning: null } }],
         });
         const result = await engine.runTurn({
             provider, workspaceId, sessionId, loopId,
@@ -1070,7 +1066,6 @@ test("{§edit} Engine.runTurn: NOTE carries literal working memory separate from
 });
 
 describe("operation-replay", () => {
-const frame = PlurnkParser.frame;
 const say = (content: string, reasoning: string | null = null) => ({ assistant: { content, reasoning } });
 
 test("{§emission-history} {§emission-history}: a turn's content operations precede their results without duplicating their requests", async (t) => {
@@ -1079,12 +1074,12 @@ test("{§emission-history} {§emission-history}: a turn's content operations pre
     const workspaceId = await insertWorkspace(db, "paired-operations");
     const sessionId = await insertSession(db, workspaceId, null, "writer");
     const loopId = await insertLoop(db, sessionId, 1, "Write, inspect, and answer.");
-    const edit = frame("EDIT (workspace:///memo.txt)", "Unique replacement.");
-    const read = frame("READ (workspace:///memo.txt) <!-- inspect -->", null);
-    const note = frame("NOTE", "An authored memory.");
+    const edit = "await plurnk.edit({\"path\":\"workspace:///memo.txt\",\"content\":\"Unique replacement.\"});";
+    const read = "await plurnk.read({\"path\":\"workspace:///memo.txt\"}); // inspect";
+    const note = "await plurnk.note({\"text\":\"An authored memory.\"});";
     const provider = new Mock({ contextWindow: 100000, responses: [
-        say([edit, read, note].join("\n\n"), frame("NOTE", "Reasoning is not content.")),
-        say(frame("DONE", "Done.")),
+        say([edit, read, note].join("\n\n"), "await plurnk.note({\"text\":\"Reasoning is not content.\"});"),
+        say("await plurnk.done({\"text\":\"Done.\"});"),
     ] });
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
     const request = provider.received[1];
@@ -1115,14 +1110,14 @@ test("{§op-shapes}: failed retrievals retain their annotations independently, w
     const workspaceId = await insertWorkspace(db, "failed-annotation");
     const sessionId = await insertSession(db, workspaceId, null, "writer");
     const loopId = await insertLoop(db, sessionId, 1, "Inspect the available evidence.");
-    const source = frame("READ (workspace:///absent.txt)", "/not-a-pattern/");
+    const source = "await plurnk.note({\"text\":\"/not-a-pattern/\"});\n\nawait plurnk.read({\"path\":\"workspace:///absent.txt\"});";
     const provider = new Mock({ contextWindow: 100000, responses: [
-        say(source, frame("READ (workspace:///also-absent.txt)", "Reasoning annotation.")),
-        say(frame("DONE", "Neither resource exists.")),
+        say(source, "await plurnk.note({\"text\":\"Reasoning annotation.\"});\n\nawait plurnk.read({\"path\":\"workspace:///also-absent.txt\"});"),
+        say("await plurnk.done({\"text\":\"Neither resource exists.\"});"),
     ] });
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
     const request = provider.received[1];
-    assert.deepEqual(request.filter(({ role }) => role === "assistant").map(chatMessageText), [[frame("NOTE", "/not-a-pattern/"), frame("READ (workspace:///absent.txt)", null)].join("\n\n")]);
+    assert.deepEqual(request.filter(({ role }) => role === "assistant").map(chatMessageText), [["await plurnk.note({\"text\":\"/not-a-pattern/\"});", "await plurnk.read({\"path\":\"workspace:///absent.txt\"});"].join("\n\n")]);
     const user = request.filter(({ role }) => role === "user").map(chatMessageText).join("\n");
     assert.doesNotMatch(user, /Reasoning annotation\./u);
     assert.doesNotMatch(user, /also-absent\.txt/u);
@@ -1138,12 +1133,12 @@ test("{§emission-history} {§op-methods-op-dispatch}: one glob replay owns conc
     const workspaceId = await insertWorkspace(db, "paired-fanout");
     const sessionId = await insertSession(db, workspaceId, null, "writer");
     const loopId = await insertLoop(db, sessionId, 1, "Inspect the notes.");
-    const glob = frame("READ (workspace:///case-*.txt)", null);
-    const missing = frame("READ (workspace:///absent.txt)", null);
-    const copy = frame("COPY (workspace:///case-a.*) (workspace:///copy.txt)", null);
+    const glob = "await plurnk.read({\"path\":\"workspace:///case-*.txt\"});";
+    const missing = "await plurnk.read({\"path\":\"workspace:///absent.txt\"});";
+    const copy = "await plurnk.copy({\"from\":\"workspace:///case-a.*\",\"to\":\"workspace:///copy.txt\"});";
     const provider = new Mock({ contextWindow: 100000, responses: [
-        say([frame("EDIT (workspace:///case-a.txt)", "First."), frame("EDIT (workspace:///case-b.txt)", "Second.")].join("\n\n")),
-        say(`${glob}\n\n${missing}\n\n${copy}`), say(frame("DONE", "The missing note was absent.")),
+        say(["await plurnk.edit({\"path\":\"workspace:///case-a.txt\",\"content\":\"First.\"});", "await plurnk.edit({\"path\":\"workspace:///case-b.txt\",\"content\":\"Second.\"});"].join("\n\n")),
+        say(`${glob}\n\n${missing}\n\n${copy}`), say("await plurnk.done({\"text\":\"The missing note was absent.\"});"),
     ] });
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
     const request = provider.received[2];

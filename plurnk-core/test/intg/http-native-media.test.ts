@@ -28,7 +28,7 @@ process.env.PLURNK_MEMBERS_task = "**";
 process.env.PLURNK_MEMBERS_ENABLED = "1";
 process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "60000";
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
-const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Media inspection complete.");
+const step = (op = "NOTE") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "NOTE" ? "Inspect the result." : "Media inspection complete." })});`;
 const media = [
     { kind: "image", mimetype: "image/png", bytes: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"), facts: /PNG image/u },
     { kind: "pdf", mimetype: "application/pdf", bytes: Buffer.from(buildPdf({ title: "Contract" })), facts: /PDF document/u },
@@ -62,10 +62,18 @@ for (const enabled of [true, false]) {
         assert.ok(address && typeof address !== "string");
         const url = `http://127.0.0.1:${address.port}/media`;
         const provider = new Mock({ contextWindow: 100_000, inputModalities: enabled ? [sample.kind] : [], responses: [
-            turn(`\`\`\`\`READ (${url}) <1,3>\`\`\`\`\n${step()}`),
-            turn(`\`\`\`\`READ (${url}#readable)\`\`\`\`\n${step()}`),
-            turn(`\`\`\`\`READ (${url}#bytes) <2,3>\`\`\`\`\n${step()}`),
-            turn(`\`\`\`\`READ (${url}#header)\`\`\`\`\n${step()}`),
+            turn(`await plurnk.read({"path":"${url}","range":"1,3"});
+
+${step()}`),
+            turn(`await plurnk.read({"path":"${url}#readable"});
+
+${step()}`),
+            turn(`await plurnk.read({"path":"${url}#bytes","range":"2,3"});
+
+${step()}`),
+            turn(`await plurnk.read({"path":"${url}#header"});
+
+${step()}`),
             turn(step("DONE")),
         ] });
         await run(provider);
@@ -107,9 +115,15 @@ test("{§http-lifecycle} 304 revalidation preserves bytes and later replacement 
     assert.ok(address && typeof address !== "string");
     const url = `http://127.0.0.1:${address.port}/sound.wav`;
     const provider = new Mock({ contextWindow: 100_000, inputModalities: ["audio"], responses: [
-        turn(`\`\`\`\`READ (${url}) <1,2>\`\`\`\`\n${step()}`),
-        turn(`\`\`\`\`READ (${url}#readable)\`\`\`\`\n${step()}`),
-        turn(`\`\`\`\`READ (${url}#bytes) <1,2>\`\`\`\`\n${step()}`),
+        turn(`await plurnk.read({"path":"${url}","range":"1,2"});
+
+${step()}`),
+        turn(`await plurnk.read({"path":"${url}#readable"});
+
+${step()}`),
+        turn(`await plurnk.read({"path":"${url}#bytes","range":"1,2"});
+
+${step()}`),
         turn(step("DONE")),
     ] });
     await run(provider);
@@ -123,8 +137,8 @@ test("{§http-lifecycle} 304 revalidation preserves bytes and later replacement 
     assert.ok(files.every((part) => part.mediaType === "audio/wav"));
 });
 
-const statement = (header: string) => {
-    const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(header, null));
+const statement = (source: string) => {
+    const parsed = PlurnkParser.parseStatements(source);
     assert.equal(parsed.items.length, 1);
     const item = parsed.items[0];
     assert.ok(item?.kind === "statement");
@@ -135,7 +149,7 @@ test("{§scheme-operation-dispatch}: KILL receives the authored statement and bo
     const db = await openMigrated();
     const env = await seedEnvelope(db, `scheme-kill-${crypto.randomUUID()}`);
     const schemes = new SchemeRegistry();
-    const requested = statement('KILL (owned://bucket/notes) <1,-1> [{"mode":"local"}] <!-- remove -->');
+    const requested = statement('await plurnk.kill({"path":"owned://bucket/notes","range":"1,-1","metadata":["{\\"mode\\":\\"local\\"}"],"aside":"remove"});');
     let invoked = false;
     schemes.register("owned", {
         manifest: { name: "owned", authority: "resource", channels: { body: "text/plain" }, defaultChannel: "body", category: "data", writableBy: ["model"], volatile: false, modelVisible: true, metadataModifier: true },
@@ -157,9 +171,9 @@ test("{§scheme-operation-dispatch}: KILL receives the authored statement and bo
         const result = await engine.dispatch({ ...env, statement: requested, sequence: 1, origin: "model" });
         assert.equal(result.status, 200, JSON.stringify(result));
         assert.equal(invoked, true);
-        const survivor = await engine.dispatch({ ...env, statement: statement("READ (owned:///notes)"), sequence: 2, origin: "model" });
+        const survivor = await engine.dispatch({ ...env, statement: statement('await plurnk.read({"path":"owned:///notes"});'), sequence: 2, origin: "model" });
         assert.equal(survivor.content, "other namespace");
-        const deleted = await engine.dispatch({ ...env, statement: statement("READ (owned://bucket/notes)"), sequence: 3, origin: "model" });
+        const deleted = await engine.dispatch({ ...env, statement: statement('await plurnk.read({"path":"owned://bucket/notes"});'), sequence: 3, origin: "model" });
         assert.equal(deleted.status, 404);
     } finally {
         await schemes.close();
@@ -183,12 +197,12 @@ for (const protocol of ["https", "http"]) {
         try {
             const target = `${protocol}://93.184.216.34/record?revision=7`;
             await seedEntryWithChannel(db, { workspaceId: env.workspaceId, scheme: protocol, authority: "93.184.216.34", pathname: "/record?revision=7", content: "stored response" });
-            const local = await engine.dispatch({ ...env, statement: statement(`KILL (${target})`), sequence: 1, origin: "model" });
+            const local = await engine.dispatch({ ...env, statement: statement(`await plurnk.kill({"path":"${target}"});`), sequence: 1, origin: "model" });
             assert.equal(local.status, 200, JSON.stringify(local));
             assert.deepEqual(requests, [], "forgetting a response cannot perform a remote mutation");
-            const repeated = await engine.dispatch({ ...env, statement: statement(`KILL (${target})`), sequence: 2, origin: "model" });
+            const repeated = await engine.dispatch({ ...env, statement: statement(`await plurnk.kill({"path":"${target}"});`), sequence: 2, origin: "model" });
             assert.equal(repeated.status, 404, "the local representation was actually removed");
-            const remote = await engine.dispatch({ ...env, statement: statement(`KILL (${target}) [{"remote":true,"If-Match":"revision-7"}]`), sequence: 3, origin: "model" });
+            const remote = await engine.dispatch({ ...env, statement: statement(`await plurnk.kill({"path":"${target}","metadata":[{"remote":true,"If-Match":"revision-7"}]});`), sequence: 3, origin: "model" });
             assert.equal(remote.status, 102, JSON.stringify(remote));
             assert.deepEqual(requests, [{ method: "DELETE", condition: "revision-7", url: target }]);
         } finally {
@@ -220,13 +234,13 @@ for (const protocol of ["wss", "ws"]) {
         const engine = new Engine({ db, schemes });
         try {
             const target = `${protocol}://93.184.216.34/feed`;
-            const opened = await engine.dispatch({ ...env, statement: statement(`READ (${target})`), sequence: 1, origin: "model" });
+            const opened = await engine.dispatch({ ...env, statement: statement(`await plurnk.read({"path":"${target}"});`), sequence: 1, origin: "model" });
             assert.equal(opened.status, 102, JSON.stringify(opened));
             const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: protocol, pathname: "/feed" });
             assert.ok(entry);
             const live = await db.test_get_subscription_by_entry.get<{ closed_at: string | null }>({ session_id: env.sessionId, entry_id: entry.id });
             assert.equal(live?.closed_at, null);
-            const killed = await engine.dispatch({ ...env, statement: statement(`KILL (${target})`), sequence: 2, origin: "model" });
+            const killed = await engine.dispatch({ ...env, statement: statement(`await plurnk.kill({"path":"${target}"});`), sequence: 2, origin: "model" });
             assert.equal(killed.status, 200, JSON.stringify(killed));
             assert.deepEqual(closed, [{ code: 1000, reason: "killed" }]);
             await schemes.close();

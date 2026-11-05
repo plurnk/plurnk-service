@@ -32,7 +32,7 @@
             "ignoreDependencies": ["@aws-sdk/client-bedrock-runtime"]
         },
         "plurnk-parser": {
-            "entry": ["src/FencePairing.ts", "src/**/*.test.ts", "test/**/*.ts", "scriptify/**/*.ts"],
+            "entry": ["src/**/*.test.ts", "test/**/*.ts", "scriptify/**/*.ts"],
             "project": ["src/**/*.ts", "test/**/*.ts", "scriptify/**/*.ts"]
         }
     }

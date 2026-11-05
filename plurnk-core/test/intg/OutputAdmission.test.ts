@@ -42,7 +42,7 @@ for (const reported of [false, true]) {
                                 id: "cancelled-child", model: "cancellation-witness",
                                 choices: [{ index: 0, delta: {
                                     reasoning_content: "Still reasoning.",
-                                    content: "````EDIT (workspace:///must-not-exist.txt)\nnot authorized after cancellation\n````",
+                                    content: "await plurnk.edit({\"path\":\"workspace:///must-not-exist.txt\",\"content\":\"not authorized after cancellation\"});",
                                 }, finish_reason: null }],
                                 ...(reported ? {
                                     usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 }, charge,
@@ -72,7 +72,7 @@ for (const reported of [false, true]) {
                         // The parent's own KILL of its child.
                         const result = await modelOperation(daemon, db, {
                             workspaceId, sessionId: parent,
-                            statement: Dsl.parseSingleStatement("````KILL (session://child)\n````"),
+                            statement: Dsl.parseSingleStatement("await plurnk.kill({\"path\":\"session://child\"});"),
                         });
                         assert.equal(result.status, 200);
                     } else {
@@ -126,10 +126,8 @@ test("{§methods-workspace-create} {§packet}: one oversized attachment lands as
     const fixture = await seedAttachmentFixture();
     const content = `Telemetry: ${"sample nominal; ".repeat(12_000)}\nRecovery site: ${fixture.answer}.\n`;
     const provider = new Mock({ contextWindow: 20_000, responses: [
-        makeMockResponse("````READ (incident.txt) <2>````\n````NOTE\nInspect the recovery site.\n````"),
-        makeMockResponse(`\`\`\`\`DONE
-${fixture.answer}
-\`\`\`\``),
+        makeMockResponse("await plurnk.read({\"path\":\"incident.txt\",\"range\":\"2\"});\n\nawait plurnk.note({\"text\":\"Inspect the recovery site.\"});"),
+        makeMockResponse(`await plurnk.done({"text":"${fixture.answer}"});`),
     ] });
     try {
         await writeFile(join(fixture.workspace, "incident.txt"), content);
@@ -172,10 +170,8 @@ for (const retire of [false, true]) test(`{§tokenomics}: sixteen attachments la
     const provider = new Mock({
         contextWindow: 20_000,
         responses: [
-            makeMockResponse("````KILL (log:///**/FIND)````\n````READ (incident.txt) <2>````\n````NOTE\nInspect the recovery site.\n````"),
-            makeMockResponse(`${retire ? "````KILL (log:///**/READ)````\n" : ""}\`\`\`\`DONE
-${fixture.answer}
-\`\`\`\``),
+            makeMockResponse("await plurnk.kill({\"path\":\"log:///**/FIND\"});\n\nawait plurnk.read({\"path\":\"incident.txt\",\"range\":\"2\"});\n\nawait plurnk.note({\"text\":\"Inspect the recovery site.\"});"),
+            makeMockResponse(`${retire ? "await plurnk.kill({\"path\":\"log:///**/READ\"});\n\n" : ""}await plurnk.done(${JSON.stringify({ text: fixture.answer })});`),
         ],
     });
     try {
@@ -232,7 +228,7 @@ const providerAt = (capacity: number, responses: MockResponse[]): Mock => {
         else process.env.PLURNK_PROVIDERS_REASONING_BUDGET = reasoning;
     }
 };
-const continuing = "````NOTE\nReview the evidence.\n````";
+const continuing = "await plurnk.note({\"text\":\"Review the evidence.\"});";
 
 const receipt = (row: Record<string, unknown>): { lines: number; tokens: number; remaining: number; detail: string } => {
     const problem = (row.problem ?? {}) as { detail?: string; lines?: number; tokens?: number; remaining?: number };
@@ -259,8 +255,12 @@ test("{§packet}: a READ without a scope lands as its first page, bounded by lin
         const content = Array.from({ length: 600 }, (_, i) => `${i + 1}: ${"evidence ".repeat(30)}`).join("\n");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/large.md", content });
         const provider = providerAt(999_000, [
-            response(`\`\`\`\`READ (workspace:///large.md)\`\`\`\`\n${continuing}`),
-            response(`\`\`\`\`READ (workspace:///large.md) <2,3>\`\`\`\`\n${continuing}`),
+            response(`await plurnk.read({"path":"workspace:///large.md"});
+
+${continuing}`),
+            response(`await plurnk.read({"path":"workspace:///large.md","range":"2,3"});
+
+${continuing}`),
             response(continuing),
         ]);
         const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 1, provider });
@@ -300,8 +300,14 @@ test("{§tokenomics}: a page that does not fit the room lands as the longest pre
         // A room 1,500 over the floor: the first page (about 8,000) cannot land whole, a few lines can.
         const room = await floorWeight(db, workspaceId, sessionId, loopId) + 1_500;
         const provider = providerAt(room, [
-            response(`\`\`\`\`READ (workspace:///large.md)\`\`\`\`\n${continuing}`),
-            response(`\`\`\`\`KILL (log:///**/READ)\`\`\`\`\n\`\`\`\`READ (workspace:///large.md) <2,3>\`\`\`\`\n${continuing}`),
+            response(`await plurnk.read({"path":"workspace:///large.md"});
+
+${continuing}`),
+            response(`await plurnk.kill({"path":"log:///**/READ"});
+
+await plurnk.read({"path":"workspace:///large.md","range":"2,3"});
+
+${continuing}`),
             response(continuing),
         ]);
         const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 1, provider });
@@ -345,7 +351,9 @@ test("{§tokenomics}: a READ whose first line does not fit is a bodiless receipt
         // One line longer than the page's characters: the page is a cut of that line, about 8,000 tokens.
         await seedEntryWithChannel(db, { workspaceId, pathname: "/line.md", content: "evidence ".repeat(4_000) });
         const room = await floorWeight(db, workspaceId, sessionId, loopId) + 1_500;
-        const provider = providerAt(room, [response(`\`\`\`\`READ (workspace:///line.md)\`\`\`\`\n${continuing}`)]);
+        const provider = providerAt(room, [response(`await plurnk.read({"path":"workspace:///line.md"});
+
+${continuing}`)]);
         const turn = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 1, provider });
         const read = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turn.turnId }))
             .find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!;
@@ -370,11 +378,13 @@ test("{§tokenomics}: KILL first — the fit measure honours curation within the
         await seedEntryWithChannel(db, { workspaceId, pathname: "/wanted.md", content: wanted });
         // `<1,-1>` asks for the whole file, so each READ is the whole 14,000 and not its page ({§packet}).
         const provider = providerAt(24_000, [
-            response(`\`\`\`\`READ (workspace:///filler.md) <1,-1>\`\`\`\`\n${continuing}`),
+            response(`await plurnk.read({"path":"workspace:///filler.md","range":"1,-1"});
+
+${continuing}`),
             response([
-                "````READ (workspace:///wanted.md) <1,-1>````",
-                "````KILL (log:///1/*/*/READ)````",
-                "````READ (workspace:///wanted.md) <1,-1>````",
+                "await plurnk.read({\"path\":\"workspace:///wanted.md\",\"range\":\"1,-1\"});",
+                "await plurnk.kill({\"path\":\"log:///1/*/*/READ\"});",
+                "await plurnk.read({\"path\":\"workspace:///wanted.md\",\"range\":\"1,-1\"});",
                 continuing,
             ].join("\n")),
         ]);
@@ -398,7 +408,7 @@ test("{§tokenomics}: over budget but under the wall, the packet goes with one 4
         const loopId = await insertLoop(db, sessionId, 1, "Review the evidence.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const note = "Remember ".repeat(5000);
-        const wide = providerAt(999_000, [response(`\`\`\`\`NOTE\n${note}\n\`\`\`\``)]);
+        const wide = providerAt(999_000, [response(`await plurnk.note({"text":"${note}"});`)]);
         const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider: wide });
         const before = await db.engine_render_log.all({ session_id: sessionId });
         // A 12,000-token budget inside a million-token window: far over the budget, far under the wall.

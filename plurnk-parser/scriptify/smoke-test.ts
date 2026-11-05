@@ -12,9 +12,6 @@ import * as SourceParser from "../src/index.ts";
 import { isRecord } from "@plurnk/plurnk-contracts";
 
 const run = promisify(execFile);
-// npm exports its config as npm_config_* into lifecycle children — when this smoke runs
-// inside `npm publish --workspaces` (prepublishOnly), the inner npm would inherit
-// --workspaces/omit and misread the temp consumer. The consumer gets a CLEAN npm env.
 const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("npm_")));
 const parserDir = process.cwd();
 const contractsDir = join(parserDir, "..", "plurnk-contracts");
@@ -25,7 +22,6 @@ const cleanup = async (): Promise<void> => {
     await rm(tempDir, { recursive: true, force: true });
 };
 
-// A parse result's items, as the CLI prints and the browser bundle returns them.
 const parseItems = (result: unknown, source: string): readonly unknown[] => {
     if (!isRecord(result) || !Array.isArray(result.items)) throw new Error(`${source} returned no parse items: ${JSON.stringify(result)}`);
     return result.items;
@@ -38,8 +34,6 @@ try {
         if (!isRecord(manifest) || typeof manifest.name !== "string" || typeof manifest.version !== "string") {
             throw new Error(`${cwd}/package.json names no package and version`);
         }
-        // `--silent` prints the one archive's filename and nothing else, the same on every npm; the JSON
-        // envelope changed shape in npm 12 and belongs to the root release scripts' normalizer.
         const { stdout } = await run("npm", ["pack", "--silent", "--ignore-scripts", "--pack-destination", tempDir], { cwd, env: cleanEnv });
         const tarballName = stdout.trim().split("\n").at(-1) ?? "";
         if (!tarballName.endsWith(".tgz")) throw new Error(`npm pack printed no archive name: ${JSON.stringify(stdout)}`);
@@ -83,12 +77,12 @@ const assertClean = (label, result) => {
     }
 };
 
-const program = PlurnkParser.frame("NOTE", "smoke");
+const program = 'await plurnk.note({"text":"smoke"});';
 assertClean("model turn", PlurnkParser.parse(program));
-const result = PlurnkParser.parseStatements(PlurnkParser.frame("EDIT (workspace:///foo)", "body content"));
+const result = PlurnkParser.parseStatements('await plurnk.edit({"path":"workspace:///foo","content":"body content"});');
 assertClean("statement sequence", result);
 
-const selected = PlurnkParser.parseStatements(PlurnkParser.frame('READ (https://example.com) [{"headers":{"Accept":"text/plain"}}] /needle/', null));
+const selected = PlurnkParser.parseStatements('await plurnk.read({"path":"https://example.com","pattern":"/needle/","metadata":[{"headers":{"Accept":"text/plain"}}]});');
 assertClean("owner metadata with matcher", selected);
 const selection = selected.items[0]?.statement;
 if (selection?.matcher?.raw !== "/needle/" || selection.metadata?.[0] !== '{"headers":{"Accept":"text/plain"}}') {
@@ -99,84 +93,6 @@ assertClean("rendered resource selection", reparsedSelection);
 if (JSON.stringify(reparsedSelection.items[0]?.statement) !== JSON.stringify(selection)) {
     throw new Error("rendering erased the resource selection");
 }
-
-// The model tier also records free text as text items; the program is its statements.
-const statementsOf = (parsed) => parsed.items.filter((item) => item.kind === "statement").map((item) => item.statement);
-for (const op of ["READ", "FIND"]) {
-    const source = PlurnkParser.frame(op + " (workspace:///fact.txt)", "/annotation-not-selection/");
-    for (const parsed of [PlurnkParser.parse(source), PlurnkParser.parseStatements(source)]) {
-        assertClean("retrieval annotation", parsed);
-        const statements = statementsOf(parsed);
-        if (statements.length !== 2 || statements[0]?.op !== "NOTE"
-            || statements[0]?.body !== "/annotation-not-selection/" || statements[1]?.op !== op
-            || statements[1]?.body !== null || statements[1]?.matcher !== null) {
-            throw new Error("packed retrieval annotation was lost or became a selector");
-        }
-    }
-}
-for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
-    const input = '{"query":"unchanged"}';
-    const invocation = PlurnkParser.frame("Fresh (inspect)", input);
-    const parsed = parse(invocation);
-    assertClean("unregistered executor heading", parsed);
-    const statement = statementsOf(parsed)[0];
-    if (statement?.runtime !== "fresh" || statement.target?.raw !== "inspect" || statement.body !== input
-        || statement.metadata !== null || statementsOf(parsed).length !== 1) {
-        throw new Error("the packed parser requires registration to admit explicit invocation syntax");
-    }
-    if (statementsOf(parse(PlurnkParser.frame("markdown", invocation))).length !== 0) {
-        throw new Error("a quoted executor heading escaped its enclosing block");
-    }
-}
-const ticks = String.fromCharCode(96).repeat(3);
-const answerTail = "Complete answer.\\n" + ticks + "\\n"
-    + PlurnkParser.frame("EDIT (must-not-execute.md)", "Example only.") + "\\nThe report continues.";
-for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
-    for (const op of ["DONE", "FAIL"]) {
-        for (const target of ["", " (message://dogfood04/6094c6e9)"]) {
-            const parsed = parse(PlurnkParser.frame(op + target, answerTail));
-            assertClean("completion reply", parsed);
-            const statements = statementsOf(parsed);
-            if (statements.length !== 1 || statements[0]?.op !== op || statements[0]?.body?.raw !== answerTail
-                || statements[0]?.target?.raw !== (target ? "message://dogfood04/6094c6e9" : undefined)) {
-                throw new Error("packed parser changed the completion reply's target or body");
-            }
-        }
-    }
-}
-const interstitial = "Prelude.\\n" + PlurnkParser.frame("SEND", "Only this is a message.")
-    + "\\n3\\n" + program + "\\nPostscript.";
-for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
-    const parsed = parse(interstitial);
-    assertClean("interstitial text", parsed);
-    const statements = statementsOf(parsed);
-    if (statements.length !== 2 || statements[0]?.body?.raw !== "Only this is a message."
-        || statements[1]?.op !== "NOTE") throw new Error("outside text changed the parsed program");
-}
-
-// A quoted example rides a wider fence ({§operation-fences}): the SEND's body holds the literal
-// heading without executing it, and the disposition still follows.
-const literalExample = PlurnkParser.frame("KILL (workspace:///notes.md)", null);
-const quoted = PlurnkParser.frame("SEND <!-- literal example -->", literalExample) + "\\n" + program;
-const quotedSend = PlurnkParser.parse(quoted);
-assertClean("wider SEND", quotedSend);
-const quotedStatements = statementsOf(quotedSend);
-if (quotedStatements.length !== 2 || quotedStatements[0]?.op !== "SEND"
-    || quotedStatements[0]?.aside !== "literal example"
-    || quotedStatements[0]?.body?.raw !== literalExample
-    || quotedStatements[1]?.op !== "NOTE") throw new Error("the wider SEND did not quote its literal example");
-
-const balancedBody = "Literal example:\\n" + literalExample + "\\nThe answer continues here.";
-const balanced = PlurnkParser.parse(PlurnkParser.frame("SEND", balancedBody) + "\\n" + program);
-assertClean("balanced SEND", balanced);
-const balancedStatements = statementsOf(balanced);
-if (balancedStatements.length !== 2 || balancedStatements[0]?.op !== "SEND"
-    || balancedStatements[0]?.body?.raw !== balancedBody
-    || balancedStatements[1]?.op !== "NOTE") throw new Error("balanced nesting truncated the reply or executed its example");
-
-const item = result.items[0];
-if (item.kind !== "statement") throw new Error("expected statement, got " + item.kind);
-if (item.statement.op !== "EDIT") throw new Error("expected EDIT, got " + item.statement.op);
 
 const dest = parsePath("workspace:///archive/draft");
 if (dest?.kind !== "url" || dest.scheme !== "workspace" || dest.pathname !== "/archive/draft") throw new Error("parsePath export not working: " + JSON.stringify(dest));
@@ -191,8 +107,7 @@ console.log("OK: the parser is consumable through one installed entrypoint.");
 
     process.stdout.write("[smoke] running the CLI against a turn...\n");
     const cli = join(installedRoot, "bin", "plurnk-parser.js");
-    // {§operation-fences} — the installed CLI smoke writes the taught form.
-    await writeFile(join(tempDir, "turn.plurnk"), "```WAIT\n```\n");
+    await writeFile(join(tempDir, "turn.plurnk"), 'await plurnk.wait({});\n');
     const { stdout: cliOut } = await run("node", [cli, "turn.plurnk"], { cwd: tempDir });
     if (parseItems(JSON.parse(cliOut), "the CLI").some(isParseError)) throw new Error(`CLI reported parse errors: ${cliOut}`);
 
@@ -213,7 +128,7 @@ export const parse = (input) => PlurnkParser.parse(input);
     });
     const browserConsumer: unknown = await import(`${pathToFileURL(browserBundle).href}?${crypto.randomUUID()}`);
     if (!isRecord(browserConsumer) || typeof browserConsumer.parse !== "function") throw new Error("the browser bundle exports no parse");
-    const browserItems = parseItems(Reflect.apply(browserConsumer.parse, undefined, ["```NOTE\nbrowser bundle initialized\n```"]), "the browser bundle");
+    const browserItems = parseItems(Reflect.apply(browserConsumer.parse, undefined, ['await plurnk.note({"text":"browser bundle initialized"});']), "the browser bundle");
     if (browserItems.some(isParseError)) {
         throw new Error(`browser bundle returned parse errors: ${JSON.stringify(browserItems)}`);
     }

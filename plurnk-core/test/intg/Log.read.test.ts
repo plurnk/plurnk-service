@@ -146,14 +146,14 @@ test("{§read} Log.read: an exact /OP delimiter must agree with the addressed ro
 test("{§log-history-projection}: rejected attempts retain exact canonical leaves and shorthand addressing", async () => {
     const { db, sessionId, loopId, turnId, workspaceId } = await setup();
     try {
-        await insertActionless(db, { sessionId, loopId, turnId }, 1, "emissionAttempt", "````NOTE\nContinue the task.\n````");
+        await insertActionless(db, { sessionId, loopId, turnId }, 1, "emissionAttempt", "await plurnk.note({\"text\":\"Continue the task.\"});");
         await insertActionless(db, { sessionId, loopId, turnId }, 2, "emissionAttempt", "malformed response");
         const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
 
         const ops = await readLog(readStmt(urlPath("log", "/1/1/1/attempt")), ctx);
         const attempt = await readLog(readStmt(urlPath("log", "/1/1/2/attempt")), ctx);
         assert.equal(ops.status, 200);
-        assert.match(ops.content ?? "", /````NOTE/);
+        assert.match(ops.content ?? "", /await plurnk\.note/);
         assert.equal(attempt.status, 200);
         assert.equal(attempt.content, "malformed response");
 
@@ -625,7 +625,7 @@ test("{§log-history-projection}: FIND projects and filters actionless rows by t
     const { db, sessionId, loopId, turnId, workspaceId } = await setup();
     try {
         for (const [sequence, kind, content] of [
-            [4, "emissionAttempt", "````NOTE\nContinue the task.\n````"],
+            [4, "emissionAttempt", "await plurnk.note({\"text\":\"Continue the task.\"});"],
             [5, "emissionAttempt", "broken output"],
         ] as const) {
             await db.engine_insert_log_entry.get({

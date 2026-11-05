@@ -30,12 +30,12 @@ file in the `(target)` slot is instead the script each interpreter reads
 directly, and the body is tokenized by shell quoting (`tokenizeArgv`) into the
 script's arguments ({§executor-subprocess}, {§executor-contract}).
 
-```sh (./deploy.sh)
---release "two words"
+```ts
+await plurnk.sh({ script: "./deploy.sh", args: '--release "two words"' });
 ```
 
-```python3 (transform.py)
---format json
+```ts
+await plurnk.python3({ script: "transform.py", args: "--format json" });
 ```
 
 All declared tags run host code, so every invocation is proposal-gated ({§executor-results}). Inline programs have no

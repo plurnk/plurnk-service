@@ -18,21 +18,20 @@ for (const alias of ["ts", "javascript", "typescript", "node"] as const) {
         const directory = await mkdtemp(join(tmpdir(), `plurnk-js-spelling-${alias}-`));
         t.after(() => rm(directory, { recursive: true, force: true }));
         const witness = join(directory, "executed.txt");
-        const source = [
-            `\`\`\`${alias}`,
+        const code = [
             'const fs = await import("node:fs/promises");',
             'const label: string = "executed";',
             `await fs.writeFile(${JSON.stringify(witness)}, label);`,
             'console.log("js-runtime-witness");',
-            "```",
+        ].join("\n");
+        const source = [
+            `await plurnk.${alias}(${JSON.stringify({ code })});`,
             "",
-            "```WAIT",
-            "Observe the result.",
-            "```",
+            'await plurnk.wait({"text":"Observe the result."});',
         ].join("\n");
         const mock = new Mock({ contextWindow: 100_000, responses: [
             makeRawMockResponse(source, 10),
-            makeRawMockResponse("```DONE\nResult observed.\n```", 10),
+            makeRawMockResponse("await plurnk.done({\"text\":\"Result observed.\"});", 10),
         ] });
         await withDaemon(mock, async (db, daemon, addr) => {
             const client = await connect(addr);
@@ -102,7 +101,7 @@ for (const disablePython of [false, true]) {
             assert.ok(registry.entry(tag), `${tag} remains in the default composition`);
         }
 
-        const mock = new Mock({ contextWindow: 100000, responses: [makeMockResponse("````DONE\nReady.\n````")] });
+        const mock = new Mock({ contextWindow: 100000, responses: [makeMockResponse("await plurnk.done({\"text\":\"Ready.\"});")] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {

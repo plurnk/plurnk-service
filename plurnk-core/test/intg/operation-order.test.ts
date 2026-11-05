@@ -36,64 +36,42 @@ const anchors = LineAnchors.tokens(target, content);
 const cases = [
     {
         name: "READs observe the state at their authored position, not a future EDIT",
-        ops: [`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``, `\`\`\`\`EDIT (${target}) <2>
-TWO
-extra
-\`\`\`\``, `\`\`\`\`READ (${target}) <1,-1>\`\`\`\``, `\`\`\`\`EDIT (${target}) <4>
-THREE
-\`\`\`\``, `\`\`\`\`READ (${target}) <1,-1>\`\`\`\``],
+        ops: [`await plurnk.read({"path":"${target}","range":"1,-1"});`, `await plurnk.edit({"path":"${target}","range":"2","content":"TWO\\nextra"});`, `await plurnk.read({"path":"${target}","range":"1,-1"});`, `await plurnk.edit({"path":"${target}","range":"4","content":"THREE"});`, `await plurnk.read({"path":"${target}","range":"1,-1"});`],
         order: ["READ", "EDIT", "READ", "EDIT", "READ"],
         reads: [content, "one\nTWO\nextra\nthree\nfour\nfive\nsix", "one\nTWO\nextra\nTHREE\nfour\nfive\nsix"],
         statuses: [200, 200],
     },
     {
         name: "an EDIT can create a resource and a later EDIT can change it in the same turn",
-        ops: ["````EDIT (workspace:///new.md)\nalpha\nbeta\n````", "````EDIT (workspace:///new.md) <2>\nBETA\n````", "````READ (workspace:///new.md) <1,-1>````"],
+        ops: ["await plurnk.edit({\"path\":\"workspace:///new.md\",\"content\":\"alpha\\nbeta\"});", "await plurnk.edit({\"path\":\"workspace:///new.md\",\"range\":\"2\",\"content\":\"BETA\"});", "await plurnk.read({\"path\":\"workspace:///new.md\",\"range\":\"1,-1\"});"],
         order: ["EDIT", "EDIT", "READ"],
         reads: ["alpha\nBETA"],
         statuses: [201, 200],
     },
     {
         name: "an invalid EDIT does not roll back an earlier effect or suppress a later one",
-        ops: [`\`\`\`\`EDIT (${target}) <1>
-ONE
-\`\`\`\``, `\`\`\`\`EDIT (${target}) <99>
-invalid
-\`\`\`\``, `\`\`\`\`EDIT (${target}) <2>
-TWO
-\`\`\`\``, `\`\`\`\`READ (${target}) <1,-1>\`\`\`\``],
+        ops: [`await plurnk.edit({"path":"${target}","range":"1","content":"ONE"});`, `await plurnk.edit({"path":"${target}","range":"99","content":"invalid"});`, `await plurnk.edit({"path":"${target}","range":"2","content":"TWO"});`, `await plurnk.read({"path":"${target}","range":"1,-1"});`],
         order: ["EDIT", "EDIT", "EDIT", "READ"],
         reads: ["ONE\nTWO\nthree\nfour\nfive\nsix"],
         statuses: [200, 416, 200],
     },
     {
         name: "a surviving hash follows its target through an adjacent numeric insertion",
-        ops: [`\`\`\`\`EDIT (${target}) <0>
-prefix
-\`\`\`\``, `\`\`\`\`READ (${target}) <1,-1>\`\`\`\``, `\`\`\`\`EDIT (${target}) <${anchors[1]}>
-TWO
-\`\`\`\``, `\`\`\`\`READ (${target}) <1,-1>\`\`\`\``],
+        ops: [`await plurnk.edit({"path":"${target}","range":"0","content":"prefix"});`, `await plurnk.read({"path":"${target}","range":"1,-1"});`, `await plurnk.edit({"path":"${target}","range":"${anchors[1]}","content":"TWO"});`, `await plurnk.read({"path":"${target}","range":"1,-1"});`],
         order: ["EDIT", "READ", "EDIT", "READ"],
         reads: [`prefix\n${content}`, "prefix\none\nTWO\nthree\nfour\nfive\nsix"],
         statuses: [200, 200],
     },
     {
         name: "an overwritten hash target is not rebound to replacement content",
-        ops: [`\`\`\`\`EDIT (${target}) <${anchors[1]}>
-replacement
-\`\`\`\``, `\`\`\`\`EDIT (${target}) <${anchors[1]}>
-wrong
-\`\`\`\``, `\`\`\`\`READ (${target}) <1,-1>\`\`\`\``],
+        ops: [`await plurnk.edit({"path":"${target}","range":"${anchors[1]}","content":"replacement"});`, `await plurnk.edit({"path":"${target}","range":"${anchors[1]}","content":"wrong"});`, `await plurnk.read({"path":"${target}","range":"1,-1"});`],
         order: ["EDIT", "EDIT", "READ"],
         reads: ["one\nreplacement\nthree\nfour\nfive\nsix"],
         statuses: [200, 409],
     },
     {
         name: "an untouched hash range survives a preceding scoped entry KILL",
-        ops: [`\`\`\`\`KILL (${target}) <1>\`\`\`\``, `\`\`\`\`EDIT (${target}) <${anchors[2]},${anchors[3]}>
-THREE
-FOUR
-\`\`\`\``, `\`\`\`\`READ (${target}) <1,-1>\`\`\`\``],
+        ops: [`await plurnk.kill({"path":"${target}","range":"1"});`, `await plurnk.edit({"path":"${target}","range":"${anchors[2]},${anchors[3]}","content":"THREE\\nFOUR"});`, `await plurnk.read({"path":"${target}","range":"1,-1"});`],
         order: ["KILL", "EDIT", "READ"],
         reads: ["two\nTHREE\nFOUR\nfive\nsix"],
         statuses: [200],
@@ -103,17 +81,13 @@ FOUR
 for (const fixture of cases) test(`{§op-methods-op-dispatch}: ${fixture.name}`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse(`\`\`\`\`EDIT (${target})
-${content}
-\`\`\`\`
-\`\`\`\`NOTE
-created
-\`\`\`\``, 10),
+        makeMockResponse(`await plurnk.edit(${JSON.stringify({ path: target, content })});
+
+await plurnk.note({"text":"created"});`, 10),
         makeMockResponse(`${fixture.ops.join("\n")}
-\`\`\`\`NOTE
-verify
-\`\`\`\``, 10),
-        makeMockResponse("````DONE\ndone\n````", 10),
+
+await plurnk.note({"text":"verify"});`, 10),
+        makeMockResponse("await plurnk.done({\"text\":\"done\"});", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -138,16 +112,13 @@ for (const origin of ["client", "_plurnk"] as const) for (const hasNote of [fals
             const env = await seedEnvelope(db, `ordered-${origin}`, { producer: origin });
             env.turnId = (await Turn.open(db, { loopId: env.loopId, producer: origin, kind: "operation" })).id;
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
-            const source = `\`\`\`\`EDIT (${target})
-${content}
-\`\`\`\`
-\`\`\`\`READ (${target}) <1,-1>\`\`\`\`
-\`\`\`\`EDIT (${target}) <99>
-invalid
-\`\`\`\`
-\`\`\`\`EDIT (${target}) <2>
-TWO
-\`\`\`\`${hasNote ? "\n````NOTE\nContinue the task.\n````" : ""}`;
+            const source = [
+                `await plurnk.edit(${JSON.stringify({ path: target, content })});`,
+                `await plurnk.read({"path":"${target}","range":"1,-1"});`,
+                `await plurnk.edit({"path":"${target}","range":"99","content":"invalid"});`,
+                `await plurnk.edit({"path":"${target}","range":"2","content":"TWO"});`,
+                ...(hasNote ? ['await plurnk.note({"text":"note"});'] : []),
+            ].join("\n\n");
             const execution = engine.executeAdmittedTurn({
                 ...env, origin, source, emission: null, statements: TurnOps.parseInternal(source),
                 fromSequence: 1, failOnOperationError,
@@ -415,8 +386,8 @@ for (const readers of [undefined, 1]) test(`{§scheme-address} a client read acq
     const thought = "Weighing the note.";
     const minted = "proto://anonymous/threads/t/messages/m1";
     const provider = new Mock({ contextWindow: 32768, responses: [
-        reasoned("````NOTE\nOne.\nTwo.\nThree.\n````", thought),
-        makeMockResponse("````DONE\nThe answer.\n````"),
+        reasoned("await plurnk.note({\"text\":\"One.\\nTwo.\\nThree.\"});", thought),
+        makeMockResponse("await plurnk.done({\"text\":\"The answer.\"});"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "entry-acquisition" });
@@ -873,16 +844,22 @@ test("{§manifest} runtime scheme traits participate in the same selector space"
 
 describe("Message.attachments", () => {
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
-const next = "````NOTE\nDeliver selected resources.\n````";
-const done = "````DONE\nAttachment handling verified.\n````";
+const next = "await plurnk.note({\"text\":\"Deliver selected resources.\"});";
+const done = "await plurnk.done({\"text\":\"Attachment handling verified.\"});";
 
 test("{§op-methods-op-dispatch}: session SEND snapshots only selected resources and a failed source sends nothing", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        turn(`\`\`\`\`EDIT (workspace:///selected.md)\noriginal\n\`\`\`\`\n\`\`\`\`EDIT (workspace:///private.md)\nunselected\n\`\`\`\`\n${next}`),
-        turn(`\`\`\`\`SEND (session://receiver) [{"attachments":["workspace:///selected.md","workspace:///missing.md"]}]\nDo not deliver a partial message.\n\`\`\`\`\n${next}`),
-        turn(`\`\`\`\`SEND (session://receiver) [{"attachments":["workspace:///selected.md"]}]\nReview this.\n\`\`\`\`\n\`\`\`\`EDIT (workspace:///selected.md) <1,-1>\nchanged\n\`\`\`\`\n\`\`\`\`WAIT\n\`\`\`\``),
+        turn(`await plurnk.edit({"path":"workspace:///selected.md","content":"original"});
+
+await plurnk.edit({"path":"workspace:///private.md","content":"unselected"});
+
+${next}`),
+        turn(`await plurnk.send({"target":"session://receiver","metadata":["{\\"attachments\\":[\\"workspace:///selected.md\\",\\"workspace:///missing.md\\"]}"],"text":"Do not deliver a partial message."});
+
+${next}`),
+        turn("await plurnk.send({\"target\":\"session://receiver\",\"metadata\":[\"{\\\"attachments\\\":[\\\"workspace:///selected.md\\\"]}\"],\"text\":\"Review this.\"});\n\nawait plurnk.edit({\"path\":\"workspace:///selected.md\",\"range\":\"1,-1\",\"content\":\"changed\"});\n\nawait plurnk.wait({});"),
         turn(done),
         turn(done),
     ] });
@@ -925,7 +902,9 @@ for (const body of ["Inspect this.", ""]) test(`{§op-methods-op-dispatch}: ${bo
             return { ...response, assistant: { ...response.assistant, content: response.assistant.content.replace("$RESOURCE", path) } };
         }
     }
-    const provider = new Reader({ contextWindow: 100_000, responses: [turn(`\`\`\`\`READ ($RESOURCE) <1,-1>\n\`\`\`\`\n${next}`), turn(done)] });
+    const provider = new Reader({ contextWindow: 100_000, responses: [turn(`await plurnk.read({"path":"$RESOURCE","range":"1,-1"});
+
+${next}`), turn(done)] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });
     try {
@@ -933,10 +912,10 @@ for (const body of ["Inspect this.", ""]) test(`{§op-methods-op-dispatch}: ${bo
         const { workspaceId } = await daemon.createWorkspace({ name: "session-attachments", projectRoot: null });
         const receiver = await daemon.createSession({ workspaceId, name: "receiver" });
         const program = PlurnkParser.parseStatements([
-            PlurnkParser.frame("EDIT (workspace:///report.md)", "original peer report"),
-            PlurnkParser.frame('SEND (session://receiver) [{"attachments":42}]', "Do not deliver invalid input."),
-            PlurnkParser.frame('SEND (session://receiver) [{"attachments":["workspace:///report.md"]}]', body),
-            PlurnkParser.frame("EDIT (workspace:///report.md) <1,-1>", "changed"),
+            "await plurnk.edit({\"path\":\"workspace:///report.md\",\"content\":\"original peer report\"});",
+            "await plurnk.send({\"target\":\"session://receiver\",\"metadata\":[\"{\\\"attachments\\\":42}\"],\"text\":\"Do not deliver invalid input.\"});",
+            `await plurnk.send({"target":"session://receiver","metadata":["{\\"attachments\\":[\\"workspace:///report.md\\"]}"],"text":${JSON.stringify(body)}});`,
+            "await plurnk.edit({\"path\":\"workspace:///report.md\",\"range\":\"1,-1\",\"content\":\"changed\"});",
         ].join("\n\n"));
         assert.ok(program.items.every((item) => item.kind === "statement"));
         // A person's operation sends to the session ({§connection-lifecycle}).
@@ -969,7 +948,7 @@ test("{§op-shapes} a KILL after SEND executes: curation and the reply persist b
         const loopId = await insertLoop(db, sessionId, 1, "Deliver the answer and curate the note.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const seed = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [response("```EDIT (workspace:///note.md)\nEvidence.\n```\n```NOTE\nReview.\n```")] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [response("await plurnk.edit({\"path\":\"workspace:///note.md\",\"content\":\"Evidence.\"});\n\nawait plurnk.note({\"text\":\"Review.\"});")] }),
             workspaceId, sessionId, loopId, messages: [],
         });
         const originalRows = await db.test_log_entries_by_turn.all<{ id: number; sequence: number; op: string; active: number }>({ turn_id: seed.turnId });
@@ -977,10 +956,9 @@ test("{§op-shapes} a KILL after SEND executes: curation and the reply persist b
         assert.ok(plan);
         const turn = await db.test_latest_model_turn_in_loop.get<{ sequence: number }>({ loop_id: loopId });
         assert.ok(turn);
-        const source = `\`\`\`\`SEND
-Answer.
-\`\`\`\`
-\`\`\`\`KILL (log:///1/${turn.sequence}/${plan.sequence}/NOTE)\`\`\`\``;
+        const source = `await plurnk.send({"text":"Answer."});
+
+await plurnk.kill({"path":"log:///1/${turn.sequence}/${plan.sequence}/NOTE"});`;
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }),
             workspaceId, sessionId, loopId, messages: [],
@@ -998,7 +976,7 @@ Answer.
         const curated = await db.test_log_entries_by_turn.all<{ id: number; active: number }>({ turn_id: seed.turnId });
         assert.equal(curated.find(({ id }) => id === plan.id)?.active, 0, "the KILL authored after SEND curated the earlier note");
         assert.equal((await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [response("```DONE\n```")] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [response("await plurnk.done({});")] }),
             workspaceId, sessionId, loopId, messages: [],
         })).status, 200);
     } finally { await db.close(); }
@@ -1011,7 +989,7 @@ test("{§matcher-prefix-claims} SEND authored first: later operations run in aut
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "Create and inspect the note.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const source = "```SEND\nInspect results.\n```\n```EDIT (workspace:///note.md)\nCreated before READ.\n```\n```READ (workspace:///note.md)```\n```FIND (workspace:///*) /[/```";
+        const source = "await plurnk.send({\"text\":\"Inspect results.\"});\n\nawait plurnk.edit({\"path\":\"workspace:///note.md\",\"content\":\"Created before READ.\"});\n\nawait plurnk.read({\"path\":\"workspace:///note.md\"});\n\nawait plurnk.find({\"path\":\"workspace:///*\",\"pattern\":\"/[/\"});";
         const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, sessionId, loopId, messages: [] });
         assert.equal(result.status, 102);
         assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["EDIT", 201], ["READ", 200], ["FIND", 400]],
@@ -1032,7 +1010,7 @@ test("{§parse-recovery} a lost boundary refuses only what follows it: the state
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [
-                response("```EDIT (workspace:///before-loss.md)\nKept.\n```\n```WAIT\nContinue.\n```\n```READ (unfinished"),
+                response("await plurnk.edit({\"path\":\"workspace:///before-loss.md\",\"content\":\"Kept.\"});\n\n\nawait plurnk.wait({\"text\":\"Continue.\"});\n\n\n```READ (unfinished"),
             ] }), workspaceId, sessionId, loopId, messages: [],
         });
         assert.equal(result.status, 102, "the failed row keeps the loop going; nothing was resampled");
@@ -1052,12 +1030,12 @@ test("{§parse-recovery} a lost boundary refuses only what follows it: the state
 });
 
 test("{§op-shapes} internal turn programs admit a disposition anywhere like model turns", () => {
-    const source = "```KILL (log:///1/1/*)\n```\n\n```WAIT\nContinue.\n```";
+    const source = "await plurnk.kill({\"path\":\"log:///1/1/*\"});\n\nawait plurnk.wait({\"text\":\"Continue.\"});";
     const statements = TurnOps.parseInternal(source);
     assert.deepEqual(statements.map(({ op }) => op), ["KILL", "WAIT"]);
     assert.equal(TurnOps.renderInternal(statements), source);
     // {§op-shapes} — a program that authors an operation after its disposition is valid turnOps.
-    const first = TurnOps.parseInternal("```WAIT\nContinue.\n```\n```KILL (log:///1/1/*)```");
+    const first = TurnOps.parseInternal("await plurnk.wait({\"text\":\"Continue.\"});\n\nawait plurnk.kill({\"path\":\"log:///1/1/*\"});");
     assert.deepEqual(first.map(({ op }) => op), ["WAIT", "KILL"]);
 });
 });
