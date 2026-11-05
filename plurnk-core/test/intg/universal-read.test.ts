@@ -715,7 +715,7 @@ test("{§tools-resource-materialization} the definition pages' add examples conf
             .filter((line) => line.startsWith("await "))
             .join("\n");
         const examples = PlurnkParser.parseStatements(text, { executors: fixtureExecutors(text) }).items
-            .flatMap((item) => item.kind === "statement" && "runtime" in item.statement && item.statement.runtime === "plurnk" && item.statement.target?.raw === "mcp"
+            .flatMap((item) => item.kind === "statement" && "runtime" in item.statement && item.statement.runtime === "plurnk" && item.statement.target?.raw === "mcp" && item.statement.body !== null
                 ? [JSON.parse(item.statement.body) as Record<string, unknown>]
                 : [])
             .filter((obj) => typeof obj.alias === "string" && ("command" in obj || "url" in obj));
