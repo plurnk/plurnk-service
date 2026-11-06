@@ -182,7 +182,7 @@ export const startClientJourneyModel = async () => {
                 assert.match(String(messageRead.body ?? ""), /^ *1(?:<@[0-9A-Za-z]{5}>|:)Exercise the installed interactive terminal\./u,
                     "the READ receipt contains the addressed message, not merely a final success claim");
                 // {§read} {§teaching-corpus}: packed references and indexed READ compose.
-                const patternRead = reads.find((row) => row.path === "skill://plurnk/pattern.md");
+                const patternRead = reads.findLast((row) => row.path === "skill://plurnk/pattern.md");
                 assert.ok(patternRead, "the installed runtime exposes the pattern reference");
                 assert.equal(patternRead.status ?? 200, 200);
                 assert.match(patternRead.request, /"pattern":"~quotes"/u, "the pattern rides the replayed READ");
