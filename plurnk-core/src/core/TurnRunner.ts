@@ -412,7 +412,7 @@ export default class TurnRunner {
             const container = await this.#openTurnContainer(args, createdTurnIds);
             const gitStatus = await this.#deriveWorkspace(args, container.systemCtx);
             if (container.initializationTurn !== null) {
-                const { initializationTurn, initializationPolicies, sessionName, transientOpenLogEntryId } = container;
+                const { initializationTurn, initializationPolicies, loopSequence, sessionName, transientOpenLogEntryId } = container;
                 await InitializationTurn.run({
                     db: this.#db,
                     schemes: this.#schemes,
@@ -423,6 +423,7 @@ export default class TurnRunner {
                     workspaceId,
                     sessionId,
                     loopId,
+                    loopSequence,
                     sessionName,
                     initializationTurn,
                     initializationPolicies,

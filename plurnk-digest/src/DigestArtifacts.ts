@@ -56,12 +56,15 @@ export const packetStems = (m: DigestModel): Map<number, string> => {
     return stems;
 };
 
+const sourceArtifactExt = (turn: TurnRow): "assistant.md" | "ops.md" =>
+    turn.kind === "maintenance" ? "ops.md" : "assistant.md";
+
 export const turnLinks = (m: DigestModel, turn: TurnRow, from: string): string[] => {
     const stem = packetStems(m).get(turn.id);
     if (stem === undefined) return [];
     return [
         ...(turn.has_packet === 1 ? [link(from, `${stem}.request.md`, "Input")] : []),
-        ...(turn.program !== null ? [link(from, `${stem}.assistant.md`, "Output")] : []),
+        ...(turn.program !== null ? [link(from, `${stem}.${sourceArtifactExt(turn)}`, turn.kind === "maintenance" ? "Program" : "Output")] : []),
         ...(turn.has_reasoning === 1 ? [link(from, `${stem}.reasoning.md`, "Reasoning")] : []),
     ];
 };
@@ -225,7 +228,7 @@ export const packetFiles = (m: DigestModel): string[] => {
             }
         }
         if (source !== null) {
-            files.push([`${padded}.assistant.md`, source]);
+            files.push([`${padded}.${sourceArtifactExt(turn)}`, source]);
         }
         const reasoning = m.evidence.reasoning(turn);
         if (reasoning !== null) files.push([`${padded}.reasoning.md`, reasoning]);

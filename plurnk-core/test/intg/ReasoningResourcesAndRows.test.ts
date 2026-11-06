@@ -142,7 +142,11 @@ test("{§session-initialization-entry}: initialization is an ordinary `_plurnk` 
         assert.ok(operations.some(({ op }) => op === "find"));
         assert.ok(!operations.some((operation) => operation.op === "read" && operation.target?.raw.startsWith("reasoning://")), "no READ of its own reasoning");
         assert.doesNotMatch(program.content, /READ \(prompt:\/\//, "the prompt arrives as its row, never as a second READ");
-        assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), [], "the survey never masquerades as a content emission");
+        assert.deepEqual(
+            provider.received[0].filter(({ role }) => role === "assistant"),
+            [{ role: "assistant", content: program.content }],
+            "the initialization survey replays as the opening assistant turn in emission-history ({§emission-history})",
+        );
         assert.equal(provider.received.length, 1, "the survey costs no model inference");
     } finally {
         await db.close();

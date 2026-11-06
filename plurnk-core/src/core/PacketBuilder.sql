@@ -101,7 +101,7 @@ WHERE le.loop_id = $loop_id
 ORDER BY t.sequence, le.sequence;
 
 -- PREP: engine_emission_history
--- {§emission-history}: rank completed model turns across the session BEFORE testing eligibility.
+-- {§emission-history}: rank completed model and initialization turns across the session BEFORE testing eligibility.
 WITH completed AS (
     SELECT t.id, l.sequence AS loop_seq, t.sequence AS turn_seq, t.packet,
            row_number() OVER (ORDER BY l.sequence DESC, t.sequence DESC) AS recency
@@ -109,7 +109,8 @@ WITH completed AS (
     JOIN loops l ON l.id = t.loop_id
     WHERE l.session_id = $session_id
       AND (l.sequence < $current_loop_seq OR (l.id = $loop_id AND t.sequence < $current_turn_seq))
-      AND t.producer = 'model' AND t.kind = 'inference' AND t.completed_at IS NOT NULL
+      AND ((t.producer = 'model' AND t.kind = 'inference') OR t.kind = 'initialization')
+      AND t.completed_at IS NOT NULL
 )
 SELECT le.id, json_extract(le.rx, '$.content') AS content,
     (SELECT json_group_array(DISTINCT runtime) FROM (
@@ -119,7 +120,7 @@ SELECT le.id, json_extract(le.rx, '$.content') AS content,
         UNION
         SELECT json_extract(op_le.tx, '$.runtime') AS runtime
         FROM log_entries op_le
-        WHERE op_le.turn_id = p.id AND op_le.origin = 'model'
+        WHERE op_le.turn_id = p.id AND op_le.origin IN ('model', '_plurnk')
           AND json_valid(op_le.tx) AND json_type(op_le.tx, '$.runtime') = 'text'
     )) AS executors
 FROM completed p

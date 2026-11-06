@@ -23,7 +23,7 @@ The report package (`@plurnk/plurnk-digest`) owns artifact generation, SQLite sn
 | Artifact | Present when | Authority |
 | --- | --- | --- |
 | `<stem>.request.md` / `<stem>.wire.json` | Turn stored a provider request / message sections retained | Ordered text-message envelope from `EvidencePacket.messages()` ({§packet-assembly}), excluding native payloads, provider controls, and transport transforms (`<stem>.wire.invalid.json` when log projection fails). |
-| `<stem>.assistant.md` / `<stem>.reasoning.md` | Turn has `ops` / `reasoning` source | Exact `turn_sources.content`, independent of log curation. |
+| `<stem>.assistant.md` / `<stem>.ops.md` / `<stem>.reasoning.md` | Turn has `ops` (`<stem>.assistant.md` on `inference` and `initialization` turns, `<stem>.ops.md` on `maintenance` turns) / `reasoning` source | Exact `turn_sources.content`, independent of log curation. |
 | `<stem>.system.md`, `<stem>.user.md` | Request message sections retained | Role-filtered text projections for extraction. |
 | `digest.json` turn `attachments` | Every turn | Stored native attachment descriptors (`[]` = no attachments, `null` = no valid stored request). |
 | `<stem>.assistantRaw.json` / `<stem>.response.md` | Admitted provider response / no admitted response | Stored opaque provider response, or stored request and attempt state. |

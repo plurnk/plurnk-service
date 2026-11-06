@@ -457,8 +457,12 @@ const padNewlines = (replacement: string, original: string): string => {
     return origLines > replLines ? `${replacement}${"\n".repeat(origLines - replLines)}` : replacement;
 };
 
-const resolveToolCallTarget = (rawName: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string | null => {
-    const trimmed = rawName.trim();
+const resolveToolCallTarget = (
+    rawName: string,
+    executorSpellings: ReadonlyMap<string, RuntimeTag>,
+    strictService = false,
+): string | null => {
+    const trimmed = rawName.trim().replace(/^functions\./iu, "").replace(/:\d+$/u, "").trim();
     if (trimmed.length === 0) return null;
     const canonicalPlurnkMember = (member: string): string => {
         const lower = member.toLowerCase();
@@ -472,10 +476,22 @@ const resolveToolCallTarget = (rawName: string, executorSpellings: ReadonlyMap<s
         const service = trimmed.slice(0, dotIdx).trim();
         const tool = trimmed.slice(dotIdx + 1).trim();
         if (!/^[A-Za-z_$][A-Za-z0-9_$-]*$/u.test(service) || tool.length === 0) return null;
-        if (service.toLowerCase() === "plurnk") {
+        const lowerService = service.toLowerCase();
+        if (lowerService === "plurnk") {
+            if (
+                strictService
+                && !CORE_OP_MAP.has(tool.toLowerCase())
+                && !PLURNK_RUNTIME_TOOLS.has(tool.toLowerCase())
+                && !executorSpellings.has(tool.toLowerCase())
+            ) {
+                return null;
+            }
             return `await plurnk${propAccess(canonicalPlurnkMember(tool))}`;
         }
-        return `await ${service.toLowerCase()}${propAccess(tool)}`;
+        if (strictService && !isExecutionOp(lowerService) && !executorSpellings.has(lowerService)) {
+            return null;
+        }
+        return `await ${lowerService}${propAccess(tool)}`;
     }
     const mcpMatch = /^(?:mcp__)?([A-Za-z0-9_-]+)__(.+)$/iu.exec(trimmed);
     if (mcpMatch !== null) {
@@ -485,7 +501,7 @@ const resolveToolCallTarget = (rawName: string, executorSpellings: ReadonlyMap<s
         if (service === "plurnk") {
             return `await plurnk${propAccess(canonicalPlurnkMember(tool))}`;
         }
-        if (!isExecutionOp(service)) return null;
+        if (!isExecutionOp(service) && !executorSpellings.has(service)) return null;
         return `await ${service}${propAccess(tool)}`;
     }
     const plurnkPrefixMatch = /^plurnk[_-](.+)$/iu.exec(trimmed);
@@ -525,8 +541,53 @@ const formatTranslatedCall = (target: string, rawArgs: unknown): string => {
     return `${target}(${JSON.stringify(rawArgs)});`;
 };
 
+const coerceToolParamValue = (rawVal: string): unknown => {
+    const trimmedVal = rawVal.trim();
+    if (/^(?:\[[\s\S]*\]|\{[\s\S]*\}|true|false|null)$/u.test(trimmedVal)) {
+        try {
+            return JSON.parse(trimmedVal);
+        } catch {
+            // Keep literal string when not valid JSON.
+        }
+    }
+    return rawVal;
+};
+
+const unescapeXmlAttrValue = (raw: string, quote: '"' | "'" | null): string => {
+    if (quote === '"') {
+        try {
+            const parsed: unknown = JSON.parse(`"${raw}"`);
+            if (typeof parsed === "string") return parsed;
+        } catch {
+            // Fallback to basic unescaping below.
+        }
+    }
+    return raw
+        .replace(/\\(["'\\])/gu, "$1")
+        .replace(/\\n/gu, "\n")
+        .replace(/\\r/gu, "\r")
+        .replace(/\\t/gu, "\t");
+};
+
+const parseXmlAttributes = (attrText: string): Record<string, unknown> => {
+    const attrRe = /([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^\s"'=<>`/]+))/gu;
+    const attrs: Record<string, unknown> = {};
+    let m: RegExpExecArray | null;
+    while ((m = attrRe.exec(attrText)) !== null) {
+        const key = m[1].trim();
+        if (key.length === 0) continue;
+        const rawVal = m[2] !== undefined
+            ? unescapeXmlAttrValue(m[2], '"')
+            : m[3] !== undefined
+                ? unescapeXmlAttrValue(m[3], "'")
+                : (m[4] ?? "");
+        attrs[key] = coerceToolParamValue(rawVal);
+    }
+    return attrs;
+};
+
 const parseXmlToolCallBody = (body: string): unknown => {
-    const paramRe = /<(?:antml:)?parameter(?:\s+name=["']([^"']+)["']|=([A-Za-z0-9_.-]+))[^>]*>([\s\S]*?)<\/(?:antml:)?parameter>/giu;
+    const paramRe = /<(?:antml:|[|｜]+DSML[|｜]+\s*)?(?:parameter|param|arg|argument)\b(?:\s+name=["']([^"']+)["']|=([A-Za-z0-9_.-]+))[^>]*>([\s\S]*?)<\/(?:antml:|[|｜]+DSML[|｜]+\s*)?(?:parameter|param|arg|argument)>/giu;
     const params: Record<string, unknown> = {};
     let matchedParam = false;
     let m: RegExpExecArray | null;
@@ -534,43 +595,99 @@ const parseXmlToolCallBody = (body: string): unknown => {
         matchedParam = true;
         const key = (m[1] ?? m[2] ?? "").trim();
         if (key.length === 0) continue;
-        const rawVal = (m[3] ?? "").replace(/^\r?\n/u, "").replace(/\r?\n$/u, "");
-        const trimmedVal = rawVal.trim();
-        if (/^(?:\[[\s\S]*\]|\{[\s\S]*\}|true|false|null)$/u.test(trimmedVal)) {
-            try {
-                params[key] = JSON.parse(trimmedVal);
-                continue;
-            } catch {
-                // Keep literal string when not valid JSON.
-            }
-        }
-        params[key] = rawVal;
+        const rawVal = (m[3] ?? "")
+            .replace(/^\r?\n/u, "")
+            .replace(/\r?\n$/u, "")
+            .replace(/^(?:true|false)["']>/iu, "");
+        params[key] = coerceToolParamValue(rawVal);
     }
     if (matchedParam) return params;
-    const trimmed = body.trim();
-    if (trimmed.length === 0) return {};
-    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    const cleaned = body
+        .replace(/<\/?(?:antml:|[|｜]+DSML[|｜]+\s*)?(?:parameter|param|arg|argument)\b[^>]*>/giu, "")
+        .trim()
+        .replace(/^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/iu, "$1")
+        .trim();
+    if (cleaned.length === 0) return {};
+    if (cleaned.startsWith("{") || cleaned.startsWith("[")) {
         try {
-            return JSON.parse(trimmed);
+            return JSON.parse(cleaned);
         } catch {
-            return trimmed;
+            return cleaned;
         }
     }
-    return trimmed;
+    return cleaned;
+};
+
+const replaceXmlInvocations = (
+    text: string,
+    executorSpellings: ReadonlyMap<string, RuntimeTag>,
+): { readonly text: string; readonly translated: boolean } => {
+    let translated = false;
+    // 1. Malformed inline-call invoke tag, e.g. <｜｜DSML｜｜ invoke name="plurnk.find({...})</｜｜DSML｜｜ parameter></｜｜DSML｜｜ invoke>
+    let out = text.replace(
+        /<(?:antml:|[|｜]+DSML[|｜]+\s*)?(?:invoke|function|tool_call|function_call)\b[^>]*?\bname=["']((?:await\s+)?[A-Za-z_$][A-Za-z0-9_$.-]*)\s*\(([\s\S]*?)\)\s*["']?(?:\s*\/?>|\s*<\/(?:antml:|[|｜]+DSML[|｜]+\s*)?(?:parameter|param|arg|argument)>)[\s\S]*?<\/(?:antml:|[|｜]+DSML[|｜]+\s*)?(?:invoke|function|tool_call|function_call)>/giu,
+        (fullMatch, rawName: string, rawArgs: string) => {
+            const target = resolveToolCallTarget(rawName.replace(/^await\s+/iu, ""), executorSpellings);
+            if (target === null) return fullMatch;
+            translated = true;
+            const args = rawArgs.trim();
+            return padNewlines(args.length === 0 ? `${target}();` : `${target}(${args});`, fullMatch);
+        },
+    );
+
+    // 2. Standard <function=name>...</function> and <(antml:|｜DSML｜)?(invoke|function|tool_call|function_call) name="...">...</...>
+    out = out.replace(
+        /<function=([A-Za-z0-9_.:-]+)>([\s\S]*?)<\/function>|<(?:antml:|[|｜]+DSML[|｜]+\s*)?(?:invoke|function|tool_call|function_call)\b[^>]*\bname=["']([^"']+)["'][^>]*>([\s\S]*?)<\/(?:antml:|[|｜]+DSML[|｜]+\s*)?(?:invoke|function|tool_call|function_call)>/giu,
+        (fullMatch, fnName: string | undefined, fnBody: string | undefined, invName: string | undefined, invBody: string | undefined) => {
+            const name = (fnName ?? invName ?? "").trim();
+            const body = fnBody ?? invBody ?? "";
+            const target = resolveToolCallTarget(name, executorSpellings);
+            if (target === null) return fullMatch;
+            translated = true;
+            return padNewlines(formatTranslatedCall(target, parseXmlToolCallBody(body)), fullMatch);
+        },
+    );
+
+    // 3. DeepSeek / Kimi token-delimited tool calls (<｜tool▁call▁begin｜>...<｜tool▁call▁end｜> and <|tool_call_begin|>...<|tool_call_end|>)
+    out = out.replace(
+        /<[|｜]tool[▁_]call[▁_]begin[|｜]>\s*(?:[A-Za-z0-9_.-]+\s*<[|｜]tool[▁_]sep[|｜]>\s*)?([^\r\n<|｜]+?)\s*(?:<[|｜]tool[▁_]call[▁_]argument[▁_]begin[|｜]>|\r?\n)([\s\S]*?)<[|｜]tool[▁_]call[▁_]end[|｜]>/giu,
+        (fullMatch, rawName: string, rawBody: string) => {
+            const target = resolveToolCallTarget(rawName, executorSpellings);
+            if (target === null) return fullMatch;
+            translated = true;
+            return padNewlines(formatTranslatedCall(target, parseXmlToolCallBody(rawBody)), fullMatch);
+        },
+    );
+
+    // 4. Direct XML element tool calls (<plurnk.find path="..." /> or <plurnk.find ...>...</plurnk.find>)
+    out = out.replace(
+        /<([A-Za-z_$][A-Za-z0-9_$-]*\.[A-Za-z_$][A-Za-z0-9_$-]*|plurnk[_-][A-Za-z_$][A-Za-z0-9_$-]*|mcp__[A-Za-z0-9_$-]+)((?:\s+[A-Za-z_][A-Za-z0-9_.-]*\s*=\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"'=<>`/]+))*)\s*(?:\/>(?:\s*<\/\1>)?|>([\s\S]*?)<\/\1>)/giu,
+        (fullMatch, tagName: string, attrText: string | undefined, innerBody: string | undefined) => {
+            const target = resolveToolCallTarget(tagName, executorSpellings, true);
+            if (target === null) return fullMatch;
+            const attrs = parseXmlAttributes(attrText ?? "");
+            let args: unknown = attrs;
+            if (innerBody !== undefined && innerBody.trim().length > 0) {
+                const parsedBody = parseXmlToolCallBody(innerBody);
+                if (Object.keys(attrs).length === 0) {
+                    args = parsedBody;
+                } else if (isRecord(parsedBody)) {
+                    args = { ...attrs, ...parsedBody };
+                } else if (typeof parsedBody === "string" && attrs.content === undefined && attrs.text === undefined) {
+                    args = { ...attrs, content: parsedBody };
+                }
+            }
+            translated = true;
+            return padNewlines(formatTranslatedCall(target, args), fullMatch);
+        },
+    );
+
+    return { text: out, translated };
 };
 
 const translateXmlToolCalls = (text: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string | null => {
-    const xmlCallRe = /<function=([A-Za-z0-9_.:-]+)>([\s\S]*?)<\/function>|<(?:antml:)?invoke\b[^>]*\bname=["']([^"']+)["'][^>]*>([\s\S]*?)<\/(?:antml:)?invoke>/giu;
-    const calls: string[] = [];
-    let m: RegExpExecArray | null;
-    while ((m = xmlCallRe.exec(text)) !== null) {
-        const name = (m[1] ?? m[3] ?? "").trim();
-        const body = m[2] ?? m[4] ?? "";
-        const target = resolveToolCallTarget(name, executorSpellings);
-        if (target === null) return null;
-        calls.push(formatTranslatedCall(target, parseXmlToolCallBody(body)));
-    }
-    return calls.length > 0 ? calls.join("\n") : null;
+    const { text: replaced, translated } = replaceXmlInvocations(text, executorSpellings);
+    return translated ? replaced.trim() : null;
 };
 
 const extractToolCallDescriptors = (val: unknown): Array<{ readonly name: string; readonly args: unknown }> | null => {
@@ -631,9 +748,16 @@ const translateJsonToolCalls = (rawJson: string, executorSpellings: ReadonlyMap<
 
 const translateSegmentToolCalls = (segment: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string => {
     let out = segment.replace(
-        /<(?:antml:)?(tool_call|function_calls)\b[^>]*>([\s\S]*?)<\/(?:antml:)?\1>|<\|tool_call[^>]*>([\s\S]*?)<\|\/tool_call\|>|\[TOOL_CALLS\]([\s\S]*?)\[\/TOOL_CALLS\]/giu,
-        (fullMatch, _tag, inner1: string | undefined, inner2: string | undefined, inner3: string | undefined) => {
-            const inner = inner1 ?? inner2 ?? inner3 ?? "";
+        /<(?:antml:|[|｜]+DSML[|｜]+\s*)?(tool_calls?|function_calls?|tool_code|(?:function_)?calls)\b[^>]*>([\s\S]*?)<\/(?:antml:|[|｜]+DSML[|｜]+\s*)?\1>|<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>([\s\S]*?)<[|｜]tool[▁_]calls(?:_section)?[▁_]end[|｜]>|<\|tool_call[^>]*>([\s\S]*?)<\|\/tool_call\|>|\[TOOL_CALLS\]([\s\S]*?)\[\/TOOL_CALLS\]/giu,
+        (
+            fullMatch,
+            _tag,
+            inner1: string | undefined,
+            inner2: string | undefined,
+            inner3: string | undefined,
+            inner4: string | undefined,
+        ) => {
+            const inner = inner1 ?? inner2 ?? inner3 ?? inner4 ?? "";
             const xmlTranslated = translateXmlToolCalls(inner, executorSpellings);
             if (xmlTranslated !== null) {
                 return padNewlines(xmlTranslated, fullMatch);
@@ -649,11 +773,22 @@ const translateSegmentToolCalls = (segment: string, executorSpellings: ReadonlyM
         },
     );
 
+    const xmlReplaced = replaceXmlInvocations(out, executorSpellings);
+    out = xmlReplaced.text;
+    if (xmlReplaced.translated) {
+        out = out.replace(
+            /^[ \t]*<\/?(?:antml:|[|｜]+DSML[|｜]+\s*)?(?:tool_calls?|function_calls?|(?:function_)?calls)\b[^>]*>[ \t]*$/gimu,
+            "",
+        );
+    }
+
+    // GLM-4 style: <|tool_call|>name\n{...}
     out = out.replace(
-        /<function=([A-Za-z0-9_.:-]+)>([\s\S]*?)<\/function>|<(?:antml:)?invoke\b[^>]*\bname=["']([^"']+)["'][^>]*>([\s\S]*?)<\/(?:antml:)?invoke>/giu,
-        (fullMatch) => {
-            const xmlTranslated = translateXmlToolCalls(fullMatch, executorSpellings);
-            return xmlTranslated !== null ? padNewlines(xmlTranslated, fullMatch) : fullMatch;
+        /^[ \t]*<\|tool_call\|>[ \t]*([A-Za-z0-9_.:-]+)[ \t]*(\r?\n)([ \t]*\{[\s\S]*?\})(?=\r?\n\r?\n|$)/gmu,
+        (fullMatch, rawName: string, nl: string, jsonBody: string) => {
+            const target = resolveToolCallTarget(rawName, executorSpellings);
+            if (target === null) return fullMatch;
+            return padNewlines(`${nl}${formatTranslatedCall(target, parseXmlToolCallBody(jsonBody))}`, fullMatch);
         },
     );
 
@@ -677,7 +812,11 @@ const translateSegmentToolCalls = (segment: string, executorSpellings: ReadonlyM
 };
 
 const translateToolCallsOutsideFences = (input: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string => {
-    const lines = input.split("\n");
+    const preTranslated = input.replace(
+        /<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]calls(?:_section)?[▁_]end[|｜]>|<[|｜]tool[▁_]call[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]call[▁_]end[|｜]>/giu,
+        (fullMatch) => translateSegmentToolCalls(fullMatch, executorSpellings),
+    );
+    const lines = preTranslated.split("\n");
     const out: string[] = [];
     let nonFenceStart = 0;
     let i = 0;

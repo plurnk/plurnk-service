@@ -51,6 +51,7 @@ export default class InitializationTurn {
         workspaceId: number;
         sessionId: number;
         loopId: number;
+        loopSequence: number;
         sessionName: string;
         initializationTurn: TurnRow;
         initializationPolicies: CapabilityPolicy[];
@@ -62,7 +63,7 @@ export default class InitializationTurn {
     }): Promise<void> {
         const {
             db, schemes, executors, capabilities, dispatcher, executeAdmittedTurn,
-            workspaceId, sessionId, loopId, sessionName,
+            workspaceId, sessionId, loopId, loopSequence, sessionName,
             initializationTurn, initializationPolicies, initializationStatements,
             fit, signal, onDispatch, onSettled,
         } = args;
@@ -129,11 +130,16 @@ export default class InitializationTurn {
         if (admitted.length !== programStatements.length) {
             throw new Error("initialization program did not preserve every authored operation");
         }
-        await Turn.recordSource(db, initializationTurn.id, "ops", program);
         const result = await executeAdmittedTurn({
             statements: admitted,
-            source: null,
-            emission: null,
+            source: program,
+            emission: {
+                content: program,
+                statements: admitted,
+                sessionName,
+                loopSeq: loopSequence,
+                turnSeq: initializationTurn.sequence,
+            },
             origin: "_plurnk",
             workspaceId,
             sessionId,

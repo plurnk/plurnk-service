@@ -286,11 +286,19 @@ describe("PlurnkParser Code Mode", () => {
             "<tool_call><function=EDIT><parameter=path>src/a.ts</parameter><parameter=old_string>old</parameter><parameter=new_string>new</parameter></function></tool_call>",
             '<function_calls><invoke name="mcp__gitea__issue_read"><parameter name="owner">plurnk</parameter><parameter name="number">1414</parameter></invoke></function_calls>',
             '[TOOL_CALLS] [{"name": "plurnk.done", "arguments": {"text": "Finished."}}]',
+            '<｜｜DSML｜｜ function_calls>\n<｜｜DSML｜｜ invoke name="plurnk.find">\n<｜｜DSML｜｜ parameter name="path" string="true">astropy/modeling/**</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ function_calls>',
+            '<｜｜DSML｜｜ function_calls>\n<｜｜DSML｜｜ invoke name="plurnk.read">\n<｜｜DSML｜｜ parameter name="path" string="false">true">django/db/migrations/serializer.py</｜｜DSML｜｜ parameter>\n<｜｜DSML｜｜ parameter name="range" string="true">1,120</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ function_calls>',
+            '<｜｜DSML｜｜ function_calls>\n<｜｜DSML｜｜ invoke name="plurnk.find">\n{"path": "astropy/io/fits/**", "pattern": "/Header|Card|_split/"}\n</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ function_calls>',
+            '<｜｜DSML｜｜ function_calls>\n<｜｜DSML｜｜ invoke name="plurnk.find({"path":"pylint/**","pattern":"/notes/","metadata":"text/x-python"})</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ function_calls>',
+            '<plurnk.note text="Task: Preserve mathematical expressions." />\n<plurnk.sh command="grep -n \\"__radd__\\" django/utils/functional.py" />\n<plurnk.find path="sympy/physics/mechanics/**" range="1,-1" />\n</plurnk.find>',
+            '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>plurnk.find\n```json\n{"path":"src/**"}\n```\n<｜tool▁call▁end｜><｜tool▁calls▁end｜>',
+            '<|tool_calls_section_begin|><|tool_call_begin|>functions.read:0<|tool_call_argument_begin|>{"path":"README.md","range":"1,10"}<|tool_call_end|><|tool_calls_section_end|>',
+            '<|tool_call|>plurnk.todo\n{"text":"- [ ] Check parser"}',
         ].join("\n\n");
         const parsed = PlurnkParser.parse(turn, { executors: ["gitea"] });
         assert.deepEqual(
             parsed.items.map((item) => item.kind),
-            ["statement", "statement", "statement", "statement", "statement"],
+            Array.from({ length: 15 }, () => "statement"),
         );
         const rendered = PlurnkParser.stringify(
             parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []),
@@ -301,6 +309,16 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.edit({"path":"src/a.ts","pattern":"old","content":"new"});',
             'await gitea.issue_read({"owner":"plurnk","number":"1414"});',
             'await plurnk.done({"text":"Finished."});',
+            'await plurnk.find({"path":"astropy/modeling/**"});',
+            'await plurnk.read({"path":"django/db/migrations/serializer.py","range":"1,120"});',
+            'await plurnk.find({"path":"astropy/io/fits/**","pattern":"/Header|Card|_split/"});',
+            'await plurnk.find({"path":"pylint/**","pattern":"/notes/","metadata":["text/x-python"]});',
+            'await plurnk.note({"text":"Task: Preserve mathematical expressions."});',
+            'await plurnk.sh({"command":"grep -n \\"__radd__\\" django/utils/functional.py"});',
+            'await plurnk.find({"path":"sympy/physics/mechanics/**","range":"1,-1"});',
+            'await plurnk.find({"path":"src/**"});',
+            'await plurnk.read({"path":"README.md","range":"1,10"});',
+            'await plurnk.todo({"items":["- [ ] Check parser"]});',
         ].join("\n\n"));
 
         const foreign = '<tool_call>\n{"name": "read_file", "arguments": {"path": "workspace:///notes.md"}}\n</tool_call>';

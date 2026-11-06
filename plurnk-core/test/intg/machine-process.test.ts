@@ -541,7 +541,7 @@ test("{§log-history-projection} a KILL that worked never renders; one that matc
             ], "the first packet after curation contains the failed KILL, not successful receipts");
             assert.ok(kills[0].problem, "the failed KILL retains its corrective Problem");
             assert.equal(row(afterCuration, "edit"), undefined, "the killed EDIT row is retired from the projection");
-            const trimmed = rows(afterCuration, "read").find(({ path }) => path === "workspace:///note");
+            const trimmed = rows(afterCuration, "read").find(({ logPath }) => logPath === "log:///1/2/4/read");
             assert.match(String(trimmed?.body), /first line/u, "scoped curation retains the untrimmed line");
             assert.doesNotMatch(String(trimmed?.body), /second line/u, "scoped curation removes the requested line");
             const afterRepeat = await packetOf(4);
@@ -565,7 +565,7 @@ test("{§log-history-projection} a KILL that worked never renders; one that matc
             assert.deepEqual(history.filter(({ op, pathname, rx }) => op === "done" && pathname === null && JSON.parse(rx).completion === 200)
                 .map(({ status_rx }) => status_rx), [200], "the final reply resolves the message without curating a resource");
             assert.ok(recordedKills.every(({ active }) => active === 1), "packet suppression does not retire or delete receipt history");
-            assert.equal(JSON.parse(recordedKills[0].rx).matched, 6, "the broad sweep matches the initialization orientation READs and the file READ ({§session-initialization-entry})");
+            assert.equal(JSON.parse(recordedKills[0].rx).matched, 1, "the broad sweep matches the file READ; with preview off initialization reads nothing back ({§session-initialization-entry})");
             const sourceReads = history.filter(({ op, scheme, pathname }) => op === "read" && scheme === "workspace" && pathname === "/note");
             assert.equal(sourceReads.length, 2);
             for (const read of sourceReads) {

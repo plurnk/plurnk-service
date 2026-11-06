@@ -649,13 +649,13 @@ test("{§session-initialization-entry} assembled packet: the turn-0 catalog fois
             .filter(({ logPath: path }) => path.startsWith("log:///1/1/"));
         assert.deepEqual(
             [...new Set(initialization.map(({ logPath: path }) => path.split("/").at(-1) ?? ""))].toSorted(),
-            ["find", "todo"],
-            "{§session-initialization-entry}: turn 0 exposes its TODOs and its surveys, and nothing else",
+            ["emission", "find", "todo"],
+            "{§session-initialization-entry}: turn 0 announces its emission and exposes its TODOs and its surveys",
         );
-        assert.equal(initialization.some(({ path: target }) => target?.startsWith("ops://") === true), false,
-            "turn 0 reads none of its own program, and it announces no emission ({§turn-source-resources})");
-        assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), []);
-        const initializationOutcomes = initialization;
+        assert.equal(initialization.filter(({ path: target }) => target?.startsWith("ops://") === true).length, 1,
+            "turn 0 announces its ops:// emission ({§turn-source-resources})");
+        assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), [{ role: "assistant", content: source }]);
+        const initializationOutcomes = initialization.filter(({ path: target }) => target?.startsWith("ops://") !== true);
         assert.deepEqual(
             initializationOutcomes.filter(({ path: target }) => target !== undefined).map(({ path: target }) => target),
             ["workspace:///*", "session://subject/*"],
@@ -844,12 +844,14 @@ test("{§tools-resource-materialization} assembled packet: the skills foist surf
         await LoopDocs.materialize(engine, db, workspaceId);
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const log = packetSection(await getPacket(db, result.turnId), "log");
+        const packet = await getPacket(db, result.turnId);
+        const log = packetSection(packet, "log");
+        const emissionHistory = packetSection(packet, "emission-history");
 
         // The materialized tool index and edit schema reach the model through Turn 0 READs ({§tools-resource-materialization}).
         assert.match(log, /^### log:\/\/\/\S+\/read \(mcp:\/\/\/plurnk\.md\) · \d+$/m, "Turn 0 reads the Session's materialized plurnk tool index");
         assert.match(log, /^### log:\/\/\/\S+\/read \(mcp:\/\/\/plurnk\/edit\.json\) · \d+$/m, "Turn 0 reads the Session's materialized edit schema");
-        assert.match(log, /"aside":"Use mcp:\/\/\/<server>\.json or mcp:\/\/\/<server>\/<tool>\.json for tool schemas\."/, "the edit.json READ teaches how to inspect tool schemas");
+        assert.match(emissionHistory, /\/\/ Use mcp:\/\/\/<server>\.json or mcp:\/\/\/<server>\/<tool>\.json for tool schemas\./, "the edit.json READ teaches how to inspect tool schemas in the replayed Turn 0 assistant message");
     } finally {
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;

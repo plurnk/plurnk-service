@@ -228,11 +228,14 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                 assert.equal(map.find(([item]) => item.path === "workspace:///nested/**")?.[0]?.items, 1,
                     "the automatic shallow map retains the nested subtree as a complete aggregate");
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
-                const ops = initializationRows.map(({ op }) => op);
+                assert.equal(initializationRows.filter(LogEntryProjection.isEmission).length, 1,
+                    "`_plurnk` initialization announces its ops:// emission ({§turn-source-resources})");
+                const surveyRows = initializationRows.filter((row) => !LogEntryProjection.isEmission(row));
+                const ops = surveyRows.map(({ op }) => op);
                 assert.deepEqual([ops[0], ops.at(-1)], ["todo", "todo"], "initialization opens and closes with its TODOs");
                 assert.ok(ops.length > 2 && ops.slice(1, -1).every((op) => op === "find" || op === "plurnk" || op === "read"),
                     "between them only the environment surveys: no READ of its own program, no reasoning demonstration");
-                for (const row of initializationRows.filter(({ op }) => op === "find")) {
+                for (const row of surveyRows.filter(({ op }) => op === "find")) {
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
                     const items = result.results ?? (result.content === undefined ? [] : JSON.parse(result.content) as unknown[]);
                     if (row.scheme === "session") {
@@ -242,8 +245,6 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                         assert.ok(items.length > 0, `the ${row.scheme ?? "file"}:${row.pathname} survey runs because it selects something`);
                     }
                 }
-                assert.equal(initializationRows.some(LogEntryProjection.isEmission), false,
-                    "`_plurnk` initialization has no content emission ({§turn-source-resources})");
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
                 assert.deepEqual(
                     { producer: turn?.producer, kind: turn?.kind, status: turn?.status },
@@ -253,12 +254,12 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                 assert.equal(initializationRows.some(({ scheme }) => scheme === "reasoning"), false, "initialization neither reads nor surveys reasoning ({§session-initialization-entry})");
                 const program = (await db.test_turn_sources_by_turn.all<{ kind: string; content: string }>({ turn_id: commons.turn_id })).find(({ kind }) => kind === "ops");
                 assert.ok(program, "the survey is the initialization turn's ops source");
-                assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), [],
-                    "the program reaches the first request through its results, never assistant history");
+                assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), [{ role: "assistant", content: program.content }],
+                    "the initialization program replays as the opening assistant turn in emission-history ({§emission-history})");
                 assert.deepEqual(
                     PlurnkParser.parseStatements(program.content, { executors: ["plurnk"] }).items.flatMap((item) =>
                         item.kind === "statement" ? ["runtime" in item.statement ? item.statement.runtime : item.statement.op] : []),
-                    initializationRows.map(({ op }) => op),
+                    surveyRows.map(({ op }) => op),
                     "{§fence-pairing}: every operation is separated by a blank line and has exactly one ordinary receipt",
                 );
             } finally { ws.close(); }
@@ -346,13 +347,13 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 assert.equal(shellSample, undefined, "Turn 0 does not privilege the shell schema with an automatic READ");
                 const initializationTurnId = finds[0].turn_id;
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
+                assert.equal(initializationRows.filter(LogEntryProjection.isEmission).length, 1,
+                    "turn 0 announces its ops:// emission ({§turn-source-resources})");
                 assert.deepEqual(
-                    initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
+                    initializationRows.filter((row) => row.op !== null && !LogEntryProjection.isEmission(row)).map(({ op }) => op),
                     ["todo", "find", "read", "read", "plurnk", "read", "read", "find", "todo"],
                     "initialization contains its opening TODO, the surveys, its closing TODO, and nothing else",
                 );
-                assert.equal(initializationRows.some(({ scheme }) => scheme === "ops"), false,
-                    "turn 0 reads none of its own program, and it announces no emission ({§turn-source-resources})");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }
