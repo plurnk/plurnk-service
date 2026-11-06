@@ -99,7 +99,7 @@
         "knip": "6.44.1",
         "markdownlint-cli2": "^0.24.0",
         "oxlint": "^1.91.0",
-        "oxlint-tsgolint": "^7.0.2005",
+        "oxlint-tsgolint": "^7.0.2006",
         "publint": "^0.3.25",
         "semver": "7.8.6",
         "typescript": "^7.0.2"

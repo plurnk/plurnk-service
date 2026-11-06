@@ -79,7 +79,7 @@ export default class InitializationTurn {
         }
         // {§session-initialization-entry} — the survey is an ordinary operation program: recorded as the
         // turn's ops source and executed through the same path as a model's program; it authors no reasoning.
-        // {§turn-source-resources} — a `_plurnk` turn has receipts, never a fabricated assistant emission.
+        // {§turn-source-resources} — the initialization turn records its canonical program as turn 1's emission.
         // {§message-arrival} — the message reaches the model as an inbound SEND in the first
         // model turn; initialization does not READ it a second time.
         const admittedInitializationStatements: Array<FindStatement | ReadStatement | ExecStatement> = [];

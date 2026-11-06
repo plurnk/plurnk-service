@@ -162,8 +162,11 @@ test("{§turn-record}: initialization and inference preserve turnOps beside ordi
             assert.ok(!initializationRows.some(({ op }) => op === null));
             assert.ok(initializationRows.some(({ op }) => op === "find"), "source retention does not replace executed results");
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
-            assert.deepEqual(logEntries(packet).filter(({ logPath }) => logPath.endsWith("/emission")), [],
-                "`_plurnk` initialization never fabricates a content announcement ({§turn-source-resources}); its READ of its own program is an ordinary row");
+            assert.deepEqual(
+                logEntries(packet).filter(({ logPath }) => logPath.endsWith("/emission")),
+                [{ logPath: "log:///1/1/1/emission", tokens: 36, modifiers: "(ops://subject/1/1)", path: "ops://subject/1/1", origin: "_plurnk" }],
+                "initialization records its canonical program as turn 1's emission ({§turn-source-resources})",
+            );
 
             const inferenceRows = await rowsFor(turns[1].id);
             const inferenceSource = sources.find((row) => row.turn_id === turns[1].id && row.kind === "ops");

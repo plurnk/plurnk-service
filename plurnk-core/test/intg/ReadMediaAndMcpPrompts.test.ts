@@ -339,9 +339,9 @@ test("{§log-wire-format} a seeing route receives the picture as a native part b
     const requests = await runLoop(["image"]);
     const second = requests[1];
     assert.ok(second !== undefined && second.length >= 2, "the request after READ reached the provider");
-    assert.deepEqual(second.map(({ role }) => role), ["system", "user", "assistant", "user"]);
-    assert.equal(second[2].content, "await plurnk.read({\"path\":\"logo.png\"});\n\nawait plurnk.note({\"text\":\"looking\"});", "the READ replays with its turn, before the native result");
-    const user = second[3];
+    assert.deepEqual(second.map(({ role }) => role), ["system", "user", "assistant", "user", "assistant", "user"]);
+    assert.equal(second[4].content, "await plurnk.read({\"path\":\"logo.png\"});\n\nawait plurnk.note({\"text\":\"looking\"});", "the READ replays with its turn, before the native result");
+    const user = second[5];
     assert.ok(user !== undefined && Array.isArray(user.content), `the user slot carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
     const text = userText(second);
     const image = user.content.find((part) => part.type === "file" && part.mediaType === "image/png");
@@ -631,8 +631,8 @@ test("{§log-wire-format} a document route receives the PDF as a native file par
     const requests = await runLoop(["pdf"]);
     const second = requests.at(-1);
     assert.ok(second !== undefined && second.length >= 2, "two turns reached the provider");
-    assert.deepEqual(second.map(({ role }) => role), ["system", "user", "assistant", "user"]);
-    const user = second[3];
+    assert.deepEqual(second.map(({ role }) => role), ["system", "user", "assistant", "user", "assistant", "user"]);
+    const user = second[5];
     assert.ok(user !== undefined && Array.isArray(user.content), `the log message carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
     const file = user.content.find((part) => part.type === "file");
     assert.match(userText(second), /"tokensAttachment":1500/, "one page weighs 1500 in the readout");
@@ -641,9 +641,9 @@ test("{§log-wire-format} a document route receives the PDF as a native file par
     assert.ok(caption?.type === "text" && /^\n\nlog:\/\/\/\d+\/\d+\/\d+\/read \(\S+\) \(application\/pdf, 1 pages\): the bytes of that read row, retained until it is killed\. Not a new arrival\.$/u.test(caption.text), `the part is captioned as the model's own READ (#899): ${JSON.stringify(caption)}`);
     assert.deepEqual(user.content.slice(0, 3).map(({ type }) => type), ["text", "text", "file"], "the READ text, caption and native document remain together");
     assert.ok(user.content.slice(3).every(({ type }) => type === "text"), "later log records and the footer add no native deliveries");
-    assert.match(chatMessageText(second[3]), /## Session/u, "the footer follows the turn's receipts and PDF");
+    assert.match(chatMessageText(second[5]), /## Session/u, "the footer follows the turn's receipts and PDF");
     assert.doesNotMatch(userText(second), /1:looking/u, "the NOTE body appears only in assistant replay");
-    assert.deepEqual(second[2], {
+    assert.deepEqual(second[4], {
         role: "assistant",
         content: `await plurnk.read({"path":"contract.pdf"});\n\nawait plurnk.note({"text":"looking"});`,
     }, "the READ's turn precedes its native result");
@@ -864,15 +864,17 @@ ${step("note")}`),
             const texts = provider.received.map(userText);
             assert.ok(texts.every((text) => !text.includes(media.bytes.toString("base64"))));
             assert.match(texts[1], /"role": "assistant"/u, "the supplied role remains visible as prompt data");
-            // {§emission-history}: only admitted model operations have assistant authorship.
+            // {§emission-history}: only admitted operations have assistant authorship.
+            const initProgram = chatMessageText(provider.received[0][2]);
+            assert.match(initProgram, /^await plurnk\.todo\(/u, "turn 1/1 replays the initialization survey as an assistant emission");
             const noted = step("note");
             const promptRead = "await plurnk.read({\"path\":\"fixture:///prompts/inspect\",\"range\":\"1,-1\"});";
             const mediaRead = `await plurnk.read({"path":"${provider.resource}#bytes","range":"1,3"});`;
             const previousPrograms = [
-                [],
-                [`${promptRead}\n\n${noted}`],
-                [`${promptRead}\n\n${noted}`, `${mediaRead}\n\n${noted}`],
-                [`${promptRead}\n\n${noted}`, `${mediaRead}\n\n${noted}`, noted],
+                [initProgram],
+                [initProgram, `${promptRead}\n\n${noted}`],
+                [initProgram, `${promptRead}\n\n${noted}`, `${mediaRead}\n\n${noted}`],
+                [initProgram, `${promptRead}\n\n${noted}`, `${mediaRead}\n\n${noted}`, noted],
             ];
             for (const [index, messages] of provider.received.entries()) {
                 const expected = previousPrograms[index];
