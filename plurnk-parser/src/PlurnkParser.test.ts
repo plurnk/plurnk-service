@@ -329,4 +329,59 @@ describe("PlurnkParser Code Mode", () => {
             foreign,
         );
     });
+
+    test("{§fence-pairing}: service-prefixed wrappers, child-tag descriptors, angle-bracketed hybrids, and multiline string literals with fences parse cleanly", () => {
+        const turn = [
+            '<plurnk_tool_call>\nawait plurnk.edit({"path":"a.py","range":"10","content":"x = 1"});\n</plurnk_tool_call>',
+            '<plurnk-tool-call>\n{"name":"plurnk.sh","arguments":"{\\"command\\":\\"pytest -q\\"}"}\n</plurnk-tool-call>',
+            '<plurnk_tool_call>\n<name>plurnk.read</name>\n<arguments>{"path":"requests/sessions.py","range":"100,220"}</arguments>\n</plurnk_tool_call>',
+            '<plurnk_call>\n<name>members</name>\n<arguments>{"files":["a.rst"]}</arguments>\n</plurnk_call>',
+            '<plurnk_tool>\n<name>js</name>\n<params>\n<code>return 42;</code>\n</params>\n</plurnk_tool>',
+            '<plurnk_invoke>\n<plurnk_tool>read</plurnk_tool>\n<plurnk_args>{"path":"sympy/core/numbers.py","range":"1,10"}</plurnk_args>\n</plurnk_invoke>',
+            '<plurnk_invoke>\n{"name":"plurnk.sh","input":{"command":"git status"}}\n</plurnk_invoke>',
+            '<plurnk_tool_use>\n{"command":"plurnk.sh","input":{"command":"git diff"}}\n</plurnk_tool_use>',
+            '<plurnk.invoke name="plurnk.read">\n<parameter name="path">django/urls/resolvers.py</parameter>\n<parameter name="range">220,340</parameter>\n</plurnk.invoke>',
+            '<plurnk:invoke name="sh">\n<parameter name="command">python tests/runtests.py migrations</plurnk:invoke>',
+            '<plurnk:call name="plurnk.edit">\n{"path":"django/views/debug.py","range":"1,2","content":"pass"}\n</plurnk:call>',
+            '<plurnk_call name="plurnk.edit">\n{"path":"lib/figure.py","range":"5","content":"pass"}\n</plurnk_call>',
+            '<plurnk:tool name="js">\n<plurnk:code>console.log(1);</plurnk:code>\n</plurnk:tool>',
+            '<plurnk_tool name="note" text="All 13 kernel PCA tests pass." />',
+            '<gitea_invoke name="issue_read">\n<parameter name="owner">plurnk</parameter>\n<parameter name="number">1415</parameter>\n</gitea_invoke>',
+            '<gitea_tool_call>{"name":"issue_read","arguments":{"owner":"plurnk","number":1415}}</gitea_tool_call>',
+            '<gitea_call><name>issue_read</name><arguments>{"owner":"plurnk","number":1415}</arguments></gitea_call>',
+            '<gitea_issue_read owner="plurnk" number="1415" />',
+            '<gitea:issue_read owner="plurnk" number="1415" />',
+            '<plurnk:read path="requests/sessions.py" range="171,185" xmlns:plurnk="plurnk"/>',
+            '<plurnk_edit>\n<path>src/rewrite.py</path>\n<range>541,549</range>\n<content>if True:\n    return</content>\n</plurnk_edit>',
+            '<result>\n<name>plurnk.sh</name>\n<parameters>\n<command>git diff</command>\n</parameters>\n</result>',
+            '<result name=“todo”>\n<parameter name=“items”>["Step A","Step B"]</parameter>\n</result>',
+            '<DSML｜｜invoke name="plurnk.edit">\n<DSML｜｜parameter name="path">storage.py</DSML｜｜parameter>\n<DSML｜｜parameter name="content">ok</DSML｜｜parameter>\n</DSML｜｜invoke>',
+            '<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name="bash">\n<｜｜DSML｜｜ parameter name="command" string="true">echo hi</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>',
+            '<｜｜DSML｜｜ invoke name="plurnk.note({"text":"Redirect verified."}) />',
+            '<tool_call>\n`await plurnk.read({"path":"sphinx/ext/autodoc/__init__.py","range":"700,820"});`\n</tool_call>',
+            '<plurnk_emission>await plurnk.edit({"path":"wcs.py","range":"12","content":"xy = 1"});</plurnk_emission>',
+            '<system>await plurnk.read({"path":"inspectdb.py","range":"180,196"});</system>',
+            '<unfenced_code_edit_path>src/rewrite.py</unfenced_code_edit_path>\n<unfenced_code_edit_pattern>old_line</unfenced_code_edit_pattern>\n<unfenced_code_edit_content>new_line</unfenced_code_edit_content>',
+            '<await plurnk.edit({"path":"tests.py","range":"198,200","content":"pass"})/>',
+            '<await plurnk.read({"path":"CHANGES","range":"64,76"});></await>',
+            '<plurnk:await plurnk.find({"path":"CHANGES","range":"1,120","pattern":"/Features/"});>',
+            '<plurnk.read({"path":"autodoc.py","range":"660,720"}/>',
+            '<plurnk.note({"text":"MRO check"})>',
+            '<plurnk.note({"text":"Second MRO check"}></plurnk.note>',
+            'await plurnk.done({"text":"Implemented fix:\\n\\n```python\\ndef __add__(self, other):\\n    return self._wrapped + other\\n```\\n\\nAll tests pass."});'.replaceAll("\\n", "\n"),
+            'await plurnk.done({"text":"Used `attrgetter(\\"__radd__\\")` and "must be the same" check:\\n\\n```python\\nx = 1\\n```"});'.replaceAll('\\"', '"').replaceAll("\\n", "\n"),
+            '<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name="plurnk_done">\n<｜｜DSML｜｜ parameter name="text" string="true">Fixed sign:\n\n```python\nself.alphas_ = 1\n```\nDone.</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>',
+        ].join("\n\n");
+
+        const parsed = PlurnkParser.parse(turn, { executors: ["sh", "js", "python3", "plurnk", "gitea"] });
+        const errors = parsed.items.filter((item) => item.kind === "error");
+        assert.deepEqual(errors, []);
+        const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+        assert.equal(statements.length, 39);
+
+        // Echoed <result><name>...</name><output>...</output></result> must not be executed as a tool call.
+        const echoedResult = '<result>\n<name>plurnk.edit</name>\n<output>{"change":"lines -1 +2"}</output>\n</result>\n\nawait plurnk.note({"text":"Continuing."});';
+        const echoedParsed = PlurnkParser.parse(echoedResult);
+        assert.equal(echoedParsed.items.filter((item) => item.kind === "statement").length, 1);
+    });
 });
