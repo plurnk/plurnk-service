@@ -373,6 +373,7 @@ const openAICompletionsModel = (
         supportsReasoningEffort: true,
         supportsUsageInStreaming: options.provider !== "mistral",
         supportsFinishReason: true,
+        thinkingFormat: "openai",
     },
 });
 

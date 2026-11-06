@@ -536,4 +536,98 @@ for (const capture of [false, true]) {
             capture ? bodies : [undefined, undefined]);
     });
 }
+
+test("{§provider-failure-normalization} vendor context-overflow patterns classify as capacity_exceeded (#1417)", () => {
+    for (const message of [
+        "Range of input length should be [1, 131072]",
+        "Please reduce the length of the messages or completion",
+        "exceeded model token limit: 131072 (requested: 140000)",
+        "Prompt has 140000 tokens, but the configured context size is 131072 tokens",
+    ]) {
+        const err = new APICallError({
+            message,
+            url: "https://example.test/v1/chat/completions",
+            requestBodyValues: {},
+            statusCode: 400,
+            responseBody: JSON.stringify({ error: { message } }),
+        });
+        const classified = classifyProviderError(err);
+        assert.equal(classified.kind, "capacity_exceeded", message);
+    }
+});
+
+test("{§provider-capacity-admission} {§provider-failure-normalization} runaway stream exceeding grantedOutput is aborted in flight (#1417)", async () => {
+    let trailingChunkPulled = false;
+    let streamSignalAborted = false;
+    const settled: Array<{ accounting: ProviderRequestAccounting; evidence: unknown }> = [];
+    const provider = new ModelProvider({
+        model: "fixture",
+        url: "https://example.test/v1/chat/completions",
+        contextWindow: 4096,
+        maxOutputTokens: 16,
+        outputBudget: 16,
+        outputFloor: 8,
+        fetchTimeoutMs: 1000,
+        operationTimeoutMs: 5000,
+        temperature: null,
+        repeatPenalty: null,
+        effort: { mode: "off", budget: null },
+        retryAttempts: 2,
+        fetch: async (_input, init) => {
+            init?.signal?.addEventListener("abort", () => {
+                streamSignalAborted = true;
+            }, { once: true });
+            const encoder = new TextEncoder();
+            let step = 0;
+            const stream = new ReadableStream<Uint8Array>({
+                async pull(controller) {
+                    step += 1;
+                    if (step === 1) {
+                        const runaway = "x".repeat(200);
+                        controller.enqueue(encoder.encode(
+                            `data: ${JSON.stringify({
+                                id: "runaway-1",
+                                object: "chat.completion.chunk",
+                                created: 1,
+                                model: "fixture",
+                                choices: [{ index: 0, delta: { reasoning_content: runaway }, finish_reason: null }],
+                            })}\n\n`,
+                        ));
+                        return;
+                    }
+                    await new Promise<void>((resolve) => {
+                        init?.signal?.addEventListener("abort", () => resolve(), { once: true });
+                    });
+                    if (init?.signal?.aborted) {
+                        controller.close();
+                        return;
+                    }
+                    trailingChunkPulled = true;
+                    controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                    controller.close();
+                },
+            });
+            return new Response(stream, { headers: { "content-type": "text/event-stream" } });
+        },
+    });
+    await assert.rejects(
+        provider.generate({
+            sessionId: "runaway-guard",
+            messages: [{ role: "user", content: "hello" }],
+            observeRequest: async () => async (accounting, evidence) => {
+                settled.push({ accounting, evidence });
+            },
+        }),
+        (err: unknown) => {
+            assert.ok(err instanceof ProviderError);
+            assert.equal(err.kind, "invalid_response");
+            assert.match(err.message, /granted output allowance of 16/);
+            assert.equal(err.attempt?.assistant.reasoning, "x".repeat(200));
+            return true;
+        },
+    );
+    assert.equal(streamSignalAborted, true, "the upstream stream signal is aborted in flight");
+    assert.equal(trailingChunkPulled, false, "the runaway stream is cut off before draining subsequent chunks");
+    assert.equal(settled.length, 1, "runaway output violation is terminal and never retried");
+});
 }

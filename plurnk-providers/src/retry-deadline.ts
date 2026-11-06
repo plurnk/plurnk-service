@@ -1,5 +1,6 @@
 // {§provider-failure-normalization} Retry backoff, Retry-After header parsing, and operation deadline backstop (#505, #1313).
 
+import { sleep } from "@earendil-works/pi-ai/utils/sleep";
 import { APICallError, RetryError } from "./errors.ts";
 
 // An AbortSignal is advisory: a wedged transport that never observes it can
@@ -31,21 +32,14 @@ const retryDelayMs = (error: APICallError, attempt: number): number => {
     return Math.min(1000 * 2 ** (attempt - 1), 10_000);
 };
 
-const waitForRetry = (delayMs: number, signal?: AbortSignal): Promise<void> => new Promise<void>((resolve, reject) => {
-    if (signal?.aborted) {
-        reject(signal.reason);
-        return;
+const waitForRetry = async (delayMs: number, signal?: AbortSignal): Promise<void> => {
+    try {
+        await sleep(delayMs, signal ?? new AbortController().signal);
+    } catch (error) {
+        if (signal?.aborted) throw signal.reason;
+        throw error;
     }
-    const onAbort = (): void => {
-        clearTimeout(timer);
-        reject(signal?.reason);
-    };
-    const timer = setTimeout(() => {
-        signal?.removeEventListener("abort", onAbort);
-        resolve();
-    }, delayMs);
-    signal?.addEventListener("abort", onAbort, { once: true });
-});
+};
 
 export const raceAgainstDeadline = async <T>(work: PromiseLike<T>, signal: AbortSignal): Promise<T> => {
     let timer: ReturnType<typeof setTimeout> | undefined;

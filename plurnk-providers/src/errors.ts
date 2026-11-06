@@ -1,3 +1,4 @@
+import { getOverflowPatterns } from "@earendil-works/pi-ai/utils/overflow";
 import { isRecord } from "@plurnk/plurnk-contracts";
 import { ProviderError } from "./providerError.ts";
 import type { ProviderErrorKind } from "./providerError.ts";
@@ -154,6 +155,9 @@ const wireError = (body: string): { type: string | null; code: string | null; me
 
 const CAPACITY_CODE = /^(?:context_length_exceeded|context_window_exceeded|input_too_long|prompt_too_long|request_too_large|token_limit_exceeded|max_tokens_exceeded)$/i;
 const CAPACITY_MESSAGE = /(?:maximum context length|context (?:length|window).*(?:exceed|too (?:large|long)|maximum)|(?:input|prompt|request).*(?:token|length|size).*(?:exceed|too (?:large|long)|maximum))/i;
+const OVERFLOW_PATTERNS: readonly RegExp[] = getOverflowPatterns();
+const matchesCapacityMessage = (text: string): boolean =>
+    CAPACITY_MESSAGE.test(text) || OVERFLOW_PATTERNS.some((pattern) => pattern.test(text));
 
 const preview = (value: unknown, limit: number | undefined): string => {
     const text = value instanceof Error ? value.message : String(value);
@@ -243,7 +247,7 @@ const classifyApiCallError = (err: APICallError, detailLimit: number | undefined
             && (
                 (wire.code !== null && CAPACITY_CODE.test(wire.code))
                 || (wire.type !== null && CAPACITY_CODE.test(wire.type))
-                || CAPACITY_MESSAGE.test(wire.message ?? message)
+                || matchesCapacityMessage(wire.message ?? message)
             )
         )) {
             return {

@@ -1270,8 +1270,43 @@ test("{§provider-interface} compatible wire omits native tools", async () => {
     assert.equal(result.accounting[0]?.usage?.totalTokens, 12);
     assert.equal(requests.length, 1);
     assertToolFree(requests[0], "chat");
+    assert.equal(requests[0].max_tokens, 1_000);
+    assert.equal(requests[0].max_completion_tokens, undefined);
     assert.equal(requests[0].reasoning_effort, "high");
     assert.deepEqual(requests[0].messages, request.messages);
+});
+
+test("{§provider-effort} {§provider-sdk-boundary} deepseek-flash projects reasoning_effort, single max_tokens cap, and assistant reasoning_content compat (#1417)", async (t) => {
+    const bodies: Record<string, unknown>[] = [];
+    t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
+        bodies.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
+        return response("chat");
+    });
+    for (const [effort, expectedWireEffort] of [["low", "low"], ["adaptive", "high"]] as const) {
+        const provider = catalogProviderFromEnv("deepseek", withProviderDefaults({
+            DEEPSEEK_API_KEY: "test-key",
+            PLURNK_PROVIDERS_EFFORT: effort,
+        }), "deepseek-flash");
+        assert.ok(provider);
+        assert.deepEqual(provider.supportedEfforts, ["off", "adaptive", "low", "high", "max"]);
+        await provider.generate({
+            sessionId: "deepseek-flash-wire",
+            messages: [
+                { role: "user", content: "first" },
+                { role: "assistant", content: "prior reply" },
+                { role: "user", content: "second" },
+            ],
+            maxOutputTokens: 4096,
+        });
+        const sent = bodies.at(-1)!;
+        assert.deepEqual(sent.thinking, { type: "enabled" });
+        assert.equal(sent.reasoning_effort, expectedWireEffort);
+        assert.equal(sent.max_tokens, 4096);
+        assert.equal(sent.max_completion_tokens, undefined);
+        const wireMessages = sent.messages as Array<Record<string, unknown>>;
+        assert.equal(wireMessages[1]?.role, "assistant");
+        assert.equal(wireMessages[1]?.reasoning_content, "");
+    }
 });
 
 test("{§provider-interface} request extensions cannot override the managed opt-out", async () => {

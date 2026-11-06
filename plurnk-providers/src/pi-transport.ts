@@ -16,6 +16,12 @@ import { stream as streamBedrockConverseStream } from "@earendil-works/pi-ai/api
 import { stream as streamGoogleGenerativeAi } from "@earendil-works/pi-ai/api/google-generative-ai";
 import { stream as streamOpenAICompletions } from "@earendil-works/pi-ai/api/openai-completions";
 import { stream as streamOpenAIResponses } from "@earendil-works/pi-ai/api/openai-responses";
+import {
+    getBuiltinModels,
+    getBuiltinProviders,
+} from "@earendil-works/pi-ai/providers/all";
+import { estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
+import { headersToRecord } from "@earendil-works/pi-ai/utils/headers";
 import { isRecord } from "@plurnk/plurnk-contracts";
 import { outboundFetch, syncAmbientHttp } from "@plurnk/plurnk-meta";
 import { APICallError } from "./errors.ts";
@@ -43,10 +49,32 @@ import type {
     TokenLogprob,
 } from "./types.ts";
 
-const headersToRecord = (headers: Headers): Record<string, string> => {
-    const out: Record<string, string> = {};
-    for (const [key, value] of headers.entries()) out[key] = value;
-    return out;
+const PI_BUILTIN_PROVIDER_ALIASES: Readonly<Record<string, string>> = {
+    "alibaba": "qwen-token-plan",
+    "alibaba-cn": "qwen-token-plan-cn",
+    "fireworks-ai": "fireworks",
+    "togetherai": "together",
+    "zai-coding-plan": "zai",
+};
+
+const lookupPiBuiltinCompat = (
+    providerId: string,
+    modelId: string,
+): Pick<NonNullable<ProviderModel["compat"]>, "requiresReasoningContentOnAssistantMessages" | "zaiToolStream"> => {
+    const targetProvider = PI_BUILTIN_PROVIDER_ALIASES[providerId] ?? providerId;
+    const builtinProvider = getBuiltinProviders().find((candidate) => candidate === targetProvider);
+    if (builtinProvider === undefined) return {};
+    const builtin = getBuiltinModels(builtinProvider).find((candidate) => candidate.id === modelId);
+    const rawCompat: unknown = builtin?.compat;
+    const compat = isRecord(rawCompat) ? rawCompat : undefined;
+    return {
+        ...(typeof compat?.requiresReasoningContentOnAssistantMessages === "boolean"
+            ? { requiresReasoningContentOnAssistantMessages: compat.requiresReasoningContentOnAssistantMessages }
+            : {}),
+        ...(typeof compat?.zaiToolStream === "boolean"
+            ? { zaiToolStream: compat.zaiToolStream }
+            : {}),
+    };
 };
 
 const toPiContext = (messages: readonly ChatMessage[]): TranscriptContext => {
@@ -197,6 +225,7 @@ export interface PiTransportOptions {
     readonly operationSignal: AbortSignal | undefined;
     readonly requestSampling: Record<string, unknown>;
     readonly body: Record<string, unknown>;
+    readonly outputTokenField?: "max_tokens" | "max_completion_tokens";
     readonly effectiveMaxOutputTokens: number | undefined;
     readonly nativeReasoningBudget: number | null;
     readonly capacity: ProviderRequestCapacity;
@@ -226,6 +255,7 @@ export interface PiTransportStreamResult {
     readonly finishReason: ProviderAttemptFinishReason;
     readonly rawFinishReason?: string;
     readonly usage: ProviderUsage | undefined;
+    readonly exceededOutputTokens?: number;
     readonly chargeEvidence: ProviderChargeEvidence;
     readonly logprobs: TokenLogprob[];
     readonly metadata: Record<string, unknown>;
@@ -253,6 +283,7 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         operationSignal,
         requestSampling,
         body,
+        outputTokenField = "max_tokens",
         effectiveMaxOutputTokens,
         nativeReasoningBudget,
         capacity,
@@ -270,16 +301,20 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         observers,
     } = opts;
 
+    const providerId = source.replace(/^provider:/, "");
     const effectiveModel: ProviderModel = providerModel ?? {
         id: model,
         api: "openai-completions",
-        provider: source,
+        provider: providerId,
         baseUrl: url!.replace(/\/chat\/completions\/?$/, ""),
         compat: {
+            ...lookupPiBuiltinCompat(providerId, model),
             supportsStore: false,
             supportsDeveloperRole: false,
             supportsUsageInStreaming: true,
             supportsFinishReason: true,
+            maxTokensField: outputTokenField,
+            thinkingFormat: "openai",
         },
     };
     const buildPiModel = <TApi extends ProviderModel["api"]>(api: TApi): Model<TApi> => ({
@@ -363,8 +398,12 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                 ? adaptiveEffort
                 : nativeFixedEffort(effort.mode);
 
+    const streamAbort = new AbortController();
+    const streamSignal = operationSignal === undefined
+        ? streamAbort.signal
+        : AbortSignal.any([operationSignal, streamAbort.signal]);
     const commonOptions = {
-        signal: operationSignal,
+        signal: streamSignal,
         headers: requestHeaders,
         ...(temperature === undefined ? {} : { temperature }),
         ...(maxTokens === undefined ? {} : { maxTokens }),
@@ -456,7 +495,13 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
                     ? undefined
                     : reasoning;
                 const samplingParams: Record<string, unknown> = providerModel === undefined
-                    ? Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined))
+                    ? Object.fromEntries(
+                        Object.entries(body).filter(([key, value]) =>
+                            value !== undefined
+                            && key !== "temperature"
+                            && key !== "max_tokens"
+                            && key !== "max_completion_tokens"),
+                    )
                     : {
                         ...(topP === undefined ? {} : { top_p: topP }),
                         ...(topK !== undefined && effectiveModel.includeTopK === true ? { top_k: topK } : {}),
@@ -604,21 +649,39 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         }
     };
 
+    const grantedOutput = capacity.responseMax ?? capacity.outputBudget;
     let outputObserved = false;
+    let exceededOutputTokens: number | undefined;
     let finalMessage: AssistantMessage | undefined;
     let lastErrorMessage: AssistantMessage | undefined;
     let streamError: string | undefined;
+
+    const checkRunawayOutput = (partial: AssistantMessage): boolean => {
+        if (grantedOutput === null) return false;
+        const midStreamOutputTokens = Math.max(
+            partial.usage.output,
+            Math.floor(estimateMessageTokens(partial) / 2),
+        );
+        if (midStreamOutputTokens <= grantedOutput) return false;
+        exceededOutputTokens = midStreamOutputTokens;
+        finalMessage = partial;
+        streamAbort.abort();
+        return true;
+    };
 
     const stream = startStream();
     for await (const event of stream) {
         if (event.type === "text_delta" && event.delta.length > 0) {
             outputObserved = true;
             observers.observeText?.(event.delta);
+            if (checkRunawayOutput(event.partial)) break;
         } else if (event.type === "thinking_delta" && event.delta.length > 0) {
             outputObserved = true;
             observers.observeReasoning?.(event.delta);
+            if (checkRunawayOutput(event.partial)) break;
         } else if (event.type === "toolcall_start" || event.type === "toolcall_delta" || event.type === "toolcall_end") {
             outputObserved = true;
+            if (checkRunawayOutput(event.partial)) break;
         } else if (event.type === "done") {
             finalMessage = event.message;
         } else if (event.type === "error") {
@@ -759,9 +822,12 @@ export const executePiTransportStream = async (opts: PiTransportOptions): Promis
         content: messageInfo.content,
         reasoning: messageInfo.reasoning,
         reasoningProjected: messageInfo.reasoningProjected,
-        finishReason: messageInfo.finishReason,
+        finishReason: exceededOutputTokens !== undefined && messageInfo.finishReason === null
+            ? "length"
+            : messageInfo.finishReason,
         ...(messageInfo.rawFinishReason === undefined ? {} : { rawFinishReason: messageInfo.rawFinishReason }),
         usage,
+        ...(exceededOutputTokens === undefined ? {} : { exceededOutputTokens }),
         chargeEvidence,
         logprobs: forensics.logprobs,
         metadata: forensics.metadata,

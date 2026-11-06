@@ -56,10 +56,11 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 
 ## §provider-sdk-boundary SDK and transport boundary
 
-`ModelProvider.ts` delegates streaming, protocol framing, and vendor request assembly to `@earendil-works/pi-ai` (`@earendil-works/pi-ai/api/*` `stream`) across all supported APIs (`anthropic-messages`, `openai-completions`, `openai-responses`, `google-generative-ai`, `bedrock-converse-stream`):
+`ModelProvider.ts` delegates streaming, protocol framing, vendor request assembly, model compatibility flags (`getBuiltinModels`), header normalization (`headersToRecord`), interruptible backoff (`sleep`), token estimation (`estimateMessageTokens`), and context-overflow pattern matching (`getOverflowPatterns`) to `@earendil-works/pi-ai` across all supported APIs (`anthropic-messages`, `openai-completions`, `openai-responses`, `google-generative-ai`, `bedrock-converse-stream`):
 
 - Prompt cache affinity (`PLURNK_PROVIDERS_CACHE_AFFINITY=1`) projects each provider's documented session key (`sessionId` -> `prompt_cache_key` / `x-session-id` / `x-session-affinity`).
 - Stable-system cache write policy (`PLURNK_PROVIDERS_CACHE_WRITE_POLICY=stable-system`) attaches ephemeral cache retention (`cache_control: { type: "ephemeral" }`) on providers that support prompt cache breakpoints (Anthropic and Anthropic routes on OpenRouter).
+- Output token allowance (`responseMax ?? outputBudget`) is enforced both in flight during streaming (aborting a runaway stream once mid-stream reported output tokens or conservative token lower-bound `floor(estimateMessageTokens(partial) / 2)` exceeds the granted allowance) and on final reported `usage.outputTokens`.
 
 ## §provider-effort Reasoning effort and readable trace
 

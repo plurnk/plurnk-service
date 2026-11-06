@@ -763,6 +763,7 @@ export default class ModelProvider implements Provider {
                     operationSignal,
                     requestSampling,
                     body,
+                    outputTokenField: this.#outputTokenField,
                     effectiveMaxOutputTokens,
                     nativeReasoningBudget,
                     capacity,
@@ -799,10 +800,17 @@ export default class ModelProvider implements Provider {
                 response.chargeEvidence,
                 { ...response, ...(capture?.request === undefined ? {} : { request: capture.request }) },
             );
-            const malformedAbort = response.finishReason === "error"
+            const grantedOutput = capacity.responseMax ?? capacity.outputBudget;
+            const observedOutputTokens = response.usage?.outputTokens ?? response.exceededOutputTokens;
+            const exceededGrantedOutput = grantedOutput !== null
+                && observedOutputTokens !== undefined
+                && observedOutputTokens > grantedOutput;
+            const malformedAbort = !exceededGrantedOutput
+                && response.finishReason === "error"
                 && response.rawFinishReason !== undefined
                 && RETRYABLE_MALFORMED_FINISH_REASONS.has(response.rawFinishReason);
-            const reasoningStarvedVisibleOutput = response.finishReason === "length"
+            const reasoningStarvedVisibleOutput = !exceededGrantedOutput
+                && response.finishReason === "length"
                 && response.content.trim().length === 0
                 && response.reasoning.length > 0;
             if ((malformedAbort || reasoningStarvedVisibleOutput)
@@ -937,9 +945,10 @@ export default class ModelProvider implements Provider {
         // wire actually sent, not the configured reservation — output between
         // the two is overflow tolerance working, never a provider fault.
         const grantedOutput = capacity.responseMax ?? capacity.outputBudget;
+        const reportedOutputTokens = usage?.outputTokens ?? raw.exceededOutputTokens;
         if (grantedOutput !== null
-            && usage?.outputTokens !== undefined
-            && usage.outputTokens > grantedOutput) {
+            && reportedOutputTokens !== undefined
+            && reportedOutputTokens > grantedOutput) {
             const attempt: ProviderAttempt = {
                 assistant: { ...assistant, finishReason: raw.finishReason },
                 ...evidence,
@@ -947,7 +956,7 @@ export default class ModelProvider implements Provider {
             throw new ProviderError(
                 this.#source,
                 "invalid_response",
-                `The provider reported ${usage.outputTokens} output tokens after receiving a granted output allowance of ${grantedOutput}.`,
+                `The provider reported ${reportedOutputTokens} output tokens after receiving a granted output allowance of ${grantedOutput}.`,
                 {
                     attempt,
                     accounting,
@@ -955,7 +964,7 @@ export default class ModelProvider implements Provider {
                         stage: "provider-response",
                         outputBudget: capacity.outputBudget,
                         grantedOutput,
-                        reportedOutputTokens: usage.outputTokens,
+                        reportedOutputTokens,
                     },
                 },
             );
