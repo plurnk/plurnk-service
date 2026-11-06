@@ -77,7 +77,7 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
         'await browser.browser_fill_form({"fields": []}); // Description: -> Fill form — (fields: {target: string, name: string, type: "textbox"|"checkbox"|"radio"|"combobox"|"slider", value: string, element?: string}[]) Schema: mcp:///browser/browser_fill_form.json',
     );
 
-    const manyOptionalProps = Object.fromEntries(Array.from({ length: 14 }, (_, i) => [`opt${i}`, { type: "string" }]));
+    const manyOptionalProps = Object.fromEntries(Array.from({ length: 18 }, (_, i) => [`opt${i}`, { type: "string" }]));
     const capped = ToolInputSchema.asideNote({ type: "object", properties: manyOptionalProps });
     assert.ok(capped?.endsWith(", … +2 opt)"), `expected bounded optional tail, got ${capped}`);
 
@@ -93,7 +93,7 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
             },
             $defs: { selector: { oneOf: [{ type: "string" }, { type: "integer" }] } },
         }),
-        '(mode: "list"|"add"; alias?: string, definition?: {type: "stdio", command: string, args?: string[], env?: object, cwd?: string, plurnkWorkspace?: string|string[], … +1 opt}|{type: "streamable-http", url: string, headers?: object, authorization?: object, plurnkWorkspace?: string|string[], plurnkSession?: string}, selector?: any)',
+        '(mode: "list"|"add"; alias?: string, definition?: {type: "stdio", command: string, args?: string[], env?: object, cwd?: string, plurnkWorkspace?: string|string[], … +1 opt}|{type: "streamable-http", url: string, headers?: object, authorization?: object, plurnkWorkspace?: string|string[], plurnkSession?: string}, selector?: string|integer)',
     );
 
     const topLevelUnion = Validator.schemaByRef("https://schemas.plurnk.xyz/v0/McpServerDefinition.json") as JsonSchema;

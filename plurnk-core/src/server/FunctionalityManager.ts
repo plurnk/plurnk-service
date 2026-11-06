@@ -78,7 +78,7 @@ export const plurnkRuntimeDecl: RuntimeDecl & { readonly glyph: string } = {
     glyph: "🔌",
     summary: {
         from: "tools",
-        description: "Manage env, mcp, members, personas, schedule, and skills; ask the user questions.",
+        description: "Core operations, code execution, workspace configuration (env, mcp, members, personas, schedule, skills), and user questions.",
     },
     resourcesPath: "/tools",
     invocation: {

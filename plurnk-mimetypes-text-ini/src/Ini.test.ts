@@ -55,7 +55,7 @@ describe("{§ini-tree} deepJson is the nested section object", () => {
 // ─── queryEvidence.conformance.test.ts ───
 {
 // A structural value maps to its honest exact value span.
-const h = new Ini({"mimetype":"text/x-ini","glyph":"⚙️","extensions":[".ini",".cfg","setup.cfg","tox.ini","pytest.ini",".editorconfig",".flake8",".pylintrc"]});
+const h = new Ini({"mimetype":"text/x-ini","glyph":"⚙️","extensions":[".ini",".cfg","setup.cfg","tox.ini","pytest.ini",".editorconfig",".flake8",".pylintrc",".npmrc",".gitmodules"]});
 const src = "[server]\nhost = x\nport = 5\n";
 
 describe("{§mimetype-query} both structural dialects report exact INI spans", () => {

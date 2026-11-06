@@ -10,7 +10,7 @@ npm i @plurnk/plurnk-mimetypes-text-ini
 
 ## what it does
 
-Covers the Python tooling cluster (`setup.cfg`, `tox.ini`, `pytest.ini`, `.editorconfig`, `.flake8`, `.pylintrc`) plus generic `.ini`/`.cfg`.
+Covers the Python tooling cluster (`setup.cfg`, `tox.ini`, `pytest.ini`, `.editorconfig`, `.flake8`, `.pylintrc`), `.npmrc`, `.gitmodules`, plus generic `.ini`/`.cfg`.
 
 - `extractRaw(content)` — sections as `module` symbols, keys as `field` symbols ({§ini-tree}).
 - `deepJson(content)` — the nested `{ section: { key: value } }` object, a JSONPath target such as `$.metadata.version` ({§ini-tree}).

@@ -30,7 +30,9 @@
                     "pytest.ini",
                     ".editorconfig",
                     ".flake8",
-                    ".pylintrc"
+                    ".pylintrc",
+                    ".npmrc",
+                    ".gitmodules"
                 ]
             }
         ]

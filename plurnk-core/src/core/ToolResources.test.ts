@@ -216,7 +216,7 @@ test("{§functionality-model-projection} plurnk runtime summary advertises effec
             })) },
         });
         const summary = resource.content.split("## Summary\n\n")[1].split("\n\n")[0];
-        assert.equal(summary, `await plurnk[${JSON.stringify(tools.join("|"))}](); // Manage env, mcp, members, personas, schedule, and skills; ask the user questions.`);
+        assert.equal(summary, `await plurnk[${JSON.stringify(tools.join("|"))}](); // Core operations, code execution, workspace configuration (env, mcp, members, personas, schedule, skills), and user questions.`);
     }
 });
 
@@ -487,6 +487,10 @@ test("{§functionality-model-projection} {§tools-resource-materialization} rend
     assert.match(
         indexDoc.content,
         /^await plurnk\.todo\(\{"items": \[\]\}\); \/\/ Replace the session's remaining TODO list\.$/m,
+    );
+    assert.match(
+        indexDoc.content,
+        /^await plurnk\.copy\(\{"from": "", "to": ""\}\); \/\/ Copy files, entries, streams, or text regions\. \(from: string\|\{path: string, range\?: string, pattern\?: string, metadata\?: string\|string\[\]\}, to: string\|\{path: string, range\?: string, pattern\?: string, metadata\?: string\|string\[\]\}\)$/m,
     );
     assert.doesNotMatch(indexDoc.content, /Schema: mcp:\/\/\/plurnk\//);
     for (const tool of ALL_CORE_OPERATION_TOOLS) {

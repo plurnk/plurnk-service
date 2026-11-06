@@ -119,7 +119,7 @@ Every available runtime receives one derived read-only scheme face from its tag,
 - **Tool documents and schema previews:**
   - General runtime: H2 `Summary` and `Invocation` sections with compact witness.
   - Exact registry: H2 `Tools` with one executable fence per tool.
-  - Schema-backed invocation: links from its aside (`<!-- Schema: ... -->`) to a `.json` child document containing full description and original `inputSchema`. The preview skeleton emits only explicitly required top-level fields (`""`, `0`, `false`, `[]`, `{}`, `null`, first `enum` value, or first `anyOf` branch). The aside summarizes 2–12 string enum choices (`"a"|"b"|…`), one-level nested object/array shapes (up to 4 union branches and 6 fields per branch, `… +N opt`), and up to 12 optional top-level properties (`name?: type`, `… +N opt`).
+  - Schema-backed invocation: links from its aside (`<!-- Schema: ... -->`) to a `.json` child document containing full description and original `inputSchema`. The preview skeleton emits only explicitly required top-level fields (`""`, `0`, `false`, `[]`, `{}`, `null`, first `enum` value, or first `anyOf` branch). The aside summarizes 2–12 string enum choices (`"a"|"b"|…`), one-level nested object/array shapes (up to 4 union branches and 6 fields per branch, `… +N opt`), and up to 16 optional top-level properties (`name?: type`, `… +N opt`).
 
 ## §executor-policy Subtractive runtime policy, spawn account, and default inventory
 

@@ -468,7 +468,7 @@ export default class PacketBuilder {
             if (coreTools.length > 0) {
                 out.push(...ToolResources.render({
                     runtime: "plurnk",
-                    summary: { from: "tools", description: "Core operations and workspace functionality." },
+                    summary: { from: "tools", description: "Core operations, code execution, workspace configuration (env, mcp, members, personas, schedule, skills), and user questions." },
                     invocation: {
                         body: { role: "JSON arguments", required: false, mimetype: "application/json" },
                         target: { role: "Plurnk tool", required: true, kind: "literal" },

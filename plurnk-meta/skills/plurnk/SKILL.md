@@ -5,7 +5,7 @@ description: Configure, customize, extend, and integrate Plurnk — settings (.e
 
 # Plurnk
 
-| Need | Reference |
+| Need | Reference (relative to `skill://plurnk/` unless a URI or command) |
 | --- | --- |
 | Configuration cascade, persistence, permissions, skills, personas | [Configuration](configuration.md) |
 | Daemon status, effective configuration, and validation | `plurnk-service config`, `plurnk-service config show`, `plurnk-service config check`, `GET /health` |
@@ -19,11 +19,11 @@ description: Configure, customize, extend, and integrate Plurnk — settings (.e
 | Agent Skills, MCP servers, environment variables, and schedules | `mcp:///plurnk.md`, `mcp:///plurnk/skills.json`, `mcp:///plurnk/mcp.json`, `mcp:///plurnk/env.json`, `mcp:///plurnk/schedule.json` |
 | Which project files you can see, and why a file is missing | `mcp:///plurnk/members.json` |
 | Plugins, extensions, clients and hooks: what each reaches and how it loads | [Extending Plurnk](extensibility.md) |
-| Each installed package's contract and type declarations | `packages/<package name>/SPEC.md`, `dist/*.d.ts` |
+| Each installed package's contract and type declarations | `skill://plurnk/packages/<package name>/SPEC.md`, `skill://plurnk/packages/<package name>/dist/*.d.ts` |
 | Session hierarchy, messaging, and delegation | [Session reference](session.md), [Delegation and messages](delegation.md) |
 | Text, structural, full-text, and symbol patterns | [Patterns](pattern.md) |
 | HTTP(S) web resources and WebSocket connections | [HTTP(S) resources](https.md), [WebSocket connections](wss.md) |
-| Running code: the shell and each interpreter's body, stdin, arguments, exit status | `mcp:///plurnk.md`, `mcp:///plurnk/sh.json`, `mcp:///plurnk/js.json`, `mcp:///plurnk/python3.json` |
+| Running code: the shell and each interpreter's body, script, arguments, exit status | `mcp:///plurnk.md`, `mcp:///plurnk/sh.json`, `mcp:///plurnk/js.json`, `mcp:///plurnk/python3.json` |
 | Enabled MCP server invocations and schemas | `mcp:///` |
 
 Read the relevant reference with `plurnk.read`; `plurnk.find` selects paths and searches their bodies or symbols across `skill://plurnk/**` (for example `await plurnk.find({ path: "skill://plurnk/packages/**/SPEC.md", pattern: "/§tag/" });` or `await plurnk.find({ path: "skill://plurnk/packages/**/dist/*.d.ts", pattern: "&Symbol" });`), and `await plurnk.kill({ path: "log:///...", note: "..." });` retires read slices once applied.

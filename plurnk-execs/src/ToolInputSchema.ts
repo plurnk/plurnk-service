@@ -55,21 +55,28 @@ const dereference = (prop: JsonSchema, root?: JsonSchema): JsonSchema => {
         : prop;
 };
 
+const hasObjectProperties = (branch: JsonSchema): boolean =>
+    isRecord(branch.properties) && Object.keys(branch.properties).length > 0;
+
+const isPrimitiveBranch = (branch: JsonSchema): boolean =>
+    typeof branch.type === "string" && branch.type !== "object";
+
 const structuredUnionBranches = (prop: JsonSchema): JsonSchema[] => {
     const rawBranches = Array.isArray(prop.oneOf) ? prop.oneOf : Array.isArray(prop.anyOf) ? prop.anyOf : [];
     if (rawBranches.length === 0 || rawBranches.length > 4) return [];
     const resolved = rawBranches.map((branch) => dereference(objectOf(branch), prop));
-    return resolved.every((branch) => isRecord(branch.properties) && Object.keys(branch.properties).length > 0)
+    return resolved.some(hasObjectProperties)
+        && resolved.every((branch) => hasObjectProperties(branch) || isPrimitiveBranch(branch))
         ? resolved
         : [];
 };
 
-const hasStructuredDetail = (raw: JsonSchema): boolean => {
-    const prop = dereference(raw);
-    if (isRecord(prop.properties) && Object.keys(prop.properties).length > 0) return true;
+const hasStructuredDetail = (raw: JsonSchema, root?: JsonSchema): boolean => {
+    const prop = dereference(raw, root);
+    if (hasObjectProperties(prop)) return true;
     if (structuredUnionBranches(prop).length > 0) return true;
     const items = dereference(objectOf(prop.items), prop);
-    return (isRecord(items.properties) && Object.keys(items.properties).length > 0)
+    return hasObjectProperties(items)
         || (isStringEnum(items.enum) && items.enum.length > 1);
 };
 
@@ -165,14 +172,14 @@ export default class ToolInputSchema {
         const requiredNotes: string[] = [];
         for (const name of required) {
             const prop = objectOf(properties[name]);
-            if ((isStringEnum(prop.enum) && prop.enum.length > 1) || hasStructuredDetail(prop)) {
-                requiredNotes.push(`${name}: ${propertySignature(prop, 0)}`);
+            if ((isStringEnum(prop.enum) && prop.enum.length > 1) || hasStructuredDetail(prop, resolved)) {
+                requiredNotes.push(`${name}: ${propertySignature(prop, 0, resolved)}`);
             }
         }
         const optionalKeys = Object.keys(properties).filter((key) => !requiredSet.has(key));
-        const optionalNotes = optionalKeys.slice(0, 12).map((name) =>
-            `${name}?: ${propertySignature(objectOf(properties[name]), 0)}`);
-        if (optionalKeys.length > 12) optionalNotes.push(`… +${optionalKeys.length - 12} opt`);
+        const optionalNotes = optionalKeys.slice(0, 16).map((name) =>
+            `${name}?: ${propertySignature(objectOf(properties[name]), 0, resolved)}`);
+        if (optionalKeys.length > 16) optionalNotes.push(`… +${optionalKeys.length - 16} opt`);
         if (requiredNotes.length === 0 && optionalNotes.length === 0) return undefined;
         const combined = requiredNotes.length > 0 && optionalNotes.length > 0
             ? `(${requiredNotes.join(", ")}; ${optionalNotes.join(", ")})`
