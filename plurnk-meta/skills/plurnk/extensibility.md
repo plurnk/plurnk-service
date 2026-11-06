@@ -1,5 +1,9 @@
 # Extending Plurnk
 
+## Summary
+
+Extend Plurnk with Agent Skills, plugins, hooks, MCP servers, scheme/mimetype/exec/provider packages, and ACP clients.
+
 An integration points one way or both. Plurnk uses X when X's knowledge, tools,
 agents or models reach the model. X uses Plurnk when X drives Plurnk as a
 client or receives its lifecycle events. Each surface below states what it

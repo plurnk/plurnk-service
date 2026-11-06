@@ -1,5 +1,9 @@
 # Models and generation
 
+## Summary
+
+Configure model aliases, provider routes, credentials, reasoning effort, context/output budgets, and caching.
+
 A route is `provider/model`; an alias names a route with its own tuning. The
 session owns its model and reasoning selection: an explicit selection persists
 on the session, a loop snapshots the resolved route, and a change to the

@@ -70,6 +70,7 @@ SELECT
     le.origin,
     le.op,
     le.scheme,
+    le.hostname,
     le.pathname,
     le.tx,
     le.mimetype_tx,

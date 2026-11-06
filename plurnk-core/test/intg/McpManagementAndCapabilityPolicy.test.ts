@@ -920,10 +920,10 @@ for (const layer of ["service", "workspace"] as const) test(`{§tools-resource-m
         const rows = await db.test_log_entries_by_loop.all<{
             op: string; scheme: string; hostname: string | null; pathname: string; rx: string; status_rx: number;
         }>({ loop_id: loopId });
-        const skillRead = rows.find(({ op, scheme, hostname, pathname }) =>
-            op === "read" && scheme === "skill" && hostname === "plurnk" && pathname === "/SKILL.md");
-        assert.equal(skillRead?.status_rx, 200, "read-only policy retains the Turn-0 skill index read");
-        assert.ok(JSON.parse(skillRead.rx).content.includes("(session.md)"));
+        const skillFind = rows.find(({ op, scheme, hostname, pathname }) =>
+            op === "find" && scheme === "skill" && hostname === "plurnk" && pathname === "/*.md");
+        assert.equal(skillFind?.status_rx, 200, "read-only policy retains the Turn-0 skill://plurnk/*.md survey");
+        assert.ok(JSON.stringify(JSON.parse(skillFind.rx)).includes("skill://plurnk/session.md"));
         const read = rows.find(({ op, scheme, hostname, pathname }) =>
             op === "read" && scheme === "skill" && hostname === "plurnk" && pathname === "/session.md");
         assert.equal(read?.status_rx, 200, "the model can read the advertised reference through normal dispatch");

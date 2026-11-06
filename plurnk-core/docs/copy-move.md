@@ -1,5 +1,9 @@
 # `copy` and `move`
 
+## Summary
+
+Copy or move files, workspace entries, streams, or scoped text regions.
+
 `from` is the source; `to` is the destination. Each optional selection (`{ path, range?, pattern?, metadata? }`)
 scopes its own endpoint.
 

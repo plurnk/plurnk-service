@@ -1053,6 +1053,7 @@ const rows = (log: string, op: string): Array<Record<string, unknown>> =>
 
 const distillation = "wcs.py: _array_converter returns early on empty input; the fix is its return path.";
 const plurnkDocsKilledNotice = "The plurnk server tool documentation has been killed. To restore it: await plurnk.read({ path: \"mcp:///plurnk.md\" })";
+const plurnkHarnessKilledNotice = "The plurnk harness documentation has been killed. To restore it: await plurnk.find({ path: \"skill://plurnk/*.md\" })";
 const distillationWithDocsKilled = `${distillation}\n${plurnkDocsKilledNotice}`;
 
 test("{§log-kill-scope} a log KILL's body lands as the model's own NOTE row after the kill, named by what it distilled", async (approvalContext) => {
@@ -1063,6 +1064,8 @@ test("{§log-kill-scope} a log KILL's body lands as the model's own NOTE row aft
         const mock = new Mock({ contextWindow: 32768, responses: [
             "await plurnk.edit({\"path\":\"workspace:///note\",\"content\":\"first line\\nsecond line\"});\n\nawait plurnk.read({\"path\":\"workspace:///note\"});\n\nawait plurnk.note({\"text\":\"wrote\"});",
             `await plurnk.kill({"path":"log:///1/**/{read,note}","note":"${distillation}"}); // retire the read and the note; keep what they taught
+
+await plurnk.kill({"path":"log:///1/**/find"});
 
 await plurnk.kill({"path":"log:///1/**/edit"});
 
@@ -1080,9 +1083,9 @@ await plurnk.note({"text":"curated"});`,
                 assert.ok(ids.length >= 5, `init + four model turns; got ${ids.length}`);
                 const afterCuration = logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[3] }))!.packet);
                 const notes = rows(afterCuration, "note");
-                assert.deepEqual(notes.map(({ body }) => body), [`1:${distillation}\n2:${plurnkDocsKilledNotice}\n`, undefined], "distillation remains bodied and appends the plurnk.md restoration notice; the authored NOTE is paired with its replay");
+                assert.deepEqual(notes.map(({ body }) => body), [`1:${distillation}\n2:${plurnkDocsKilledNotice}\n`, `1:${plurnkHarnessKilledNotice}\n`, undefined], "distillation remains bodied and appends the plurnk.md restoration notice, bodyless kill of skill://plurnk/*.md creates the harness restoration notice, and the authored NOTE is paired with its replay");
                 assert.match(afterCuration, /### log:\/\/\/1\/3\/\d+\/note · \d+/u, "the curating turn's NOTE keeps its receipt");
-                assert.equal(rows(afterCuration, "kill").length, 0, "both kills succeeded, so neither receipt renders");
+                assert.equal(rows(afterCuration, "kill").length, 0, "all kills succeeded, so no kill receipt renders");
                 assert.equal(rows(afterCuration, "read").length, 0);
                 const history = await db.test_log_entries_by_loop.all<{
                     op: string | null; pathname: string | null; sequence: number; turn_id: number; status_rx: number; rx: string; attrs: string | null; tx: string; origin: string;
@@ -1092,13 +1095,18 @@ await plurnk.note({"text":"curated"});`,
                 assert.deepEqual(curation.map(({ op, pathname, sequence, status_rx }) => ({ op, pathname, sequence, status_rx })), [
                     { op: "kill", pathname: "/1/**/{read,note}", sequence: 2, status_rx: 200 },
                     { op: "note", pathname: null, sequence: 3, status_rx: 200 },
-                    { op: "kill", pathname: "/1/**/edit", sequence: 4, status_rx: 200 },
+                    { op: "kill", pathname: "/1/**/find", sequence: 4, status_rx: 200 },
                     { op: "note", pathname: null, sequence: 5, status_rx: 200 },
+                    { op: "kill", pathname: "/1/**/edit", sequence: 6, status_rx: 200 },
+                    { op: "note", pathname: null, sequence: 7, status_rx: 200 },
                 ], "the distillation is written at the next sequence after its kill; a whitespace body is a plain KILL; later rows follow in order");
-                const [kill, note, plainKill] = curation;
+                const [kill, note, findKill, findNote, plainKill] = curation;
                 assert.equal((JSON.parse(kill.tx) as { body: string | null }).body, distillation, "the kill's own record keeps the body it was emitted with");
                 assert.deepEqual(JSON.parse(note.attrs ?? "{}"), { distilled: "log:///1/**/{read,note}" }, "the NOTE row names the selection it distilled");
                 assert.equal((JSON.parse(note.tx) as { op: string; body: string }).body, distillationWithDocsKilled);
+                assert.equal((JSON.parse(findKill.tx) as { body: string | null }).body, null);
+                assert.deepEqual(JSON.parse(findNote.attrs ?? "{}"), { distilled: "log:///1/**/find" });
+                assert.equal((JSON.parse(findNote.tx) as { op: string; body: string }).body, plurnkHarnessKilledNotice);
                 assert.equal((JSON.parse(plainKill.tx) as { body: string | null }).body, null, "whitespace is no distillation");
                 const programs = await db.test_turn_sources.all<{ kind: string; turn_id: number; content: string }>({ session_id: result.modelSessionId! });
                 assert.ok(programs.some(({ kind, turn_id, content }) => kind === "note" && turn_id === ids[2] && content === distillationWithDocsKilled),

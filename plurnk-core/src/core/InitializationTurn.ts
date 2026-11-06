@@ -200,10 +200,10 @@ export default class InitializationTurn {
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "read", aside: null,
-                target: { kind: "url", raw: "skill://plurnk/SKILL.md", scheme: "skill", username: null, password: null, hostname: "plurnk", port: null, pathname: "/SKILL.md", query: null, fragment: null },
+                op: "find", aside: "Plurnk Harness",
+                target: { kind: "url", raw: "skill://plurnk/*.md", scheme: "skill", username: null, password: null, hostname: "plurnk", port: null, pathname: "/*.md", query: null, fragment: null },
                 metadata: null,
-                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
                 op: "read", aside: null,

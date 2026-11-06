@@ -436,17 +436,21 @@ export default class Dispatcher {
 
     static readonly #PLURNK_DOCS_KILLED_MESSAGE =
         'The plurnk server tool documentation has been killed. To restore it: await plurnk.read({ path: "mcp:///plurnk.md" })';
+    static readonly #PLURNK_HARNESS_KILLED_MESSAGE =
+        'The plurnk harness documentation has been killed. To restore it: await plurnk.find({ path: "skill://plurnk/*.md" })';
 
     static #distillationOf(statement: PlurnkStatement, curationPlan?: LogCurationPlan): { body: string; target: string } | null {
         if (statement.op !== "kill" || statement.target === null || schemeNameOf(statement.target) !== "log") return null;
-        const authored = typeof statement.body === "string" && statement.body.trim() !== "" ? statement.body : null;
-        const killedPlurnkDocs = curationPlan?.killedPlurnkDocs === true;
-        if (authored === null && !killedPlurnkDocs) return null;
-        const body = authored === null
-            ? Dispatcher.#PLURNK_DOCS_KILLED_MESSAGE
-            : killedPlurnkDocs
-                ? `${authored.replace(/\n+$/u, "")}\n${Dispatcher.#PLURNK_DOCS_KILLED_MESSAGE}`
-                : authored;
+        const authored = typeof statement.body === "string" && statement.body.trim() !== "" ? statement.body.replace(/\n+$/u, "") : null;
+        const notices = [
+            ...(curationPlan?.killedPlurnkDocs === true ? [Dispatcher.#PLURNK_DOCS_KILLED_MESSAGE] : []),
+            ...(curationPlan?.killedPlurnkHarness === true ? [Dispatcher.#PLURNK_HARNESS_KILLED_MESSAGE] : []),
+        ];
+        if (authored === null && notices.length === 0) return null;
+        const body = [
+            ...(authored === null ? [] : [authored]),
+            ...notices,
+        ].join("\n");
         return { body, target: statement.target.raw };
     }
 

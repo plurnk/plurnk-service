@@ -1,5 +1,9 @@
 # Configuring plurnk-service
 
+## Summary
+
+Configure the settings cascade (`.env`), persistence, permissions, skills, personas, systemd, and nginx.
+
 Each package's `.env.defaults` is its authoritative configuration reference.
 `plurnk-service config defaults` prints the complete installed catalog, including
 comments and optional examples. Inside Plurnk, read
