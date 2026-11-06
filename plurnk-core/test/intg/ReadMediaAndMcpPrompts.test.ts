@@ -50,10 +50,10 @@ ${next}`),
             turn(`await plurnk.kill({"path":"clip.wav"});
 
 ${next}`),
-            turn(`await plurnk.read({"path":"log:///1/2/4/read"});
+            turn(`await plurnk.read({"path":"log:///1/2/3/read"});
 
 ${next}`),
-            turn(`await plurnk.kill({"path":"log:///1/2/4/read","range":"42"});
+            turn(`await plurnk.kill({"path":"log:///1/2/3/read","range":"42"});
 
 ${next}`),
             turn("await plurnk.done({\"text\":\"Audio inspection complete.\"});"),
@@ -70,7 +70,7 @@ ${next}`),
                     const loop = await db.drain_message_source.get<{ session_id: number }>({ loop_id: loopId });
                     const fork = await Fork.fork(db, loop!.session_id, "audio-fork");
                     const rows = await db.engine_render_log.all<{ op: string; pathname: string; status_rx: number; rx: string }>({ session_id: fork });
-                    const observation = rows.find((row) => row.op === "read" && row.pathname === "/1/2/4/read");
+                    const observation = rows.find((row) => row.op === "read" && row.pathname === "/1/2/3/read");
                     assert.ok(observation, "the fork inherits the explicit log READ");
                     assert.equal(typeof JSON.parse(observation.rx).nativeContentHash, "string", observation.rx);
                     assert.ok(Buffer.from(await NativeContent.read(db, JSON.parse(observation.rx).nativeContentHash)).equals(bytes), "the fork retains the exact audio bytes");
@@ -535,10 +535,10 @@ test("{§log-wire-format} explicit log READ preserves its own observation after 
 ${next}`),
         mockTurn(`await plurnk.kill({"path":"logo.png"});
 
-await plurnk.read({"path":"log:///1/2/4/read"});
+await plurnk.read({"path":"log:///1/2/3/read"});
 
 ${next}`),
-        mockTurn(`await plurnk.kill({"path":"log:///1/2/4/read","range":"42"});
+        mockTurn(`await plurnk.kill({"path":"log:///1/2/3/read","range":"42"});
 
 ${next}`),
         mockTurn("await plurnk.done({\"text\":\"Image inspection complete.\"});"),
@@ -557,14 +557,14 @@ test("{§log-kill-scope} a text-only route preserves ordinary scoped trimming of
         mockTurn(`await plurnk.read({"path":"logo.png#bytes","range":"1,16"});
 
 ${next}`),
-        mockTurn(`await plurnk.kill({"path":"log:///1/2/4/read","range":"1"});
+        mockTurn(`await plurnk.kill({"path":"log:///1/2/3/read","range":"1"});
 
 ${next}`),
         mockTurn("await plurnk.done({\"text\":\"Image inspection complete.\"});"),
     ]);
     assert.ok(requests[2].every((message) => typeof message.content === "string"));
     const content = userText(requests[2]);
-    assert.match(content, /### log:\/\/\/1\/2\/4\/read \(logo\.png#bytes\) · \d+\n/, "the trimmed READ's receipt stays, naming its operand");
+    assert.match(content, /### log:\/\/\/1\/2\/3\/read \(logo\.png#bytes\) · \d+\n/, "the trimmed READ's receipt stays, naming its operand");
     assert.ok(requests[2].some((message) => message.role === "assistant" && message.content === "await plurnk.read({\"path\":\"logo.png#bytes\",\"range\":\"1,16\"});\n\nawait plurnk.note({\"text\":\"Inspect bytes.\"});"), "trimming the result leaves the READ's replay whole");
     assert.doesNotMatch(content, /\n\s*1:89\n/u);
     assert.match(content, /\n\s*2:50\n/u);

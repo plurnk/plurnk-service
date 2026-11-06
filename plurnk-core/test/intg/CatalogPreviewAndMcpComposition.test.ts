@@ -287,11 +287,12 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
                     { scheme: "skill", hostname: "*", pathname: "/SKILL.md" },
                     { scheme: "skill", hostname: "plurnk", pathname: "/*.md" },
+                    { scheme: "mcp", hostname: null, pathname: "/*.md" },
                     { scheme: "session", hostname: sessionName, pathname: "/*" },
                 ], "the surveys that select something and the session scratch survey run, in their taught order; the other empty surfaces are left out ({§session-initialization-entry})");
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
-                    [null, "Plurnk Harness", "session knowledgebase entries"],
+                    [null, "Plurnk Harness", null, "session knowledgebase entries"],
                     "asides name what each namespace is",
                 );
                 for (const row of finds) {
@@ -322,9 +323,8 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     ?? JSON.parse((JSON.parse(harnessSurvey.rx) as { content: string }).content)) as Array<Array<{ path: string; aside?: string }>>;
                 assert.equal(harnessItems.length, 10, "all 10 Plurnk Harness markdown references are cataloged");
                 assert.ok(harnessItems.flat().every(({ aside }) => Boolean(aside)), "every Plurnk Harness chapter arrives with its 1-line summary aside");
-                const patternTableRead = rows.find((row) => row.op === "read" && row.scheme === "skill" && row.hostname === "plurnk" && row.pathname === "/pattern.md");
-                assert.ok(patternTableRead !== undefined && patternTableRead.status_rx === 200, "Turn 0 reads the Pattern Dialects table from skill://plurnk/pattern.md");
-                assert.match((JSON.parse(patternTableRead.rx) as { content: string }).content, /\| Prefix \| Dialect \| Pattern \| Selection \|/u);
+                const patternItem = harnessItems.flat().find(({ path }) => path === "skill://plurnk/pattern.md");
+                assert.match(patternItem?.aside ?? "", /regex \(\/re\/im\).*XPath \(\/\/fn\[name='x'\]\).*JSONPath \(\$\.a\.b\).*symbol \(&Foo/u, "pattern.md summary aside carries the pattern dialect syntax tokens");
                 const plurnkRead = rows.find((row) => row.op === "read" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk.md");
                 assert.ok(plurnkRead !== undefined && plurnkRead.status_rx === 200, "Turn 0 introspects mcp:///plurnk.md");
                 const plurnkContent = (JSON.parse(plurnkRead.rx) as { content: string }).content;
@@ -356,7 +356,7 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     "turn 0 announces its ops:// emission ({§turn-source-resources})");
                 assert.deepEqual(
                     initializationRows.filter((row) => row.op !== null && !LogEntryProjection.isEmission(row)).map(({ op }) => op),
-                    ["todo", "find", "find", "read", "plurnk", "read", "read", "find", "todo"],
+                    ["todo", "find", "find", "find", "read", "read", "find", "todo"],
                     "initialization contains its opening TODO, the surveys, its closing TODO, and nothing else",
                 );
             } finally { ws.close(); }

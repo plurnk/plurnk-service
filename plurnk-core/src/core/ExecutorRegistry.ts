@@ -376,35 +376,4 @@ export default class ExecutorRegistry {
         }
         return [...tags].toSorted((left, right) => left.localeCompare(right));
     }
-
-    inProcessToolServers(workspaceId?: number): ReadonlyArray<{
-        readonly alias: string;
-        readonly state: "active" | "unavailable";
-        readonly description?: string;
-        readonly docs: string;
-    }> {
-        const out: Array<{
-            readonly alias: string;
-            readonly state: "active" | "unavailable";
-            readonly description?: string;
-            readonly docs: string;
-        }> = [];
-        for (const tag of this.availableRuntimes(workspaceId)) {
-            const entry = this.entry(tag, workspaceId);
-            if (entry === undefined || entry.resourcesPath !== "/tools") continue;
-            if (entry.namespaceOwner.kind === "module" && entry.namespaceOwner.name === "@plurnk/plurnk-mcp") continue;
-            const registry = this.toolRegistry(tag, workspaceId);
-            if (registry === null || registry.tools.length === 0) continue;
-            const description = typeof entry.summary === "string"
-                ? entry.summary
-                : entry.summary.description;
-            out.push({
-                alias: tag,
-                state: entry.available ? "active" : "unavailable",
-                ...(description === undefined || description.length === 0 ? {} : { description }),
-                docs: `mcp:///${tag}.md`,
-            });
-        }
-        return out;
-    }
 }

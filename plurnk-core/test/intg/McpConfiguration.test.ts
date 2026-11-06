@@ -183,12 +183,12 @@ await plurnk.mcp();`),
     await waitFor(() => finalStatuses, (statuses) => statuses.length > 0, { timeoutMs: 15_000 });
     assert.deepEqual(finalStatuses, [200]);
     const turn0Text = userText(provider.received[0]);
-    assert.match(turn0Text, /"alias":\s*"plurnk"/u, "Turn 0 plurnk (mcp) preserves healthy in-process MCP runtimes");
-    assert.match(turn0Text, /"problem":/u, "Turn 0 plurnk (mcp) reports the external MCP configuration problem alongside in-process runtimes");
+    assert.match(turn0Text, /mcp:\/\/\/plurnk\.md/u, "Turn 0 mcp:///*.md survey preserves healthy in-process MCP runtimes");
+    assert.match(turn0Text, /configuration unavailable; inspect with \{\}/u, "Turn 0 mcp:///plurnk.md reports the external MCP configuration problem alongside in-process runtimes");
     const log = await daemon.readLog({ workspaceId, sessionId, limit: 100 });
     assert.equal(await readFile(file, "utf8"), content, JSON.stringify(log.filter(({ op }) => op === "edit")));
     const inspected = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk" });
-    assert.deepEqual((inspected.definitions as FunctionalityListResult["definitions"]).filter(({ alias }) => alias !== "plurnk").map(({ alias, state }) => [alias, state]),
+    assert.deepEqual((inspected.definitions as FunctionalityListResult["definitions"]).map(({ alias, state }) => [alias, state]),
         [["repaired", "dormant"]], "the manager's own same-turn result observes fresh configuration without premature publication");
     const echoed = await awaitExecOutcome(db, { workspaceId, scheme: "repaired", channel: "json" });
     assert.deepEqual(echoed.content, [{ type: "text", text: "same-turn-repair" }]);

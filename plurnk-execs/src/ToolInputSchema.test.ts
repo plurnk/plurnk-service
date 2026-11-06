@@ -84,6 +84,19 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
     assert.equal(
         ToolInputSchema.asideNote({
             type: "object",
+            properties: {
+                discover: {
+                    type: ["string", "object", "boolean"],
+                    properties: { query: { type: "string" }, limit: { type: "integer" } },
+                },
+            },
+        }),
+        "(discover?: string|object|boolean)",
+    );
+
+    assert.equal(
+        ToolInputSchema.asideNote({
+            type: "object",
             required: ["mode"],
             properties: {
                 mode: { type: "string", enum: ["list", "add"] },

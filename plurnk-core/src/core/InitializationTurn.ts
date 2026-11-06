@@ -13,7 +13,6 @@ import type { ContextFit } from "./ContextFit.ts";
 import Turn, { type TurnRow } from "./Turn.ts";
 import TurnOps from "./TurnOps.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
-import { readExecConcurrency } from "../schemes/ExecScheduler.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
 
 // PLURNK_SERVICE_FILES_ITEMS — the turn-0 catalog preview. null = off;
@@ -74,7 +73,7 @@ export default class InitializationTurn {
         const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
         if (filesItems !== null) { // {§session-initialization-entry} — once per session
             surveyStatements.push(...await InitializationTurn.#catalogSurveys({
-                db, schemes, executors, capabilities, workspaceId, sessionName, initializationPolicies, filesItems,
+                db, schemes, capabilities, workspaceId, sessionName, initializationPolicies, filesItems,
             }));
         }
         // {§session-initialization-entry} — the survey is an ordinary operation program: recorded as the
@@ -163,14 +162,13 @@ export default class InitializationTurn {
     static async #catalogSurveys(args: {
         db: Db;
         schemes: SchemeRegistry;
-        executors: () => ExecutorRegistry | undefined;
         capabilities: CapabilityResolver;
         workspaceId: number;
         sessionName: string;
         initializationPolicies: CapabilityPolicy[];
         filesItems: number;
-    }): Promise<Array<FindStatement | ReadStatement | ExecStatement>> {
-        const { db, schemes, executors, capabilities, workspaceId, sessionName, initializationPolicies, filesItems } = args;
+    }): Promise<Array<FindStatement | ReadStatement>> {
+        const { db, schemes, capabilities, workspaceId, sessionName, initializationPolicies, filesItems } = args;
         const catalogSchemes = await db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
         const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
         const mcpEntries = catalogSchemes.find(({ scheme }) => scheme === "mcp")?.entries ?? 0;
@@ -182,17 +180,7 @@ export default class InitializationTurn {
                 return false;
             }
         };
-        const canRunPlurnk = (): boolean => {
-            const registry = executors();
-            if (registry?.availableRuntimes(workspaceId).includes("plurnk") !== true) return false;
-            try {
-                readExecConcurrency();
-                return canAutoRead();
-            } catch {
-                return false;
-            }
-        };
-        const surveys: Array<FindStatement | ReadStatement | ExecStatement> = [
+        const surveys: Array<FindStatement | ReadStatement> = [
             {
                 op: "find", aside: null,
                 target: { kind: "url", raw: "skill://*/SKILL.md", scheme: "skill", username: null, password: null, hostname: "*", port: null, pathname: "/SKILL.md", query: null, fragment: null },
@@ -206,25 +194,16 @@ export default class InitializationTurn {
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
-                op: "read", aside: null,
-                target: { kind: "url", raw: "skill://plurnk/pattern.md", scheme: "skill", username: null, password: null, hostname: "plurnk", port: null, pathname: "/pattern.md", query: null, fragment: null },
-                metadata: null,
-                matcher: { dialect: "xpath", raw: "//heading[text='Pattern Dialects']/following-sibling::*[1]" }, body: null, lineMarker: null, position: UNKNOWN_POSITION,
-            },
-            {
                 op: "find", aside: null,
                 target: { kind: "url", raw: "persona://*/PERSONA.md", scheme: "persona", username: null, password: null, hostname: "*", port: null, pathname: "/PERSONA.md", query: null, fragment: null },
                 metadata: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                runtime: "plurnk",
-                aside: null,
+                op: "find", aside: null,
+                target: { kind: "url", raw: "mcp:///*.md", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/*.md", query: null, fragment: null },
                 metadata: null,
-                target: { kind: "local", raw: "mcp" },
-                lineMarker: null,
-                body: null,
-                position: UNKNOWN_POSITION,
+                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
                 op: "read", aside: null,
@@ -261,12 +240,9 @@ export default class InitializationTurn {
             },
         ];
         return surveys.filter((statement) => {
-            if (isExecution(statement)) {
-                return canRunPlurnk();
-            }
+            const scheme = statement.target?.kind === "url" ? statement.target.scheme : "file";
             if (statement.op === "read") {
                 if (!canAutoRead()) return false;
-                const scheme = statement.target?.kind === "url" ? statement.target.scheme : "file";
                 if (scheme === "mcp") {
                     if (statement.target?.kind === "url" && statement.target.pathname === "/plurnk/edit.json"
                         && !capabilities.allowsCoreOperationAcross("edit", workspaceId, initializationPolicies)) {
@@ -276,7 +252,10 @@ export default class InitializationTurn {
                 }
                 return schemes.get(scheme, workspaceId) !== undefined;
             }
-            return schemes.get(statement.target?.kind === "url" ? statement.target.scheme : "file", workspaceId) !== undefined;
+            if (scheme === "mcp") {
+                return mcpEntries > 0 && schemes.get("mcp", workspaceId) !== undefined;
+            }
+            return schemes.get(scheme, workspaceId) !== undefined;
         });
     }
 }

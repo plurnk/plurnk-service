@@ -100,7 +100,12 @@ const propertySignature = (raw: JsonSchema, depth = 0, root?: JsonSchema): strin
         return "array";
     }
     const nestedProps = isRecord(prop.properties) ? prop.properties : undefined;
-    if (depth === 0 && nestedProps !== undefined && Object.keys(nestedProps).length > 0) {
+    if (
+        depth === 0
+        && (declared.length === 0 || (declared.length === 1 && declared[0] === "object"))
+        && nestedProps !== undefined
+        && Object.keys(nestedProps).length > 0
+    ) {
         const nestedReq = ToolInputSchema.requiredFields(prop).filter((key) => Object.hasOwn(nestedProps, key));
         const nestedReqSet = new Set(nestedReq);
         const optionalKeys = Object.keys(nestedProps).filter((key) => !nestedReqSet.has(key));

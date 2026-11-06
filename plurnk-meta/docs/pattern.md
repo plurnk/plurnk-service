@@ -2,7 +2,7 @@
 
 ## Summary
 
-Select source text consistently with literal, glob, regex, full-text, structural, and graph patterns.
+Select text or AST nodes with literal, glob (*, **, ?(p), @(p), !(p)), regex (/re/im), full-text (~query, ~"phrase"), XPath (//fn[name='x']), JSONPath ($.a.b), and symbol (&Foo, &?Foo, &>Foo, &<Foo) patterns.
 
 A path chooses resources; a pattern selects within the addressed channel.
 The selection has the same meaning across operations. `plurnk.find` reports matches;

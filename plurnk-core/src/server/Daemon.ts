@@ -934,9 +934,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // {§functionality-model-projection} {§question-tool} — the model-facing `plurnk`
         // runtime exposes workspace Functionality families and `question` under `mcp:///plurnk.md`.
         await this.#functionality.ready();
-        this.#engine.registerRuntimes(FunctionalityManager.runtimeRegistrations(this.#functionality, {
-            executors: () => this.#engine.executors,
-        }));
+        this.#engine.registerRuntimes(FunctionalityManager.runtimeRegistrations(this.#functionality));
         // {§credential-authority} — the posture is never an inference: a listening daemon that
         // authenticates needs a module that issues, and it writes a minted secret where same-user
         // clients read it before any mount is admitted; a configured or absent secret leaves no file.

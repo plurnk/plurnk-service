@@ -18,7 +18,6 @@ import type { FunctionalityDiscovery } from "@plurnk/plurnk-modules";
 import { OutputScheme, type SchemeManifest } from "@plurnk/plurnk-schemes";
 import { Problems, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
 import ErrorDetail from "../core/ErrorDetail.ts";
-import type ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import type { RuntimeRegistryRegistration } from "../core/ExecutorRegistry.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import QuestionTool, { questionRegisteredTool } from "../schemes/QuestionTool.ts";
@@ -50,7 +49,6 @@ export type FunctionalityManagerOptions =
         readonly coordinator: Functionality;
         readonly workspaceId?: number;
         readonly sessionId?: number;
-        readonly executors?: () => ExecutorRegistry | undefined;
         readonly includeQuestion?: boolean | ((workspaceId?: number) => boolean);
         readonly entries: readonly FunctionalityFamilyEntry[] | ((workspaceId?: number) => readonly FunctionalityFamilyEntry[]);
     }
@@ -58,7 +56,6 @@ export type FunctionalityManagerOptions =
         readonly coordinator: Functionality;
         readonly workspaceId?: number;
         readonly sessionId?: number;
-        readonly executors?: () => ExecutorRegistry | undefined;
         readonly includeQuestion?: boolean | ((workspaceId?: number) => boolean);
         readonly entry: FunctionalityFamilyEntry | ((workspaceId?: number) => FunctionalityFamilyEntry);
     }
@@ -66,7 +63,6 @@ export type FunctionalityManagerOptions =
         readonly coordinator: Functionality;
         readonly workspaceId?: number;
         readonly sessionId?: number;
-        readonly executors?: () => ExecutorRegistry | undefined;
         readonly includeQuestion?: boolean | ((workspaceId?: number) => boolean);
     } & FunctionalityFamilyEntry);
 
@@ -95,7 +91,6 @@ export default class FunctionalityManager extends BaseExecutor {
     readonly #sessionId: number | undefined;
     readonly #entriesSource: readonly FunctionalityFamilyEntry[] | ((workspaceId?: number) => readonly FunctionalityFamilyEntry[]);
     readonly #includeQuestionSource: boolean | ((workspaceId?: number) => boolean);
-    readonly #executors: (() => ExecutorRegistry | undefined) | undefined;
     readonly #question: QuestionTool;
 
     constructor(args: FunctionalityManagerOptions) {
@@ -103,7 +98,6 @@ export default class FunctionalityManager extends BaseExecutor {
         this.#coordinator = args.coordinator;
         this.#workspaceId = args.workspaceId ?? 1;
         this.#sessionId = args.sessionId;
-        this.#executors = args.executors;
         this.#question = new QuestionTool({ runtime: plurnkRuntimeDecl.name, glyph: plurnkRuntimeDecl.glyph });
         if ("entries" in args) {
             this.#entriesSource = args.entries;
@@ -122,14 +116,13 @@ export default class FunctionalityManager extends BaseExecutor {
 
     static runtimeRegistrations(
         coordinator: Functionality,
-        options: { readonly includeQuestion?: boolean; readonly executors?: () => ExecutorRegistry | undefined } = {},
+        options: { readonly includeQuestion?: boolean } = {},
     ): RuntimeRegistryRegistration[] {
         return [{
             tag: plurnkRuntimeDecl.name,
             entry: {
                 executor: new FunctionalityManager({
                     coordinator,
-                    ...(options.executors === undefined ? {} : { executors: options.executors }),
                     entries: (workspaceId) => coordinator.familyEntries(workspaceId),
                     includeQuestion: options.includeQuestion ?? true,
                 }),
@@ -159,7 +152,6 @@ export default class FunctionalityManager extends BaseExecutor {
             sessionId,
             entries: this.#entriesSource,
             includeQuestion: this.#includeQuestionSource,
-            ...(this.#executors === undefined ? {} : { executors: this.#executors }),
         });
     }
 
@@ -572,75 +564,24 @@ export default class FunctionalityManager extends BaseExecutor {
             refusal = cause instanceof OperationFailureError ? cause.result : { status: problem.status, problem };
             result = { status: refusal.status, body: refusal };
         }
-        const inProcessServers = entry.family === "mcp"
-            ? (this.#executors?.()?.inProcessToolServers(this.#workspaceId) ?? [])
-            : [];
-        const partialMcpList = verb === "list"
-            && entry.family === "mcp"
-            && refusal !== null
-            && refusal.status >= 500
-            && inProcessServers.length > 0;
         args.setState(CHANNEL, "active");
-        const formatted = verb === "list" && (refusal === null || partialMcpList)
-            ? FunctionalityManager.#formatListBody(
-                entry.family,
-                partialMcpList ? { family: entry.family, definitions: [], problem: refusal?.problem } : result.body,
-                inProcessServers,
-            )
+        const formatted = verb === "list" && refusal === null
+            ? FunctionalityManager.#formatListBody(result.body)
             : JSON.stringify(result.body, null, 2);
         args.write(CHANNEL, formatted, "application/json");
         // {§functionality-model-projection} Resource readiness is the body; this invocation has settled.
-        args.setState(CHANNEL, !partialMcpList && result.status >= 400 ? "errored" : "closed");
-        return partialMcpList ? { status: 200 } : (refusal ?? { status: result.status });
+        args.setState(CHANNEL, result.status >= 400 ? "errored" : "closed");
+        return refusal ?? { status: result.status };
     }
 
-    static #formatListBody(
-        family: string,
-        body: unknown,
-        inProcessServers: ReadonlyArray<{
-            readonly alias: string;
-            readonly state: "active" | "unavailable";
-            readonly description?: string;
-            readonly docs: string;
-        }> = [],
-    ): string {
+    static #formatListBody(body: unknown): string {
         if (!isRecord(body) || !Array.isArray(body.definitions)) {
             return JSON.stringify(body, null, 2);
         }
-        const definitions = family === "mcp"
-            ? (() => {
-                const external = body.definitions.map((item): Record<string, unknown> => {
-                    if (!isRecord(item)) return { value: item };
-                    const detail = isRecord(item.detail) ? item.detail : null;
-                    return {
-                        alias: item.alias,
-                        ...(item.origin === undefined ? {} : { origin: item.origin }),
-                        state: item.state,
-                        ...(detail !== null && typeof detail.description === "string" ? { description: detail.description } : {}),
-                        ...(detail !== null ? { docs: typeof detail.docs === "string" ? detail.docs : `mcp:///${String(item.alias)}.md` } : {}),
-                        ...(detail !== null && typeof detail.resources === "number" && detail.resources > 0 ? { resources: detail.resources } : {}),
-                        ...(detail !== null && typeof detail.resourceTemplates === "number" && detail.resourceTemplates > 0 ? { resourceTemplates: detail.resourceTemplates } : {}),
-                        ...(detail !== null && typeof detail.prompts === "number" && detail.prompts > 0 ? { prompts: detail.prompts } : {}),
-                        ...(detail !== null && Array.isArray(detail.skills) && detail.skills.length > 0 ? { skills: detail.skills } : {}),
-                        ...(item.provenance === undefined ? {} : { provenance: item.provenance }),
-                        ...(item.authorization === undefined ? {} : { authorization: item.authorization }),
-                        ...(item.problem === undefined ? {} : { problem: item.problem }),
-                    };
-                });
-                const seen = new Set(external.map((item) => typeof item.alias === "string" ? item.alias : ""));
-                const merged: Array<Record<string, unknown>> = [
-                    ...external,
-                    ...inProcessServers.filter(({ alias }) => !seen.has(alias)),
-                ];
-                return merged.toSorted((left, right) =>
-                    (typeof left.alias === "string" ? left.alias : "").localeCompare(typeof right.alias === "string" ? right.alias : ""));
-            })()
-            : body.definitions;
-        if (definitions.length === 0) {
-            return JSON.stringify({ ...body, definitions: [] });
+        if (body.definitions.length === 0) {
+            return JSON.stringify(body);
         }
-        const lines = definitions.map((def) => `  ${JSON.stringify(def)}`);
-        const problemLine = body.problem === undefined ? "" : `\n  "problem": ${JSON.stringify(body.problem)},`;
-        return `{\n  "family": ${JSON.stringify(body.family)},${problemLine}\n  "definitions": [\n${lines.join(",\n")}\n  ]\n}`;
+        const lines = body.definitions.map((def) => `  ${JSON.stringify(def)}`);
+        return `{\n  "family": ${JSON.stringify(body.family)},\n  "definitions": [\n${lines.join(",\n")}\n  ]\n}`;
     }
 }

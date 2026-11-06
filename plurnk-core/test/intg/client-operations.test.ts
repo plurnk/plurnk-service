@@ -6,6 +6,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbNotifyCaps from "../../src/core/caps/DbNotifyCaps.ts";
 import Engine from "../../src/core/Engine.ts";
+import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import CapabilityResolver from "../../src/core/CapabilityResolver.ts";
 import FunctionalityManager, { plurnkRuntimeDecl } from "../../src/server/FunctionalityManager.ts";
@@ -249,7 +250,7 @@ test("{§connection-lifecycle} a client operation's log:/// addresses read the s
         assert.equal(found.status, 200, JSON.stringify({ status: found.status, problem: problemType(found) }));
         const paths = (found.results as Array<Array<{ path: string }>>).flat().map(({ path }) => path);
         const own = new Set((await daemon.readLog({ workspaceId, sessionId }))
-            .map(({ loop_seq, turn_seq, sequence, op }) => `log:///${loop_seq}/${turn_seq}/${sequence}/${op}`));
+            .map((row) => `log:///${row.loop_seq}/${row.turn_seq}/${row.sequence}/${LogEntryProjection.leaf(row)}`));
         assert.ok(paths.includes(`${coordinate}/edit`), `the model's EDIT is found; first found: ${JSON.stringify(paths.slice(0, 3))}`);
         assert.deepEqual(paths.filter((path) => !own.has(path)), [], "every row found is the model's");
     });
@@ -863,11 +864,11 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         assert.ok(streamEvents.every((event) => /^(?:fixture|plurnk):\/\/\/[a-f0-9]{8}$/u.test(event.target)));
         assert.ok(streamEvents.some((event) => /^fixture:\/\/\/[a-f0-9]{8}$/u.test(event.target)));
         const firstPacket = packet(provider.requests, 0);
-        assert.match(firstPacket, /"alias":\s*"plurnk"/,
+        assert.match(firstPacket, /mcp:\/\/\/plurnk\.md/,
             "the initial survey lists the MCP manager alongside active servers");
-        assert.match(firstPacket, /Echo tools for transport testing\./);
+        assert.match(firstPacket, /await fixture\.echo\(\{\\"message\\": \\"\\"\}\); \/\/ Echo tools for transport testing\./);
         assert.doesNotMatch(firstPacket, /Pass the message field unchanged/, "full server instructions are not pushed into turn0");
-        assert.match(firstPacket, /"docs":\s*"mcp:\/\/\/fixture\.md"/);
+        assert.match(firstPacket, /mcp:\/\/\/fixture\.md/);
         assert.doesNotMatch(firstPacket, /mcp:\/\/\/fixture\/echo\.json/, "turn 0 surveys server summaries only, not tool schemas");
         assert.doesNotMatch(firstPacket, /fixture\.json|inputSchema|readOnlyHint/,
             "the catalog and its full definitions are not injected into turn0");
