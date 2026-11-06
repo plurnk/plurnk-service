@@ -24,13 +24,7 @@ const readFilesItems = (): number | null => {
     return normalizeFilesItems(Number.parseInt(raw, 10));
 };
 
-// {§session-initialization-entry} — the two TODOs that open and close the initialization surveys:
-// the session's initial steps, then the remaining step after surveying.
-const INITIALIZATION_TODO: TodoStatement = {
-    op: "todo", aside: null, metadata: null, target: null, lineMarker: null,
-    body: ["Survey the environment.", "Resolve all Open Work."].join("\n"),
-    position: UNKNOWN_POSITION,
-};
+// {§session-initialization-entry} — the closing TODO after the initialization surveys.
 const INITIALIZATION_CLOSING_TODO: TodoStatement = {
     op: "todo", aside: null, metadata: null, target: null, lineMarker: null,
     body: "Resolve all Open Work.", position: UNKNOWN_POSITION,
@@ -117,10 +111,10 @@ export default class InitializationTurn {
             return;
         }
         // {§session-initialization-entry} — the example turn shows the todo practice the card teaches:
-        // when the surveys run, one todo opens them and one closes them.
+        // when the surveys run, one todo closes them.
         const programStatements: Array<TodoStatement | FindStatement | ReadStatement | ExecStatement> =
             admittedInitializationStatements.some((statement) => statement.op === "find" || statement.op === "read" || isExecution(statement))
-                ? [INITIALIZATION_TODO, ...admittedInitializationStatements, INITIALIZATION_CLOSING_TODO]
+                ? [...admittedInitializationStatements, INITIALIZATION_CLOSING_TODO]
                 : admittedInitializationStatements;
         const program = TurnOps.renderInternal(programStatements);
         const admitted = PlurnkParser.parseStatements(program, {

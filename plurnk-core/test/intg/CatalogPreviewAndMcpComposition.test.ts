@@ -232,9 +232,9 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                     "`_plurnk` initialization announces its ops:// emission ({§turn-source-resources})");
                 const surveyRows = initializationRows.filter((row) => !LogEntryProjection.isEmission(row));
                 const ops = surveyRows.map(({ op }) => op);
-                assert.deepEqual([ops[0], ops.at(-1)], ["todo", "todo"], "initialization opens and closes with its TODOs");
-                assert.ok(ops.length > 2 && ops.slice(1, -1).every((op) => op === "find" || op === "plurnk" || op === "read"),
-                    "between them only the environment surveys: no READ of its own program, no reasoning demonstration");
+                assert.equal(ops.at(-1), "todo", "initialization closes with a single TODO");
+                assert.ok(ops.length > 1 && ops.slice(0, -1).every((op) => op === "find" || op === "plurnk" || op === "read"),
+                    "before the closing TODO only the environment surveys: no opening TODO, no READ of its own program, no reasoning demonstration");
                 for (const row of surveyRows.filter(({ op }) => op === "find")) {
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
                     const items = result.results ?? (result.content === undefined ? [] : JSON.parse(result.content) as unknown[]);
@@ -356,8 +356,8 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     "turn 0 announces its ops:// emission ({§turn-source-resources})");
                 assert.deepEqual(
                     initializationRows.filter((row) => row.op !== null && !LogEntryProjection.isEmission(row)).map(({ op }) => op),
-                    ["todo", "find", "find", "find", "read", "read", "find", "todo"],
-                    "initialization contains its opening TODO, the surveys, its closing TODO, and nothing else",
+                    ["find", "find", "find", "read", "read", "find", "todo"],
+                    "initialization contains the surveys, its closing TODO, and nothing else",
                 );
             } finally { ws.close(); }
         });

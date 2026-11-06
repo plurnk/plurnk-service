@@ -223,7 +223,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "work",
         target: "work",
-        summary: "Delegate a task to a session://<name> child session with a fresh log.",
+        summary: "Delegate a task to a child session (target: \"session://<name>\") with a fresh log.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
@@ -243,7 +243,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "fork",
         target: "fork",
-        summary: "Delegate a task to a session://<name> child session initialized with a copy of this session's log.",
+        summary: "Delegate a task to a child session (target: \"session://<name>\") initialized with a copy of this session's log.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
@@ -323,7 +323,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "done",
         target: "done",
-        summary: "Deliver the final response and resolve an Open Message.",
+        summary: "Deliver the final response to resolve an Open Message after other Open Work and tools are resolved.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
