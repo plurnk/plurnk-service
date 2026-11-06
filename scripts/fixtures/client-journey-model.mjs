@@ -89,11 +89,13 @@ const pairedReceipts = (messages) => messages.flatMap((message, index) => {
     const receipts = parseLogRecords(textOf(messages[index + 1]).split(/\n## /u)[0].trim());
     return [...textOf(message).matchAll(/^await plurnk\.([A-Za-z]\w*)\((.*)\);/gmu)].map(([, rawOp, request = ""]) => {
         const op = rawOp;
-        const at = receipts.findIndex((row) => row.logPath.endsWith(`/${op}`));
+        const at = receipts.findIndex((row) =>
+            row.logPath.endsWith(`/${op}`) || (row.logPath.endsWith("/plurnk") && row.path === op));
         assert.notEqual(at, -1, `the replayed ${op} is followed by its receipt`);
         let parsedArgs = null;
         try { parsedArgs = JSON.parse(request); } catch { /* ignore */ }
-        return { ...receipts.splice(at, 1)[0], op, request, path: parsedArgs?.path ?? parsedArgs?.target };
+        const matched = receipts.splice(at, 1)[0];
+        return { ...matched, op, request, path: parsedArgs?.path ?? parsedArgs?.target ?? matched.path };
     });
 });
 
