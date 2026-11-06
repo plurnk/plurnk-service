@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-parser",
-    "version": "4.3.0",
+    "version": "4.4.0",
     "description": "The PLURNK Code Mode parser: unwrapped TypeScript/JavaScript statement admission, canonical serialization, and path decomposition implementing @plurnk/plurnk-contracts",
     "keywords": [
         "plurnk",
@@ -57,12 +57,12 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-contracts": "^7.2.0",
+        "@plurnk/plurnk-contracts": "^7.3.0",
         "json-p3": "^3.0.2",
         "xpath": "^0.0.36"
     },
     "devDependencies": {
-        "@plurnk/plurnk-meta": "^2.1.0",
+        "@plurnk/plurnk-meta": "^2.2.0",
         "esbuild": "^0.28.1"
     }
 }

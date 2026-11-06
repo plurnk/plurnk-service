@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-common",
-    "version": "3.0.2",
+    "version": "3.0.3",
     "description": "Subprocess executor for plurnk-service's exec scheme — exposing the shell, Node.js, and Python 3.",
     "keywords": [
         "plurnk",

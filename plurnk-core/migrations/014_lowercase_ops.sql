@@ -1,4 +1,5 @@
 -- MIGRATE: 14 lowercase ops
+-- Released in 5.3.0 and frozen ({§db-migrations}).
 -- {§db-migrations} Refuse databases from before the 5.0.0 support floor, naming both versions read.
 CREATE TEMP TABLE IF NOT EXISTS _support_floor_probe (id INTEGER);
 CREATE TEMP TRIGGER _support_floor_guard BEFORE INSERT ON _support_floor_probe

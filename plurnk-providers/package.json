@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-providers",
-    "version": "6.0.3",
+    "version": "6.1.0",
     "description": "PLURNK's stable model-provider contract and provider SDK adapter.",
     "keywords": [
         "plurnk",
@@ -72,8 +72,8 @@
     "dependencies": {
         "@earendil-works/pi-ai": "1.5.0",
         "@plurnk/plurnk-aliases": "^2.0.0",
-        "@plurnk/plurnk-contracts": "^7.2.0",
-        "@plurnk/plurnk-meta": "^2.1.0",
+        "@plurnk/plurnk-contracts": "^7.3.0",
+        "@plurnk/plurnk-meta": "^2.2.0",
         "@plurnk/plurnk-models": "^4.0.0"
     },
     "devDependencies": {

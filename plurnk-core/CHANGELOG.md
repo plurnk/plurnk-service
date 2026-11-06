@@ -1,5 +1,45 @@
 # @plurnk/plurnk-service
 
+## 5.3.0
+
+### Minor Changes
+
+- Replace the fenced heading grammar with exclusive unwrapped Code Mode
+  (`await plurnk.<op>(args);` and `await <server>.<tool>(args);`), unify the 15
+  core VM operations, REPL executors (`sh`, `js`, `python3`), 6 Functionality
+  families (`env`, `mcp`, `members`, `personas`, `schedule`, `skills`), and
+  `question` under the `plurnk` MCP runtime (`mcp:///plurnk.md`,
+  `mcp:///plurnk/*.json`), lowercase operation tokens across contracts, parser,
+  engine, SQLite (`014_lowercase_ops.sql`), ACPv2, and digest, consolidate Plurnk
+  Harness reference chapters under `skill://plurnk/*.md` and `mcp:///*.md` Turn-0
+  orientation with a single closing `todo` (`~3,097` wire token floor), and
+  delegate OpenAI-compatible `compat` and stream normalization to
+  `@mariozechner/pi-ai` with an in-flight runaway stream output allowance guard
+  (#1403 #1404 #1405 #1406 #1407 #1408 #1409 #1410 #1411 #1413 #1414 #1415 #1416 #1417 #1418).
+
+### Patch Changes
+
+- Updated dependencies
+  - @plurnk/plurnk-contracts@7.3.0
+  - @plurnk/plurnk-parser@4.4.0
+  - @plurnk/plurnk-acp@1.4.0
+  - @plurnk/plurnk-execs@4.1.0
+  - @plurnk/plurnk-meta@2.2.0
+  - @plurnk/plurnk-providers@6.1.0
+  - @plurnk/plurnk-digest@3.2.6
+  - @plurnk/plurnk-execs-common@3.0.3
+  - @plurnk/plurnk-mcp@3.3.5
+  - @plurnk/plurnk-mimetypes-application-pdf@2.0.4
+  - @plurnk/plurnk-mimetypes-audio@2.0.7
+  - @plurnk/plurnk-mimetypes-text-ini@2.0.4
+  - @plurnk/plurnk-mimetypes-text-markdown@2.0.6
+  - @plurnk/plurnk-models@4.0.2
+  - @plurnk/plurnk-otel@1.0.2
+  - @plurnk/plurnk-schedule@3.0.7
+  - @plurnk/plurnk-schemes@3.3.3
+  - @plurnk/plurnk-schemes-http@2.0.7
+  - @plurnk/plurnk-skills@3.0.7
+
 ## 5.2.2
 
 ### Patch Changes

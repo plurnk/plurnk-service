@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-schedule",
-    "version": "3.0.6",
+    "version": "3.0.7",
     "description": "Scheduled messages for Plurnk sessions, on RFC 5545 recurrence rules",
     "type": "module",
     "license": "MIT",
@@ -48,11 +48,11 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "@plurnk/plurnk-meta": "^2.0.0",
+        "@plurnk/plurnk-meta": "^2.2.0",
         "rrule-temporal": "2.2.8"
     },
     "devDependencies": {
-        "@plurnk/plurnk-providers": "^6.0.0"
+        "@plurnk/plurnk-providers": "^6.1.0"
     },
     "peerDependencies": {
         "@plurnk/plurnk-contracts": "^7.0.0",
