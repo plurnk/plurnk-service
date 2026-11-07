@@ -29,9 +29,9 @@ export default {
         },
         {
             name: "parser-only-where-declared",
-            comment: "the language is parsed by the service's execution path, plurnk-acp and plurnk-execs; nowhere else",
+            comment: "the language is parsed by the service's execution path, plurnk-acp, plurnk-mcp and plurnk-execs; nowhere else",
             severity: "error",
-            from: { pathNot: "^plurnk-(core|acp|execs|parser)/" },
+            from: { pathNot: "^plurnk-(core|acp|mcp|execs|parser)/" },
             to: { path: "^plurnk-parser/" },
         },
         {

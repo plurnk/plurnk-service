@@ -171,7 +171,7 @@ test("{§module-contract} a daemon without a listener leaves out every module th
     assert.equal(await readFile(trace, "utf8"), "", "a module left out never sets up");
     assert.deepEqual(
         daemon.configurationNotices().filter(({ kind }) => kind === "module_left_out").map(({ owner, level }) => [owner, level]).toSorted(([a], [b]) => String(a).localeCompare(String(b))),
-        [["module:@acme/witness-package", "info"], [`module:${CLIENT_INTERFACE}`, "info"]],
+        [["module:@acme/witness-package", "info"], [`module:${CLIENT_INTERFACE}`, "info"], ["module:@plurnk/plurnk-mcp", "info"]],
     );
     assert.ok(daemon.listModuleActions().some(({ name }) => name === "workspace.mcp.list"), "a module without mounts still composes");
 });
@@ -1157,6 +1157,59 @@ test("{§acp-daemon-client} {§module-contract} a bare daemon with a listener di
     assert.ok(rpc?.result?.actions !== undefined, "the discovered client interface answers discover");
 });
 
+test("{§mcp-http-server} {§module-contract} a bare daemon with a listener serves the unified plurnk MCP surface at /mcp[/<workspace>[/<session>]]", async (t) => {
+    const db = await openMigrated();
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider: null, http });
+    t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
+    await daemon.start();
+    const { port } = http.httpAddress();
+
+    const mcpRpc = async (pathname: string, method: string, params: Record<string, unknown> = {}) => {
+        const res = await fetch(`http://127.0.0.1:${port}${pathname}`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                accept: "application/json, text/event-stream",
+            },
+            body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+        });
+        assert.equal(res.status, 200);
+        const raw = await res.text();
+        const dataLine = raw
+            .split("\n")
+            .find((line) => line.startsWith("data: "));
+        return JSON.parse(dataLine !== undefined ? dataLine.slice(6) : raw) as {
+            result?: Record<string, unknown>;
+            error?: Record<string, unknown>;
+        };
+    };
+
+    const toolsList = await mcpRpc("/mcp", "tools/list");
+    const toolNames = ((toolsList.result?.tools ?? []) as Array<{ name: string }>).map((tool) => tool.name);
+    for (const expected of ["find", "read", "edit", "note", "todo", "sh", "env", "mcp"]) {
+        assert.ok(toolNames.includes(expected), `expected tool '${expected}' in /mcp tools/list`);
+    }
+
+    const mdResource = await mcpRpc("/mcp", "resources/read", { uri: "mcp:///plurnk.md" });
+    const mdText = ((mdResource.result?.contents as Array<{ text: string }> | undefined)?.[0]?.text) ?? "";
+    assert.match(mdText, /## Tools/u);
+
+    const scopedNote = await mcpRpc("/mcp/ext-ws/ext-agent", "tools/call", {
+        name: "note",
+        arguments: { text: "external mcp note" },
+    });
+    assert.equal(scopedNote.result?.isError, undefined);
+    const workspaces = await daemon.listWorkspaces({ archived: false });
+    const extWs = workspaces.find((w) => w.name === "ext-ws");
+    assert.ok(extWs !== undefined, "named workspace auto-created by /mcp/<workspace>/<session>");
+    const extSession = await daemon.readSession({
+        workspaceId: extWs.id,
+        identity: { name: "ext-agent" },
+    });
+    assert.ok(extSession !== null, "named session auto-created by /mcp/<workspace>/<session>");
+});
+
 test("{§mcp-module} {§module-contract} an invalid registry setting is reported and MCP management keeps working", async (t) => {
     const prior = process.env.PLURNK_MCP_REGISTRY_URL;
     process.env.PLURNK_MCP_REGISTRY_URL = "ftp://example";
@@ -1167,7 +1220,7 @@ test("{§mcp-module} {§module-contract} an invalid registry setting is reported
     await daemon.start();
     assert.ok(daemon.listModuleActions().some(({ name }) => name === "workspace.mcp.list"), "the MCP family is registered");
     assert.deepEqual(
-        daemon.configurationNotices().filter(({ owner }) => owner === "module:@plurnk/plurnk-mcp").map(({ key }) => key),
+        daemon.configurationNotices().filter(({ owner, kind }) => owner === "module:@plurnk/plurnk-mcp" && kind === "configuration_unavailable").map(({ key }) => key),
         ["PLURNK_MCP_REGISTRY_URL"],
         "the contained setting is the module's own configuration notice",
     );

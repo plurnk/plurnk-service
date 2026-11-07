@@ -1,6 +1,6 @@
 # Plurnk MCP host specification
 
-`@plurnk/plurnk-mcp` is an MCP **host/client** that projects trusted remote servers into Plurnk. It does not implement an MCP server or authorization server.
+`@plurnk/plurnk-mcp` is an MCP **host/client** that projects trusted remote servers into Plurnk and exposes the daemon's own `/mcp[/<workspace>[/<session>]]` Streamable HTTP MCP server surface ({§mcp-http-server}).
 
 ## §mcp-authority Protocol authority, core matrix, capabilities, and exclusions
 
@@ -87,7 +87,7 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
 
 ## §mcp-module Module adapter, launch environment, management, registry, and diagnostics
 
-- **Setup-only module (`@plurnk/plurnk-mcp`):** Registers the `mcp` family adapter ({§module-lifecycle}, {§functionality-coordinator}) and workspace actions `workspace.mcp.oauth.begin`, `workspace.mcp.oauth.complete`, `workspace.mcp.complete`, and `workspace.mcp.skills`. Invalid `PLURNK_MCP_REGISTRY_URL` or `PLURNK_MCP_REGISTRY_LIMIT` is contained in `module.contained` ({§module-contract}), withholding `discover` while keeping the family operational.
+- **Daemon modules (`@plurnk/plurnk-mcp`):** Exports `[Module.init(), McpServerModule.create()]` ({§module-contract}). `Module` registers the `mcp` family adapter ({§module-lifecycle}, {§functionality-coordinator}) and workspace actions `workspace.mcp.oauth.begin`, `workspace.mcp.oauth.complete`, `workspace.mcp.complete`, and `workspace.mcp.skills`. Invalid `PLURNK_MCP_REGISTRY_URL` or `PLURNK_MCP_REGISTRY_LIMIT` is contained in `module.contained` ({§module-contract}), withholding `discover` while keeping the family operational. `McpServerModule` mounts `/mcp` on the shared HTTP listener when present ({§mcp-http-server}, {§http-host}).
 - **Stdio launch environment:** Receives (1) operator ambient base excluding `PLURNK_*` and provider credential names ({§exec-stream}), (2) workspace shared `env` values and masks, and (3) definition `env` values with `${NAME}` resolved once against the workspace-composed operator environment ({§functionality-model-projection}, {§capability-admission}).
 - **Registry discovery (`discover`):** Active when `PLURNK_MCP_REGISTRY_URL` is non-empty; queries `<url>/v0.1/servers?search=<query>&version=latest&limit=<limit>`. Converts launchable `npm` (`npx -y`), `pypi` (`uvx`), `nuget` (`dnx`), and `oci` (`docker run -i --rm`) stdio packages and `streamable-http` remotes into self-contained definitions (`aliasOf` takes the last name segment, lowercased, `[a-z][a-z0-9-]*`), omitting entries requiring user template variables or missing required positional arguments. Failures reject with `502 discover-failed` (retryable); invalid definitions reject with `400 alias-required` or `400 definition-invalid`.
 - **Preparation diagnostics (`PreparationDiagnostics`):** `502 server-unavailable` carries `elapsedMs`, `timeoutMs`, bounded `diagnostic` (innermost cause chain first, excluding OAuth error text), and bounded `stderr` tail, each capped at `PLURNK_EXECS_ERROR_DETAIL_LIMIT` (`0` omits text). Redacts known launch-environment values, configured args/headers, referenced env values, and URL userinfo with `__redacted__` across chunk and truncation boundaries before slicing.
@@ -191,3 +191,16 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
 | `server-unavailable` | 502 | `Configured MCP server '<name>' is unavailable.` |
 | `server-redirected` | 502 | `MCP endpoint <url> redirected to <location>; plurnk follows no redirect, so the server's url must be the endpoint itself.` |
 | `discover-failed` / `alias-required` / `definition-invalid` | 502 / 400 | Registry discovery failed (`retryable: true`) / alias missing / definition invalid. |
+
+## §mcp-http-server External Streamable HTTP MCP server surface
+
+- **HTTP mount (`/mcp`):** `McpServerModule` declares `mounts: ["/mcp"]` on the daemon's shared HTTP listener ({§http-host}, {§module-contract}). Headless daemons (`http === null`) omit `McpServerModule` with a `module_left_out` notice while retaining `Module`.
+- **Path routing (`/mcp[/<workspace>[/<session>]]`):**
+  - `/mcp` (or `/mcp/`): binds workspace `default` (falling back to the first unarchived workspace or creating `default`) and session `user` (falling back to the first unarchived model session or creating `user`).
+  - `/mcp/<workspace>`: binds the named workspace (auto-creating when absent) or numeric `workspaceId` (`404` when absent), with default session selection.
+  - `/mcp/<workspace>/<session>`: binds the workspace and the named session (`_plurnk` binds the runtime session; other missing names auto-create a model session) or numeric `sessionId` (`404 session-not-found` when absent).
+  - Routes with more than two segments under `/mcp/` reject with `404 route-not-found`; malformed percent-encoding rejects with `400 request-target-invalid`; requests after `stop()` reject with `503 service-stopping`.
+- **Credential admission (`seam.credentials`):** When `PLURNK_AUTH=1` ({§credential-authority}), requests require `Authorization: Bearer <token>` carrying scope `mcp` or `acp`. Missing or invalid tokens reject with `401 bearer-token-required` or `401 bearer-token-invalid` (`WWW-Authenticate: Bearer ...`); tokens lacking `mcp`/`acp` scope reject with `403 bearer-scope-insufficient`. Revoking a credential family (`seam.credentials.onRevoked`) aborts and closes active HTTP exchanges for that family.
+- **Exposed surface (`McpServer` + `createMcpHandler`):**
+  - **Tools (`tools/list`, `tools/call`):** Reads `mcp:///plurnk.json` for the resolved workspace and session, validates arguments via `Validator.validateJsonSchemaInstance`, compiles each tool invocation as `await plurnk.<tool>(<args>);` through `PlurnkParser.parseStatements`, and dispatches via `seam.dispatchClientAction` as actor `mcp:///owner`. Synchronous verbs return their formatted result directly; execution verbs (`sh`, `js`, `python3`, and `plurnk.<family>`) await stream conclusion (`stream/concluded` unless `detached: true`) and return the settled stream entry content (`isError: true` on status $\ge 400$ or errored channel). Client abort cancels the active execution loop (`mcp_client_cancelled`).
+  - **Resources (`resources/list`, `resources/read`):** Exposes `mcp:///plurnk.md` (`text/markdown`) and `mcp:///plurnk.json` (`application/json`).

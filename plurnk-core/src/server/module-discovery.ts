@@ -41,6 +41,17 @@ const assertDaemonModule = (
     return value;
 };
 
+const assertDaemonModules = (
+    value: unknown,
+    packageName: string,
+    source: "export" | "factory",
+): readonly DaemonModule<HostSetupSeam>[] => {
+    const items = Array.isArray(value) ? value : [value];
+    if (items.length === 0) {
+        throw new TypeError(`module package '${packageName}' must export at least one DaemonModule.`);
+    }
+    return items.map((item) => assertDaemonModule(item, packageName, source));
+};
 // {§module-lifecycle} — a package names its entry as an export subpath, resolved through its own
 // export map as {§executor-discovery} does, so conditions select source or build; a bundle
 // names a file beneath ai.plurnk/.
@@ -113,7 +124,9 @@ export const discoverDaemonModules = async (
                 throw new Error(`module package '${manifest.packageName}' exports no default DaemonModule at '${manifest.module}'.`);
             }
             if (typeof exported !== "function") {
-                modules.push({ module: assertDaemonModule(exported, manifest.packageName, "export"), owner: manifest.packageName });
+                for (const module of assertDaemonModules(exported, manifest.packageName, "export")) {
+                    modules.push({ module, owner: manifest.packageName });
+                }
                 continue;
             }
             if (exported.length !== 0) {
@@ -122,7 +135,9 @@ export const discoverDaemonModules = async (
                 );
             }
             const created: unknown = await Reflect.apply(exported, undefined, []);
-            modules.push({ module: assertDaemonModule(created, manifest.packageName, "factory"), owner: manifest.packageName });
+            for (const module of assertDaemonModules(created, manifest.packageName, "factory")) {
+                modules.push({ module, owner: manifest.packageName });
+            }
         } catch (cause) {
             const owner = `module:${manifest.packageName}`;
             if (errnoCode(cause) === "ERR_MODULE_NOT_FOUND") {

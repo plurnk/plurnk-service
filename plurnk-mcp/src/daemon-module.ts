@@ -1,5 +1,6 @@
-// {§mcp-module} {§module-contract} — this package's daemon module entry ({§module-lifecycle}):
-// a setup-only module that reads its own configuration from the environment.
+// {§mcp-module} {§mcp-http-server} {§module-contract} — this package's daemon module entry ({§module-lifecycle}):
+// the interior MCP family adapter and the exterior `/mcp` Streamable HTTP server module.
+import McpServerModule from "./McpServerModule.ts";
 import Module from "./Module.ts";
 
-export default (): Module => Module.init();
+export default (): readonly [Module, McpServerModule] => [Module.init(), McpServerModule.create()];

@@ -1,8 +1,10 @@
 # @plurnk/plurnk-mcp
 
-The [Model Context Protocol](https://modelcontextprotocol.io/) host module for
+The [Model Context Protocol](https://modelcontextprotocol.io/) host and server module for
 [Plurnk](https://github.com/plurnk/plurnk-service). It projects configured MCP servers
-through Plurnk's executor, resource, proposal, entry, Problem, lifecycle, and ACP contracts.
+through Plurnk's executor, resource, proposal, entry, Problem, lifecycle, and ACP contracts,
+and exposes Plurnk's own `/mcp[/<workspace>[/<session>]]` Streamable HTTP MCP server surface
+on the daemon's HTTP listener ({§mcp-http-server}).
 
 The module's own wire authority is protocol revision `2026-07-28`
 ({§mcp-authority}). Connection setup negotiates-and-degrades: a server that
@@ -226,6 +228,21 @@ remain inside the host. Callback addresses and credentials never replace the
 saved definition. `enable` retries a connection; it does not replace user
 sign-in. Rejected configured credentials are reported as authentication failures
 rather than retryable server downtime.
+
+## External `/mcp` server endpoint
+
+When the daemon listens on HTTP (`:1066` by default), `McpServerModule` mounts Streamable HTTP
+at `/mcp`, `/mcp/<workspace>`, and `/mcp/<workspace>/<session>` ({§mcp-http-server}):
+
+| Route | Target binding |
+|---|---|
+| `/mcp` | Workspace `default` (or first unarchived workspace), session `user` (or first model session) |
+| `/mcp/<workspace>` | Named or numeric workspace (auto-created when named and absent), default session |
+| `/mcp/<workspace>/<session>` | Named or numeric workspace and session (`_plurnk` binds the runtime session) |
+
+External MCP clients receive the unified `plurnk` server tool catalog (`mcp:///plurnk.json`) and
+`mcp:///plurnk.md` / `mcp:///plurnk.json` resources, authenticating with `Authorization: Bearer <token>`
+(`mcp` or `acp` scope) when `PLURNK_AUTH=1`.
 
 ## Verification
 

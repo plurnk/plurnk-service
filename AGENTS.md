@@ -63,9 +63,9 @@ extensions included in the default installation. The terminal client is a separa
   and text coordinates.
 - `plurnk-parser` owns the Code Mode parser (`PlurnkParser` and `parsePath`) that
   implements that language. Its importers are the service's execution path, `plurnk-acp`
-  (`parseStatements`, for client-authored blocks) and `plurnk-execs`
-  (`parseStatements` and `propAccess`, for runtime invocation and teaching examples);
-  no other package parses the language.
+  (`parseStatements`, for client-authored blocks), `plurnk-mcp` (`parseStatements`, for
+  inbound `/mcp` tool calls) and `plurnk-execs` (`parseStatements` and `propAccess`, for
+  runtime invocation and teaching examples); no other package parses the language.
 - `plurnk-auth` owns the OAuth 2.1 authorization server module (`/.well-known/*`,
   `/oauth/*`) for the daemon's credential authority.
 - `plurnk-acp` owns the external ACP v2 client protocol (`/acp`) and translates between
@@ -74,7 +74,8 @@ extensions included in the default installation. The terminal client is a separa
   implements and the base setup seam. Each framework owns the slice for what
   modules contribute to its kind.
 - `plurnk-mcp` owns MCP server configuration, connections, OAuth continuation,
-  tool and resource projection (`mcp://`), and MCP runtime execution.
+  tool and resource projection (`mcp://`), MCP runtime execution, and the
+  external Streamable HTTP `/mcp` server surface.
 - `plurnk-skills` and `plurnk-agent-skills` own the skill contract, `skill://`
   projection, and conventional `SKILL.md` discovery.
 - `plurnk-agent-plugins` owns `plugin.json` discovery and

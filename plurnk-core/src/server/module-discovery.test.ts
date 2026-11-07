@@ -130,6 +130,23 @@ test("{§module-lifecycle}: primitive exports and primitive factory results fail
             discoverDaemonModules({ packageDirs: [factory] }),
             /factory returned a non-object DaemonModule/,
         );
+
+        const empty = await packageOf(root, "@acme/empty-array-factory", {
+            plurnk: { kind: "module", module: "./module" },
+        }, "export default () => [];");
+        await assert.rejects(
+            discoverDaemonModules({ packageDirs: [empty] }),
+            /must export at least one DaemonModule/,
+        );
+
+        const multi = await packageOf(root, "@acme/multi-factory", {
+            plurnk: { kind: "module", module: "./module" },
+        }, "export default () => [{ tag: 'a', setup: () => {} }, { tag: 'b', start: () => {} }];");
+        const { modules } = await discoverDaemonModules({ packageDirs: [multi] });
+        assert.deepEqual(
+            modules.map(({ module, owner }) => [(module as { tag?: string }).tag, owner]),
+            [["a", "@acme/multi-factory"], ["b", "@acme/multi-factory"]],
+        );
     } finally {
         await rm(root, { recursive: true, force: true });
     }
