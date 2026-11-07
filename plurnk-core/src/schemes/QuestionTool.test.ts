@@ -84,9 +84,98 @@ test("{§question-tool}: a cancelled or declined interaction returns the standar
     }
 });
 
+test("{§question-tool}: free-text, single-select options, multi-select options, and multi-question arrays lower to canonical ACPv2 requestedSchema", async () => {
+    const seen: Array<{ message: string; requestedSchema: unknown }> = [];
+    const tool = new QuestionTool({ runtime: "question", glyph: "❓" });
+    for (const payload of [
+        { message: "What is your name?" },
+        { message: "Pick env", options: ["dev", "prod"] },
+        {
+            message: "Pick features",
+            options: [
+                { value: "auth", title: "OAuth 2.1", description: "PKCE flow" },
+                { value: "metrics", title: "OpenTelemetry" },
+            ],
+            multi: true,
+        },
+        {
+            questions: [
+                { header: "env", question: "Target environment?", options: ["dev", "prod"] },
+                { header: "flags", question: "Enable flags?", options: ["a", "b"], is_multi_select: true },
+            ],
+        },
+    ]) {
+        const res = await tool.run(args({
+            body: JSON.stringify(payload),
+            interact: async (request) => {
+                assert.equal(request.mode, "form");
+                seen.push({ message: request.message, requestedSchema: request.requestedSchema });
+                return { action: "accept", content: { answer: "ok" } };
+            },
+        }));
+        assert.equal(res.status, 200);
+    }
+    assert.deepEqual(seen, [
+        {
+            message: "What is your name?",
+            requestedSchema: {
+                type: "object",
+                properties: { answer: { type: "string" } },
+                required: ["answer"],
+            },
+        },
+        {
+            message: "Pick env",
+            requestedSchema: {
+                type: "object",
+                properties: { answer: { type: "string", enum: ["dev", "prod"] } },
+                required: ["answer"],
+            },
+        },
+        {
+            message: "Pick features",
+            requestedSchema: {
+                type: "object",
+                properties: {
+                    answer: {
+                        type: "array",
+                        minItems: 1,
+                        uniqueItems: true,
+                        items: {
+                            type: "string",
+                            anyOf: [
+                                { const: "auth", title: "OAuth 2.1", description: "PKCE flow" },
+                                { const: "metrics", title: "OpenTelemetry" },
+                            ],
+                        },
+                    },
+                },
+                required: ["answer"],
+            },
+        },
+        {
+            message: "Target environment?\nEnable flags?",
+            requestedSchema: {
+                type: "object",
+                properties: {
+                    env: { type: "string", title: "Target environment?", enum: ["dev", "prod"] },
+                    flags: {
+                        type: "array",
+                        title: "Enable flags?",
+                        minItems: 1,
+                        uniqueItems: true,
+                        items: { type: "string", enum: ["a", "b"] },
+                    },
+                },
+                required: ["env", "flags"],
+            },
+        },
+    ]);
+});
+
 test("{§question-tool}: a malformed body fails with the standard shape steer", async () => {
     const tool = new QuestionTool({ runtime: "question", glyph: "❓" });
-    for (const body of ["not json", "{}", JSON.stringify({ message: "", requestedSchema: {} }), JSON.stringify({ message: "hi" })]) {
+    for (const body of ["not json", "{}", JSON.stringify({ message: "", requestedSchema: {} }), JSON.stringify({ message: "hi", options: [] }), JSON.stringify({ message: "hi", schema: {} })]) {
         const result = await tool.run(args({ body }));
         assert.equal(result.status, 400, `body ${JSON.stringify(body)} refuses`);
         assert.match(result.problem?.type ?? "", /invalid-body/);

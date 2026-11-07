@@ -41,10 +41,9 @@ when that work settles, when a message arrives, or when the wait duration expire
 without live work it does not park. `await plurnk.wait({ seconds: 600 });` waits at most ten minutes;
 `await plurnk.wait({});` uses the configured default. Expiry resumes inspection without
 cancelling work. Zero continues immediately. Invalid durations are ignored with
-a warning. Several `wait` calls are one park with the earliest bound. An optional
-`target` is a label, not a selected wake source.
+a warning. Several `wait` calls are one park with the earliest bound.
 
-await plurnk.wait({});
+await plurnk.wait({}); // waiting for child session
 
 A wake ends the suspension, not its held work; a further `wait` waits again.
 Waking retains the loop's messages, turn allowance, and remaining execution

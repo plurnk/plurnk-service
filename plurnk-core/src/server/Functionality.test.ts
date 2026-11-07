@@ -611,7 +611,9 @@ test("{§functionality-model-projection} each family tool exposes its declarativ
         type: "object",
         additionalProperties: false,
         properties: {
-            ...addSchema.properties,
+            name: { type: "string" },
+            kind: addSchema.properties.kind,
+            options: addSchema.properties.options,
             enabled: {
                 type: "boolean",
                 description: "Enable (true) or disable (false) the definition.",
@@ -627,7 +629,7 @@ test("{§functionality-model-projection} each family tool exposes its declarativ
         },
     });
     assert.equal(tool.invocation.signature, undefined);
-    assert.match(tool.details ?? "", /\nawait plurnk\.fx\(\{"alias":"a","kind":"ok"\}\);/u, "one exact example rides the family tool teaching");
+    assert.match(tool.details ?? "", /\nawait plurnk\.fx\(\{"name":"a","kind":"ok"\}\);/u, "one exact example rides the family tool teaching");
     assert.doesNotMatch(tool.details ?? "", /\| Field|options\.retries/u);
     assert.match(tool.details ?? "", /fixture locator/u);
 });

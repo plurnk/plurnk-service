@@ -1,48 +1,38 @@
 # env
 
 Commands receive admitted ambient values, then workspace defaults, then your
-session's overrides. `list` shows the effective values and their origins.
-
-## Workspace defaults
-
-`"scope": "workspace"` on any verb manages the shared layer. These values
-reach every session's commands and newly started MCP servers, without depending
-on which session starts them:
-
-await plurnk.env({ scope: "workspace", alias: "NODE_ENV", value: "production" });
-
-Omitting `scope` selects your session. Its overrides do not configure shared MCPs.
-Workspace changes affect subsequent launches; running processes keep their
-existing environment.
+session's overrides. Calling `await plurnk.env({});` lists the effective values and their origins.
 
 ## Your entries
 
-`add` declares and enables one variable for every command you run from now on. The name is the
-alias, `value` the exact string, used verbatim: no interpolation, no
-escapes. It persists until you `remove` it. This is a registry, not a prefix —
-`CARGO_TARGET_DIR=/tmp/x cargo build` sets a value for one command; `add` sets
-it for all of them.
+Adding an entry (`{ name, value }`) declares and enables one variable for every command you run from now on. `name` is the
+variable name, `value` the exact string, used verbatim: no interpolation, no
+escapes. It persists until you remove it (`{ name, remove: true }`). This is a registry, not a prefix —
+`CARGO_TARGET_DIR=/tmp/x cargo build` sets a value for one command; `plurnk.env` sets
+it for all of them:
 
-`replace` takes the same `{alias, value}` to change a value, retaining its
-enabledness. A new name is created enabled. Both verbs accept workspace scope.
+await plurnk.env({ name: "NODE_ENV", value: "production" });
 
-`disable` withdraws a name from your commands while keeping the entry listed;
-`enable` restores it. For an ambient name that is how `CI=1` goes away for you
-alone, without the operator changing anything. `remove` forgets your own entry;
-a workspace or ambient name of the same alias reappears with its inherited value
-and enabledness. Use `disable` when you want the name absent from commands.
+Passing `{ name, value }` for an existing name updates its value while retaining its
+enabledness. A new name is created enabled.
+
+Passing `{ name, enabled: false }` withdraws a name from your commands while keeping the entry listed;
+`{ name, enabled: true }` restores it. For an ambient name that is how `CI=1` goes away for you
+alone, without the operator changing anything. Passing `{ name, remove: true }` forgets your own entry;
+a workspace or ambient name of the same variable reappears with its inherited value
+and enabledness. Use `enabled: false` when you want the name absent from commands.
 
 Your session overrides are yours: another session's commands do not see them. A session
-you spawn starts with a copy of them — `list` shows those as inherited from
+you spawn starts with a copy of them — `plurnk.env({})` shows those as inherited from
 you — and its changes never reach yours. Workspace defaults remain shared, not copied.
 
 ## Command execution and waiting
 
 Commands run with the session's active environment variables in the project root (or an explicit `cwd`):
 
-await plurnk.sh({ command: "npm run e2e" });
+await plurnk.sh({ code: "npm run e2e" });
 
-await plurnk.sh({ command: "npm run dev" });
+await plurnk.sh({ code: "npm run dev" });
 
 `plurnk.wait`'s duration (`seconds`) bounds the wait for inspection while a command or child session runs.
 

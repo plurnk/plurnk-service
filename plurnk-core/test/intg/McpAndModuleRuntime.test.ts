@@ -978,12 +978,12 @@ test("{§capability-ctx} {§execution-output-identity}: READ, FIND, COPY, execut
         const result = await engine.runTurn({
             workspaceId, sessionId: alice, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: [
-                "await plurnk.bare({\"target\":\"myserver:///resources/item\",\"prompt\":\"Analyze this.\"});",
+                "await plurnk.bare({\"prompt\":\"Analyze this.\"});",
                 "await plurnk.note({\"text\":\"Inspect the answer.\"});",
             ].join("\n\n"), reasoning: null } }] }),
         });
         assert.equal(result.status, 102);
-        assert.deepEqual(child.received.map((messages) => messages.map(chatMessageText)), [["shared's resource\n\nAnalyze this."]]);
+        assert.deepEqual(child.received.map((messages) => messages.map(chatMessageText)), [["Analyze this."]]);
     } finally { await db.close(); }
 });
 

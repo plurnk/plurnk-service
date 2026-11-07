@@ -319,7 +319,7 @@ const matrix = async (family: Family): Promise<void> => {
         assert.ok(managerDoc && toolDoc, "the manager catalog materializes its input schema");
         assert.ok(managerDoc.content.includes(`await plurnk.${family.family}(`));
         const toolSchema = JSON.parse(toolDoc.content) as { description?: string; properties?: Record<string, unknown> };
-        assert.ok(toolSchema.properties?.alias !== undefined, "the tool schema includes the flat definition schema");
+        assert.ok(toolSchema.properties?.name !== undefined, "the tool schema includes the flat definition schema");
         // {§functionality-model-projection} — the adapter package's docs/<family>.md rides inside the family tool schema description.
         assert.match(String(toolSchema.description), family.teaching, `${toolSchemaPath} carries its authored teaching body`);
         assert.equal(await documentPresent(context(), toolSchemaPath), 200,

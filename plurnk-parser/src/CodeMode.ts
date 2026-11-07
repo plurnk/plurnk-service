@@ -148,12 +148,15 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
                 return `await plurnk${propAccess(runtime)}(${argStr});${formatAside(statement.aside)}`;
             }
             const args: Record<string, unknown> = {};
-            if (statement.target !== null) {
+            if (statement.cwd !== undefined && statement.cwd !== null) {
+                if (statement.target !== null) args.script = spelledTarget(statement.target);
+                args.cwd = statement.cwd;
+            } else if (statement.target !== null) {
                 args[BUILTIN_STANDALONE_EXECUTORS.has(runtime) ? "cwd" : "target"] = spelledTarget(statement.target);
             }
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
             if (statement.body !== null && statement.body.length > 0) {
-                const bodyKey = runtime === "sh" ? "command" : (runtime === "js" || runtime === "python3" ? "code" : "body");
+                const bodyKey = BUILTIN_STANDALONE_EXECUTORS.has(runtime) ? "code" : "body";
                 args[bodyKey] = statement.body;
             }
             return `await plurnk${propAccess(runtime)}(${JSON.stringify(args)});${formatAside(statement.aside)}`;
@@ -240,7 +243,6 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
         case "send": {
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);
-            if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.attachments !== null) args.attachments = statement.attachments;
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;
@@ -257,10 +259,9 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
         }
         case "wait": {
             const args: Record<string, unknown> = {};
-            if (statement.target !== null) args.target = spelledTarget(statement.target);
             if (statement.seconds !== null) args.seconds = statement.seconds;
-            if (statement.body !== null && statement.body.length > 0) args.text = statement.body;
-            return `await plurnk.wait(${JSON.stringify(args)});${formatAside(statement.aside)}`;
+            const aside = statement.aside ?? (statement.body !== null && statement.body.length > 0 ? statement.body : null);
+            return `await plurnk.wait(${JSON.stringify(args)});${formatAside(aside)}`;
         }
     }
 };
@@ -408,7 +409,7 @@ const DELEGATION_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 const SEND_KEYS: ReadonlySet<string> = new Set([
-    "target", "to", "path", "uri", "session", "range", "lines", "scope",
+    "target", "to", "path", "uri", "session",
     "headers", "attachments", "text", "content", "body", "message", "json", "aside",
 ]);
 
@@ -423,7 +424,7 @@ const WAIT_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 const BUILTIN_EXEC_KEYS: ReadonlySet<string> = new Set([
-    "command", "code", "body", "cwd", "script", "target", "path", "args",
+    "code", "command", "cmd", "body", "cwd", "script", "target", "path", "file", "args",
     "range", "lines", "scope", "aside",
 ]);
 
@@ -2563,7 +2564,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         const pos = activePosition;
         const recovery = `await plurnk.${op}({ prompt: "..." });`;
         if (typeof args[0] === "string" && typeof args[1] === "string") {
-            const target = parsePath(args[0], pos);
+            const target = op === "bare" ? null : parsePath(args[0], pos);
             return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, body: args[1], position: pos });
         }
         if (typeof args[0] === "string") {
@@ -2572,9 +2573,11 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         if (isRecord(args[0])) {
             const first = args[0];
             assertAllowedKeys(first, DELEGATION_KEYS, `plurnk.${op}`, recovery, pos);
-            const rawTarget = first.target ?? first.path ?? first.uri ?? (typeof first.session === "string"
-                ? (first.session.includes("://") ? first.session : `session://${first.session}`)
-                : undefined);
+            const rawTarget = op === "bare"
+                ? undefined
+                : (first.target ?? first.path ?? first.uri ?? (typeof first.session === "string"
+                    ? (first.session.includes("://") ? first.session : `session://${first.session}`)
+                    : undefined));
             const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
             const rawPrompt = first.prompt ?? first.body ?? first.content ?? first.text ?? first.message;
             const body = rawPrompt === undefined || rawPrompt === null ? "" : toStringValue(rawPrompt);
@@ -2604,7 +2607,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 op: "send",
                 aside: resolveAside(second),
                 target,
-                lineMarker: toLineMarker(second.range ?? second.lines ?? second.scope, pos),
+                lineMarker: null,
                 headers: toHeaders(second.headers, pos),
                 attachments: toAttachments(second.attachments, pos),
                 body,
@@ -2621,14 +2624,13 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 ? (first.session.includes("://") ? first.session : `session://${first.session}`)
                 : undefined);
             const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
-            const lineMarker = toLineMarker(first.range ?? first.lines ?? first.scope, pos);
             const headers = toHeaders(first.headers, pos);
             const attachments = toAttachments(first.attachments, pos);
             const rawText = first.text ?? first.content ?? first.body ?? first.message;
             const body = first.json !== undefined
                 ? { raw: JSON.stringify(first.json), json: first.json }
                 : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(toStringValue(rawText)));
-            return emitStatement({ op: "send", aside: resolveAside(first), target, lineMarker, headers, attachments, body, position: pos });
+            return emitStatement({ op: "send", aside: resolveAside(first), target, lineMarker: null, headers, attachments, body, position: pos });
         }
         return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: toSendBody(toStringValue(args[0])), position: pos });
     };
@@ -2663,25 +2665,22 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
 
     const buildWait = (args: readonly unknown[]): DispositionStatement => {
         const pos = activePosition;
-        const recovery = 'await plurnk.wait({ seconds: 30, text: "..." });';
+        const recovery = "await plurnk.wait({ seconds: 30 });";
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
             return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, lineMarker: null, seconds: null, body: null, position: pos });
         }
         if (typeof args[0] === "number") {
             const seconds = Number.isFinite(args[0]) && args[0] >= 0 ? args[0] : null;
-            const body = typeof args[1] === "string" && args[1].length > 0 ? args[1] : null;
-            return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, lineMarker: null, seconds, body, position: pos });
+            const textAside = typeof args[1] === "string" && args[1].length > 0 ? args[1] : null;
+            return emitStatement({ op: "wait", aside: activeDefaultAside ?? textAside, target: null, lineMarker: null, seconds, body: null, position: pos });
         }
         if (typeof args[0] === "string") {
-            return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, lineMarker: null, seconds: null, body: args[0], position: pos });
+            const textAside = args[0].length > 0 ? args[0] : null;
+            return emitStatement({ op: "wait", aside: activeDefaultAside ?? textAside, target: null, lineMarker: null, seconds: null, body: null, position: pos });
         }
         if (isRecord(args[0])) {
             const first = args[0];
             assertAllowedKeys(first, WAIT_KEYS, "plurnk.wait", recovery, pos);
-            const rawTarget = first.target ?? first.for ?? first.path ?? first.uri ?? (typeof first.session === "string"
-                ? (first.session.includes("://") ? first.session : `session://${first.session}`)
-                : undefined);
-            const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
             const rawSeconds = first.seconds ?? first.duration;
             let seconds: number | null = null;
             const parsedSeconds = typeof rawSeconds === "number"
@@ -2695,14 +2694,57 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 advise(pos, `Ignored wait duration ${JSON.stringify(rawSeconds)}.`);
             }
             const rawText = first.text ?? first.body ?? first.content ?? first.message ?? first.reason;
-            const body = rawText === undefined || rawText === null || rawText === "" ? null : toStringValue(rawText);
-            return emitStatement({ op: "wait", aside: resolveAside(first), target, lineMarker: null, seconds, body, position: pos });
+            const textAside = rawText === undefined || rawText === null || rawText === "" ? null : toStringValue(rawText);
+            return emitStatement({ op: "wait", aside: resolveAside(first) ?? textAside, target: null, lineMarker: null, seconds, body: null, position: pos });
         }
-        return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, lineMarker: null, seconds: null, body: toStringValue(args[0]), position: pos });
+        const textAside = toStringValue(args[0]);
+        return emitStatement({ op: "wait", aside: activeDefaultAside ?? (textAside.length > 0 ? textAside : null), target: null, lineMarker: null, seconds: null, body: null, position: pos });
     };
 
-    const buildPlurnkTool = (toolName: string, args: readonly unknown[]): ExecStatement => {
+    const normalizePlurnkToolObject = (toolName: string, input: Record<string, unknown>): Record<string, unknown> => {
+        const keyMap: Record<string, string> = {};
+        if (toolName === "members") {
+            for (const k of ["paths", "files", "file", "glob", "name", "alias"]) keyMap[k] = "path";
+        } else if (toolName === "question") {
+            for (const k of ["question", "prompt", "text"]) keyMap[k] = "message";
+            keyMap.choices = "options";
+            keyMap.multiSelect = "multi";
+            keyMap.is_multi_select = "multi";
+            keyMap.requestedSchema = "schema";
+        } else if (toolName === "env" || toolName === "mcp" || toolName === "personas" || toolName === "schedule" || toolName === "skills" || toolName === "fx") {
+            for (const k of ["alias", "key", "server", "id"]) keyMap[k] = "name";
+            if (toolName === "env") {
+                keyMap.environment = "env";
+            } else if (toolName === "personas") {
+                keyMap.text = "body";
+                keyMap.instructions = "body";
+            } else if (toolName === "schedule") {
+                keyMap.text = "prompt";
+                keyMap.message = "prompt";
+            } else if (toolName === "skills") {
+                keyMap.path = "source";
+                keyMap.file = "source";
+                keyMap.dir = "source";
+            }
+        } else {
+            return input;
+        }
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(input)) {
+            if (v === undefined) continue;
+            const mapped = keyMap[k];
+            if (mapped !== undefined && !Object.hasOwn(input, mapped) && !Object.hasOwn(out, mapped)) {
+                out[mapped] = v;
+            } else {
+                out[k] = v;
+            }
+        }
+        return out;
+    };
+
+    const buildPlurnkTool = (rawToolName: string, args: readonly unknown[]): ExecStatement => {
         const pos = activePosition;
+        const toolName = rawToolName === "environment" ? "env" : rawToolName;
         const target = parsePath(toolName, pos);
         const first = args[0];
         const second = isRecord(args[1]) ? args[1] : null;
@@ -2711,7 +2753,11 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         }
         let body: string | null = null;
         if (first !== undefined && first !== null && first !== "") {
-            body = typeof first === "string" ? first : JSON.stringify(first);
+            if (isRecord(first)) {
+                body = JSON.stringify(normalizePlurnkToolObject(toolName, first));
+            } else {
+                body = typeof first === "string" ? first : JSON.stringify(first);
+            }
         }
         return emitStatement({
             runtime: "plurnk",
@@ -2726,9 +2772,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
     const buildStandaloneExec = (runtime: RuntimeTag, args: readonly unknown[]): ExecStatement => {
         const pos = activePosition;
         const isBuiltinExec = BUILTIN_STANDALONE_EXECUTORS.has(runtime);
-        const recovery = runtime === "sh"
-            ? 'await plurnk.sh({ command: "..." });'
-            : `await plurnk.${runtime}({ code: "..." });`;
+        const recovery = `await plurnk.${runtime}({ code: "..." });`;
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
             return emitStatement({
                 runtime,
@@ -2786,11 +2830,16 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                     position: pos,
                 });
             }
-            const rawTarget = first.cwd ?? first.script ?? first.target ?? first.path;
+            const rawScript = first.script ?? first.target ?? first.path ?? first.file;
+            const rawCwd = first.cwd;
+            const hasBothCwdAndScript = typeof rawCwd === "string" && rawCwd.length > 0
+                && typeof rawScript === "string" && rawScript.length > 0;
+            const rawTarget = hasBothCwdAndScript ? rawScript : (rawCwd ?? rawScript);
             const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
+            const cwd = hasBothCwdAndScript ? rawCwd : undefined;
             const lineMarker = toLineMarker(first.range ?? first.lines ?? first.scope, pos);
             let body: string | null = null;
-            const rawBody = first.command ?? first.code ?? first.body;
+            const rawBody = first.code ?? first.command ?? first.cmd ?? first.body;
             if (rawBody !== undefined && rawBody !== null && rawBody !== "") {
                 body = typeof rawBody === "string" ? rawBody : JSON.stringify(rawBody);
             } else if (Array.isArray(first.args) && first.args.length > 0) {
@@ -2805,6 +2854,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 runtime,
                 aside: resolveAside(first),
                 target,
+                ...(cwd === undefined ? {} : { cwd }),
                 lineMarker,
                 body,
                 position: pos,

@@ -61,14 +61,14 @@ exact definition to add.
 
 ## Adding and managing
 
-`add` and `replace` bind one persona to this workspace and enable it, either
+Passing `{ name, ... }` binds one persona to this workspace and enables it, either
 inline (`description` + `body`, plus optional `model` and `effort`) or from a
 local `source` path (`.md` file or `<name>/PERSONA.md` directory, relative to
 the project root or absolute):
 
-await plurnk.personas({ alias: "professor", description: "Rigorous first-principles teacher.", body: "Explain from invariants before examples.", effort: "high" });
+await plurnk.personas({ name: "professor", description: "Rigorous first-principles teacher.", body: "Explain from invariants before examples.", effort: "high" });
 
-`disable` suppresses a persona without forgetting its definition; `enable`
-restores it. `remove` forgets a workspace override and restores any inherited
+`enabled: false` suppresses a persona without forgetting its definition; `enabled: true`
+restores it. `remove: true` forgets a workspace override and restores any inherited
 definition and enabled state. Inherited personas can be enabled or disabled
 here; their definitions cannot be removed from this workspace.

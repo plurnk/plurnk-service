@@ -28,23 +28,23 @@ redacted connection diagnostic or session stderr available to the host.
 `{"discover": "<name>"}` and searches that registry; each candidate carries the
 exact definition to add. Discovery never persists or enables anything.
 
-`add` saves and enables a workspace definition, then reports its connection
+Passing `{ name, ... }` saves and enables a workspace definition, then reports its connection
 state. It is a host effect, subject to approval. Inspect that state:
 saved configuration does not imply a connected server.
 
-await plurnk.mcp({ alias: "files", type: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"] });
+await plurnk.mcp({ name: "files", type: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"] });
 
-A complete definition names `alias` and one transport: `stdio` has `command` and optional
+A complete definition names `name` and one transport: `stdio` has `command` and optional
 `args`, `env`, `cwd`; `streamable-http` has `url` and optional `headers`,
 `authorization`. Native definitions run local commands without a shell, in workspace-owned state
 unless `cwd` supplies an absolute directory. Use absolute project paths in
 arguments. This is file placement, not a sandbox or plugin installation.
 A tool marked `readOnlyHint` runs as a read; other tools retain the `host` effect.
 
-To change a definition, use `replace` with the same flat `{alias, ...}` shape.
+To change a definition, pass the same flat `{ name, ... }` shape.
 Supply the complete definition; omitted fields are not inherited. It retains
 enabledness and preserves the old server if the replacement is refused. A disabled
-definition is saved without connecting; a new alias is created enabled.
+definition is saved without connecting; a new server is created enabled.
 
 ## Environment
 
@@ -84,7 +84,7 @@ every server launch; session-local overrides do not. A running server keeps its
 launch environment; `disable` then `enable` restarts it with the current
 workspace values, without a daemon restart.
 
-`await plurnk.env({ scope: "workspace", alias: "SERVICE_TOKEN", value: "<credential>" });`
+`await plurnk.env({ name: "SERVICE_TOKEN", value: "<credential>" });`
 
 Native definitions resolve `${NAME}` once against the operator's environment
 with workspace values and masks applied, in arguments, environment values,
@@ -99,7 +99,7 @@ Structured authorization secrets must be references, not literal credentials.
 
 For an OAuth server, start by adding its URL; the client supplies the callback.
 
-`await plurnk.mcp({ alias: "remote", type: "streamable-http", url: "https://example.com/mcp" });`
+`await plurnk.mcp({ name: "remote", type: "streamable-http", url: "https://example.com/mcp" });`
 
 When a server requires OAuth sign-in, Plurnk notifies the user in the client and
 holds `add`, `replace`, or `enable` until sign-in completes. Once the operation

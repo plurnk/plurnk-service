@@ -272,7 +272,6 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["prompt"],
             properties: {
-                target: { type: "string", description: "Optional resource URI whose content is included with the prompt." },
                 prompt: { type: "string", description: "Self-contained prompt for the toolless model call." },
             },
         },
@@ -290,15 +289,13 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             type: "object",
             additionalProperties: false,
             properties: {
-                target: { type: "string", description: "Optional stream or session URI to wait on." },
                 seconds: { type: "number", description: "Optional timer ceiling in seconds before resuming." },
-                text: { type: "string", description: "Optional status note while waiting." },
             },
         },
         details: [
             "## Examples",
             "",
-            "await plurnk.wait({ seconds: 60, text: \"Waiting for background build.\" });",
+            "await plurnk.wait({ seconds: 60 }); // waiting for background build",
         ].join("\n"),
     },
     {
@@ -311,7 +308,6 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             required: ["text"],
             properties: {
                 target: { type: "string", description: "Optional recipient URI (e.g. \"session://child\" or \"message:///...\"); omit to send a continuing progress update." },
-                range: { type: "string", description: "Optional range when addressing a stream or resource." },
                 text: { type: "string", description: "Message text to deliver." },
                 attachments: ATTACHMENTS_SCHEMA,
                 headers: HEADERS_SCHEMA,
@@ -402,9 +398,9 @@ const executionOperationTools = (
         if (!capabilities.allowsRuntimeAcross(tag, null, workspaceId, policies)) continue;
         const entry = executors.entry(tag, workspaceId);
         if (entry === undefined) continue;
-        const bodyKey = tag === "sh" ? "command" : (tag === "js" || tag === "python3" ? "code" : "body");
+        const bodyKey = tag === "sh" || tag === "js" || tag === "python3" ? "code" : "body";
         const bodyLabel = tag === "sh"
-            ? "Shell command to run."
+            ? "Shell code to run."
             : tag === "js"
                 ? "JavaScript code to run."
                 : tag === "python3"
@@ -416,15 +412,13 @@ const executionOperationTools = (
             anyOf: [{ required: [bodyKey] }, { required: ["script"] }],
             properties: {
                 [bodyKey]: { type: "string", description: bodyLabel },
-                cwd: { type: "string", description: "Working directory for an inline program." },
                 script: { type: "string", description: "Script path or URI to execute." },
                 args: {
-                    oneOf: [
-                        { type: "array", items: { type: "string" } },
-                        { type: "string" },
-                    ],
+                    type: "array",
+                    items: { type: "string" },
                     description: "Script arguments.",
                 },
+                cwd: { type: "string", description: "Working directory." },
             },
         };
         const summary = typeof entry.summary === "string"

@@ -1,10 +1,8 @@
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 import { UNKNOWN_POSITION, type BareStatement, type LogEntryKind, type PlurnkStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
-import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type LogWriter from "./LogWriter.ts";
-import type DataStatementRunner from "./DataStatementRunner.ts";
 import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type { ContextFit } from "./ContextFit.ts";
@@ -15,14 +13,12 @@ import LogVisibility from "./LogVisibility.ts";
 import DurableStatement from "./DurableStatement.ts";
 import ResourceBindings from "./ResourceBindings.ts";
 import Results, { OperationFailureError } from "./results.ts";
-import { schemeNameOf } from "./plurnk-uri.ts";
 
 export default class TurnSourceWriter {
     readonly #db: Db;
     readonly #schemes: SchemeRegistry;
     readonly #weighContent: (text: string) => number;
     readonly #logWriter: LogWriter;
-    readonly #dataRun: DataStatementRunner;
     readonly #buildSchemeCtx: (context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin">) => PlurnkSchemeContext;
     readonly #checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
     readonly #operationEvent: (context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin" | "statement">, phase: "started" | "settled", result?: DispatchResult) => Promise<void>;
@@ -35,7 +31,6 @@ export default class TurnSourceWriter {
         schemes,
         weighContent,
         logWriter,
-        dataRun,
         buildSchemeCtx,
         checkCapabilities,
         operationEvent,
@@ -47,7 +42,6 @@ export default class TurnSourceWriter {
         schemes: SchemeRegistry;
         weighContent: (text: string) => number;
         logWriter: LogWriter;
-        dataRun: DataStatementRunner;
         buildSchemeCtx: (context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin">) => PlurnkSchemeContext;
         checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
         operationEvent: (context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin" | "statement">, phase: "started" | "settled", result?: DispatchResult) => Promise<void>;
@@ -59,7 +53,6 @@ export default class TurnSourceWriter {
         this.#schemes = schemes;
         this.#weighContent = weighContent;
         this.#logWriter = logWriter;
-        this.#dataRun = dataRun;
         this.#buildSchemeCtx = buildSchemeCtx;
         this.#checkCapabilities = checkCapabilities;
         this.#operationEvent = operationEvent;
@@ -217,29 +210,12 @@ export default class TurnSourceWriter {
     async #prepareBarePrompt(statement: BareStatement, ctx: PlurnkSchemeContext): Promise<{ prompt: string } | { result: DispatchResult }> {
         const denial = await this.#checkCapabilities(statement, ctx);
         if (denial !== null) return { result: denial };
-        let resource = "";
-        if (statement.target !== null) {
-            const read: ReadStatement = {
-                ...statement,
-                op: "read",
-                headers: null,
-                matcher: null,
-                body: null,
-                lineMarker: { marks: [1, -1] },
-            };
-            const result = Results.assertReadResult(await this.#dataRun.run(schemeNameOf(read.target), read, ctx));
-            if (result.status !== 200 && result.status !== 204) return { result };
-            if (typeof result.content === "string") resource = result.content;
-            else if (result.content !== null) {
-                throw new InvalidOperationResultError("BARE source READ returned non-text content.");
-            }
-        }
-        const prompt = [resource, statement.body].filter((part) => part !== "").join("\n\n");
-        // {§op-methods-op-dispatch} — empty combined text is a refusal that creates no model call.
+        const prompt = statement.body;
+        // {§op-methods-op-dispatch} — empty prompt text is a refusal that creates no model call.
         if (prompt.trim() === "") {
             return { result: this.#failure(
                 "bare-prompt-empty", 422,
-                `bare has no prompt text: the prompt is the prompt string, a resource path, or both.${statement.aside === null || statement.aside === "" ? "" : " Its aside was not read as the prompt."}`,
+                `bare has no prompt text: provide a non-empty prompt string.${statement.aside === null || statement.aside === "" ? "" : " Its aside was not read as the prompt."}`,
                 {}, { retryable: false },
             ) };
         }

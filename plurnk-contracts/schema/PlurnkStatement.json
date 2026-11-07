@@ -354,7 +354,7 @@
                     "$ref": "#/$defs/PathOrNull"
                 },
                 "lineMarker": {
-                    "$ref": "#/$defs/LineMarkerOrNull"
+                    "type": "null"
                 },
                 "body": {
                     "$ref": "#/$defs/SendBodyOrNull"
@@ -464,6 +464,12 @@
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
+                },
+                "cwd": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
                 },
                 "lineMarker": {
                     "$ref": "#/$defs/LineMarkerOrNull"

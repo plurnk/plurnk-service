@@ -303,10 +303,6 @@ export default class Session extends CoreSchemeAdapterBase {
         }
         const address = SessionControlAddress.resolve(statement.target, "send");
         if (!address.ok) return address.result;
-        // {§op-shapes} — a session SEND takes no scope.
-        if (statement.lineMarker !== null) {
-            return Results.failure("scheme:session", "scope-unsupported", 400, "A session send takes no scope.", {}, { retryable: false });
-        }
         const controlAuthority = address.authority;
         if (core.injectSession === undefined) throw new Error("session.send: injectSession capability absent");
         const row = await core.db.session_resolve_by_name.get<{ id: number }>({ workspace_id: core.workspaceId, name: controlAuthority });

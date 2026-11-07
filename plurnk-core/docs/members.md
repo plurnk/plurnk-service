@@ -56,9 +56,9 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
 
 - **Untracked, scope `root` or `namespace`**: `READ` it; with auto-add on the read
   proposes its admission and, accepted, admits and reads it in one operation. With
-  auto-add off, an accepted `add` makes it a member before the next operation.
+  auto-add off, an accepted `plurnk.members` call makes it a member before the next operation.
 
-  await plurnk.members({ files: ["build/*.json"] }); // include the generated reports; each glob is one definition
+  await plurnk.members({ path: "build/*.json" }); // include the generated reports; a string or array of globs
 
 - **Beyond your scope**: untracked under scope `none` (an operator narrowed it),
   ignored by git, or excluded by a `!glob`. Neither auto-add nor your `add`
@@ -93,12 +93,12 @@ cleanup conflicts; its receipt identifies that completed effect.
 
 ## Definitions belong to the workspace
 
-A definition is its glob: `list` shows every definition with its origin (`service` from the
-operator's environment, `workspace` from an `add`) and whether it is enabled. `enable` and
-`disable` flip one definition, and `remove` forgets a workspace definition and restores
-inheritance, each named by the glob as `list` shows it:
+A definition is its glob: `await plurnk.members({});` shows every definition with its origin (`service` from the
+operator's environment, `workspace` from an addition) and whether it is enabled. `enabled: true` and
+`enabled: false` flip one definition, and `remove: true` forgets a workspace definition and restores
+inheritance, each named by `path` as `plurnk.members({})` shows it:
 
-await plurnk.members({ file: "build/*.json", enabled: false });
+await plurnk.members({ path: "build/*.json", enabled: false });
 
 Inherited definitions cannot be removed here. Changes apply to every session. Each enabled
 definition is projected as `plurnk:///members/<glob>.md`, the glob percent-encoded,
