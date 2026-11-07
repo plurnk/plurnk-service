@@ -13,7 +13,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import { serverProposals, ownSession, TEST_OWNER } from "./_approval.ts";
-import { TurnDisposition, Validator, type EntryReadResult, type ParsedPath, type CapabilityPolicy, type ProposalPolicy } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, Validator, type EntryReadResult, type ParsedPath, type CapabilityPolicy, type ProposalPolicy, type SendStatement } from "@plurnk/plurnk-contracts";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { openMigrated, seedEnvelope, insertWorkspace, insertSession, insertLoop, insertOperationTurn } from "./_db.ts";
@@ -618,7 +618,7 @@ test("{§op-methods-op-dispatch}: attachment acquisition obeys ordinary READ pol
     await setPolicies(db, workspaceId, policies({ deny: [{ access: "observe", traits: ["web"] }] }));
     const result = await engine.dispatch({
         workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "client",
-        statement: { ...sendStmt(parsePath("message://request/attachment"), "Here is the resource."), metadata: ['{"attachments":["attachment-source:///report"]}'] },
+        statement: { ...sendStmt(parsePath("message://request/attachment"), "Here is the resource."), attachments: ["attachment-source:///report"] },
     });
     assert.equal(result.status, 403);
     assert.match(result.problem!.type, /capability-denied$/u);
@@ -856,10 +856,10 @@ test("{§op-methods-op-dispatch}: session SEND snapshots only selected resources
 await plurnk.edit({"path":"workspace:///private.md","content":"unselected"});
 
 ${next}`),
-        turn(`await plurnk.send({"target":"session://receiver","metadata":["{\\"attachments\\":[\\"workspace:///selected.md\\",\\"workspace:///missing.md\\"]}"],"text":"Do not deliver a partial message."});
+        turn(`await plurnk.send({"target":"session://receiver","attachments":["workspace:///selected.md","workspace:///missing.md"],"text":"Do not deliver a partial message."});
 
 ${next}`),
-        turn("await plurnk.send({\"target\":\"session://receiver\",\"metadata\":[\"{\\\"attachments\\\":[\\\"workspace:///selected.md\\\"]}\"],\"text\":\"Review this.\"});\n\nawait plurnk.edit({\"path\":\"workspace:///selected.md\",\"range\":\"1,-1\",\"content\":\"changed\"});\n\nawait plurnk.wait({});"),
+        turn("await plurnk.send({\"target\":\"session://receiver\",\"attachments\":[\"workspace:///selected.md\"],\"text\":\"Review this.\"});\n\nawait plurnk.edit({\"path\":\"workspace:///selected.md\",\"range\":\"1,-1\",\"content\":\"changed\"});\n\nawait plurnk.wait({});"),
         turn(done),
         turn(done),
     ] });
@@ -913,14 +913,15 @@ ${next}`), turn(done)] });
         const receiver = await daemon.createSession({ workspaceId, name: "receiver" });
         const program = PlurnkParser.parseStatements([
             "await plurnk.edit({\"path\":\"workspace:///report.md\",\"content\":\"original peer report\"});",
-            "await plurnk.send({\"target\":\"session://receiver\",\"metadata\":[\"{\\\"attachments\\\":42}\"],\"text\":\"Do not deliver invalid input.\"});",
-            `await plurnk.send({"target":"session://receiver","metadata":["{\\"attachments\\":[\\"workspace:///report.md\\"]}"],"text":${JSON.stringify(body)}});`,
+            "await plurnk.send({\"target\":\"session://receiver\",\"attachments\":[\"workspace:///report.md\"],\"text\":\"Do not deliver invalid input.\"});",
+            `await plurnk.send({"target":"session://receiver","attachments":["workspace:///report.md"],"text":${JSON.stringify(body)}});`,
             "await plurnk.edit({\"path\":\"workspace:///report.md\",\"range\":\"1,-1\",\"content\":\"changed\"});",
         ].join("\n\n"));
         assert.ok(program.items.every((item) => item.kind === "statement"));
+        const statements = program.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+        statements[1] = { ...(statements[1] as SendStatement), attachments: ["   "] };
         // A person's operation sends to the session ({§connection-lifecycle}).
-        const results = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER,
-            statements: program.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []) });
+        const results = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements });
         assert.deepEqual(results.map(({ status }) => status), [201, 400, 200, 200], JSON.stringify(results));
         assert.match(JSON.stringify(results[1]), /attachments-invalid/u, "SEND metadata reaches its recipient for validation");
         await waitForDb(() => daemon.listSessionLoops({ workspaceId, sessionId: receiver.sessionId }), (loops) => loops.some((loop) => loop.status === 200));

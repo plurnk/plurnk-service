@@ -108,10 +108,10 @@ export default class EntryOps {
             return failure(
                 "edit-empty",
                 400,
-                "EDIT requires at least one statement.",
+                "edit requires at least one statement.",
                 { entryId: null, channel: null },
                 {
-                    recovery: "Provide an EDIT statement.",
+                    recovery: "Provide an edit statement.",
                     retryable: false,
                 },
             );
@@ -120,7 +120,7 @@ export default class EntryOps {
             return failure(
                 "edit-target-required",
                 400,
-                "EDIT requires a target path.",
+                "edit requires a target path.",
                 { entryId: null, channel: null },
                 {
                     recovery: "Provide the entry target.",
@@ -157,10 +157,10 @@ export default class EntryOps {
                 return failure(
                     "edit-batch-mismatch",
                     400,
-                    "The EDIT batch spans multiple resources or channels.",
+                    "The edit batch spans multiple resources or channels.",
                     { entryId: null, channel: targetChannel },
                     {
-                        recovery: "Submit a separate EDIT batch for each resource and channel.",
+                        recovery: "Submit a separate edit batch for each resource and channel.",
                         retryable: false,
                     },
                 );
@@ -226,10 +226,10 @@ export default class EntryOps {
             return failure(
                 "line-marker-required",
                 400,
-                "EDIT of an existing entry requires a line marker.",
+                "edit of an existing entry requires a line marker.",
                 { entryId: existingEntryId, channel: targetChannel },
                 {
-                    recovery: "Name the lines to replace with `range: \"@hash\"` or `range: \"@start,@end\"` from a READ of the entry; `range: \"L,1,L,1\"` inserts before line L, and `range: \"1,-1\"` replaces the whole entry.",
+                    recovery: "Name the lines to replace with `range: \"@hash\"` or `range: \"@start,@end\"` from a read of the entry; `range: \"L,1,L,1\"` inserts before line L, and `range: \"1,-1\"` replaces the whole entry.",
                     retryable: false,
                 },
             );
@@ -256,10 +256,10 @@ export default class EntryOps {
                 return failure(
                     "creation-batch-conflict",
                     409,
-                    "Multiple EDIT operations attempted to create the same entry.",
+                    "Multiple edit operations attempted to create the same entry.",
                     { entryId: null, channel: targetChannel },
                     {
-                        recovery: "Create the entry with one EDIT before applying additional edits.",
+                        recovery: "Create the entry with one edit before applying additional edits.",
                         retryable: false,
                     },
                 );
@@ -356,7 +356,7 @@ export default class EntryOps {
                 `scheme:${manifest.name}`,
                 "delete-target-required",
                 400,
-                "KILL requires a target path.",
+                "kill requires a target path.",
                 {},
                 {
                     recovery: "Provide the entry target.",
@@ -416,7 +416,7 @@ export default class EntryOps {
             return failure(
                 "read-target-required",
                 400,
-                "READ requires a target path.",
+                "read requires a target path.",
                 { content: null, mimetype: null, channel: null },
                 {
                     recovery: "Provide the entry target.",

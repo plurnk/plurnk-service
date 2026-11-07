@@ -740,7 +740,6 @@ test("{§tools-resource-materialization} turn 0 exposes executable inline-progra
 
 describe("workspace-capability-policy", () => {
 const execStmt = (runtime: string): ExecStatement => ({
-    metadata: null,
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null,
     lineMarker: null,
     body: "echo hi",

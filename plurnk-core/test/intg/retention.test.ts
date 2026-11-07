@@ -559,7 +559,7 @@ test("{§content-store}: message admission and attachment-only replies retain by
     serverProposals(t, "accept");
     await using db = await openMigrated();
     const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { reasoning: null,
-        content: "await plurnk.done({\"metadata\":[\"{\\\"attachments\\\":[\\\"workspace:///reply.txt\\\"]}\"]});\n\nawait plurnk.kill({\"path\":\"log:///**\"});" } }] });
+        content: "await plurnk.done({\"attachments\":[\"workspace:///reply.txt\"]});\n\nawait plurnk.kill({\"path\":\"log:///**\"});" } }] });
     const daemon = new Daemon({ db, provider });
     const retention = collector(db);
     const original = NativeContent.retain.bind(NativeContent);

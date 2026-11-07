@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Manifest from "./Manifest.ts";
 import MessageAttachments from "./MessageAttachments.ts";
-import MetadataOptions from "./MetadataOptions.ts";
 import OutputScheme from "./OutputScheme.ts";
 import type { ResourceCaps } from "./ctx.ts";
 import type { SchemeManifest } from "./types.ts";
@@ -92,10 +91,6 @@ test("{§manifest} Manifest.of admits only declared top-level fields", () => {
         Manifest.of({ manifest: { ...ownerManifest, lineAnchors: true } }, "owner").lineAnchors,
         true,
     );
-    assert.equal(
-        Manifest.of({ manifest: { ...ownerManifest, metadataModifier: true } }, "owner").metadataModifier,
-        true,
-    );
     assert.throws(
         () => Manifest.of({ manifest: { ...ownerManifest, textEditScopes: "yes" } }, "owner"),
         /textEditScopes.*boolean/,
@@ -103,10 +98,6 @@ test("{§manifest} Manifest.of admits only declared top-level fields", () => {
     assert.throws(
         () => Manifest.of({ manifest: { ...ownerManifest, lineAnchors: "yes" } }, "owner"),
         /lineAnchors.*boolean/,
-    );
-    assert.throws(
-        () => Manifest.of({ manifest: { ...ownerManifest, metadataModifier: "yes" } }, "owner"),
-        /metadataModifier.*boolean/,
     );
     assert.throws(
         () => Manifest.of({ manifest: { ...ownerManifest, undeclared: true } }, "owner"),
@@ -118,47 +109,19 @@ test("{§manifest} Manifest.of admits only declared top-level fields", () => {
     );
 });
 
-test("{§slot-order} MetadataOptions.parse merges option objects left to right", () => {
-    assert.deepEqual(MetadataOptions.parse(null, "scheme:test"), { options: {} });
-    const read = MetadataOptions.parse(['{"a": 1}, {"b": 2, "a": 3}'], "scheme:test");
-    assert.deepEqual(read, { options: { a: 3, b: 2 } });
-});
-
-test("{§slicer-text-algebra} MetadataOptions.parse fails malformed blocks as the owner's 400 without echoing the input", () => {
-    const read = MetadataOptions.parse(['{"secret": '], "scheme:test");
-    assert.ok("failure" in read);
-    assert.equal(read.failure.status, 400);
-    assert.equal(read.failure.problem?.detail, "[metadata] must be a JSON array.");
-    const scalar = MetadataOptions.parse(['"cwd"'], "scheme:test");
-    assert.ok("failure" in scalar);
-    assert.match(String(scalar.failure.problem?.type), /metadata-invalid$/);
-    const repeated = MetadataOptions.parse(['{"a": 1}', '{"b": 2}'], "scheme:test");
-    assert.ok("failure" in repeated);
-    assert.match(String(repeated.failure.problem?.type), /metadata-repeated$/);
-});
-
-test("{§manifest}: exactly the declared service keys are withheld from an owner, each surfaced raw", () => {
-    assert.deepEqual([...MetadataOptions.SERVICE_KEYS], ["lifetime"]);
-    const read = MetadataOptions.parse(['{"cwd": "src", "lifetime": "30m", "other": 1}'], "scheme:test");
-    assert.deepEqual(read, { options: { cwd: "src", other: 1 }, lifetime: "30m" });
-    assert.deepEqual(MetadataOptions.parse(['{"cwd": "src"}'], "scheme:test"), { options: { cwd: "src" } }, "absent stays absent");
-});
-
-test("{§op-methods-op-dispatch}: message metadata validates before acquisition and preserves selection order", async () => {
+test("{§op-methods-op-dispatch}: message attachments validate before acquisition and preserve selection order", async () => {
     const calls: (readonly string[])[] = [];
     const resources: ResourceCaps = { async capture(targets) { calls.push(targets); return { attachments: [] }; } };
-    for (const value of [null, false, 7, "file.txt", [null], [""], [{}]]) {
-        const result = await MessageAttachments.capture([JSON.stringify({ attachments: value })], resources, "scheme:test");
+    for (const value of [false, 7, "file.txt", [null], [""], [{}]]) {
+        const result = await MessageAttachments.capture(value as unknown as readonly string[], resources, "scheme:test");
         assert.ok("failure" in result);
         assert.equal(result.failure.status, 400);
         assert.match(result.failure.problem!.type, /attachments-invalid$/u);
     }
-    const unknown = await MessageAttachments.capture(['{"headers":{}}'], resources, "scheme:test");
-    assert.ok("failure" in unknown);
-    assert.match(unknown.failure.problem!.type, /metadata-unsupported$/u);
     assert.deepEqual(calls, [], "invalid options never acquire a resource");
     assert.deepEqual(await MessageAttachments.capture(null, resources, "scheme:test"), { attachments: [] });
-    await MessageAttachments.capture(['{"attachments":["a"]},{"attachments":["b","a#readable"]}'], resources, "scheme:test");
+    assert.deepEqual(await MessageAttachments.capture([], resources, "scheme:test"), { attachments: [] });
+    await MessageAttachments.capture(["b", "a#readable"], resources, "scheme:test");
     assert.deepEqual(calls, [["b", "a#readable"]]);
 });
 

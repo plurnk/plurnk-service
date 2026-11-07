@@ -25,7 +25,7 @@ const wsUrlPath = (pathname: string): UrlPath => ({
 });
 
 const wsEditStmt = (pathname: string, body: string): EditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null,
     target: wsUrlPath(pathname), lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },

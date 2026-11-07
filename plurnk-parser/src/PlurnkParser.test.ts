@@ -41,22 +41,22 @@ describe("PlurnkParser Code Mode", () => {
 
     test("{§operation-fences} {§fence-pairing}: canonical Code Mode statements parse and round-trip idempotently through stringify", () => {
         const canonical = [
-            'await plurnk.find({"path":"src/**/*.ts","range":"1,20","pattern":"/export/","metadata":["{\\"depth\\":2}"]}); // find exports',
-            'await plurnk.read({"path":"README.md","range":"1,50","pattern":"/Plurnk/i","metadata":["{\\"raw\\":true}"]}); // read readme',
-            'await plurnk.edit({"path":"src/index.ts","range":"@abcde,@fghij","pattern":"/old/","metadata":["{\\"encoding\\":\\"utf8\\"}"],"content":"export const x = 1;\\n"}); // update export',
+            'await plurnk.find({"path":"src/**/*.ts","range":"1,20","pattern":"/export/","headers":{"Accept":"text/plain"}}); // find exports',
+            'await plurnk.read({"path":"README.md","range":"1,50","pattern":"/Plurnk/i","headers":{"Accept":"text/markdown"}}); // read readme',
+            'await plurnk.edit({"path":"src/index.ts","range":"@abcde,@fghij","pattern":"/old/","headers":{"Content-Type":"text/plain"},"content":"export const x = 1;\\n"}); // update export',
             'await plurnk.copy({"from":"a.txt","to":"b.txt"}); // copy file',
-            'await plurnk.move({"from":{"path":"src/old.ts","range":"1,10","pattern":"/foo/","metadata":["m1"]},"to":{"path":"src/new.ts","range":"5,15","pattern":"/bar/","metadata":["m2"]}}); // move slice',
-            'await plurnk.kill({"path":"log:///1/1/1/read","range":"1,5","pattern":"/secret/","metadata":["9"],"note":"distilled summary"}); // prune log',
+            'await plurnk.move({"from":{"path":"src/old.ts","range":"1,10","pattern":"/foo/","headers":{"Accept":"text/plain"}},"to":{"path":"src/new.ts","range":"5,15","pattern":"/bar/","headers":{"Content-Type":"text/plain"}}}); // move slice',
+            'await plurnk.kill({"path":"log:///1/1/1/read","range":"1,5","pattern":"/secret/","remote":true,"headers":{"Authorization":"Bearer x"},"note":"distilled summary"}); // prune log',
             'await plurnk.note({"text":"Remember the invariant."}); // working note',
             'await plurnk.todo({"items":["Step 1","Step 2"]}); // update todo',
-            'await plurnk.work({"target":"session://worker_1","metadata":["{\\"model\\":\\"fast\\"}"],"prompt":"Audit the module."}); // delegate work',
+            'await plurnk.work({"target":"session://worker_1","prompt":"Audit the module."}); // delegate work',
             'await plurnk.fork({"target":"session://branch_a","prompt":"Try alternative."});',
             'await plurnk.bare({"prompt":"Summarize concisely."});',
-            'await plurnk.send({"target":"session://peer","range":"1,10","metadata":["{\\"eof\\":true}"],"text":"Status update."}); // notify peer',
-            'await plurnk.done({"target":"message://main/12345678","metadata":["{\\"attach\\":[\\"a.png\\"]}"],"text":"Completed all tasks."}); // finish',
+            'await plurnk.send({"target":"session://peer","range":"1,10","headers":{"X-Trace":"1"},"attachments":["report.pdf"],"text":"Status update."}); // notify peer',
+            'await plurnk.done({"target":"message://main/12345678","attachments":["a.png"],"text":"Completed all tasks."}); // finish',
             'await plurnk.fail({"text":"Blocked by upstream outage."});',
             'await plurnk.wait({"target":"sh:///12345678","seconds":30,"text":"Waiting for build."}); // wait on build',
-            'await plurnk.sh({"cwd":"packages/core","range":"1,2","metadata":["{\\"env\\":{\\"CI\\":\\"1\\"}}"],"command":"npm test"}); // run tests',
+            'await plurnk.sh({"cwd":"packages/core","range":"1,2","command":"npm test"}); // run tests',
             'await plurnk.js({"code":"return 2 + 2;"});',
             'await plurnk.python3({"code":"print(42)"});',
             'await plurnk.env({"action":"list"}); // list env',
@@ -135,17 +135,17 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.todo({ todos: ["Item B"] });',
             'await plurnk.work("session://helper", "Run checks.");',
             'await plurnk.work("Run checks in new session.");',
-            'await plurnk.fork({ session: "branch_1", model: "fast", effort: "low", persona: "reviewer", prompt: "Review diff." });',
+            'await plurnk.fork({ session: "branch_1", prompt: "Review diff." });',
             'await plurnk.bare();',
             'await plurnk.send();',
             'await plurnk.send("Hello user.");',
             'await plurnk.send("session://helper", "Ping.");',
-            'await plurnk.send("sh:///12345678", { text: "input\\n", metadata: "{\\"eof\\":true}" });',
+            'await plurnk.send("sh:///12345678", { text: "input\\n", attachments: ["report.pdf"] });',
             'await plurnk.send({ session: "helper", json: { ok: true } });',
             'await plurnk.done();',
             'await plurnk.done("All done.");',
             'await plurnk.done("message://main/1", "Reply.");',
-            'await plurnk.fail({ json: { error: "failed" } });',
+            'await plurnk.fail({ json: { error: "failed" }, attachments: ["err.log"] });',
             'await plurnk.wait();',
             'await plurnk.wait(15, "Waiting 15s.");',
             'await plurnk.wait("Waiting for child.");',
@@ -161,10 +161,11 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[6] as WorkStatement).target?.raw, "session://helper");
         assert.equal((ops[7] as WorkStatement).body, "Run checks in new session.");
         assert.equal((ops[8] as ForkStatement).target?.raw, "session://branch_1");
-        assert.deepEqual((ops[8] as ForkStatement).metadata, ['{"model":"fast","effort":"low","persona":"reviewer"}']);
+        assert.deepEqual((ops[13] as SendStatement).attachments, ["report.pdf"]);
         assert.equal((ops[14] as SendStatement).body?.raw, '{"ok":true}');
         assert.equal((ops[17] as DoneStatement).target?.raw, "message://main/1");
         assert.equal((ops[18] as FailStatement).body?.raw, '{"error":"failed"}');
+        assert.deepEqual((ops[18] as FailStatement).attachments, ["err.log"]);
         assert.equal((ops[20] as DispositionStatement).seconds, 15);
         assert.equal((ops[22] as DispositionStatement).target?.raw, "session://helper");
     });
@@ -172,14 +173,14 @@ describe("PlurnkParser Code Mode", () => {
     test("{§op-shapes}: standalone executors, plurnk Functionality tools, and MCP tools compile to ExecStatement", () => {
         const ops = statementsOf([
             'await plurnk.sh("ls -la");',
-            'await plurnk.sh("./script.sh", "--flag", { env: { FOO: "bar" } });',
+            'await plurnk.sh("./script.sh", "--flag", { range: "1,5" });',
             'await plurnk.sh({ script: "./run.sh", args: ["a", "b c"] });',
             'await plurnk.sh();',
             'await plurnk.plurnk("env", { action: "list" });',
             'await plurnk["env|mcp"]();',
             'await plurnk.custom_exec({ key: "val" });',
             'await gitea("raw_body");',
-            'await gitea.issue_read({ owner: "plurnk", repo: "service" }, { range: "1,10", metadata: ["m"] });',
+            'await gitea.issue_read({ owner: "plurnk", repo: "service" }, { range: "1,10" });',
         ].join("\n"), ["sh", "plurnk", "custom_exec", "gitea"]);
         assert.equal(ops.length, 9);
         assert.equal((ops[0] as ExecStatement).runtime, "sh");
@@ -195,7 +196,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[6] as ExecStatement).body, '{"key":"val"}');
         assert.equal((ops[8] as ExecStatement).runtime, "gitea");
         assert.equal((ops[8] as ExecStatement).target?.raw, "issue_read");
-        assert.equal(PlurnkParser.stringify([ops[8]]), 'await gitea.issue_read({"owner":"plurnk","repo":"service"}, {"range":"1,10","metadata":["m"]});');
+        assert.equal(PlurnkParser.stringify([ops[8]]), 'await gitea.issue_read({"owner":"plurnk","repo":"service"}, {"range":"1,10"});');
     });
 
     test("{§slot-order}: comma, pipe, and URI lists in read, find, and kill expand in member order", () => {
@@ -289,7 +290,7 @@ describe("PlurnkParser Code Mode", () => {
             '<｜｜DSML｜｜ function_calls>\n<｜｜DSML｜｜ invoke name="plurnk.find">\n<｜｜DSML｜｜ parameter name="path" string="true">astropy/modeling/**</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ function_calls>',
             '<｜｜DSML｜｜ function_calls>\n<｜｜DSML｜｜ invoke name="plurnk.read">\n<｜｜DSML｜｜ parameter name="path" string="false">true">django/db/migrations/serializer.py</｜｜DSML｜｜ parameter>\n<｜｜DSML｜｜ parameter name="range" string="true">1,120</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ function_calls>',
             '<｜｜DSML｜｜ function_calls>\n<｜｜DSML｜｜ invoke name="plurnk.find">\n{"path": "astropy/io/fits/**", "pattern": "/Header|Card|_split/"}\n</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ function_calls>',
-            '<｜｜DSML｜｜ function_calls>\n<｜｜DSML｜｜ invoke name="plurnk.find({"path":"pylint/**","pattern":"/notes/","metadata":"text/x-python"})</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ function_calls>',
+            '<｜｜DSML｜｜ function_calls>\n<｜｜DSML｜｜ invoke name="plurnk.find({"path":"pylint/**","pattern":"/notes/","headers":{"Accept":"text/x-python"}})</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ function_calls>',
             '<plurnk.note text="Task: Preserve mathematical expressions." />\n<plurnk.sh command="grep -n \\"__radd__\\" django/utils/functional.py" />\n<plurnk.find path="sympy/physics/mechanics/**" range="1,-1" />\n</plurnk.find>',
             '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>plurnk.find\n```json\n{"path":"src/**"}\n```\n<｜tool▁call▁end｜><｜tool▁calls▁end｜>',
             '<|tool_calls_section_begin|><|tool_call_begin|>functions.read:0<|tool_call_argument_begin|>{"path":"README.md","range":"1,10"}<|tool_call_end|><|tool_calls_section_end|>',
@@ -312,7 +313,7 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.find({"path":"astropy/modeling/**"});',
             'await plurnk.read({"path":"django/db/migrations/serializer.py","range":"1,120"});',
             'await plurnk.find({"path":"astropy/io/fits/**","pattern":"/Header|Card|_split/"});',
-            'await plurnk.find({"path":"pylint/**","pattern":"/notes/","metadata":["text/x-python"]});',
+            'await plurnk.find({"path":"pylint/**","pattern":"/notes/","headers":{"Accept":"text/x-python"}});',
             'await plurnk.note({"text":"Task: Preserve mathematical expressions."});',
             'await plurnk.sh({"command":"grep -n \\"__radd__\\" django/utils/functional.py"});',
             'await plurnk.find({"path":"sympy/physics/mechanics/**","range":"1,-1"});',
@@ -416,5 +417,12 @@ describe("PlurnkParser Code Mode", () => {
         const errResult = PlurnkParser.lowerToolCall("plurnk", "read", {});
         assert.equal(errResult.items.length, 1);
         assert.equal(errResult.items[0]?.kind, "error");
+
+        const unknownOptResult = PlurnkParser.parseStatements('await plurnk.read({ path: "src/index.ts", bogus: true });');
+        assert.equal(unknownOptResult.items.length, 1);
+        assert.equal(unknownOptResult.items[0]?.kind, "error");
+        if (unknownOptResult.items[0]?.kind === "error") {
+            assert.match(unknownOptResult.items[0].error.message, /Unknown option `bogus` on `plurnk\.read`\./u);
+        }
     });
 });

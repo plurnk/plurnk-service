@@ -28,7 +28,6 @@ const exec = async (runtime: string, command: string, opts: { signal?: AbortSign
     const states: { channel: string; state: string }[] = [];
     const events: Notice[] = [];
     const args: ExecArgs = {
-        metadata: null,
         runtime, body: command, cwd: opts.cwd ?? null, target: opts.target ?? null, env: opts.env,
         signal: opts.signal ?? new AbortController().signal,
         write: (channel, chunk) => { out[channel] = (out[channel] ?? "") + chunk; },
@@ -123,7 +122,6 @@ class DirectArgvExec extends SubprocessExecutor {
 test("{§executor-results} command-tokenization failures return a durable input Problem", async () => {
     const states: { channel: string; state: string }[] = [];
     const result = await new DirectArgvExec({ runtime: "direct", glyph: "d" }).run({
-        metadata: null,
         runtime: "direct", body: '"unterminated', cwd: null, target: null,
         signal: new AbortController().signal,
         write: () => {},
@@ -145,7 +143,6 @@ test("{§executor-results} command-tokenization failures return a durable input 
 test("{§executor-subprocess} spawnArgs override + stdin: command fed via stdin reaches stdout", async () => {
     const out: Record<string, string> = { stdout: "", stderr: "" };
     const args: ExecArgs = {
-        metadata: null,
         runtime: "x", body: "piped-through-stdin", cwd: null, target: null,
         signal: new AbortController().signal,
         write: (c, chunk) => { out[c] = (out[c] ?? "") + chunk; },
@@ -307,7 +304,6 @@ test("{§executor-results} stdin end() racing a fast-exiting child never escapes
     }
     for (let i = 0; i < 10; i++) {
         const args: ExecArgs = {
-            metadata: null,
             runtime: "x", body: "ignored", cwd: null, target: null,
             signal: new AbortController().signal,
             write: () => {}, setState: () => {}, emit: () => {},

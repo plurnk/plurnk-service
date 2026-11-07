@@ -112,9 +112,9 @@ export default class Ws implements SchemeHandler {
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult> {
-        if (request.metadata !== null) return Ws.#metadataUnsupported();
+        if (request.headers !== null) return Ws.#optionsUnsupported();
         if (request.target.kind !== "url") {
-            return Ws.#bad(400, "bad-target", "READ requires a ws(s):// URL target.", {
+            return Ws.#bad(400, "bad-target", "read requires a ws(s):// URL target.", {
                 stage: "target-validation",
                 recovery: "Provide a ws(s):// URL target.",
                 retryable: false,
@@ -424,26 +424,26 @@ export default class Ws implements SchemeHandler {
         if (errors.length > 0) throw new AggregateError(errors, "WebSocket shutdown failed");
     }
 
-    // EDIT and a recipient SEND target only an open owner whose native transport
+    // edit and a recipient send target only an open owner whose native transport
     // is still OPEN. Both operations converge on one outbound-frame path.
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (statements.length !== 1) {
             return Ws.#bad(
                 409,
                 "non-atomic-edit-batch",
-                `${statements.length} EDIT statements cannot be committed atomically to one WebSocket connection.`,
+                `${statements.length} edit statements cannot be committed atomically to one WebSocket connection.`,
                 {
                     statements: statements.length,
                     stage: "mutation",
-                    recovery: "Submit one whole-message EDIT.",
+                    recovery: "Submit one whole-message edit.",
                     retryable: false,
                 },
             );
         }
         const statement = statements[0];
-        if (statement.metadata !== null) return Ws.#metadataUnsupported();
+        if (statement.headers !== null) return Ws.#optionsUnsupported();
         if (statement.target === null || statement.target.kind !== "url") {
-            return Ws.#bad(400, "bad-target", "EDIT requires a ws(s):// URL target.", {
+            return Ws.#bad(400, "bad-target", "edit requires a ws(s):// URL target.", {
                 stage: "target-validation",
                 recovery: "Provide a ws(s):// URL target.",
                 retryable: false,
@@ -453,7 +453,7 @@ export default class Ws implements SchemeHandler {
             return Ws.#bad(
                 400,
                 "line-edit-unsupported",
-                "WebSocket EDIT sends one whole message and does not accept a line range.",
+                "WebSocket edit sends one whole message and does not accept a line range.",
                 {
                     stage: "mutation",
                     recovery: "Remove the line range and submit the complete message body.",
@@ -468,7 +468,7 @@ export default class Ws implements SchemeHandler {
 
     // {§op-shapes} — send is messaging; a kill closes the owner.
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
-        if (statement.metadata !== null) return Ws.#metadataUnsupported();
+        if (statement.headers !== null || statement.attachments !== null) return Ws.#optionsUnsupported();
         if (statement.target === null || statement.target.kind !== "url") {
             return Ws.#bad(400, "bad-target", "send requires a ws(s):// URL target.", {
                 stage: "target-validation",
@@ -526,7 +526,7 @@ export default class Ws implements SchemeHandler {
                 {
                     target: address.url,
                     stage: "connection",
-                    recovery: "READ the WebSocket URL before sending a message.",
+                    recovery: "Read the WebSocket URL before sending a message.",
                     retryable: false,
                 },
             ) };
@@ -546,7 +546,7 @@ export default class Ws implements SchemeHandler {
                     connectionState,
                     stage: "connection",
                     recovery: connectionState === "settling"
-                        ? "Wait for the current READ to settle, then READ the WebSocket URL again."
+                        ? "Wait for the current read to settle, then read the WebSocket URL again."
                         : "Wait for the connection's active stream event before sending.",
                     retryable: connectionState !== "settling",
                 },
@@ -577,12 +577,12 @@ export default class Ws implements SchemeHandler {
         }
     }
 
-    // KILL closes or cancels the one claimed owner. Its terminal path settles
-    // the READ subscription before releasing the address.
+    // kill closes or cancels the one claimed owner. Its terminal path settles
+    // the read subscription before releasing the address.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
-        if (statement.metadata !== null) return Ws.#metadataUnsupported();
+        if (statement.headers !== null || statement.remote === true) return Ws.#optionsUnsupported();
         if (statement.target === null || statement.target.kind !== "url") {
-            return Ws.#bad(400, "bad-target", "KILL requires a ws(s):// URL target.", {
+            return Ws.#bad(400, "bad-target", "kill requires a ws(s):// URL target.", {
                 stage: "target-validation",
                 recovery: "Provide a ws(s):// URL target.",
                 retryable: false,
@@ -695,8 +695,8 @@ export default class Ws implements SchemeHandler {
         });
     }
 
-    static #metadataUnsupported(): PassthroughResult & ChannelProducerResult {
-        return Ws.#bad(400, "metadata-unsupported", "WebSocket does not accept the [metadata] modifier.", {
+    static #optionsUnsupported(): PassthroughResult & ChannelProducerResult {
+        return Ws.#bad(400, "options-unsupported", "WebSocket does not accept request headers, remote, or attachments.", {
             retryable: false,
         });
     }

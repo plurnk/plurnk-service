@@ -54,7 +54,7 @@ describe("file-creation-contract", () => {
 const execFileP = promisify(execFile);
 const replaceAll: LineMarker = { marks: [1, -1] };
 const edit = (pathname: string, body: string, lineMarker: LineMarker | null = null): ResolvedEditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit",
     aside: null,
     target: { kind: "local", raw: pathname },
@@ -103,7 +103,7 @@ const acceptCreate = async (
 ) => {
     const proposed = await file.edit(edit(pathname, body), ctx);
     assert.equal(proposed.status, 202, `${pathname} reaches proposal review`);
-    const applied = await file.applyResolution({ attrs: proposed.attrs as never, metadata: null }, ctx);
+    const applied = await file.applyResolution({ attrs: proposed.attrs as never, headers: null }, ctx);
     assert.equal(applied.status, 200, `${pathname} lands completely`);
     return applied;
 };
@@ -321,7 +321,7 @@ test("{§fs-write-surface}: approval rejects a parent symlink swapped after prop
 
         await rm(parent, { recursive: true });
         await symlink(outside, parent, "dir");
-        const applied = await file.applyResolution({ attrs: proposed.attrs as never, metadata: null }, ctx);
+        const applied = await file.applyResolution({ attrs: proposed.attrs as never, headers: null }, ctx);
 
         assert.equal(applied.status, 403);
         assert.equal(applied.problem?.type, "https://problems.plurnk.xyz/scheme/file/path-outside-workspace");
@@ -335,14 +335,14 @@ test("{§fs-write-surface}: generated picks follow deletion while explicit picks
         await acceptCreate(file, ctx, "generated.md");
         const generatedDelete = await file.deleteEntry("generated.md", ctx);
         assert.equal(generatedDelete.status, 202);
-        assert.equal((await file.applyResolution({ attrs: generatedDelete.attrs as never, metadata: null }, ctx)).status, 200);
+        assert.equal((await file.applyResolution({ attrs: generatedDelete.attrs as never, headers: null }, ctx)).status, 200);
         assert.deepEqual(await constraints(db, workspaceId), [], "KILL removes creation provenance with its file");
 
         await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob: "explicit.md", source: "members" });
         await acceptCreate(file, ctx, "explicit.md");
         const explicitDelete = await file.deleteEntry("explicit.md", ctx);
         assert.equal(explicitDelete.status, 202);
-        assert.equal((await file.applyResolution({ attrs: explicitDelete.attrs as never, metadata: null }, ctx)).status, 200);
+        assert.equal((await file.applyResolution({ attrs: explicitDelete.attrs as never, headers: null }, ctx)).status, 200);
         assert.deepEqual(await constraints(db, workspaceId), [
             { effect: "include", glob: "explicit.md", source: "members" },
         ], "automatic lifecycle never retracts a projected definition");
@@ -358,7 +358,7 @@ test("{§fs-write-surface}: a member definition over a created path never overwr
         ], "the creation record stays as it is");
         const deletion = await file.deleteEntry("promoted.md", ctx);
         assert.equal(deletion.status, 202);
-        assert.equal((await file.applyResolution({ attrs: deletion.attrs as never, metadata: null }, ctx)).status, 200);
+        assert.equal((await file.applyResolution({ attrs: deletion.attrs as never, headers: null }, ctx)).status, 200);
         assert.deepEqual(await constraints(db, workspaceId), [], "deleting the file retires its record; the definition still lives in the members family");
     });
 });
@@ -452,7 +452,7 @@ test("{§fs-write-surface}: failed incorporation rolls disk and entry state back
         });
         const proposed = await file.edit(edit("rollback.md", "transient\n"), ctx);
         assert.equal(proposed.status, 202);
-        const applied = await file.applyResolution({ attrs: proposed.attrs as never, metadata: null }, ctx);
+        const applied = await file.applyResolution({ attrs: proposed.attrs as never, headers: null }, ctx);
         assert.equal(applied.status, 500);
         assert.equal(applied.problem?.type, "https://problems.plurnk.xyz/scheme/file/creation-incorporation-failed");
         await assert.rejects(stat(join(root, "rollback.md")));
@@ -532,7 +532,7 @@ const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§packet} —
 const filePath = (pathname: string): ParsedPath => ({ kind: "local", raw: pathname });
 
 const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement["lineMarker"]; } = {}): ReadStatement => ({
-    metadata: null,
+    headers: null,
     op: "read", aside: null,
     target,
     lineMarker: opts.lineMarker ?? null, matcher: null, body: null,
@@ -540,7 +540,7 @@ const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement[
 });
 
 const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null): FindStatement => ({
-    metadata: null,
+    headers: null,
     op: "find", aside: null, target, lineMarker: null, matcher, body: null,  position: { line: 1, column: 1 },
 });
 

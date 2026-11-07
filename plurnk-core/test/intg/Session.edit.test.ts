@@ -26,7 +26,7 @@ const editStatement = (opts: {
     target?: ParsedPath | null; body?: string | null;
     lineMarker?: LineMarker | null;
 }): ResolvedEditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit",
     aside: null,
     target: opts.target ?? null,
@@ -36,7 +36,7 @@ const editStatement = (opts: {
 });
 
 const readStatement = (opts: { target?: ParsedPath | null }): ReadStatement => ({
-    metadata: null,
+    headers: null,
     op: "read",
     aside: null,
     target: opts.target ?? null,
@@ -122,7 +122,7 @@ test("{§operation-results} Session.edit: a concurrent creator wins cleanly and 
         );
         assert.equal(result.status, 409);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(result.problem?.detail, "EDIT collided with the current resource state."); // {§operation-results}
+        assert.equal(result.problem?.detail, "edit collided with the current resource state."); // {§operation-results}
         assert.equal(result.problem?.target, "workspace:///create-race.md");
         const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
             pathname: "/create-race.md",
@@ -185,7 +185,7 @@ test("{§operation-results} Session.edit: a representation change at atomic land
         );
         assert.equal(result.status, 409);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(result.problem?.detail, "EDIT collided with the current resource state."); // {§operation-results}
+        assert.equal(result.problem?.detail, "edit collided with the current resource state."); // {§operation-results}
         assert.equal(result.problem?.target, "workspace:///cas.md");
         const channel = await db.test_get_channel.get<{ content: string }>({
             entry_id: created.entryId,
@@ -206,7 +206,7 @@ test("{§edit} EDIT that changes nothing returns 304; only a content change upda
         assert.equal(reWrite.status, 304, "identical content → no-op");
         assert.equal(
             reWrite.detail,
-            "No change: EDIT body matches the selected content.",
+            "No change: edit body matches the selected content.",
         );
         assert.equal(reWrite.entryId, first.entryId, "entry id still returned on 304");
         const changed = await k.edit(editStatement({ target, body: "different", lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, sessionId }));
@@ -645,11 +645,11 @@ await plurnk.note({"text":"editing"});`, 50)] }).generate(args);
                     const problem = JSON.parse(row.rx).problem;
                     assert.equal(row.status_rx, 409);
                     assert.equal(problem.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-                    assert.equal(problem.detail, "EDIT collided with the current resource state."); // {§operation-results}
+                    assert.equal(problem.detail, "edit collided with the current resource state."); // {§operation-results}
                     assert.deepEqual(problem.unresolvedAnchors, ownUnresolved, "each row diagnoses all of its own unresolved anchors");
                     assert.equal(problem.editCount, 1);
                     assert.equal(problem.applied, 0);
-                    assert.equal(problem.recovery, "0 of 1 edits applied. READ the target for current coordinates."); // {§operation-results}
+                    assert.equal(problem.recovery, "0 of 1 edits applied. read the target for current coordinates."); // {§operation-results}
                     assert.equal(problem.retryable, false);
                 }
                 const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnIds!.at(-1)! }))!.packet);

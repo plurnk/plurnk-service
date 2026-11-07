@@ -9,9 +9,6 @@ import type { FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-co
 import type {
     EntryAddress,
     ResolvedEditStatement,
-    RepresentationPreparationRequest,
-    RepresentationPreparationResult,
-    SchemeCtx,
 } from "@plurnk/plurnk-schemes";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
@@ -62,7 +59,7 @@ export default class Plurnk extends CoreSchemeAdapterBase {
         if (access === "write" && pathname === "") return Results.failure(
             `scheme:${this.#manifest.name}`, `${this.#manifest.name}-entity-not-editable`, 400,
             `A ${this.#manifest.name} entity is not an editable entry.`, {},
-            { recovery: `EDIT requires an entry path, such as ${this.#manifest.name}:///example.md.`, retryable: false },
+            { recovery: `edit requires an entry path, such as ${this.#manifest.name}:///example.md.`, retryable: false },
         );
         return { authority: "", pathname };
     }
@@ -77,23 +74,6 @@ export default class Plurnk extends CoreSchemeAdapterBase {
             : this.#entryAddress(authority, Plurnk.#entryPath(target), access);
     }
 
-    async prepareRepresentation(
-        request: RepresentationPreparationRequest,
-        _ctx: SchemeCtx,
-    ): Promise<RepresentationPreparationResult> {
-        if (request.metadata !== null) {
-            return Results.failure(
-                `scheme:${this.#manifest.name}`,
-                "metadata-unsupported",
-                400,
-                `Resource reads on '${this.#manifest.name}' do not accept the [metadata] modifier.`,
-                {},
-                { retryable: false },
-            );
-        }
-        return { status: 200 };
-    }
-
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
         const precondition = SchemeCtxImpl.editPreconditionOf(ctx);
         const statement = statements[0];
@@ -102,9 +82,9 @@ export default class Plurnk extends CoreSchemeAdapterBase {
                 `scheme:${this.#manifest.name}`,
                 "edit-empty",
                 400,
-                "EDIT requires at least one statement.",
+                "edit requires at least one statement.",
                 { entryId: null, channel: null },
-                { recovery: "Add an EDIT statement or omit the operation.", retryable: false },
+                { recovery: "Add an edit statement or omit the operation.", retryable: false },
             );
         }
         const core = this.coreContext(ctx);
@@ -114,7 +94,7 @@ export default class Plurnk extends CoreSchemeAdapterBase {
                 `scheme:${this.#manifest.name}`,
                 `${this.#manifest.name}-target-required`,
                 400,
-                `EDIT requires a ${this.#manifest.name}:/// target.`,
+                `edit requires a ${this.#manifest.name}:/// target.`,
                 { entryId: null, channel: null },
                 { recovery: `Provide the ${this.#manifest.name} target.`, retryable: false },
             );
@@ -138,7 +118,7 @@ export default class Plurnk extends CoreSchemeAdapterBase {
                 `scheme:${this.#manifest.name}`,
                 `${this.#manifest.name}-target-required`,
                 400,
-                `KILL requires a ${this.#manifest.name} target.`,
+                `kill requires a ${this.#manifest.name} target.`,
                 {},
                 { recovery: `Provide the ${this.#manifest.name} target.`, retryable: false },
             );
@@ -152,7 +132,7 @@ export default class Plurnk extends CoreSchemeAdapterBase {
         const core = this.coreContext(ctx);
         const authority = this.#authority(statement.target);
         if (authority === null) {
-            return Results.failure(`scheme:${this.#manifest.name}`, `${this.#manifest.name}-target-required`, 400, `FIND requires a ${this.#manifest.name}:/// target.`, {
+            return Results.failure(`scheme:${this.#manifest.name}`, `${this.#manifest.name}-target-required`, 400, `find requires a ${this.#manifest.name}:/// target.`, {
                 content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
                 matchingPathCount: 0, matchLocationCount: 0,
             }, {

@@ -149,10 +149,10 @@ test("{§scheme-operation-dispatch}: KILL receives the authored statement and bo
     const db = await openMigrated();
     const env = await seedEnvelope(db, `scheme-kill-${crypto.randomUUID()}`);
     const schemes = new SchemeRegistry();
-    const requested = statement('await plurnk.kill({"path":"owned://bucket/notes","range":"1,-1","metadata":["{\\"mode\\":\\"local\\"}"],"aside":"remove"});');
+    const requested = statement('await plurnk.kill({"path":"owned://bucket/notes","range":"1,-1","aside":"remove"});');
     let invoked = false;
     schemes.register("owned", {
-        manifest: { name: "owned", authority: "resource", channels: { body: "text/plain" }, defaultChannel: "body", category: "data", writableBy: ["model"], volatile: false, modelVisible: true, metadataModifier: true },
+        manifest: { name: "owned", authority: "resource", channels: { body: "text/plain" }, defaultChannel: "body", category: "data", writableBy: ["model"], volatile: false, modelVisible: true },
         async kill(received, ctx) {
             assert.deepEqual(received, requested, "all authored KILL fields reach the owner");
             assert.equal(ctx.workspaceId, env.workspaceId);
@@ -202,7 +202,7 @@ for (const protocol of ["https", "http"]) {
             assert.deepEqual(requests, [], "forgetting a response cannot perform a remote mutation");
             const repeated = await engine.dispatch({ ...env, statement: statement(`await plurnk.kill({"path":"${target}"});`), sequence: 2, origin: "model" });
             assert.equal(repeated.status, 404, "the local representation was actually removed");
-            const remote = await engine.dispatch({ ...env, statement: statement(`await plurnk.kill({"path":"${target}","metadata":[{"remote":true,"If-Match":"revision-7"}]});`), sequence: 3, origin: "model" });
+            const remote = await engine.dispatch({ ...env, statement: statement(`await plurnk.kill({"path":"${target}","remote":true,"headers":{"If-Match":"revision-7"}});`), sequence: 3, origin: "model" });
             assert.equal(remote.status, 102, JSON.stringify(remote));
             assert.deepEqual(requests, [{ method: "DELETE", condition: "revision-7", url: target }]);
         } finally {

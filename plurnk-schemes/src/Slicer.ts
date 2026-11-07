@@ -227,7 +227,7 @@ export default class Slicer {
         if (end < start) {
             return {
                 error: `Exact region ${startLine},${startColumn},${endLine},${rawEndColumn} ends before it starts.`,
-                recovery: "An exact region names its earlier position first: <SL,SC,EL,EC>.",
+                recovery: 'An exact region names its earlier position first: "SL,SC,EL,EC".',
             };
         }
         return { start, end, body, startLine, endLine: resolvedEndLine };
@@ -381,11 +381,11 @@ export default class Slicer {
     // from the refused one ({§diagnostic-observation}).
     static #zeroStart(last: number, unit: RangeUnit): ScopeError {
         if (unit !== "line") {
-            return { error: `Range <0,${last}> starts at 0; ${unit} positions are numbered from 1.` };
+            return { error: `Range "0,${last}" starts at 0; ${unit} positions are numbered from 1.` };
         }
         return {
-            error: `Range <0,${last}> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position.`,
-            recovery: "<L,M> selects lines L through M; <0> prepends and <-1> appends without replacing anything.",
+            error: `Range "0,${last}" starts at 0, which is not a line; lines are numbered from 1 and 0 is only the "0" prepend position.`,
+            recovery: '"L,M" selects lines L through M; "0" prepends and "-1" appends without replacing anything.',
         };
     }
 
@@ -546,7 +546,7 @@ export default class Slicer {
                 {
                     requestedPositions: marker.marks,
                     stage: "projection",
-                    recovery: "Use <N> or <N,M> to select results.",
+                    recovery: 'Use "N" or "N,M" to select results.',
                     retryable: false,
                 },
             );
@@ -677,7 +677,7 @@ export default class Slicer {
             return Slicer.#failure(
                 "overlapping-edits",
                 409,
-                "A whole-resource replacement cannot coexist with another EDIT.",
+                "A whole-resource replacement cannot coexist with another edit.",
                 {},
                 {
                     stage: "mutation",
@@ -789,11 +789,11 @@ export default class Slicer {
         if (conflicts.length > 0) {
             const clean = live.flatMap((r, index) => conflicted.has(index) ? [] : [r.marker.marks]);
             const shared = conflicts.filter((c) => c.relation === "shared endpoint");
-            const guidance = shared.map((c) => `\`<SL,EL>\` is inclusive: line ${c.line} (${JSON.stringify(c.text)}) is claimed by both <${c.regions[0].join(",")}> and <${c.regions[1].join(",")}> and neither body reproduces it.`);
+            const guidance = shared.map((c) => `\`"SL,EL"\` is inclusive: line ${c.line} (${JSON.stringify(c.text)}) is claimed by both "${c.regions[0].join(",")}" and "${c.regions[1].join(",")}" and neither body reproduces it.`);
             return Slicer.#failure(
                 "overlapping-edits",
                 409,
-                "Two EDIT regions overlap.",
+                "Two edit regions overlap.",
                 {},
                 {
                     stage: "mutation",
@@ -802,7 +802,7 @@ export default class Slicer {
                     cleanRegions: clean,
                     editCount: replacements.length,
                     applied: 0,
-                    recovery: `${conflicts.length} conflicting pair${conflicts.length === 1 ? "" : "s"} (${[...new Set(conflicts.map((c) => c.relation))].join(", ")}); ${clean.length} of ${replacements.length} regions are clean; 0 of ${replacements.length} were applied. ${guidance.length > 0 ? guidance.join(" ") : "Submit non-overlapping EDIT regions."}`,
+                    recovery: `${conflicts.length} conflicting pair${conflicts.length === 1 ? "" : "s"} (${[...new Set(conflicts.map((c) => c.relation))].join(", ")}); ${clean.length} of ${replacements.length} regions are clean; 0 of ${replacements.length} were applied. ${guidance.length > 0 ? guidance.join(" ") : "Submit non-overlapping edit regions."}`,
                     retryable: false,
                 },
             );

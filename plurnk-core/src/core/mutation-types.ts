@@ -1,5 +1,5 @@
 // Shapes shared by the resource mutation classes (edit preparation, selection, transfers, effects).
-import { type LineMarker, type MatcherBody, type ParsedPath, type ResourceSelection, type SchemeMetadataOrNull, type TextLineMarker } from "@plurnk/plurnk-contracts";
+import { type LineMarker, type MatcherBody, type ParsedPath, type ResourceSelection, type TextLineMarker } from "@plurnk/plurnk-contracts";
 import { type ScopeNormalization, type SchemeHandler, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
 import { type LineAnchorPrecondition, type ResourceEffect } from "../content/index.ts";
@@ -11,12 +11,12 @@ export type DispatchResult = SchemeResult;
 export type EditMergeFact = { readonly rule: string } & Record<string, unknown>;
 
 export type MetadataResourceSelection = ResourceSelection & {
-    readonly metadata: SchemeMetadataOrNull;
+    readonly headers: Readonly<Record<string, string>> | null;
 };
 
 export type ResourceAddress = {
     readonly target: ParsedPath;
-    readonly metadata: SchemeMetadataOrNull;
+    readonly headers: Readonly<Record<string, string>> | null;
     readonly scheme: string;
     readonly authority: string;
     readonly pathname: string;
@@ -54,7 +54,7 @@ export type SelectedSource = ResolvedResourceSelection & {
 export type DeferredMoveSource = {
     readonly fileRevision?: string;
     readonly target: ParsedPath;
-    readonly metadata: SchemeMetadataOrNull;
+    readonly headers: Readonly<Record<string, string>> | null;
     readonly lineMarker: LineMarker | null;
     readonly matchedScopes?: readonly LineMarker[];
     readonly bytePrecondition?: string;
@@ -83,7 +83,7 @@ export type OrchestrationProposalAttrs = {
 
 export type PrepareDataRepresentation = (args: {
     target: ParsedPath;
-    metadata: SchemeMetadataOrNull;
+    headers: Readonly<Record<string, string>> | null;
     routedScheme: string;
     handler: SchemeHandler;
     manifest: SchemeManifest;

@@ -414,7 +414,7 @@ test("{§slicer-text-algebra} lineMarkerEditBatch rejects every kind of overlap 
     ]);
     assert.equal(rangeOverlap.status, 409);
     assert.equal(rangeOverlap.result, undefined);
-    assert.equal(rangeOverlap.problem?.detail, "Two EDIT regions overlap."); // {§slicer-text-algebra}
+    assert.equal(rangeOverlap.problem?.detail, "Two edit regions overlap."); // {§slicer-text-algebra}
     assert.deepEqual(rangeOverlap.problem?.conflictingRegions, [[2, 3], [3, 4]]);
     assert.equal(rangeOverlap.problem?.conflictingRanges, undefined, "one coordinate representation owns the conflict");
 
@@ -458,7 +458,7 @@ test("{§slicer-text-algebra} an overlap receipt carries the whole conflict grap
         { marker: { marks: [6, 6] }, body: "clean" },
     ]);
     assert.equal(result.status, 409);
-    assert.equal(result.problem?.detail, "Two EDIT regions overlap."); // {§slicer-text-algebra}
+    assert.equal(result.problem?.detail, "Two edit regions overlap."); // {§slicer-text-algebra}
     assert.deepEqual(result.problem?.conflictingRegions, [[1, 4], [2, 2]], "conflictingRegions names the first pair");
     assert.deepEqual(result.problem?.conflicts, [
         { regions: [[1, 4], [2, 2]], relation: "one contains the other" },
@@ -520,7 +520,7 @@ test("{§slicer-text-algebra} a shared endpoint no body reproduces stays refused
     assert.equal(shared?.conflicts?.[0]?.line, 3);
     assert.equal(
         result.problem?.recovery,
-        "1 conflicting pair (shared endpoint); 0 of 2 regions are clean; 0 of 2 were applied. `<SL,EL>` is inclusive: line 3 (\"c\") is claimed by both <2,3> and <3,5> and neither body reproduces it.",
+        '1 conflicting pair (shared endpoint); 0 of 2 regions are clean; 0 of 2 were applied. `"SL,EL"` is inclusive: line 3 ("c") is claimed by both "2,3" and "3,5" and neither body reproduces it.',
     );
 });
 
@@ -534,7 +534,7 @@ test("{§diagnostic-observation} containment stays refused and the receipt names
     assert.equal(contained?.conflicts?.[0]?.relation, "one contains the other");
     assert.equal(
         result.problem?.recovery,
-        "1 conflicting pair (one contains the other); 0 of 2 regions are clean; 0 of 2 were applied. Submit non-overlapping EDIT regions.",
+        "1 conflicting pair (one contains the other); 0 of 2 regions are clean; 0 of 2 were applied. Submit non-overlapping edit regions.",
     );
 });
 
@@ -582,10 +582,10 @@ test("{§slicer-text-algebra} {§diagnostic-observation} EDIT <0,795> is refused
     const result = Slicer.lineMarkerEdit(HEAD, { marks: [0, 795] }, "def test_new():\n    pass");
     assert.equal(result.status, 416);
     assert.equal(result.result, undefined, "no content is produced");
-    assert.equal(result.problem?.detail, "Range <0,795> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position."); // {§slicer-text-algebra}
+    assert.equal(result.problem?.detail, 'Range "0,795" starts at 0, which is not a line; lines are numbered from 1 and 0 is only the "0" prepend position.'); // {§slicer-text-algebra}
     assert.equal(
         result.problem?.recovery,
-        "<L,M> selects lines L through M; <0> prepends and <-1> appends without replacing anything.",
+        '"L,M" selects lines L through M; "0" prepends and "-1" appends without replacing anything.',
     ); // {§slicer-text-algebra}
     assert.deepEqual(result.problem?.range, { unit: "line", total: 800, requested: [0, 795] });
 });
@@ -603,11 +603,11 @@ test("{§zero-width-column-one-insert} wholeLineBody appends the content's separ
 });
 
 test("{§slicer-text-algebra} the strict slicing and mutation algebra rejects <0,-1>, including on empty content", () => {
-    const recovery = "<L,M> selects lines L through M; <0> prepends and <-1> appends without replacing anything."; // {§slicer-text-algebra}
+    const recovery = '"L,M" selects lines L through M; "0" prepends and "-1" appends without replacing anything.'; // {§slicer-text-algebra}
     for (const content of [HEAD, ""]) {
         const edit = Slicer.lineMarkerEdit(content, { marks: [0, -1] }, "replacement");
         assert.equal(edit.status, 416, `EDIT on ${content.length} chars`);
-        assert.equal(edit.problem?.detail, "Range <0,-1> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position."); // {§slicer-text-algebra}
+        assert.equal(edit.problem?.detail, 'Range "0,-1" starts at 0, which is not a line; lines are numbered from 1 and 0 is only the "0" prepend position.'); // {§slicer-text-algebra}
         assert.equal(edit.problem?.recovery, recovery);
         assert.equal(Slicer.lines(content, { marks: [0, -1] }).problem?.recovery, recovery);
         assert.equal(Slicer.linesRaw(content, { marks: [0, -1] }).problem?.recovery, recovery);
@@ -619,18 +619,18 @@ test("{§slicer-text-algebra} lines() requires the READ projection to normalize 
     const result = Slicer.lines(HEAD, { marks: [0, 30] });
     assert.equal(result.status, 416);
     assert.equal(result.text, undefined);
-    assert.equal(result.problem?.recovery, "<L,M> selects lines L through M; <0> prepends and <-1> appends without replacing anything.");
+    assert.equal(result.problem?.recovery, '"L,M" selects lines L through M; "0" prepends and "-1" appends without replacing anything.');
 });
 
 test("{§slicer-text-algebra} pages and byte windows refuse a zero start in their own unit", () => {
     const page = Slicer.page(["a", "b"], { marks: [0, -1] }, { unit: "resource" });
     assert.equal(page.status, 416);
-    assert.equal(page.problem?.detail, "Range <0,-1> starts at 0; resource positions are numbered from 1."); // {§slicer-text-algebra}
+    assert.equal(page.problem?.detail, 'Range "0,-1" starts at 0; resource positions are numbered from 1.'); // {§slicer-text-algebra}
     assert.equal(page.problem?.recovery, "Choose a range within the available extent."); // {§slicer-text-algebra}
     assert.equal(Slicer.page([], { marks: [0, 5] }, { unit: "resource" }).status, 416, "an empty result set does not excuse a zero start");
     const window = Slicer.window({ marks: [0, 16] }, 40, "byte");
     assert.equal(window.status, 416);
-    assert.equal(window.problem?.detail, "Range <0,16> starts at 0; byte positions are numbered from 1."); // {§slicer-text-algebra}
+    assert.equal(window.problem?.detail, 'Range "0,16" starts at 0; byte positions are numbered from 1.'); // {§slicer-text-algebra}
     assert.equal(window.problem?.recovery, "Choose a range within the available extent."); // {§slicer-text-algebra}
     assert.equal(Slicer.window({ marks: [0] }, 40, "byte").start, null, "the single <0> position stays a sentinel");
 });
@@ -649,7 +649,7 @@ test("{§diagnostic-observation} a refused scope states its bound or working for
     assert.equal(recovery(Slicer.lineMarkerEdit(TEXT, { marks: [3, 0, 3, 0] }, "x\n")), "Lines and columns count from 1.");
     assert.equal(recovery(Slicer.lines(TEXT, { marks: [1, 2, 3, 0] })), "Lines and columns count from 1.");
     // An inverted region shows the form's order, not the region written forward.
-    assert.equal(recovery(Slicer.lineMarkerEdit(TEXT, { marks: [3, 1, 2, 1] }, "x")), "An exact region names its earlier position first: <SL,SC,EL,EC>.");
+    assert.equal(recovery(Slicer.lineMarkerEdit(TEXT, { marks: [3, 1, 2, 1] }, "x")), 'An exact region names its earlier position first: "SL,SC,EL,EC".');
     // `<-2,-1>` states the line extent, not a tail.
     assert.equal(recovery(Slicer.lines(TEXT, { marks: [-2, -1] })), "-1 is the only position counted from the end; lines run 1..4.");
 });

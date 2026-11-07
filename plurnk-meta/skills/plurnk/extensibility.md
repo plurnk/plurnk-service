@@ -66,7 +66,7 @@ An extension is one package of one kind, declared once: under `plurnk` in its
 
 | Kind | Adds | Kind-owned field | Contract |
 | --- | --- | --- | --- |
-| `exec` | runtimes the model invokes as fences | `runtimes` | `skill://plurnk/packages/@plurnk/plurnk-execs/SPEC.md` |
+| `exec` | runtimes the model invokes as tool calls | `runtimes` | `skill://plurnk/packages/@plurnk/plurnk-execs/SPEC.md` |
 | `scheme` | address schemes | `schemes`, or `name` for one | `skill://plurnk/packages/@plurnk/plurnk-schemes/SPEC.md` |
 | `mimetype` | readers for media types | `handlers` | `skill://plurnk/packages/@plurnk/plurnk-mimetypes/SPEC.md` |
 | `provider` | a model provider | `name` | `skill://plurnk/packages/@plurnk/plurnk-providers/SPEC.md` |

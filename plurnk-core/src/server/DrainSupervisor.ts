@@ -791,7 +791,7 @@ export default class DrainSupervisor {
         await this.#streamAnnouncements.get(subscriptionId)?.delivered;
     }
 
-    // {§notifications} {§exec-lifetime} What the loop's terminal reaps, concluded and announced.
+    // {§notifications} {§exec-stream} What the loop's terminal reaps, concluded and announced.
     async #reapLoop(loopId: number): Promise<void> {
         const reaped = await this.#engine.reapLoopStreams(loopId);
         await Promise.all(reaped.map((subscriptionId) => this.#streamConcluded(subscriptionId)));

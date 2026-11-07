@@ -4,6 +4,18 @@
             "reason": "npm's stable latest tag is the legacy 0.1 line; 0.2.0-alpha.12 is the exact current 2026-07-28 conformance referee",
             "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/253",
             "lane": "mcp"
+        },
+        "tree-sitter-cli": {
+            "ownerVeto": true,
+            "reason": "standalone plurnk-mimetypes-grammar-* and plurnk-mimetypes-text-* sibling repositories pin 0.27.1 pending cross-repo roll to 0.27.2",
+            "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/1423",
+            "lane": "mimetypes"
+        },
+        "web-tree-sitter": {
+            "ownerVeto": true,
+            "reason": "standalone plurnk-mimetypes-text-* sibling repositories lock 0.27.1 in their package-lock.json pending cross-repo roll to 0.27.2",
+            "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/1423",
+            "lane": "mimetypes"
         }
     },
     "ownerVeto": [

@@ -1021,7 +1021,7 @@ for (const [header, seconds] of [["wait", undefined], ["WAIT [0]", 0]] as const)
         const previous = process.env.PLURNK_SERVICE_WAIT_SEC;
         process.env.PLURNK_SERVICE_WAIT_SEC = "1";
         const mock = new Mock({ contextWindow: 16384, responses: [
-            makeMockResponse(`await plurnk.sh({"metadata":["{\\"lifetime\\": \\"30m\\"}"],"command":"sleep 30"});
+            makeMockResponse(`await plurnk.sh({"command":"sleep 30"});
 
 await plurnk.wait(${JSON.stringify({ ...(seconds === undefined ? {} : { seconds }), text: "await the result" })});`, 10),
             makeMockResponse("await plurnk.send({\"text\":\"observed the still-open stream\"});\n\nawait plurnk.kill({\"path\":\"session://root\"});", 10),

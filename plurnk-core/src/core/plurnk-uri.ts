@@ -65,7 +65,7 @@ export function missDetail(scheme: string | null, target: string): string {
 
 // {§fs-namespace} {§diagnostic-observation} — every file miss carries this recovery: listing,
 // creation and admission stand as alternatives, each valid whatever the address was for.
-export const FILE_MISS_RECOVERY = "FIND lists paths. EDIT creates files; `await plurnk.members({ files: [\"<path>\"] });` admits existing files.";
+export const FILE_MISS_RECOVERY = "find lists paths. edit creates files; `await plurnk.members({ files: [\"<path>\"] });` admits existing files.";
 
 // {§fs-namespace} — a file member renders its literal key as a reusable path;
 // every other scheme renders its URI.

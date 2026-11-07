@@ -56,11 +56,11 @@ export default class ResourceSelector {
                     "An attachment selects one exact resource address.", {}, { retryable: false }) };
             }
             const denial = await this.#admitRead({
-                op: "read", target, lineMarker: null, matcher: null, metadata: null, body: null, aside: null,
+                op: "read", target, lineMarker: null, matcher: null, headers: null, body: null, aside: null,
                 position: { line: 0, column: 0 },
             }, ctx);
             if (denial !== null) return { failure: denial };
-            const selection = await this.resolveResourceSelection({ target, metadata: null, lineMarker: null, matcher: null }, ctx, "read");
+            const selection = await this.resolveResourceSelection({ target, headers: null, lineMarker: null, matcher: null }, ctx, "read");
             if ("status" in selection) return { failure: selection };
             const selected = await this.selectSource(selection, ctx, "send");
             if ("status" in selected) return { failure: selected };
@@ -81,7 +81,7 @@ export default class ResourceSelector {
         ctx: PlurnkSchemeContext,
         access: "read" | "write" = "write",
     ): Promise<AddressedResourceSelection | DispatchResult> {
-        const { target, metadata, lineMarker, matcher } = selection;
+        const { target, headers, lineMarker, matcher } = selection;
         const scheme = schemeNameOf(target);
         if (scheme === null) {
             return MutationEffects.failure(
@@ -98,7 +98,7 @@ export default class ResourceSelector {
             return MutationEffects.failure(
                 "pattern-destination-unsupported",
                 400,
-                "A pattern selects source text; a COPY or MOVE destination uses a scope.",
+                "A pattern selects source text; a copy or move destination uses a scope.",
                 {},
                 { scheme, retryable: false },
             );
@@ -117,6 +117,15 @@ export default class ResourceSelector {
                     recovery: unregisteredSchemeRecovery(this.#schemes.list(ctx.workspaceId)),
                     retryable: false,
                 },
+            );
+        }
+        if (headers !== null && scheme !== "http" && scheme !== "https" && scheme !== "ws" && scheme !== "wss") {
+            return MutationEffects.failure(
+                "headers-unsupported",
+                400,
+                `Resource selection on '${scheme}' does not accept headers.`,
+                {},
+                { scheme, retryable: false },
             );
         }
         const readableProjection = access === "read" && coreRepresentationProvider(handler) !== null;
@@ -188,7 +197,7 @@ export default class ResourceSelector {
             : pathname;
         return {
             target,
-            metadata,
+            headers,
             lineMarker,
             matcher,
             scheme,
@@ -393,7 +402,7 @@ export default class ResourceSelector {
         if (provider !== null) return provider.resolveCoreRepresentation(selection.target, ctx);
         const prepared = await this.#prepareDataRepresentation({
             target: selection.target,
-            metadata: selection.metadata,
+            headers: selection.headers,
             routedScheme: selection.scheme,
             handler,
             manifest: selection.manifest,
@@ -488,7 +497,7 @@ export default class ResourceSelector {
                     {
                         operation,
                         target,
-                        recovery: `READ ${target} again and retry against its current coordinates.`,
+                        recovery: `read ${target} again and retry against its current coordinates.`,
                         retryable: false,
                     },
                 ),

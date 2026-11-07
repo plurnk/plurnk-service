@@ -206,7 +206,7 @@ export default class LoopDriver {
                 }
 
                 const execHandler = this.#schemes.get("exec");
-                // {§exec-lifetime} — hold matching runtime/effect
+                // {§exec-stream} — hold matching runtime/effect
                 // streams until conclusion or the fail-open cap, then resume the
                 // ordinary cycle without altering stream state.
                 const holdSet = new Set(Knob.list("PLURNK_SERVICE_EXEC_HOLD"));

@@ -50,7 +50,6 @@ export default class DispatchAsPlurnk {
                 op: "note",
                 aside: null,
                 target: null,
-                metadata: null,
                 lineMarker: null,
                 body: summary,
                 position: UNKNOWN_POSITION,

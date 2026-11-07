@@ -26,7 +26,7 @@ import { resourceGroups, resourcePaths } from "./_find.ts";
 
 describe("Engine.dispatch", () => {
 const dispatchEditStmt = (opts: { target: ParsedPath; body?: string | null; marker?: TextLineMarker | null; aside?: string | null }): EditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: opts.aside ?? null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
@@ -35,7 +35,7 @@ const dispatchEditStmt = (opts: { target: ParsedPath; body?: string | null; mark
 });
 
 const readStmt = (opts: { target: ParsedPath; marker?: ReadStatement["lineMarker"] }): ReadStatement => ({
-    metadata: null,
+    headers: null,
     op: "read", aside: null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
@@ -44,7 +44,8 @@ const readStmt = (opts: { target: ParsedPath; marker?: ReadStatement["lineMarker
 });
 
 const killStmt = (opts: { target: ParsedPath; marker?: TextLineMarker | null; matcher?: MatcherBody | null }): KillStatement => ({
-    metadata: null,
+    headers: null,
+    remote: null,
     op: "kill", aside: null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
@@ -53,7 +54,6 @@ const killStmt = (opts: { target: ParsedPath; marker?: TextLineMarker | null; ma
 });
 
 const continuationStmt = (opts: { body?: string | null }): NoteStatement => ({
-    metadata: null,
     op: "note", aside: null,
     target: null,
     lineMarker: null,
@@ -240,7 +240,7 @@ for (const op of ["read", "find"] as const) {
                 target: null,
                 lineMarker: null,
                 matcher: null,
-                metadata: null,
+                headers: null,
                 body: null,
                 position: { line: 1, column: 1 },
             };
@@ -358,7 +358,7 @@ test("{§operation-results} Engine.dispatch: a current READ line anchor lowers t
         });
         assert.equal(stale.status, 409);
         assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(stale.problem?.detail, "EDIT collided with the current resource state."); // {§operation-results}
+        assert.equal(stale.problem?.detail, "edit collided with the current resource state."); // {§operation-results}
         assert.equal(stale.problem?.target, identity);
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
@@ -576,7 +576,7 @@ test("{§operation-results} Engine.dispatch: a scoped READ anchor includes nearb
         });
         assert.equal(stale.status, 409);
         assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(stale.problem?.detail, "EDIT collided with the current resource state."); // {§operation-results}
+        assert.equal(stale.problem?.detail, "edit collided with the current resource state."); // {§operation-results}
         assert.equal(stale.problem?.target, "workspace:///contextual-anchor.md");
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
@@ -636,7 +636,7 @@ test("{§scheme-operation-dispatch} Engine.dispatch: a mutation between anchor r
         });
         assert.equal(collided.status, 409);
         assert.equal(collided.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(collided.problem?.detail, "EDIT collided with the current resource state."); // {§operation-results}
+        assert.equal(collided.problem?.detail, "edit collided with the current resource state."); // {§operation-results}
         assert.equal(collided.problem?.target, identity);
         assert.equal(collided.problem?.anchor, undefined);
 
@@ -808,7 +808,7 @@ test("{§operation-results} Engine.dispatch: null path on path-required op retur
     const { db, engine, env } = await setup();
     try {
         const stmt: EditStatement = {
-            metadata: null,
+            headers: null,
             op: "edit", aside: null, target: null, lineMarker: null, matcher: null, body: "y",
             position: { line: 1, column: 1 },
         };
@@ -1088,8 +1088,8 @@ test("{§operation-results} Engine.dispatch: COPY rejects a non-entry destinatio
         const result = await engine.dispatch({
             statement: {
                 op: "copy", aside: null,
-                source: { target: urlPath("workspace", "/src"), metadata: null, lineMarker: null, matcher: null },
-                destination: { target: urlPath("log", "/dst"), metadata: null, lineMarker: null, matcher: null },
+                source: { target: urlPath("workspace", "/src"), headers: null, lineMarker: null, matcher: null },
+                destination: { target: urlPath("log", "/dst"), headers: null, lineMarker: null, matcher: null },
                 position: { line: 1, column: 1 },
             },
             workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,

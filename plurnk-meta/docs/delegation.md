@@ -86,6 +86,6 @@ that reply without a new request.
 
 await plurnk.done({ target: "message://exampleSessionName/ab3d5678", text: "The completed answer to this request goes here." });
 
-`send`, `done`, and `fail` accept `metadata: [{ attachments: ["report.pdf", "workspace:///example.md"] }]`:
+`send`, `done`, and `fail` accept `attachments: ["report.pdf", "workspace:///example.md"]`:
 send-time copies delivered through ordinary resource links, not native media
 parts. Each is materialized as `message://<recipient>/<id>/<index>-<basename>`.

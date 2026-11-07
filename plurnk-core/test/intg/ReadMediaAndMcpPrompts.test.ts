@@ -117,10 +117,10 @@ const bytesReadStmt = (root: string, pathname: string, lineMarker: LineMarker | 
     if (fragment !== null) url.hash = fragment;
     const target = parsePath(url.href);
     assert.ok(target);
-    return { metadata: null, op: "read", aside: null, target, lineMarker, matcher: null, body: null, position: { line: 1, column: 1 } };
+    return { headers: null, op: "read", aside: null, target, lineMarker, matcher: null, body: null, position: { line: 1, column: 1 } };
 };
 const bytesFindStmt = (pathname: string, pattern: string) => ({
-    op: "find", aside: null, lineMarker: null, metadata: null, position: { line: 1, column: 1 },
+    op: "find", aside: null, lineMarker: null, headers: null, position: { line: 1, column: 1 },
     target: { kind: "local", raw: pathname }, matcher: { dialect: "regex", raw: `/${pattern}/`, pattern, flags: "" }, body: null,
 }) as never;
 

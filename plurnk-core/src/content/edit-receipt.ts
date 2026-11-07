@@ -55,11 +55,11 @@ export class EditCollision {
             "engine:edit",
             "edit-collision",
             409,
-            "EDIT collided with the current resource state.",
+            "edit collided with the current resource state.",
             fields,
             {
                 target,
-                recovery: "READ the target again before selecting current coordinates.",
+                recovery: "read the target again before selecting current coordinates.",
                 retryable: false,
                 ...extensions,
             },
@@ -148,7 +148,7 @@ function assertParseIssues(value: unknown): asserts value is ParseIssueTransitio
     }
 }
 
-export const EDIT_NOOP_DETAIL = "No change: EDIT body matches the selected content.";
+export const EDIT_NOOP_DETAIL = "No change: edit body matches the selected content.";
 
 const receiptFields = (
     receipt: Record<string, unknown>,

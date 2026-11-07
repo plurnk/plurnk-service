@@ -545,8 +545,8 @@ test("{§mcp-http-server} credential authority enforces bearer tokens, scopes, a
     revokeFamily("fam-1");
 });
 
-test("{§mcp-http-server} execution verbs settle via stream/concluded, support detached mode, and surface errors", async (t) => {
-    let mode: "settled-sh" | "settled-result-channel" | "detached" | "failed-op" = "settled-sh";
+test("{§mcp-http-server} execution verbs settle via stream/concluded and surface errors", async (t) => {
+    let mode: "settled-sh" | "settled-result-channel" | "failed-op" = "settled-sh";
     const { baseUrl, emitEvent } = await createHarness(t, {
         logRows: [],
         openStreams: [
@@ -581,9 +581,6 @@ test("{§mcp-http-server} execution verbs settle via stream/concluded, support d
                         },
                     },
                 ];
-            }
-            if (mode === "detached") {
-                return [{ status: 202, attrs: { pathname: "1/1/1", stream: "sh:///1/1/1", detached: true } }];
             }
             if (mode === "settled-result-channel") {
                 setTimeout(() => {
@@ -621,17 +618,7 @@ test("{§mcp-http-server} execution verbs settle via stream/concluded, support d
     assert.equal(envRes.isError, undefined);
     assert.equal((envRes.content[0] as { text: string }).text, '{"variables":[]}');
 
-    // 3. Detached subprocess execution
-    mode = "detached";
-    const detachedRes = await client.callTool({ name: "sh", arguments: { script: "sleep 10", detached: true } });
-    assert.equal(detachedRes.isError, undefined);
-    assert.deepEqual(JSON.parse((detachedRes.content[0] as { text: string }).text), {
-        status: 202,
-        outcome: "started",
-        stream: "sh:///1/1/1",
-    });
-
-    // 4. Operation failure with recovery
+    // 3. Operation failure with recovery
     mode = "failed-op";
     const failedRes = await client.callTool({ name: "sh", arguments: { script: "bad" } });
     assert.equal(failedRes.isError, true);

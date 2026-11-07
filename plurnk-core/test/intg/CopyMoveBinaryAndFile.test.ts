@@ -345,7 +345,7 @@ test("{§binary-parity} a stored binary supports the same destination splice and
 // bytes base64 in TEXT content, and a default READ recovers them as the hex byte view — no byte source
 // handed in, synthesized from the stored content — exactly as a File member's #bytes reads.
 const binaryReadStmt = (pathname: string): ReadStatement => ({
-    metadata: null, op: "read", aside: null,
+    headers: null, op: "read", aside: null,
     target: { kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, query: null, fragment: null },
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
@@ -416,7 +416,7 @@ test("{§binary-parity} a READ pattern selects source bytes, retaining byte coor
 // FIND treats a binary entry as bytes, never as its base64 text: a byte run in the entry's bytes is
 // found, and a text search over the workspace is never poisoned into matching a binary's base64.
 const findBody = (raw: string, pattern: string): FindStatement => ({
-    metadata: null, op: "find", aside: null,
+    headers: null, op: "find", aside: null,
     target: { kind: "url", raw: "workspace:///**", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/**", query: null, fragment: null },
     lineMarker: null, matcher: { dialect: "regex", raw, pattern, flags: "" }, body: null, position: { line: 1, column: 1 },
 });
@@ -622,7 +622,7 @@ const fileMember = async (ctx: Ctx, rel: string) =>
 const generatedPicks = (ctx: Ctx) =>
     ctx.db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: ctx.workspaceId });
 
-const killStmt = (target: ParsedPath): KillStatement => ({ metadata: null, op: "kill", aside: null, target, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
+const killStmt = (target: ParsedPath): KillStatement => ({ headers: null, remote: null, op: "kill", aside: null, target, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
 
 const proposeAndResolve = async (
     ctx: Ctx,

@@ -40,10 +40,8 @@ WHERE entry_id = $entry_id AND name = $channel
 RETURNING name;
 
 -- PREP: open_subscription
--- turn_scoped COALESCEs to 0 so a caller binding the raw prep without it (an unbounded stream) is
--- a normal, non-turn-scoped subscription — the column is NOT NULL, so a missing bind would error.
-INSERT INTO subscriptions (session_id, entry_id, scheme, handle, turn_scoped, detached, published_channel, source)
-VALUES ($session_id, $entry_id, $scheme, $handle, COALESCE($turn_scoped, 0), COALESCE($detached, 0), $published_channel, $source)
+INSERT INTO subscriptions (session_id, entry_id, scheme, handle, published_channel, source)
+VALUES ($session_id, $entry_id, $scheme, $handle, $published_channel, $source)
 RETURNING id;
 
 -- PREP: close_subscription
@@ -79,9 +77,9 @@ WHERE session_id = $session_id AND closed_at IS NULL;
 
 -- PREP: session_open_streams
 -- {§methods} The session's open subscriptions in opening order, one row per channel of each one's entry,
--- written or not (none for an entry without channels): its address, the lifetime its spawn declared, and its source.
+-- written or not (none for an entry without channels): its address and its source.
 -- An outer join cannot flatten the entry_channels view, so this one reads its table ({§content-store}).
-SELECT s.id, s.entry_id, s.session_id, e.scheme, e.authority, e.pathname, s.turn_scoped, s.detached, s.source,
+SELECT s.id, s.entry_id, s.session_id, e.scheme, e.authority, e.pathname, s.source,
        ec.name AS channel, ec.state, ec.mimetype
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
@@ -90,23 +88,15 @@ WHERE s.session_id = $session_id AND s.closed_at IS NULL
 ORDER BY s.id, ec.name;
 
 -- PREP: find_open_subscriptions_announced_in_loop
--- {§connection-lifecycle} A client operation's executions that still run: the runtime session's open, attached
+-- {§connection-lifecycle} A client operation's executions that still run: the runtime session's open
 -- subscriptions beside each stream address its loop's rows announced. The caller keeps the pairs whose entry
 -- renders to that address; cancelling the operation reaps exactly those.
 SELECT s.id, e.scheme, e.authority, e.pathname, json_extract(le.attrs, '$.stream') AS stream
 FROM log_entries le
 JOIN sessions w ON w.id = le.session_id AND w.workspace_id = $workspace_id AND w.origin = '_plurnk'
-JOIN subscriptions s ON s.session_id = le.session_id AND s.closed_at IS NULL AND s.detached = 0
+JOIN subscriptions s ON s.session_id = le.session_id AND s.closed_at IS NULL
 JOIN entries e ON e.id = s.entry_id
 WHERE le.loop_id = $loop_id AND json_extract(le.attrs, '$.stream') IS NOT NULL;
-
--- PREP: find_open_turn_scoped_subscriptions_for_session
--- The session's open turn-scoped (EXEC `<0>`) subscriptions — reaped at the session's next pre-turn so a
--- `<0>` stream never survives into the subsequent turn; its terminal output surfaces initially visible
--- through the same conclusion-delta path as any close ({§exec-stream}).
-SELECT id, scheme
-FROM subscriptions
-WHERE session_id = $session_id AND closed_at IS NULL AND turn_scoped = 1;
 
 -- PREP: find_exec_close_status
 -- Terminal outcome of a finished exec stream, addressed by its coordinate

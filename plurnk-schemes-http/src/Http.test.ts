@@ -57,7 +57,6 @@ test("{§http-lifecycle} manifest: name https (plain http folds in, #340), defau
     assert.equal(Http.manifest.defaultChannel, "body");
     assert.deepEqual(Http.manifest.traits, ["web"]);
     assert.equal(Http.manifest.volatile, true);
-    assert.equal(Http.manifest.metadataModifier, true);
     assert.deepEqual(Object.keys(Http.manifest.channels).toSorted(), ["body", "header", "readable"]);
 });
 
@@ -516,7 +515,7 @@ test("{§http-status} finite HTTP errors preserve their body and exact default-c
     );
 });
 
-test("{§http-lifecycle} READ uses canonical authority/query identity while metadata and fragment stay out of transport", async () => {
+test("{§http-lifecycle} READ uses canonical authority/query identity while headers and fragment stay out of transport", async () => {
     const { ctx, inspect } = makeCtx();
     let seenUrl = "";
     let seenHeaders: HeadersInit | undefined;
@@ -530,7 +529,7 @@ test("{§http-lifecycle} READ uses canonical authority/query identity while meta
         seenHeaders = init?.headers;
         return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
     }, async () => {
-        const result = await prepareRepresentation(new Http(), readStmt(target, null, ["{\"Authorization\":\"Bearer example\"}"]), ctx);
+        const result = await prepareRepresentation(new Http(), readStmt(target, null, { Authorization: "Bearer example" }), ctx);
         assert.equal(result.status, 200);
     });
     assert.equal(seenUrl, "https://example.com:8443/x?b=2&a=1&a=3");
@@ -573,7 +572,7 @@ test("{§http-lifecycle} READ/POST/PUT/DELETE: explicit loopback targets use the
             (http: Http, ctx: SchemeCtx) => prepareRepresentation(http, readStmt(target), ctx),
             (http: Http, ctx: SchemeCtx) => sendSettled(http, sendStmt(target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => editSettled(http, editStmt(target, "body"), ctx),
-            (http: Http, ctx: SchemeCtx) => killSettled(http, killStmt(target, null, ["{\"remote\":true}"]), ctx),
+            (http: Http, ctx: SchemeCtx) => killSettled(http, killStmt(target, null, { remote: true }), ctx),
         ];
         for (const [index, operation] of operations.entries()) {
             const { ctx, inspect } = makeCtx();
@@ -1352,7 +1351,7 @@ test("{§http-host-policy} byte path sends Plurnk's own identity, never a browse
     assert.doesNotMatch(ua, /Mozilla|Chrome|Safari/u, "and never claims to be a browser");
 });
 
-test("{§http-lifecycle} a model-supplied User-Agent metadata block overrides the default identity", async () => {
+test("{§http-lifecycle} a model-supplied User-Agent header overrides the default identity", async () => {
     const { ctx } = makeCtx();
     let ua = "";
     const probe = async (_u: string | URL | Request, init?: RequestInit) => {
@@ -1361,7 +1360,7 @@ test("{§http-lifecycle} a model-supplied User-Agent metadata block overrides th
     };
     const target = urlTarget("https://api.example.com/x", "/x");
     await withFetch(probe, async () => {
-        await prepareRepresentation(new Http(), readStmt(target, null, ["{\"User-Agent\":\"curl/8\"}"]), ctx);
+        await prepareRepresentation(new Http(), readStmt(target, null, { "User-Agent": "curl/8" }), ctx);
     });
     assert.equal(ua, "curl/8");
 });

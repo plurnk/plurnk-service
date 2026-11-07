@@ -63,7 +63,7 @@ export default class EditMutations {
     // never to the line-normalized or previewed public READ projection.
     async #current(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.target === null) throw new InvalidOperationResultError("An admitted resource edit has no target.");
-        const selection = await this.#selection.resolveResourceSelection({ target: statement.target, metadata: statement.metadata, lineMarker: null, matcher: null }, ctx, "read");
+        const selection = await this.#selection.resolveResourceSelection({ target: statement.target, headers: statement.headers, lineMarker: null, matcher: null }, ctx, "read");
         if ("status" in selection) return selection;
         const source = await this.#selection.selectSource(selection, ctx, "edit");
         if ("status" in source) return source;
@@ -110,7 +110,7 @@ export default class EditMutations {
                 result: MutationEffects.failure(
                     "line-anchor-unsupported",
                     400,
-                    `Scheme '${schemeName}' does not support textual EDIT scopes.`,
+                    `Scheme '${schemeName}' does not support textual edit scopes.`,
                     {},
                     {
                         scheme: schemeName,
@@ -126,7 +126,7 @@ export default class EditMutations {
                 result: MutationEffects.failure(
                     "edit-target-required",
                     400,
-                    "A line-anchored EDIT requires a target resource.",
+                    "A line-anchored edit requires a target resource.",
                     {},
                     { recovery: "Provide the target that rendered the line anchor.", retryable: false },
                 ),
@@ -147,7 +147,7 @@ export default class EditMutations {
                 result: MutationEffects.failure(
                     "line-anchor-validation-failed",
                     current.status,
-                    `EDIT could not validate its line anchor at ${identity}: ${current.problem?.detail ?? `READ returned ${current.status}`}`,
+                    `edit could not validate its line anchor at ${identity}: ${current.problem?.detail ?? `read returned ${current.status}`}`,
                     {},
                     {
                         target: identity,
@@ -254,7 +254,7 @@ export default class EditMutations {
                         unresolvedAnchors: [...unresolved.values()],
                         editCount: 1,
                         applied: 0,
-                        recovery: "0 of 1 edits applied. READ the target for current coordinates.",
+                        recovery: "0 of 1 edits applied. read the target for current coordinates.",
                     }),
                 };
             }
@@ -295,7 +295,7 @@ export default class EditMutations {
         if (denial !== null) return denial;
         const schemeName = schemeNameOf(statement.target);
         if (schemeName === null || statement.target === null) {
-            return MutationEffects.failure("target-required", 400, "EDIT requires a target scheme.", {}, { retryable: false });
+            return MutationEffects.failure("target-required", 400, "edit requires a target scheme.", {}, { retryable: false });
         }
         const handler = this.#schemes.get(schemeName, ctx.workspaceId);
         const manifest = this.#schemes.manifestAt(schemeName, statement.target, ctx.workspaceId);
@@ -304,9 +304,9 @@ export default class EditMutations {
                 `Scheme '${schemeName}' does not implement edit.`, {},
                 { scheme: schemeName, operation: "edit", retryable: false });
         }
-        if (statement.metadata !== null && manifest.metadataModifier !== true) {
-            return MutationEffects.failure("scheme-metadata-unsupported", 400,
-                `edit on '${schemeName}' does not accept the [metadata] modifier.`, {},
+        if (statement.headers !== null && schemeName !== "http" && schemeName !== "https" && schemeName !== "ws" && schemeName !== "wss") {
+            return MutationEffects.failure("headers-unsupported", 400,
+                `edit on '${schemeName}' does not accept headers.`, {},
                 { scheme: schemeName, operation: "edit", retryable: false });
         }
         const addressedScheme = statement.target.kind === "url" ? statement.target.scheme : schemeName;
@@ -321,7 +321,7 @@ export default class EditMutations {
                 { scheme: schemeName, operation: "edit", retryable: false });
         }
         if (binding !== null && binding.address === null) {
-            return MutationEffects.failure("entry-not-found", 404, "The EDIT target could not be resolved.");
+            return MutationEffects.failure("entry-not-found", 404, "The edit target could not be resolved.");
         }
         const identity = await this.#editTargetIdentity(statement, ctx.workspaceId, ctx.workspaceId);
         const resolved = await this.#resolveEditAnchors(statement, identity, schemeName, manifest, ctx, sequence);

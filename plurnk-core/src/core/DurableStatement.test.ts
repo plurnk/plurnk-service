@@ -16,7 +16,7 @@ test("{§log-history-projection} DurableStatement projects URL credential slots 
         op: "read",
         aside: null,
         target,
-        metadata: ["Set-Cookie: a=1", "Set-Cookie: b=2"],
+        headers: { "Set-Cookie": "a=1", "X-Token": "b=2" },
         lineMarker: null,
         matcher: null, body: null,
         position: { line: 1, column: 0 },
@@ -24,36 +24,36 @@ test("{§log-history-projection} DurableStatement projects URL credential slots 
 
     const projected = DurableStatement.project(statement);
     if (projected.op !== "read" || projected.target?.kind !== "url") {
-        throw new Error("projected READ lost its URL target");
+        throw new Error("projected read lost its URL target");
     }
     assert.equal(projected.target.raw, "https://__redacted__:__redacted__@example.test/path?#body");
     assert.equal(projected.target.username, "__redacted__");
     assert.equal(projected.target.password, "__redacted__");
     assert.equal(projected.target.query, "", "an explicit empty query survives");
-    assert.deepEqual(projected.metadata, ["__redacted__", "__redacted__"]);
+    assert.deepEqual(projected.headers, { "Set-Cookie": "__redacted__", "X-Token": "__redacted__" });
     assert.equal(target.username, "user");
     assert.equal(target.password, "password");
-    assert.deepEqual(statement.metadata, ["Set-Cookie: a=1", "Set-Cookie: b=2"]);
+    assert.deepEqual(statement.headers, { "Set-Cookie": "a=1", "X-Token": "b=2" });
 });
 
 test("{§log-history-projection} DurableStatement applies the same projection to both COPY operands", () => {
     const statement: CopyStatement = {
         op: "copy",
         aside: null,
-        source: { target: url("https://user:password@example.test/source"), metadata: ["Authorization: source-secret"], lineMarker: null, matcher: null },
-        destination: { target: url("https://:password@example.test/destination"), metadata: ["Authorization: destination-secret"], lineMarker: { marks: [1, 1] }, matcher: null },
+        source: { target: url("https://user:password@example.test/source"), headers: { Authorization: "source-secret" }, lineMarker: null, matcher: null },
+        destination: { target: url("https://:password@example.test/destination"), headers: { Authorization: "destination-secret" }, lineMarker: { marks: [1, 1] }, matcher: null },
         position: { line: 1, column: 0 },
     };
 
     const projected = DurableStatement.project(statement);
     if (projected.op !== "copy" || projected.destination.target.kind !== "url") {
-        throw new Error("projected COPY lost its URL destination");
+        throw new Error("projected copy lost its URL destination");
     }
     assert.equal(projected.destination.target.raw, "https://:__redacted__@example.test/destination");
     assert.equal(projected.destination.target.username, null);
     assert.equal(projected.destination.target.password, "__redacted__");
-    assert.deepEqual(projected.source.metadata, ["__redacted__"]);
-    assert.deepEqual(projected.destination.metadata, ["__redacted__"]);
+    assert.deepEqual(projected.source.headers, { Authorization: "__redacted__" });
+    assert.deepEqual(projected.destination.headers, { Authorization: "__redacted__" });
     assert.deepEqual(projected.destination.lineMarker, { marks: [1, 1] });
 });
 
@@ -62,17 +62,17 @@ test("{§log-history-projection} DurableStatement leaves query text, authored bo
         op: "edit",
         aside: null,
         target: url("https://example.test/path?authored=query-secret"),
-        metadata: ["Authorization: header-secret"],
+        headers: { Authorization: "header-secret" },
         lineMarker: null,
         matcher: null, body: "authored body-secret",
         position: { line: 1, column: 0 },
     };
     const projected = DurableStatement.project(statement);
     if (projected.op !== "edit" || projected.target?.kind !== "url") {
-        throw new Error("projected EDIT lost its URL target");
+        throw new Error("projected edit lost its URL target");
     }
     assert.equal(projected.target.query, "authored=query-secret");
-    assert.deepEqual(projected.metadata, ["__redacted__"]);
+    assert.deepEqual(projected.headers, { Authorization: "__redacted__" });
     assert.equal(projected.body, "authored body-secret");
 
     const local: EditStatement = {
@@ -81,6 +81,6 @@ test("{§log-history-projection} DurableStatement leaves query text, authored bo
     };
     assert.deepEqual(DurableStatement.project(local), {
         ...local,
-        metadata: ["__redacted__"],
+        headers: { Authorization: "__redacted__" },
     });
 });

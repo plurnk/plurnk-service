@@ -279,7 +279,7 @@ stateDiagram-v2
 | --- | --- |
 | State machine and terminal result | Only `100 → 102`, `102 → 202`, `202 → 100`, and unresolved-to-terminal transitions are admitted; terminal rows are immutable and must carry `loops.terminal_result` (exact status and RFC 9457 Problem Details), while active rows have `terminal_result = NULL`. Completion and cancellation never borrow the last reply's body. |
 | Independent collection (`425`) | Reading an unfinished child (`plurnk.read({ path: "session://<running-child>" })`) returns `425 Too Early` without a strike or scheduler side effect; `WAIT` joins live obligations ({§loop-completion}). |
-| Stream and child wake matrices | Streams are durable session subscriptions (`[0].stream: { state, ... }`, {§subscriptions}). At `WAIT`, open streams or live children park the loop (`202`); closed streams or terminated children with undelivered results continue immediately (`102`) to observe the terminal delta; `[0]` or `[{"lifetime":"turn"}]` streams reap at the next pre-turn boundary. |
+| Stream and child wake matrices | Streams are durable session subscriptions (`[0].stream: { state, ... }`, {§subscriptions}). At `WAIT`, open streams or live children park the loop (`202`); closed streams or terminated children with undelivered results continue immediately (`102`) to observe the terminal delta. |
 
 ### §session-wait-timing Durable waits, wake identity, and execution allowance
 
@@ -318,7 +318,7 @@ After each admitted turn, the engine evaluates one inline rail verdict. Rail sta
 | Mechanism | Rule |
 | --- | --- |
 | Strike sources and progress immunity | A turn earns at most one strike from: (1) a hard non-execution operation or parse failure (`status >= 400`, excluding soft `404`, `409`, `416`, `425`, `501` and {§matcher-prefix-claims}), (2) an exact operation+result cycle across `MIN_CYCLES × MAX_CYCLE_PERIOD`, or (3) an empty turn ({§outside-text}). A turn where any task-acting operation succeeded (`status < 400`, excluding `NOTE`, `TODO`, `WAIT`, and targetless `SEND`) is immune to hard-result strikes and resets the streak. Crossing `PLURNK_SERVICE_MAX_STRIKES` terminates at `508` (cycle) or `500` (`output_allowance`, `repetition`, `no_operation`, or `operation`). |
-| Cycle identity | Hashes ordered executed operations and results (operands, scopes, bodies, metadata, and `NOTE`/response bodies; or raw text for empty turns), ignoring source positions, asides, Problem `instance` URIs, and `NOTE` storage coordinates. |
+| Cycle identity | Hashes ordered executed operations and results (operands, scopes, bodies, options, and `NOTE`/response bodies; or raw text for empty turns), ignoring source positions, asides, Problem `instance` URIs, and `NOTE` storage coordinates. |
 | Provider recovery | Retryable provider failures ({§provider-failure-normalization}) record a `_plurnk` Problem row, emit `provider_unavailable`, back off (`PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF` up to `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX`), and reissue against the frozen messages up to `PLURNK_SERVICE_PROVIDER_RECOVERY` without consuming emission attempts or scoring strikes (applicable to loop inference and {§op-methods-op-dispatch}). When recovery is exhausted, interactive sessions park at `202` ({§session-ownership}) while non-interactive sessions terminate with the provider's exact failure. |
 
 ## §provider-surface Provider Contract
@@ -406,7 +406,7 @@ Core executes admitted statements sequentially in authored order within a turn:
 | Sequential execution & cancellation | Each statement observes the resource and log state committed by earlier statements in the same turn (except `log` `KILL`, which snapshots pre-program log rows so a turn cannot curate its own in-flight receipts). Runtime `plurnk.mcp` mutations update parser executor tags for subsequent statements in the same turn. Aborting the loop signal stops dispatch after the current settled effect and marks the turn `499`. |
 | `EDIT` batches & anchor continuity | Multiple `EDIT`s to the same resource or a single `EDIT` with multiple regions execute against successive states, carrying forward untouched `@hash` line anchors across numeric splices ({§line-anchors}), tolerating `@hash+N`/`@hash-N` offsets, and merging adjacent rendered prefix echoes when uniquely evidenced. |
 | Bulk resource targeting (globs) | A glob target on `READ`, `EDIT`, or `KILL` expands against the full unpaged `FIND` match set in deterministic path order, subject to `maxCommands` (`PLURNK_SERVICE_MAX_COMMANDS`). Empty `EDIT`/`KILL` globs produce one `204` receipt. `COPY` and `MOVE` require each glob operand to match exactly one resource (`400 target-cardinality` otherwise). |
-| `BARE` inference & `SEND` attachments | `BARE` resolves its prompt (inline body or single-resource target), selects the loop's child provider policy (`spawn_model_route_id`, `PLURNK_MODEL_CHILD`, or parent route), and runs one toolless, historyless inference call. `SEND` on entry schemes without a `send` handler returns `501`; `SEND` with `[path]` metadata attaches resolved resource snapshots into durable `message_envelopes`. |
+| `BARE` inference & `SEND` attachments | `BARE` resolves its prompt (inline body or single-resource target), selects the loop's child provider policy (`spawn_model_route_id`, `PLURNK_MODEL_CHILD`, or parent route), and runs one toolless, historyless inference call. `SEND` on entry schemes without a `send` handler returns `501`; `SEND` with `attachments: [path]` attaches resolved resource snapshots into durable `message_envelopes`. |
 
 ### §scheme-surface Universal READ/FIND Composition and Scheme Guards
 
@@ -530,7 +530,7 @@ Binary resources participate in `READ`, `FIND`, `COPY`, `MOVE`, and `KILL` witho
 The session log (`log:///<L>/<T>/<A>[/<leaf>]`) is an append-only SQLite ledger (`log_entries`) paired 1:1 with mutable active-context state (`log_entry_projection`):
 
 - **Coordinates**: `L` (1-indexed loop sequence), `T` (1-indexed turn sequence within loop), `A` (1-indexed action sequence within turn). The optional `/<leaf>` suffix names the op or kind (`READ`, `EDIT`, `emission`, `reasoning`) and aliases the same row. Foreign session authorities (`log://other/...`) are refused `400`.
-- **Immutability & redaction**: Core `log_entries` columns and `log_curation_effects` rows are protected by SQLite triggers and cascade only when containing history is deleted. Before any durable persistence, Packet assembly, fork hydration, or Digest export, URL `username`/`password` and `metadata` slots are replaced with `"__redacted__"` while query strings remain visible; packet log rendering omits redacted `metadata` slots.
+- **Immutability & redaction**: Core `log_entries` columns and `log_curation_effects` rows are protected by SQLite triggers and cascade only when containing history is deleted. Before any durable persistence, Packet assembly, fork hydration, or Digest export, URL `username`/`password` and HTTP `headers` values are replaced with `"__redacted__"` while query strings remain visible; packet log rendering omits redacted `headers` entries.
 - **Direct curation**: `plurnk.kill` on `log:///...` is an active-context meta-operation; a successful `log:///` `KILL` never renders its own receipt in the packet, whereas non-log `KILL` receipts (e.g., workspace/file deletions) render and remain visible.
 
 ### §log-kill-scope Scoped curation, distillation & readable projection
@@ -596,7 +596,7 @@ await plurnk.find({ path: "<target>", range: "<scope>", pattern: "<pattern>" });
 
 ## §send Messaging and turn disposition
 
-SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metadata, lineMarker }`; DONE / FAIL AST: `{ op: "DONE" | "FAIL", target: ParsedPath | null, body: SendBody | null, metadata, lineMarker: null }`.
+SEND AST: `{ op: "send", target: ParsedPath | null, body: SendBody | null, headers?: Record<string, string>, attachments?: string[], lineMarker }`; DONE / FAIL AST: `{ op: "done" | "fail", target: ParsedPath | null, body: SendBody | null, attachments?: string[], lineMarker: null }`.
 
 - **Message:** SEND delivers to an actor (`session://<name>`), a scheme that implements SEND (`https://` POST), or an exact message address. Targetless SEND, DONE, and FAIL select the oldest published Open Message; `plurnk.done({ target: "<path>", text })` and `plurnk.fail({ target: "<path>", text })` select the Open Message at `<path>`. A SEND to a non-recipient scheme (e.g., `log://`) is refused `400 send-target-not-a-recipient`; a scheme without SEND returns `501`.
 - **Workflow:** WAIT yields. The loop concludes from resolved messages, settled work, and observed results ({§loop-completion}). NOTE retains memory without parking or creating an observation obligation; KILL names something to cancel or curate.
@@ -619,7 +619,7 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 
 ### §loop-completion Loop completion, obligations, and WAIT disposition
 
-A model loop concludes only when all messages have explicit completion replies, every held child and non-detached stream (`session_obligations` / `loop_obligations`) has settled, and every required result has crossed a packet boundary. Every fired operation except SEND, DONE, FAIL, NOTE, WAIT, and successful KILL requires a subsequent packet before completion. When all messages are resolved but new results require another packet, the engine emits `All Open Messages resolved. Review new results; emit no OPs if finished.` When a loop ends, any message another session sent it without completion is answered `499` by `_plurnk` (`Loop N ended with status S; this message was not answered.`, {§message-arrival}) after re-homing unpublished arrivals.
+A model loop concludes only when all messages have explicit completion replies, every held child and open stream (`session_obligations` / `loop_obligations`) has settled, and every required result has crossed a packet boundary. Every fired operation except SEND, DONE, FAIL, NOTE, WAIT, and successful KILL requires a subsequent packet before completion. When all messages are resolved but new results require another packet, the engine emits `All Open Work resolved, but tool call results received for review. Submit nothing to conclude.` When a loop ends, any message another session sent it without completion is answered `499` by `_plurnk` (`Loop N ended with status S; this message was not answered.`, {§message-arrival}) after re-homing unpublished arrivals.
 
 | Condition, in evaluation order | Outcome |
 | --- | --- |
@@ -642,7 +642,6 @@ External cancellation records `terminated_by = 'cancel'` ({§methods}) and prepe
 | Outside text with no Code Mode call | Stored verbatim as one `outside` turn source ({§turn-source-resources}) and surfaced once via `outside/event` ({§notifications}, {§acp-plurnk-metadata}); never enters a packet or delivers a reply. |
 | Empty turn (no content OP) | When no boundary was lost ({§parse-recovery}) and messages remain unresolved or emission is incomplete, counts one progress strike ({§engine-rails}) and records `422 The turn performed no operation.` ({§operation-results}). |
 | Terminal evidence (`unconcluded`) | If a failed terminal's last inference turn performed no authored operation and kept text, Problem Details carries `unconcluded: "ops://<session>/<loop>/<turn>"` citing that emission without re-sending or softening the terminal. |
-| Ignored scheme metadata | READ, FIND, EDIT, KILL, WORK, or FORK carrying `[metadata]` for a scheme taking none runs without it and emits one `metadata_ignored` warning notice; SEND, DONE, FAIL, and executions validate their own metadata ({§op-methods-op-dispatch}). |
 
 ## §exec Executions
 
@@ -650,7 +649,7 @@ AST: `{ runtime, target, body: string | null, lineMarker }`. Execution refuses a
 
 ### §exec-target-routing Target routing, scratch realization, and registry resolution
 
-The engine routes unconditionally to `exec`, resolves `runtime` from the workspace snapshot at dispatch (installed base plus {§module-lifecycle} overlays; unknown tag `400`, unavailable probe `501`, configuration failure `503` {§configuration-repair-path}), validates the runtime invocation or tool registry ({§executor-discovery}) before effect admission, and prepares metadata under {§executor-contract} using `project_root` (or daemon cwd when headless) as default `cwd`.
+The engine routes unconditionally to `exec`, resolves `runtime` from the workspace snapshot at dispatch (installed base plus {§module-lifecycle} overlays; unknown tag `400`, unavailable probe `501`, configuration failure `503` {§configuration-repair-path}), validates the runtime invocation or tool registry ({§executor-discovery}) before effect admission, and prepares arguments under {§executor-contract} using `project_root` (or daemon cwd when headless) as default `cwd`.
 
 | Target / Condition | Outcome |
 | --- | --- |
@@ -665,9 +664,9 @@ The engine routes unconditionally to `exec`, resolves `runtime` from the workspa
 
 | Mechanism | Rule |
 | --- | --- |
-| `lifetime` metadata ({§manifest}) | Duration (`30s`, `30m`, `2h`): aborts at deadline (polite signal then SIGKILL after `PLURNK_SERVICE_EXEC_KILL_GRACE_MS`) with `504 execution-timeout`. `loop` (default): reaped on loop terminal except `202` ({§notifications}), or on client operation cancel/shutdown ({§connection-lifecycle}). `turn`: reaped at next pre-turn. `detached`: outlives loop `200`, imposes no obligation, reaped on KILL, session reap, or daemon stop. |
+| Loop-bound stream lifetime | Every started stream is bound to its loop and reaped on loop terminal except `202` ({§notifications}), on explicit `plurnk.kill` ({§stream-control}), or on client operation cancel/shutdown ({§connection-lifecycle}), escalating polite signal to `SIGKILL` after `PLURNK_SERVICE_EXEC_KILL_GRACE_MS`. |
 | Effect admission (`EffectPolicy`) | `PLURNK_SERVICE_EFFECT_HOST`, `_READ`, and `_PURE` map each declared effect to `propose` ({§proposal}, {§http-manifest}) or `auto`; invalid values fail boot. Initiating turns apply {§session-causal-admission} to their started streams. |
-| Workspace concurrency | Bounded by `PLURNK_SERVICE_EXEC_CONCURRENCY` (empty defaults to `availableParallelism()`; `-1` unbounded; FIFO per workspace). Admitted runs create entry, channels, and subscription immediately, returning `200 { outcome: "started" }` or `202 { outcome: "queued", executionsAhead, concurrency }`. Queue wait excludes timeout; queued KILL cancels via {§stream-control}. |
+| Workspace concurrency | Bounded by `PLURNK_SERVICE_EXEC_CONCURRENCY` (empty defaults to `availableParallelism()`; `-1` unbounded; FIFO per workspace). Admitted runs create entry, channels, and subscription immediately, returning `200 { outcome: "started" }` or `202 { outcome: "queued", executionsAhead, concurrency }`. Queued `kill` cancels via {§stream-control}. |
 | Turn-hold (`PLURNK_SERVICE_EXEC_HOLD`) | Holds cycle until stream conclusion up to `PLURNK_SERVICE_EXEC_HOLD_MS` (fail-open) for listed `<runtime>` or `<runtime>:<effect>` selectors. |
 
 ### §exec-stream Stream surfacing and page bounds
@@ -735,7 +734,7 @@ Streams are static content at turn boundaries: chunks accumulate as they arrive 
 
 ### §stream-control Stream control and writes
 
-- **Cancel / Kill:** `plurnk.kill({ path: "<stream-uri>" })` aborts the active subscription or queued execution ({§exec-lifetime}). A stream already terminated returns `200` with `terminalStatus`; an unknown address returns `404` ({§execution-output-identity}). When the holding session itself asks to stop the stream via model `KILL`, the subscription settles `200` (preserving any `exitCode`) rather than `499`, adding nothing to Errors ({§operation-results}). External/peer `KILL`, loop/session teardown, and daemon stop keep `499`; lifetime expiry keeps `504`.
+- **Cancel / Kill:** `plurnk.kill({ path: "<stream-uri>" })` aborts the active subscription or queued execution ({§exec-lifetime}). A stream already terminated returns `200` with `terminalStatus`; an unknown address returns `404` ({§execution-output-identity}). When the holding session itself asks to stop the stream via model `kill`, the subscription settles `200` (preserving any `exitCode`) rather than `499`, adding nothing to Errors ({§operation-results}). External/peer `kill`, loop/session teardown, and daemon stop keep `499`.
 - **Stream writes:** `EDIT` or `SEND` on `wss://` sends a text frame through the active owner; other stream writes (`SEND`, exec stdin) follow the scheme contract ({§op-methods-op-dispatch}).
 
 ---
@@ -965,7 +964,7 @@ Model invocations of `plurnk.<family>` settle in authored order before dispatch 
 | Events & credentials | `subscribeToEvents(handler) -> unsubscribe`, `credentials` | Subscribe to {§notifications} (subscriber failures are logged and isolated); `credentials` exposes the daemon's {§credential-authority} (`issue`, `verify`, `consume`, `revokeFamily`, `onRevoked`, `sessions`, `registerClient`, `client`, `authenticateClient`). |
 | Proposals & interactions | `pendingProposals(workspaceId)`, `resolveProposal(logEntryId, resolution, owner)`, `pendingClientInteractions(workspaceId)`, `resolveClientInteraction(interactionId, resolution, respondent, message?)` | Intersect durable pending rows with live waiters and return validated `ProposalProjection` / `ClientInteractionProjection` ({§proposal-projection}); validate workspace-scoped `owner` / `respondent` before delivering one `accept`, `reject`, `cancel`, or interaction payload. |
 | Loop admission & cancellation | `runLoop({ workspaceId, sessionId, loopId?, prompt, source?, maxTurns?, openPaths?, selector?, childSelector? })`, `messageAdmission({ workspaceId, address, body })`, `cancelDrain(sessionId, reason?)`, `cancelSession({ workspaceId, sessionId, reason? })`, `cancelLoop({ workspaceId, loopId, reason? })` | `runLoop` validates a model session (`origin="model"`), persists the prompt with the effective turn ceiling, and returns status `100` (`{ loopId, action }`; terminal result arrives via `loop/terminated`). `messageAdmission` checks the message address idempotency key ({§message-source-scheme}: `new`, `accepted` on identical body, or `422 message-address-reused` on different body; `runLoop` refuses repeats with `409 message-already-accepted` or `422`). `cancelDrain` begins durable structured cancellation; `cancelSession` awaits tree cancellation and stream reap ({§methods-workspace-create}); `cancelLoop` cancels one client operation loop and its attached executions ({§connection-lifecycle}). |
-| Reads, client actions & extension actions | `readInbox`, `readStreams`, `dispatchClientAction`, `readLog`, `readEntry`, `readEntryChannel`, `listProviders`, `listModels`, `listPersonas`, `listClientDisplayCapabilities`, `listModuleActions`, `invokeModuleAction` | `readInbox` returns unconsumed accepted messages ({§message-arrival}, {§application-session-observation}). `readStreams` returns open subscriptions (`entryId`, `sessionId`, `target`, `lifetime`, causal coordinates, and channels `{ channel, state, mimetype }`; {§subscriptions}, {§exec-lifetime}, {§channels}). `dispatchClientAction` runs parsed client statements as one client operation of `actor` ({§connection-lifecycle}). `readLog` reads newest-first by ids, recency (`sinceId`/`beforeId`, `PLURNK_SERVICE_LOG_READ_PAGE`/`MAX`), or exact `loopSeq`/`turnSeq`/`sequence`. `readEntry` and `readEntryChannel` return `EntryReadResult` ({§text-region}, {§scheme-address}). `listPersonas` returns discovered workspace personas ({§persona-discovery}). `listClientDisplayCapabilities` composes sorted scheme ({§manifest}) and MIME ({§mimetype-discovery}) declarations ({§mcp-server-definition}). `listModuleActions` and `invokeModuleAction` expose setup-registered module actions checked against their registered scope. |
+| Reads, client actions & extension actions | `readInbox`, `readStreams`, `dispatchClientAction`, `readLog`, `readEntry`, `readEntryChannel`, `listProviders`, `listModels`, `listPersonas`, `listClientDisplayCapabilities`, `listModuleActions`, `invokeModuleAction` | `readInbox` returns unconsumed accepted messages ({§message-arrival}, {§application-session-observation}). `readStreams` returns open subscriptions (`entryId`, `sessionId`, `target`, causal coordinates, and channels `{ channel, state, mimetype }`; {§subscriptions}, {§exec-lifetime}, {§channels}). `dispatchClientAction` runs parsed client statements as one client operation of `actor` ({§connection-lifecycle}). `readLog` reads newest-first by ids, recency (`sinceId`/`beforeId`, `PLURNK_SERVICE_LOG_READ_PAGE`/`MAX`), or exact `loopSeq`/`turnSeq`/`sequence`. `readEntry` and `readEntryChannel` return `EntryReadResult` ({§text-region}, {§scheme-address}). `listPersonas` returns discovered workspace personas ({§persona-discovery}). `listClientDisplayCapabilities` composes sorted scheme ({§manifest}) and MIME ({§mimetype-discovery}) declarations ({§mcp-server-definition}). `listModuleActions` and `invokeModuleAction` expose setup-registered module actions checked against their registered scope. |
 
 ### §methods-workspace-create Workspace and session lifecycle
 
@@ -1110,7 +1109,7 @@ flowchart TD
 | Calibrated offset | The latest settled emission sample fixes additive `offset = weight - reported` (falling back to the same model's most recent sample across loops/sessions, else `0`). The curation `budget` is `max(0, inputCapacity + offset)` and the provider wall estimate is `max(0, weight - offset)`. |
 | Packet gauge (`## Context`) | Reports `tokens` (complete rendered packet weight), `budget`, `percent = floor(100 * tokens / budget)`, and—when `tokens > PLURNK_SERVICE_BUDGET_PRESSURE * budget`—`largest`: the top `PLURNK_SERVICE_BUDGET_LARGEST_ITEMS` heaviest active log rows (`{path, tokens}`). |
 | Result context fit (`413 result-exceeds-budget`) | A retrieval or execution result is admitted whole only if its weight fits within `budget - tokens` (after reserving receipt weights for remaining batch operations and the turn's emission record). Otherwise it records `413 https://problems.plurnk.xyz/engine/context/result-exceeds-budget`; for a line-scoped `READ`, the receipt includes the longest prefix of anchored lines that fit. |
-| Over-budget turn row (`413 packet-exceeds-budget`) | When assembled `tokens > budget` at turn start, the engine inserts a `413 https://problems.plurnk.xyz/engine/context/packet-exceeds-budget` log row at the head of the turn (`"Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn."`), shown once then retired, and still submits the turn if it remains under `inputWall`. |
+| Over-budget turn row (`413 packet-exceeds-budget`) | When assembled `tokens > budget` at turn start, the engine inserts a `413 https://problems.plurnk.xyz/engine/context/packet-exceeds-budget` log row at the head of the turn (`"Context exceeds budget. YOU MUST ONLY kill, move or note this turn."`), shown once then retired, and still submits the turn if it remains under `inputWall`. |
 | Context wall (`413 window-overflow`) | When the calibrated wall estimate or `provider.assessRequestCapacity` exceeds `inputWall`, the loop terminates immediately without calling the provider (`413 https://problems.plurnk.xyz/engine/context/window-overflow`). |
 | Client gauge pairs | `loop/packet.gauge` and `loop/terminated.usage` carry two distinct pairs: `curationWeight` / `curationBudget` (from the latest packet-bearing model turn) and `contextTokens` / `contextCapacity` (from the latest settled emission call; `null` when unknown, never divided or conflated). |
 | Pre-I/O provider ledger | Every provider call persists a `provider_requests` row beneath `model_calls` and `turn_attempts` before network I/O begins; `plurnk-digest` exports each payload to `requests/<id>.json`. |
@@ -1175,35 +1174,36 @@ sequenceDiagram
 | `target-required` | 400 | *OP* requires a target path. Recovery: Provide the target path: `await plurnk.<op>({ path: "..." });`. |
 | `target-cardinality` | 400 | *OP* *operand* matched *n* resources; expected one. Recovery: Name one source and one destination per pair. |
 | `scheme-not-found` | 501 | Scheme '*name*' is not registered. Recovery: `Registered schemes: *names*.` |
-| `scheme-metadata-unsupported` | 400 | *OP* on '*scheme*' does not accept metadata. |
-| `operation-not-implemented` | 501 | Scheme '*name*' does not implement *OP* (or exec). |
+| `headers-unsupported` | 400 | *op* on '*scheme*' does not accept `headers`. |
+| `remote-unsupported` | 400 | `kill` on '*scheme*' does not accept `remote`. |
+| `operation-not-implemented` | 501 | Scheme '*name*' does not implement *op* (or exec). |
 | `entry-read-not-implemented` | 501 | The '*scheme*' scheme does not provide entry reads. |
 | `entry-write-not-implemented` | 501 | The '*scheme*' scheme does not provide entry writes. |
 | `entry-delete-not-implemented` | 501 | The '*scheme*' scheme does not provide entry deletion. |
 | `channel-delete-not-implemented` | 501 | The '*scheme*' scheme does not provide channel deletion. |
-| `scheme-handler-threw` | 500 | The '*scheme*' scheme did not produce a result for *OP*. |
+| `scheme-handler-threw` | 500 | The '*scheme*' scheme did not produce a result for *op*. |
 | `exec-source-not-data` | 501 | Scheme '*name*' is not a data source for an execution. |
 | `writer-forbidden` | 403 | Writer '*origin*' cannot modify scheme '*name*'. |
 | `capability-denied` | 403 | Capability '*route*' is denied by *scope* policy. |
-| `spawn-prompt-empty` | 422 | *OP* has no prompt text. Recovery: Provide the prompt text or a resource path: `await plurnk.work({ name: "...", prompt: "..." });`. |
+| `spawn-prompt-empty` | 422 | *op* has no prompt text. Recovery: Provide the prompt text or a resource path: `await plurnk.work({ name: "...", prompt: "..." });`. |
 | `message-not-found` | 404 | No accepted message exists at *address*. |
-| `send-target-required` | 400 | *OP* has no recipient and its loop has no published message. Recovery: Name a recipient address. |
-| `edit-collision` | 409 | EDIT collided with the current resource state ({§edit}). Recovery: *n* of *m* edits applied. READ the target for current coordinates. |
-| `edit-target-required` | 400 | A line-anchored EDIT requires a target resource. Recovery: Provide the target that rendered the line anchor. |
-| `kill-target-required` | 400 | KILL requires a target path. |
-| `kill-target-scheme-required` | 400 | KILL target requires a scheme. |
+| `send-target-required` | 400 | *op* has no recipient and its loop has no published message. Recovery: Name a recipient address. |
+| `edit-collision` | 409 | edit collided with the current resource state ({§edit}). Recovery: *n* of *m* edits applied. read the target for current coordinates. |
+| `edit-target-required` | 400 | A line-anchored edit requires a target resource. Recovery: Provide the target that rendered the line anchor. |
+| `kill-target-required` | 400 | kill requires a target path. |
+| `kill-target-scheme-required` | 400 | kill target requires a scheme. |
 | `session-not-found` | 404 | Session '*name*' does not exist in this workspace. |
-| `entry-operation-unsupported` | 400 | KILL requires an entry-bearing target; '*scheme*' does not provide one. |
+| `entry-operation-unsupported` | 400 | kill requires an entry-bearing target; '*scheme*' does not provide one. |
 | `coordinate-invalid` | 400 | '*to*' is not a log coordinate ({§log-wire-format}). Recovery: Name the coordinate as `<loop>/<turn>/<item>`, as the log shows it. |
 | `coordinate-not-found` | 404 | No log entry exists at `log:///*coordinate*` ({§log-wire-format}). |
 | `project-root-required` | 400 | Rollback restores files, and this workspace has no project root ({§log-wire-format}). |
 | `resource-scheme-required` | 400 | Resource selection requires an address. |
 | `channel-required` | 400 | The '*scheme*' scheme has no default channel. Recovery: Address a named channel with a URI fragment. |
 | `binary-source-unsupported` | 415 | Channel #*name* is binary and its scheme keeps no bytes to transfer. |
-| `fork-unaddressed` | 404 | This client operation acts for no session, so FORK has no log to branch ({§connection-lifecycle}). |
-| `session-name-conflict` | 409 | Session '*name*' already exists in this workspace. Recovery: `await plurnk.work({ name: "*name*", prompt: "..." });` or `await plurnk.send({ target: "session://*name*", text: "..." });` delivers a message to the live session; FORK with a name no session holds ({§session-scheme}). |
+| `fork-unaddressed` | 404 | This client operation acts for no session, so fork has no log to branch ({§connection-lifecycle}). |
+| `session-name-conflict` | 409 | Session '*name*' already exists in this workspace. Recovery: `await plurnk.work({ name: "*name*", prompt: "..." });` or `await plurnk.send({ target: "session://*name*", text: "..." });` delivers a message to the live session; fork with a name no session holds ({§session-scheme}). |
 | `no-operation` | 422 | The turn performed no operation ({§engine-rails}). |
-| `send-target-not-a-recipient` | 400 | The addressed scheme is not a SEND recipient. Recovery: Name a message address or a recipient that implements SEND. |
+| `send-target-not-a-recipient` | 400 | The addressed scheme is not a send recipient. Recovery: Name a message address or a recipient that implements send. |
 | `invalid-operation-syntax` | 400 | The parser's diagnostic for an invalid operation in an admitted turn. |
 | `unreadable-pattern` | 400 | The pattern reader's diagnostic for an unreadable matcher. |
 | `attachment-address-invalid` | 400 | An attachment selects one exact resource address. |
@@ -1234,26 +1234,26 @@ sequenceDiagram
 | `channel-not-found` | 404 | The addressed channel does not exist at *target*. Recovery: Use one of the available channels: #*a*, #*b*. |
 | `binary-read-unsupported` | 415 | The representation at *target* is binary and cannot be rendered. |
 | `pattern-unapplicable` | 422 | The pattern could not be applied to *target*. |
-| `move-region-overlap` | 409 | MOVE cannot insert a whole channel into itself and then remove that channel. |
-| `mimetype-mismatch` | 415 | COPY or MOVE cannot write '*source-mimetype*' into a '*destination-mimetype*' channel. |
+| `move-region-overlap` | 409 | move cannot insert a whole channel into itself and then remove that channel. |
+| `mimetype-mismatch` | 415 | copy or move cannot write '*source-mimetype*' into a '*destination-mimetype*' channel. |
 | `binary-region-unsupported` | 415 | Channel #*name* is binary and cannot receive a textual region. |
-| `copy-destination-exists` | 409 | COPY or MOVE destination *address* already contains different content. |
-| `proposal-apply-missing` | 500 | The source scheme accepted its MOVE proposal without applying the source mutation. |
-| `line-anchor-collision` | 409 | READ coordinates collided with current content at *target*. |
+| `copy-destination-exists` | 409 | copy or move destination *address* already contains different content. |
+| `proposal-apply-missing` | 500 | The source scheme accepted its move proposal without applying the source mutation. |
+| `line-anchor-collision` | 409 | read coordinates collided with current content at *target*. |
 | `invalid-file-url` | 400 | The native file-URL diagnostic, or `File URL path must not include NUL characters.` ({§scheme-address}). |
-| `edit-empty` | 400 | EDIT requires at least one statement. Recovery: Provide an EDIT statement. |
-| `edit-batch-mismatch` | 400 | The EDIT batch spans multiple resources. Recovery: Submit a separate EDIT batch for each resource. |
-| `line-marker-required` | 400 | EDIT of an existing file requires a line marker ({§edit}). Recovery: Name the lines to replace with `range: "@hash"` or `range: "@start,@end"` from a READ of the file; `range: "L,1,L,1"` inserts before line L, and `range: "1,-1"` replaces the whole file. |
-| `creation-batch-conflict` | 409 | Multiple EDIT operations attempted to create the same file. Recovery: Create the file with one EDIT before applying additional edits. |
+| `edit-empty` | 400 | edit requires at least one statement. Recovery: Provide an edit statement. |
+| `edit-batch-mismatch` | 400 | The edit batch spans multiple resources. Recovery: Submit a separate edit batch for each resource. |
+| `line-marker-required` | 400 | edit of an existing file requires a line marker ({§edit}). Recovery: Name the lines to replace with `range: "@hash"` or `range: "@start,@end"` from a read of the file; `range: "L,1,L,1"` inserts before line L, and `range: "1,-1"` replaces the whole file. |
+| `creation-batch-conflict` | 409 | Multiple edit operations attempted to create the same file. Recovery: Create the file with one edit before applying additional edits. |
 | `member-read-only` | 403 | The mounted member '*path*' is read-only. |
 | `path-names-no-file` | 403 | The spelling '*path*' does not name a file: it is empty, or it names a directory. |
 | `path-occupied-by-nonmember` | 403 | A non-member file already occupies '*path*'. Recovery: Choose an unoccupied member path. |
 | `path-outside-workspace` | 403 | A symlink on '*path*' resolves outside the namespace. |
-| `binary-write-unsupported` | 415 | A text EDIT cannot author binary '*mimetype*'. |
+| `binary-write-unsupported` | 415 | A text edit cannot author binary '*mimetype*'. |
 | `file-create-excluded` | 403 | A members exclusion (`!_glob_`) covers '*path*'. Recovery: Remove or disable the excluding members definition, or choose another path. |
 | `file-create-gitignored` | 403 | Active Git policy ignores '*path*', and no members definition includes it. Recovery: Choose a Git-admitted path or add a members definition that includes it. |
 | `file-materialization-limit` | 413 | The file exceeds the materialization byte limit and is not read into the workspace. |
-| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: FIND lists paths. EDIT creates files; `await plurnk.members({ files: ["<path>"] });` admits existing files. |
+| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: find lists paths. edit creates files; `await plurnk.members({ files: ["<path>"] });` admits existing files. |
 | `body-channel-required` | 400 | A file write requires a body channel. |
 | `write-failed` | 500 | Publication or its settlement failed; distinguishes an unpublished write from an already-published one. |
 | `creation-rollback-failed` | 500 | Incorporating a newly created file failed, and rollback was incomplete. |
@@ -1268,8 +1268,6 @@ sequenceDiagram
 | `stream-not-found` | 404 | No execution exists at the requested address. Recovery, when the id holds an execution under another runtime ({§exec}): The execution at `/*id*` is `*runtime*:///*id*`. |
 | `executor-not-registered` | 400 | No executor or MCP service named '*runtime*' is registered for this session. |
 | `runtime-unavailable` | 501 | Executable tool '*runtime*' is unavailable; detail includes the availability diagnostic. |
-| `lifetime-invalid` | 400 | The execution lifetime directive is invalid; detail identifies the invalid form. |
-| `metadata-unsupported` | 400 | Executable tool '*runtime*' does not accept metadata, or stored execution output does not accept READ or FIND metadata. |
 | `target-classification-failed` | 500 | The execution target could not be inspected; detail includes a bounded cause. |
 | `source-content-unavailable` | 422 | The source scheme did not supply execution content. |
 | `stream-entry-write-failed` | 500 | The execution's stream entry could not be created. |
@@ -1279,23 +1277,23 @@ sequenceDiagram
 | `executor-invalid-result` | 500 | The executor returned an invalid operation result. |
 | `executor-threw` | 500 | The executor failed outside its operation result contract. |
 | `entry-narration-failed` | 500 | An executor entry could not be materialized or narrated. |
-| `read-target-required` | 400 | READ requires a log coordinate. Recovery: Provide one exact log coordinate. |
+| `read-target-required` | 400 | read requires a log coordinate. Recovery: Provide one exact log coordinate. |
 | `coordinate-malformed` | 400 | The log coordinate '*path*' is malformed. Recovery: Use one exact loop/turn/sequence coordinate. |
 | `log-unaddressed` | 404 | This client operation acts for no session, so `log:///` names no log ({§connection-lifecycle}). |
 | `kill-failed` / `curation-failed` | 400 | The log target '*path*' (or glob '*glob*') is malformed ({§log-kill-scope}). |
-| `session-target-required` / `workspace-target-required` | 400 | EDIT requires a `session://` or `workspace:///` target. |
+| `session-target-required` / `workspace-target-required` | 400 | edit requires a `session://` or `workspace:///` target. |
 | `workspace-authority-unsupported` | 400 | A `workspace:///` address takes no authority. Recovery: Use `workspace:///path` for shared workspace entries or `session://<name>/path` for session scratch. |
 | `binary-edit-unsupported` | 415 | The #*channel* channel is binary and cannot be edited. |
-| `message-not-implemented` | 501 | SEND does not deliver messages to *scheme* entries. Recovery: To reply, SEND to an Open Message address or omit the target. `await plurnk.send({ target: "session://<name>", text: "..." });` sends a new message. |
-| `session-entity-not-editable` / `workspace-entity-not-editable` | 400 | A session or workspace entity is not an editable entry. Recovery: EDIT requires an entry path, such as `workspace:///example.md`. |
-| `message-empty` | 400 | SEND has no message text or attachments. |
-| `scope-unsupported` | 400 | A session SEND takes no scope. |
+| `message-not-implemented` | 501 | send does not deliver messages to *scheme* entries. Recovery: To reply, send to an Open Message address or omit the target. `await plurnk.send({ target: "session://<name>", text: "..." });` sends a new message. |
+| `session-entity-not-editable` / `workspace-entity-not-editable` | 400 | A session or workspace entity is not an editable entry. Recovery: edit requires an entry path, such as `workspace:///example.md`. |
+| `message-empty` | 400 | send has no message text or attachments. |
+| `scope-unsupported` | 400 | A session send takes no scope. |
 | `control-address-invalid` | 400 | The operation requires an authority-only session control address. |
-| `named-session-required` | 400 | A session deliverable READ requires a named session. |
+| `named-session-required` | 400 | A session deliverable read requires a named session. |
 | `emission-curated-whole` | 422 | An emission source announcement must be curated whole, without a line scope. |
 | `entry-exists` | 409 | An entry already exists at the addressed resource. |
 | `invalid-expression` | 400 | The full-text or graph matcher expression is invalid. |
-| `delete-target-required` | 400 | KILL requires a target path. |
+| `delete-target-required` | 400 | kill requires a target path. |
 | `interaction-not-pending` | 409 | The requested client interaction is not pending. |
 | `interaction-unsupported` | 501 | No recipient implements the requested tool for this session. |
 | `recipient-mismatch` | 403 | Only the interaction's recipient may answer it. |
@@ -1329,13 +1327,13 @@ sequenceDiagram
 | Sentence | Arises when |
 | --- | --- |
 | `Nothing is in flight. Continuing.` | A `WAIT` (or premature terminal) with no live work ({§session-wait-timing}). |
-| `All Open Messages resolved. Review new results; emit no OPs if finished.` | Resolved messages with unobserved results ({§loop-completion}). |
-| `Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn.` | Over-budget turn row ({§tokenomics}). |
+| `All Open Work resolved, but tool call results received for review. Submit nothing to conclude.` | Resolved messages with unobserved results ({§loop-completion}). |
+| `Context exceeds budget. YOU MUST ONLY kill, move or note this turn.` | Over-budget turn row ({§tokenomics}). |
 | `YOU MUST persist all new decisions, hypotheses, and facts as \`plurnk.note\` entries. The turn continued without a \`plurnk.note\`.` | Continuing or parked model turn without a `note`, `kill`, `todo`, `done`, or `fail` ({§operation-results}). |
 | `Context window overflow: the packet exceeds the model's window.` | Context wall ({§tokenomics}). |
 | `No recipient implements the requested interaction.` | Session owner is not interactive or does not declare the required client tool ({§proposal-projection}). |
 | `Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve.` | Dispatch of an interaction tool the session's owner would not receive ({§question-tool}). |
-| `The stream was cancelled by KILL.` | Stream terminal after `KILL` ({§stream-control}). |
+| `The stream was cancelled by kill.` | Stream terminal after `kill` ({§stream-control}). |
 | `The execution at ops://<session>/<loop> has not concluded.` | Bare `READ` of a running session's result (`425`). |
 | `The child provider failed.` | Child's provider failure read back by its parent. |
 

@@ -18,7 +18,6 @@ import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { EngineNotifications } from "./notifications.ts";
 import { contentWeight } from "./content-weight.ts";
-import type LiveSubscriptions from "./LiveSubscriptions.ts";
 // Shared module imported by both Engine and the digest, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
@@ -145,7 +144,7 @@ const windowOverflowFailure = (overflow: WindowOverflow): SchemeResult => Result
 // {§tokenomics} — over budget is a row and a request: the row is how the model hears it.
 // {§tokenomics} — the row is the mandate; the gauge is the one home for the numbers
 // ({§tokenomics}), which the row's own charge would otherwise put out of agreement.
-const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn.";
+const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY kill, move or note this turn.";
 // {§operation-results} — said once, in the next packet, of a continuing turn that carried no `note`, `kill`, or `todo`.
 const CONTINUED_WITHOUT_NOTE = "The turn continued without a `plurnk.note`.";
 const overBudgetFailure = (): SchemeResult => Results.failure("engine:context", "packet-exceeds-budget", 413, OVER_BUDGET_DETAIL);
@@ -235,7 +234,6 @@ export default class TurnRunner {
     readonly #problems: ProblemLog;
     readonly #packets: PacketBuilder;
     readonly #dispatcher: Dispatcher;
-    readonly #liveSubscriptions: LiveSubscriptions;
     readonly #notify: EngineNotifications;
     readonly #executors: () => ExecutorRegistry | undefined;
     readonly #capabilities: CapabilityResolver;
@@ -258,7 +256,6 @@ export default class TurnRunner {
         problems,
         packets,
         dispatcher,
-        liveSubscriptions,
         notify,
         executors,
         loopSignal,
@@ -276,7 +273,6 @@ export default class TurnRunner {
         problems: ProblemLog;
         packets: PacketBuilder;
         dispatcher: Dispatcher;
-        liveSubscriptions: LiveSubscriptions;
         notify: EngineNotifications;
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
@@ -294,7 +290,6 @@ export default class TurnRunner {
         this.#problems = problems;
         this.#packets = packets;
         this.#dispatcher = dispatcher;
-        this.#liveSubscriptions = liveSubscriptions;
         this.#notify = notify;
         this.#executors = executors;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
@@ -600,10 +595,6 @@ export default class TurnRunner {
         // {§env-delta} — materialize ambient observations before packet
         // composition and reserve their action indices. {§exec-stream} owns the
         // distinct byte-cursor path for this session's streams.
-        // {§exec-lifetime} — a `"turn"` lifetime: reap the session's open turn-scoped streams (necessarily
-        // from a prior turn — this runs before the turn's own spawns) so a `<0>` never survives into
-        // the subsequent turn. The terminal output then surfaces initially visible via the stream-delta path.
-        await this.#reapTurnScopedStreams(sessionId);
         const ambientEntries = await this.#materialization.materializeEnvironmentDeltas({ workspaceId, sessionId, loopId, turnId, fromSequence: nextActionIndex });
         nextActionIndex += ambientEntries.length;
         const streamEntries = await this.#materialization.materializeStreamDeltas({ workspaceId, sessionId, loopId, turnId, fromSequence: nextActionIndex, fit });
@@ -620,7 +611,7 @@ export default class TurnRunner {
         // Notices are non-terminal observations, never operation-failure truth.
         // Drain once and thread the same set through every overflow rebuild.
         facts.notices.push(...this.#notices.drain(loopId)
-            .filter((event) => (event as { level?: string }).level !== "info"));
+            .filter((event) => event.level !== "info" || event.kind === "results_pending"));
         // Build the model request packet ({§packet}). The log build
         // queries log_entries scoped to the session, including this turn's newly
         // published message arrivals.
@@ -670,7 +661,7 @@ export default class TurnRunner {
             const resourceRead: ReadStatement = {
                 op: "read", aside: null, lineMarker: null, matcher: null,
                 target: parsePath(PathSyntax.escapeTarget(raw)),
-                metadata: null,
+                headers: null,
                 body: null, position: UNKNOWN_POSITION,
             };
             await this.#dispatch({
@@ -948,18 +939,6 @@ export default class TurnRunner {
 
     // #note12 — extension reference docs are materialized beneath
     // plurnk:/// and mcp:/// by LoopDocs.
-
-    // {§exec-lifetime} — a `"turn"` lifetime: abort the session's open turn-scoped streams via their
-    // owning scheme (the same registry-routed abort the total reap uses). Called at each pre-turn
-    // before the turn's own spawns, so every open turn-scoped sub here is from a prior turn — it
-    // never survives into the subsequent turn. Fire-and-forget: the spawn finalizes async and its
-    // terminal output surfaces initially visible through the stream-delta path ({§exec-stream}).
-    async #reapTurnScopedStreams(sessionId: number): Promise<void> {
-        const open = await this.#db.find_open_turn_scoped_subscriptions_for_session.all<{ id: number }>({ session_id: sessionId });
-        await Promise.all(open.map(({ id }) => this.#liveSubscriptions.cancel(id)));
-    }
-
-
 
     async executeAdmittedTurn(...args: Parameters<AdmittedTurnExecutor["executeAdmittedTurn"]>): ReturnType<AdmittedTurnExecutor["executeAdmittedTurn"]> {
         return this.#admitted.executeAdmittedTurn(...args);

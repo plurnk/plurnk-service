@@ -114,7 +114,7 @@
         "json-p3": "^3.0.2",
         "picomatch": "^4.0.7",
         "smol-toml": "^1.9.1",
-        "web-tree-sitter": "^0.27.1",
+        "web-tree-sitter": "^0.27.2",
         "xpath": "^0.0.36",
         "yaml": "^2.9.0"
     }

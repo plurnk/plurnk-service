@@ -42,7 +42,6 @@ type Actor = {
 type Run = {
     readonly body: string;
     readonly target: string | null;
-    readonly metadata?: readonly string[];
     readonly materialized?: string;
 };
 
@@ -52,8 +51,7 @@ const urlTarget = (raw: string): UrlPath => {
     return target;
 };
 
-const execStatement = (target: string, body: string, metadata: string[] | null = null): ExecStatement => ({
-    metadata,
+const execStatement = (target: string, body: string): ExecStatement => ({
     aside: null,
     runtime: "tool", target: urlTarget(target),
     lineMarker: null,
@@ -92,7 +90,7 @@ const wire = async (beforeRun?: () => Promise<void>): Promise<{
     readonly runs: Run[];
     readonly wakes: WakeSessionPayload[];
     actor(parentSessionId: number | null, name: string): Promise<Actor>;
-    dispatch(actor: Actor, target: string, body?: string, metadata?: string[] | null): Promise<Awaited<ReturnType<Engine["dispatch"]>>>;
+    dispatch(actor: Actor, target: string, body?: string): Promise<Awaited<ReturnType<Engine["dispatch"]>>>;
     close(): Promise<void>;
 }> => {
     const runs: Run[] = [];
@@ -104,12 +102,11 @@ const wire = async (beforeRun?: () => Promise<void>): Promise<{
         get defaultChannel(): string { return "results"; },
         get channels() { return { results: { mimetype: "text/plain" } }; },
         async prepare({ cwd }) { return { status: 200, cwd }; },
-        async run({ body, target, metadata, setState }) {
+        async run({ body, target, setState }) {
             await beforeRun?.();
             runs.push({
                 body,
                 target,
-                ...(metadata == null ? {} : { metadata }),
                 ...(target === null ? {} : { materialized: await readFile(target, "utf8") }),
             });
             if (body === "replace-temporary-with-directory" && target !== null) {
@@ -166,9 +163,9 @@ const wire = async (beforeRun?: () => Promise<void>): Promise<{
         runs,
         wakes,
         actor: makeActor,
-        async dispatch(actor, target, body = "", metadata = null) {
+        async dispatch(actor, target, body = "") {
             const result = await engine.dispatch({
-                statement: execStatement(target, body, metadata),
+                statement: execStatement(target, body),
                 workspaceId,
                 sessionId: actor.sessionId,
                 loopId: actor.loopId,
@@ -226,7 +223,6 @@ test("{§exec-target-routing} execution source READ preserves the complete autho
         ctx.schemes.register("source", {
             manifest: {
                 ...schemeManifest("source", { payload: "text/plain" }, "payload"),
-                metadataModifier: true,
             },
             async prepareRepresentation(request, schemeCtx) {
                 seen.push(structuredClone(request));
@@ -234,7 +230,7 @@ test("{§exec-target-routing} execution source READ preserves the complete autho
             },
         } satisfies SchemeHandler);
 
-        const result = await ctx.dispatch(ctx.root, raw, "transform", ["Accept: text/plain", "X-Trace: one:two"]);
+        const result = await ctx.dispatch(ctx.root, raw, "transform");
 
         assert.equal(result.status, 200, JSON.stringify(result));
         assert.equal(seen.length, 1);
@@ -248,8 +244,7 @@ test("{§exec-target-routing} execution source READ preserves the complete autho
         assert.equal(preparedTarget.port, 8443);
         assert.equal(preparedTarget.pathname, "/items/path");
         assert.equal(preparedTarget.query, "b=2&a=1&a=3");
-        assert.equal(seen[0]?.metadata, null, "source acquisition does not inherit another tool's metadata");
-        assert.deepEqual(ctx.runs[0]?.metadata, ["Accept: text/plain", "X-Trace: one:two"], "the invoked tool owns the ordered raw blocks");
+        assert.equal(seen[0]?.headers, null, "source acquisition does not inherit another tool's headers");
         assert.equal(preparedTarget.fragment, null, "core withholds channel selection from acquisition");
         assert.deepEqual(ctx.runs.map(({ body, materialized }) => ({ body, materialized })), [
             { body: "transform", materialized: completeSource },
@@ -261,26 +256,6 @@ test("{§exec-target-routing} execution source READ preserves the complete autho
             (cause: unknown) => cause instanceof Error && "code" in cause && cause.code === "ENOENT",
             "the source temporary is removed after the executor settles",
         );
-    } finally {
-        await ctx.close();
-    }
-});
-
-test("{§executor-contract} execution metadata does not require the source scheme to accept metadata", async () => {
-    const ctx = await wire();
-    try {
-        ctx.schemes.register("source", {
-            manifest: schemeManifest("source"),
-            async prepareRepresentation(request, schemeCtx) {
-                assert.equal(request.metadata, null);
-                return materializeSource(request, schemeCtx, "program");
-            },
-        } satisfies SchemeHandler);
-        const metadata = ["opaque tool option", " second block "];
-        const result = await ctx.dispatch(ctx.root, "source:///script", "input", metadata);
-        assert.equal(result.status, 200, JSON.stringify(result));
-        assert.deepEqual(ctx.runs[0]?.metadata, metadata);
-        assert.equal(ctx.runs[0]?.materialized, "program");
     } finally {
         await ctx.close();
     }
@@ -624,13 +599,12 @@ describe("entry-owner", () => {
 
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
-    metadata: null,
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const streamRead = (scheme: string, hostname: string | null, pathname: string): ReadStatement => ({
-    metadata: null,
+    headers: null,
     op: "read", aside: null,
     target: { kind: "url", raw: `${scheme}://${hostname ?? ""}${pathname}`, scheme, username: null, password: null, hostname, port: null, pathname, query: null, fragment: null },
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
@@ -875,7 +849,6 @@ const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
 // {§op-shapes} — the battery's third column is the program path, never a cwd.
 const execStmt = (runtime: string, target: string | null, body: string): ExecStatement => ({
-    metadata: null,
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });

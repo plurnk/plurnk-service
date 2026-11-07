@@ -565,7 +565,7 @@ test("{§channels} the exec scheme transitions channel state across the connecti
         // spawns the subprocess, and the scheme OWNS the transition to "closed"
         // on clean exit (via the executor's setState callbacks).
         const started = await exec.applyResolution(
-            { attrs: { runtime: "", cwd: null, target: null, body: "printf done", pathname, effect: "host" }, metadata: null },
+            { attrs: { runtime: "", cwd: null, target: null, body: "printf done", pathname, effect: "host" }, headers: null },
             ctx,
         );
         assert.equal(started.status, 200);
@@ -798,7 +798,7 @@ describe("entry-html-projection", () => {
 const ROSTER = "<html><body><h1>Team Roster</h1><user email=\"alice@x.com\">Alice</user></body></html>";
 
 const workspaceReadStmt = (pathname: string, body: ReadStatement["body"] = null): ReadStatement => ({
-    metadata: null,
+    headers: null,
     op: "read", aside: null,
     target: { kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, query: null, fragment: null },
     lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
@@ -876,7 +876,7 @@ test("{§execution-output-identity} a FETCHED html page (via the exec sink) keep
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "fetch test");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        await engine.dispatch({ statement: { runtime: "fetchstub", aside: null, target: null, metadata: null, lineMarker: null, body: "go", position: { line: 1, column: 1 } }, workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: { runtime: "fetchstub", aside: null, target: null, lineMarker: null, body: "go", position: { line: 1, column: 1 } }, workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
         await quiesceExecs(schemes); // {§execution-output-identity}: settle materialization before db.close().
 
         const entry = await db.test_get_entry_by_coordinate.get<{ id: number }>({
@@ -914,7 +914,7 @@ test("{§scheme-surface} a scoped HTTP READ slices the materialized readable bod
             },
         }, ctx, "https");
         const statement: ReadStatement = {
-            metadata: null,
+            headers: null,
             op: "read", aside: null,
             target: {
                 kind: "url", raw: "https://example.org/page", scheme: "https",
@@ -946,7 +946,7 @@ test("{§scheme-surface} a scoped HTTP READ slices the selected auxiliary channe
             },
         }, ctx, "https");
         const statement: ReadStatement = {
-            metadata: null,
+            headers: null,
             op: "read", aside: null,
             target: {
                 kind: "url", raw: "https://example.org/empty#header", scheme: "https",

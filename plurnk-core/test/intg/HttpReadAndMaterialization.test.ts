@@ -210,7 +210,7 @@ test("{§scheme-surface} #283: a scoped READ of a project file still returns exa
         const content = Array.from({ length: 20 }, (_, i) => `line-${i + 1}`).join("\n");
         const seeded = await engine.dispatch({
             statement: {
-                metadata: null,
+                headers: null,
                 op: "edit", aside: null,
                 target: { kind: "url", raw: "workspace:///scope.md", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/scope.md", query: null, fragment: null },
                 lineMarker: null,
@@ -333,7 +333,7 @@ const statement = (
         fragment: null,
     };
     return {
-        metadata: null,
+        headers: null,
         op: "read",
         aside: null,
         target,
@@ -343,9 +343,9 @@ const statement = (
     };
 };
 
-const parsedRead = (target: string, metadata: readonly string[] = []): ReadStatement => {
+const parsedRead = (target: string, headers?: Readonly<Record<string, string>>): ReadStatement => {
     const args: Record<string, unknown> = { path: target };
-    if (metadata.length > 0) args.metadata = metadata;
+    if (headers !== undefined) args.headers = headers;
     const code = `await plurnk.read(${JSON.stringify(args)});\n\nawait plurnk.note({"text":"acquisition pending"});`;
     const parsed = PlurnkParser.parse(code, { executors: fixtureExecutors(code) });
     const item = parsed.items.find(
@@ -508,7 +508,7 @@ for (const mode of ["complete", "oversize", "interrupted"] as const) {
         assert.ok(send?.kind === "statement");
         const http = new Http();
         const result = await settleOutbound(http, await http.send(send.statement as SendStatement, handlerCtx), handlerCtx,
-            (send.statement as SendStatement).metadata);
+            (send.statement as SendStatement).headers);
         assert.equal(result.status, mode === "complete" ? 102 : mode === "oversize" ? 413 : 500);
         const entry = (await handlerCtx.entries.read("/paper.pdf")).entry;
         assert.ok(entry);
@@ -531,7 +531,7 @@ for (const mode of ["complete", "oversize", "interrupted"] as const) {
 }
 
 const emptyStatement = (): ReadStatement => ({
-    metadata: null,
+    headers: null,
     op: "read",
     aside: null,
     target: {
@@ -552,7 +552,7 @@ const emptyStatement = (): ReadStatement => ({
 });
 
 const plainTextStatement = (): ReadStatement => ({
-    metadata: null,
+    headers: null,
     op: "read",
     aside: null,
     target: {
@@ -884,7 +884,7 @@ test("{§http-lifecycle} parser-produced request metadata cannot share a fresh H
         const publicRead = parsedRead("https://93.184.216.34/account");
         const privateRead = parsedRead(
             "https://93.184.216.34/account",
-            ['{"Authorization": "Bearer private"}'],
+            { Authorization: "Bearer private" },
         );
 
         assert.equal((await readHttp(http, publicRead, ctx)).status, 200);

@@ -722,14 +722,14 @@ const STRUCTURAL_SECRETS = [
 
 class CredentialProbe implements SchemeHandler {
     static manifest: SchemeManifest = {
-        name: "credential-probe",
+        name: "https",
+        authority: "resource",
         channels: { body: "text/plain" },
         defaultChannel: "body",
         category: "data",
         writableBy: ["model"],
         volatile: false,
         modelVisible: true,
-        metadataModifier: true,
     };
 
     observed: RepresentationPreparationRequest | null = null;
@@ -792,19 +792,19 @@ test("{§log-history-projection} ordinary operation evidence redacts credential 
         const turnId = await insertTurn(db, loopId, 1, 200);
         const probe = new CredentialProbe();
         const schemes = new SchemeRegistry();
-        schemes.register("credential-probe", probe);
+        schemes.register("https", probe);
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
 
         const read = parseOperation(
-            "await plurnk.read({\"path\":\"credential-probe://primary-user:primary-password@example.test/value?ticket=query-visible#body\",\"metadata\":[\"{\\\"Authorization\\\": \\\"Bearer primary-header-secret\\\", \\\"X-Api-Key\\\": \\\"secondary-header-secret\\\"}\"]});",
+            "await plurnk.read({\"path\":\"https://primary-user:primary-password@example.test/value?ticket=query-visible#body\",\"headers\":{\"Authorization\":\"Bearer primary-header-secret\",\"X-Api-Key\":\"secondary-header-secret\"}});",
             "read",
         );
         const copy = parseOperation(
-            "await plurnk.copy({\"from\":\"workspace:///missing-copy\",\"to\":\"credential-probe://copy-user:copy-password@copy.test/destination?ticket=copy-query-visible\"});",
+            "await plurnk.copy({\"from\":\"workspace:///missing-copy\",\"to\":\"https://copy-user:copy-password@copy.test/destination?ticket=copy-query-visible\"});",
             "copy",
         );
         const move = parseOperation(
-            "await plurnk.move({\"from\":\"workspace:///missing-move\",\"to\":\"credential-probe://move-user:move-password@move.test/destination?ticket=move-query-visible\"});",
+            "await plurnk.move({\"from\":\"workspace:///missing-move\",\"to\":\"https://move-user:move-password@move.test/destination?ticket=move-query-visible\"});",
             "move",
         );
 
@@ -831,9 +831,10 @@ test("{§log-history-projection} ordinary operation evidence redacts credential 
         if (observedTarget.kind !== "url") throw new Error("credential probe lost its URL target");
         assert.equal(observedTarget.username, "primary-user");
         assert.equal(observedTarget.password, "primary-password");
-        assert.deepEqual(observed.metadata, [
-            '{"Authorization": "Bearer primary-header-secret", "X-Api-Key": "secondary-header-secret"}',
-        ]);
+        assert.deepEqual(observed.headers, {
+            Authorization: "Bearer primary-header-secret",
+            "X-Api-Key": "secondary-header-secret",
+        });
         assert.equal(observedTarget.query, "ticket=query-visible");
         assert.equal(urlTarget(read).username, "primary-user", "the durable projection never mutates execution input");
 
@@ -866,10 +867,10 @@ test("{§log-history-projection} ordinary operation evidence redacts credential 
 
         const readTx = readRow.tx as ReadStatement;
         const durableReadTarget = urlTarget(readTx);
-        assert.equal(durableReadTarget.raw, "credential-probe://__redacted__:__redacted__@example.test/value?ticket=query-visible#body");
+        assert.equal(durableReadTarget.raw, "https://__redacted__:__redacted__@example.test/value?ticket=query-visible#body");
         assert.equal(durableReadTarget.username, REDACTED);
         assert.equal(durableReadTarget.password, REDACTED);
-        assert.deepEqual(readTx.metadata, [REDACTED]);
+        assert.deepEqual(readTx.headers, { Authorization: REDACTED, "X-Api-Key": REDACTED });
         assert.equal(durableReadTarget.query, "ticket=query-visible");
 
         for (const op of ["copy", "move"] as const) {

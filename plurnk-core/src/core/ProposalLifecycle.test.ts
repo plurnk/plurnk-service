@@ -134,7 +134,9 @@ test("{§proposal} sessionApply invokes a discovered scheme through the public p
         receivedContext = ctx;
         assert.deepEqual(request, {
             attrs: { operation: "publish" },
-            metadata: ["Authorization: secret"],
+            headers: { Authorization: "secret" },
+            remote: null,
+            attachments: null,
             body: "accepted body",
         });
         assert.equal(ctx.workspaceId, 11);
@@ -162,7 +164,8 @@ test("{§proposal} sessionApply invokes a discovered scheme through the public p
     });
     const statement = {
         op: "edit",
-        metadata: ["Authorization: secret"],
+        aside: null,
+        headers: { Authorization: "secret" },
         target: {
             kind: "url",
             raw: "https://example.test/article",
@@ -176,6 +179,7 @@ test("{§proposal} sessionApply invokes a discovered scheme through the public p
             fragment: null,
         },
         lineMarker: null,
+        matcher: null,
         body: "proposed body",
         position: { line: 1, column: 1 },
     } as PlurnkStatement;
@@ -244,9 +248,9 @@ test("{§proposal} applyResolution preserves an accepted scheme's failed result 
         type: "https://problems.plurnk.xyz/engine/edit/edit-collision",
         title: "Edit collision",
         status: 409,
-        detail: "EDIT collided with the current resource state.",
+        detail: "edit collided with the current resource state.",
         target: "notes.md",
-        recovery: "READ the target again before selecting current coordinates.",
+        recovery: "read the target again before selecting current coordinates.",
         retryable: false,
         instance: "log:///2/3/4/edit",
     });

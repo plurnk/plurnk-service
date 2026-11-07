@@ -19,7 +19,7 @@ import type {
     UrlPath,
     WebMaterializer,
 } from "@plurnk/plurnk-schemes";
-import { MetadataOptions, NetworkAddress } from "@plurnk/plurnk-schemes";
+import { NetworkAddress } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import HttpGet from "./HttpGet.ts";
 import HttpRequester from "./HttpRequester.ts";
@@ -57,7 +57,6 @@ export default class Http implements SchemeHandler {
         writableBy: ["model", "client"],
         volatile: true,        // remote content can change between fetches
         modelVisible: true,
-        metadataModifier: true,
         glyph: "🌐",
         documentation,
         traits: ["web"],
@@ -92,16 +91,16 @@ export default class Http implements SchemeHandler {
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult> {
         if (request.target.kind !== "url") {
-            return httpBad(400, "http", "bad-target", "READ requires an http(s):// URL target.", {
+            return httpBad(400, "http", "bad-target", "read requires an http(s):// URL target.", {
                 stage: "target-validation",
                 recovery: "Provide an http(s):// URL target.",
                 retryable: false,
             });
         }
-        return this.#get.prepareGet(request.target, request.metadata, request.pathname, ctx);
+        return this.#get.prepareGet(request.target, request.headers, request.pathname, ctx);
     }
 
-    // EDIT -> PUT the body (full-resource replace). `<L>` has no meaning against a
+    // edit -> PUT the body (full-resource replace). A range has no meaning against a
     // remote resource - reject rather than silently ignore the model's intent.
     async editBatch(statements: readonly ResolvedEditStatement[], _ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (statements.length !== 1) {
@@ -109,18 +108,18 @@ export default class Http implements SchemeHandler {
                 409,
                 "http",
                 "non-atomic-edit-batch",
-                `${statements.length} EDIT statements cannot be committed atomically to one remote resource.`,
+                `${statements.length} edit statements cannot be committed atomically to one remote resource.`,
                 {
                     statements: statements.length,
                     stage: "mutation",
-                    recovery: "Submit one whole-resource EDIT.",
+                    recovery: "Submit one whole-resource edit.",
                     retryable: false,
                 },
             );
         }
         const statement = statements[0];
         if (statement.target === null || statement.target.kind !== "url") {
-            return httpBad(400, "http", "bad-target", "EDIT requires an http(s):// URL target.", {
+            return httpBad(400, "http", "bad-target", "edit requires an http(s):// URL target.", {
                 stage: "target-validation",
                 recovery: "Provide an http(s):// URL target.",
                 retryable: false,
@@ -131,7 +130,7 @@ export default class Http implements SchemeHandler {
                 400,
                 "http",
                 "line-edit-unsupported",
-                "HTTP EDIT replaces the whole remote resource and does not accept a line range.",
+                "HTTP edit replaces the whole remote resource and does not accept a line range.",
                 {
                     stage: "mutation",
                     recovery: "Remove the line range and submit the complete replacement body.",
@@ -146,22 +145,23 @@ export default class Http implements SchemeHandler {
         return this.editBatch([statement], ctx);
     }
 
-    // {§revalidation} — KILL follows the entry rule: a live acquisition of the address is
+    // {§revalidation} — kill follows the entry rule: a live acquisition of the address is
     // cancelled, otherwise the stored response is forgotten. The remote DELETE is its own
-    // spelling, `KILL (https://…) [{"remote": true}]`; any other metadata keys are its headers.
+    // spelling, `plurnk.kill({ path: "https://…", remote: true, headers?: { ... } })`.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (statement.target === null || statement.target.kind !== "url") {
-            return httpBad(400, "http", "bad-target", "KILL requires an http(s):// URL target.", {
+            return httpBad(400, "http", "bad-target", "kill requires an http(s):// URL target.", {
                 stage: "target-validation",
                 recovery: "Provide an http(s):// URL target.",
                 retryable: false,
             });
         }
-        const read = MetadataOptions.parse(statement.metadata, "scheme:http");
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a metadata refusal has no shape; the method's result type names the success's passthrough shape
-        if ("failure" in read) return read.failure as PassthroughResult;
-        // The `remote` spelling is stripped in applyResolution, where the request is actually made.
-        if (read.options.remote === true) return Http.#propose("DELETE", statement.target);
+        if (statement.remote === true) return Http.#propose("DELETE", statement.target);
+        if (statement.headers !== null) {
+            return httpBad(400, "http", "headers-unsupported", "Local HTTP kill does not accept request headers; pass remote: true to send a DELETE request.", {
+                retryable: false,
+            });
+        }
         const address = httpAddress(statement.target);
         if (!(address instanceof NetworkAddress)) return address;
         if (this.#live.cancel(LiveAcquisitions.key(ctx.workspaceId, address.url))) {
@@ -173,7 +173,7 @@ export default class Http implements SchemeHandler {
 
     // {§http-manifest} — a request that changes a remote resource declares the host
     // effect and proposes; `PLURNK_SERVICE_EFFECT_HOST` decides whether that settles by consent
-    // or runs unattended. The headers stay OUT of attrs: they ride the statement metadata across
+    // or runs unattended. The headers stay OUT of attrs: they ride the statement headers across
     // the pause, so an `Authorization` value never enters durable proposal evidence.
     static #propose(method: string, target: UrlPath, body?: string): ProposalResult {
         return {
@@ -198,23 +198,20 @@ export default class Http implements SchemeHandler {
         }
         // The resolver may replace an authored body before it is sent; a bodyless verb keeps none.
         const body = attrs.body === undefined ? undefined : request.body ?? (typeof attrs.body === "string" ? attrs.body : JSON.stringify(attrs.body));
-        // DELETE spells its intent with `remote`, which selects the verb and is never a header.
-        let metadata = request.metadata;
-        if (method === "DELETE") {
-            const read = MetadataOptions.parse(metadata, "scheme:http");
-            if ("failure" in read) return read.failure;
-            const { remote: _remote, ...headers } = read.options;
-            metadata = Object.keys(headers).length === 0 ? null : [JSON.stringify(headers)];
-        }
-        return this.#requester.request(url, metadata, ctx, method, body);
+        return this.#requester.request(url, request.headers, ctx, method, body);
     }
 
-    // {§op-shapes} — SEND is messaging; lifecycle operations never reach a scheme.
+    // {§op-shapes} — send is messaging; lifecycle operations never reach a scheme.
     async send(statement: SendStatement, _ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (statement.target === null || statement.target.kind !== "url") {
-            return httpBad(400, "http", "bad-target", "SEND requires an http(s):// URL target.", {
+            return httpBad(400, "http", "bad-target", "send requires an http(s):// URL target.", {
                 stage: "target-validation",
                 recovery: "Provide an http(s):// URL target.",
+                retryable: false,
+            });
+        }
+        if (statement.attachments !== null) {
+            return httpBad(400, "http", "attachments-unsupported", "HTTP send does not accept attachments.", {
                 retryable: false,
             });
         }

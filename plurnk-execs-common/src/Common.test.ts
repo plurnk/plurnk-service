@@ -12,10 +12,9 @@ const present = (bin: string): boolean => spawnSync("sh", ["-c", `command -v "$1
 
 const make = (tag: string): Common => new Common({ runtime: tag, glyph: "•" });
 
-const run = async (tag: string, command: string, options: Partial<Pick<ExecArgs, "target" | "metadata" | "env">> = {}): Promise<{ result: ExecResult; out: Record<string, string> }> => {
+const run = async (tag: string, command: string, options: Partial<Pick<ExecArgs, "target" | "env">> = {}): Promise<{ result: ExecResult; out: Record<string, string> }> => {
     const out: Record<string, string> = { stdout: "", stderr: "" };
     const args: ExecArgs = {
-        metadata: null,
         runtime: tag, body: command, cwd: null, target: null,
         signal: new AbortController().signal,
         write: (c, chunk) => { out[c] = (out[c] ?? "") + chunk; },
@@ -95,7 +94,6 @@ test("{§executor-subprocess} a file target runs without +x; transient exec neve
         await fs.writeFile(script, "echo \"hi $1\"\n", { mode: 0o644 });
         const out: string[] = [];
         const args: ExecArgs = {
-            metadata: null,
             runtime: "sh", body: "plurnk", cwd: dir, target: script,
             signal: new AbortController().signal,
             write: (_c, chunk) => { out.push(chunk); },

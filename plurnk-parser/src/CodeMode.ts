@@ -122,7 +122,6 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
         if (
             runtime === "plurnk"
             && statement.target !== null
-            && statement.metadata === null
             && statement.lineMarker === null
         ) {
             const tool = spelledTarget(statement.target);
@@ -139,7 +138,6 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
                 !BUILTIN_STANDALONE_EXECUTORS.has(runtime)
                 && statement.target === null
                 && statement.lineMarker === null
-                && statement.metadata === null
             ) {
                 const body = statement.body;
                 const argStr = body === null || body === ""
@@ -154,7 +152,6 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
                 args[BUILTIN_STANDALONE_EXECUTORS.has(runtime) ? "cwd" : "target"] = spelledTarget(statement.target);
             }
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
-            if (statement.metadata !== null) args.metadata = statement.metadata;
             if (statement.body !== null && statement.body.length > 0) {
                 const bodyKey = runtime === "sh" ? "command" : (runtime === "js" || runtime === "python3" ? "code" : "body");
                 args[bodyKey] = statement.body;
@@ -168,10 +165,8 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             : isObjectLiteralString(body)
                 ? body.trim()
                 : JSON.stringify(body);
-        if (statement.metadata !== null || statement.lineMarker !== null) {
-            const opts: Record<string, unknown> = {};
-            if (statement.lineMarker !== null) opts.range = formatRange(statement.lineMarker);
-            if (statement.metadata !== null) opts.metadata = statement.metadata;
+        if (statement.lineMarker !== null) {
+            const opts: Record<string, unknown> = { range: formatRange(statement.lineMarker) };
             argStr = `${argStr === "" ? "null" : argStr}, ${JSON.stringify(opts)}`;
         }
         return `await ${runtime}${propAccess(tool)}(${argStr});${formatAside(statement.aside)}`;
@@ -185,7 +180,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.target !== null) args.path = spelledTarget(statement.target);
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
             if (statement.matcher !== null) args.pattern = statement.matcher.raw;
-            if (statement.metadata !== null) args.metadata = statement.metadata;
+            if (statement.headers !== null) args.headers = statement.headers;
             return `await plurnk.${method}(${JSON.stringify(args)});${formatAside(statement.aside)}`;
         }
         case "edit": {
@@ -193,7 +188,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.target !== null) args.path = spelledTarget(statement.target);
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
             if (statement.matcher !== null) args.pattern = statement.matcher.raw;
-            if (statement.metadata !== null) args.metadata = statement.metadata;
+            if (statement.headers !== null) args.headers = statement.headers;
             if (statement.body !== null && statement.body.length > 0) args.content = statement.body;
             return `await plurnk.edit(${JSON.stringify(args)});${formatAside(statement.aside)}`;
         }
@@ -201,13 +196,13 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
         case "move": {
             const method = statement.op;
             const formatSel = (sel: ResourceSelection): unknown => {
-                if (sel.lineMarker === null && sel.matcher === null && sel.metadata === null) {
+                if (sel.lineMarker === null && sel.matcher === null && sel.headers === null) {
                     return spelledTarget(sel.target);
                 }
                 const obj: Record<string, unknown> = { path: spelledTarget(sel.target) };
                 if (sel.lineMarker !== null) obj.range = formatRange(sel.lineMarker);
                 if (sel.matcher !== null) obj.pattern = sel.matcher.raw;
-                if (sel.metadata !== null) obj.metadata = sel.metadata;
+                if (sel.headers !== null) obj.headers = sel.headers;
                 return obj;
             };
             const args = { from: formatSel(statement.source), to: formatSel(statement.destination) };
@@ -218,7 +213,8 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.target !== null) args.path = spelledTarget(statement.target);
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
             if (statement.matcher !== null) args.pattern = statement.matcher.raw;
-            if (statement.metadata !== null) args.metadata = statement.metadata;
+            if (statement.remote !== null) args.remote = statement.remote;
+            if (statement.headers !== null) args.headers = statement.headers;
             if (statement.body !== null && statement.body.length > 0) args.note = statement.body;
             return `await plurnk.kill(${JSON.stringify(args)});${formatAside(statement.aside)}`;
         }
@@ -238,7 +234,6 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             const method = statement.op;
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);
-            if (statement.metadata !== null) args.metadata = statement.metadata;
             args.prompt = statement.body;
             return `await plurnk.${method}(${JSON.stringify(args)});${formatAside(statement.aside)}`;
         }
@@ -246,7 +241,8 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
-            if (statement.metadata !== null) args.metadata = statement.metadata;
+            if (statement.headers !== null) args.headers = statement.headers;
+            if (statement.attachments !== null) args.attachments = statement.attachments;
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;
             return `await plurnk.send(${JSON.stringify(args)});${formatAside(statement.aside)}`;
         }
@@ -255,7 +251,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             const method = statement.op;
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);
-            if (statement.metadata !== null) args.metadata = statement.metadata;
+            if (statement.attachments !== null) args.attachments = statement.attachments;
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;
             return `await plurnk.${method}(${JSON.stringify(args)});${formatAside(statement.aside)}`;
         }
@@ -282,17 +278,158 @@ const toStringValue = (value: unknown): string => {
     return JSON.stringify(value);
 };
 
-const toMetadataArray = (value: unknown): string[] | null => {
+const toHeaders = (value: unknown, pos: Position): Record<string, string> | null => {
     if (value === undefined || value === null) return null;
-    if (Array.isArray(value)) {
-        if (value.length === 0) return null;
-        return value.map((item) => typeof item === "string" ? item : JSON.stringify(item));
+    if (!isRecord(value)) {
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", "`headers` must be an object mapping header names to string values.", "error",
+            'Write `headers: { "Authorization": "Bearer ..." }`.');
     }
-    if (typeof value === "string") return [value];
-    if (typeof value === "number" || typeof value === "boolean") return [String(value)];
-    if (isRecord(value)) return [JSON.stringify(value)];
-    return null;
+    const entries = Object.entries(value);
+    if (entries.length === 0) return null;
+    const out: Record<string, string> = {};
+    for (const [k, v] of entries) {
+        if (typeof v !== "string") {
+            throw new PlurnkParseError(pos.line, pos.column, "visitor", `Header \`${k}\` value must be a string.`, "error",
+                'Write `headers: { "Authorization": "Bearer ..." }`.');
+        }
+        out[k] = v;
+    }
+    return out;
 };
+
+const toAttachments = (value: unknown, pos: Position): string[] | null => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed.length === 0) {
+            throw new PlurnkParseError(pos.line, pos.column, "visitor", "`attachments` cannot contain an empty address.", "error",
+                'Write `attachments: ["path/to/file"]`.');
+        }
+        return [trimmed];
+    }
+    if (!Array.isArray(value)) {
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", "`attachments` must be an array of non-empty resource address strings.", "error",
+            'Write `attachments: ["path/to/file"]`.');
+    }
+    if (value.length === 0) return null;
+    const out: string[] = [];
+    for (const item of value) {
+        if (typeof item !== "string" || item.trim().length === 0) {
+            throw new PlurnkParseError(pos.line, pos.column, "visitor", "`attachments` must be an array of non-empty resource address strings.", "error",
+                'Write `attachments: ["path/to/file"]`.');
+        }
+        out.push(item.trim());
+    }
+    return out;
+};
+
+const toRemote = (value: unknown, pos: Position): boolean | null => {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "boolean") {
+        throw new PlurnkParseError(pos.line, pos.column, "visitor", "`remote` must be a boolean.", "error",
+            'Write `remote: true`.');
+    }
+    return value;
+};
+
+const assertAllowedKeys = (
+    obj: Record<string, unknown>,
+    allowed: ReadonlySet<string>,
+    opLabel: string,
+    recovery: string,
+    pos: Position,
+): void => {
+    for (const [key, value] of Object.entries(obj)) {
+        if (value !== undefined && !allowed.has(key)) {
+            throw new PlurnkParseError(
+                pos.line,
+                pos.column,
+                "visitor",
+                `Unknown option \`${key}\` on \`${opLabel}\`.`,
+                "error",
+                recovery,
+            );
+        }
+    }
+};
+
+const READ_FIND_KEYS: ReadonlySet<string> = new Set([
+    "path", "paths", "target", "targets", "uri", "file_path", "filepath", "file",
+    "range", "lines", "scope", "limit", "pattern", "matcher", "query",
+    "headers", "note", "aside",
+]);
+
+const EDIT_KEYS: ReadonlySet<string> = new Set([
+    "path", "target", "uri", "file_path", "filepath", "file",
+    "range", "lines", "scope", "pattern", "matcher",
+    "oldText", "old_string", "old_text",
+    "newText", "new_string", "new_text", "content", "body", "text",
+    "edits", "headers", "aside",
+]);
+
+const EDIT_ITEM_KEYS: ReadonlySet<string> = new Set([
+    "range", "lines", "scope", "pattern", "matcher",
+    "oldText", "old_string", "old_text",
+    "newText", "new_string", "new_text", "content", "body", "text",
+]);
+
+const TRANSFER_KEYS: ReadonlySet<string> = new Set([
+    "from", "source", "src", "to", "destination", "dest",
+    "range", "lines", "scope", "sourceRange", "fromRange",
+    "pattern", "matcher", "sourcePattern", "fromPattern",
+    "headers", "sourceHeaders", "fromHeaders",
+    "toRange", "destinationRange", "destRange",
+    "toPattern", "destinationPattern",
+    "toHeaders", "destinationHeaders",
+    "aside",
+]);
+
+const SELECTION_KEYS: ReadonlySet<string> = new Set([
+    "path", "target", "uri", "range", "lines", "scope", "pattern", "matcher", "query", "headers",
+]);
+
+const KILL_KEYS: ReadonlySet<string> = new Set([
+    "path", "paths", "target", "targets", "uri", "file_path", "filepath", "file",
+    "range", "lines", "scope", "pattern", "matcher",
+    "note", "distillation", "body", "content", "text",
+    "remote", "headers", "aside",
+]);
+
+const NOTE_KEYS: ReadonlySet<string> = new Set([
+    "text", "content", "body", "note", "message", "aside",
+]);
+
+const TODO_KEYS: ReadonlySet<string> = new Set([
+    "items", "todos", "text", "content", "body", "aside",
+]);
+
+const DELEGATION_KEYS: ReadonlySet<string> = new Set([
+    "target", "path", "uri", "session", "prompt", "body", "content", "text", "message", "aside",
+]);
+
+const SEND_KEYS: ReadonlySet<string> = new Set([
+    "target", "to", "path", "uri", "session", "range", "lines", "scope",
+    "headers", "attachments", "text", "content", "body", "message", "json", "aside",
+]);
+
+const CONCLUSION_KEYS: ReadonlySet<string> = new Set([
+    "target", "to", "path", "uri", "attachments",
+    "text", "content", "body", "message", "reason", "summary", "json", "aside",
+]);
+
+const WAIT_KEYS: ReadonlySet<string> = new Set([
+    "target", "for", "path", "uri", "session", "seconds", "duration",
+    "text", "body", "content", "message", "reason", "aside",
+]);
+
+const BUILTIN_EXEC_KEYS: ReadonlySet<string> = new Set([
+    "command", "code", "body", "cwd", "script", "target", "path", "args",
+    "range", "lines", "scope", "aside",
+]);
+
+const CALL_OPTIONS_KEYS: ReadonlySet<string> = new Set([
+    "range", "lines", "scope", "aside",
+]);
 
 const toRangeString = (value: unknown, pos: Position): string | null => {
     if (value === undefined || value === null) return null;
@@ -376,9 +513,10 @@ const parseSelectionInput = (
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a non-empty '${role}' target.`, "error",
                 `await plurnk.${op}({ from: "source", to: "destination" });`);
         }
-        return { target, lineMarker: null, matcher: null, metadata: null };
+        return { target, lineMarker: null, matcher: null, headers: null };
     }
     if (isRecord(input)) {
+        assertAllowedKeys(input, SELECTION_KEYS, `plurnk.${op}.${role}`, `await plurnk.${op}({ from: "source", to: "destination" });`, pos);
         const rawPath = input.path ?? input.target ?? input.uri;
         if (typeof rawPath !== "string" || rawPath.length === 0) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a '${role}.path' target.`, "error",
@@ -390,8 +528,8 @@ const parseSelectionInput = (
         }
         const lineMarker = toTextLineMarker(input.range ?? input.lines ?? input.scope, pos, advise);
         const matcher = toMatcherBody(input.pattern ?? input.matcher ?? input.query, op, pos, advise);
-        const metadata = toMetadataArray(input.metadata ?? (input.headers !== undefined ? { headers: input.headers } : undefined));
-        return { target, lineMarker, matcher, metadata };
+        const headers = toHeaders(input.headers, pos);
+        return { target, lineMarker, matcher, headers };
     }
     throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires both from and to targets.`, "error",
         `await plurnk.${op}({ from: "source", to: "destination" });`);
@@ -520,8 +658,9 @@ const DIRECT_XML_PARAM_KEYS: ReadonlySet<string> = new Set([
     "oldtext", "old_string", "old_text", "newtext", "new_string", "new_text", "edits",
     "items", "todos", "from", "source", "src", "to", "destination", "dest",
     "torange", "destinationrange", "destrange", "topattern", "destinationpattern",
-    "prompt", "seconds", "duration", "metadata", "headers", "signal",
-    "command", "code", "script", "args", "cwd", "env", "action", "aside",
+    "fromheaders", "sourceheaders", "toheaders", "destinationheaders",
+    "prompt", "seconds", "duration", "headers", "attachments", "remote",
+    "command", "code", "script", "args", "cwd", "action", "aside",
     "owner", "repo", "number", "index",
 ]);
 
@@ -1977,10 +2116,12 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
 
     const buildReadOrFind = (op: "read" | "find", args: readonly unknown[]): PlurnkStatement | PlurnkStatement[] => {
         const pos = activePosition;
+        const recovery = op === "read"
+            ? 'await plurnk.read({ path: "path/to/file" });'
+            : 'await plurnk.find({ path: "**", pattern: "/needle/" });';
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null))) {
             if (op === "read") {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error",
-                    'await plurnk.read({ path: "path/to/file" });');
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
             }
             return emitStatement({
                 op: "find",
@@ -1988,7 +2129,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 target: null,
                 lineMarker: null,
                 matcher: null,
-                metadata: null,
+                headers: null,
                 body: null,
                 position: pos,
             });
@@ -1996,8 +2137,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         const first = args[0];
         if (Array.isArray(first)) {
             if (first.length === 0 && op === "read") {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error",
-                    'await plurnk.read({ path: "path/to/file" });');
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
             }
             const results: PlurnkStatement[] = [];
             for (const entry of first) {
@@ -2010,21 +2150,26 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         if (typeof first === "string") {
             const parsed = parsePath(first, pos);
             if (parsed === null && op === "read") {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error",
-                    'await plurnk.read({ path: "path/to/file" });');
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
             }
             const targets = parsed === null ? [null] : targetMembers(parsed);
             const second = isRecord(args[1]) ? args[1] : null;
+            if (second !== null) {
+                assertAllowedKeys(second, READ_FIND_KEYS, `plurnk.${op}`, recovery, pos);
+            }
+            if (typeof second?.note === "string" && second.note.trim().length > 0) {
+                emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: second.note, position: pos });
+            }
             const aside = resolveAside(second);
             const matcher = toMatcherBody(second?.pattern ?? second?.matcher ?? second?.query, op, pos, advise);
-            const metadata = toMetadataArray(second?.metadata ?? (second?.headers !== undefined ? { headers: second.headers } : undefined));
+            const headers = toHeaders(second?.headers, pos);
             return targets.map((target) => emitStatement(op === "read" ? {
                 op: "read",
                 aside,
                 target,
                 lineMarker: toTextLineMarker(second?.range ?? second?.lines ?? second?.scope, pos, advise),
                 matcher,
-                metadata,
+                headers,
                 body: null,
                 position: pos,
             } : {
@@ -2033,20 +2178,23 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 target,
                 lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.scope ?? second?.limit, pos, true, advise),
                 matcher,
-                metadata,
+                headers,
                 body: null,
                 position: pos,
             }));
         }
         if (isRecord(first)) {
+            assertAllowedKeys(first, READ_FIND_KEYS, `plurnk.${op}`, recovery, pos);
+            if (typeof first.note === "string" && first.note.trim().length > 0) {
+                emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: first.note, position: pos });
+            }
             const aside = resolveAside(first);
             const matcher = toMatcherBody(first.pattern ?? first.matcher ?? first.query, op, pos, advise);
-            const metadata = toMetadataArray(first.metadata ?? (first.headers !== undefined ? { headers: first.headers } : undefined));
+            const headers = toHeaders(first.headers, pos);
             const rawPaths = first.paths ?? first.targets ?? first.path ?? first.target ?? first.uri ?? first.file_path ?? first.filepath ?? first.file;
             if (Array.isArray(rawPaths)) {
                 if (rawPaths.length === 0 && op === "read") {
-                    throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error",
-                        'await plurnk.read({ path: "path/to/file" });');
+                    throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
                 }
                 const results: PlurnkStatement[] = [];
                 for (const item of rawPaths) {
@@ -2060,7 +2208,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                                 target,
                                 lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.scope, pos, advise),
                                 matcher,
-                                metadata,
+                                headers,
                                 body: null,
                                 position: pos,
                             } : {
@@ -2069,13 +2217,13 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                                 target,
                                 lineMarker: toLineMarker(first.range ?? first.lines ?? first.scope ?? first.limit, pos, true, advise),
                                 matcher,
-                                metadata,
+                                headers,
                                 body: null,
                                 position: pos,
                             }));
                         }
                     } else if (isRecord(item)) {
-                        const sub = buildReadOrFind(op, [{ ...first, ...item, paths: undefined, targets: undefined }]);
+                        const sub = buildReadOrFind(op, [{ ...first, ...item, paths: undefined, targets: undefined, note: undefined }]);
                         if (Array.isArray(sub)) results.push(...sub);
                         else results.push(sub);
                     }
@@ -2087,8 +2235,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             }
             const parsed = typeof rawPaths === "string" ? parsePath(rawPaths, pos) : null;
             if (parsed === null && op === "read") {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error",
-                    'await plurnk.read({ path: "path/to/file" });');
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
             }
             const targets = parsed === null ? [null] : targetMembers(parsed);
             return targets.map((target) => emitStatement(op === "read" ? {
@@ -2097,7 +2244,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 target,
                 lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.scope, pos, advise),
                 matcher,
-                metadata,
+                headers,
                 body: null,
                 position: pos,
             } : {
@@ -2106,7 +2253,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 target,
                 lineMarker: toLineMarker(first.range ?? first.lines ?? first.scope ?? first.limit, pos, true, advise),
                 matcher,
-                metadata,
+                headers,
                 body: null,
                 position: pos,
             }));
@@ -2116,12 +2263,12 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
 
     const buildEdit = (args: readonly unknown[]): EditStatement | EditStatement[] => {
         const pos = activePosition;
+        const recovery = 'await plurnk.edit({ path: "path/to/file", content: "..." });';
         const first = args[0];
         if (typeof first === "string" && args.length >= 2) {
             const parsed = parsePath(first, pos);
             if (parsed === null) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error",
-                    'await plurnk.edit({ path: "path/to/file", content: "..." });');
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error", recovery);
             }
             const body = args[1] === null || args[1] === undefined || args[1] === "" ? null : toStringValue(args[1]);
             return targetMembers(parsed).map((target) => emitStatement({
@@ -2130,28 +2277,26 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 target,
                 lineMarker: null,
                 matcher: null,
-                metadata: null,
+                headers: null,
                 body,
                 position: pos,
             }));
         }
         if (!isRecord(first)) {
-            throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires an options object with `path`.", "error",
-                'await plurnk.edit({ path: "path/to/file", content: "..." });');
+            throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires an options object with `path`.", "error", recovery);
         }
+        assertAllowedKeys(first, EDIT_KEYS, "plurnk.edit", recovery, pos);
         const rawPath = first.path ?? first.target ?? first.uri ?? first.file_path ?? first.filepath ?? first.file;
         if (typeof rawPath !== "string" || rawPath.length === 0) {
-            throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error",
-                'await plurnk.edit({ path: "path/to/file", content: "..." });');
+            throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error", recovery);
         }
         const parsed = parsePath(rawPath, pos);
         if (parsed === null) {
-            throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error",
-                'await plurnk.edit({ path: "path/to/file", content: "..." });');
+            throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error", recovery);
         }
         const targets = targetMembers(parsed);
         const aside = resolveAside(first);
-        const metadata = toMetadataArray(first.metadata ?? (first.headers !== undefined ? { headers: first.headers } : undefined));
+        const headers = toHeaders(first.headers, pos);
 
         if (Array.isArray(first.edits)) {
             if (first.edits.length === 0) {
@@ -2163,6 +2308,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                     if (!isRecord(item)) {
                         throw new PlurnkParseError(pos.line, pos.column, "visitor", "Each entry in `edits` must be an object.", "error");
                     }
+                    assertAllowedKeys(item, EDIT_ITEM_KEYS, "plurnk.edit.edits", recovery, pos);
                     const itemLineMarker = toTextLineMarker(item.range ?? item.lines ?? item.scope ?? first.range ?? first.lines ?? first.scope, pos, advise);
                     const rawItemOld = item.oldText ?? item.old_string ?? item.old_text;
                     const itemMatcher = typeof rawItemOld === "string"
@@ -2176,7 +2322,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                         target,
                         lineMarker: itemLineMarker,
                         matcher: itemMatcher,
-                        metadata,
+                        headers,
                         body,
                         position: pos,
                     }));
@@ -2198,7 +2344,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             target,
             lineMarker,
             matcher,
-            metadata,
+            headers,
             body,
             position: pos,
         }));
@@ -2206,6 +2352,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
 
     const buildTransfer = (op: "copy" | "move", args: readonly unknown[]): CopyStatement | MoveStatement => {
         const pos = activePosition;
+        const recovery = `await plurnk.${op}({ from: "source", to: "destination" });`;
         if (typeof args[0] === "string" && typeof args[1] === "string") {
             const source = parseSelectionInput(args[0], op, "from", pos, advise);
             const destination = parseSelectionInput(args[1], op, "to", pos, advise);
@@ -2213,24 +2360,24 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         }
         const first = args[0];
         if (!isRecord(first)) {
-            throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires both from and to targets.`, "error",
-                `await plurnk.${op}({ from: "source", to: "destination" });`);
+            throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires both from and to targets.`, "error", recovery);
         }
+        assertAllowedKeys(first, TRANSFER_KEYS, `plurnk.${op}`, recovery, pos);
         const rawFrom = first.from ?? first.source ?? first.src;
         const rawTo = first.to ?? first.destination ?? first.dest;
         const sourceBase = parseSelectionInput(rawFrom, op, "from", pos, advise);
         const destBase = parseSelectionInput(rawTo, op, "to", pos, advise);
         const source: ResourceSelection = {
             target: sourceBase.target,
-            lineMarker: sourceBase.lineMarker ?? toTextLineMarker(first.range ?? first.lines ?? first.scope ?? first.sourceRange, pos, advise),
-            matcher: sourceBase.matcher ?? toMatcherBody(first.pattern ?? first.matcher ?? first.sourcePattern, op, pos, advise),
-            metadata: sourceBase.metadata ?? toMetadataArray(first.metadata ?? first.sourceMetadata),
+            lineMarker: sourceBase.lineMarker ?? toTextLineMarker(first.range ?? first.lines ?? first.scope ?? first.sourceRange ?? first.fromRange, pos, advise),
+            matcher: sourceBase.matcher ?? toMatcherBody(first.pattern ?? first.matcher ?? first.sourcePattern ?? first.fromPattern, op, pos, advise),
+            headers: sourceBase.headers ?? toHeaders(first.headers ?? first.sourceHeaders ?? first.fromHeaders, pos),
         };
         const destination: ResourceSelection = {
             target: destBase.target,
             lineMarker: destBase.lineMarker ?? toTextLineMarker(first.toRange ?? first.destinationRange ?? first.destRange, pos, advise),
             matcher: destBase.matcher ?? toMatcherBody(first.toPattern ?? first.destinationPattern, op, pos, advise),
-            metadata: destBase.metadata ?? toMetadataArray(first.toMetadata ?? first.destinationMetadata),
+            headers: destBase.headers ?? toHeaders(first.toHeaders ?? first.destinationHeaders, pos),
         };
         return emitStatement({
             op,
@@ -2243,11 +2390,11 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
 
     const buildKill = (args: readonly unknown[]): KillStatement | KillStatement[] => {
         const pos = activePosition;
+        const recovery = 'await plurnk.kill({ path: "log:///1/1/1/read" });';
         const first = args[0];
         if (Array.isArray(first)) {
             if (first.length === 0) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error",
-                    'await plurnk.kill({ path: "log:///1/1/1/read" });');
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
             }
             const results: KillStatement[] = [];
             for (const item of first) {
@@ -2260,15 +2407,18 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         if (typeof first === "string") {
             const parsed = parsePath(first, pos);
             if (parsed === null) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error",
-                    'await plurnk.kill({ path: "log:///1/1/1/read" });');
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
             }
             const second = isRecord(args[1]) ? args[1] : null;
+            if (second !== null) {
+                assertAllowedKeys(second, KILL_KEYS, "plurnk.kill", recovery, pos);
+            }
             const rawNote = typeof args[1] === "string" ? args[1] : (second?.note ?? second?.distillation ?? second?.body ?? second?.content ?? second?.text);
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
             const lineMarker = toTextLineMarker(second?.range ?? second?.lines ?? second?.scope, pos, advise);
             const matcher = toMatcherBody(second?.pattern ?? second?.matcher, "kill", pos, advise);
-            const metadata = toMetadataArray(second?.metadata ?? second?.signal);
+            const remote = toRemote(second?.remote, pos);
+            const headers = toHeaders(second?.headers, pos);
             const aside = resolveAside(second);
             return targetMembers(parsed).map((target, idx) => emitStatement({
                 op: "kill",
@@ -2276,24 +2426,26 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 target,
                 lineMarker,
                 matcher,
-                metadata,
+                remote,
+                headers,
                 body: idx === 0 ? note : null,
                 position: pos,
             }));
         }
         if (isRecord(first)) {
+            assertAllowedKeys(first, KILL_KEYS, "plurnk.kill", recovery, pos);
             const rawPaths = first.paths ?? first.targets ?? first.path ?? first.target ?? first.uri ?? first.file_path ?? first.filepath ?? first.file;
             const aside = resolveAside(first);
             const rawNote = first.note ?? first.distillation ?? first.body ?? first.content ?? first.text;
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
             const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.scope, pos, advise);
             const matcher = toMatcherBody(first.pattern ?? first.matcher, "kill", pos, advise);
-            const metadata = toMetadataArray(first.metadata ?? first.signal);
+            const remote = toRemote(first.remote, pos);
+            const headers = toHeaders(first.headers, pos);
 
             if (Array.isArray(rawPaths)) {
                 if (rawPaths.length === 0) {
-                    throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error",
-                        'await plurnk.kill({ path: "log:///1/1/1/read" });');
+                    throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
                 }
                 const results: KillStatement[] = [];
                 for (const [idx, item] of rawPaths.entries()) {
@@ -2309,7 +2461,8 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                                 target,
                                 lineMarker,
                                 matcher,
-                                metadata,
+                                remote,
+                                headers,
                                 body: idx === 0 && mIdx === 0 ? note : null,
                                 position: pos,
                             }));
@@ -2323,13 +2476,11 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 return results;
             }
             if (typeof rawPaths !== "string" || rawPaths.length === 0) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error",
-                    'await plurnk.kill({ path: "log:///1/1/1/read" });');
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
             }
             const parsed = parsePath(rawPaths, pos);
             if (parsed === null) {
-                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error",
-                    'await plurnk.kill({ path: "log:///1/1/1/read" });');
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
             }
             return targetMembers(parsed).map((target, idx) => emitStatement({
                 op: "kill",
@@ -2337,30 +2488,31 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 target,
                 lineMarker,
                 matcher,
-                metadata,
+                remote,
+                headers,
                 body: idx === 0 ? note : null,
                 position: pos,
             }));
         }
-        throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error",
-            'await plurnk.kill({ path: "log:///1/1/1/read" });');
+        throw new PlurnkParseError(pos.line, pos.column, "parser", "kill requires a target.", "error", recovery);
     };
 
     const buildNote = (args: readonly unknown[]): NoteStatement => {
         const pos = activePosition;
         const first = args[0];
         if (first === undefined || first === null || first === "") {
-            return emitStatement({ op: "note", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: null, position: pos });
+            return emitStatement({ op: "note", aside: activeDefaultAside, target: null, lineMarker: null, body: null, position: pos });
         }
         if (typeof first === "string") {
-            return emitStatement({ op: "note", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: first, position: pos });
+            return emitStatement({ op: "note", aside: activeDefaultAside, target: null, lineMarker: null, body: first, position: pos });
         }
         if (isRecord(first)) {
+            assertAllowedKeys(first, NOTE_KEYS, "plurnk.note", 'await plurnk.note({ text: "..." });', pos);
             const rawText = first.text ?? first.content ?? first.body ?? first.note ?? first.message;
             const body = rawText === undefined || rawText === null || rawText === "" ? null : toStringValue(rawText);
-            return emitStatement({ op: "note", aside: resolveAside(first), target: null, metadata: null, lineMarker: null, body, position: pos });
+            return emitStatement({ op: "note", aside: resolveAside(first), target: null, lineMarker: null, body, position: pos });
         }
-        return emitStatement({ op: "note", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: toStringValue(first), position: pos });
+        return emitStatement({ op: "note", aside: activeDefaultAside, target: null, lineMarker: null, body: toStringValue(first), position: pos });
     };
 
     const formatTodoItem = (item: unknown): string => {
@@ -2384,69 +2536,66 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         const pos = activePosition;
         const first = args[0];
         if (first === undefined || first === null || first === "") {
-            return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: null, position: pos });
+            return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, lineMarker: null, body: null, position: pos });
         }
         if (typeof first === "string") {
-            return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: first, position: pos });
+            return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, lineMarker: null, body: first, position: pos });
         }
         if (Array.isArray(first)) {
             const body = first.length === 0 ? null : first.map(formatTodoItem).join("\n");
-            return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body, position: pos });
+            return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, lineMarker: null, body, position: pos });
         }
         if (isRecord(first)) {
+            assertAllowedKeys(first, TODO_KEYS, "plurnk.todo", 'await plurnk.todo({ items: ["..."] });', pos);
             const rawItems = Array.isArray(first.items) ? first.items : (Array.isArray(first.todos) ? first.todos : null);
             if (rawItems !== null) {
                 const body = rawItems.length === 0 ? null : rawItems.map(formatTodoItem).join("\n");
-                return emitStatement({ op: "todo", aside: resolveAside(first), target: null, metadata: null, lineMarker: null, body, position: pos });
+                return emitStatement({ op: "todo", aside: resolveAside(first), target: null, lineMarker: null, body, position: pos });
             }
             const rawText = first.text ?? first.content ?? first.body;
             const body = rawText === undefined || rawText === null || rawText === "" ? null : toStringValue(rawText);
-            return emitStatement({ op: "todo", aside: resolveAside(first), target: null, metadata: null, lineMarker: null, body, position: pos });
+            return emitStatement({ op: "todo", aside: resolveAside(first), target: null, lineMarker: null, body, position: pos });
         }
-        return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: toStringValue(first), position: pos });
+        return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, lineMarker: null, body: toStringValue(first), position: pos });
     };
 
     const buildDelegation = (op: "work" | "fork" | "bare", args: readonly unknown[]): WorkStatement | ForkStatement | BareStatement => {
         const pos = activePosition;
+        const recovery = `await plurnk.${op}({ prompt: "..." });`;
         if (typeof args[0] === "string" && typeof args[1] === "string") {
             const target = parsePath(args[0], pos);
-            return emitStatement({ op, aside: activeDefaultAside, target, metadata: null, lineMarker: null, body: args[1], position: pos });
+            return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, body: args[1], position: pos });
         }
         if (typeof args[0] === "string") {
-            return emitStatement({ op, aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: args[0], position: pos });
+            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, body: args[0], position: pos });
         }
         if (isRecord(args[0])) {
             const first = args[0];
+            assertAllowedKeys(first, DELEGATION_KEYS, `plurnk.${op}`, recovery, pos);
             const rawTarget = first.target ?? first.path ?? first.uri ?? (typeof first.session === "string"
                 ? (first.session.includes("://") ? first.session : `session://${first.session}`)
                 : undefined);
             const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
-            let metadata = toMetadataArray(first.metadata);
-            if (metadata === null && (first.model !== undefined || first.effort !== undefined || first.persona !== undefined)) {
-                const opts: Record<string, unknown> = {};
-                if (first.model !== undefined) opts.model = first.model;
-                if (first.effort !== undefined) opts.effort = first.effort;
-                if (first.persona !== undefined) opts.persona = first.persona;
-                metadata = [JSON.stringify(opts)];
-            }
             const rawPrompt = first.prompt ?? first.body ?? first.content ?? first.text ?? first.message;
             const body = rawPrompt === undefined || rawPrompt === null ? "" : toStringValue(rawPrompt);
-            return emitStatement({ op, aside: resolveAside(first), target, metadata, lineMarker: null, body, position: pos });
+            return emitStatement({ op, aside: resolveAside(first), target, lineMarker: null, body, position: pos });
         }
-        return emitStatement({ op, aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, body: "", position: pos });
+        return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, body: "", position: pos });
     };
 
     const buildSend = (args: readonly unknown[]): SendStatement => {
         const pos = activePosition;
+        const recovery = 'await plurnk.send({ target: "session://name", text: "..." });';
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
-            return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, metadata: null, body: null, position: pos });
+            return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: null, position: pos });
         }
         if (typeof args[0] === "string" && args.length >= 2 && (typeof args[1] === "string" || isRecord(args[1]))) {
             const target = parsePath(args[0], pos);
             if (typeof args[1] === "string") {
-                return emitStatement({ op: "send", aside: activeDefaultAside, target, lineMarker: null, metadata: null, body: args[1].length === 0 ? null : toSendBody(args[1]), position: pos });
+                return emitStatement({ op: "send", aside: activeDefaultAside, target, lineMarker: null, headers: null, attachments: null, body: args[1].length === 0 ? null : toSendBody(args[1]), position: pos });
             }
             const second = args[1];
+            assertAllowedKeys(second, SEND_KEYS, "plurnk.send", recovery, pos);
             const rawText = second.text ?? second.content ?? second.body ?? second.message;
             const body = second.json !== undefined
                 ? { raw: JSON.stringify(second.json), json: second.json }
@@ -2456,72 +2605,79 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 aside: resolveAside(second),
                 target,
                 lineMarker: toLineMarker(second.range ?? second.lines ?? second.scope, pos),
-                metadata: toMetadataArray(second.metadata ?? second.signal),
+                headers: toHeaders(second.headers, pos),
+                attachments: toAttachments(second.attachments, pos),
                 body,
                 position: pos,
             });
         }
         if (typeof args[0] === "string") {
-            return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, metadata: null, body: toSendBody(args[0]), position: pos });
+            return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: toSendBody(args[0]), position: pos });
         }
         if (isRecord(args[0])) {
             const first = args[0];
+            assertAllowedKeys(first, SEND_KEYS, "plurnk.send", recovery, pos);
             const rawTarget = first.target ?? first.to ?? first.path ?? first.uri ?? (typeof first.session === "string"
                 ? (first.session.includes("://") ? first.session : `session://${first.session}`)
                 : undefined);
             const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
             const lineMarker = toLineMarker(first.range ?? first.lines ?? first.scope, pos);
-            const metadata = toMetadataArray(first.metadata ?? first.signal ?? (first.headers !== undefined ? { headers: first.headers } : undefined));
+            const headers = toHeaders(first.headers, pos);
+            const attachments = toAttachments(first.attachments, pos);
             const rawText = first.text ?? first.content ?? first.body ?? first.message;
             const body = first.json !== undefined
                 ? { raw: JSON.stringify(first.json), json: first.json }
                 : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(toStringValue(rawText)));
-            return emitStatement({ op: "send", aside: resolveAside(first), target, lineMarker, metadata, body, position: pos });
+            return emitStatement({ op: "send", aside: resolveAside(first), target, lineMarker, headers, attachments, body, position: pos });
         }
-        return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, metadata: null, body: toSendBody(toStringValue(args[0])), position: pos });
+        return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: toSendBody(toStringValue(args[0])), position: pos });
     };
 
     const buildConclusion = (op: "done" | "fail", args: readonly unknown[]): DoneStatement | FailStatement => {
         const pos = activePosition;
+        const recovery = `await plurnk.${op}({ text: "..." });`;
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
-            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, metadata: null, body: null, position: pos });
+            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: null, position: pos });
         }
         if (typeof args[0] === "string" && typeof args[1] === "string") {
             const target = parsePath(args[0], pos);
-            return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, metadata: null, body: args[1].length === 0 ? null : toSendBody(args[1]), position: pos });
+            return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, attachments: null, body: args[1].length === 0 ? null : toSendBody(args[1]), position: pos });
         }
         if (typeof args[0] === "string") {
-            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, metadata: null, body: toSendBody(args[0]), position: pos });
+            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: toSendBody(args[0]), position: pos });
         }
         if (isRecord(args[0])) {
             const first = args[0];
+            assertAllowedKeys(first, CONCLUSION_KEYS, `plurnk.${op}`, recovery, pos);
             const rawTarget = first.target ?? first.to ?? first.path ?? first.uri;
             const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
-            const metadata = toMetadataArray(first.metadata);
+            const attachments = toAttachments(first.attachments, pos);
             const rawText = first.text ?? first.content ?? first.body ?? first.message ?? first.reason ?? first.summary;
             const body = first.json !== undefined
                 ? { raw: JSON.stringify(first.json), json: first.json }
                 : (rawText === undefined || rawText === null || rawText === "" ? null : toSendBody(toStringValue(rawText)));
-            return emitStatement({ op, aside: resolveAside(first), target, lineMarker: null, metadata, body, position: pos });
+            return emitStatement({ op, aside: resolveAside(first), target, lineMarker: null, attachments, body, position: pos });
         }
-        return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, metadata: null, body: toSendBody(toStringValue(args[0])), position: pos });
+        return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: toSendBody(toStringValue(args[0])), position: pos });
     };
 
     const buildWait = (args: readonly unknown[]): DispositionStatement => {
         const pos = activePosition;
+        const recovery = 'await plurnk.wait({ seconds: 30, text: "..." });';
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
-            return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, seconds: null, body: null, position: pos });
+            return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, lineMarker: null, seconds: null, body: null, position: pos });
         }
         if (typeof args[0] === "number") {
             const seconds = Number.isFinite(args[0]) && args[0] >= 0 ? args[0] : null;
             const body = typeof args[1] === "string" && args[1].length > 0 ? args[1] : null;
-            return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, seconds, body, position: pos });
+            return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, lineMarker: null, seconds, body, position: pos });
         }
         if (typeof args[0] === "string") {
-            return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, seconds: null, body: args[0], position: pos });
+            return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, lineMarker: null, seconds: null, body: args[0], position: pos });
         }
         if (isRecord(args[0])) {
             const first = args[0];
+            assertAllowedKeys(first, WAIT_KEYS, "plurnk.wait", recovery, pos);
             const rawTarget = first.target ?? first.for ?? first.path ?? first.uri ?? (typeof first.session === "string"
                 ? (first.session.includes("://") ? first.session : `session://${first.session}`)
                 : undefined);
@@ -2540,9 +2696,9 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             }
             const rawText = first.text ?? first.body ?? first.content ?? first.message ?? first.reason;
             const body = rawText === undefined || rawText === null || rawText === "" ? null : toStringValue(rawText);
-            return emitStatement({ op: "wait", aside: resolveAside(first), target, metadata: null, lineMarker: null, seconds, body, position: pos });
+            return emitStatement({ op: "wait", aside: resolveAside(first), target, lineMarker: null, seconds, body, position: pos });
         }
-        return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, metadata: null, lineMarker: null, seconds: null, body: toStringValue(args[0]), position: pos });
+        return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, lineMarker: null, seconds: null, body: toStringValue(args[0]), position: pos });
     };
 
     const buildPlurnkTool = (toolName: string, args: readonly unknown[]): ExecStatement => {
@@ -2550,6 +2706,9 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         const target = parsePath(toolName, pos);
         const first = args[0];
         const second = isRecord(args[1]) ? args[1] : null;
+        if (second !== null) {
+            assertAllowedKeys(second, CALL_OPTIONS_KEYS, `plurnk.${toolName}`, `await plurnk${propAccess(toolName)}({ ... });`, pos);
+        }
         let body: string | null = null;
         if (first !== undefined && first !== null && first !== "") {
             body = typeof first === "string" ? first : JSON.stringify(first);
@@ -2559,7 +2718,6 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             aside: resolveAside(second),
             target,
             lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.scope, pos),
-            metadata: toMetadataArray(second?.metadata),
             body,
             position: pos,
         });
@@ -2567,13 +2725,16 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
 
     const buildStandaloneExec = (runtime: RuntimeTag, args: readonly unknown[]): ExecStatement => {
         const pos = activePosition;
+        const isBuiltinExec = BUILTIN_STANDALONE_EXECUTORS.has(runtime);
+        const recovery = runtime === "sh"
+            ? 'await plurnk.sh({ command: "..." });'
+            : `await plurnk.${runtime}({ code: "..." });`;
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
             return emitStatement({
                 runtime,
                 aside: activeDefaultAside,
                 target: null,
                 lineMarker: null,
-                metadata: null,
                 body: null,
                 position: pos,
             });
@@ -2583,12 +2744,14 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             const second = args[1];
             const body = second === null || second === undefined || second === "" ? null : (typeof second === "string" ? second : JSON.stringify(second));
             const third = isRecord(args[2]) ? args[2] : null;
+            if (third !== null) {
+                assertAllowedKeys(third, CALL_OPTIONS_KEYS, `plurnk.${runtime}`, recovery, pos);
+            }
             return emitStatement({
                 runtime,
                 aside: resolveAside(third),
                 target,
                 lineMarker: toLineMarker(third?.range ?? third?.lines ?? third?.scope, pos),
-                metadata: toMetadataArray(third?.metadata ?? (third?.env !== undefined ? { env: third.env } : undefined)),
                 body,
                 position: pos,
             });
@@ -2599,25 +2762,26 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 aside: activeDefaultAside,
                 target: null,
                 lineMarker: null,
-                metadata: null,
                 body: args[0],
                 position: pos,
             });
         }
         if (isRecord(args[0])) {
             const first = args[0];
-            const EXEC_ENVELOPE_KEYS = new Set([
-                "command", "code", "body", "cwd", "script", "target", "path", "args", "env", "metadata", "range", "lines", "scope", "aside",
-            ]);
-            const hasEnvelopeKey = Object.keys(first).some((k) => EXEC_ENVELOPE_KEYS.has(k));
-            if (!hasEnvelopeKey) {
+            if (isBuiltinExec) {
+                assertAllowedKeys(first, BUILTIN_EXEC_KEYS, `plurnk.${runtime}`, recovery, pos);
+            }
+            const hasEnvelopeKey = Object.keys(first).some((k) => BUILTIN_EXEC_KEYS.has(k));
+            if (!hasEnvelopeKey && !isBuiltinExec) {
                 const second = isRecord(args[1]) ? args[1] : null;
+                if (second !== null) {
+                    assertAllowedKeys(second, CALL_OPTIONS_KEYS, `plurnk.${runtime}`, recovery, pos);
+                }
                 return emitStatement({
                     runtime,
                     aside: resolveAside(second),
                     target: null,
                     lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.scope, pos),
-                    metadata: toMetadataArray(second?.metadata),
                     body: Object.keys(first).length === 0 ? null : JSON.stringify(first),
                     position: pos,
                 });
@@ -2625,7 +2789,6 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             const rawTarget = first.cwd ?? first.script ?? first.target ?? first.path;
             const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
             const lineMarker = toLineMarker(first.range ?? first.lines ?? first.scope, pos);
-            const metadata = toMetadataArray(first.metadata ?? (first.env !== undefined ? { env: first.env } : undefined));
             let body: string | null = null;
             const rawBody = first.command ?? first.code ?? first.body;
             if (rawBody !== undefined && rawBody !== null && rawBody !== "") {
@@ -2643,7 +2806,6 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 aside: resolveAside(first),
                 target,
                 lineMarker,
-                metadata,
                 body,
                 position: pos,
             });
@@ -2653,7 +2815,6 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             aside: activeDefaultAside,
             target: null,
             lineMarker: null,
-            metadata: null,
             body: JSON.stringify(args[0]),
             position: pos,
         });
@@ -2678,6 +2839,9 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         const target = parsePath(rawTool, pos);
         const first = args[0];
         const second = isRecord(args[1]) ? args[1] : null;
+        if (second !== null) {
+            assertAllowedKeys(second, CALL_OPTIONS_KEYS, `${runtime}${propAccess(rawTool)}`, `await ${runtime}${propAccess(rawTool)}({ ... });`, pos);
+        }
         let body: string | null = null;
         if (first !== undefined && first !== null && first !== "") {
             body = typeof first === "string" ? first : JSON.stringify(first);
@@ -2687,7 +2851,6 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             aside: resolveAside(second),
             target,
             lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.scope, pos),
-            metadata: toMetadataArray(second?.metadata ?? (second?.env !== undefined ? { env: second.env } : undefined)),
             body,
             position: pos,
         });

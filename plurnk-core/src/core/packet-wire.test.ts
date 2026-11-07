@@ -229,15 +229,15 @@ test("{§log-wire-format}: receipt headings carry only identity, resources, patt
 
 test("{§log-wire-format}: operands and patterns stay on the heading while scope and opaque modifiers stay in JSON", () => {
     const matcher = String.raw`/(alpha|beta) → gamma/`;
-    const metadata = JSON.stringify({ label: "(example.md) → result" });
+    const headers = { "X-Label": "(example.md) → result" };
     const out = PacketWire.renderLog([{
         coordinate: "1/2/4", op: "read", status: 200,
         target: { scheme: null, pathname: "/docs/space (x).md" },
-        tx: { lineMarker: { marks: [2, 4] }, metadata: [metadata], matcher: { raw: matcher }, aside: "keep (this) → unchanged" },
+        tx: { lineMarker: { marks: [2, 4] }, headers, matcher: { raw: matcher }, aside: "keep (this) → unchanged" },
     }], tok);
     const [heading, factsLine] = out.split("\n");
     assert.equal(heading, `### log:///1/2/4/read (docs/space %28x%29.md) ${matcher} · ${tok(out)}`);
-    assert.deepEqual(JSON.parse(factsLine), { aside: "keep (this) → unchanged", metadata: [metadata], scope: "<2,4>" });
+    assert.deepEqual(JSON.parse(factsLine), { aside: "keep (this) → unchanged", headers, scope: "<2,4>" });
 
     const pathless = PacketWire.renderLog([{
         coordinate: "1/2/5", op: "find", status: 200,
@@ -246,12 +246,12 @@ test("{§log-wire-format}: operands and patterns stay on the heading while scope
     assert.equal(pathless, `### log:///1/2/5/find ${matcher} · ${tok(pathless)}\n{"aside":"no addressed operand"}`);
 });
 
-test("{§log-wire-format}: COPY selections retain their separate patterns, scopes and metadata", () => {
+test("{§log-wire-format}: COPY selections retain their separate patterns, scopes and headers", () => {
     const entry = {
         coordinate: "1/2/6", op: "copy", status: 200,
         tx: {
-            source: { target: { scheme: "workspace", pathname: "/notes" }, lineMarker: { marks: [2, 4] }, matcher: { raw: "/keep/" }, metadata: ['{"channel":"text"}'] },
-            destination: { target: { scheme: "workspace", pathname: "/summary" }, lineMarker: { marks: [0] }, metadata: ['{"append":true}'] },
+            source: { target: { scheme: "workspace", pathname: "/notes" }, lineMarker: { marks: [2, 4] }, matcher: { raw: "/keep/" }, headers: { Accept: "text/plain" } },
+            destination: { target: { scheme: "workspace", pathname: "/summary" }, lineMarker: { marks: [0] }, headers: { "X-Mode": "append" } },
             aside: "publish\nfindings",
         },
     };
@@ -261,7 +261,7 @@ test("{§log-wire-format}: COPY selections retain their separate patterns, scope
     assert.equal(heading, `### log:///1/2/6/copy (workspace:///notes) /keep/ (workspace:///summary) · ${tok(out)}`);
     assert.deepEqual(JSON.parse(factsLine), {
         aside: "publish\nfindings",
-        metadata: { from: ['{"channel":"text"}'], to: ['{"append":true}'] },
+        headers: { from: { Accept: "text/plain" }, to: { "X-Mode": "append" } },
         scope: { from: "<2,4>", to: "<0>" },
     });
     assert.equal(out.split("\n").length, 2, "multiline asides cannot create a new record boundary");
@@ -273,25 +273,25 @@ test("{§log-wire-format}: rejected inputs stay in JSON and multiline patterns c
     const out = PacketWire.renderLog([{
         coordinate: "1/2/7", op: "read", status: 400,
         target: { scheme: "workspace", pathname: "/notes" },
-        tx: { lineMarker: { marks: [1, 2, 3, 4, 5] }, metadata: ["not JSON"], matcher: { raw: pattern } },
+        tx: { lineMarker: { marks: [1, 2, 3, 4, 5] }, headers: { "X-Trace": "1" }, matcher: { raw: pattern } },
         rx: { problem: { type: "about:blank", status: 400, title: "Invalid scope", detail: "Unsupported scope arity." } },
     }], tok);
     const [heading, factsLine] = out.split("\n");
     assert.equal(heading, `### log:///1/2/7/read (workspace:///notes) ${JSON.stringify(pattern)} · ${tok(out)}`);
     const meta = JSON.parse(factsLine);
     assert.equal(meta.scope, "<1,2,3,4,5>");
-    assert.deepEqual(meta.metadata, ["not JSON"]);
+    assert.deepEqual(meta.headers, { "X-Trace": "1" });
     assert.equal(meta.problem.detail, "Unsupported scope arity.");
     assert.equal(out.split("\n").length, 2);
 
     const redactedOut = PacketWire.renderLog([{
         coordinate: "1/2/8", op: "send", status: 200,
         target: { scheme: "message", hostname: "setup", pathname: "/c705cdf0" },
-        tx: { metadata: ["__redacted__"], body: "Delivered reply." },
+        tx: { headers: { Authorization: "__redacted__" }, body: "Delivered reply." },
         rx: { repliedTo: ["message://setup/c705cdf0"] },
     }], tok);
     const redactedMeta = JSON.parse(redactedOut.split("\n")[1]);
-    assert.equal(Object.hasOwn(redactedMeta, "metadata"), false, "redacted metadata slots are not rendered in the packet");
+    assert.equal(Object.hasOwn(redactedMeta, "headers"), false, "redacted headers are not rendered in the packet");
 });
 
 test("{§log-wire-format}: addressed operands and record identities remain distinct across operation families", async (t) => {
@@ -788,8 +788,8 @@ test("{§tokenomics} model-facing targets escape literal URI delimiters without 
         status: 304,
         target,
         tx: {
-            source: { target, metadata: null, lineMarker: null },
-            destination: { target, metadata: null, lineMarker: null },
+            source: { target, headers: null, lineMarker: null },
+            destination: { target, headers: null, lineMarker: null },
         },
         rx: { status: 304 },
     }], tok);
@@ -807,12 +807,12 @@ test("{§tokenomics} COPY/MOVE render operand selections and scoped textual mate
         tx: {
             source: {
                 target: { scheme: "workspace", pathname: "/source" },
-                metadata: null,
+                headers: null,
                 lineMarker: { marks: [2, 3] },
             },
             destination: {
                 target: { scheme: "workspace", pathname: "/draft" },
-                metadata: null,
+                headers: null,
                 lineMarker: { marks: [0] },
             },
         },
@@ -850,12 +850,12 @@ test("{§tokenomics} COPY/MOVE render operand selections and scoped textual mate
         tx: {
             source: {
                 target: { scheme: "workspace", pathname: "/source" },
-                metadata: null,
+                headers: null,
                 lineMarker: { marks: [1, -1] },
             },
             destination: {
                 target: { scheme: "workspace", pathname: "/destination" },
-                metadata: null,
+                headers: null,
                 lineMarker: null,
             },
         },
@@ -884,12 +884,12 @@ test("{§tokenomics} COPY/MOVE render operand selections and scoped textual mate
         tx: {
             source: {
                 target: { scheme: "workspace", pathname: "/source" },
-                metadata: null,
+                headers: null,
                 lineMarker: { marks: [2, 3] },
             },
             destination: {
                 target: { scheme: "workspace", pathname: "/created" },
-                metadata: null,
+                headers: null,
                 lineMarker: null,
             },
         },
@@ -916,12 +916,12 @@ test("{§tokenomics} COPY/MOVE render operand selections and scoped textual mate
         tx: {
             source: {
                 target: { scheme: "workspace", pathname: "/source" },
-                metadata: null,
+                headers: null,
                 lineMarker: { marks: [2, 3] },
             },
             destination: {
                 target: { scheme: "workspace", pathname: "/created" },
-                metadata: null,
+                headers: null,
                 lineMarker: null,
             },
         },
@@ -943,12 +943,12 @@ test("{§tokenomics} COPY/MOVE retain authored line anchors in durable operand s
         tx: {
             source: {
                 target: { scheme: "workspace", pathname: "/source" },
-                metadata: null,
+                headers: null,
                 lineMarker: { marks: ["@aZ09b", "@0Aa9Z"] },
             },
             destination: {
                 target: { scheme: "workspace", pathname: "/destination" },
-                metadata: null,
+                headers: null,
                 lineMarker: { marks: ["@10Zyx", 4, "@zY01A", 4] },
             },
         },
@@ -976,12 +976,12 @@ test("{§tokenomics} a reviewer-rewritten same-resource MOVE renders one replace
         tx: {
             source: {
                 target: { scheme: "workspace", pathname: "/document" },
-                metadata: null,
+                headers: null,
                 lineMarker: { marks: [1, 2, 1, 4] },
             },
             destination: {
                 target: { scheme: "workspace", pathname: "/document" },
-                metadata: null,
+                headers: null,
                 lineMarker: { marks: [1, 7, 1, 7] },
             },
         },
@@ -2012,12 +2012,12 @@ test("{§tokenomics} structured mutation receipts bypass a second generic previe
             tx: {
                 source: {
                     target: { scheme: "workspace", pathname: "/b-source" },
-                    metadata: null,
+                    headers: null,
                     lineMarker: { marks: [2] },
                 },
                 destination: {
                     target: { scheme: "workspace", pathname: "/b" },
-                    metadata: null,
+                    headers: null,
                     lineMarker: { marks: [2] },
                 },
             },
@@ -2030,12 +2030,12 @@ test("{§tokenomics} structured mutation receipts bypass a second generic previe
             tx: {
                 source: {
                     target: { scheme: "workspace", pathname: "/c-source" },
-                    metadata: null,
+                    headers: null,
                     lineMarker: { marks: [2] },
                 },
                 destination: {
                     target: { scheme: "workspace", pathname: "/c" },
-                    metadata: null,
+                    headers: null,
                     lineMarker: { marks: [2] },
                 },
             },

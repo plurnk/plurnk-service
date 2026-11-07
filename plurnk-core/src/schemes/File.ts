@@ -93,9 +93,9 @@ export default class File extends CoreSchemeAdapterBase {
             "# file",
             "## Summary",
             "Project workspace files, addressed as bare paths relative to the project root.",
-            "READ and FIND inspect member files; EDIT proposes a diff for review and writes to disk once accepted. Existing non-members are invisible (`mcp:///plurnk/members.json`); admitted absent paths are created by EDIT, COPY, or MOVE.",
+            "read and find inspect member files; edit proposes a diff for review and writes to disk once accepted. Existing non-members are invisible (`mcp:///plurnk/members.json`); admitted absent paths are created by edit, copy, or move.",
             "await plurnk.edit({ path: \"src/greet.mjs\", content: \"export const greet = (name) => `hello ${name}`;\\n\\nconsole.log(greet(\\\"world\\\"));\" }); // create the file from the content",
-            "A scoped EDIT replaces the addressed lines with the replacement text in its body.",
+            "A scoped edit replaces the addressed lines with the replacement text in its body.",
         ].join("\n\n"),
     };
 
@@ -410,7 +410,7 @@ export default class File extends CoreSchemeAdapterBase {
                 ok: false,
                 code: "binary-write-unsupported",
                 status: 415,
-                detail: `A text EDIT cannot author binary '${mimetype}'.`,
+                detail: `A text edit cannot author binary '${mimetype}'.`,
                 extensions: {
                     mimetype,
                     retryable: false,
@@ -436,9 +436,9 @@ export default class File extends CoreSchemeAdapterBase {
             return failure(
                 "edit-empty",
                 400,
-                "EDIT requires at least one statement.",
+                "edit requires at least one statement.",
                 {
-                    recovery: "Provide an EDIT statement.",
+                    recovery: "Provide an edit statement.",
                     retryable: false,
                 },
             );
@@ -448,7 +448,7 @@ export default class File extends CoreSchemeAdapterBase {
             return failure(
                 "edit-target-required",
                 400,
-                "EDIT requires a target path.",
+                "edit requires a target path.",
                 {
                     recovery: "Provide the file target.",
                     retryable: false,
@@ -467,9 +467,9 @@ export default class File extends CoreSchemeAdapterBase {
                 return failure(
                     "edit-batch-mismatch",
                     400,
-                    "The EDIT batch spans multiple resources.",
+                    "The edit batch spans multiple resources.",
                     {
-                        recovery: "Submit a separate EDIT batch for each resource.",
+                        recovery: "Submit a separate edit batch for each resource.",
                         retryable: false,
                     },
                 );
@@ -481,9 +481,9 @@ export default class File extends CoreSchemeAdapterBase {
                 return failure(
                     "edit-batch-mismatch",
                     400,
-                    "The EDIT batch spans multiple resources.",
+                    "The edit batch spans multiple resources.",
                     {
-                        recovery: "Submit a separate EDIT batch for each resource.",
+                        recovery: "Submit a separate edit batch for each resource.",
                         retryable: false,
                     },
                 );
@@ -506,9 +506,9 @@ export default class File extends CoreSchemeAdapterBase {
                 return failure(
                     "line-marker-required",
                     400,
-                    "EDIT of an existing file requires a line marker.",
+                    "edit of an existing file requires a line marker.",
                     {
-                        recovery: "Name the lines to replace with `range: \"@hash\"` or `range: \"@start,@end\"` from a READ of the file; `range: \"L,1,L,1\"` inserts before line L, and `range: \"1,-1\"` replaces the whole file.",
+                        recovery: "Name the lines to replace with `range: \"@hash\"` or `range: \"@start,@end\"` from a read of the file; `range: \"L,1,L,1\"` inserts before line L, and `range: \"1,-1\"` replaces the whole file.",
                         retryable: false,
                     },
                 );
@@ -525,9 +525,9 @@ export default class File extends CoreSchemeAdapterBase {
                 return failure(
                     "creation-batch-conflict",
                     409,
-                    "Multiple EDIT operations attempted to create the same file.",
+                    "Multiple edit operations attempted to create the same file.",
                     {
-                        recovery: "Create the file with one EDIT before applying additional edits.",
+                        recovery: "Create the file with one edit before applying additional edits.",
                         retryable: false,
                     },
                 );

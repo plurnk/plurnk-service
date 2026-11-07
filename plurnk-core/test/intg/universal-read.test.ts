@@ -787,7 +787,7 @@ const read = (source: string): ReadStatement => {
     return item.statement;
 };
 
-const manifest = (name: string, metadataModifier = false) => ({
+const manifest = (name: string) => ({
     name,
     channels: { body: "text/plain" },
     defaultChannel: "body",
@@ -795,36 +795,35 @@ const manifest = (name: string, metadataModifier = false) => ({
     writableBy: ["model" as const],
     volatile: false,
     modelVisible: true,
-    ...(metadataModifier ? { metadataModifier: true } : {}),
 });
 
 for (const op of ["find", "read", "edit", "kill"] as const) {
     for (const pattern of ["needle", "absent"]) {
-        test(`{§parse-recovery}: ${op} with owner metadata applies /${pattern}/ without widening selection`, async () => {
+        test(`{§parse-recovery}: ${op} with owner headers applies /${pattern}/ without widening selection`, async () => {
             const db = await openMigrated();
-            const env = await seedEnvelope(db, `metadata-pattern-${crypto.randomUUID()}`);
+            const env = await seedEnvelope(db, `headers-pattern-${crypto.randomUUID()}`);
             const schemes = new SchemeRegistry();
             const observed: unknown[] = [];
-            schemes.register("opaque", {
-                manifest: { ...manifest("opaque", true), textEditScopes: true },
+            schemes.register("https", {
+                manifest: { ...manifest("https"), authority: "resource", textEditScopes: true },
                 async prepareRepresentation(request) {
-                    observed.push(request.metadata);
+                    observed.push(request.headers);
                     return { status: 200 };
                 },
                 async find(statement, ctx) {
-                    observed.push(statement.metadata);
+                    observed.push(statement.headers);
                     return ctx.entries.operations.find(statement);
                 },
                 async editBatch(statements, ctx) {
-                    observed.push(...statements.map(({ metadata }) => metadata));
+                    observed.push(...statements.map(({ headers }) => headers));
                     return ctx.entries.operations.editBatch(statements);
                 },
             } satisfies SchemeHandler);
             const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
             const original = "keep first\nneedle one\nkeep last\nneedle two";
             try {
-                await seedEntryWithChannel(db, { workspaceId: env.workspaceId, scheme: "opaque", pathname: "/notes", content: original });
-                const parsed = PlurnkParser.parseStatements(`await plurnk.${op.toLowerCase()}(${JSON.stringify({ path: "opaque:///notes", pattern: `/${pattern}/`, metadata: ['{"accept":"text/plain"}'], ...(op === "edit" ? { content: "replacement" } : {}) })});`);
+                await seedEntryWithChannel(db, { workspaceId: env.workspaceId, scheme: "https", authority: "example.test", pathname: "/notes", content: original });
+                const parsed = PlurnkParser.parseStatements(`await plurnk.${op.toLowerCase()}(${JSON.stringify({ path: "https://example.test/notes", pattern: `/${pattern}/`, headers: { accept: "text/plain" }, ...(op === "edit" ? { content: "replacement" } : {}) })});`);
                 assert.equal(parsed.items.length, 1);
                 const item = parsed.items[0];
                 assert.ok(item?.kind === "statement" && item.statement.op === op);
@@ -836,11 +835,11 @@ for (const op of ["find", "read", "edit", "kill"] as const) {
                     : op === "edit" ? "keep first\nreplacement one\nkeep last\nreplacement two"
                         : "keep first\n one\nkeep last\n two";
                 const stored = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-                    scheme: "opaque", pathname: "/notes", name: "body",
+                    scheme: "https", pathname: "/notes", name: "body",
                 });
                 assert.equal(stored?.content, expected, "unmatched content survives the real operation");
                 assert.ok(observed.length > 0, "the owning scheme participates");
-                for (const metadata of observed) assert.deepEqual(metadata, ['{"accept":"text/plain"}'], "the owner receives its authored options");
+                for (const headers of observed) assert.deepEqual(headers, { accept: "text/plain" }, "the owner receives its authored headers");
             } finally {
                 await schemes.close();
                 await db.close();
@@ -849,25 +848,13 @@ for (const op of ["find", "read", "edit", "kill"] as const) {
     }
 }
 
-test("{§operation-results} scheme metadata remains outside the target and reaches only an opted-in scheme", async () => {
+test("{§operation-results} scheme headers remain outside the target and reach only http/https", async () => {
     const db = await openMigrated();
-    const env = await seedEnvelope(db, `scheme-metadata-${crypto.randomUUID()}`);
+    const env = await seedEnvelope(db, `scheme-headers-${crypto.randomUUID()}`);
     const schemes = new SchemeRegistry();
-    let supportedMetadata: readonly string[] | null = null;
-    let routedAliasMetadata: readonly string[] | null = null;
+    let routedAliasHeaders: Readonly<Record<string, string>> | null = null;
     let unsupportedInvoked = false;
 
-    schemes.register("opaque", {
-        manifest: manifest("opaque", true),
-        async prepareRepresentation(request, ctx) {
-            supportedMetadata = request.metadata;
-            const written = await ctx.entries.write(request.pathname, {
-                channels: { body: { content: "ready", mimetype: "text/plain" } },
-            });
-            assert.ok(written.status === 200 || written.status === 201);
-            return { status: 200 } as const;
-        },
-    } satisfies SchemeHandler);
     schemes.register("plain", {
         manifest: manifest("plain"),
         async prepareRepresentation() {
@@ -876,9 +863,9 @@ test("{§operation-results} scheme metadata remains outside the target and reach
         },
     } satisfies SchemeHandler);
     schemes.register("https", {
-        manifest: { ...manifest("https", true), authority: "resource" },
+        manifest: { ...manifest("https"), authority: "resource" },
         async prepareRepresentation(request, ctx) {
-            routedAliasMetadata = request.metadata;
+            routedAliasHeaders = request.headers;
             const written = await ctx.entries.write(request.pathname, {
                 channels: { body: { content: "routed", mimetype: "text/plain" } },
             });
@@ -890,10 +877,10 @@ test("{§operation-results} scheme metadata remains outside the target and reach
 
     try {
         const supported = read(
-            "await plurnk.read({\"path\":\"opaque:///record\",\"metadata\":[\"{\\\"first\\\": {\\\"nested\\\": true}}\",\"{\\\"second\\\": \\\"duplicate\\\"}\"]});",
+            "await plurnk.read({\"path\":\"https://example.test/record\",\"headers\":{\"X-First\":\"true\",\"X-Second\":\"duplicate\"}});",
         );
-        assert.equal(supported.target?.raw, "opaque:///record");
-        assert.deepEqual(supported.metadata, ['{"first": {"nested": true}}', '{"second": "duplicate"}']);
+        assert.equal(supported.target?.raw, "https://example.test/record");
+        assert.deepEqual(supported.headers, { "X-First": "true", "X-Second": "duplicate" });
         const accepted = await engine.dispatch({
             statement: supported,
             ...env,
@@ -901,19 +888,19 @@ test("{§operation-results} scheme metadata remains outside the target and reach
             origin: "model",
         });
         assert.equal(accepted.status, 200);
-        assert.deepEqual(supportedMetadata, ['{"first": {"nested": true}}', '{"second": "duplicate"}']);
+        assert.deepEqual(routedAliasHeaders, { "X-First": "true", "X-Second": "duplicate" });
 
         const routedAlias = await engine.dispatch({
-            statement: read("await plurnk.read({\"path\":\"http://example.test/record\",\"metadata\":[\"{\\\"Accept\\\": \\\"text/plain\\\"}\"]});"),
+            statement: read("await plurnk.read({\"path\":\"http://example.test/record\",\"headers\":{\"Accept\":\"text/plain\"}});"),
             ...env,
             sequence: 2,
             origin: "model",
         });
         assert.equal(routedAlias.status, 200);
-        assert.deepEqual(routedAliasMetadata, ['{"Accept": "text/plain"}']);
+        assert.deepEqual(routedAliasHeaders, { Accept: "text/plain" });
 
         const rejected = await engine.dispatch({
-            statement: read("await plurnk.read({\"path\":\"plain:///record\",\"metadata\":[\"{\\\"anything\\\": \\\"the scheme might define\\\"}\"]});"),
+            statement: read("await plurnk.read({\"path\":\"plain:///record\",\"headers\":{\"Accept\":\"text/plain\"}});"),
             ...env,
             sequence: 3,
             origin: "model",
@@ -921,9 +908,9 @@ test("{§operation-results} scheme metadata remains outside the target and reach
         assert.equal(rejected.status, 400);
         assert.equal(
             rejected.problem?.type,
-            "https://problems.plurnk.xyz/engine/dispatcher/scheme-metadata-unsupported",
+            "https://problems.plurnk.xyz/engine/dispatcher/headers-unsupported",
         );
-        assert.equal(rejected.problem?.detail, "read on 'plain' does not accept the [metadata] modifier."); // {§operation-results}
+        assert.equal(rejected.problem?.detail, "read on 'plain' does not accept headers."); // {§operation-results}
         assert.equal(unsupportedInvoked, false);
     } finally {
         await schemes.close();
@@ -932,26 +919,26 @@ test("{§operation-results} scheme metadata remains outside the target and reach
 });
 
 for (const [op, proposed] of [["copy", "neither"], ["move", "neither"], ["move", "source"], ["move", "both"]] as const) {
-    test(`{§op-shapes}: parsed ${op} keeps scope and metadata with each resource (${proposed} proposed)`, async (t) => {
+    test(`{§op-shapes}: parsed ${op} keeps scope and headers with each resource (${proposed} proposed)`, async (t) => {
         serverProposals(t, "accept");
         const db = await openMigrated();
-        const env = await seedEnvelope(db, `transfer-metadata-${crypto.randomUUID()}`);
+        const env = await seedEnvelope(db, `transfer-headers-${crypto.randomUUID()}`);
         const schemes = new SchemeRegistry();
         const reads: unknown[] = [];
         const writes: unknown[] = [];
         const applications: unknown[] = [];
         const pending = new Map<string, readonly ResolvedEditStatement[]>();
-        schemes.register("opaque", {
-            manifest: { ...manifest("opaque", true), textEditScopes: true },
+        schemes.register("https", {
+            manifest: { ...manifest("https"), authority: "resource", textEditScopes: true },
             async prepareRepresentation(request) {
-                reads.push({ path: request.pathname, metadata: request.metadata });
+                reads.push({ path: request.pathname, headers: request.headers });
                 return { status: 200 };
             },
             async editBatch(statements, ctx) {
-                writes.push(...statements.map(({ target, metadata }) => ({ path: target?.raw, metadata })));
+                writes.push(...statements.map(({ target, headers }) => ({ path: target?.raw, headers })));
                 const path = statements[0]?.target?.raw;
                 assert.ok(path);
-                if (proposed === "both" || (proposed === "source" && path === "opaque:///source")) {
+                if (proposed === "both" || (proposed === "source" && path === "https://example.test/source")) {
                     pending.set(path, statements);
                     return { status: 202, attrs: { path } };
                 }
@@ -961,19 +948,19 @@ for (const [op, proposed] of [["copy", "neither"], ["move", "neither"], ["move",
                 const path = (request.attrs as { path: string }).path;
                 const statements = pending.get(path);
                 assert.ok(statements);
-                applications.push({ path, metadata: request.metadata });
+                applications.push({ path, headers: request.headers });
                 return ctx.entries.operations.editBatch(statements);
             },
         } satisfies SchemeHandler);
         const engine = new Engine({ db, schemes });
         try {
             for (const [pathname, content] of [["/source", "first\nselected\nlast"], ["/destination", "before\nreplace\nafter"]]) {
-                await seedEntryWithChannel(db, { workspaceId: env.workspaceId, scheme: "opaque", pathname, content });
+                await seedEntryWithChannel(db, { workspaceId: env.workspaceId, scheme: "https", authority: "example.test", pathname, content });
             }
             const parsed = PlurnkParser.parseStatements(
                 `await plurnk.${op.toLowerCase()}(${JSON.stringify({
-                    from: { path: "opaque:///source", range: "2", metadata: ['{"source": "true"}'] },
-                    to: { path: "opaque:///destination", range: "2", metadata: ['{"destination": "true"}'] },
+                    from: { path: "https://example.test/source", range: "2", headers: { "X-Source": "true" } },
+                    to: { path: "https://example.test/destination", range: "2", headers: { "X-Destination": "true" } },
                 })});`,
             );
             assert.equal(parsed.unparsedTail, undefined);
@@ -982,21 +969,21 @@ for (const [op, proposed] of [["copy", "neither"], ["move", "neither"], ["move",
             assert.ok(item?.kind === "statement" && item.statement.op === op);
             const result = await engine.dispatch({ statement: item.statement, ...env, sequence: 1, origin: "model" });
             assert.equal(result.status, 200);
-            assert.deepEqual(reads, [{ path: "/source", metadata: ['{"source": "true"}'] }]);
+            assert.deepEqual(reads, [{ path: "/source", headers: { "X-Source": "true" } }]);
             assert.deepEqual(writes, [
-                { path: "opaque:///destination", metadata: ['{"destination": "true"}'] },
-                ...(op === "move" ? [{ path: "opaque:///source", metadata: ['{"source": "true"}'] }] : []),
+                { path: "https://example.test/destination", headers: { "X-Destination": "true" } },
+                ...(op === "move" ? [{ path: "https://example.test/source", headers: { "X-Source": "true" } }] : []),
             ]);
             assert.deepEqual(applications, proposed === "neither" ? [] : [
-                ...(proposed === "both" ? [{ path: "opaque:///destination", metadata: ['{"destination": "true"}'] }] : []),
-                { path: "opaque:///source", metadata: ['{"source": "true"}'] },
+                ...(proposed === "both" ? [{ path: "https://example.test/destination", headers: { "X-Destination": "true" } }] : []),
+                { path: "https://example.test/source", headers: { "X-Source": "true" } },
             ]);
             for (const [pathname, expected] of [
                 ["/source", op === "copy" ? "first\nselected\nlast" : "first\nlast"],
                 ["/destination", "before\nselected\nafter"],
             ]) {
                 const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-                    scheme: "opaque", pathname, name: "body",
+                    scheme: "https", pathname, name: "body",
                 });
                 assert.equal(channel?.content, expected);
             }

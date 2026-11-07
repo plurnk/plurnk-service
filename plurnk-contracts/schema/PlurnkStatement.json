@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/PlurnkStatement.json",
     "title": "PlurnkStatement",
-    "description": "The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, aside, body, and source-position fields, and the text and log operations add a matcher lifted from the `pattern` option; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.",
+    "description": "The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed target, lineMarker, aside, body, and source-position fields, the text and log operations add a matcher lifted from the `pattern` option, HTTP-capable operations add `headers` (and `kill` adds `remote`), and messaging operations add `attachments`; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.",
     "oneOf": [
         {
             "$ref": "#/$defs/FindStatement"
@@ -60,8 +60,22 @@
                 "null"
             ]
         },
-        "SchemeMetadataOrNull": {
-            "description": "Opaque ordered scheme-metadata modifier blocks. Contracts preserve each block's raw inner text; the addressed scheme exclusively owns interpretation and validation.",
+        "HeadersOrNull": {
+            "description": "Optional HTTP request headers (`{ [name: string]: string }`); null when omitted.",
+            "oneOf": [
+                {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                {
+                    "type": "null"
+                }
+            ]
+        },
+        "AttachmentsOrNull": {
+            "description": "Optional resource addresses attached to a message; null when omitted.",
             "oneOf": [
                 {
                     "type": "array",
@@ -132,7 +146,7 @@
             "required": [
                 "op",
                 "aside",
-                "metadata",
+                "headers",
                 "target",
                 "lineMarker",
                 "matcher",
@@ -147,8 +161,8 @@
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
                 },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
+                "headers": {
+                    "$ref": "#/$defs/HeadersOrNull"
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
@@ -174,7 +188,7 @@
             "required": [
                 "op",
                 "aside",
-                "metadata",
+                "headers",
                 "target",
                 "lineMarker",
                 "matcher",
@@ -189,8 +203,8 @@
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
                 },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
+                "headers": {
+                    "$ref": "#/$defs/HeadersOrNull"
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
@@ -215,7 +229,7 @@
             "required": [
                 "op",
                 "aside",
-                "metadata",
+                "headers",
                 "target",
                 "lineMarker",
                 "matcher",
@@ -230,8 +244,8 @@
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
                 },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
+                "headers": {
+                    "$ref": "#/$defs/HeadersOrNull"
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
@@ -315,7 +329,8 @@
             "required": [
                 "op",
                 "aside",
-                "metadata",
+                "headers",
+                "attachments",
                 "target",
                 "lineMarker",
                 "body",
@@ -329,8 +344,11 @@
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
                 },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
+                "headers": {
+                    "$ref": "#/$defs/HeadersOrNull"
+                },
+                "attachments": {
+                    "$ref": "#/$defs/AttachmentsOrNull"
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
@@ -351,7 +369,7 @@
             "required": [
                 "op",
                 "aside",
-                "metadata",
+                "attachments",
                 "target",
                 "lineMarker",
                 "body",
@@ -365,8 +383,8 @@
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
                 },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
+                "attachments": {
+                    "$ref": "#/$defs/AttachmentsOrNull"
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
@@ -387,7 +405,7 @@
             "required": [
                 "op",
                 "aside",
-                "metadata",
+                "attachments",
                 "target",
                 "lineMarker",
                 "body",
@@ -401,8 +419,8 @@
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
                 },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
+                "attachments": {
+                    "$ref": "#/$defs/AttachmentsOrNull"
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
@@ -423,7 +441,6 @@
             "required": [
                 "runtime",
                 "aside",
-                "metadata",
                 "target",
                 "lineMarker",
                 "body",
@@ -444,9 +461,6 @@
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
-                },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
@@ -470,7 +484,6 @@
             "required": [
                 "op",
                 "aside",
-                "metadata",
                 "target",
                 "lineMarker",
                 "body",
@@ -483,9 +496,6 @@
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
-                },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
@@ -506,7 +516,8 @@
             "required": [
                 "op",
                 "aside",
-                "metadata",
+                "headers",
+                "remote",
                 "target",
                 "lineMarker",
                 "matcher",
@@ -521,8 +532,12 @@
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
                 },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
+                "headers": {
+                    "$ref": "#/$defs/HeadersOrNull"
+                },
+                "remote": {
+                    "description": "Optional confirmation for remote HTTP DELETE (`true`); null when omitted.",
+                    "type": ["boolean", "null"]
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
@@ -549,7 +564,6 @@
             "required": [
                 "op",
                 "aside",
-                "metadata",
                 "target",
                 "lineMarker",
                 "body",
@@ -562,9 +576,6 @@
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
-                },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
@@ -585,7 +596,6 @@
             "required": [
                 "op",
                 "aside",
-                "metadata",
                 "target",
                 "lineMarker",
                 "body",
@@ -598,9 +608,6 @@
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
-                },
-                "metadata": {
-                    "$ref": "#/$defs/SchemeMetadataOrNull"
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
@@ -621,7 +628,6 @@
             "required": [
                 "op",
                 "aside",
-                "metadata",
                 "target",
                 "lineMarker",
                 "seconds",
@@ -635,9 +641,6 @@
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
-                },
-                "metadata": {
-                    "type": "null"
                 },
                 "target": {
                     "$ref": "#/$defs/PathOrNull"
@@ -660,12 +663,11 @@
         },
         "NoteStatement": {
             "type": "object",
-            "required": ["op", "aside", "metadata", "target", "lineMarker", "body", "position"],
+            "required": ["op", "aside", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "note" },
                 "aside": { "$ref": "#/$defs/AsideOrNull" },
-                "metadata": { "type": "null" },
                 "target": { "type": "null" },
                 "lineMarker": { "type": "null" },
                 "body": { "type": ["string", "null"] },
@@ -674,12 +676,11 @@
         },
         "TodoStatement": {
             "type": "object",
-            "required": ["op", "aside", "metadata", "target", "lineMarker", "body", "position"],
+            "required": ["op", "aside", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "todo" },
                 "aside": { "$ref": "#/$defs/AsideOrNull" },
-                "metadata": { "type": "null" },
                 "target": { "type": "null" },
                 "lineMarker": { "type": "null" },
                 "body": { "type": ["string", "null"] },

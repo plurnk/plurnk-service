@@ -3,7 +3,6 @@ import Discover from "./discover.ts";
 // Framework surface
 export { default as BaseExecutor } from "./BaseExecutor.ts";
 export { default as SubprocessExecutor, ErrorDetail, ERROR_DETAIL_LIMIT } from "./SubprocessExecutor.ts";
-export { default as InvocationMetadata } from "./InvocationMetadata.ts";
 export { default as SpawnAccounts, SPAWN_USER } from "./SpawnAccount.ts";
 export { default as Shell } from "./Shell.ts";
 export type { ShellChoice } from "./Shell.ts";

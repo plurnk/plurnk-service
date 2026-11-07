@@ -27,7 +27,7 @@ export default class SessionCap {
                     activeSessions,
                     maximumActiveSessions: cap,
                     stage: "session-admission",
-                    recovery: "Wait for an active session to finish or KILL one before creating another.",
+                    recovery: "Wait for an active session to finish or kill one before creating another.",
                     retryable: false,
                 },
             );

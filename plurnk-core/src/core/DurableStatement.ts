@@ -22,20 +22,24 @@ export default class DurableStatement {
             };
         }
         const target = DurableStatement.projectPath(statement.target);
-        const metadata = statement.metadata === null
-            ? null
-            : statement.metadata.map(() => DurableStatement.#REDACTED);
-        return { ...statement, target, metadata };
+        if (!("headers" in statement)) {
+            return { ...statement, target };
+        }
+        const headers = DurableStatement.#projectHeaders(statement.headers);
+        return { ...statement, target, headers };
     }
 
     static #projectSelection(selection: ResourceSelection): ResourceSelection {
         return {
             ...selection,
             target: DurableStatement.projectPath(selection.target),
-            metadata: selection.metadata === null
-                ? null
-                : selection.metadata.map(() => DurableStatement.#REDACTED),
+            headers: DurableStatement.#projectHeaders(selection.headers),
         };
+    }
+
+    static #projectHeaders(headers: Readonly<Record<string, string>> | null): Record<string, string> | null {
+        if (headers === null) return null;
+        return Object.fromEntries(Object.keys(headers).map((key) => [key, DurableStatement.#REDACTED]));
     }
 
     static projectPath(path: ParsedPath): ParsedPath;

@@ -1389,7 +1389,7 @@ export class PersonaScheme extends ResourceTreeScheme {
                 "scheme:persona",
                 "value-whole",
                 400,
-                "One EDIT sets one persona definition, whole.",
+                "One edit sets one persona definition, whole.",
                 {},
                 {
                     recovery: "await plurnk.edit({ path: \"persona://<name>/PERSONA.md\", content: \"...\" }); with the complete persona Markdown or JSON definition.",
@@ -1444,7 +1444,7 @@ export class PersonaScheme extends ResourceTreeScheme {
                 "scheme:persona",
                 "value-whole",
                 400,
-                "KILL retires the whole persona definition.",
+                "kill retires the whole persona definition.",
                 {},
                 { retryable: false },
             );
@@ -1458,7 +1458,7 @@ export class PersonaScheme extends ResourceTreeScheme {
                 "scheme:persona",
                 "target-invalid",
                 400,
-                "Persona KILL must target persona://<name>/PERSONA.md (or persona://<name>.md).",
+                "Persona kill must target persona://<name>/PERSONA.md (or persona://<name>.md).",
                 {},
                 { target: targetRaw, retryable: false },
             );

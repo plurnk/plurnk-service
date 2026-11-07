@@ -10,9 +10,6 @@ import type { SendStatement, FindStatement, KillStatement, ParsedPath } from "@p
 import type {
     EntryAddress,
     ResolvedEditStatement,
-    RepresentationPreparationRequest,
-    RepresentationPreparationResult,
-    SchemeCtx,
 } from "@plurnk/plurnk-schemes";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
@@ -55,7 +52,7 @@ export default class Workspace extends CoreSchemeAdapterBase {
         if (access === "write" && pathname === "") return Results.failure(
             "scheme:workspace", "workspace-entity-not-editable", 400,
             "A workspace entity is not an editable entry.", {},
-            { recovery: "EDIT requires an entry path, such as workspace:///example.md.", retryable: false },
+            { recovery: "edit requires an entry path, such as workspace:///example.md.", retryable: false },
         );
         return { authority: "", pathname };
     }
@@ -68,23 +65,6 @@ export default class Workspace extends CoreSchemeAdapterBase {
         const authority = Workspace.#authority(target);
         return authority === null ? null
             : Workspace.#entryAddress(authority, Workspace.#entryPath(target), access);
-    }
-
-    async prepareRepresentation(
-        request: RepresentationPreparationRequest,
-        _ctx: SchemeCtx,
-    ): Promise<RepresentationPreparationResult> {
-        if (request.metadata !== null) {
-            return Results.failure(
-                "scheme:workspace",
-                "metadata-unsupported",
-                400,
-                "Workspace resource reads do not accept the [metadata] modifier.",
-                {},
-                { retryable: false },
-            );
-        }
-        return { status: 200 };
     }
 
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
@@ -107,9 +87,9 @@ export default class Workspace extends CoreSchemeAdapterBase {
             return failure(
                 "edit-empty",
                 400,
-                "EDIT requires at least one statement.",
+                "edit requires at least one statement.",
                 {
-                    recovery: "Add an EDIT statement or omit the operation.",
+                    recovery: "Add an edit statement or omit the operation.",
                     retryable: false,
                 },
             );
@@ -120,7 +100,7 @@ export default class Workspace extends CoreSchemeAdapterBase {
             return failure(
                 "workspace-target-required",
                 400,
-                "EDIT requires a workspace:/// target.",
+                "edit requires a workspace:/// target.",
                 {
                     recovery: "Provide the workspace target.",
                     retryable: false,
@@ -134,9 +114,9 @@ export default class Workspace extends CoreSchemeAdapterBase {
             return failure(
                 "edit-batch-mismatch",
                 400,
-                "One EDIT batch cannot span multiple spaces.",
+                "One edit batch cannot span multiple spaces.",
                 {
-                    recovery: "Use a separate EDIT batch for each space.",
+                    recovery: "Use a separate edit batch for each space.",
                     retryable: false,
                 },
             );
@@ -161,7 +141,7 @@ export default class Workspace extends CoreSchemeAdapterBase {
                 "scheme:workspace",
                 "workspace-target-required",
                 400,
-                "KILL requires a workspace target.",
+                "kill requires a workspace target.",
                 {},
                 {
                     recovery: "Provide the workspace target.",
@@ -179,7 +159,7 @@ export default class Workspace extends CoreSchemeAdapterBase {
         const core = this.coreContext(ctx);
         const authority = Workspace.#authority(statement.target);
         if (authority === null) {
-            return Results.failure("scheme:workspace", "workspace-target-required", 400, "FIND requires a workspace:/// target.", {
+            return Results.failure("scheme:workspace", "workspace-target-required", 400, "find requires a workspace:/// target.", {
                 content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
                 matchingPathCount: 0, matchLocationCount: 0,
             }, {
@@ -237,7 +217,7 @@ export default class Workspace extends CoreSchemeAdapterBase {
                 "scheme:workspace",
                 "workspace-target-required",
                 400,
-                "Directed workspace SEND requires a workspace target.",
+                "Directed workspace send requires a workspace target.",
                 {},
                 {
                     recovery: "Provide the workspace target.",

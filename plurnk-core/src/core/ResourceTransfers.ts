@@ -173,7 +173,7 @@ export default class ResourceTransfers {
         if (selected.matchedScopes !== undefined && ResourceTransfers.#curatedSource(resolvedSource)) {
             return MutationEffects.failure(
                 "pattern-unsupported", 400,
-                `MOVE cannot retire lines of the '${resolvedSource.scheme}' projection by pattern.`,
+                `move cannot retire lines of the '${resolvedSource.scheme}' projection by pattern.`,
                 {}, { scheme: resolvedSource.scheme, operation: "move", retryable: false },
             );
         }
@@ -188,7 +188,7 @@ export default class ResourceTransfers {
             });
             if (sourceBinding.result !== null) return sourceBinding.result;
             if (sourceBinding.address === null) return MutationEffects.failure(
-                "entry-not-found", 404, "The MOVE source could not be resolved for deletion.",
+                "entry-not-found", 404, "The move source could not be resolved for deletion.",
             );
         }
 
@@ -278,7 +278,7 @@ export default class ResourceTransfers {
                 return MutationEffects.failure(
                     "move-region-overlap",
                     409,
-                    "MOVE cannot insert a whole channel into itself and then remove that channel.",
+                    "move cannot insert a whole channel into itself and then remove that channel.",
                     {},
                     {
                         source: MutationEffects.resourceAddress(source),
@@ -376,7 +376,7 @@ export default class ResourceTransfers {
                 throw new InvalidOperationResultError(`Resolved MOVE source scheme '${source.scheme}' curates nothing.`);
             }
             const curated = await handler.kill(
-                { op: "kill", target: source.target, lineMarker: source.lineMarker, metadata: source.metadata,
+                { op: "kill", target: source.target, lineMarker: source.lineMarker, headers: source.headers, remote: null,
                     matcher: null, body: null, aside: statement.aside, position: statement.position },
                 new SchemeCtxImpl(ctx, source.scheme, source.manifest, this.#liveSubscriptions, { authority: source.authority }),
             );
@@ -402,7 +402,7 @@ export default class ResourceTransfers {
                 return MutationEffects.failure(
                     "entry-not-found",
                     404,
-                    `No MOVE source entry exists at ${MutationEffects.resourceAddress(source)}.`,
+                    `No move source entry exists at ${MutationEffects.resourceAddress(source)}.`,
                 );
             }
             const deleted = await this.#deleteChannel(
@@ -537,7 +537,7 @@ export default class ResourceTransfers {
             return MutationEffects.failure(
                 "mimetype-mismatch",
                 415,
-                `COPY or MOVE cannot write '${source.mimetype}' into a '${expectedMimetype}' channel.`,
+                `copy or move cannot write '${source.mimetype}' into a '${expectedMimetype}' channel.`,
                 {},
                 {
                     channel: destination.channel,
@@ -667,7 +667,7 @@ export default class ResourceTransfers {
             return MutationEffects.failure(
                 "copy-destination-exists",
                 409,
-                `COPY or MOVE destination ${MutationEffects.resourceAddress(destination)} already contains different content.`,
+                `copy or move destination ${MutationEffects.resourceAddress(destination)} already contains different content.`,
                 {},
                 {
                     destination: MutationEffects.resourceAddress(destination),
@@ -796,7 +796,7 @@ export default class ResourceTransfers {
         const binding = await this.#resolveDataEntryAddress({ target: source.target, routedScheme: source.scheme, handler,
             manifest: source.manifest, ctx, access: "write" });
         if (binding.result !== null) return binding.result;
-        if (binding.address === null) return MutationEffects.failure("entry-not-found", 404, "The MOVE source could not be resolved for deletion.");
+        if (binding.address === null) return MutationEffects.failure("entry-not-found", 404, "The move source could not be resolved for deletion.");
         const read = await this.#readEntry(source.scheme, binding.address, ctx);
         if (read.status >= 400) return read;
         return this.#spliceBytes(handler, binding.address, target, read.entry, destination === null ? new Uint8Array() : source.bytes!,
@@ -832,7 +832,7 @@ export default class ResourceTransfers {
             aside: null,
             signal: null,
             target: selection.target,
-            metadata: selection.metadata,
+            headers: selection.headers,
             lineMarker: marker,
             matcher: null,
             body,
@@ -949,7 +949,7 @@ export default class ResourceTransfers {
             return failed(MutationEffects.failure(
                 "move-source-not-applied",
                 decision === "cancel" ? 499 : 409,
-                `The MOVE destination was written, but source removal was ${decision === "cancel" ? "cancelled" : "rejected"}.`,
+                `The move destination was written, but source removal was ${decision === "cancel" ? "cancelled" : "rejected"}.`,
                 {},
                 {
                     retryable: false,
@@ -989,7 +989,7 @@ export default class ResourceTransfers {
         const resolvedSource = await this.#selection.resolveResourceSelection(
             {
                 target: deferred.target,
-                metadata: deferred.metadata,
+                headers: deferred.headers,
                 lineMarker: deferred.lineMarker,
                 matcher: null,
             },
@@ -1061,7 +1061,7 @@ export default class ResourceTransfers {
         return MutationEffects.failure(
             "proposal-apply-missing",
             500,
-            `The ${scheme} scheme accepted its MOVE proposal without applying the ${scheme} mutation.`,
+            `The ${scheme} scheme accepted its move proposal without applying the ${scheme} mutation.`,
             {},
             {
                 stage: "proposal-application",

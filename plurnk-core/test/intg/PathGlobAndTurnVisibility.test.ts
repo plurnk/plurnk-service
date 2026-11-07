@@ -47,7 +47,7 @@ import { CoreSchemeAdapterBase, type CoreSchemeCallContext } from "../../src/cor
 
 describe("end_to_end_mock", () => {
 const e2eEditStmt = (pathname: string, body: string): EditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null,
     target: urlPath("workspace", pathname),
     lineMarker: null, body,
@@ -145,7 +145,7 @@ test("{§op-methods-op-dispatch} e2e: cross-turn state — turn 2 sees entry wri
         const message = await db.message_source_resources.get<{ path: string }>({ workspace_id: env.workspaceId, scheme: "message", target: null });
         assert.ok(message);
         const e2eReadStmt = (pathname: string): PlurnkStatement => ({
-            metadata: null,
+            headers: null,
             op: "read", aside: null,
             target: urlPath("workspace", pathname),
             lineMarker: null, matcher: null, body: null,

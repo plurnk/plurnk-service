@@ -16,7 +16,7 @@ authored against the DB-free
 | `await plurnk.send({ target: "http(s)://…", text: "…" })` | POST the body and stream the response                                                     |
 | `await plurnk.edit({ path: "http(s)://…", content: "…" })` | PUT a whole-resource replacement; line-scoped HTTP edits are invalid                      |
 | `await plurnk.kill({ path: "http(s)://…" })`   | Cancel a live acquisition of the address, or forget its stored response                 |
-| `await plurnk.kill({ path: "http(s)://…", metadata: [{"remote": true}] })` | DELETE the remote resource and stream the response                                        |
+| `await plurnk.kill({ path: "http(s)://…", remote: true })` | DELETE the remote resource and stream the response                                        |
 
 A path-pattern FIND surveys already-materialized web entries; it does not crawl
 or discover the remote web. Exact matcher FIND shares the standard flat
@@ -59,8 +59,8 @@ byte-readable. Input above the common binary ceiling returns `413`.
   usable when the projection fails, and a provider's Markdown can survive origin
   transport failure without fabricating HTML.
 - GET representations carry method, acquisition-time, and single-variant cache
-  metadata; HTML adds materializer-route evidence, and local derivation adds
-  projection identity. Request metadata, `Vary`, `no-store`, expired freshness,
+  evidence; HTML adds materializer-route evidence, and local derivation adds
+  projection identity. Request headers, `Vary`, `no-store`, expired freshness,
   or a materializer/reader change prevents reuse; operator TTL is a separate
   ceiling. Stale page composites are fully reacquired rather than restored by
   an origin `304`.

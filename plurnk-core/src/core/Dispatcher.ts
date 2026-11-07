@@ -343,7 +343,7 @@ export default class Dispatcher {
         const edit: EditStatement = {
             op: "edit",
             aside: statement.aside,
-            metadata: statement.metadata,
+            headers: statement.headers,
             target: statement.target,
             lineMarker: statement.lineMarker,
             matcher: statement.matcher,
@@ -423,7 +423,7 @@ export default class Dispatcher {
         // environment is the model's to retire, never the daemon's to drop.
         const distillation = Dispatcher.#distillationOf(context.statement, this.#curationPlans.get(context.statement));
         if (distillation !== null) {
-            const note: NoteStatement = { op: "note", aside: null, metadata: null, target: null, lineMarker: null, body: distillation.body, position: context.statement.position };
+            const note: NoteStatement = { op: "note", aside: null, target: null, lineMarker: null, body: distillation.body, position: context.statement.position };
             this.#distillations.set(note, distillation.target);
             const noteContext: DispatchContext = { ...context, statement: note, sequence: context.sequence + 1 };
             delete noteContext.fanout;
@@ -513,7 +513,7 @@ export default class Dispatcher {
         if (!(statement.op === "read" || statement.op === "edit" || statement.op === "kill")) return null;
         if (!Dispatcher.#globTarget(statement.target) || (statement.op === "kill" && schemeNameOf(statement.target) === "log")) return null;
         const found = await this.#findTargets({
-            op: "find", aside: statement.aside, target: statement.target, metadata: statement.metadata,
+            op: "find", aside: statement.aside, target: statement.target, headers: statement.headers,
             matcher: statement.op === "read" ? statement.matcher : null,
             lineMarker: statement.op === "read" ? null : { marks: [1, -1] }, body: null, position: statement.position,
         }, ctx);
@@ -632,8 +632,24 @@ export default class Dispatcher {
             // skips it. Logging failures (#writeLog throws) are NOT caught —
             // those are system failures.
             try {
-                const selection = targetsResolved ? null : await this.#selectTargets(statement, schemeCtx);
-                if (selection !== null && !("result" in selection)) {
+                const killScheme = statement.op === "kill" ? schemeNameOf(statement.target) : null;
+                const killUnsupported = statement.op === "kill"
+                    && killScheme !== null
+                    && killScheme !== "http"
+                    && killScheme !== "https"
+                    && killScheme !== "ws"
+                    && killScheme !== "wss"
+                    && this.#schemes.get(killScheme, workspaceId) !== undefined
+                    ? statement.headers !== null
+                        ? Dispatcher.#failure("headers-unsupported", 400, `kill on '${killScheme}' does not accept headers.`, {}, { scheme: killScheme, operation: "kill", retryable: false })
+                        : statement.remote !== null
+                            ? Dispatcher.#failure("remote-unsupported", 400, `kill on '${killScheme}' does not accept remote.`, {}, { scheme: killScheme, operation: "kill", retryable: false })
+                            : null
+                    : null;
+                const selection = killUnsupported !== null || targetsResolved ? null : await this.#selectTargets(statement, schemeCtx);
+                if (killUnsupported !== null) {
+                    result = killUnsupported;
+                } else if (selection !== null && !("result" in selection)) {
                     resolved = selection;
                 } else if (selection !== null) {
                     result = selection.result;
@@ -962,7 +978,7 @@ export default class Dispatcher {
         ctx: PlurnkSchemeContext,
     ): Promise<{ statement: WorkStatement | ForkStatement } | { result: DispatchResult }> {
         if (statement.target === null || SessionControlAddress.isSessionScheme(statement.target)) return { statement };
-        const read: ReadStatement = { ...statement, op: "read", matcher: null, body: null, lineMarker: { marks: [1, -1] } };
+        const read: ReadStatement = { ...statement, op: "read", headers: null, matcher: null, body: null, lineMarker: { marks: [1, -1] } };
         const denial = await this.#admission.checkCapabilities(read, ctx);
         if (denial !== null) return { result: denial };
         const result = Results.assertReadResult(await this.#dataRun.run(schemeNameOf(read.target), read, ctx));
@@ -997,6 +1013,12 @@ export default class Dispatcher {
 
     // {§message-completion}: message content is literal; only its header selects a destination.
     async #respond(statement: SendStatement | DoneStatement | FailStatement, schemeCtx: PlurnkSchemeContext, loopId: number): Promise<DispatchResult> {
+        if (statement.op === "send" && statement.headers !== null) {
+            return Dispatcher.#failure(
+                "headers-unsupported", 400, "send without an http(s):// target does not accept headers.", {},
+                { operation: "send", retryable: false },
+            );
+        }
         const completion = statement.op === "done" ? 200 : statement.op === "fail" ? 499 : null;
         const target = statement.target;
         let repliedTo: string[];
@@ -1021,7 +1043,7 @@ export default class Dispatcher {
             );
             repliedTo = [message.key_path];
         }
-        const captured = await MessageAttachments.capture(statement.metadata, schemeCtx.resources!, "message:reply");
+        const captured = await MessageAttachments.capture(statement.attachments, schemeCtx.resources!, "message:reply");
         if ("failure" in captured) return captured.failure;
         return { status: 200, repliedTo,
             ...(completion === null || speechOnly ? {} : { completion }),

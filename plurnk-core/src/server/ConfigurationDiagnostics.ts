@@ -48,10 +48,11 @@ export default class ConfigurationDiagnostics {
 
     pluginReports(reports: readonly PluginReport[]): void {
         for (const report of reports) {
+            const location = report.path.length > 0 ? `${report.root}/${report.path}` : report.root;
             const notice: Notice = {
                 source: "engine:configuration", kind: "plugin_configuration",
                 level: report.outcome === "ignored" || report.outcome === "shadowed" ? "info" : "warn",
-                owner: "plugins", message: `${report.root}/${report.path}: ${report.message}`,
+                owner: "plugins", message: `${location}: ${report.message}`,
             };
             this.#notices.set(JSON.stringify(notice), notice);
         }

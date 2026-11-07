@@ -371,10 +371,10 @@ test("{§configuration-repair-path} repeated discovery diagnostics are deduplica
     ];
     diagnostics.pluginReports(reports);
     diagnostics.pluginReports(reports);
-    assert.deepEqual(diagnostics.notices().map(({ kind, level }) => ({ kind, level })), [
-        { kind: "configuration_unavailable", level: "warn" },
-        { kind: "plugin_configuration", level: "info" },
-        { kind: "plugin_configuration", level: "warn" },
+    assert.deepEqual(diagnostics.notices().map(({ kind, level, message }) => ({ kind, level, message })), [
+        { kind: "configuration_unavailable", level: "warn", message: "Broken native declaration." },
+        { kind: "plugin_configuration", level: "info", message: "/plugins/shadowed: A nearer definition wins." },
+        { kind: "plugin_configuration", level: "warn", message: "/plugins/invalid/mcp.json: Invalid configuration." },
     ]);
 });
 
@@ -448,7 +448,7 @@ test("{§execution-output-identity} reserved names are refused at family admissi
             assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/env/functionality/name-reserved");
             assert.equal(cause.result.problem.alias, alias);
             assert.equal(cause.result.problem.detail, `'${alias}' is reserved in env entries.`);
-            assert.equal(cause.result.problem.recovery, "READ mcp:///plurnk/env.json for supported configuration paths.");
+            assert.equal(cause.result.problem.recovery, "read mcp:///plurnk/env.json for supported configuration paths.");
             return true;
         };
         await assert.rejects(() => adapter.admit({ alias, value: "explicit-value" }, identity), refused);
@@ -480,7 +480,7 @@ test("{§env-functionality} discover distinguishes an unknown source from a know
             assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/env/functionality/source-unknown");
             assert.equal(cause.result.problem.source, rejected);
             assert.match(cause.result.problem.detail, /package in the configuration catalog/u);
-            assert.match(String(cause.result.problem.recovery), /READ/u);
+            assert.match(String(cause.result.problem.recovery), /read/u);
             return true;
         });
     }

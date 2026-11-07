@@ -1,7 +1,6 @@
 import { createParser, type ParseError } from "eventsource-parser";
 import { ErrorDetail, Knob } from "@plurnk/plurnk-meta";
 import {
-    MetadataOptions,
     NetworkAddress,
     ProjectionInputLimitError,
     Results,
@@ -198,7 +197,7 @@ export const httpAddress = (target: UrlPath): NetworkAddress | PassthroughResult
         return httpBad(400, "http", "userinfo-not-allowed", "HTTP URL userinfo is not allowed.", {
             target: address.url,
             stage: "target-validation",
-            recovery: "Remove credentials from the URL and use request metadata where authorization is required.",
+            recovery: "Remove credentials from the URL and use request headers where authorization is required.",
             retryable: false,
         });
     }
@@ -213,22 +212,19 @@ export const httpAddress = (target: UrlPath): NetworkAddress | PassthroughResult
 };
 
 export const parseRequestHeaders = (
-    metadata: readonly string[] | null,
+    headers: Readonly<Record<string, string>> | null,
 ): Array<[string, string]> | (PassthroughResult & ChannelProducerResult) => {
-    const read = MetadataOptions.parse(metadata, "scheme:http");
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a metadata refusal has no shape; the method's result type names the success's passthrough shape
-    if ("failure" in read) return read.failure as PassthroughResult & ChannelProducerResult;
-    const headers: Array<[string, string]> = [];
-    for (const [name, value] of Object.entries(read.options)) {
+    const out: Array<[string, string]> = [];
+    for (const [name, value] of Object.entries(headers ?? {})) {
         if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/u.test(name)) {
-            return httpBad(400, "http", "metadata-header-name", `HTTP metadata key '${name}' is not a valid header name.`, { retryable: false });
+            return httpBad(400, "http", "invalid-header-name", `HTTP header '${name}' is not a valid header name.`, { retryable: false });
         }
         if (typeof value !== "string") {
-            return httpBad(400, "http", "metadata-header-shape", `HTTP header '${name}' requires a string value.`, { retryable: false });
+            return httpBad(400, "http", "invalid-header-value", `HTTP header '${name}' requires a string value.`, { retryable: false });
         }
-        headers.push([name, value.trim()]);
+        out.push([name, value.trim()]);
     }
-    return headers;
+    return out;
 };
 
 export const seedEntry = (): EntryData => {

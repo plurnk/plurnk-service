@@ -56,7 +56,7 @@ const comparePosition = (
 // {§diagnostic-observation} — what each notice of the model's own output asks of it: MUST where the card says MUST
 // or the output was refused, SHOULD where a near-miss was accepted.
 export const DIRECTIVE = Object.freeze({
-    note: "YOU MUST persist all new decisions, hypotheses, and facts as `plurnk.note` entries.",
+    note: "YOU MUST persist all new decisions, hypotheses, and facts as `plurnk.note` tool calls.",
     emission: "YOU MUST ONLY emit unwrapped Code Mode statements (`await plurnk.<op>(...);` and `await <server>.<tool>(...);`), with a terse `// aside` comment.",
     advisory: "YOU SHOULD write the canonical form.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
@@ -185,7 +185,7 @@ export default class EmissionSplit {
             const body = span.body.join("\n\n");
             if (body.length > 0) {
                 if (fenced > 0) {
-                    ops.push({ op: "note", aside: null, metadata: null, target: null, lineMarker: null, body, position: span.position });
+                    ops.push({ op: "note", aside: null, target: null, lineMarker: null, body, position: span.position });
                     contentStatementCount += 1;
                 } else outside.push(body);
             }

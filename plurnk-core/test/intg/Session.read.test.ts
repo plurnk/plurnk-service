@@ -30,7 +30,7 @@ import { connect, rpcCall, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 describe("Session.read", () => {
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStatement = (opts: { target: ParsedPath; body?: string | null; lineMarker?: LineMarker | null }): ResolvedEditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null,
     target: opts.target,
     lineMarker: opts.lineMarker ?? null,
@@ -41,7 +41,7 @@ const editStatement = (opts: { target: ParsedPath; body?: string | null; lineMar
 const readStatement = (opts: {
     target?: ParsedPath | null; lineMarker?: LineMarker | null;
 }): ReadStatement => ({
-    metadata: null,
+    headers: null,
     op: "read", aside: null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
@@ -52,7 +52,7 @@ const readStatement = (opts: {
 const findStatement = (opts: {
     target?: ParsedPath | null; matcher?: MatcherBody | null; lineMarker?: LineMarker | null;
 }): FindStatement => ({
-    metadata: null,
+    headers: null,
     op: "find", aside: null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,

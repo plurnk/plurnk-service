@@ -44,7 +44,7 @@ export default class HttpRequester {
     // prepareRepresentation.
     async request(
         target: UrlPath,
-        metadata: readonly string[] | null,
+        requestHeadersMap: Readonly<Record<string, string>> | null,
         ctx: SchemeCtx,
         method: string,
         body: string | undefined,
@@ -53,7 +53,7 @@ export default class HttpRequester {
         if (!(address instanceof NetworkAddress)) return address;
         const { url } = address;
         const { pathname } = address;
-        const headers = parseRequestHeaders(metadata);
+        const headers = parseRequestHeaders(requestHeadersMap);
         if (!Array.isArray(headers)) return headers;
         const publishedChannel = target.fragment ?? this.#manifest.defaultChannel;
         if (!Object.hasOwn(this.#manifest.channels, publishedChannel)) {

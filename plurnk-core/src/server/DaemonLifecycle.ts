@@ -139,8 +139,6 @@ export const stopDaemon = async (args: {
     const streamingResult = await shutdown.settle("streaming schemes idle", async () => {
         const exec = schemes.get("exec");
         if (!(exec instanceof Exec)) return;
-        // {§exec-lifetime} — a detached spawn ends with the daemon: nothing else ever aborts it.
-        exec.abortDetached();
         await exec.idle();
     });
     const derivationResult = await shutdown.settle("derivation drain", () => engine.drainDerivations(derivationAbort));

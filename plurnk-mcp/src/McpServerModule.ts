@@ -1031,22 +1031,6 @@ export default class McpServerModule implements DaemonModule<never> {
                 content: [{ type: "text", text: McpServerModule.#formatSuccess(result) }],
             };
         }
-        if (attrs.detached === true) {
-            return {
-                ...meta,
-                content: [
-                    {
-                        type: "text",
-                        text: JSON.stringify({
-                            status: result.status,
-                            outcome: "started",
-                            stream: streamTarget,
-                            ...(logCoordinate !== null ? { logCoordinate } : {}),
-                        }),
-                    },
-                ],
-            };
-        }
 
         const concludedResult = await this.#waitForStreamConclusion(
             workspaceId,

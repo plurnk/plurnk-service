@@ -40,7 +40,7 @@ test("{§http-lifecycle} SEND: POSTs the body and streams the response", async (
         });
     };
     await withFetch(probe, async () => {
-        const r = await httpSend(sendStmt(urlTarget("https://example.com/p", "/p"), "payload", ["{\"Content-Type\":\"text/plain\"}"]), ctx);
+        const r = await httpSend(sendStmt(urlTarget("https://example.com/p", "/p"), "payload", { "Content-Type": "text/plain" }), ctx);
         assert.equal(r.status, 102);
     });
     assert.equal(seenMethod, "POST");
@@ -54,7 +54,7 @@ test("{§http-manifest} POST, PUT and the remote DELETE propose, and nothing lea
     const cases: ReadonlyArray<readonly [string, (http: Http, ctx: SchemeCtx) => Promise<SchemeResult>]> = [
         ["POST", (http, ctx) => http.send(sendStmt(target, "payload"), ctx)],
         ["PUT", (http, ctx) => http.edit(editStmt(target, "payload"), ctx)],
-        ["DELETE", (http, ctx) => http.kill(killStmt(target, null, ["{\"remote\":true}"]), ctx)],
+        ["DELETE", (http, ctx) => http.kill(killStmt(target, null, { remote: true }), ctx)],
     ];
     for (const [method, propose] of cases) {
         const { ctx } = makeCtx();
@@ -73,7 +73,7 @@ test("{§http-manifest} POST, PUT and the remote DELETE propose, and nothing lea
             const attrs = (proposal as ProposalResult).attrs as { effect?: string; method?: string };
             assert.equal(attrs.effect, "host", `${method} declares the host effect the panel maps`);
             assert.equal(attrs.method, method);
-            await http.applyResolution({ attrs: attrs, metadata: null }, ctx);
+            await http.applyResolution({ attrs: attrs, headers: null }, ctx);
         });
         assert.equal(calls, 1, `${method} is sent exactly once, on acceptance`);
         assert.equal(seenMethod, method);
@@ -83,20 +83,20 @@ test("{§http-manifest} POST, PUT and the remote DELETE propose, and nothing lea
 test("{§http-manifest} a request header never enters the durable proposal attrs", async () => {
     const { ctx } = makeCtx();
     const http = new Http();
-    const metadata = ["{\"Authorization\":\"Bearer s3cr3t-value\"}"];
+    const headers = { Authorization: "Bearer s3cr3t-value" };
     let seenAuthorization = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
         seenAuthorization = new Headers(init?.headers).get("authorization") ?? "";
         return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
     };
     await withFetch(probe, async () => {
-        const statement = sendStmt(urlTarget("https://example.com/p", "/p"), "payload", metadata);
+        const statement = sendStmt(urlTarget("https://example.com/p", "/p"), "payload", headers);
         const proposal = await http.send(statement, ctx);
         assert.equal(proposal.status, 202);
         const attrs = (proposal as ProposalResult).attrs as object;
         assert.ok(!JSON.stringify(attrs).includes("s3cr3t-value"), "the credential is not persisted in proposal evidence");
-        // It survives the pause as statement metadata instead, and still reaches the origin.
-        await http.applyResolution({ attrs, metadata: statement.metadata }, ctx);
+        // It survives the pause as statement headers instead, and still reaches the origin.
+        await http.applyResolution({ attrs, headers: statement.headers }, ctx);
     });
     assert.equal(seenAuthorization, "Bearer s3cr3t-value");
 });
@@ -112,7 +112,7 @@ test("{§http-manifest} the resolver's body replaces the authored one before it 
     await withFetch(probe, async () => {
         const proposal = await http.send(sendStmt(urlTarget("https://example.com/p", "/p"), "authored"), ctx);
         const attrs = (proposal as ProposalResult).attrs as object;
-        await http.applyResolution({ attrs, metadata: null, body: "settled" }, ctx);
+        await http.applyResolution({ attrs, headers: null, body: "settled" }, ctx);
     });
     assert.equal(seenBody, "settled");
 });
@@ -131,7 +131,7 @@ test("{§http-status} SEND: an uncertain POST failure never recommends automatic
 });
 
 // ── request headers and method operations {§http-manifest} ───────────────────
-test("{§http-lifecycle} READ: [metadata] headers are threaded into the fetch", async () => {
+test("{§http-lifecycle} READ: headers are threaded into the fetch", async () => {
     const { ctx } = makeCtx();
     let seenHeaders: RequestInit["headers"];
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
@@ -140,7 +140,7 @@ test("{§http-lifecycle} READ: [metadata] headers are threaded into the fetch", 
     };
     const target = urlTarget("https://api.x/v1/me", "/v1/me");
     await withFetch(probe, async () => {
-        await prepareRepresentation(new Http(), readStmt(target, null, ["{\"Authorization\":\"Bearer T\",\"Accept\":\"application/json\"}"]), ctx);
+        await prepareRepresentation(new Http(), readStmt(target, null, { Authorization: "Bearer T", Accept: "application/json" }), ctx);
     });
     // Plurnk's own identity rides first when the model supplied no UA block.
     assert(Array.isArray(seenHeaders));
@@ -148,17 +148,17 @@ test("{§http-lifecycle} READ: [metadata] headers are threaded into the fetch", 
     assert.match(seenHeaders[0][1], /^PlurnkBot\//u);
 });
 
-test("{§slicer-text-algebra} HTTP rejects malformed metadata without reflecting its contents", async () => {
+test("{§http-manifest} HTTP rejects an invalid header name without reflecting header values", async () => {
     const { ctx } = makeCtx();
     const secret = "Bearer do-not-reflect";
     const result = await prepareRepresentation(
         new Http(),
-        readStmt(urlTarget("https://api.x/v1/me", "/v1/me"), null, [`Authorization ${secret}`]),
+        readStmt(urlTarget("https://api.x/v1/me", "/v1/me"), null, { "Bad Header": secret }),
         ctx,
     );
     assert.equal(result.status, 400);
-    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/metadata-invalid");
-    assert.equal(result.problem?.detail, "[metadata] must be a JSON array."); // {§slicer-text-algebra}
+    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/invalid-header-name");
+    assert.equal(result.problem?.detail, "HTTP header 'Bad Header' is not a valid header name.");
     assert.doesNotMatch(JSON.stringify(result), /do-not-reflect/);
 });
 
@@ -172,10 +172,10 @@ test("{§http-lifecycle} READ: headers reach direct fetch on an HTML GET (authed
         seenAuth = new Headers(init?.headers).get("authorization") ?? "";
         return new Response("<html><body>authed</body></html>", { status: 200, headers: { "content-type": "text/html" } });
     }), async () => {
-        await prepareRepresentation(new Http(), readStmt(target, null, ["{\"Authorization\":\"Bearer T\"}"]), ctx);
+        await prepareRepresentation(new Http(), readStmt(target, null, { Authorization: "Bearer T" }), ctx);
     });
     assert.equal(seenAuth, "Bearer T");
-    assert.deepEqual(seenUrls, ["https://app.x/dash"], "explicit request metadata never authorizes the materializer");
+    assert.deepEqual(seenUrls, ["https://app.x/dash"], "explicit request headers never authorize the materializer");
     const header = inspect().storedEntry?.channels.header?.content ?? "";
     assert.match(header, /^x-plurnk-materializer-id: local-projection:v1:ineligible$/m);
 });
@@ -193,7 +193,7 @@ test("{§http-lifecycle} EDIT → PUT with the body (method mapping)", async () 
             urlTarget("https://api.x/thing/42", "/thing/42"),
             '{"done":true}',
             null,
-            ["{\"Content-Type\":\"application/json\"}"],
+            { "Content-Type": "application/json" },
         ), ctx);
         assert.equal(r.status, 102);
     });
@@ -203,7 +203,7 @@ test("{§http-lifecycle} EDIT → PUT with the body (method mapping)", async () 
     assert.equal(inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join(""), "updated");
 });
 
-test("{§http-manifest} EDIT: a <L> line marker is rejected — http PUT replaces the whole resource", async () => {
+test("{§http-manifest} EDIT: a line marker is rejected — http PUT replaces the whole resource", async () => {
     const { ctx } = makeCtx();
     const r = await httpEdit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), "x", { marks: [1] }), ctx);
     assert.equal(r.status, 400);
@@ -241,7 +241,7 @@ test("{§revalidation} KILL {remote} sends DELETE with the authored precondition
         const r = await httpKill(killStmt(
             urlTarget("https://api.x/thing/42", "/thing/42"),
             null,
-            ["{\"remote\": true, \"If-Match\": \"\\\"revision-7\\\"\"}"],
+            { remote: true, headers: { "If-Match": '"revision-7"' } },
         ), ctx);
         assert.equal(r.status, 102);
     });
@@ -377,7 +377,7 @@ test("{§revalidation} POST/PUT/DELETE preserve the addressed GitHub blob target
         const operations = [
             (http: Http, ctx: SchemeCtx) => sendSettled(http, sendStmt(target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => editSettled(http, editStmt(target, "body"), ctx),
-            (http: Http, ctx: SchemeCtx) => killSettled(http, killStmt(target, null, ["{\"remote\":true}"]), ctx),
+            (http: Http, ctx: SchemeCtx) => killSettled(http, killStmt(target, null, { remote: true }), ctx),
         ];
         for (const operation of operations) {
             const { ctx, inspect } = makeCtx();

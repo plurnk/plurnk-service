@@ -59,13 +59,13 @@ export const makeHandlerCtx = async (
 // means to observe the REQUEST settles the proposal itself, exactly as the dispatcher would on
 // an accept. A non-proposal result passes through, so a refusal keeps its own status.
 export const settleOutbound = async <T extends { status: number; attrs?: object }>(
-    handler: { applyResolution?: (request: { attrs: object; metadata: readonly string[] | null; body?: string }, ctx: never) => Promise<T> },
+    handler: { applyResolution?: (request: { attrs: object; headers: Readonly<Record<string, string>> | null; body?: string }, ctx: never) => Promise<T> },
     result: T,
     ctx: unknown,
-    metadata: readonly string[] | null = null,
+    headers: Readonly<Record<string, string>> | null = null,
 ): Promise<T> => {
     if (result.status !== 202 || handler.applyResolution === undefined) return result;
-    return handler.applyResolution({ attrs: result.attrs ?? {}, metadata }, ctx as never);
+    return handler.applyResolution({ attrs: result.attrs ?? {}, headers }, ctx as never);
 };
 
 // {§http-manifest} — a session's operation that proposes needs a settlement: its owner answers

@@ -173,14 +173,14 @@ describe("File.scheme.proposal", () => {
 
 
 const fileEditStmt = (pathname: string, body: string, marker: LineMarker | null = null): EditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null,
     target: { kind: "local", raw: pathname },
     lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 },
 });
 
 const fileReadStmt = (pathname: string): ReadStatement => ({
-    metadata: null,
+    headers: null,
     op: "read", aside: null,
     target: { kind: "local", raw: pathname },
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
@@ -190,7 +190,7 @@ const fileReadStmt = (pathname: string): ReadStatement => ({
 // emit. plurnk.md: "Bare paths (no scheme) default to local relative
 // project file paths." Engine.#schemeNameOf routes LocalPath → 'file'.
 const bareEditStmt = (relPath: string, body: string, marker: LineMarker | null = null): EditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null,
     target: { kind: "local", raw: relPath },
     lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 },
@@ -474,7 +474,7 @@ test("{§engine-rails} file.applyResolution: malformed accepted proposal state r
     await withWorkspaceRoot(async (_root, ctx) => {
         await assert.rejects(
             new File().applyResolution(
-                { attrs: {}, metadata: null },
+                { attrs: {}, headers: null },
                 makeSchemeCtx({
                     db: ctx.db,
                     workspaceId: ctx.workspaceId,
@@ -515,7 +515,7 @@ test("{§engine-rails} file.edit: an unchanged file is a 304 no-op and never bec
         assert.equal(result.status, 304);
         assert.equal(
             result.detail,
-            "No change: EDIT body matches the selected content.",
+            "No change: edit body matches the selected content.",
         );
         assert.equal(await readFile(join(root, target), "utf8"), original);
 

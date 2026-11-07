@@ -611,7 +611,8 @@ test("{§exec-stream}: invalid result liveness cannot advance publication or lea
 
 test("{§packet} KILLing a terminal observation cannot erase its subscription delivery transition", async () => {
     const kill: KillStatement = {
-        metadata: null,
+        headers: null,
+        remote: null,
         op: "kill",
         aside: null,
         target: urlPath("log", "/1/2/2"),

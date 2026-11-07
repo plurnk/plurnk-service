@@ -35,7 +35,7 @@ import type { ByteSource } from "./ByteSource.ts";
 
 export interface RepresentationPreparationRequest {
     readonly target: ParsedPath;
-    readonly metadata: readonly string[] | null;
+    readonly headers: Readonly<Record<string, string>> | null;
     readonly authority: string;
     readonly pathname: string;
 }

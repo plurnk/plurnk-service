@@ -62,7 +62,7 @@ export const parsePath = (raw: string, pos: Position = { line: 0, column: 0 }): 
         url = new URL(protectedTarget.value);
     } catch {
         throw new PlurnkParseError(pos.line, pos.column, "visitor", "invalid URI in path", "error",
-            "Write a local path, `(src/a.py)`, or a complete URL, `scheme://host/path`.");
+            'Write a local path, `"src/a.py"`, or a complete URL, `"scheme://host/path"`.');
     }
     // Uniform WHATWG decomposition — no per-scheme authority allowlist. `://`
     // introduces an authority for every scheme; an authority-less reference

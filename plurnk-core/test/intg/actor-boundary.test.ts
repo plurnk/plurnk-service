@@ -431,7 +431,6 @@ const continueResponse = () => ({
         ops: [{
             op: "note",
             aside: null,
-            metadata: null,
             target: null,
             lineMarker: null,
             body: "continue",
@@ -454,7 +453,8 @@ const path = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const kill = (target: UrlPath): KillStatement => ({
-    metadata: null,
+    headers: null,
+    remote: null,
     op: "kill",
     aside: null,
     target,

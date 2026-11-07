@@ -4,7 +4,6 @@ import { spawn } from "node:child_process";
 import { constants } from "node:os";
 import { Results } from "@plurnk/plurnk-schemes";
 import BaseExecutor from "./BaseExecutor.ts";
-import InvocationMetadata from "./InvocationMetadata.ts";
 import Shell from "./Shell.ts";
 import SpawnAccounts from "./SpawnAccount.ts";
 import { CommandSyntaxError, tokenizeArgv } from "./tokenizeArgv.ts";
@@ -113,13 +112,7 @@ export default class SubprocessExecutor extends BaseExecutor {
         return Runtime.resolve(runtime, command, target);
     }
 
-    run({ runtime, body, metadata, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
-        const parsed = InvocationMetadata.parse({ runtime, body, metadata, cwd, target });
-        if ("failure" in parsed) {
-            setState("stdout", "errored");
-            setState("stderr", "errored");
-            return Promise.resolve(parsed.failure);
-        }
+    run({ runtime, body, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         let spawnArgs: SpawnArgs;
         try {
             spawnArgs = this.spawnArgs(runtime, body, target);

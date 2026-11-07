@@ -19,7 +19,7 @@ import { urlPath, findStmt, readStmt } from "./_dsl.ts";
 
 describe("Log.read", () => {
 const logEditStmt = (pathname: string, body: string): ResolvedEditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null,
     target: urlPath("workspace", pathname),
     lineMarker: null, body,
@@ -300,7 +300,7 @@ test("{§read} Log.find: an exact matcher returns flat locations and complete pa
         await engine.dispatch({ statement: logEditStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: readStmt(urlPath("workspace", "/data.json")), workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model" });
         const stmt: FindStatement = {
-            metadata: null,
+            headers: null,
             op: "find", aside: null, target: urlPath("log", "/1/1/2"), lineMarker: null,
             matcher: { dialect: "regex", raw: "/\"status\"/", pattern: "\"status\"", flags: "" }, body: null, position: { line: 1, column: 1 },
         };
@@ -339,7 +339,7 @@ test("{§read} Log.find: body matcher selects the full projection before <L> pro
         // The matcher qualifies the complete JSON result. Because the target is
         // exact, <1> selects the first match location.
         const stmt: FindStatement = {
-            metadata: null,
+            headers: null,
             op: "find", aside: null, target: urlPath("log", "/1/1/2"),
             lineMarker: { marks: [1, 1] },
             matcher: { dialect: "regex", raw: "/\\d+/", pattern: "\\d+", flags: "" }, body: null, position: { line: 1, column: 1 },
@@ -362,7 +362,7 @@ test("{§read} Log.find: a matcher FIND writes flat surgical coordinates", async
         );
         const result = await engine.dispatch({
             statement: {
-                metadata: null,
+                headers: null,
                 op: "find", aside: null,
                 target: { kind: "url", raw: "workspace:///notes", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/notes", query: null, fragment: null },
                 lineMarker: null,
@@ -415,7 +415,7 @@ test("{§read} Log.read: #channel on an execution log item names the command's s
         const dispatched = new Promise<number>((settle) => {
             void engine.dispatch({
                 statement: {
-                    metadata: null, runtime: "sh", aside: null,
+                    runtime: "sh", aside: null,
                     target: null, lineMarker: null, body: "echo hello", position: { line: 1, column: 1 },
                 },
                 workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
@@ -436,7 +436,7 @@ test("{§read} Log.read: #channel on an execution log item names the command's s
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/scheme/log/channel-not-found");
         assert.equal(miss.problem?.requestedChannel, "stdout");
         assert.equal(miss.problem?.stream, address, "the receipt carries the stream link the row already records");
-        assert.equal(miss.problem?.recovery, `READ ${address}#stdout for the command's stdout stream.`);
+        assert.equal(miss.problem?.recovery, `read ${address}#stdout for the command's stdout stream.`);
         assert.ok(miss.problem?.detail.includes(`${address}#stdout`));
 
         // The named address is real: the same READ against it returns the output.
@@ -463,7 +463,7 @@ test("{§read} Log.read: an empty-extent 416 on an execution log item carries th
         const dispatched = new Promise<number>((settle) => {
             void engine.dispatch({
                 statement: {
-                    metadata: null, runtime: "sh", aside: null,
+                    runtime: "sh", aside: null,
                     target: null, lineMarker: null, body: "echo hello", position: { line: 1, column: 1 },
                 },
                 workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
@@ -565,7 +565,7 @@ describe("Log.find", () => {
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§packet} — the first page a markerless retrieval is
 
 const findEditStmt = (pathname: string, content: string): EditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null,
     target: { kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null },
     lineMarker: null, matcher: null, body: content, position: { line: 1, column: 1 },

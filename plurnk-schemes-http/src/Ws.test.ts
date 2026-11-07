@@ -193,31 +193,31 @@ const wss = (raw: string, pathname: string): UrlPath => {
         pathname, query: url.search === "" ? null : url.search.slice(1), fragment: null,
     };
 };
-const readStmt = (target: UrlPath): ReadStatement => ({ op: "read", aside: null, target, metadata: null, lineMarker: null, matcher: null, body: null, position: { line: 0, column: 0 } });
+const readStmt = (target: UrlPath): ReadStatement => ({ op: "read", aside: null, target, headers: null, lineMarker: null, matcher: null, body: null, position: { line: 0, column: 0 } });
 const editStmt = (
     target: UrlPath,
     body: string | null,
     lineMarker: ResolvedEditStatement["lineMarker"] = null,
-): ResolvedEditStatement => ({ op: "edit", aside: null, target, metadata: null, lineMarker, matcher: null, body, position: { line: 0, column: 0 } });
+): ResolvedEditStatement => ({ op: "edit", aside: null, target, headers: null, lineMarker, matcher: null, body, position: { line: 0, column: 0 } });
 const prepareRepresentation = (ws: Ws, statement: ReadStatement, ctx: SchemeCtx) => {
     const target = statement.target;
     if (target === null || target.kind !== "url") throw new TypeError("WebSocket read requires a URL target");
     const address = NetworkAddress.from(target);
     return ws.prepareRepresentation({
         target: { ...target, fragment: null },
-        metadata: statement.metadata,
+        headers: statement.headers,
         authority: address.authority,
         pathname: address.pathname,
     }, ctx);
 };
-const sendStmt = (target: UrlPath, body?: string): SendStatement => ({ op: "send", aside: null, target, metadata: null, lineMarker: null, body: body === undefined ? null : { raw: body, json: null }, position: { line: 0, column: 0 } });
-const killStmt = (target: UrlPath): KillStatement => ({ op: "kill", aside: null, target, metadata: null, lineMarker: null, matcher: null, body: null, position: { line: 0, column: 0 } });
+const sendStmt = (target: UrlPath, body?: string): SendStatement => ({ op: "send", aside: null, target, headers: null, attachments: null, lineMarker: null, body: body === undefined ? null : { raw: body, json: null }, position: { line: 0, column: 0 } });
+const killStmt = (target: UrlPath): KillStatement => ({ op: "kill", aside: null, target, headers: null, remote: null, lineMarker: null, matcher: null, body: null, position: { line: 0, column: 0 } });
 
 // {§http-manifest} — a frame is data leaving the process, so EDIT and SEND propose. A test
 // that means to observe the FRAME settles the proposal the way the dispatcher does on accept; a
 // refusal (no socket, socket not open, host policy) arrives before any proposal and passes through.
 const settle = async (ws: Ws, ctx: SchemeCtx, result: PassthroughResult | ProposalResult) =>
-    Results.isProposal(result) ? ws.applyResolution({ attrs: result.attrs ?? {}, metadata: null }, ctx) : result;
+    Results.isProposal(result) ? ws.applyResolution({ attrs: result.attrs ?? {}, headers: null }, ctx) : result;
 const wsSend = async (ws: Ws, statement: SendStatement, ctx: SchemeCtx) => settle(ws, ctx, await ws.send(statement, ctx));
 const wsEdit = async (ws: Ws, statements: readonly ResolvedEditStatement[], ctx: SchemeCtx) =>
     settle(ws, ctx, await ws.editBatch(statements, ctx));
@@ -735,7 +735,7 @@ test("{§http-manifest} EDIT and SEND: no claimed socket → 409", async () => {
     for (const result of [edit, send]) {
         assert.equal(result.status, 409);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/no-open-socket");
-        assert.equal(result.problem?.recovery, "READ the WebSocket URL before sending a message."); // {§http-manifest}
+        assert.equal(result.problem?.recovery, "Read the WebSocket URL before sending a message."); // {§http-manifest}
     }
 });
 
@@ -1054,7 +1054,7 @@ test("{§http-manifest} EDIT and SEND propose with the host effect, and no frame
         assert.equal(attrs.operation, operation);
         // The resolver may replace the authored body before it is sent.
         const settledBody = `${operation.toLowerCase()} frame`;
-        const applied = await ws.applyResolution({ attrs: attrs, metadata: null, body: settledBody }, ctx);
+        const applied = await ws.applyResolution({ attrs: attrs, headers: null, body: settledBody }, ctx);
         assert.equal(applied.status, 200);
         assert.deepEqual(sock.sent.slice(before), [settledBody], `${operation} writes exactly one frame, on acceptance`);
     }
@@ -1082,7 +1082,7 @@ test("{§http-manifest} a socket that closed while the proposal was open refuses
     await read;
     await awaitClosed();
 
-    const applied = await ws.applyResolution({ attrs: proposal.attrs ?? {}, metadata: null }, ctx);
+    const applied = await ws.applyResolution({ attrs: proposal.attrs ?? {}, headers: null }, ctx);
     assert.equal(applied.status, 409, "the admission runs again at apply, because the socket is live");
     assert.match(applied.problem?.type ?? "", /\/scheme\/wss\/(no-open-socket|socket-not-open)$/u);
     assert.deepEqual(sock.sent, [], "nothing is written to a connection that is gone");

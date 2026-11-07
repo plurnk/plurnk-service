@@ -101,7 +101,7 @@ export default class TurnDispositionHandler {
             if (completed.changes === 0) return { status: 102 };
         }
         if (pending.some((kind) => !held(kind))) return {
-            status: 102, detail: "All Open Messages resolved. Review new results; emit no OPs if finished.",
+            status: 102, detail: "All Open Work resolved, but tool call results received for review. Submit nothing to conclude.",
         };
         if (live) return { status: 202 };
         return { status: 200 };

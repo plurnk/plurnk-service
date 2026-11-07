@@ -36,7 +36,7 @@ const actionError = (code: string, status: number, detail: string, extensions: R
 const reservedNameError = (alias: string): OperationFailureError => actionError("name-reserved", 400,
     `'${alias}' is reserved in env entries.`, {
         alias,
-        recovery: "READ mcp:///plurnk/env.json for supported configuration paths.",
+        recovery: "read mcp:///plurnk/env.json for supported configuration paths.",
     });
 
 // POSIX-ish, and deliberately narrow: a name the shell can actually export. This is the family's
@@ -61,7 +61,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     readonly scheme: RuntimeSchemeFacet | undefined;
     readonly family = ENV_FAMILY;
     readonly namespaceOwner = ENV_OWNER;
-    readonly summary = "List ({}) or manage environment variables";
+    readonly summary = "List active environment variables ({}, or read env:///<NAME>) or manage overrides; discover searches package .env.defaults catalogs";
     readonly definitionSchema = DEFINITION;
     readonly scopes = ["session", "workspace"] as const;
     readonly aliasPattern = NAME;
@@ -111,7 +111,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
         if (query.source !== undefined && !files.some(({ owner }) => owner === query.source)) {
             throw actionError("source-unknown", 400, `'${query.source}' is not a package in the configuration catalog.`, {
                 source: query.source,
-                recovery: "Omit source to list the catalog. READ files; set variables with add.",
+                recovery: "Omit source to list the catalog. read files; set variables with add.",
             });
         }
         return EnvCatalog.candidates(files, {

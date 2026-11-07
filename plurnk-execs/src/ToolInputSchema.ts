@@ -236,7 +236,6 @@ export default class ToolInputSchema {
             aside: note === "" ? null : note,
             target: target === undefined ? null : { kind: "local", raw: target },
             lineMarker: null,
-            metadata: null,
             body,
             position: UNKNOWN_POSITION,
         }]);

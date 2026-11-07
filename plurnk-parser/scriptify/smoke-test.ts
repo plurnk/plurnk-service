@@ -82,11 +82,11 @@ assertClean("model turn", PlurnkParser.parse(program));
 const result = PlurnkParser.parseStatements('await plurnk.edit({"path":"workspace:///foo","content":"body content"});');
 assertClean("statement sequence", result);
 
-const selected = PlurnkParser.parseStatements('await plurnk.read({"path":"https://example.com","pattern":"/needle/","metadata":[{"headers":{"Accept":"text/plain"}}]});');
-assertClean("owner metadata with matcher", selected);
+const selected = PlurnkParser.parseStatements('await plurnk.read({"path":"https://example.com","pattern":"/needle/","headers":{"Accept":"text/plain"}});');
+assertClean("owner headers with matcher", selected);
 const selection = selected.items[0]?.statement;
-if (selection?.matcher?.raw !== "/needle/" || selection.metadata?.[0] !== '{"headers":{"Accept":"text/plain"}}') {
-    throw new Error("owner metadata erased the resource selection: " + JSON.stringify(selection));
+if (selection?.matcher?.raw !== "/needle/" || selection.headers?.Accept !== "text/plain") {
+    throw new Error("owner headers erased the resource selection: " + JSON.stringify(selection));
 }
 const reparsedSelection = PlurnkParser.parseStatements(PlurnkParser.stringify([selection]));
 assertClean("rendered resource selection", reparsedSelection);

@@ -417,7 +417,7 @@ for (const { name, requestHeaders, responseHeaders, expectedValues } of [
             await prepareRepresentation(new Http(), readStmt(
                 urlTarget("https://example.com/variant", "/variant"),
                 null,
-                requestHeaders.length === 0 ? null : [JSON.stringify(Object.fromEntries(requestHeaders))],
+                requestHeaders.length === 0 ? null : Object.fromEntries(requestHeaders),
             ), ctx);
         });
         const header = inspect().storedEntry?.channels.header?.content ?? "";
@@ -450,16 +450,16 @@ test("{§http-lifecycle} cache variant: explicit request metadata bypasses a TTL
             await prepareRepresentation(new Http(), readStmt(
                 urlTarget("https://example.com/account", "/account"),
                 null,
-                ["{\"Authorization\":\"Bearer private\"}"],
+                { Authorization: "Bearer private" },
             ), ctx);
         });
     });
     assert.equal(fetched, true);
-    assert.equal(conditional, false, "validators from the default representation do not cross request metadata");
+    assert.equal(conditional, false, "validators from the default representation do not cross request headers");
     assert.equal(inspect().storedEntry?.channels.body?.content, "private representation");
 });
 
-test("{§http-lifecycle} cache variant: explicit request metadata also bypasses stale validators", async () => {
+test("{§http-lifecycle} cache variant: explicit request headers also bypass stale validators", async () => {
     const { ctx } = makeCtx(priorEntry(
         "public representation",
         "text/plain",
@@ -475,7 +475,7 @@ test("{§http-lifecycle} cache variant: explicit request metadata also bypasses 
             await prepareRepresentation(new Http(), readStmt(
                 urlTarget("https://example.com/account", "/account"),
                 null,
-                ["{\"Authorization\":\"Bearer private\"}"],
+                { Authorization: "Bearer private" },
             ), ctx);
         });
     });
@@ -539,7 +539,7 @@ test("{§http-lifecycle} exact FIND preparation reacquires request metadata thro
         const result = await prepareExactFind(new Http(), findStmt(
             urlTarget("https://example.com/account", "/account"),
             null,
-            ["{\"Authorization\":\"Bearer private\"}"],
+            { Authorization: "Bearer private" },
         ), ctx);
         assert.equal(result.status, 200);
     });

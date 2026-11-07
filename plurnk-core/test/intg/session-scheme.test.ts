@@ -91,12 +91,10 @@ const sessionEntry = (owner: string, path: string): ParsedPath => ({
 // Session control (grammar 0.74.55): WORK(session://<name>):task spawns a fresh session; FORK(session://<name>):task
 // branches the current session into a named sister. The body is the seed task, not a destination path.
 const spawnedSession = (name: string, prompt: string): WorkStatement => ({
-    metadata: null,
     op: "work", aside: null, target: sessionPath(name),
     lineMarker: null, body: prompt, position: { line: 1, column: 1 },
 });
 const forkSession = (name: string, prompt: string): ForkStatement => ({
-    metadata: null,
     op: "fork", aside: null, target: sessionPath(name),
     lineMarker: null, body: prompt, position: { line: 1, column: 1 },
 });
@@ -117,7 +115,7 @@ const weigh = (text: string): number => Math.ceil(text.length / 4);
 
 // FIND in one named namespace: session://<owner>/<glob>.
 const findEntry = (owner: string, glob: string): FindStatement => ({
-    metadata: null,
+    headers: null,
     op: "find", aside: null,
     target: { kind: "url", raw: owner === "" ? `workspace:///${glob}` : `session://${owner}/${glob}`, scheme: owner === "" ? "workspace" : "session", username: null, password: null, hostname: owner === "" ? null : owner, port: null, pathname: `/${glob}`, query: null, fragment: null },
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
@@ -125,7 +123,7 @@ const findEntry = (owner: string, glob: string): FindStatement => ({
 
 // READ from one named namespace: session://<owner>/<path>.
 const readEntry = (owner: string, path: string): ReadStatement => ({
-    metadata: null,
+    headers: null,
     op: "read", aside: null,
     target: { kind: "url", raw: owner === "" ? `workspace:///${path}` : `session://${owner}/${path}`, scheme: owner === "" ? "workspace" : "session", username: null, password: null, hostname: owner === "" ? null : owner, port: null, pathname: `/${path}`, query: null, fragment: null },
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
@@ -133,7 +131,8 @@ const readEntry = (owner: string, path: string): ReadStatement => ({
 
 // KILL in one named namespace: session://<owner>/<path> — deletes the scratch entry (path present).
 const killEntry = (owner: string, path: string): KillStatement => ({
-    metadata: null,
+    headers: null,
+    remote: null,
     op: "kill", aside: null,
     target: { kind: "url", raw: owner === "" ? `workspace:///${path}` : `session://${owner}/${path}`, scheme: owner === "" ? "workspace" : "session", username: null, password: null, hostname: owner === "" ? null : owner, port: null, pathname: `/${path}`, query: null, fragment: null },
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
@@ -432,7 +431,7 @@ test("{§machine-processes} the exact session control address is enforced before
             { ...forkSession("session", "fork"), target },
             sendStmt(target, "message"),
             readStmt(target),
-            { metadata: null, op: "kill", aside: null, target, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } },
+            { headers: null, remote: null, op: "kill", aside: null, target, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } },
         ];
 
         const results = [];
@@ -482,7 +481,7 @@ test("{§session-scheme}: all Session names are literal; tilde is not an alias",
             "a literal tilde never aliases the caller's named scratch");
         for (const name of ["actor", "self"]) {
             assert.equal((await dispatch(editStmt(sessionEntry(name, "notes.md"), "scratch"))).status, 201);
-            const kill: KillStatement = { metadata: null, op: "kill", aside: null, target: sessionPath(name), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
+            const kill: KillStatement = { headers: null, remote: null, op: "kill", aside: null, target: sessionPath(name), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
             assert.equal((await dispatch(kill)).status, 200);
         }
         assert.deepEqual(killed, [sessionId, named.id]);
@@ -744,7 +743,7 @@ test("{§operation-results} EDIT on the bare session entity is rejected — WORK
         assert.equal(result.status, 400, "EDIT on the session entity is rejected");
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/session/session-entity-not-editable");
         assert.equal(result.problem?.detail, "A session entity is not an editable entry."); // {§operation-results}
-        assert.equal(result.problem?.recovery, "EDIT requires an entry path, such as workspace:///example.md."); // {§operation-results}
+        assert.equal(result.problem?.recovery, "edit requires an entry path, such as workspace:///example.md."); // {§operation-results}
         assert.equal(result.problem?.retryable, false);
         assert.equal(calls.length, 0, "no inject on a rejected EDIT");
         const session = await db.session_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "session" });
@@ -798,7 +797,7 @@ test("{§session-scheme}: empty and whitespace-only messages never reach session
             });
             assert.equal(result.status, 422);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/session/message-empty");
-            assert.equal(result.problem?.detail, "SEND has no message text or attachments."); // {§operation-results}
+            assert.equal(result.problem?.detail, "send has no message text or attachments."); // {§operation-results}
         }
         assert.equal(calls.length, 0);
         const literal = " \tMessage with significant whitespace.\n ";
@@ -934,12 +933,12 @@ test("{§session-scheme} KILL(session://name) aborts a sister by address; a miss
         const turnId = await insertTurn(db, loopId, 1, 102);
         const sisterId = await insertSession(db, workspaceId, null, "session");
 
-        const killSession: KillStatement = { metadata: null, op: "kill", aside: null, target: sessionPath("session"), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
+        const killSession: KillStatement = { headers: null, remote: null, op: "kill", aside: null, target: sessionPath("session"), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
         const ok = await engine.dispatch({ statement: killSession, workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(ok.status, 200, "KILL of an existing sister returns 200");
         assert.deepEqual(killed, [sisterId], "the named sister session is aborted by id");
 
-        const killGhost: KillStatement = { metadata: null, op: "kill", aside: null, target: sessionPath("ghost"), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
+        const killGhost: KillStatement = { headers: null, remote: null, op: "kill", aside: null, target: sessionPath("ghost"), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } };
         const missing = await engine.dispatch({ statement: killGhost, workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model" });
         assert.equal(missing.status, 404, "KILL of a non-existent sister is 404");
         assert.equal(killed.length, 1, "no abort for a missing sister");
@@ -955,7 +954,7 @@ for (const related of [true, false]) test(`{§session-scheme}: ${related ? "pare
         const childId = await insertSession(db, workspaceId, related ? meId : null, "author");
         const loopId = await insertLoop(db, meId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        const readOf = (target: ParsedPath): ReadStatement => ({ metadata: null, op: "read", aside: null, lineMarker: null, target, matcher: null, body: null, position: { line: 1, column: 1 } });
+        const readOf = (target: ParsedPath): ReadStatement => ({ headers: null, op: "read", aside: null, lineMarker: null, target, matcher: null, body: null, position: { line: 1, column: 1 } });
 
         // {§execution-output-identity}: the authority is part of the workspace entry key.
         const childLoop = await insertLoop(db, childId, 1, "go");
@@ -1035,8 +1034,8 @@ test("{§session-scheme}: session:/// entry operations and FIND require a named 
         for (const statement of [
             editStmt(emptyTarget, "body"),
             readStmt(emptyTarget),
-            { metadata: null, op: "find" as const, aside: null, target: emptyTarget, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } },
-            { metadata: null, op: "kill" as const, aside: null, target: emptyTarget, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } },
+            { headers: null, op: "find" as const, aside: null, target: emptyTarget, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } },
+            { headers: null, remote: null, op: "kill" as const, aside: null, target: emptyTarget, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } },
         ]) {
             const res = await engine.dispatch({ statement, workspaceId, sessionId: sessionId, loopId, turnId, sequence: ++sequence, origin: "model" });
             assert.equal(res.status, 400);

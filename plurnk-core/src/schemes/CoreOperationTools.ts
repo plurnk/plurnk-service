@@ -11,12 +11,16 @@ interface CoreOperationToolSpec {
     readonly details: string;
 }
 
-const METADATA_SCHEMA = {
-    oneOf: [
-        { type: "string" },
-        { type: "array", items: { type: "string" } },
-    ],
-    description: "Optional scheme metadata.",
+const HEADERS_SCHEMA = {
+    type: "object",
+    additionalProperties: { type: "string" },
+    description: "Optional HTTP request headers.",
+} as const satisfies JsonSchema;
+
+const ATTACHMENTS_SCHEMA = {
+    type: "array",
+    items: { type: "string", minLength: 1 },
+    description: "Optional resource paths or URIs to attach.",
 } as const satisfies JsonSchema;
 
 const SELECTION_ENDPOINT_SCHEMA = {
@@ -31,7 +35,7 @@ const SELECTION_ENDPOINT_SCHEMA = {
                 path: { type: "string", minLength: 1, description: "Target path or URI." },
                 range: { type: "string", description: "Optional line or character range." },
                 pattern: { type: "string", description: "Optional content matcher." },
-                metadata: METADATA_SCHEMA,
+                headers: HEADERS_SCHEMA,
             },
         },
     ],
@@ -90,7 +94,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 path: { type: "string", description: "Target path, URI, or glob/extglob pattern (percent-encode `(` as `%28` and `)` as `%29`)." },
                 range: { type: "string", description: "Result page range (e.g. \"1,50\" or \"1,-1\")." },
                 pattern: { type: "string", description: "Content matcher (see skill://plurnk/pattern.md)." },
-                metadata: METADATA_SCHEMA,
+                headers: HEADERS_SCHEMA,
             },
         },
         details: [
@@ -111,7 +115,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 path: { type: "string", minLength: 1, description: "Target path, URI, or glob/extglob pattern (append #channel for a non-default channel; percent-encode `(` as `%28` and `)` as `%29`)." },
                 range: { type: "string", description: "Line or character range (e.g. \"1,100\", \"1,-1\", \"@start,@end\")." },
                 pattern: { type: "string", description: "Select only matching lines or nodes (see skill://plurnk/pattern.md)." },
-                metadata: METADATA_SCHEMA,
+                headers: HEADERS_SCHEMA,
             },
         },
         details: [
@@ -119,7 +123,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             "",
             "await plurnk.read({ path: \"src/**/*.ts\", range: \"1,-1\", pattern: \"/TODO/\" }); // the matching lines in every file",
             "",
-            "await plurnk.read({ path: \"largeExampleFile.txt\", range: \"101,200\" }); // READing in chunks if budget constrained",
+            "await plurnk.read({ path: \"largeExampleFile.txt\", range: \"101,200\" }); // reading in chunks if budget constrained",
         ].join("\n"),
     },
     {
@@ -133,9 +137,9 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             properties: {
                 path: { type: "string", minLength: 1, description: "Target file or entry path, or glob/extglob for bulk edits (percent-encode `(` as `%28` and `)` as `%29`)." },
                 range: { type: "string", description: "Line, column, or @hash range (see ## range in description)." },
-                pattern: { type: "string", description: "Pattern whose matches are replaced by content (see skill://plurnk/pattern.md)." },
-                content: { type: "string", description: "Literal replacement or file content (empty string deletes the selected range or match)." },
-                metadata: METADATA_SCHEMA,
+                pattern: { type: "string", description: "Pattern whose matches are replaced by content (//a/@id selects `id=\"old\"`; $.a selects `\"old\"` including quotes; see skill://plurnk/pattern.md)." },
+                content: { type: "string", description: "Literal replacement source text or file content (replaces the entire match verbatim without adding quotes; empty string deletes)." },
+                headers: HEADERS_SCHEMA,
             },
         },
         details: [
@@ -153,7 +157,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             "",
             "## Examples",
             "",
-            "await plurnk.edit({ path: \"example.md\", range: \"@abcde,@fghij\", content: \"bar\" }); // replace lines 42..43 from READ's <@hash> anchors",
+            "await plurnk.edit({ path: \"example.md\", range: \"@abcde,@fghij\", content: \"bar\" }); // replace lines 42..43 from read's <@hash> anchors",
             "",
             "await plurnk.edit({ path: \"src/**/*.js\", pattern: \"/\\\\bfoo\\\\b/\", content: \"bar\" }); // replace every match (empty content deletes)",
         ].join("\n"),
@@ -167,8 +171,8 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["from", "to"],
             properties: {
-                from: { ...SELECTION_ENDPOINT_SCHEMA, description: "Source path or selection ({ path, range?, pattern?, metadata? })." },
-                to: { ...SELECTION_ENDPOINT_SCHEMA, description: "Destination path or selection ({ path, range?, pattern?, metadata? })." },
+                from: { ...SELECTION_ENDPOINT_SCHEMA, description: "Source path or selection ({ path, range?, pattern?, headers? })." },
+                to: { ...SELECTION_ENDPOINT_SCHEMA, description: "Destination path or selection ({ path, range?, pattern?, headers? })." },
             },
         },
         details: [
@@ -186,8 +190,8 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["from", "to"],
             properties: {
-                from: { ...SELECTION_ENDPOINT_SCHEMA, description: "Source path or selection ({ path, range?, pattern?, metadata? })." },
-                to: { ...SELECTION_ENDPOINT_SCHEMA, description: "Destination path or selection ({ path, range?, pattern?, metadata? })." },
+                from: { ...SELECTION_ENDPOINT_SCHEMA, description: "Source path or selection ({ path, range?, pattern?, headers? })." },
+                to: { ...SELECTION_ENDPOINT_SCHEMA, description: "Destination path or selection ({ path, range?, pattern?, headers? })." },
             },
         },
         details: [
@@ -205,19 +209,20 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["path"],
             properties: {
-                path: { type: "string", minLength: 1, description: "Target entry, stream, child session, or log item path (log item paths nest as `log:///1/2/3/read` for loop/turn/item/OP; globs/extglobs like \"log:///1/[1-7]/*/{read,emission}\" retire in bulk)." },
+                path: { type: "string", minLength: 1, description: "Target entry, stream, child session, or log item path (log item paths nest as `log:///1/2/3/read` for loop/turn/item/op; globs/extglobs like \"log:///1/[1-7]/*/{read,emission}\" retire in bulk)." },
                 range: { type: "string", description: "Optional range to delete." },
                 pattern: { type: "string", description: "Optional pattern to delete." },
                 note: { type: "string", description: "Distillation note that survives in working memory when retiring log items." },
-                metadata: METADATA_SCHEMA,
+                remote: { type: "boolean", description: "Issue HTTP DELETE when path is an http(s):// URL." },
+                headers: HEADERS_SCHEMA,
             },
         },
         details: [
-            "Log item paths nest: `log:///1/2/3/read` is `loop/turn/item/OP`.",
+            "Log item paths nest: `log:///1/2/3/read` is `loop/turn/item/op`.",
             "",
             "## Examples",
             "",
-            "await plurnk.kill({ path: \"log:///1/[1-7]/*/{read,emission}\", note: \"example distillation or summarization\" }); // old results, in bulk; note survives as a NOTE",
+            "await plurnk.kill({ path: \"log:///1/[1-7]/*/{read,emission}\", note: \"example distillation or summarization\" }); // old results, in bulk; note survives as a note",
         ].join("\n"),
     },
     {
@@ -231,7 +236,6 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             properties: {
                 target: { type: "string", description: "Child session URI (e.g. \"session://child\" or \"session://child?persona=name&effort=high\")." },
                 prompt: { type: "string", description: "Complete task prompt for the child session." },
-                metadata: METADATA_SCHEMA,
             },
         },
         details: [
@@ -251,7 +255,6 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             properties: {
                 target: { type: "string", description: "Child session URI (e.g. \"session://child\" or \"session://child?persona=name&effort=high\")." },
                 prompt: { type: "string", description: "Task prompt for the forked child session." },
-                metadata: METADATA_SCHEMA,
             },
         },
         details: [
@@ -271,7 +274,6 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             properties: {
                 target: { type: "string", description: "Optional resource URI whose content is included with the prompt." },
                 prompt: { type: "string", description: "Self-contained prompt for the toolless model call." },
-                metadata: METADATA_SCHEMA,
             },
         },
         details: [
@@ -311,7 +313,8 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
                 target: { type: "string", description: "Optional recipient URI (e.g. \"session://child\" or \"message:///...\"); omit to send a continuing progress update." },
                 range: { type: "string", description: "Optional range when addressing a stream or resource." },
                 text: { type: "string", description: "Message text to deliver." },
-                metadata: METADATA_SCHEMA,
+                attachments: ATTACHMENTS_SCHEMA,
+                headers: HEADERS_SCHEMA,
             },
         },
         details: [
@@ -323,7 +326,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "done",
         target: "done",
-        summary: "Deliver the final response to resolve an Open Message after other Open Work and tools are resolved.",
+        summary: "Deliver the final response to resolve an Open Message.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
@@ -331,7 +334,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             properties: {
                 target: { type: "string", description: "Optional message URI (\"message:///...\") to resolve; omit to resolve the oldest Open Message." },
                 text: { type: "string", description: "Final deliverable response." },
-                metadata: METADATA_SCHEMA,
+                attachments: ATTACHMENTS_SCHEMA,
             },
         },
         details: [
@@ -351,7 +354,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             properties: {
                 target: { type: "string", description: "Optional message URI (\"message:///...\") to fail; omit to fail the oldest Open Message." },
                 text: { type: "string", description: "Explanation of why the Open Message cannot be fulfilled." },
-                metadata: METADATA_SCHEMA,
+                attachments: ATTACHMENTS_SCHEMA,
             },
         },
         details: [
@@ -422,8 +425,6 @@ const executionOperationTools = (
                     ],
                     description: "Script arguments.",
                 },
-                range: { type: "string", description: "Optional output range." },
-                metadata: METADATA_SCHEMA,
             },
         };
         const summary = typeof entry.summary === "string"

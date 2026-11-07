@@ -138,7 +138,7 @@ export default class EnvScheme implements RuntimeSchemeFacet {
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult> {
         const statement = statements[0];
         if (statement === undefined || statements.length > 1) {
-            return Results.failure(OWNER, "value-whole", 400, "One EDIT sets one value, whole.", {}, {
+            return Results.failure(OWNER, "value-whole", 400, "One edit sets one value, whole.", {}, {
                 recovery: "await plurnk.edit({ path: \"env:///NAME\", content: \"...\" }); sets one value per statement.", retryable: false,
             });
         }

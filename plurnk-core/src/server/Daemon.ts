@@ -870,11 +870,15 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     get secretFile(): string | null { return this.#secretMinted ? this.#secretPath : null; }
     configurationNotices(workspaceId?: number): readonly Notice[] {
         if (workspaceId === undefined) return this.#configuration.notices();
-        return [
+        const combined = new Map<string, Notice>();
+        for (const notice of [
             ...this.#configuration.notices(),
             ...this.#functionality.configurationNotices(workspaceId),
             ...this.#plugins.notices(workspaceId),
-        ];
+        ]) {
+            combined.set(JSON.stringify(notice), notice);
+        }
+        return [...combined.values()];
     }
     get provider(): Provider | null { return this.#provider; }
     get schemes(): SchemeRegistry { return this.#schemes; }

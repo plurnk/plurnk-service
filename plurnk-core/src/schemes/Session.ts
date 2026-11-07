@@ -60,7 +60,7 @@ export default class Session extends CoreSchemeAdapterBase {
         if (access === "write" && pathname === "") return Results.failure(
             "scheme:session", "session-entity-not-editable", 400,
             "A session entity is not an editable entry.", {},
-            { recovery: "EDIT requires an entry path, such as workspace:///example.md.", retryable: false },
+            { recovery: "edit requires an entry path, such as workspace:///example.md.", retryable: false },
         );
         if (authority === "" && pathname !== "") return Results.failure(
             "scheme:session", "named-session-required", 400,
@@ -84,16 +84,6 @@ export default class Session extends CoreSchemeAdapterBase {
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult> {
-        if (request.metadata !== null) {
-            return Results.failure(
-                "scheme:session",
-                "metadata-unsupported",
-                400,
-                "Session resource reads do not accept the [metadata] modifier.",
-                {},
-                { retryable: false },
-            );
-        }
         if (request.target.kind !== "url" || request.target.pathname !== "") {
             return { status: 200 };
         }
@@ -103,7 +93,7 @@ export default class Session extends CoreSchemeAdapterBase {
                 "scheme:session",
                 "named-session-required",
                 400,
-                "A session deliverable READ requires a named session.",
+                "A session deliverable read requires a named session.",
                 {},
                 {
                     recovery: "Address the session by name.",
@@ -168,9 +158,9 @@ export default class Session extends CoreSchemeAdapterBase {
             return failure(
                 "edit-empty",
                 400,
-                "EDIT requires at least one statement.",
+                "edit requires at least one statement.",
                 {
-                    recovery: "Add an EDIT statement or omit the operation.",
+                    recovery: "Add an edit statement or omit the operation.",
                     retryable: false,
                 },
             );
@@ -181,7 +171,7 @@ export default class Session extends CoreSchemeAdapterBase {
             return failure(
                 "session-target-required",
                 400,
-                "EDIT requires a session:// target.",
+                "edit requires a session:// target.",
                 {
                     recovery: "Provide the session target.",
                     retryable: false,
@@ -196,9 +186,9 @@ export default class Session extends CoreSchemeAdapterBase {
             return failure(
                 "edit-batch-mismatch",
                 400,
-                "One EDIT batch cannot span multiple session spaces.",
+                "One edit batch cannot span multiple session spaces.",
                 {
-                    recovery: "Use a separate EDIT batch for each session space.",
+                    recovery: "Use a separate edit batch for each session space.",
                     retryable: false,
                 },
             );
@@ -224,7 +214,7 @@ export default class Session extends CoreSchemeAdapterBase {
                 "scheme:session",
                 "session-target-required",
                 400,
-                "KILL requires a session target.",
+                "kill requires a session target.",
                 {},
                 {
                     recovery: "Provide the session target.",
@@ -242,7 +232,7 @@ export default class Session extends CoreSchemeAdapterBase {
         const core = this.coreContext(ctx);
         const authority = Session.#authority(statement.target);
         if (authority === null) {
-            return Results.failure("scheme:session", "session-target-required", 400, "FIND requires a session:// target.", {
+            return Results.failure("scheme:session", "session-target-required", 400, "find requires a session:// target.", {
                 content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
                 matchingPathCount: 0, matchLocationCount: 0,
             }, {
@@ -251,7 +241,7 @@ export default class Session extends CoreSchemeAdapterBase {
             });
         }
         if (authority === "") {
-            return Results.failure("scheme:session", "named-session-required", 400, "A session FIND requires a named session.", {
+            return Results.failure("scheme:session", "named-session-required", 400, "A session find requires a named session.", {
                 content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
                 matchingPathCount: 0, matchLocationCount: 0,
             }, {
@@ -299,7 +289,7 @@ export default class Session extends CoreSchemeAdapterBase {
                 "scheme:session",
                 "session-target-required",
                 400,
-                "Directed session SEND requires a session target.",
+                "Directed session send requires a session target.",
                 {},
                 {
                     recovery: "Provide the session target.",
@@ -315,7 +305,7 @@ export default class Session extends CoreSchemeAdapterBase {
         if (!address.ok) return address.result;
         // {§op-shapes} — a session SEND takes no scope.
         if (statement.lineMarker !== null) {
-            return Results.failure("scheme:session", "scope-unsupported", 400, "A session SEND takes no scope.", {}, { retryable: false });
+            return Results.failure("scheme:session", "scope-unsupported", 400, "A session send takes no scope.", {}, { retryable: false });
         }
         const controlAuthority = address.authority;
         if (core.injectSession === undefined) throw new Error("session.send: injectSession capability absent");
@@ -336,12 +326,12 @@ export default class Session extends CoreSchemeAdapterBase {
         const sessionId = row.id;
         const body = statement.body;
         const prompt = body === null ? "" : typeof body === "string" ? body : body.raw;
-        const captured = await MessageAttachments.capture(statement.metadata, core.resources!, "scheme:session");
+        const captured = await MessageAttachments.capture(statement.attachments, core.resources!, "scheme:session");
         if ("failure" in captured) return captured.failure;
         if (prompt.trim() === "" && captured.attachments.length === 0) {
             return Results.failure(
                 "scheme:session", "message-empty", 422,
-                "SEND has no message text or attachments.", {}, { retryable: false },
+                "send has no message text or attachments.", {}, { retryable: false },
             );
         }
         // {§session-ownership} Messages preserve the receiving session’s owner.

@@ -10,7 +10,7 @@ describe("read-projector.scope", () => {
 const project = (marks: LineMarker["marks"], content: string, binary = false) => ReadProjector.project({
     statement: {
         op: "read", target: parsePath(binary ? "fixture:///entry#bytes" : "fixture:///entry"),
-        matcher: null, body: null, metadata: null, lineMarker: { marks }, aside: null,
+        matcher: null, body: null, headers: null, lineMarker: { marks }, aside: null,
         position: { line: 1, column: 1 },
     },
     manifest: {
@@ -69,7 +69,7 @@ for (const mimetype of ["image/png", "application/pdf", "audio/wav"]) {
         let reads = 0;
         await assert.rejects(ReadProjector.project({
             statement: {
-                op: "read", target: parsePath("fixture:///entry"), matcher: null, body: null, metadata: null,
+                op: "read", target: parsePath("fixture:///entry"), matcher: null, body: null, headers: null,
                 lineMarker: null, aside: null, position: { line: 1, column: 1 },
             },
             manifest: { name: "fixture", category: "data", channels: {}, defaultChannel: "body", writableBy: [], volatile: false, modelVisible: true },
