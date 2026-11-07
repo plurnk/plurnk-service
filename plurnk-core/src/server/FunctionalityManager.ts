@@ -16,10 +16,14 @@ import type {
 } from "@plurnk/plurnk-execs";
 import type { FunctionalityDiscovery } from "@plurnk/plurnk-modules";
 import { OutputScheme, type SchemeManifest } from "@plurnk/plurnk-schemes";
-import { Problems, isRecord, type JsonSchema } from "@plurnk/plurnk-contracts";
+import { Problems, isRecord, type CapabilityPolicy, type JsonSchema } from "@plurnk/plurnk-contracts";
+import type CapabilityResolver from "../core/CapabilityResolver.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
+import type ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import type { RuntimeRegistryRegistration } from "../core/ExecutorRegistry.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
+import ToolResources, { type ToolResource } from "../core/ToolResources.ts";
+import { coreOperationTools } from "../schemes/CoreOperationTools.ts";
 import QuestionTool, { questionRegisteredTool } from "../schemes/QuestionTool.ts";
 import type Functionality from "./Functionality.ts";
 import type { FunctionalityConfigurationFailure } from "./Functionality.ts";
@@ -136,6 +140,49 @@ export default class FunctionalityManager extends BaseExecutor {
                 detail: "in-process",
             },
         }];
+    }
+
+    static catalogTools(
+        capabilities: CapabilityResolver,
+        workspaceId: number,
+        policies: readonly CapabilityPolicy[],
+        executors: ExecutorRegistry | undefined,
+    ): readonly RuntimeRegisteredTool[] {
+        const coreTools = coreOperationTools(capabilities, workspaceId, policies, executors);
+        const plurnkRegistry = executors?.availableRuntimes(workspaceId).includes(plurnkRuntimeDecl.name) === true
+            ? executors.toolRegistry(plurnkRuntimeDecl.name, workspaceId)
+            : null;
+        const runtimeTools = plurnkRegistry === null
+            ? []
+            : plurnkRegistry.tools.filter((tool) =>
+                capabilities.allowsRuntimeAcross(plurnkRuntimeDecl.name, tool.target, workspaceId, policies));
+        return [...coreTools, ...runtimeTools];
+    }
+
+    static renderPlurnkResources(
+        capabilities: CapabilityResolver,
+        workspaceId: number,
+        policies: readonly CapabilityPolicy[],
+        executors: ExecutorRegistry | undefined,
+    ): readonly ToolResource[] {
+        const tools = FunctionalityManager.catalogTools(capabilities, workspaceId, policies, executors);
+        if (tools.length === 0) return [];
+        const entry = executors?.availableRuntimes(workspaceId).includes(plurnkRuntimeDecl.name) === true
+            ? executors.entry(plurnkRuntimeDecl.name, workspaceId)
+            : undefined;
+        const resourcesPath = entry?.resourcesPath ?? plurnkRuntimeDecl.resourcesPath;
+        return ToolResources.render({
+            runtime: plurnkRuntimeDecl.name,
+            summary: entry?.summary ?? plurnkRuntimeDecl.summary,
+            invocation: entry?.invocation ?? {
+                body: { role: "JSON arguments", required: false, mimetype: "application/json" },
+                target: { role: "Plurnk tool", required: true, kind: "literal" },
+                example: { target: tools[0].target },
+            },
+            details: entry?.details ?? plurnkRuntimeDecl.details ?? "",
+            registry: { tools },
+            ...(resourcesPath === undefined ? {} : { resourcesPath }),
+        });
     }
 
     // {§functionality-model-projection} — the published manager closes over the coordinator; Core binds

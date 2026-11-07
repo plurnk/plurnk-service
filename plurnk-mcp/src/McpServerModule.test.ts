@@ -264,8 +264,23 @@ const createHarness = async (t: TestContext, options: FakeHarnessOptions = {}) =
             cancelledLoops.push(req);
             return { cancelled: true };
         },
-        readLog: async () => [...(options.logRows ?? [])],
+        readLog: async (req: { loopSeq?: number; turnSeq?: number; sequence?: number; sessionId?: number }) => {
+            const rows = [...(options.logRows ?? [])];
+            return rows.filter((row) => {
+                if (req.sessionId !== undefined && row.session_id !== undefined && row.session_id !== req.sessionId) {
+                    return false;
+                }
+                if (req.loopSeq !== undefined && row.loop_seq !== req.loopSeq) return false;
+                if (req.turnSeq !== undefined && row.turn_seq !== req.turnSeq) return false;
+                if (req.sequence !== undefined && row.sequence !== req.sequence) return false;
+                return true;
+            });
+        },
         readStreams: async () => [...(options.openStreams ?? [])],
+        listSessionLoops: async () => [{ id: 1, loopSeq: 1, terminatedAt: null }],
+        readInbox: async () => [],
+        pendingProposals: async () => [],
+        pendingClientInteractions: async () => [],
     } as unknown as ApplicationPort;
 
     const mod = McpServerModule.create();
@@ -350,7 +365,22 @@ test("{§mcp-http-server} Streamable HTTP client lists tools, reads resources, a
     const { resources } = await clientDefault.listResources();
     assert.deepEqual(
         resources.map((r) => r.uri),
-        ["mcp:///plurnk.md", "mcp:///plurnk.json"],
+        [
+            "mcp:///plurnk.md",
+            "mcp:///plurnk.json",
+            "session:///status.json",
+            "log:///recent.json",
+        ],
+    );
+
+    const { resourceTemplates } = await clientDefault.listResourceTemplates();
+    assert.deepEqual(
+        resourceTemplates.map((rt) => rt.uriTemplate),
+        [
+            "log:///{loopSeq}/{turnSeq}/{sequence}/{op}",
+            "mcp:///plurnk/{tool}.json",
+            "workspace:///{+path}",
+        ],
     );
 
     const mdRead = await clientDefault.readResource({ uri: "mcp:///plurnk.md" });
@@ -358,6 +388,20 @@ test("{§mcp-http-server} Streamable HTTP client lists tools, reads resources, a
 
     const jsonRead = await clientDefault.readResource({ uri: "mcp:///plurnk.json" });
     assert.ok(JSON.parse((jsonRead.contents[0] as { text: string }).text).tools.length === 4);
+
+    const statusRead = await clientDefault.readResource({ uri: "session:///status.json" });
+    const statusJson = JSON.parse((statusRead.contents[0] as { text: string }).text) as {
+        workspaceId: number;
+        sessionId: number;
+        isModelSession: boolean;
+        session: { name: string };
+        loops: Array<{ id: number }>;
+    };
+    assert.equal(statusJson.workspaceId, 1);
+    assert.equal(statusJson.sessionId, 2);
+    assert.equal(statusJson.isModelSession, true);
+    assert.equal(statusJson.session.name, "user");
+    assert.equal(statusJson.loops.length, 1);
 
     const noteCall = await clientDefault.callTool({ name: "note", arguments: { text: "hello world" } });
     assert.equal(noteCall.isError, undefined);
@@ -595,4 +639,104 @@ test("{§mcp-http-server} execution verbs settle via stream/concluded, support d
         (failedRes.content[0] as { text: string }).text,
         "Invalid shell command.\nRecovery: Provide a non-empty script.",
     );
+});
+
+test("{§mcp-http-server} log:///recent.json, resource templates (log:///, mcp:///plurnk/, workspace:///), and _meta.logCoordinate expose durable log and workspace inspection", async (t) => {
+    const { baseUrl } = await createHarness(t, {
+        logRows: [
+            {
+                id: 101,
+                session_id: 2,
+                session_name: "user",
+                loop_id: 1,
+                loop_seq: 1,
+                turn_id: 1,
+                turn_seq: 1,
+                sequence: 1,
+                op: "READ",
+                tx: "src/index.ts",
+                rx: "export const ok = true;\n",
+                status_rx: 200,
+                state: "resolved",
+            },
+            {
+                id: 102,
+                session_id: 1,
+                session_name: "_plurnk",
+                loop_id: 2,
+                loop_seq: 2,
+                turn_seq: 1,
+                sequence: 1,
+                op: "NOTE",
+                tx: null,
+                rx: "saved note",
+                status_rx: 200,
+                state: "resolved",
+            },
+        ],
+        entries: {
+            "mcp:///plurnk/read.json": {
+                entryId: null,
+                target: "mcp:///plurnk/read.json",
+                channels: {
+                    body: makeChannel('{"name":"read","inputSchema":{"type":"object"}}', "static", "application/json"),
+                },
+            },
+            "workspace:///src/index.ts": {
+                entryId: null,
+                target: "workspace:///src/index.ts",
+                channels: {
+                    body: makeChannel("export const ok = true;\n", "static", "text/plain"),
+                },
+            },
+        },
+        onDispatch: async (req) => {
+            req.onLoop?.({ sessionId: 1, loopId: 2 });
+            return [{ status: 200, content: "saved note" }];
+        },
+    });
+
+    const client = new Client({ name: "resource-client", version: "1.0.0" });
+    await client.connect(new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`)));
+    t.after(() => client.close());
+
+    // 1. `log:///recent.json` stamps canonical `log:///...` coordinates on both session and runtime rows
+    const recentRead = await client.readResource({ uri: "log:///recent.json" });
+    const recentJson = JSON.parse((recentRead.contents[0] as { text: string }).text) as {
+        entries: Array<{ coordinate: string; op: string }>;
+        runtimeEntries: Array<{ coordinate: string; op: string }>;
+    };
+    assert.equal(recentJson.entries.length, 1);
+    assert.equal(recentJson.entries[0].coordinate, "log:///1/1/1/read");
+    assert.equal(recentJson.runtimeEntries.length, 1);
+    assert.equal(recentJson.runtimeEntries[0].coordinate, "log:///2/1/1/note");
+
+    // 2. `log:///{loopSeq}/{turnSeq}/{sequence}/{op}` resolves session and fallback runtime rows by coordinate
+    const logItemRead = await client.readResource({ uri: "log:///1/1/1/read" });
+    const logItem = JSON.parse((logItemRead.contents[0] as { text: string }).text) as {
+        coordinate: string;
+        rx: string;
+    };
+    assert.equal(logItem.coordinate, "log:///1/1/1/read");
+    assert.equal(logItem.rx, "export const ok = true;\n");
+
+    const runtimeItemRead = await client.readResource({ uri: "log:///2/1/1/note" });
+    const runtimeItem = JSON.parse((runtimeItemRead.contents[0] as { text: string }).text) as {
+        coordinate: string;
+        rx: string;
+    };
+    assert.equal(runtimeItem.coordinate, "log:///2/1/1/note");
+    assert.equal(runtimeItem.rx, "saved note");
+
+    // 3. `mcp:///plurnk/{tool}.json` and `workspace:///{+path}` templates
+    const schemaRead = await client.readResource({ uri: "mcp:///plurnk/read.json" });
+    assert.equal(JSON.parse((schemaRead.contents[0] as { text: string }).text).name, "read");
+
+    const wsRead = await client.readResource({ uri: "workspace:///src/index.ts" });
+    assert.equal((wsRead.contents[0] as { text: string }).text, "export const ok = true;\n");
+
+    // 4. `tools/call` stamps `_meta.logCoordinate` when a durable log row is recorded
+    const noteRes = await client.callTool({ name: "note", arguments: { text: "saved note" } });
+    assert.equal(noteRes.isError, undefined);
+    assert.equal((noteRes._meta as { logCoordinate?: string } | undefined)?.logCoordinate, "log:///2/1/1/note");
 });

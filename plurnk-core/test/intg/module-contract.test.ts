@@ -100,11 +100,11 @@ before(async () => {
 after(async () => { await rm(root, { recursive: true, force: true }); });
 
 const environment = (t: TestContext, values: Readonly<Record<string, string | undefined>>): void => {
-    const keys = ["PLURNK_SERVICE_ROOTS", "PLURNK_EXTENSIONS_TRUSTED_ONLY", "ACME_PACKAGE_ROUTE", "ACME_BUNDLE_ROUTE"];
+    const keys = ["PLURNK_SERVICE_ROOTS", "PLURNK_EXTENSIONS_TRUSTED_ONLY", "PLURNK_WEB_ENABLED", "ACME_PACKAGE_ROUTE", "ACME_BUNDLE_ROUTE"];
     const prior = new Map(keys.map((key) => [key, process.env[key]]));
     t.after(() => { for (const [key, value] of prior) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
     for (const key of keys) {
-        const value = { PLURNK_SERVICE_ROOTS: "global", PLURNK_EXTENSIONS_TRUSTED_ONLY: "0", ...values }[key];
+        const value = { PLURNK_SERVICE_ROOTS: "global", PLURNK_EXTENSIONS_TRUSTED_ONLY: "0", PLURNK_WEB_ENABLED: "0", ...values }[key];
         if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
 };
@@ -148,7 +148,7 @@ test("{§module-contract} a discovered module's mount conflict fails boot naming
 });
 
 test("{§module-contract} a discovered module serves its own route without a root owner", async (t) => {
-    environment(t, { ACME_PACKAGE_ROUTE: "/package" });
+    environment(t, { ACME_PACKAGE_ROUTE: "/package", PLURNK_WEB_ENABLED: "0" });
     await writeFile(trace, "");
     const db = await openMigrated();
     const http = await bindListener();
@@ -161,8 +161,15 @@ test("{§module-contract} a discovered module serves its own route without a roo
     assert.equal((await fetch(`${origin}/`)).status, 404);
 });
 
+test("{§module-contract} {§bundled-set} @plurnk/plurnk-web is discovered from node_modules and serves the root mount when PLURNK_WEB_ENABLED=1", async (t) => {
+    environment(t, { PLURNK_WEB_ENABLED: "1" });
+    const { daemon, get } = await boot(t);
+    await daemon.start();
+    assert.match(await get("/"), /<!doctype html>/iu);
+});
+
 test("{§module-contract} a daemon without a listener leaves out every module that declares mounts, and says so", async (t) => {
-    environment(t, { ACME_PACKAGE_ROUTE: "/package" });
+    environment(t, { ACME_PACKAGE_ROUTE: "/package", PLURNK_WEB_ENABLED: "1" });
     await writeFile(trace, "");
     const db = await openMigrated();
     const daemon = new Daemon({ db, hostPaths, nodeModulesPath: nodeModules, provider: new Mock({ contextWindow: 32_768, responses: [] }) });
@@ -171,7 +178,7 @@ test("{§module-contract} a daemon without a listener leaves out every module th
     assert.equal(await readFile(trace, "utf8"), "", "a module left out never sets up");
     assert.deepEqual(
         daemon.configurationNotices().filter(({ kind }) => kind === "module_left_out").map(({ owner, level }) => [owner, level]).toSorted(([a], [b]) => String(a).localeCompare(String(b))),
-        [["module:@acme/witness-package", "info"], [`module:${CLIENT_INTERFACE}`, "info"], ["module:@plurnk/plurnk-mcp", "info"]],
+        [["module:@acme/witness-package", "info"], [`module:${CLIENT_INTERFACE}`, "info"], ["module:@plurnk/plurnk-mcp", "info"], ["module:@plurnk/plurnk-web", "info"]],
     );
     assert.ok(daemon.listModuleActions().some(({ name }) => name === "workspace.mcp.list"), "a module without mounts still composes");
 });
@@ -375,11 +382,13 @@ test("{§module-lifecycle} the documented directory plugin loads its floor, publ
     const trace = join(root, "lifecycle.txt");
     const priorRoots = process.env.PLURNK_SERVICE_ROOTS;
     const priorKnob = process.env.PLURNK_NATIVE_FIXTURE;
+    const priorWebEnabled = process.env.PLURNK_WEB_ENABLED;
     process.env.PLURNK_SERVICE_ROOTS = "global";
     delete process.env.PLURNK_NATIVE_FIXTURE;
     t.after(async () => {
         if (priorRoots === undefined) delete process.env.PLURNK_SERVICE_ROOTS; else process.env.PLURNK_SERVICE_ROOTS = priorRoots;
         if (priorKnob === undefined) delete process.env.PLURNK_NATIVE_FIXTURE; else process.env.PLURNK_NATIVE_FIXTURE = priorKnob;
+        if (priorWebEnabled === undefined) delete process.env.PLURNK_WEB_ENABLED; else process.env.PLURNK_WEB_ENABLED = priorWebEnabled;
         await rm(root, { recursive: true, force: true });
     });
     await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
@@ -1585,6 +1594,7 @@ const fixture = async (t: TestContext, client: Parameters<Daemon["registerModule
     // {§module-lifecycle} — registering its package's name holds the client interface out of
     // discovery, so each test composes its own client interface.
     daemon.registerModule(client, "@plurnk/plurnk-acp");
+    daemon.registerModule({}, "@plurnk/plurnk-web");
     t.after(async () => {
         await daemon.stop();
         await http.close();

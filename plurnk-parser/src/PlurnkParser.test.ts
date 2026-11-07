@@ -384,4 +384,37 @@ describe("PlurnkParser Code Mode", () => {
         const echoedParsed = PlurnkParser.parse(echoedResult);
         assert.equal(echoedParsed.items.filter((item) => item.kind === "statement").length, 1);
     });
+
+    test("{§parser-build} {§op-shapes}: PlurnkParser.lowerToolCall lowers structured plurnk and MCP calls directly without source re-parsing", () => {
+        const readResult = PlurnkParser.lowerToolCall("plurnk", "read", { path: "src/index.ts", range: "1,10" });
+        assert.equal(readResult.items.length, 1);
+        assert.equal(readResult.items[0]?.kind, "statement");
+        assert.equal((readResult.items[0] as { kind: "statement"; statement: ReadStatement }).statement.op, "read");
+        assert.equal((readResult.items[0] as { kind: "statement"; statement: ReadStatement }).statement.target?.raw, "src/index.ts");
+
+        const shResult = PlurnkParser.lowerToolCall("plurnk", "sh", { command: "echo hi", cwd: "packages/core" }, { executors: ["sh", "plurnk"] });
+        assert.equal(shResult.items.length, 1);
+        assert.equal(shResult.items[0]?.kind, "statement");
+        const shStmt = (shResult.items[0] as { kind: "statement"; statement: ExecStatement }).statement;
+        assert.equal(shStmt.runtime, "sh");
+        assert.equal(shStmt.body, "echo hi");
+        assert.equal(shStmt.target?.raw, "packages/core");
+
+        const envResult = PlurnkParser.lowerToolCall("plurnk", "env", { action: "list" }, { executors: ["plurnk"] });
+        assert.equal(envResult.items.length, 1);
+        const envStmt = (envResult.items[0] as { kind: "statement"; statement: ExecStatement }).statement;
+        assert.equal(envStmt.runtime, "plurnk");
+        assert.equal(envStmt.target?.raw, "env");
+        assert.equal(envStmt.body, '{"action":"list"}');
+
+        const mcpResult = PlurnkParser.lowerToolCall("gitea", "issue_read", { owner: "plurnk", index: 1419 }, { executors: ["gitea"] });
+        assert.equal(mcpResult.items.length, 1);
+        const mcpStmt = (mcpResult.items[0] as { kind: "statement"; statement: ExecStatement }).statement;
+        assert.equal(mcpStmt.runtime, "gitea");
+        assert.equal(mcpStmt.target?.raw, "issue_read");
+
+        const errResult = PlurnkParser.lowerToolCall("plurnk", "read", {});
+        assert.equal(errResult.items.length, 1);
+        assert.equal(errResult.items[0]?.kind, "error");
+    });
 });

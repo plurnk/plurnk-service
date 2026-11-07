@@ -773,7 +773,7 @@ Discovery and pre-import trust follow {§extension-discovery}. Core arbitrates e
 
 ## §bundled-set Bundled Set
 
-`@plurnk/plurnk-service` is the sole manifest owner of the default extension set (`@plurnk/plurnk-schemes-http`, default `@plurnk/plurnk-mimetypes-*` format/image/pdf handlers and non-optional tree-sitter grammars {§mimetype-binary-input}, {§mimetype-grammar-packages}, and `@plurnk/plurnk-execs-common` {§executor-policy}), while frameworks remain extension-free and opt-in packages (`@plurnk/plurnk-tavily-plugin`, `tokenizers`) stay outside the default dependency graph. The composed service install owns third-party advisory audits at the moderate floor.
+`@plurnk/plurnk-service` is the sole manifest owner of the default extension and module set (`@plurnk/plurnk-web` web client module at `/`, `@plurnk/plurnk-schemes-http`, default `@plurnk/plurnk-mimetypes-*` format/image/pdf handlers and non-optional tree-sitter grammars {§mimetype-binary-input}, {§mimetype-grammar-packages}, and `@plurnk/plurnk-execs-common` {§executor-policy}), while frameworks remain extension-free and opt-in packages (`@plurnk/plurnk-tavily-plugin`, `tokenizers`) stay outside the default dependency graph. The composed service install owns third-party advisory audits at the moderate floor.
 
 ---
 

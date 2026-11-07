@@ -240,9 +240,11 @@ at `/mcp`, `/mcp/<workspace>`, and `/mcp/<workspace>/<session>` ({§mcp-http-ser
 | `/mcp/<workspace>` | Named or numeric workspace (auto-created when named and absent), default session |
 | `/mcp/<workspace>/<session>` | Named or numeric workspace and session (`_plurnk` binds the runtime session) |
 
-External MCP clients receive the unified `plurnk` server tool catalog (`mcp:///plurnk.json`) and
-`mcp:///plurnk.md` / `mcp:///plurnk.json` resources, authenticating with `Authorization: Bearer <token>`
-(`mcp` or `acp` scope) when `PLURNK_AUTH=1`.
+External MCP clients receive the unified `plurnk` server tool catalog (`mcp:///plurnk.json`),
+static resources (`mcp:///plurnk.md`, `mcp:///plurnk.json`, `session:///status.json`, `log:///recent.json`),
+and resource templates (`log:///{loopSeq}/{turnSeq}/{sequence}/{op}`, `mcp:///plurnk/{tool}.json`,
+`workspace:///{+path}`), authenticating with `Authorization: Bearer <token>` (`mcp` or `acp` scope)
+when `PLURNK_AUTH=1`.
 
 ## Verification
 

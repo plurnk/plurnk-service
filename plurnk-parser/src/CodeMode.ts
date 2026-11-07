@@ -1946,15 +1946,9 @@ const attemptVerbOf = (code: string): string => {
     return "plurnk";
 };
 
-export const parseCodeMode = (
-    input: string,
-    options: CodeModeOptions = {},
-    tier: "model" | "statements" = "model",
-): ParseResult => {
+const createCallDispatcher = (options: CodeModeOptions = {}) => {
     const hasExplicitExecutors = options.executors !== undefined;
     const executorSpellings = buildExecutorSpellings(options.executors);
-    const { chunks, unparsedTail } = scanChunks(input, tier, executorSpellings);
-    const items: ParseItem[] = [];
 
     let activePosition: Position = { line: 1, column: 0 };
     let activeDefaultAside: string | null = null;
@@ -2838,6 +2832,98 @@ export const parseCodeMode = (
         );
     };
 
+    const lowerCalls = (
+        produceCalls: () => readonly ParsedCall[],
+        chunkPosition: Position,
+        defaultAside: string | null,
+        attempt: ParseAttempt,
+    ): ParseItem[] => {
+        activePosition = chunkPosition;
+        activeDefaultAside = defaultAside;
+        activeChunkStatements = [];
+        activeChunkAdvisories = [];
+        const items: ParseItem[] = [];
+        try {
+            const calls = produceCalls();
+            for (const call of calls) {
+                dispatchCall(call);
+            }
+            for (const stmt of activeChunkStatements) {
+                items.push({ kind: "statement", statement: stmt });
+            }
+            for (const adv of activeChunkAdvisories) {
+                items.push({ kind: "error", error: adv });
+            }
+        } catch (err) {
+            if (err instanceof PlurnkParseError) {
+                const pos = err.line === 0 && err.column === 0 ? chunkPosition : { line: err.line, column: err.column };
+                const normalized = new PlurnkParseError(
+                    pos.line,
+                    pos.column,
+                    err.source,
+                    err.message,
+                    err.severity,
+                    err.recovery,
+                    err.operationOmitted,
+                );
+                items.push({ kind: "error", error: normalized, attempt });
+            } else {
+                const msg = err instanceof Error ? err.message : String(err);
+                items.push({
+                    kind: "error",
+                    error: new PlurnkParseError(
+                        chunkPosition.line,
+                        chunkPosition.column,
+                        "parser",
+                        `Code Mode syntax error: ${msg}`,
+                        "error",
+                        "Write valid Code Mode calls such as `await plurnk.read({ path: \"file.txt\" });`.",
+                    ),
+                    attempt,
+                });
+            }
+        }
+        return items;
+    };
+
+    return {
+        executorSpellings,
+        lowerCalls,
+    };
+};
+
+export const lowerToolCall = (
+    service: string,
+    tool: string,
+    args?: unknown,
+    options: CodeModeOptions = {},
+): ParseResult => {
+    const dispatcher = createCallDispatcher(options);
+    const position: Position = { line: 1, column: 0 };
+    const callArgs = args === undefined ? [] : [args];
+    const callText = `await ${service}${propAccess(tool)}(${args === undefined ? "" : JSON.stringify(args)});`;
+    const attempt: ParseAttempt = {
+        verb: attemptVerbOf(callText),
+        text: callText,
+    };
+    const items = dispatcher.lowerCalls(
+        () => [{ chain: [service, tool], args: callArgs, position }],
+        position,
+        null,
+        attempt,
+    );
+    return { items };
+};
+
+export const parseCodeMode = (
+    input: string,
+    options: CodeModeOptions = {},
+    tier: "model" | "statements" = "model",
+): ParseResult => {
+    const dispatcher = createCallDispatcher(options);
+    const { chunks, unparsedTail } = scanChunks(input, tier, dispatcher.executorSpellings);
+    const items: ParseItem[] = [];
+
     for (const chunk of chunks) {
         if (chunk.kind === "advisory") {
             items.push({
@@ -2869,56 +2955,16 @@ export const parseCodeMode = (
             continue;
         }
 
-        activePosition = chunk.position;
-        activeDefaultAside = chunk.defaultAside;
-        activeChunkStatements = [];
-        activeChunkAdvisories = [];
-
         const attempt: ParseAttempt = {
             verb: attemptVerbOf(chunk.text),
             text: chunk.text.trim(),
         };
-
-        try {
-            const calls = parseCallStatements(chunk.text, chunk.position);
-            for (const call of calls) {
-                dispatchCall(call);
-            }
-            for (const stmt of activeChunkStatements) {
-                items.push({ kind: "statement", statement: stmt });
-            }
-            for (const adv of activeChunkAdvisories) {
-                items.push({ kind: "error", error: adv });
-            }
-        } catch (err) {
-            if (err instanceof PlurnkParseError) {
-                const pos = err.line === 0 && err.column === 0 ? chunk.position : { line: err.line, column: err.column };
-                const normalized = new PlurnkParseError(
-                    pos.line,
-                    pos.column,
-                    err.source,
-                    err.message,
-                    err.severity,
-                    err.recovery,
-                    err.operationOmitted,
-                );
-                items.push({ kind: "error", error: normalized, attempt });
-            } else {
-                const msg = err instanceof Error ? err.message : String(err);
-                items.push({
-                    kind: "error",
-                    error: new PlurnkParseError(
-                        chunk.position.line,
-                        chunk.position.column,
-                        "parser",
-                        `Code Mode syntax error: ${msg}`,
-                        "error",
-                        "Write valid Code Mode calls such as `await plurnk.read({ path: \"file.txt\" });`.",
-                    ),
-                    attempt,
-                });
-            }
-        }
+        items.push(...dispatcher.lowerCalls(
+            () => parseCallStatements(chunk.text, chunk.position),
+            chunk.position,
+            chunk.defaultAside,
+            attempt,
+        ));
     }
 
     return {

@@ -63,7 +63,7 @@ extensions included in the default installation. The terminal client is a separa
   and text coordinates.
 - `plurnk-parser` owns the Code Mode parser (`PlurnkParser` and `parsePath`) that
   implements that language. Its importers are the service's execution path, `plurnk-acp`
-  (`parseStatements`, for client-authored blocks), `plurnk-mcp` (`parseStatements`, for
+  (`parseStatements`, for client-authored blocks), `plurnk-mcp` (`lowerToolCall`, for
   inbound `/mcp` tool calls) and `plurnk-execs` (`parseStatements` and `propAccess`, for
   runtime invocation and teaching examples); no other package parses the language.
 - `plurnk-auth` owns the OAuth 2.1 authorization server module (`/.well-known/*`,

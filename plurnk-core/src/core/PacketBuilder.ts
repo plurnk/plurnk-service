@@ -9,7 +9,7 @@ import type { GitStatus } from "./git-state.ts";
 import SessionName from "./SessionName.ts";
 import { renderAddress } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
-import { coreOperationTools } from "../schemes/CoreOperationTools.ts";
+import FunctionalityManager, { plurnkRuntimeDecl } from "../server/FunctionalityManager.ts";
 import PlurnkSkill from "../server/PlurnkSkill.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
@@ -434,23 +434,22 @@ export default class PacketBuilder {
             out.push({ scheme: "plurnk", pathname: "/AGENTS.local.md", content: globalLocalAgents });
         }
         const executors = this.#executors();
-        let renderedPlurnk = false;
+        out.push(...FunctionalityManager.renderPlurnkResources(
+            this.#capabilities,
+            workspaceId,
+            policies,
+            executors,
+        ));
         if (executors !== undefined) {
             for (const tag of executors.availableRuntimes(workspaceId)) {
+                if (tag === plurnkRuntimeDecl.name) continue;
                 const entry = executors.entry(tag, workspaceId);
                 if (entry === undefined) continue;
                 const registry = executors.toolRegistry(tag, workspaceId);
                 if (registry === null) continue;
-                if (tag === "plurnk") renderedPlurnk = true;
-                const coreTools = tag === "plurnk"
-                    ? coreOperationTools(this.#capabilities, workspaceId, policies, executors)
-                    : [];
                 const filteredRegistry = {
-                    tools: [
-                        ...coreTools,
-                        ...registry.tools.filter((tool) =>
-                            this.#capabilities.allowsRuntimeAcross(tag, tool.target, workspaceId, policies)),
-                    ],
+                    tools: registry.tools.filter((tool) =>
+                        this.#capabilities.allowsRuntimeAcross(tag, tool.target, workspaceId, policies)),
                 };
                 if (filteredRegistry.tools.length === 0) continue;
                 out.push(...ToolResources.render({
@@ -460,23 +459,6 @@ export default class PacketBuilder {
                     details: entry.details,
                     registry: filteredRegistry,
                     ...(entry.resourcesPath === undefined ? {} : { resourcesPath: entry.resourcesPath }),
-                }));
-            }
-        }
-        if (!renderedPlurnk) {
-            const coreTools = coreOperationTools(this.#capabilities, workspaceId, policies, executors);
-            if (coreTools.length > 0) {
-                out.push(...ToolResources.render({
-                    runtime: "plurnk",
-                    summary: { from: "tools", description: "Core operations, code execution, workspace configuration (env, mcp, members, personas, schedule, skills), and user questions." },
-                    invocation: {
-                        body: { role: "JSON arguments", required: false, mimetype: "application/json" },
-                        target: { role: "Plurnk tool", required: true, kind: "literal" },
-                        example: { target: coreTools[0].target },
-                    },
-                    details: "",
-                    registry: { tools: [...coreTools] },
-                    resourcesPath: "/tools",
                 }));
             }
         }

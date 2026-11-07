@@ -71,6 +71,7 @@ database. Existing output and overlapping input/output paths are refused.
 - `@plurnk/plurnk-execs` — executable capability contract.
 - `@plurnk/plurnk-hooks` — selected lifecycle events delivered to exact commands.
 - `@plurnk/plurnk-otel` — the OpenTelemetry trace and metric providers `OTEL_*` selects.
+- `@plurnk/plurnk-web` — the included browser web client mounted at `/` when `PLURNK_WEB_ENABLED=1`.
 
 ## Observability
 

@@ -8,6 +8,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
     McpServer,
+    ResourceTemplate,
     createMcpHandler,
     fromJsonSchema,
     type JsonSchemaType,
@@ -29,12 +30,25 @@ import type { DaemonModule } from "@plurnk/plurnk-modules";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 
 const MCP_OWNER_ACTOR = "mcp:///owner";
-const propAccess = (name: string): string =>
-    /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(name) ? `.${name}` : `[${JSON.stringify(name)}]`;
+
+const logCoordinateOf = (row: Readonly<Record<string, unknown>> | undefined): string | null => {
+    if (
+        row === undefined ||
+        typeof row.loop_seq !== "number" ||
+        typeof row.turn_seq !== "number" ||
+        typeof row.sequence !== "number" ||
+        typeof row.op !== "string" ||
+        row.op.length === 0
+    ) {
+        return null;
+    }
+    return `log:///${row.loop_seq}/${row.turn_seq}/${row.sequence}/${row.op.toLowerCase()}`;
+};
 
 interface McpRouteTarget {
     readonly workspaceId: number;
     readonly sessionId: number;
+    readonly runtimeSessionId: number;
     readonly isModelSession: boolean;
 }
 
@@ -502,6 +516,7 @@ export default class McpServerModule implements DaemonModule<never> {
                 return {
                     workspaceId,
                     sessionId: existing.id,
+                    runtimeSessionId,
                     isModelSession: existing.origin === "model",
                 };
             }
@@ -509,6 +524,7 @@ export default class McpServerModule implements DaemonModule<never> {
                 return {
                     workspaceId,
                     sessionId: runtimeSessionId,
+                    runtimeSessionId,
                     isModelSession: false,
                 };
             }
@@ -517,6 +533,7 @@ export default class McpServerModule implements DaemonModule<never> {
                 return {
                     workspaceId,
                     sessionId: existing.id,
+                    runtimeSessionId,
                     isModelSession: existing.origin === "model",
                 };
             }
@@ -524,6 +541,7 @@ export default class McpServerModule implements DaemonModule<never> {
             return {
                 workspaceId,
                 sessionId: created.sessionId,
+                runtimeSessionId,
                 isModelSession: true,
             };
         }
@@ -533,6 +551,7 @@ export default class McpServerModule implements DaemonModule<never> {
             return {
                 workspaceId,
                 sessionId: userSession.id,
+                runtimeSessionId,
                 isModelSession: userSession.origin === "model",
             };
         }
@@ -542,6 +561,7 @@ export default class McpServerModule implements DaemonModule<never> {
             return {
                 workspaceId,
                 sessionId: firstModelSession.id,
+                runtimeSessionId,
                 isModelSession: true,
             };
         }
@@ -549,6 +569,7 @@ export default class McpServerModule implements DaemonModule<never> {
         return {
             workspaceId,
             sessionId: created.sessionId,
+            runtimeSessionId,
             isModelSession: true,
         };
     }
@@ -558,7 +579,7 @@ export default class McpServerModule implements DaemonModule<never> {
         if (target === undefined) {
             throw new Error("plurnk-mcp: missing request target context");
         }
-        const { workspaceId, sessionId } = target;
+        const { workspaceId, sessionId, runtimeSessionId, isModelSession } = target;
         const server = new McpServer({
             name: "plurnk",
             version: "1.0.0",
@@ -653,6 +674,209 @@ export default class McpServerModule implements DaemonModule<never> {
             },
         );
 
+        server.registerResource(
+            "session-status",
+            "session:///status.json",
+            {
+                title: "Plurnk Session Status",
+                description: "Live workspace, session, loops, inbox, open streams, pending proposals, and pending interactions.",
+                mimeType: "application/json",
+            },
+            async (uri) => {
+                const [session, loops, inbox, openStreams, pendingProposals, pendingInteractions] = await Promise.all([
+                    this.#seam.readSession({ workspaceId, identity: { id: sessionId } }),
+                    typeof this.#seam.listSessionLoops === "function"
+                        ? this.#seam.listSessionLoops({ workspaceId, sessionId })
+                        : Promise.resolve([]),
+                    typeof this.#seam.readInbox === "function"
+                        ? this.#seam.readInbox({ workspaceId, sessionId })
+                        : Promise.resolve([]),
+                    typeof this.#seam.readStreams === "function"
+                        ? this.#seam.readStreams({ workspaceId, sessionId })
+                        : Promise.resolve([]),
+                    typeof this.#seam.pendingProposals === "function"
+                        ? this.#seam.pendingProposals(workspaceId)
+                        : Promise.resolve([]),
+                    typeof this.#seam.pendingClientInteractions === "function"
+                        ? this.#seam.pendingClientInteractions(workspaceId)
+                        : Promise.resolve([]),
+                ]);
+                return {
+                    contents: [
+                        {
+                            uri: uri.href,
+                            mimeType: "application/json",
+                            text: JSON.stringify(
+                                {
+                                    workspaceId,
+                                    sessionId,
+                                    isModelSession,
+                                    session,
+                                    loops,
+                                    inbox,
+                                    openStreams,
+                                    pendingProposals,
+                                    pendingInteractions,
+                                },
+                                null,
+                                2,
+                            ),
+                        },
+                    ],
+                };
+            },
+        );
+
+        server.registerResource(
+            "log-recent",
+            "log:///recent.json",
+            {
+                title: "Plurnk Recent Log Entries",
+                description: "Recent durable log entries (with canonical log:/// coordinates) for the active session and runtime.",
+                mimeType: "application/json",
+            },
+            async (uri) => {
+                const stampEntries = (rows: ReadonlyArray<Readonly<Record<string, unknown>>>) =>
+                    rows.map((row) => ({
+                        ...row,
+                        coordinate: logCoordinateOf(row),
+                    }));
+                const [sessionRows, runtimeRows] = await Promise.all([
+                    this.#seam.readLog({ workspaceId, sessionId, limit: 50 }),
+                    runtimeSessionId !== sessionId
+                        ? this.#seam.readLog({ workspaceId, sessionId: runtimeSessionId, limit: 50 })
+                        : Promise.resolve([]),
+                ]);
+                return {
+                    contents: [
+                        {
+                            uri: uri.href,
+                            mimeType: "application/json",
+                            text: JSON.stringify(
+                                {
+                                    workspaceId,
+                                    sessionId,
+                                    entries: stampEntries(sessionRows),
+                                    runtimeEntries: stampEntries(runtimeRows),
+                                },
+                                null,
+                                2,
+                            ),
+                        },
+                    ],
+                };
+            },
+        );
+
+        server.registerResource(
+            "log-entry",
+            new ResourceTemplate("log:///{loopSeq}/{turnSeq}/{sequence}/{op}", { list: undefined }),
+            {
+                title: "Plurnk Durable Log Entry",
+                description: "Read a durable log entry by coordinate (`log:///<loopSeq>/<turnSeq>/<sequence>/<op>`).",
+                mimeType: "application/json",
+            },
+            async (uri, variables) => {
+                const loopSeq = Number(variables.loopSeq);
+                const turnSeq = Number(variables.turnSeq);
+                const sequence = Number(variables.sequence);
+                const primaryRows = await this.#seam.readLog({
+                    workspaceId,
+                    sessionId,
+                    loopSeq,
+                    turnSeq,
+                    sequence,
+                    limit: 1,
+                });
+                const rows =
+                    primaryRows.length > 0 || runtimeSessionId === sessionId
+                        ? primaryRows
+                        : await this.#seam.readLog({
+                              workspaceId,
+                              sessionId: runtimeSessionId,
+                              loopSeq,
+                              turnSeq,
+                              sequence,
+                              limit: 1,
+                          });
+                const row = rows[0];
+                const payload =
+                    row !== undefined
+                        ? { ...row, coordinate: logCoordinateOf(row) ?? uri.href }
+                        : { error: "Log entry not found", coordinate: uri.href };
+                return {
+                    contents: [
+                        {
+                            uri: uri.href,
+                            mimeType: "application/json",
+                            text: JSON.stringify(payload, null, 2),
+                        },
+                    ],
+                };
+            },
+        );
+
+        server.registerResource(
+            "plurnk-tool-schema",
+            new ResourceTemplate("mcp:///plurnk/{tool}.json", { list: undefined }),
+            {
+                title: "Plurnk Tool Schema",
+                description: "JSON schema and invocation metadata for an individual Plurnk tool.",
+                mimeType: "application/json",
+            },
+            async (uri, variables) => {
+                const tool = String(variables.tool ?? "");
+                const read = await this.#seam.readEntry({
+                    workspaceId,
+                    sessionId,
+                    target: `mcp:///plurnk/${tool}.json`,
+                });
+                const channel = read.entry !== null ? Object.values(read.entry.channels)[0] : undefined;
+                const text =
+                    channel !== undefined
+                        ? channel.content
+                        : JSON.stringify({ error: `Tool schema not found for '${tool}'.` });
+                return {
+                    contents: [
+                        {
+                            uri: uri.href,
+                            mimeType: "application/json",
+                            text,
+                        },
+                    ],
+                };
+            },
+        );
+
+        server.registerResource(
+            "workspace-entry",
+            new ResourceTemplate("workspace:///{+path}", { list: undefined }),
+            {
+                title: "Workspace Entry",
+                description: "Read a workspace file or directory entry by path (`workspace:///<path>`).",
+                mimeType: "text/plain",
+            },
+            async (uri, variables) => {
+                const rawPath = Array.isArray(variables.path) ? variables.path.join("/") : (variables.path ?? "");
+                const read = await this.#seam.readEntry({
+                    workspaceId,
+                    sessionId,
+                    target: `workspace:///${rawPath}`,
+                });
+                const channel = read.entry !== null ? Object.values(read.entry.channels)[0] : undefined;
+                const fallbackText = read.entry === null ? read.problem.detail : "";
+                return {
+                    contents: [
+                        {
+                            uri: uri.href,
+                            mimeType: channel?.mimetype ?? "text/plain",
+                            text: channel?.content ?? fallbackText,
+                        },
+                    ],
+                };
+            },
+        );
+
         return server;
     }
 
@@ -661,12 +885,15 @@ export default class McpServerModule implements DaemonModule<never> {
         toolName: string,
         args: unknown,
         signal?: AbortSignal,
-    ): Promise<{ readonly isError?: boolean; readonly content: Array<{ readonly type: "text"; readonly text: string }> }> {
+    ): Promise<{
+        readonly isError?: boolean;
+        readonly _meta?: Record<string, unknown>;
+        readonly content: Array<{ readonly type: "text"; readonly text: string }>;
+    }> {
         const { workspaceId, sessionId, isModelSession } = target;
         const normalizedArgs = isRecord(args) ? args : {};
-        const code = `await plurnk${propAccess(toolName)}(${JSON.stringify(normalizedArgs)});`;
         const executors = this.#seam.executorTags(workspaceId);
-        const parsed = PlurnkParser.parseStatements(code, { executors });
+        const parsed = PlurnkParser.lowerToolCall("plurnk", toolName, normalizedArgs, { executors });
         const parseErrors = parsed.items.filter(
             (item): item is Extract<typeof item, { kind: "error" }> =>
                 item.kind === "error" && item.error.severity === "error",
@@ -684,6 +911,7 @@ export default class McpServerModule implements DaemonModule<never> {
 
         const statement = statements[0];
         let capturedLoop: { readonly sessionId: number; readonly loopId: number } | null = null;
+        const readCapturedLoop = (): { readonly sessionId: number; readonly loopId: number } | null => capturedLoop;
         const onAbort = (): void => {
             if (capturedLoop !== null) {
                 void this.#seam
@@ -717,17 +945,32 @@ export default class McpServerModule implements DaemonModule<never> {
                 };
             }
 
-            if (isExecution(statement) && capturedLoop !== null) {
+            const activeLoop = readCapturedLoop();
+            if (isExecution(statement) && activeLoop !== null) {
                 return await this.#formatExecutionOutcome(
                     workspaceId,
-                    capturedLoop,
+                    activeLoop,
                     statement.runtime,
                     result,
                     signal,
                 );
             }
 
+            const logCoordinate =
+                activeLoop !== null
+                    ? logCoordinateOf(
+                          (
+                              await this.#seam.readLog({
+                                  workspaceId,
+                                  sessionId: activeLoop.sessionId,
+                                  loopId: activeLoop.loopId,
+                                  limit: 1,
+                              })
+                          )[0],
+                      )
+                    : null;
             return {
+                ...(logCoordinate !== null ? { _meta: { logCoordinate } } : {}),
                 content: [{ type: "text", text: McpServerModule.#formatSuccess(result) }],
             };
         } catch (cause) {
@@ -757,7 +1000,11 @@ export default class McpServerModule implements DaemonModule<never> {
         runtime: string,
         result: Readonly<Record<string, unknown>>,
         signal?: AbortSignal,
-    ): Promise<{ readonly isError?: boolean; readonly content: Array<{ readonly type: "text"; readonly text: string }> }> {
+    ): Promise<{
+        readonly isError?: boolean;
+        readonly _meta?: Record<string, unknown>;
+        readonly content: Array<{ readonly type: "text"; readonly text: string }>;
+    }> {
         const rows = await this.#seam.readLog({
             workspaceId,
             sessionId: capturedLoop.sessionId,
@@ -765,6 +1012,8 @@ export default class McpServerModule implements DaemonModule<never> {
             limit: 1,
         });
         const row = rows[0];
+        const logCoordinate = logCoordinateOf(row);
+        const meta = logCoordinate !== null ? { _meta: { logCoordinate } } : {};
         const attrs: Record<string, unknown> = {
             ...(isRecord(result.attrs) ? result.attrs : {}),
             ...(row !== undefined && isRecord(row.attrs) ? row.attrs : {}),
@@ -778,15 +1027,22 @@ export default class McpServerModule implements DaemonModule<never> {
                   : null;
         if (streamTarget === null) {
             return {
+                ...meta,
                 content: [{ type: "text", text: McpServerModule.#formatSuccess(result) }],
             };
         }
         if (attrs.detached === true) {
             return {
+                ...meta,
                 content: [
                     {
                         type: "text",
-                        text: JSON.stringify({ status: result.status, outcome: "started", stream: streamTarget }),
+                        text: JSON.stringify({
+                            status: result.status,
+                            outcome: "started",
+                            stream: streamTarget,
+                            ...(logCoordinate !== null ? { logCoordinate } : {}),
+                        }),
                     },
                 ],
             };
@@ -804,8 +1060,8 @@ export default class McpServerModule implements DaemonModule<never> {
             target: streamTarget,
         });
         const channels = entryRead.entry?.channels ?? {};
-        if (Object.hasOwn(channels, "result")) {
-            const resultChannel = channels.result;
+        const resultChannel = channels.results ?? channels.result;
+        if (resultChannel !== undefined) {
             const isError =
                 (concludedResult !== null &&
                     typeof concludedResult.status === "number" &&
@@ -813,6 +1069,7 @@ export default class McpServerModule implements DaemonModule<never> {
                 resultChannel.state === "errored";
             return {
                 ...(isError ? { isError: true } : {}),
+                ...meta,
                 content: [
                     {
                         type: "text",
@@ -852,6 +1109,7 @@ export default class McpServerModule implements DaemonModule<never> {
                 : JSON.stringify(concludedResult ?? { status: concludedStatus });
         return {
             ...(isError ? { isError: true } : {}),
+            ...meta,
             content: [{ type: "text", text }],
         };
     }

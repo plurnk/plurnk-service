@@ -235,8 +235,8 @@ test("{§acp-daemon-client} bin: spawns, the ACP listener answers HTTP on its bo
         assert.equal(res.status, 404, "GET is not an ACP run");
         assert.equal((await res.json() as { type: string }).type, "https://problems.plurnk.xyz/acp/http/route-not-found");
         const root = await fetch(new URL("/", booted.url));
-        assert.equal(root.status, 404);
-        assert.equal((await root.json() as { type: string }).type, "https://problems.plurnk.xyz/http/route-not-found");
+        assert.equal(root.status, 200, "the bundled web client serves the root mount by default");
+        assert.match(await root.text(), /<!doctype html>/iu);
     } finally {
         const { code, signal } = await stopDaemon(booted);
         assert.equal(code, 0, `the service handled SIGTERM and exited zero (signal=${signal})`);

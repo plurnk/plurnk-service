@@ -33,7 +33,14 @@ export const pinRuntime = (root, destination) => {
         }
         mkdirSync(resolve(pinnedModules, entry));
         for (const name of readdirSync(resolve(modules, entry))) {
-            symlinkSync(pinned.get(`${entry}/${name}`) ?? resolve(modules, entry, name), resolve(pinnedModules, entry, name));
+            const workspaceTarget = pinned.get(`${entry}/${name}`);
+            if (workspaceTarget !== undefined) {
+                symlinkSync(workspaceTarget, resolve(pinnedModules, entry, name));
+            } else if (entry === "@plurnk") {
+                cpSync(resolve(modules, entry, name), resolve(pinnedModules, entry, name), { recursive: true });
+            } else {
+                symlinkSync(resolve(modules, entry, name), resolve(pinnedModules, entry, name));
+            }
         }
     }
     writeFileSync(resolve(destination, "package.json"), readFileSync(resolve(root, "package.json")));

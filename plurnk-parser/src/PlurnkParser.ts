@@ -4,7 +4,7 @@ import {
     type ParseResult,
     type PlurnkStatement,
 } from "@plurnk/plurnk-contracts";
-import { parseCodeMode, stringifyStatement, type CodeModeOptions } from "./CodeMode.ts";
+import { lowerToolCall, parseCodeMode, stringifyStatement, type CodeModeOptions } from "./CodeMode.ts";
 
 export type ParseOptions = CodeModeOptions;
 
@@ -25,6 +25,15 @@ export default class PlurnkParser {
 
     static parseStatements(input: string, options: ParseOptions = {}): ParseResult {
         return parseCodeMode(input, options, "statements");
+    }
+
+    static lowerToolCall(
+        service: string,
+        tool: string,
+        args?: unknown,
+        options: ParseOptions = {},
+    ): ParseResult {
+        return lowerToolCall(service, tool, args, options);
     }
 
     static #requireSourceOperation(items: ParseItem[]): void {

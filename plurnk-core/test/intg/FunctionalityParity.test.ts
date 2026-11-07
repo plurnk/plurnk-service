@@ -67,7 +67,7 @@ class PacketCapturingMock extends Mock {
     readonly requests: string[] = [];
 
     override generate(...args: Parameters<Mock["generate"]>): ReturnType<Mock["generate"]> {
-        this.requests.push(args[0].messages.map(chatMessageText).join("\n\n"));
+        this.requests.push(args[0].messages.filter((m) => m.role !== "assistant").map(chatMessageText).join("\n\n"));
         return super.generate(...args);
     }
 }
