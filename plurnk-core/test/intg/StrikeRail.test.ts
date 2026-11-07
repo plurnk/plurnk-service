@@ -724,7 +724,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null,
     target: urlPath("workspace", pathname),
     lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
@@ -998,7 +998,7 @@ test("{§op-methods-op-dispatch} Engine.runLoop: cross-turn state — turn 2 see
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const readStmt = (pathname: string) => ({
-            metadata: null,
+            headers: null,
             op: "read" as const, aside: null,
             target: urlPath("workspace", pathname),
             lineMarker: null, matcher: null, body: null,

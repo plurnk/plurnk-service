@@ -49,7 +49,6 @@ describe("Exec.scheme", () => {
 
 // {§op-shapes} — a null runtime is the bare shell; the target is the program or working directory.
 const execStmt = (runtime: string | null, target: string | null, body: string): ExecStatement => ({
-    metadata: null,
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null,
     target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
@@ -101,7 +100,7 @@ test("{§op-shapes} Exec.applyResolution: malformed accepted proposal state rema
     await withWorkspace(async (ctx) => {
         await assert.rejects(
             ctx.exec.applyResolution(
-                { attrs: {}, metadata: null },
+                { attrs: {}, headers: null },
                 makeSchemeCtx({
                     db: ctx.db,
                     workspaceId: ctx.workspaceId,
@@ -122,7 +121,6 @@ test("{§exec-target-routing} an empty-body scheme target is materialized as the
         await seedEntryWithChannel(ctx.db, { workspaceId: ctx.workspaceId, scheme: "workspace", pathname: "/script", channel: "body", content: "echo resolved-from-scheme", state: "static" });
 
         const statement: ExecStatement = {
-            metadata: null,
             runtime: "sh", aside: null,
             target: urlPath("workspace", "/script"),
             lineMarker: null, body: "", position: { line: 1, column: 1 },
@@ -764,7 +762,6 @@ describe("Exec.effect", () => {
 
 
 const execStmt = (runtime: string | null, target: string | null, body: string): ExecStatement => ({
-    metadata: null,
     // The default shell is explicit: a fixture with no runtime is an `sh` execution (plurnk-service #659).
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: target === null ? null : localPath(target),
     lineMarker: null, body, position: { line: 1, column: 1 },
@@ -1053,7 +1050,6 @@ interface Run {
     readonly body: string;
     readonly cwd: string | null;
     readonly target: string | null;
-    readonly metadata?: readonly string[];
     readonly materialized?: string;
 }
 
@@ -1091,7 +1087,6 @@ const INVOCATIONS: Readonly<Record<string, RuntimeInvocationDecl>> = {
 };
 
 const statement = (runtime: string, target: string | null, body: string): ExecStatement => ({
-    metadata: null,
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: target === null ? null : parsePath(target),
     lineMarker: null,
     body,
@@ -1119,7 +1114,6 @@ const wire = async (resourcesPath?: string) => {
                     body: args.body,
                     cwd: args.cwd,
                     target: args.target,
-                    ...(args.metadata == null ? {} : { metadata: args.metadata }),
                     ...(materialized === undefined ? {} : { materialized }),
                 });
                 runs.set(runtime, runtimeRuns);
@@ -1135,10 +1129,10 @@ const wire = async (resourcesPath?: string) => {
             },
             ...(runtime === "literaltool" ? {
                 async prepare(input: ExecInput) {
-                    if (input.metadata?.includes("refuse")) {
+                    if (input.body === "refuse") {
                         return Results.failure("executor:fixture", "invalid-option", 400, "Fixture option was rejected.");
                     }
-                    if (input.metadata?.includes("broken")) return { status: 200 };
+                    if (input.body === "broken") return { status: 200 };
                     return { status: 200, cwd: input.cwd };
                 },
             } : {}),
@@ -1395,17 +1389,14 @@ test("{§executor-discovery} an exclusive runtime refuses body plus target", asy
     }
 });
 
-test("{§executor-contract} a tool owns opaque options even when its literal target looks like another scheme", async () => {
+test("{§executor-contract} a tool accepts a literal target that looks like another scheme", async () => {
     const ctx = await wire();
     try {
-        const request = {
-            ...statement("literaltool", "unregistered://literal/tool", "raw body"),
-            metadata: [" custom syntax ", "args=not a subprocess argument vector"],
-        };
+        const request = statement("literaltool", "unregistered://literal/tool", "raw body");
         const accepted = await ctx.dispatch(request);
         assert.equal(accepted.status, 200, JSON.stringify(accepted));
         assert.deepEqual(ctx.runs.get("literaltool"), [{
-            body: "raw body", cwd: process.cwd(), target: "unregistered://literal/tool", metadata: request.metadata,
+            body: "raw body", cwd: process.cwd(), target: "unregistered://literal/tool",
         }]);
         assert.deepEqual(ctx.effects.get("literaltool"), ["unregistered://literal/tool"]);
     } finally {
@@ -1413,14 +1404,10 @@ test("{§executor-contract} a tool owns opaque options even when its literal tar
     }
 });
 
-test("{§executor-contract} absent and rejecting preparation refuse options before effect admission", async () => {
+test("{§executor-contract} rejecting preparation refuses before effect admission", async () => {
     const ctx = await wire();
     try {
-        const unsupported = { ...statement("bodyonly", null, "query"), metadata: ["option"] };
-        const rejected = await ctx.dispatch(unsupported);
-        assert.equal(rejected.status, 400);
-        assert.match(rejected.problem?.type ?? "", /metadata-unsupported$/);
-        const refused = await ctx.dispatch({ ...statement("literaltool", "tool", ""), metadata: ["refuse"] });
+        const refused = await ctx.dispatch(statement("literaltool", "tool", "refuse"));
         assert.equal(refused.status, 400);
         assert.equal(refused.problem?.type, "https://problems.plurnk.xyz/executor/fixture/invalid-option");
         assert.equal(refused.problem?.detail, "Fixture option was rejected.");
@@ -1435,7 +1422,7 @@ test("{§executor-contract} a malformed preparation is an internal failure befor
     const ctx = await wire();
     try {
         await assert.rejects(
-            ctx.dispatch({ ...statement("literaltool", "tool", ""), metadata: ["broken"] }),
+            ctx.dispatch(statement("literaltool", "tool", "broken")),
             (cause: unknown) => cause instanceof InvalidOperationResultError
                 && /invalid invocation preparation/.test(cause.message),
         );
@@ -1469,7 +1456,6 @@ describe("effect-policy", () => {
 
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
-    metadata: null,
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

@@ -252,7 +252,7 @@ test("{§scheme-operation-dispatch} LineAnchors: unresolved model syntax fails h
         op: "edit",
         aside: null,
         target: null,
-        metadata: null,
+        headers: null,
         lineMarker: { marks: [LineAnchors.token(identity, 1, "alpha")] },
         matcher: null, body: "replacement",
         position: { line: 1, column: 1 },

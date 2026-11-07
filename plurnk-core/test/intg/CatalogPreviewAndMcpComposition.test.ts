@@ -292,7 +292,7 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 ], "the surveys that select something and the session scratch survey run, in their taught order; the other empty surfaces are left out ({§session-initialization-entry})");
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
-                    [null, "Plurnk Harness", null, "session knowledgebase entries"],
+                    [null, "Plurnk", null, "session knowledgebase entries"],
                     "asides name what each namespace is",
                 );
                 for (const row of finds) {

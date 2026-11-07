@@ -67,13 +67,6 @@ decorations or another channel's rendered text.
 Regex anchors `^` and `$` address line boundaries; a match may span lines.
 `edit`'s `content` is literal replacement text, not regex substitution syntax.
 
-## Pattern and metadata fields
-
-The `pattern` field selects text. The optional `metadata` field carries
-named options; first-party operations read it as a JSON array of option objects.
-The `content` / `text` / `prompt` field remains the operation's input, not its options.
-Option names belong to the addressed scheme or executor.
-
 ## Elements and text
 
 For source `<root><item>A</item><other>B</other></root>`:

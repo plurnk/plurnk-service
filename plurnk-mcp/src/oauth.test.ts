@@ -63,7 +63,7 @@ const serveChallenge = (t: TestContext, refused: RequestKind) => serveMcpHttp(t,
 });
 
 const callArgs = (runtime: string, target: string, body: string) => ({
-    metadata: null, runtime, body, cwd: null, target, signal: new AbortController().signal,
+    runtime, body, cwd: null, target, signal: new AbortController().signal,
     write: () => {}, setState: () => {}, emit: () => {}, interact: async () => ({ action: "cancel" as const }),
 });
 

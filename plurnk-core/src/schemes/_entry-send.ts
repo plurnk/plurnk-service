@@ -21,7 +21,7 @@ export default class EntrySend {
             return failure(
                 "target-required",
                 400,
-                "Directed SEND requires a target path.",
+                "Directed send requires a target path.",
                 {},
                 {
                     recovery: "Provide the target path.",
@@ -33,11 +33,11 @@ export default class EntrySend {
         return failure(
             "message-not-implemented",
             501,
-            `SEND does not deliver messages to ${scheme} entries.`,
+            `send does not deliver messages to ${scheme} entries.`,
             {},
             {
                 // {§send}
-                recovery: "To reply, SEND to an Open Message address or omit the target. await plurnk.send({ target: \"session://<name>\", text: \"...\" }); sends a new message.",
+                recovery: "To reply, send to an Open Message address or omit the target. await plurnk.send({ target: \"session://<name>\", text: \"...\" }); sends a new message.",
                 retryable: false,
             },
         ); // {§op-methods-op-dispatch}

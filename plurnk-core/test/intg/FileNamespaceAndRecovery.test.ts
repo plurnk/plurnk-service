@@ -358,11 +358,11 @@ describe("namespace-canon", () => {
 
 
 const filePath = (pathname: string): ParsedPath => ({ kind: "local", raw: pathname });
-const readStmt = (pathname: string): ReadStatement => ({ metadata: null, op: "read", aside: null, target: filePath(pathname), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
+const readStmt = (pathname: string): ReadStatement => ({ headers: null, op: "read", aside: null, target: filePath(pathname), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
 const readFileScheme = (statement: ReadStatement, ctx: ReturnType<typeof makeSchemeCtx>) =>
     readThroughScheme("file", null, statement, ctx);
 const fullReplace: LineMarker = { marks: [1, -1] };
-const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ metadata: null, op: "edit", aside: null, target: filePath(pathname), lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 } });
+const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ headers: null, op: "edit", aside: null, target: filePath(pathname), lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 } });
 
 const setup = async (databasePath?: string) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-canon-"));
@@ -430,7 +430,7 @@ for (const key of ["~", "~/note.md"]) test(`{§fs-namespace} retained ${key} ide
         const reopened = await openMigrated(databasePath);
         try {
             const restored = { ...ctx, db: reopened };
-            assert.equal((await file.applyResolution({ attrs: proposal.attrs as never, metadata: null }, restored)).status, 200);
+            assert.equal((await file.applyResolution({ attrs: proposal.attrs as never, headers: null }, restored)).status, 200);
             const read = await readFileScheme(readStmt(`./${key}`), restored);
             assert.equal(read.status, 200);
             assert.equal(read.content, "revised\n");
@@ -533,7 +533,7 @@ test("{§fs-write-surface} {§fs-write-surface} {§fs-write-surface}: canonical 
         // creation. Accepting the proposal establishes the resulting membership.
         const rootCreate = await file.edit(editStmt("fresh.md", "x\n"), ctx);
         assert.equal(rootCreate.status, 202, "the project root admits an exclusive create without another membership grantor");
-        const rootApplied = await file.applyResolution({ attrs: rootCreate.attrs as never, metadata: null }, ctx);
+        const rootApplied = await file.applyResolution({ attrs: rootCreate.attrs as never, headers: null }, ctx);
         assert.equal(rootApplied.status, 200);
         const rootMember = await db.test_get_origin.get<{ membership_origin: string | null }>({
             workspace_id: workspaceId,
@@ -594,7 +594,7 @@ test("{§fs-namespace}: facts distinguish a wrong address, occupancy, and an emp
         const miss = await readFileScheme(readStmt(join(root, "no/such.md")), ctx);
         assert.equal(miss.status, 404);
         assert.equal(miss.problem?.detail, "No member of this workspace is at 'no/such.md'.", "the READ miss states its fact — resolved form, wire canon"); // {§operation-results}
-        assert.equal(miss.problem?.recovery, "FIND lists paths. EDIT creates files; `await plurnk.members({ files: [\"<path>\"] });` admits existing files."); // {§operation-results}
+        assert.equal(miss.problem?.recovery, "find lists paths. edit creates files; `await plurnk.members({ files: [\"<path>\"] });` admits existing files."); // {§operation-results}
 
         // Exact-path FIND distinguishes absence from a successful empty survey.
         const findMissStmt = { op: "find", aside: null, lineMarker: null, position: { line: 1, column: 1 },
@@ -633,7 +633,7 @@ test("{§fs-namespace}: directory recognition does not probe outside-root paths"
     try {
         const target = `../${outside.split("/").at(-1)}`;
         const statement: FindStatement = {
-            metadata: null, op: "find", aside: null, target: filePath(target),
+            headers: null, op: "find", aside: null, target: filePath(target),
             lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
         };
         const result = await new File().find(statement, ctx);
@@ -676,7 +676,7 @@ test("{§fs-write-surface}: accept records constraint provenance before reportin
         const file = new File();
         const proposal = await file.edit(editStmt("stamped.md", "content\n"), ctx);
         assert.equal(proposal.status, 202);
-        const applied = await file.applyResolution({ attrs: proposal.attrs as never, body: undefined, metadata: null }, ctx);
+        const applied = await file.applyResolution({ attrs: proposal.attrs as never, body: undefined, headers: null }, ctx);
         assert.equal(applied.status, 200);
         const row = await db.test_get_origin.get<{ membership_origin: string | null }>({ workspace_id: workspaceId, pathname: "stamped.md" });
         assert.equal(row?.membership_origin, "constraint", "the accepted create carries its represented grantor, not NULL");
@@ -709,7 +709,7 @@ test("{§operation-results} {§diagnostic-observation} a file target named like 
         for (const key of ["sh", "nope", "tools/sh"]) {
             const miss = await readFileScheme(readStmt(key), withExecutors);
             assert.equal(miss.status, 404, key);
-            assert.equal(miss.problem?.recovery, "FIND lists paths. EDIT creates files; `await plurnk.members({ files: [\"<path>\"] });` admits existing files.", key);
+            assert.equal(miss.problem?.recovery, "find lists paths. edit creates files; `await plurnk.members({ files: [\"<path>\"] });` admits existing files.", key);
         }
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
@@ -925,21 +925,6 @@ test("{§find-result-projection} {§diagnostic-observation} a full-text query FT
     const refused = await dispatch("await plurnk.find({\"path\":\"workspace:///notes.md\",\"pattern\":\"~all(\"});");
     assert.equal(refused.status, 400);
     assert.equal(refused.problem.recovery, "An FTS5 query is barewords, \"quoted phrases\", and AND, OR, NOT and NEAR between them.");
-});
-
-test("{§exec-lifetime} {§diagnostic-observation} an execution that outlives its lifetime says so, and nothing more", async (t) => {
-    const { db, ids, dispatch, sequence } = await runtime(t);
-    assert.equal((await dispatch("await plurnk.sh({\"metadata\":[\"{\\\"lifetime\\\": \\\"1s\\\"}\"],\"command\":\"sleep 5\"});")).status, 200);
-    const stream = await executionAddress(db, ids.turnId, sequence());
-    let ended: { status: number; problem: Problem } | undefined;
-    for (let attempt = 0; attempt < 60 && ended === undefined; attempt++) {
-        await new Promise((settle) => setTimeout(settle, 250));
-        const read = await dispatch(`await plurnk.read({"path":"${stream}"});`);
-        if (read.status === 504) ended = read;
-    }
-    assert.ok(ended, "the deadline closes the stream with 504");
-    assert.equal(ended.problem.detail, "Execution of 'sh' outlived its 1s lifetime.");
-    assert.equal(ended.problem.recovery, undefined);
 });
 
 test("{§exec-target-routing} an execution id written under another runtime names the address it holds", async (t) => {

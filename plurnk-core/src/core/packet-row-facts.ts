@@ -125,16 +125,17 @@ export default class PacketRowFacts {
         if (pair && typeof e.status === "number" && e.status < 400 && paths.some((candidate) => candidate === null)) {
             throw new Error(`A successful ${op} log row must retain both operand selections.`);
         }
-        for (const field of ["scope", "metadata"] as const) {
+        for (const field of ["scope", "headers"] as const) {
             if (paired) continue;
             const values = selections.map((selection) => field === "scope"
                 ? PacketRowFacts.#requestScope(selection?.lineMarker)
-                : PacketRowFacts.#metadata(selection?.metadata));
+                : PacketRowFacts.#headers(selection?.headers));
             if (pair) {
                 const pairedValues = Object.fromEntries(values.flatMap((value, index) => value === null ? [] : [[index === 0 ? "from" : "to", value]]));
                 if (Object.keys(pairedValues).length > 0) meta[field] = pairedValues;
             } else if (values[0] !== null) meta[field] = values[0];
         }
+        if (!paired && tx?.remote === true) meta.remote = true;
         // {§log-wire-format}: describe resources and patterns directly; never serialize an OP.
         const parts = selections.flatMap((selection, index) => {
             const matcher = selection?.matcher;
@@ -449,9 +450,9 @@ export default class PacketRowFacts {
         return isRecord(value) ? value : null;
     }
 
-    static #metadata(value: unknown): readonly string[] | null {
-        if (!Array.isArray(value) || !value.every((item): item is string => typeof item === "string")) return null;
-        const visible = value.filter((item) => item !== "__redacted__");
-        return visible.length > 0 ? visible : null;
+    static #headers(value: unknown): Record<string, string> | null {
+        if (!isRecord(value)) return null;
+        const visible = Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1] !== "__redacted__");
+        return visible.length > 0 ? Object.fromEntries(visible) : null;
     }
 }

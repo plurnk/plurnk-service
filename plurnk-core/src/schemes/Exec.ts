@@ -4,7 +4,6 @@ import { type ExecStatement, type FindStatement, type KillStatement } from "@plu
 import type { ChannelState, ExecResult as ExecutorResult, Executor, Effect, RuntimeInvocationDecl } from "@plurnk/plurnk-execs";
 import {
     InvalidOperationResultError,
-    MetadataOptions,
     type ProposalApplyRequest,
     type SchemeHandler,
     type WebMaterializer,
@@ -20,7 +19,6 @@ import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import LiveSubscription from "../core/LiveSubscription.ts";
 import EnvFunctionality, { type EnvRecord } from "../server/EnvFunctionality.ts";
 import ExecAbort from "./exec-abort.ts";
-import { LIFETIME_SYNTAX, formatLifetime, parseExecLifetime, type ExecLifetime } from "./exec-lifetime.ts";
 import { entryCoordinateOf, renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink, stat } from "node:fs/promises";
 import { extname, isAbsolute, resolve } from "node:path";
@@ -51,10 +49,6 @@ interface ExecAttrs {
     coordinate?: StreamCoordinate;
     effect: Effect;         // one admission fact, preserved through apply and stream/hold bookkeeping
     resourceSource?: string; // complete authored non-file resource address, resolved through ordinary READ at apply time
-    // {§exec-lifetime} — `[{"lifetime": …}]`, one field, absent = loop-bound.
-    timeoutSec?: number;    // a duration: kill the spawn at the deadline (504).
-    turnScoped?: boolean;   // "turn": reaped at the session's next pre-turn, never surviving into the subsequent turn.
-    detached?: boolean;     // "detached": the spawn outlives its loop — never bound to the loop's teardown, nobody's obligation; KILL, the session's total reap, and daemon shutdown still end it.
 }
 
 // Executors are discovered + probed at boot into ExecutorRegistry and reach
@@ -113,8 +107,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         writableBy: ["model", "client", "_plurnk"],
         volatile: true,
         modelVisible: true,
-        metadataModifier: true,
-        documentation: "An execution statement names a registered executor (`await plurnk.<executor>({ ... });`) or MCP service (`await <server>.<tool>({ ... });`); its arguments follow that tool's invocation contract. Output streams into the workspace's `<executor>:///<id>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, the packet's `## Open Work` streams list reports channel size and growth and `plurnk.read` can inspect any range; when it finishes, one terminal `READ` becomes visible automatically.",
+        documentation: "An execution statement names a registered executor (`await plurnk.<executor>({ ... });`) or MCP service (`await <server>.<tool>({ ... });`); its arguments follow that tool's invocation contract. Output streams into the workspace's `<executor>:///<id>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, the packet's `## Open Work` streams list reports channel size and growth and `plurnk.read` can inspect any range; when it finishes, one terminal `read` becomes visible automatically.",
     };
 
     // The web-fetch the entry sink calls on content:null ({§execution-output-identity}); default = the
@@ -141,7 +134,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return this.#scratch ??= new ExecScratch(process.env, hostPaths);
     }
 
-    #activeAborts = new Map<number, { workspaceId: number; sessionId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; detached: boolean }>();
+    #activeAborts = new Map<number, { workspaceId: number; sessionId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController }>();
     #activeSpawns = new Map<number, Promise<SchemeResult>>();
     #loopWakeWaiters = new Map<number, Set<() => void>>();
 
@@ -166,14 +159,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     // teardown itself rides the session's cancellation scope (the spawn's
     // ctx.signal), so even a spawn registering after the cancel self-aborts.
     hasActiveSpawns(sessionId: number): boolean {
-        for (const { sessionId: r, detached } of this.#activeAborts.values()) if (r === sessionId && !detached) return true;
+        for (const { sessionId: r } of this.#activeAborts.values()) if (r === sessionId) return true;
         return false;
-    }
-
-    // {§exec-lifetime} — a detached spawn ends with the daemon: nothing else ever aborts it, so the
-    // stop sequence reaps it (bounded housekeeping) before the streaming drain barrier.
-    abortDetached(): void {
-        for (const { controller, detached } of this.#activeAborts.values()) if (detached) controller.abort(ExecAbort.teardownReason());
     }
 
     // {§session-causal-admission} — wait on exactly the spawns initiated by
@@ -188,7 +175,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     ): Promise<boolean> {
         signal?.throwIfAborted();
         const pending = [...this.#activeAborts.entries()]
-            .filter(([, active]) => active.sessionId === sessionId && active.turnId === turnId && !active.detached)
+            .filter(([, active]) => active.sessionId === sessionId && active.turnId === turnId)
             .map(([subscriptionId]) => {
                 const spawn = this.#activeSpawns.get(subscriptionId);
                 if (spawn === undefined) {
@@ -225,7 +212,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         }
     }
 
-    // {§exec-lifetime} — match active spawns against the
+    // {§exec-stream} — match active spawns against the
     // operator's runtime or runtime:effect hold selectors.
     hasActiveHoldSpawns(sessionId: number, holdSet: ReadonlySet<string>): boolean {
         for (const { sessionId: r, runtime, effect } of this.#activeAborts.values()) if (r === sessionId && (holdSet.has(runtime) || holdSet.has(`${runtime}:${effect}`))) return true;
@@ -317,10 +304,10 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         let { target } = routed;
         let cwd: string | null = defaultCwd;
 
-        const lifetime = Exec.#readReservedMetadata(statement, runtime);
-        if ("status" in lifetime) return lifetime;
+        // {§exec}: the scope slot is text coordinates, and an execution has none.
+        if (statement.lineMarker !== null) return Exec.#refuse(runtime, "scope-unsupported", "An execution takes no scope.", undefined);
         // {§executor-contract} Options belong to the invoked executor for every source kind.
-        const prepared = await Exec.#prepareInvocation(resolved.executor, statement, { runtime, body, target: resourceSource ?? target, cwd });
+        const prepared = await Exec.#prepareInvocation(resolved.executor, { runtime, body, target: resourceSource ?? target, cwd });
         if ("status" in prepared) return prepared;
         ({ cwd } = prepared);
         // A `script` target must be an existing file; other kinds pass through as declared.
@@ -347,16 +334,13 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         // cwd is the workspace project_root unless target routing selected a
         // directory override. {§exec-target-routing}, {§executor-contract}
         // The log writer claims the workspace output address before proposal application.
-        // {§exec-lifetime} — how long the spawn may live is the metadata's one field; the scope slot
-        // is text coordinates, which an execution has none of.
         const attrs: ExecAttrs = {
             runtime, cwd, body, target, pathname: "", effect,
             ...(resourceSource !== null ? { resourceSource } : {}),
-            ...lifetime,
         };
         const previewInput = body !== "" ? body : execTarget?.raw ?? "";
         const preview = runtime !== "" ? `[${runtime}] ${previewInput}` : `$ ${previewInput}`;
-        return { status: 202, body: preview, attrs };  // host runtime proposes with 202 — {§exec-lifetime}
+        return { status: 202, body: preview, attrs };  // host runtime proposes with 202 — {§exec-stream}
     }
 
     // {§operation-results} A refusal of the fence as written: 400, the runtime named, and the working form when there is one.
@@ -571,42 +555,18 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return { defaultCwd, target, resourceSource };
     }
 
-    // {§exec-lifetime} The service's reserved keys, read before the executor sees its options.
-    static #readReservedMetadata(statement: ExecStatement, runtime: string): ExecLifetime | ExecResult {
-        // {§exec-lifetime} — the scope slot is text coordinates, and an execution has none.
-        if (statement.lineMarker !== null) return Exec.#refuse(runtime, "scope-unsupported", "An execution takes no scope.", undefined);
-
-        // {§exec-lifetime} — the service's reserved key, read before the executor's options so
-        // an unreadable lifetime is refused by name rather than spawning under a wrong bound. A block
-        // that is not the option-array shape carries no lifetime for the service to read: it is the
-        // invoked executor's to accept or refuse ({§executor-contract}).
-        const read = MetadataOptions.parse(statement.metadata, "scheme:exec", { runtime });
-        const lifetime = parseExecLifetime("failure" in read ? undefined : read.lifetime);
-        if ("invalid" in lifetime) {
-            return Results.failure("scheme:exec", "lifetime-invalid", 400, lifetime.invalid, {}, {
-                runtime, recovery: `State one lifetime: ${LIFETIME_SYNTAX}.`, retryable: false,
-            });
-        }
-        return lifetime;
-    }
-
-    // {§executor-contract} The executor's preparation of its own options: the working directory it chose;
-    // metadata without a preparer is refused.
-    static async #prepareInvocation(executor: Executor, statement: ExecStatement, args: {
+    // {§executor-contract} The executor's preparation of its own options: the working directory it chose.
+    static async #prepareInvocation(executor: Executor, args: {
         runtime: string; body: string; target: string | null; cwd: string | null;
     }): Promise<{ cwd: string | null } | ExecResult> {
         const { runtime, body, target, cwd } = args;
         if (executor.prepare !== undefined) {
-            const prepared = Results.assert(await executor.prepare({ runtime, body, target, cwd, metadata: statement.metadata }));
+            const prepared = Results.assert(await executor.prepare({ runtime, body, target, cwd }));
             if (prepared.status >= 400) return prepared;
             if (prepared.status !== 200 || (prepared.cwd !== null && (typeof prepared.cwd !== "string" || !isAbsolute(prepared.cwd)))) {
                 throw new InvalidOperationResultError(`Executable tool '${runtime}' returned invalid invocation preparation.`);
             }
             return { cwd: prepared.cwd };
-        }
-        if ((statement.metadata?.length ?? 0) > 0) {
-            return Results.failure("scheme:exec", "metadata-unsupported", 400,
-                `Executable tool '${runtime}' does not accept metadata.`, {}, { runtime, retryable: false });
         }
         return { cwd };
     }
@@ -720,9 +680,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
         const run = async () => this.#runExecutor({
             executor: resolved.executor,
-            runtime, body, cwd, target, metadata: args.metadata, ctx: core, pathname, coordinate: attrs.coordinate,
-            entryId, lifecycle, signal: controller.signal, controller, tempPath,
-            timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
+            runtime, body, cwd, target, ctx: core, pathname, coordinate: attrs.coordinate,
+            entryId, lifecycle, signal: controller.signal, tempPath,
         });
 
         // {§functionality-model-projection} Configuration is an ordered core operation,
@@ -770,7 +729,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             op: "read",
             aside: null,
             target: sourceTarget,
-            metadata: null,
+            headers: null,
             lineMarker: { marks: [1, -1] },
             matcher: null,
             body: null,
@@ -819,7 +778,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         if (resolved === undefined || !resolved.available) {
             throw new InvalidOperationResultError(`The '${runtime}' executor disappeared after its proposal.`);
         }
-        // {§executor-results}, {§exec-lifetime}, #107: the admitted
+        // {§executor-results}, {§exec-stream}, #107: the admitted
         // effect fact rides the hold predicate unchanged through application.
         const seedChannels: EntryData["channels"] = {};
         for (const [name, decl] of Object.entries(resolved.executor.channels)) {
@@ -848,7 +807,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     }
 
     // The spawn's live subscription and cancellation scope: the stream subscription opened, the controller bound
-    // to the loop's teardown unless detached ({§exec-lifetime}), the abort registry entry, and
+    // to the loop's teardown ({§exec-stream}), the abort registry entry, and
     // the LiveSubscription whose release unbinds them all.
     async #bindSpawnLifecycle(args: {
         core: PlurnkSchemeContext;
@@ -865,8 +824,6 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const subscriptionId = await ChannelWrite.openSubscription(core.db, {
             sessionId: core.sessionId, entryId, scheme: runtime,
             handle: runtime !== "" ? `${runtime}: ${body !== "" ? body : target ?? ""}` : body,
-            turnScoped: attrs.turnScoped === true, // {§exec-lifetime} — "turn" is reaped at the next pre-turn
-            detached: attrs.detached === true, // {§loop-completion} — "detached" is nobody's obligation
             publishedChannel: resolved.executor.publishedChannel,
             source: attrs.coordinate === undefined ? undefined
                 : `log:///${attrs.coordinate.loop_seq}/${attrs.coordinate.turn_seq}/${attrs.coordinate.sequence}/${runtime}`,
@@ -874,9 +831,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
         const controller = new AbortController();
         let detachParent = (): void => {};
-        // {§exec-lifetime} — a detached spawn outlives the loop: it never binds to the loop's teardown;
-        // only KILL, the session's total reap, and daemon shutdown end it.
-        if (core.signal !== undefined && attrs.detached !== true) {
+        if (core.signal !== undefined) {
             const parent = core.signal;
             // {§session-causal-admission}
             // The spawn's kill binds to its loop's cancellation epoch (ctx.signal —
@@ -886,13 +841,13 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             // then re-check `aborted`: a listener added to an already-aborted signal never
             // fires, so a check-then-attach order LOSES an abort that lands in the gap (R1's
             // TOCTOU leak). Attach-then-check closes it; controller.abort is idempotent, so a
-            // doubled fire is harmless. {§exec-lifetime}
+            // doubled fire is harmless. {§exec-stream}
             const onParentAbort = (): void => controller.abort(ExecAbort.teardownReason());
             parent.addEventListener("abort", onParentAbort, { once: true });
             detachParent = (): void => parent.removeEventListener("abort", onParentAbort);
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
-        this.#activeAborts.set(subscriptionId, { workspaceId: core.workspaceId, sessionId: core.sessionId, turnId: core.turnId, pathname, runtime, effect, controller, detached: attrs.detached === true });
+        this.#activeAborts.set(subscriptionId, { workspaceId: core.workspaceId, sessionId: core.sessionId, turnId: core.turnId, pathname, runtime, effect, controller });
         const lifecycle = new LiveSubscription({
             db: core.db, registry: this.liveSubscriptions(),
             identity: {
@@ -900,7 +855,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 target: `${runtime}://${pathname}`, subscriptionId, scheme: runtime, ...attrs.coordinate,
             },
             handle: { cancel: () => controller.abort(ExecAbort.teardownReason()) },
-            reaperLoopId: core.signal !== undefined && attrs.detached !== true ? core.loopId : null,
+            reaperLoopId: core.signal !== undefined ? core.loopId : null,
             release: () => {
                 detachParent();
                 this.#activeAborts.delete(subscriptionId);
@@ -959,24 +914,16 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
     async #runExecutor(opts: {
         executor: Executor;
-        runtime: string; body: string; cwd: string | null; target: string | null; metadata: readonly string[] | null; ctx: PlurnkSchemeContext;
+        runtime: string; body: string; cwd: string | null; target: string | null; ctx: PlurnkSchemeContext;
         pathname: string; entryId: number; lifecycle: LiveSubscription; signal: AbortSignal;
         coordinate?: StreamCoordinate;
-        controller: AbortController; timeoutSec: number | null;
         tempPath: string | null;
     }): Promise<SchemeResult> {
-        const { runtime, body, cwd, target, metadata, ctx, pathname, entryId, lifecycle, signal, controller, timeoutSec, tempPath, coordinate } = opts;
+        const { runtime, body, cwd, target, ctx, pathname, entryId, lifecycle, signal, tempPath, coordinate } = opts;
         // {§functionality-model-projection} — a module or Core-owned runtime may bind the invoking Session.
         // The framework's ExecArgs carries no Session identity, so Core binds it here, at the operation.
         const executor = opts.executor.forContext?.(ctx.workspaceId, ctx.sessionId) ?? opts.executor;
         const db = ctx.db;
-        // an execution's `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
-        // holds the process open; cleared in finally so a spawn that finishes first leaves no timer.
-        let timedOut = false;
-        const timeoutTimer = timeoutSec !== null
-            ? setTimeout(() => { timedOut = true; controller.abort(ExecAbort.timeoutReason()); }, timeoutSec * 1000)
-            : null;
-        timeoutTimer?.unref();
         let queue: Promise<void> = Promise.resolve();
         const enqueue = (op: () => Promise<void>): void => {
             queue = queue.then(op, op);
@@ -1027,7 +974,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 result = cancelled();
             } else try {
                 const reported: ExecutorResult = await executor.run({
-                    runtime, body, cwd, target, metadata, signal,
+                    runtime, body, cwd, target, signal,
                     entry: sink.entry,
                     // {§executor-contract} — the executor's signal narrows the execution's, never replaces it.
                     interact: (request, interactionSignal) => {
@@ -1089,7 +1036,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 }
             }
 
-            result = this.#settleExecutionResult({ result, timedOut, timeoutSec, signal, target, runtime, body, ctx });
+            result = this.#settleExecutionResult({ result, signal, target, runtime, body, ctx });
             // {§exec-stream} — the summary sizes the channels this executor declares, in its order.
             channelSizes = await Promise.all(Object.keys(executor.channels).map(async (channel) => [
                 channel,
@@ -1101,7 +1048,6 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         {
             // {§execution-output-identity} — the spawn tail settles the entry chain and its narration turn before anything else.
             const finalizationErrors = [...executionFailures, ...await sink.settle()];
-            if (timeoutTimer !== null) clearTimeout(timeoutTimer); // a finished spawn leaves no pending timer
             // {§exec-target-routing} — cleanup cannot rewrite the settled
             // executor result, but an exceptional failure remains observable.
             if (tempPath !== null) {
@@ -1120,14 +1066,14 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return result;
     }
 
-    // One valid truth for the settled execution: a timeout outranks the executor's report, the service's own abort
+    // One valid truth for the settled execution: the service's own abort
     // knowledge outranks a driver's claim, and a shell's 127 on a tool's name is that tool's refusal
     // ({§exec-target-routing}).
     #settleExecutionResult(args: {
-        result: SchemeResult; timedOut: boolean; timeoutSec: number | null; signal: AbortSignal;
+        result: SchemeResult; signal: AbortSignal;
         target: string | null; runtime: string; body: string; ctx: PlurnkSchemeContext;
     }): SchemeResult {
-        const { timedOut, timeoutSec, signal, target, runtime, body, ctx } = args;
+        const { signal, target, runtime, body, ctx } = args;
         let { result } = args;
         const cancelled = (exitCode?: number): SchemeResult => Results.failure(
             "scheme:exec",
@@ -1138,26 +1084,9 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             { runtime, stage: "execution", retryable: false },
         );
         const exitCode = typeof result.exitCode === "number" ? result.exitCode : null;
-        // A timeout aborts the spawn → the executor reports 499; replace the
-        // complete result so status and Problem remain one valid truth.
-        if (timedOut) {
-            const lifetime = formatLifetime(timeoutSec ?? 0);
-            result = Results.failure(
-                "scheme:exec",
-                "execution-timeout",
-                504,
-                `Execution of '${runtime}' outlived its ${lifetime} lifetime.`,
-                exitCode === null ? {} : { exitCode },
-                {
-                    runtime,
-                    lifetime,
-                    stage: "execution",
-                    retryable: false,
-                },
-            );
         // The service's own abort knowledge outranks a driver's claim: a
         // spawn we reaped did not succeed, whatever it resolved under abort.
-        } else if (signal.aborted && result.status < 400) {
+        if (signal.aborted && result.status < 400) {
             result = cancelled(exitCode ?? undefined);
         } else if (result.status < 400 && exitCode === 127 && target === null) {
             result = this.#namedToolFallThrough(result, runtime, body, ctx);

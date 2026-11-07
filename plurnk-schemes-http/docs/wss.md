@@ -47,4 +47,4 @@ identity; `messages` is the only current channel. An unavailable channel returns
 
 The transport carries text frames only, in native order, one durable write at a
 time; a binary inbound frame settles `415` and closes the socket; there is no
-reconnection (`read` again after terminal cleanup) and no handshake metadata.
+reconnection (`read` again after terminal cleanup) and no request headers.

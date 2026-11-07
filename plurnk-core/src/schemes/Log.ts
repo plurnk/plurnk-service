@@ -335,7 +335,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             return failure(
                 "read-target-required",
                 400,
-                "READ requires a log coordinate.",
+                "read requires a log coordinate.",
                 {
                     recovery: "Provide one exact log coordinate.",
                     retryable: false,
@@ -516,7 +516,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         if (statement.target === null && !allowTargetless) {
             return Log.#emptyFind(
                 400,
-                "FIND requires a log target.",
+                "find requires a log target.",
                 {
                     recovery: "Provide a log coordinate, prefix, or glob.",
                     retryable: false,
@@ -755,7 +755,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     "scheme:log",
                     "target-required",
                     400,
-                    "KILL requires a log target.",
+                    "kill requires a log target.",
                     {},
                     { retryable: false },
                 ),
@@ -935,7 +935,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     "scheme:log",
                     "target-required",
                     400,
-                    "A scoped KILL requires a log coordinate, prefix, glob, or body pattern.",
+                    "A scoped kill requires a log coordinate, prefix, glob, or body pattern.",
                     {},
                     {
                         recovery: "Provide a log coordinate, prefix, glob, or body pattern.",

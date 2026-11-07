@@ -66,7 +66,7 @@ flowchart LR
 | `ProposalProjection` | Identity, review target, body/attrs, owner, capability selector, ACP v2 subject, stale signal, disposition | One validated projection for live delivery and reconnect |
 
 - **Exact selector conjunction**: A capability selector matches a `CapabilityDescriptor` when every declared field equals the descriptor and every declared `trait` occurs in the descriptor's trait set. Within a policy layer, `deny` wins over `only` and `allow`; when `only` is present, at least one selector must match. An empty policy admits everything; an empty `only` list admits nothing.
-- **Subtractive cascade**: Capability admission is purely subtractive and order-independent: a descriptor is admitted only when every active layer (`service` and `workspace`) admits it. Workspace policy cannot restore authority denied by the service. A demand is pre-approved across layers only when it is admitted across every layer and matches at least one layer's `allow` selector. Log/program control (`plurnk.kill` on `log:///...`, native dispositions `WAIT`/`NOTE`/`TODO`, `DONE`, `FAIL`, and targetless `SEND`) creates no capability demand.
+- **Subtractive cascade**: Capability admission is purely subtractive and order-independent: a descriptor is admitted only when every active layer (`service` and `workspace`) admits it. Workspace policy cannot restore authority denied by the service. A demand is pre-approved across layers only when it is admitted across every layer and matches at least one layer's `allow` selector. Log/program control (`plurnk.kill` on `log:///...`, native dispositions `wait`/`note`/`todo`, `done`, `fail`, and targetless `send`) creates no capability demand.
 - **Proposals and session ownership**: `ProposalPolicy` (`review | accept | reject`) and `SessionOwner` (`address`, `clientTools`, `interactive`) govern stopped-world approval after capability admission succeeds.
 - **Effort and model catalog wire**: `Effort` is `off | adaptive | low | medium | high | xhigh | max`. `ModelRoute`, `ModelCatalogPage`, and `ModelReadiness` expose provider/model identity, capabilities (including supported `efforts`), physical limits, and alternative required environment-variable name sets (names only, never values, credentials, or tuning internals).
 
@@ -109,43 +109,43 @@ await <service>.<tool>({ ... });
 | Case-insensitive method recovery | Uppercase or mixed-case method names (`plurnk.READ(...)`, `plurnk.SH(...)`) recover to their lowercase canonical tool name with a warning-severity advisory. |
 | Statement rendering | `PlurnkParser.stringify` formats AST statements back into canonical `await plurnk.<op>({ ... });` or `await <service>.<tool>({ ... });` statements, normalizing empty optional bodies to `null`. |
 
-### §slot-order Argument shapes, target groups, and metadata modifiers
+### §slot-order Argument shapes, target groups, and endpoint options
 
 | Construct | Contract |
 | --- | --- |
 | Object and positional argument forms | Core operations accept their canonical `{ ... }` options object (`{ path, range?, pattern?, content?, ... }`) as well as concise positional string/array shorthands (`plurnk.read("a.ts")`, `plurnk.copy("a.ts", "b.ts")`, `plurnk.note("text")`). |
 | Target groups and multi-target lists | `plurnk.read`, `plurnk.find`, and `plurnk.kill` accept `path` or `paths` as a string or array of strings; comma/pipe/whitespace-separated `scheme://` URI lists and comma/pipe-separated local path/glob lists outside brackets/braces expand into one statement per target in authored order. |
-| `note` annotation on retrievals | Providing `note` on `plurnk.read` or `plurnk.find` emits a preceding `NOTE` statement before the retrieval(s). |
-| Scheme metadata modifier | `metadata` (`string` or `string[]`) passes raw metadata options to the target scheme or executor (`MetadataOptions` parses first-party arrays of option objects and reserves `env`). |
-| Operation aside | A trailing `// aside` comment after `;` or `)` on the closing line of a statement is captured into `aside` (`string` or `null`) as descriptive metadata. |
+| `note` annotation on retrievals | Providing `note` on `plurnk.read` or `plurnk.find` emits a preceding `note` statement before the retrieval(s). |
+| Endpoint and message options | `headers` (`Record<string, string>`) passes HTTP(S) request headers on `plurnk.read`, `plurnk.find`, `plurnk.edit`, `plurnk.send`, `plurnk.kill`, and `plurnk.copy`/`plurnk.move` (`fromHeaders`/`toHeaders`); `remote` (`boolean`) confirms remote HTTP `DELETE` on `plurnk.kill`; `attachments` (`string[]`) attaches resources to `plurnk.send`, `plurnk.done`, and `plurnk.fail`. Unknown option keys on `plurnk.<op>({ ... })` are refused with a parser diagnostic. |
+| Operation aside | A trailing `// aside` comment after `;` or `)` on the closing line of a statement is captured into `aside` (`string` or `null`) as descriptive commentary. |
 
 ---
 
 ## §op-shapes 3. Per-operation semantics and dispositions
 
-| Call | Target field | Scope / matcher fields | Content / payload fields |
+| Call | Target field | Scope / matcher / endpoint fields | Content / payload fields |
 | --- | --- | --- | --- |
-| `plurnk.find` | required `path` / `paths` | optional `range`, `pattern` | optional `note` normalized to preceding `NOTE` |
-| `plurnk.read` | required `path` / `paths` | optional `range`, `pattern` | optional `note` normalized to preceding `NOTE` |
-| `plurnk.edit` | required `path` | `range` or `pattern` or `oldText`/`newText` or `edits` for existing target; `content` alone creates | `content`, `newText`, or `edits` array |
-| `plurnk.copy` / `plurnk.move` | required `from` and `to` | optional `fromRange` / `toRange` (or inline `path<L,M>`) | none |
-| `plurnk.sh` / `plurnk.js` / `plurnk.python3` | optional `cwd`, `script` | optional `range`, `metadata` | `command` (`sh`) or `code` (`js`, `python3`), optional `args` |
+| `plurnk.find` | required `path` / `paths` | optional `range`, `pattern`, `headers` | optional `note` normalized to preceding `note` |
+| `plurnk.read` | required `path` / `paths` | optional `range`, `pattern`, `headers` | optional `note` normalized to preceding `note` |
+| `plurnk.edit` | required `path` | `range` or `pattern` or `oldText`/`newText` or `edits` for existing target; `content` alone creates; optional `headers` | `content`, `newText`, or `edits` array |
+| `plurnk.copy` / `plurnk.move` | required `from` and `to` | optional `fromRange` / `toRange`, `fromHeaders` / `toHeaders` | none |
+| `plurnk.sh` / `plurnk.js` / `plurnk.python3` | optional `cwd`, `script` | none | `command` (`sh`) or `code` (`js`, `python3`), optional `args` |
 | `plurnk.<functionality>` | tool name (`env`, `mcp`, `members`, `personas`, `schedule`, `skills`, `question`) | none | JSON arguments object |
-| `<service>.<tool>` | external MCP `<service>` and `<tool>` | optional second `{ range, metadata }` options arg | JSON arguments object or string |
+| `<service>.<tool>` | external MCP `<service>` and `<tool>` | optional second `{ range }` options arg | JSON arguments object or string |
 | `plurnk.bare` | optional `target` prompt resource | none | `prompt` / `text` |
 | `plurnk.work` / `plurnk.fork` | optional `target` (`session://name` or prompt resource) | none | `prompt` / `text` |
-| `plurnk.kill` | required `path` / `paths` | optional `range`, `pattern` | optional `note` distillation on `log:///` |
-| `plurnk.send` | optional `target` recipient | none | `text` message body |
-| `plurnk.done` | optional `target` (`message://`) | none | optional `text` final deliverable |
-| `plurnk.fail` | optional `target` (`message://`) | none | optional `text` final failure explanation |
+| `plurnk.kill` | required `path` / `paths` | optional `range`, `pattern`, `remote`, `headers` | optional `note` distillation on `log:///` |
+| `plurnk.send` | optional `target` recipient | optional `headers`, `attachments` | `text` message body |
+| `plurnk.done` | optional `target` (`message://`) | optional `attachments` | optional `text` final deliverable |
+| `plurnk.fail` | optional `target` (`message://`) | optional `attachments` | optional `text` final failure explanation |
 | `plurnk.note` | none | none | `text` literal working memory |
 | `plurnk.todo` | none | none | required `items` remaining step list (or tolerated `todos` / `text`) |
 | `plurnk.wait` | optional `target` label | optional `seconds` | `text` wait explanation |
 
-- **Retrieval annotations**: Nonblank bodies beneath `FIND` or `READ` normalize into a preceding `NOTE` statement.
-- **Text scope algebra**: `<N>` selects whole line `N` (`0` prepends, `-1` appends on mutation); `<N,M>` selects inclusive lines `N..M`; `<SL,SC,EL,EC>` selects an exact 1-based Unicode code-point region with exclusive end (three-integer scopes normalize to four).
+- **Retrieval annotations**: Nonblank `note` options on `find` or `read` normalize into a preceding `note` statement.
+- **Text range algebra**: `"N"` selects whole line `N` (`"0"` prepends, `"-1"` appends on mutation); `"N,M"` selects inclusive lines `N..M`; `"SL,SC,EL,EC"` selects an exact 1-based Unicode code-point region with exclusive end (three-integer ranges normalize to four).
 - **Local path fragments**: Bare paths decompose `#channel` into `fragment` just like `scheme://` URLs so channel selectors round-trip identically.
-- **Turn dispositions (`WAIT`, `DONE`, and `FAIL`)**: Dispositions may appear anywhere in a turn; multiple `WAIT` statements coalesce to the shortest `[seconds]` bound, and `DONE` (`200`) or `FAIL` (`499`) resolves an Open Message once all earlier operations in the turn settle.
+- **Turn dispositions (`wait`, `done`, and `fail`)**: Dispositions may appear anywhere in a turn; multiple `wait` statements coalesce to the shortest `seconds` bound, and `done` (`200`) or `fail` (`499`) resolves an Open Message once all earlier operations in the turn settle.
 
 ---
 
@@ -159,7 +159,7 @@ await <service>.<tool>({ ... });
 
 ## §matcher-prefix-claims 5. Bulk pattern matching and scope markers
 
-`FIND`, `READ`, `KILL`, and `EDIT` accept a single-line matcher on the heading line classified by leading sigil:
+`plurnk.find`, `plurnk.read`, `plurnk.kill`, and `plurnk.edit` accept a single-line `pattern` matcher classified by leading sigil:
 
 | Prefix | Dialect | Validation & tolerance |
 | --- | --- | --- |
@@ -171,8 +171,8 @@ await <service>.<tool>({ ... });
 | none | `glob` | Fallback shell glob or literal substring |
 
 - **Soft matcher refusal**: An invalid matcher expression is admitted as `matcher.dialect = "unreadable"` with its diagnostic and working-form `recovery` so only that operation fails `400 grammar/matcher/unreadable-pattern` while sibling statements in the turn still execute.
-- **Heading recovery and slot tolerances**: Statement errors recover at the next column-0 heading; a `<scope>` written inside `(path<L,M>)` is lifted with a warning; extra `(path)` slots beyond the operation's arity fail only that statement.
-- **Line anchors and scope range recovery**: `TextLineMarker` accepts `@<5 Base62 chars>` line anchors in line positions; reversed or zero-based two-number scopes (`<0,N>`, `<M,N>` with `M > N`, `<N,+K>`) normalize with a warning advisory.
+- **Statement recovery and argument tolerances**: Statement errors recover at the next top-level call; an inline `<L,M>` range written inside `path<L,M>` is lifted with a warning; extra positional arguments beyond the operation's arity fail only that statement.
+- **Line anchors and range recovery**: `TextLineMarker` accepts `@<5 Base62 chars>` line anchors in line positions; reversed or zero-based two-number ranges (`"0,N"`, `"M,N"` with `M > N`, `"N,+K"`) normalize with a warning advisory.
 
 ---
 
@@ -235,5 +235,5 @@ await <service>.<tool>({ ... });
 | Mechanism | Contract |
 | --- | --- |
 | Working-form recovery & attempt | Every hard error (`severity: "error"`) populates `recovery` with the canonical Code Mode syntax of the refused construct and `attempt` (`{ text, verb }`) with the refused statement's source text; `operationOmitted` marks unexecuted call fragments. Each malformed statement produces at most one hard error. |
-| Regex and matcher tolerances | Lifts leading PCRE inline flags `(?ims)` with a warning; folds comma-separated `/pattern/` lists on `FIND` and `READ` into alternation with a warning while refusing numeric/open sed ranges (`/a/,+N`, `/a/,-1`, `/a/,`) and mutating `/a/,/b/` ranges; diagnoses trailing text after `/pattern/flags`; recovers unclosed `/pattern` at EOL. |
-| Statement & argument tolerances | Lifts inline `<L,M>` scopes from `path<L,M>` strings with a warning; recovers bare `EDIT` anchors (`@abcde`) and combined `42<@abcde>` scopes; unwraps Markdown-fenced Code Mode statements with a warning; and sets `unparsedTail` when an unclosed string, comment, parenthesis, bracket, or brace reaches end of input. |
+| Regex and matcher tolerances | Lifts leading PCRE inline flags `(?ims)` with a warning; folds comma-separated `/pattern/` lists on `find` and `read` into alternation with a warning while refusing numeric/open sed ranges (`/a/,+N`, `/a/,-1`, `/a/,`) and mutating `/a/,/b/` ranges; diagnoses trailing text after `/pattern/flags`; recovers unclosed `/pattern` at EOL. |
+| Statement & argument tolerances | Lifts inline `<L,M>` ranges from `path<L,M>` strings with a warning; recovers bare `edit` anchors (`@abcde`) and combined `42<@abcde>` ranges; unwraps Markdown-fenced Code Mode statements with a warning; and sets `unparsedTail` when an unclosed string, comment, parenthesis, bracket, or brace reaches end of input. |

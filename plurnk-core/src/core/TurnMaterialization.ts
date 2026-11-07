@@ -104,7 +104,7 @@ export default class TurnMaterialization {
                     : await loopOutcome(this.#db, workspaceId, r.hostname, sequence);
                 const resource = outcome?.resource ?? `ops://${r.hostname}${r.pathname}`;
                 rx = JSON.stringify(await ReadProjector.project({
-                    statement: { op: "read", target: null, lineMarker: null, matcher: null, metadata: null,
+                    statement: { op: "read", target: null, lineMarker: null, matcher: null, headers: null,
                         body: null, aside: null, position: { line: 1, column: 1 } },
                     manifest: TurnSource.manifestFor("ops"), publishesLineAnchors: false,
                     target: resource, identity: resource, mimetypes: this.#mimetypes,
@@ -429,7 +429,7 @@ export default class TurnMaterialization {
         // with its size beside it: a fact, not an error; its body stays READable at the row.
         fit?: ContextFit;
     }): Promise<number> {
-        const tx = JSON.stringify({ op: "send", aside: null, target: null, metadata: null, lineMarker: null, matcher: null, body: { raw: body } });
+        const tx = JSON.stringify({ op: "send", aside: null, target: null, headers: null, attachments: null, lineMarker: null, matcher: null, body: { raw: body } });
         const rx = JSON.stringify({ status: 200, resource });
         const baseAttrs: Record<string, unknown> = selfAddressed ? { kind: "message", selfAddressed: true } : { kind: "message" };
         const unfit = await this.#unfit(workspaceId, loopId, turnId, fit, body, (seqs) => ({

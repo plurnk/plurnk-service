@@ -299,9 +299,9 @@ export interface ResourceCaps {
 // result reports the applied outcome.
 export interface ProposalApplyRequest {
     readonly attrs: object;
-    // Exact statement-level scheme metadata survives the in-process proposal
+    // Exact statement-level request headers survive the in-process proposal
     // pause without entering client-visible attrs or durable operation evidence.
-    readonly metadata: readonly string[] | null;
+    readonly headers: Readonly<Record<string, string>> | null;
     readonly body?: string;
 }
 

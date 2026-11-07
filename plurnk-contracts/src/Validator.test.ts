@@ -804,7 +804,7 @@ test("{§text-region} EntryReadResult validates one exact client entry projectio
 });
 
 test("{§text-region} assertPlurnkStatement returns the statement its schema accepts and refuses the rest", () => {
-    const note = { op: "note", aside: null, metadata: null, target: null, lineMarker: null, body: "kept", position: UNKNOWN_POSITION };
+    const note = { op: "note", aside: null, target: null, lineMarker: null, body: "kept", position: UNKNOWN_POSITION };
     assert.equal(Validator.assertPlurnkStatement(note), note);
     assert.throws(() => Validator.assertPlurnkStatement({ op: "note" }), TypeError);
 });
@@ -872,11 +872,15 @@ test("{§matcher-prefix-claims} Validator: MatcherBody accepts only canonical si
 
 test("{§op-shapes} {§matcher-prefix-claims} {§parse-recovery} {§whitespace-contract} {§contract-representations} PlurnkStatement schema validates operation shapes, scopes, and required fields", () => {
     const matcherOps = new Set(["find", "read", "edit", "kill"]);
+    const headersOps = new Set(["find", "read", "edit", "send", "kill"]);
+    const attachmentsOps = new Set(["send", "done", "fail"]);
     const baseFields = (op: string) => ({
         op,
         aside: null,
         target: null,
-        metadata: null,
+        ...(headersOps.has(op) ? { headers: null } : {}),
+        ...(attachmentsOps.has(op) ? { attachments: null } : {}),
+        ...(op === "kill" ? { remote: null } : {}),
         lineMarker: null,
         ...(matcherOps.has(op) ? { matcher: null } : {}),
         ...(op === "wait" ? { seconds: null } : {}),
@@ -887,7 +891,6 @@ test("{§op-shapes} {§matcher-prefix-claims} {§parse-recovery} {§whitespace-c
         runtime: "sh",
         aside: null,
         target: null,
-        metadata: null,
         lineMarker: null,
         body: null,
         position: { line: 1, column: 0 },
@@ -907,8 +910,8 @@ test("{§op-shapes} {§matcher-prefix-claims} {§parse-recovery} {§whitespace-c
     const transferFields = (op: "copy" | "move") => ({
         op,
         aside: null,
-        source: { target: { kind: "local" as const, raw: "source" }, metadata: null, lineMarker: null, matcher: null },
-        destination: { target: { kind: "local" as const, raw: "destination" }, metadata: null, lineMarker: null, matcher: null },
+        source: { target: { kind: "local" as const, raw: "source" }, headers: null, lineMarker: null, matcher: null },
+        destination: { target: { kind: "local" as const, raw: "destination" }, headers: null, lineMarker: null, matcher: null },
         position: { line: 1, column: 0 },
     });
 
@@ -939,7 +942,7 @@ test("{§op-shapes} {§matcher-prefix-claims} {§parse-recovery} {§whitespace-c
     }
     for (const patch of [
         { target: "schedule:///rules/reminder" },
-        { metadata: ["x: y"] },
+        { headers: { Authorization: "Bearer x" } },
         { status: 200 },
         { lineMarker: { marks: [1] } },
         { seconds: -1 },
@@ -958,13 +961,13 @@ test("{§op-shapes} {§matcher-prefix-claims} {§parse-recovery} {§whitespace-c
         ...copy,
         source: {
             target: urlTarget("session://draft/source", "session", "draft", "/source"),
-            metadata: ["source metadata"],
+            headers: { Accept: "text/plain" },
             lineMarker: { marks: [1, 4] },
             matcher: { dialect: "glob", raw: "needle" },
         },
         destination: {
             target: urlTarget("session://archive/draft", "session", "archive", "/draft"),
-            metadata: ["destination metadata"],
+            headers: { "Content-Type": "text/plain" },
             lineMarker: { marks: [12, 5, 12, 5] },
             matcher: null,
         },
@@ -973,7 +976,7 @@ test("{§op-shapes} {§matcher-prefix-claims} {§parse-recovery} {§whitespace-c
     assert.equal(Validator.validatePlurnkStatement({ ...baseFields("send"), body: "just a string" }).valid, false);
     for (const op of ["done", "fail"]) {
         assert.equal(Validator.validatePlurnkStatement(baseFields(op)).valid, true, `${op} accepts empty body`);
-        assert.equal(Validator.validatePlurnkStatement({ ...baseFields(op), body: { raw: "done", json: null } }).valid, true, `${op} accepts SendBody`);
+        assert.equal(Validator.validatePlurnkStatement({ ...baseFields(op), body: { raw: "done", json: null }, attachments: ["report.pdf"] }).valid, true, `${op} accepts SendBody and attachments`);
         assert.equal(Validator.validatePlurnkStatement({ ...baseFields(op), lineMarker: { marks: [1] } }).valid, false, `${op} refuses lineMarker`);
     }
     assert.equal(Validator.validatePlurnkStatement({ ...baseFields("edit"), body: "some markdown content" }).valid, true);
@@ -1005,7 +1008,7 @@ test("{§notifications} dispatch observations preserve the phase/result boundary
     const start = {
         sessionId: 7, loopId: 9, turnId: 11, sequence: 2, origin: "model", projectRoot: null, phase: "started",
         statement: { op: "read", target: { kind: "local", raw: "README.md" },
-            aside: null, metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION },
+            aside: null, headers: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION },
     };
     const validate = (value: unknown) => Validator.validateJsonSchemaInstance(applicationOperationEventSchema, value);
     for (const value of [start, { ...start, phase: "settled", result: { status: 200, content: "read body" } }]) {

@@ -258,7 +258,7 @@ export default class EntryRepresentation {
                 const handler = binding.handler;
                 const coreScheme = this.#schemes.coreOwns(routedScheme);
                 const resolved = coreScheme
-                    ? await this.prepareDataRepresentation({ target, metadata: null, routedScheme, handler, manifest: binding.manifest, ctx, publishedChannel: null })
+                    ? await this.prepareDataRepresentation({ target, headers: null, routedScheme, handler, manifest: binding.manifest, ctx, publishedChannel: null })
                     : await this.resolveDataEntryAddress({ target, routedScheme, handler, manifest: binding.manifest, ctx });
                 if (resolved.result !== null && resolved.result.status >= 400) return { kind: "refused", result: resolved.result };
                 if (resolved.address === null) return null;
@@ -334,7 +334,7 @@ export default class EntryRepresentation {
 
     async prepareDataRepresentation({
         target,
-        metadata,
+        headers,
         routedScheme,
         handler,
         manifest,
@@ -343,7 +343,7 @@ export default class EntryRepresentation {
         resolved: priorResolution,
     }: {
         target: ParsedPath;
-        metadata: readonly string[] | null;
+        headers: Readonly<Record<string, string>> | null;
         routedScheme: string;
         handler: SchemeWithEntryAddress & SchemeHandler;
         manifest: SchemeManifest;
@@ -351,13 +351,13 @@ export default class EntryRepresentation {
         publishedChannel: string | null;
         resolved?: PreparedRepresentation;
     }): Promise<PreparedRepresentation> {
-        if (metadata !== null && manifest.metadataModifier !== true) {
+        if (headers !== null && routedScheme !== "http" && routedScheme !== "https" && routedScheme !== "ws" && routedScheme !== "wss") {
             return {
                 address: null,
                 result: this.#failure(
-                    "scheme-metadata-unsupported",
+                    "headers-unsupported",
                     400,
-                    `Resource acquisition from '${routedScheme}' does not accept the [metadata] modifier.`,
+                    `Resource acquisition from '${routedScheme}' does not accept headers.`,
                     {},
                     { scheme: routedScheme, retryable: false },
                 ),
@@ -394,7 +394,7 @@ export default class EntryRepresentation {
         const prepared = Results.assertRepresentationPreparation(
             await handler.prepareRepresentation({
                 target: selectionNeutralTarget,
-                metadata,
+                headers,
                 authority: address.authority,
                 pathname: address.pathname,
             }, preparationCtx),

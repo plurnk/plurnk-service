@@ -26,7 +26,7 @@ const readFilesItems = (): number | null => {
 
 // {§session-initialization-entry} — the closing TODO after the initialization surveys.
 const INITIALIZATION_CLOSING_TODO: TodoStatement = {
-    op: "todo", aside: null, metadata: null, target: null, lineMarker: null,
+    op: "todo", aside: null, target: null, lineMarker: null,
     body: "Resolve all Open Work.", position: UNKNOWN_POSITION,
 };
 
@@ -94,7 +94,7 @@ export default class InitializationTurn {
                     op: "find",
                     aside: null,
                     target: statement.target,
-                    metadata: null,
+                    headers: null,
                     matcher: null,
                     body: null,
                     lineMarker: { marks: [1, -1] },
@@ -178,43 +178,43 @@ export default class InitializationTurn {
             {
                 op: "find", aside: null,
                 target: { kind: "url", raw: "skill://*/SKILL.md", scheme: "skill", username: null, password: null, hostname: "*", port: null, pathname: "/SKILL.md", query: null, fragment: null },
-                metadata: null,
+                headers: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
-                op: "find", aside: "Plurnk Harness",
+                op: "find", aside: "Plurnk",
                 target: { kind: "url", raw: "skill://plurnk/*.md", scheme: "skill", username: null, password: null, hostname: "plurnk", port: null, pathname: "/*.md", query: null, fragment: null },
-                metadata: null,
+                headers: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
                 op: "find", aside: null,
                 target: { kind: "url", raw: "persona://*/PERSONA.md", scheme: "persona", username: null, password: null, hostname: "*", port: null, pathname: "/PERSONA.md", query: null, fragment: null },
-                metadata: null,
+                headers: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
                 op: "find", aside: null,
                 target: { kind: "url", raw: "mcp:///*.md", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/*.md", query: null, fragment: null },
-                metadata: null,
+                headers: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
                 op: "read", aside: null,
                 target: { kind: "url", raw: "mcp:///plurnk.md", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/plurnk.md", query: null, fragment: null },
-                metadata: null,
+                headers: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
             {
                 op: "read", aside: "Use mcp:///<server>.json or mcp:///<server>/<tool>.json for tool schemas.",
                 target: { kind: "url", raw: "mcp:///plurnk/edit.json", scheme: "mcp", username: null, password: null, hostname: null, port: null, pathname: "/plurnk/edit.json", query: null, fragment: null },
-                metadata: null,
+                headers: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
                 op: "find", aside: "project root member files",
                 target: { kind: "local", raw: "*" },
-                metadata: null,
+                headers: null,
                 matcher: null,
                 body: null,
                 lineMarker: fileCap === null ? null : { marks: [1, fileCap] },
@@ -223,13 +223,13 @@ export default class InitializationTurn {
             {
                 op: "find", aside: "workspace knowledgebase entries",
                 target: { kind: "url", raw: "workspace:///*", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
-                metadata: null,
+                headers: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
                 op: "find", aside: "session knowledgebase entries",
                 target: { kind: "url", raw: `session://${sessionName}/*`, scheme: "session", username: null, password: null, hostname: sessionName, port: null, pathname: "/*", query: null, fragment: null },
-                metadata: null,
+                headers: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
         ];

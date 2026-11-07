@@ -40,14 +40,14 @@ export default class DataStatementRunner {
     readonly #schemes: SchemeRegistry;
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; access?: "read" | "write"; }) => Promise<PreparedRepresentation>;
-    readonly #prepareDataRepresentation: (arg0: { target: ParsedPath; metadata: readonly string[] | null; routedScheme: string; handler: SchemeWithEntryAddress & SchemeHandler; manifest: SchemeManifest; ctx: PlurnkSchemeContext; publishedChannel: string | null; resolved?: PreparedRepresentation; }) => Promise<PreparedRepresentation>;
+    readonly #prepareDataRepresentation: (arg0: { target: ParsedPath; headers: Readonly<Record<string, string>> | null; routedScheme: string; handler: SchemeWithEntryAddress & SchemeHandler; manifest: SchemeManifest; ctx: PlurnkSchemeContext; publishedChannel: string | null; resolved?: PreparedRepresentation; }) => Promise<PreparedRepresentation>;
     readonly #failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
 
     constructor({ schemes, liveSubscriptions, resolveDataEntryAddress, prepareDataRepresentation, failure }: {
         schemes: SchemeRegistry;
         liveSubscriptions: LiveSubscriptions;
         resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; access?: "read" | "write"; }) => Promise<PreparedRepresentation>;
-        prepareDataRepresentation: (arg0: { target: ParsedPath; metadata: readonly string[] | null; routedScheme: string; handler: SchemeWithEntryAddress & SchemeHandler; manifest: SchemeManifest; ctx: PlurnkSchemeContext; publishedChannel: string | null; resolved?: PreparedRepresentation; }) => Promise<PreparedRepresentation>;
+        prepareDataRepresentation: (arg0: { target: ParsedPath; headers: Readonly<Record<string, string>> | null; routedScheme: string; handler: SchemeWithEntryAddress & SchemeHandler; manifest: SchemeManifest; ctx: PlurnkSchemeContext; publishedChannel: string | null; resolved?: PreparedRepresentation; }) => Promise<PreparedRepresentation>;
         failure: (code: string, status: number, detail: string, fields?: Readonly<Record<string, unknown>>, extensions?: Readonly<Record<string, unknown>>) => DispatchResult;
     }) {
         this.#schemes = schemes;
@@ -137,11 +137,37 @@ export default class DataStatementRunner {
         const method = (handler as SchemeMethods)[methodName];
         const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
         if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
-        if (statement.op !== "send" && statement.metadata !== null && manifest.metadataModifier !== true) {
+        if ("headers" in statement && statement.headers !== null && schemeName !== "http" && schemeName !== "https" && schemeName !== "ws" && schemeName !== "wss") {
             return this.#failure(
-                "scheme-metadata-unsupported",
+                "headers-unsupported",
                 400,
-                `${writtenOp(statement)} on '${schemeName}' does not accept the [metadata] modifier.`,
+                `${writtenOp(statement)} on '${schemeName}' does not accept headers.`,
+                {},
+                {
+                    scheme: schemeName,
+                    operation: statement.op,
+                    retryable: false,
+                },
+            );
+        }
+        if (statement.op === "kill" && statement.remote !== null && schemeName !== "http" && schemeName !== "https" && schemeName !== "ws" && schemeName !== "wss") {
+            return this.#failure(
+                "remote-unsupported",
+                400,
+                `kill on '${schemeName}' does not accept remote.`,
+                {},
+                {
+                    scheme: schemeName,
+                    operation: statement.op,
+                    retryable: false,
+                },
+            );
+        }
+        if (statement.op === "send" && statement.attachments !== null && schemeName !== "session" && schemeName !== "message" && schemeName !== "http" && schemeName !== "https" && schemeName !== "ws" && schemeName !== "wss") {
+            return this.#failure(
+                "attachments-unsupported",
+                400,
+                `send on '${schemeName}' does not accept attachments.`,
                 {},
                 {
                     scheme: schemeName,
@@ -269,7 +295,7 @@ export default class DataStatementRunner {
             ? { address: null, result: null }
             : await this.#prepareDataRepresentation({
                 target: statement.target,
-                metadata: statement.metadata,
+                headers: statement.headers,
                 routedScheme: schemeName,
                 handler,
                 manifest,
@@ -337,7 +363,7 @@ export default class DataStatementRunner {
         const { manifest, schemeName, handler, ctx, addressedScheme, addressResolution, publishedChannel } = bound;
         const prepared = await this.#prepareDataRepresentation({
             target,
-            metadata: statement.metadata,
+            headers: statement.headers,
             routedScheme: schemeName,
             handler,
             manifest,

@@ -208,7 +208,6 @@ export default class Engine {
             problems: this.#problems,
             packets: this.#packets,
             dispatcher: this.#dispatcher,
-            liveSubscriptions: this.#liveSubscriptions,
             notify,
             executors,
             loopSignal,

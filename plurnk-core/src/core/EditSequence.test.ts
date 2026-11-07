@@ -9,7 +9,7 @@ import { editReceipt, projectEditReceipt, reviewerReplacementReceipt } from "../
 const identity = "workspace:///sequence.md";
 const original = "one\ntwo\nthree\nfour\nfive\nsix\n";
 const statement = (marker: LineMarker, body: string): ResolvedEditStatement => ({
-    op: "edit", aside: null, target: null, metadata: null,
+    op: "edit", aside: null, target: null, headers: null,
     lineMarker: marker, body, matcher: null, position: UNKNOWN_POSITION,
 });
 const apply = (sequence: EditSequence, content: string, marker: LineMarker, body: string): string => {

@@ -52,14 +52,14 @@ export default class HttpGet {
 
     async prepareGet(
         target: UrlPath,
-        metadata: readonly string[] | null,
+        headers: Readonly<Record<string, string>> | null,
         pathname: string,
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult> {
         const address = httpAddress(target);
         if (!(address instanceof NetworkAddress)) return address;
         const { url } = address;
-        const requestHeaders = parseRequestHeaders(metadata);
+        const requestHeaders = parseRequestHeaders(headers);
         if (!Array.isArray(requestHeaders)) return requestHeaders;
         let cached: StoredEntryData | undefined;
         const conditional: Array<[string, string]> = [];

@@ -40,7 +40,7 @@ import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 
 describe("matcher.xpath-jsonpath", () => {
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
-    metadata: null,
+    headers: null,
     op: "read", aside: null,
  target,
     lineMarker: null, matcher: null, body: null,
@@ -48,7 +48,7 @@ const readStmt = (target: ParsedPath | null): ReadStatement => ({
 });
 
 const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null): FindStatement => ({
-    metadata: null,
+    headers: null,
     op: "find", aside: null,
  target,
     lineMarker: null, matcher, body: null,
@@ -74,7 +74,7 @@ const setup = async () => {
 const seedJson = async (db: Db, workspaceId: number, sessionId: number, mimetypes: Mimetypes, path: string, content: string): Promise<void> => {
     await new Workspace().edit(
         {
-            metadata: null,
+            headers: null,
             op: "edit", aside: null,
             target: urlPath("workspace", path),
             lineMarker: null, matcher: null, body: content,
@@ -288,7 +288,7 @@ test("{§matcher-dispatch} jsonpath match coordinates support a model-chosen sur
 
         await engine.dispatch({
             statement: {
-                metadata: null,
+                headers: null,
                 op: "find", aside: null,
                 target: urlPath("workspace", "/team.json"),
                 lineMarker: null,
@@ -638,7 +638,7 @@ describe("graph.file", () => {
 const filePath = (pathname: string): LocalPath => ({ kind: "local", raw: pathname });
 
 const findStmt = (target: LocalPath, matcher: MatcherBody): FindStatement => ({
-    metadata: null,
+    headers: null,
     op: "find", aside: null, target, lineMarker: null, matcher, body: null,
      position: { line: 1, column: 1 },
 });
@@ -698,13 +698,13 @@ const url = (pathname: string): UrlPath => ({
 
 const fullReplace: LineMarker = { marks: [1, -1] };
 const graphEditStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null, target, lineMarker: marker, body,
     matcher: null, position: { line: 1, column: 1 },
 });
 
 const findStmt = (target: UrlPath, matcher: MatcherBody): FindStatement => ({
-    metadata: null,
+    headers: null,
     op: "find", aside: null, target, lineMarker: null, matcher, body: null,
      position: { line: 1, column: 1 },
 });
@@ -1099,8 +1099,8 @@ const enc = (pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, query: null, fragment: null,
 });
-const decodeEditStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({ metadata: null, op: "edit", aside: null, target, lineMarker: null, body, matcher: null, position: { line: 1, column: 1 } });
-const readStmt = (target: UrlPath): ReadStatement => ({ metadata: null, op: "read", aside: null, target, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
+const decodeEditStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({ headers: null, op: "edit", aside: null, target, lineMarker: null, body, matcher: null, position: { line: 1, column: 1 } });
+const readStmt = (target: UrlPath): ReadStatement => ({ headers: null, op: "read", aside: null, target, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
 
 test("{§path-syntax} a percent-encoded pathname alias resolves to literal parentheses", async () => {
     const db = await openMigrated();

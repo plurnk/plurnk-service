@@ -132,12 +132,12 @@ test("{§exec-lifetime} open streams remain live obligations regardless of their
         await db.test_seed_channel.run({
             entry_id: row.id, name: "body", content: "", mimetype: "text/plain", state: "active",
         });
-        await ChannelWrite.openSubscription(db, { sessionId, entryId: row.id, scheme: "sh", handle: "second", turnScoped: true });
+        await ChannelWrite.openSubscription(db, { sessionId, entryId: row.id, scheme: "sh", handle: "second" });
         await ChannelWrite.closeSubscription(db, { subscriptionId: first, result: { status: 200 } });
         assert.deepEqual(
             await db.session_live_obligations.get({ session_id: sessionId }),
             { streams: 1, sessions: 0 },
-            "the turn-scoped stream alone still holds the join after the first stream closes",
+            "the second stream alone still holds the join after the first stream closes",
         );
     } finally { await db.close(); }
 });
@@ -225,12 +225,10 @@ test("{§subscriptions} closeSubscription: idempotent — already-closed subscri
     } finally { await db.close(); }
 });
 
-test("{§exec-lifetime} findOpenTurnScopedSubscriptionsForSession selects only turn-scoped (<0>) subs; closed ones drop out", async () => {
+test("{§exec-lifetime} findOpenSubscriptionsForSession selects open subs for the session; closed ones drop out", async () => {
     const { db, workspaceId, sessionId, entryId } = await seedChannel("body", "text/plain", "");
     try {
-        // A turn-scoped (`<0>`) sub and an ordinary (unbounded) sub — on different entries, since
-        // there's one active sub per entry. Only the turn-scoped one is reaped at pre-turn.
-        const scoped = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sh", handle: "scoped", turnScoped: true });
+        const sub1 = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sh", handle: "sub1" });
         const e2 = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/y" });
         if (e2 === undefined) throw new Error("seed entry 2 failed");
         await db.test_seed_channel.run({
@@ -240,18 +238,16 @@ test("{§exec-lifetime} findOpenTurnScopedSubscriptionsForSession selects only t
             mimetype: "text/plain",
             state: "active",
         });
-        const ordinary = await ChannelWrite.openSubscription(db, { sessionId, entryId: e2.id, scheme: "sh", handle: "ordinary" });
+        const sub2 = await ChannelWrite.openSubscription(db, { sessionId, entryId: e2.id, scheme: "sh", handle: "sub2" });
 
-        const open = await ChannelWrite.findOpenTurnScopedSubscriptionsForSession(db, sessionId);
-        assert.deepEqual(open.map((s) => s.id), [scoped], "only the <0> sub is turn-scoped — the unbounded one is not reaped at pre-turn");
-        assert.ok(!open.some((s) => s.id === ordinary), "the unbounded sub is excluded");
+        const open = await ChannelWrite.findOpenSubscriptionsForSession(db, sessionId);
+        assert.deepEqual(open.map((s) => s.id), [sub1, sub2]);
 
-        // Once closed (reaped), it drops out — the pre-turn reap is one-shot, never a double-abort.
         await ChannelWrite.closeSubscription(db, {
-            subscriptionId: scoped,
+            subscriptionId: sub1,
             result: Results.failure("scheme:test", "cancelled", 499, "The test stream was cancelled."),
         });
-        assert.equal((await ChannelWrite.findOpenTurnScopedSubscriptionsForSession(db, sessionId)).length, 0, "a closed turn-scoped sub is no longer selected");
+        assert.deepEqual((await ChannelWrite.findOpenSubscriptionsForSession(db, sessionId)).map((s) => s.id), [sub2], "a closed sub is no longer selected");
     } finally { await db.close(); }
 });
 
@@ -485,7 +481,7 @@ describe("Exec.kill", () => {
 
 
 const killExec = (pathname: string, scheme = "exec"): KillStatement => ({
-    metadata: null,
+    headers: null, remote: null,
     op: "kill", aside: null,
     target: {
         kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -866,7 +862,7 @@ test("{§exec-target-routing} an empty-body 0o644 script target survives accepta
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
-            statement: { metadata: null, runtime: "sh", aside: null, target: { kind: "local", raw: "demo_greet.sh" }, lineMarker: null, body: "", position: { line: 1, column: 1 } },
+            statement: { runtime: "sh", aside: null, target: { kind: "local", raw: "demo_greet.sh" }, lineMarker: null, body: "", position: { line: 1, column: 1 } },
             workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });

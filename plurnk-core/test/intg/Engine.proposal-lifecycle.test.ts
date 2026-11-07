@@ -89,7 +89,7 @@ class ProposingTest {
 }
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null,
     target: { kind: "url", raw: `proposing-test://${pathname}`, scheme: "proposing-test",
         username: null, password: null, hostname: null, port: null,
@@ -1162,7 +1162,6 @@ describe("question-tool", () => {
 
 
 const execStmt = (body: string): ExecStatement => ({
-    metadata: null,
     runtime: "plurnk", aside: null, target: localPath("question"), lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

@@ -4,7 +4,7 @@ Owns the `http(s)://` request/response scheme (`Http`), the `ws(s)://` full-dupl
 
 ## §http-manifest HTTP manifest and operation surface
 
-`Http` registers as `https` (plain `http` routes to the same handler; `package.json#plurnk.schemes` registers `http` via default export and `wss` via `Ws`) with `category: "data"`, `writableBy: ["model", "client"]`, `volatile: true`, `modelVisible: true`, `metadataModifier: true`, `traits: ["web"]`, and channels:
+`Http` registers as `https` (plain `http` routes to the same handler; `package.json#plurnk.schemes` registers `http` via default export and `wss` via `Ws`) with `category: "data"`, `writableBy: ["model", "client"]`, `volatile: true`, `modelVisible: true`, `traits: ["web"]`, and channels:
 
 | Channel | Seed type | Meaning |
 |---|---|---|
@@ -22,9 +22,9 @@ Identity and transport URLs normalize through `NetworkAddress` ({§network-addre
 | `plurnk.send({ target: url, text })` | `POST` | Proposes (`effect: "host"`, `202`); on apply, streams and persists response under `url` |
 | `plurnk.edit({ path: url, content })` | `PUT` | Proposes (`effect: "host"`, `202`); replaces whole remote resource (line markers fail `400`: `Remove the line range and submit the complete replacement body.`) |
 | `plurnk.kill({ path: url })` | None | Cancels all live workspace acquisitions of `url` (owners settle `499`), else deletes local stored entry |
-| `plurnk.kill({ path: url, metadata: ["{\"remote\": true}"] })` | `DELETE` | Proposes (`effect: "host"`, `202`); remaining options in the metadata block become request headers |
+| `plurnk.kill({ path: url, remote: true, headers? })` | `DELETE` | Proposes (`effect: "host"`, `202`); `headers` supplies the request headers |
 
-- **Headers and proposals (`http-outbound-proposes`):** Request headers are passed in one `[{"Key": "value"}]` metadata block ({§slot-order}). `POST`, `PUT`, remote `DELETE`, and WebSocket `EDIT`/`SEND` frames declare `effect: "host"` and return `202` ({§proposal}, {§exec-lifetime}), governed by `PLURNK_SERVICE_EFFECT_HOST`. `GET` and WebSocket `READ` connection opens are observational and ungated; a WebSocket frame checks for an open socket both before proposing and again at `applyResolution`, and the resolver may replace the proposed body before it is sent.
+- **Headers and proposals (`http-outbound-proposes`):** Request headers are passed in `headers: { "Key": "value" }` ({§slot-order}). `POST`, `PUT`, remote `DELETE`, and WebSocket `edit`/`send` frames declare `effect: "host"` and return `202` ({§proposal}), governed by `PLURNK_SERVICE_EFFECT_HOST`. `GET` and WebSocket `read` connection opens are observational and ungated; a WebSocket frame checks for an open socket both before proposing and again at `applyResolution`, and the resolver may replace the proposed body before it is sent.
 
 ## §http-lifecycle Acquisition, decoding, and materialization
 
@@ -66,7 +66,7 @@ flowchart TD
 | Materializer success after origin loss | Preserve provider text and origin failure | `readable` static; `body` errored with origin's own failure |
 | Projection implementation throws | Stop and preserve cause | `WebMaterializationError` with stage `projection` |
 
-- **Materializer extensions (`PLURNK_SCHEMES_HTTP_MATERIALIZER`):** `Http` publishes `WebFetcher` as `webMaterializer` ({§scheme-operation-dispatch}). When no `Accept` header is authored, `GET` sends `Accept: text/markdown, text/html;q=0.9, */*;q=0.1`. For a credential-free, metadata-free generic public request, `PLURNK_SCHEMES_HTTP_MATERIALIZER` selects a discovered `http-materializer` package (`plurnk: { kind: "http-materializer", materializers: [{ id, module }] }` or `plugin.json#extensions.ai.plurnk`, {§extension-discovery}). If `eligible(url)` returns an identity string, `extract` returns `success`, `recoverable` (`502 materializer-recoverable`: `The materializer could not extract <url> (<reason>); the failure is retryable.`), or `hard`.
+- **Materializer extensions (`PLURNK_SCHEMES_HTTP_MATERIALIZER`):** `Http` publishes `WebFetcher` as `webMaterializer` ({§scheme-operation-dispatch}). When no `Accept` header is authored, `GET` sends `Accept: text/markdown, text/html;q=0.9, */*;q=0.1`. For a credential-free, header-free generic public request, `PLURNK_SCHEMES_HTTP_MATERIALIZER` selects a discovered `http-materializer` package (`plurnk: { kind: "http-materializer", materializers: [{ id, module }] }` or `plugin.json#extensions.ai.plurnk`, {§extension-discovery}). If `eligible(url)` returns an identity string, `extract` returns `success`, `recoverable` (`502 materializer-recoverable`: `The materializer could not extract <url> (<reason>); the failure is retryable.`), or `hard`.
 - **Origin `llms.txt` companions (`PLURNK_SCHEMES_HTTP_LLMS_TXT`):** When `PLURNK_SCHEMES_HTTP_LLMS_TXT=1` (default), a successful generic `GET` opportunistically probes `<origin>/llms.txt` once per origin TTL window and materializes `https://<host>/llms.txt` as a discoverable workspace entry; missing/non-`2xx`/binary/failed probes are remembered quietly and never fail the initiating `READ`.
 
 ## §http-status Status mapping and replay
@@ -99,7 +99,7 @@ flowchart TD
 ## §revalidation Revalidation, target rewrite, and SSE
 
 - **GitHub raw rewrite (`host-rewrite`):** Acquisition `GET`s (direct `READ`, exact `FIND`, `WebFetcher`) rewrite `https://github.com/<owner>/<repo>/blob/<ref>/<path>` to `raw.githubusercontent.com` for byte transport while preserving the addressed GitHub URL as entry identity. `POST`, `PUT`, and `DELETE` are never retargeted.
-- **Cache variants and freshness (`PLURNK_SCHEMES_HTTP_TTL_MS`):** Acquired responses append authoritative `x-plurnk-request-method`, `x-plurnk-fetched-at`, `x-plurnk-cache-variant` (`default` when no explicit request metadata and no `Vary`, else `bypass`), `x-plurnk-materializer-id`, and `x-plurnk-projection-id`. Only terminal `default`-variant `GET` responses with successful `body` and `header` and cacheable status/directives (excluding `no-store`, `private`, and `206`) are eligible for reuse:
+- **Cache variants and freshness (`PLURNK_SCHEMES_HTTP_TTL_MS`):** Acquired responses append authoritative `x-plurnk-request-method`, `x-plurnk-fetched-at`, `x-plurnk-cache-variant` (`default` when no explicit request headers and no `Vary`, else `bypass`), `x-plurnk-materializer-id`, and `x-plurnk-projection-id`. Only terminal `default`-variant `GET` responses with successful `body` and `header` and cacheable status/directives (excluding `no-store`, `private`, and `206`) are eligible for reuse:
 
 | Stored origin policy | Direct `READ` after acquisition | Exact `FIND` after acquisition |
 |---|---|---|
@@ -146,11 +146,11 @@ stateDiagram-v2
     Settling --> Idle: drain accepted frame prefix, close transport & subscription, release claim
 ```
 
-`Ws` registers as `wss` (`ws` routes to it) with default `text/plain` channel `messages` and canonical `NetworkAddress` identity (no `[metadata]` support; Node $\ge 26$):
+`Ws` registers as `wss` (`ws` routes to it) with default `text/plain` channel `messages` and canonical `NetworkAddress` identity (no `headers`, `remote`, or `attachments` options; Node $\ge 26$):
 
 | Operation / event | Contract |
 |---|---|
-| `plurnk.read({ path: "ws(s)://..." })` | Claims workspace/URL coordinate, seeds entry and `StreamSubscription`, opens native `WebSocket`, and returns `102` on `open`. Concurrent duplicate `READ`s join the pending open and return `200` with connection state without opening a second socket. |
-| `plurnk.edit({ path: "ws(s)://...", content })` / `plurnk.send({ target: "ws(s)://...", text })` | Single-statement markerless `EDIT` and `SEND` (`200`) propose (`202`, `effect: "host"`) and send one text frame when the owner is `open` (`readyState === OPEN`). Absent/non-open owner fails `409` (`READ the WebSocket URL before sending a message.`); send throw fails `502` (`The WebSocket message could not be sent.`); line ranges and multi-statement batches fail `400`/`409`. |
+| `plurnk.read({ path: "ws(s)://..." })` | Claims workspace/URL coordinate, seeds entry and `StreamSubscription`, opens native `WebSocket`, and returns `102` on `open`. Concurrent duplicate `read`s join the pending open and return `200` with connection state without opening a second socket. |
+| `plurnk.edit({ path: "ws(s)://...", content })` / `plurnk.send({ target: "ws(s)://...", text })` | Single-statement markerless `edit` and `send` (`200`) propose (`202`, `effect: "host"`) and send one text frame when the owner is `open` (`readyState === OPEN`). Absent/non-open owner fails `409` (`Read the WebSocket URL before sending a message.`); send throw fails `502` (`The WebSocket message could not be sent.`); line ranges and multi-statement batches fail `400`/`409`. |
 | `plurnk.kill({ path: "ws(s)://..." })` | Closes/cancels the claimed owner (`404` when no live owner exists; close throw fails `502`: `The WebSocket connection could not be closed.`). |
 | Inbound frames & settlement | Text frames chain sequentially onto `messages` after `open`. A binary frame retains the text prefix, prunes later frames, closes with WebSocket code `4003`, and settles `415 binary-frame-unsupported`. First persistence failure prunes later frames and settles `500 message-persistence-failed`. Pre-open close settles `502 connection-failed`; post-open close drains accepted frames and settles `200` ({§execution-output-identity}, {§scheme-operation-dispatch}). |

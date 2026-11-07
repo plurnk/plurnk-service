@@ -39,9 +39,6 @@ interface SchemeManifestBase {
     // True only when EDIT accepts the shared textual <scope> contract. Core
     // then lowers rendered line anchors to numeric coordinates before dispatch.
     readonly textEditScopes?: boolean;
-    // Resource-option admission ({§manifest}); SEND recipients
-    // own their input independently. Core preserves ordered blocks.
-    readonly metadataModifier?: boolean;
     // True when the scheme's stable textual representations publish and accept
     // shared line anchors without claiming EDIT support. textEditScopes implies
     // publication only where the addressed resource authorizes model writes.

@@ -59,7 +59,6 @@ const harness = (
         notices,
         channels,
         args: {
-            metadata: null,
             runtime: "echo",
             body: "",
             cwd: null,

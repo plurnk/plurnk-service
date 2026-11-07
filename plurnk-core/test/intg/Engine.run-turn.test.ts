@@ -28,7 +28,7 @@ describe("Engine.run-turn", () => {
 const fullReplace: LineMarker = { marks: [1, -1] };
 
 const wsEditStmt = (pathname: string, body: string, marker: LineMarker | null = fullReplace): EditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null,
     target: urlPath("workspace", pathname),
     lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 },
@@ -555,7 +555,7 @@ test("{§loop-completion} Engine.runLoop: soft failures (404) do NOT accumulate 
         // 4 consecutive soft turns, no abandon should fire.
         // Vary path each turn to keep cycle detection orthogonal.
         const readMissing = (delimiter: string): ReadStatement => ({
-            metadata: null,
+            headers: null,
             op: "read", aside: null,
             target: urlPath("workspace", `/not-there-${delimiter}`),
             lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
@@ -585,13 +585,13 @@ test("{§edit} Engine.runLoop: clean turn between hard failures resets the strea
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const denied = (): EditStatement => ({
-            metadata: null,
+            headers: null,
             op: "edit", aside: null,
             target: urlPath("sealed", "/x"),
             lineMarker: null, matcher: null, body: "v", position: { line: 1, column: 1 },
         });
         const goodEdit = (p: string): EditStatement => ({
-            metadata: null,
+            headers: null,
             op: "edit", aside: null,
             target: urlPath("workspace", p),
             lineMarker: null, matcher: null, body: "v", position: { line: 1, column: 1 },
@@ -625,7 +625,7 @@ test("{§operation-results} Engine.runLoop: strike is engine-internal — model 
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const denied = (): EditStatement => ({
-            metadata: null,
+            headers: null,
             op: "edit", aside: null,
             target: urlPath("sealed", "/x"),
             lineMarker: null, matcher: null, body: "v", position: { line: 1, column: 1 },
@@ -756,7 +756,7 @@ test("{§edit} Engine.runTurn: the durable failure projection shows once, then a
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const denied = (): EditStatement => ({
-            metadata: null,
+            headers: null,
             op: "edit", aside: null,
             target: urlPath("sealed", "/x"),
             lineMarker: null, matcher: null, body: "v", position: { line: 1, column: 1 },
@@ -974,7 +974,7 @@ test("{§operation-results} Engine.runTurn: previous-turn 403 surfaces in the ne
     try {
         // Model attempts to EDIT sealed:/// — denied 403 (writableBy=['_plurnk']).
         const denied: EditStatement = {
-            metadata: null,
+            headers: null,
             op: "edit", aside: null,
             target: urlPath("sealed", "/illegal"),
             lineMarker: null, matcher: null, body: "x", position: { line: 1, column: 1 },
@@ -1002,7 +1002,7 @@ test("{§edit} Engine.runTurn: Errors includes only the immediately previous tur
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const denied: EditStatement = {
-            metadata: null,
+            headers: null,
             op: "edit", aside: null,
             target: urlPath("sealed", "/a"),
             lineMarker: null, matcher: null, body: "x", position: { line: 1, column: 1 },

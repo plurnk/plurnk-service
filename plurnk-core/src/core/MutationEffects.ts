@@ -402,7 +402,7 @@ export default class MutationEffects {
     ): DeferredMoveSource {
         return {
             target: source.target,
-            metadata: source.metadata,
+            headers: source.headers,
             lineMarker: source.lineMarker,
             ...(source.matchedScopes === undefined ? {} : { matchedScopes: source.matchedScopes }),
             ...(source.bytePrecondition === undefined ? {} : { bytePrecondition: source.bytePrecondition }),

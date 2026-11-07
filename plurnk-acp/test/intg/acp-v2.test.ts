@@ -204,7 +204,6 @@ test("{§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 
                 entryId: 500,
                 sessionId: 1,
                 target: "exec:///1/2/2",
-                lifetime: "turn",
                 loop_seq: 1,
                 turn_seq: 2,
                 sequence: 2,

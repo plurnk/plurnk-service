@@ -422,7 +422,7 @@ test("{§tokenomics}: over budget but under the wall, the packet goes with one 4
         const rows = logEntries(packet).filter((row) => row.logPath.endsWith("/error"));
         assert.equal(rows.length, 1, "one row, at the head of the turn");
         const problem = (rows[0].problem ?? {}) as { detail?: string; excess?: number };
-        assert.equal(problem.detail, "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn."); // {§operation-results}
+        assert.equal(problem.detail, "Context exceeds budget. YOU MUST ONLY kill, move or note this turn."); // {§operation-results}
         assert.equal(problem.excess, undefined, "{§tokenomics}: the gauge is the one home for the numbers");
         assert.equal(rows[0].origin, "_plurnk");
         const third = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider: small });

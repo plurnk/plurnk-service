@@ -21,51 +21,51 @@ export const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
 // the ordinary marker math to a full replace.
 export const fullReplace: LineMarker = { marks: [1, -1] };
 
-export const editStmt = (target: ParsedPath | null, body: string | null = null, marker: LineMarker | null = null, matcher: MatcherBody | null = null): ResolvedEditStatement => ({
-    metadata: null,
+export const editStmt = (target: ParsedPath | null, body: string | null = null, marker: LineMarker | null = null, matcher: MatcherBody | null = null, headers: Readonly<Record<string, string>> | null = null): ResolvedEditStatement => ({
+    headers,
     op: "edit", aside: null, target, lineMarker: marker, matcher, body,
     position: { line: 1, column: 1 },
 });
 
-export const readStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null, matcher: MatcherBody | null = null): ReadStatement => ({
-    metadata: null,
+export const readStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null, matcher: MatcherBody | null = null, headers: Readonly<Record<string, string>> | null = null): ReadStatement => ({
+    headers,
     op: "read", aside: null, target, lineMarker, matcher, body: null,
     position: { line: 1, column: 1 },
 });
 
-export const sendStmt = (recipient: ParsedPath | null = null, body: string | null = null): SendStatement => ({
-    metadata: null,
+export const sendStmt = (recipient: ParsedPath | null = null, body: string | null = null, attachments: string[] | null = null, headers: Readonly<Record<string, string>> | null = null): SendStatement => ({
+    headers, attachments,
     op: "send", aside: null, target: recipient, lineMarker: null,
     body: body === null ? null : { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
 
 export function dispositionStmt(op: DispositionStatement["op"], body: string | null = null): DispositionStatement {
-    const fields = { aside: null, metadata: null, target: null, lineMarker: null, position: { line: 1, column: 1 } };
+    const fields = { aside: null, target: null, lineMarker: null, position: { line: 1, column: 1 } };
     return { ...fields, op, body, seconds: null };
 }
 
 export const noteStmt = (body: string | null = null): NoteStatement => ({
-    op: "note", body, aside: null, metadata: null, target: null, lineMarker: null, position: { line: 1, column: 1 },
+    op: "note", body, aside: null, target: null, lineMarker: null, position: { line: 1, column: 1 },
 });
 
 // {§op-shapes} — a scoped KILL suppresses one log body interval or deletes an entry span; a
 // matcher ({§parse-recovery}) selects the rows or lines.
-export const killStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null, matcher: MatcherBody | null = null): KillStatement => ({
-    metadata: null,
+export const killStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null, matcher: MatcherBody | null = null, remote: boolean | null = null, headers: Readonly<Record<string, string>> | null = null): KillStatement => ({
+    headers, remote,
     op: "kill", aside: null, target, lineMarker, matcher, body: null,
     position: { line: 1, column: 1 },
 });
 
-export const doneStmt = (body: string | null = null, target: ParsedPath | null = null): DoneStatement => ({
-    metadata: null,
+export const doneStmt = (body: string | null = null, target: ParsedPath | null = null, attachments: string[] | null = null): DoneStatement => ({
+    attachments,
     op: "done", aside: null, target, lineMarker: null,
     body: body === null ? null : { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
 
-export const failStmt = (body: string | null = null, target: ParsedPath | null = null): FailStatement => ({
-    metadata: null,
+export const failStmt = (body: string | null = null, target: ParsedPath | null = null, attachments: string[] | null = null): FailStatement => ({
+    attachments,
     op: "fail", aside: null, target, lineMarker: null,
     body: body === null ? null : { raw: body, json: null },
     position: { line: 1, column: 1 },
@@ -73,8 +73,8 @@ export const failStmt = (body: string | null = null, target: ParsedPath | null =
 
 export const completeStmt = (body: string | null = null): DoneStatement => doneStmt(body);
 
-export const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null): FindStatement => ({
-    metadata: null,
+export const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null, headers: Readonly<Record<string, string>> | null = null): FindStatement => ({
+    headers,
     op: "find", aside: null, target, lineMarker: null, matcher, body: null,
     position: { line: 1, column: 1 },
 });
@@ -86,8 +86,8 @@ export const copyStmt = (
     destinationMarker: TextLineMarker | null = null,
 ): CopyStatement => ({
     op: "copy", aside: null,
-    source: { target: src, metadata: null, lineMarker: sourceMarker, matcher: null },
-    destination: { target: dst, metadata: null, lineMarker: destinationMarker, matcher: null },
+    source: { target: src, headers: null, lineMarker: sourceMarker, matcher: null },
+    destination: { target: dst, headers: null, lineMarker: destinationMarker, matcher: null },
     position: { line: 1, column: 1 },
 });
 
@@ -98,16 +98,15 @@ export const moveStmt = (
     destinationMarker: TextLineMarker | null = null,
 ): MoveStatement => ({
     op: "move", aside: null,
-    source: { target: src, metadata: null, lineMarker: sourceMarker, matcher: null },
-    destination: { target: dst, metadata: null, lineMarker: destinationMarker, matcher: null },
+    source: { target: src, headers: null, lineMarker: sourceMarker, matcher: null },
+    destination: { target: dst, headers: null, lineMarker: destinationMarker, matcher: null },
     position: { line: 1, column: 1 },
 });
 
 // {§op-shapes} — execution names its runtime as the first path segment and the
 // runtime's target (tool, program, cwd, or resource) after it; a bare execution is the shell.
 // {§op-shapes} — the executor is the bracket slot; null spells the default shell.
-export const execStmt = (runtime: string | null, body: string | null = null, target: ParsedPath | null = null, metadata: string[] | null = null): ExecStatement => ({
-    metadata,
+export const execStmt = (runtime: string | null, body: string | null = null, target: ParsedPath | null = null): ExecStatement => ({
     // The default shell is explicit: a caller passing no runtime means `sh` (plurnk-service #659).
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },

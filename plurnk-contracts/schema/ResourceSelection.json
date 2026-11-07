@@ -2,11 +2,11 @@
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "https://schemas.plurnk.xyz/v0/ResourceSelection.json",
  "title": "ResourceSelection",
- "description": "One `copy`/`move` resource operand. A target without a fragment selects the scheme's default channel; a fragment selects a named channel; metadata belongs to the selected scheme endpoint; lineMarker scopes the selected textual content.",
+ "description": "One `copy`/`move` resource operand. A target without a fragment selects the scheme's default channel; a fragment selects a named channel; headers belong to an HTTP(S) endpoint; lineMarker scopes the selected textual content.",
  "type": "object",
  "required": [
   "target",
-  "metadata",
+  "headers",
   "lineMarker",
   "matcher"
  ],
@@ -15,12 +15,12 @@
   "target": {
    "$ref": "https://schemas.plurnk.xyz/v0/ParsedPath.json"
   },
-  "metadata": {
-   "description": "Opaque ordered scheme-metadata modifier blocks owned by this operand's addressed scheme.",
+  "headers": {
+   "description": "Optional HTTP request headers owned by this operand's addressed endpoint; null when omitted.",
    "oneOf": [
     {
-     "type": "array",
-     "items": {
+     "type": "object",
+     "additionalProperties": {
       "type": "string"
      }
     },

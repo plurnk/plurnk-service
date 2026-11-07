@@ -310,7 +310,7 @@ test("{§parse-recovery}: an ambiguous grouped KILL changes no member, while its
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; status_rx: number; rx: string }>({ turn_id: result.turnId });
         assert.equal(rows.some(({ op }) => op === "kill"), false);
         assert.ok(rows.some(({ op, status_rx }) => op === "note" && status_rx === 200));
-        assert.ok(rows.some(({ status_rx, rx }) => status_rx >= 400 && rx.includes("invalid scope")));
+        assert.ok(rows.some(({ status_rx, rx }) => status_rx >= 400 && rx.includes("invalid range")));
     } finally { await db.close(); }
 });
 

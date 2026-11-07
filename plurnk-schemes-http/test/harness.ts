@@ -203,40 +203,54 @@ export const urlTarget = (raw: string, pathname: string, fragment: string | null
 export const readStmt = (
     target: UrlPath | null,
     lineMarker: ReadStatement["lineMarker"] = null,
-    metadata: ReadStatement["metadata"] = null,
+    headers: ReadStatement["headers"] = null,
 ): ReadStatement => ({
-    op: "read", aside: null, target, metadata, lineMarker, matcher: null, body: null,
+    op: "read", aside: null, target, headers, lineMarker, matcher: null, body: null,
     position: { line: 0, column: 0 },
 });
-export const sendStmt = (target: UrlPath | null, body?: string, metadata: SendStatement["metadata"] = null): SendStatement => ({
-    op: "send", aside: null, target, metadata, lineMarker: null,
+export const sendStmt = (
+    target: UrlPath | null,
+    body?: string,
+    headers: SendStatement["headers"] = null,
+    attachments: SendStatement["attachments"] = null,
+): SendStatement => ({
+    op: "send", aside: null, target, headers, attachments, lineMarker: null,
     body: body === undefined ? null : { raw: body, json: null },
     position: { line: 0, column: 0 },
 });
-export const editStmt = (target: UrlPath | null, body: string | null, lineMarker: ResolvedEditStatement["lineMarker"] = null, metadata: ResolvedEditStatement["metadata"] = null): ResolvedEditStatement => ({
-    op: "edit", aside: null, target, metadata, lineMarker, matcher: null, body,
+export const editStmt = (
+    target: UrlPath | null,
+    body: string | null,
+    lineMarker: ResolvedEditStatement["lineMarker"] = null,
+    headers: ResolvedEditStatement["headers"] = null,
+): ResolvedEditStatement => ({
+    op: "edit", aside: null, target, headers, lineMarker, matcher: null, body,
     position: { line: 0, column: 0 },
 });
-export const killStmt = (target: UrlPath | null, matcher: KillStatement["matcher"] = null, metadata: KillStatement["metadata"] = null): KillStatement => ({
-    op: "kill", aside: null, target, metadata, lineMarker: null, matcher, body: null,
+export const killStmt = (
+    target: UrlPath | null,
+    matcher: KillStatement["matcher"] = null,
+    options: { headers?: KillStatement["headers"]; remote?: boolean } = {},
+): KillStatement => ({
+    op: "kill", aside: null, target, headers: options.headers ?? null, remote: options.remote ?? null, lineMarker: null, matcher, body: null,
     position: { line: 0, column: 0 },
 });
-export const settle = async (http: Http, ctx: SchemeCtx, metadata: readonly string[] | null, result: SchemeResult): Promise<SchemeResult> => {
+export const settle = async (http: Http, ctx: SchemeCtx, headers: Readonly<Record<string, string>> | null, result: SchemeResult): Promise<SchemeResult> => {
     if (result.status !== 202) return result;
-    return http.applyResolution({ attrs: (result as ProposalResult).attrs ?? {}, metadata }, ctx);
+    return http.applyResolution({ attrs: (result as ProposalResult).attrs ?? {}, headers }, ctx);
 };
 export const sendSettled = async (http: Http, statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult> =>
-    settle(http, ctx, statement.metadata, await http.send(statement, ctx));
+    settle(http, ctx, statement.headers, await http.send(statement, ctx));
 export const editSettled = async (http: Http, statement: ResolvedEditStatement, ctx: SchemeCtx): Promise<SchemeResult> =>
-    settle(http, ctx, statement.metadata, await http.edit(statement, ctx));
+    settle(http, ctx, statement.headers, await http.edit(statement, ctx));
 export const killSettled = async (http: Http, statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult> =>
-    settle(http, ctx, statement.metadata, await http.kill(statement, ctx));
+    settle(http, ctx, statement.headers, await http.kill(statement, ctx));
 export const httpSend = (statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult> => sendSettled(new Http(), statement, ctx);
 export const httpEdit = (statement: ResolvedEditStatement, ctx: SchemeCtx): Promise<SchemeResult> => editSettled(new Http(), statement, ctx);
 export const httpKill = (statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult> => killSettled(new Http(), statement, ctx);
 
-export const findStmt = (target: UrlPath | null, matcher: FindStatement["matcher"] = null, metadata: FindStatement["metadata"] = null): FindStatement => ({
-    op: "find", aside: null, target, metadata, lineMarker: null, matcher, body: null,
+export const findStmt = (target: UrlPath | null, matcher: FindStatement["matcher"] = null, headers: FindStatement["headers"] = null): FindStatement => ({
+    op: "find", aside: null, target, headers, lineMarker: null, matcher, body: null,
     position: { line: 0, column: 0 },
 });
 export const prepareExactFind = (http: Http, statement: FindStatement, ctx: SchemeCtx): Promise<RepresentationPreparationResult> => {
@@ -247,7 +261,7 @@ export const prepareExactFind = (http: Http, statement: FindStatement, ctx: Sche
     const address = NetworkAddress.from(target);
     return http.prepareRepresentation({
         target: { ...target, fragment: null },
-        metadata: statement.metadata,
+        headers: statement.headers,
         authority: address.authority,
         pathname: address.pathname,
     }, ctx);
@@ -258,7 +272,7 @@ export const prepareRepresentation = (http: Http, statement: ReadStatement, ctx:
     if (target === null || target.kind !== "url") {
         return http.prepareRepresentation({
             target: target ?? { kind: "local", raw: "" },
-            metadata: statement.metadata,
+            headers: statement.headers,
             authority: "",
             pathname: "",
         }, ctx);
@@ -266,7 +280,7 @@ export const prepareRepresentation = (http: Http, statement: ReadStatement, ctx:
     const address = NetworkAddress.from(target);
     return http.prepareRepresentation({
         target: { ...target, fragment: null },
-        metadata: statement.metadata,
+        headers: statement.headers,
         authority: address.authority,
         pathname: address.pathname,
     }, ctx);

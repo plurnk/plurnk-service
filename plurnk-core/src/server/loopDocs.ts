@@ -80,7 +80,7 @@ export default class LoopDocs {
             statements.push({
                 op: "kill", aside: null,
                 target: LoopDocs.#target(scheme, pathname),
-                metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
+                headers: null, remote: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
             } satisfies KillStatement);
         }
         for (const [key, { scheme, pathname, content }] of desired) {
@@ -88,7 +88,7 @@ export default class LoopDocs {
             statements.push({
                 op: "edit", aside: null,
                 target: LoopDocs.#target(scheme, pathname),
-                metadata: null, lineMarker: { marks: [1, -1] }, matcher: null, body: content, position: UNKNOWN_POSITION,
+                headers: null, lineMarker: { marks: [1, -1] }, matcher: null, body: content, position: UNKNOWN_POSITION,
             });
         }
 

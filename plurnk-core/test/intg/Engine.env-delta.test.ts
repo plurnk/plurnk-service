@@ -77,7 +77,7 @@ const sessionPath = (authority: string, pathname: string): UrlPath => ({
     pathname, query: null, fragment: null,
 });
 const editStmt = (target: UrlPath, body: string): EditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null, target, lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });

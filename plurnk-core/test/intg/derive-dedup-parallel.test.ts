@@ -158,7 +158,6 @@ describe("exec-entry-sink", () => {
 
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
-    metadata: null,
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
@@ -856,7 +855,7 @@ const target: UrlPath = {
     pathname: "/interrupted.md", query: null, fragment: null,
 };
 const statement: ResolvedEditStatement = {
-    metadata: null,
+    headers: null,
     op: "edit", aside: null, target, lineMarker: null,
     matcher: null, body: "an interrupted derivation must never attach", position: { line: 1, column: 1 },
 };
@@ -1336,7 +1335,7 @@ const url = (pathname: string): UrlPath => ({
     pathname: `/${pathname}`, query: null, fragment: null,
 });
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null, target, lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });

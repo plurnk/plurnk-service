@@ -296,29 +296,6 @@ for (const preview of ["0", "1"]) for (const finishReason of [undefined, "stop",
         } finally { await db.close(); }
     });
 }
-
-// {§outside-text} — an option a scheme does not take is dropped with one notice; the operation runs.
-test("{§outside-text}: metadata on a file READ is ignored with a notice and the READ still runs", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `metadata-ignored-${crypto.randomUUID()}`);
-        const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1, "Read the note.");
-        await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
-        const notices: Array<{ kind: string; directive?: string; message?: string }> = [];
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; directive?: string; message?: string }) });
-        const source = ["await plurnk.read({\"path\":\"workspace:///notes.md\",\"metadata\":[\"{\\\"lines\\\": \\\"1-2\\\"}\"]});", memory].join("\n");
-        const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
-            workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Read the note." }],
-        });
-        assert.deepEqual(result.outcomes.filter(({ op }) => op === "read").map(({ op, status }) => [op, status]), [["read", 200]], "the READ ran without its metadata");
-        const notice = notices.find(({ kind }) => kind === "metadata_ignored");
-        assert.ok(notice, "one metadata_ignored notice");
-        assert.equal(notice.message, "read on 'workspace' takes no [metadata]; the read ran without it.");
-        assert.equal(notice.directive, "YOU SHOULD NOT write [metadata] on an operation that takes none.", "{§diagnostic-observation}");
-    } finally { await db.close(); }
-});
 });
 
 describe("Digest.programmatic", () => {
@@ -740,7 +717,7 @@ describe("note-continuity", () => {
 type Row = { op: string | null; origin: string };
 
 // {§operation-results} {§diagnostic-observation} — the card's command as the notice's directive, in callout form.
-const NOTICE = "> [!WARNING]\n> YOU MUST persist all new decisions, hypotheses, and facts as `plurnk.note` entries. The turn continued without a `plurnk.note`. [continued_without_note]";
+const NOTICE = "> [!WARNING]\n> YOU MUST persist all new decisions, hypotheses, and facts as `plurnk.note` tool calls. The turn continued without a `plurnk.note`. [continued_without_note]";
 
 const noticesOf = async (db: Db, turnId: number): Promise<string> =>
     packetSection(JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: turnId }))!.packet), "notices");
@@ -842,7 +819,7 @@ test("{§operation-results} {§loop-completion}: a turn that emits DONE beside u
         assert.equal(first.status, 102);
         const final = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(final.status, 200);
-        assert.equal(await noticesOf(db, final.turnId), "");
+        assert.equal(await noticesOf(db, final.turnId), "> [!NOTE]\n> All Open Work resolved, but tool call results received for review. Submit nothing to conclude. [results_pending]");
     } finally { await db.close(); }
 });
 

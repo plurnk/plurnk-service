@@ -19,7 +19,7 @@ const statement: FindStatement = {
         query: null,
         fragment: null,
     },
-    metadata: null,
+    headers: null,
     lineMarker: null,
     matcher: { dialect: "regex", raw: "/selected/", pattern: "selected", flags: "" }, body: null,
     position: { line: 1, column: 1 },

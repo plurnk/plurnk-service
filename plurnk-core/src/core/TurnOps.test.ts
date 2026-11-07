@@ -10,7 +10,7 @@ test("{§turn-source-resources} the frozen projection keeps every statement and 
         'await plurnk.edit({"path":"workspace:///notes.md","range":"@abcde","content":"A literal example:\\n```KILL (workspace:///not-an-operation)\\n```\\nReplacement text."}); // replace',
         'await plurnk.copy({"from":{"path":"workspace:///a.md","range":"2,4"},"to":{"path":"workspace:///b.md","range":"0"}});',
         'await plurnk.move({"from":{"path":"workspace:///b.md","range":"1,2"},"to":{"path":"workspace:///c.md","range":"-1"}});',
-        'await plurnk.sh({"metadata":["{\\"env\\":{\\"LANG\\":\\"C\\"}}"],"command":"printf \'%s\\\\n\' verification"}); // verify',
+        'await plurnk.sh({"cwd":"src","command":"printf \'%s\\\\n\' verification"}); // verify',
         'await gitea.list_issues({"repository":"example"});',
         'await plurnk.work({"target":"session://helper","prompt":"Investigate the project."});',
         'await plurnk.send({"target":"session://helper","text":"Coordinate the investigation."});',
@@ -86,35 +86,35 @@ test("{§turn-record} TurnOps: internal source round-trips through the public pa
         {
             op: "find", aside: "workspace files",
             target: { kind: "local", raw: "*" },
-            metadata: ['{"trace": "one", "shape": {"nested": true}}'], lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: UNKNOWN_POSITION,
+            headers: { "X-Trace": "one" }, lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: UNKNOWN_POSITION,
         },
         {
-            op: "wait", aside: null, target: null, metadata: null, seconds: null,
+            op: "wait", aside: null, target: null, seconds: null,
             lineMarker: null, body: "Observe the results.", position: UNKNOWN_POSITION,
         },
     ];
     const source = TurnOps.renderInternal(statements);
     assert.equal(source, [
-        'await plurnk.find({"path":"*","range":"1,-1","metadata":["{\\"trace\\": \\"one\\", \\"shape\\": {\\"nested\\": true}}"]}); // workspace files',
+        'await plurnk.find({"path":"*","range":"1,-1","headers":{"X-Trace":"one"}}); // workspace files',
         "",
         'await plurnk.wait({"text":"Observe the results."});',
     ].join("\n"));
     const parsed = TurnOps.parseInternal(source);
     assert.deepEqual(parsed.map(({ op }) => op), ["find", "wait"]);
-    assert.deepEqual(parsed[0]?.op === "find" ? parsed[0].metadata : undefined, ['{"trace": "one", "shape": {"nested": true}}']);
+    assert.deepEqual(parsed[0]?.op === "find" ? parsed[0].headers : undefined, { "X-Trace": "one" });
     assert.equal(parsed[1]?.op === "wait" ? parsed[1].body : null, statements[1].body);
 });
 
 test("{§turn-record} TurnOps: internal source preserves trailing body newlines across a section boundary", () => {
     const edit: EditStatement = {
         op: "edit", aside: null,
-        target: { kind: "local", raw: "AGENTS.md" }, metadata: null, lineMarker: null,
+        target: { kind: "local", raw: "AGENTS.md" }, headers: null, lineMarker: null,
         matcher: null, body: "# Policy\nBe exact.\n", position: UNKNOWN_POSITION,
     };
     const statements: [EditStatement, DispositionStatement] = [
         edit,
         {
-            op: "wait", aside: null, target: null, metadata: null, seconds: null,
+            op: "wait", aside: null, target: null, seconds: null,
             lineMarker: null, body: "Edit applied.", position: UNKNOWN_POSITION,
         },
     ];

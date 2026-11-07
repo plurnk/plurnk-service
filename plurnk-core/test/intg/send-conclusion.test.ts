@@ -966,7 +966,7 @@ for (const [verb, code] of [["done", 200], ["fail", 499]] as const) {
 test("{§message-completion}: an attachment-only completion retains its deliverable", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
     await seedEntryWithChannel(f.db, { workspaceId: f.ids.workspaceId, pathname: "/report.txt", content: "Final report." });
-    assert.equal((await f.turn("await plurnk.done({\"metadata\":[\"{\\\"attachments\\\":[\\\"workspace:///report.txt\\\"]}\"]});")).status, 200);
+    assert.equal((await f.turn("await plurnk.done({\"attachments\":[\"workspace:///report.txt\"]});")).status, 200);
     assert.equal(await f.remaining(), 0);
     const history = await f.db.message_history.all<{ direction: string; body: string; evidence: string }>({
         workspace_id: f.ids.workspaceId, session_id: f.ids.sessionId, loop_id: f.ids.loopId,
@@ -1012,11 +1012,10 @@ test("{§message-completion}: a corrected completion wins without ordinary progr
 });
 
 for (const [label, invalid] of [
-    ["SEND [42]", 'await plurnk.send({"metadata":["42"],"text":"Not delivered."});'],
-    ["DONE [42]", 'await plurnk.done({"metadata":["42"],"text":"Not delivered."});'],
-    ["FAIL [42]", 'await plurnk.fail({"metadata":["42"],"text":"Not delivered."});'],
-    ['DONE ["unexpected"]', 'await plurnk.done({"metadata":["\\"unexpected\\""],"text":"Not delivered."});'],
-    ['DONE [{"attachments":["workspace:///missing.pdf"]}]', 'await plurnk.done({"metadata":["{\\"attachments\\":[\\"workspace:///missing.pdf\\"]}"],"text":"Not delivered."});'],
+    ["SEND [whitespace attachment]", 'await plurnk.send({"attachments":["   "],"text":"Not delivered."});'],
+    ["DONE [whitespace attachment]", 'await plurnk.done({"attachments":["   "],"text":"Not delivered."});'],
+    ["FAIL [whitespace attachment]", 'await plurnk.fail({"attachments":["   "],"text":"Not delivered."});'],
+    ['DONE [{"attachments":["workspace:///missing.pdf"]}]', 'await plurnk.done({"attachments":["workspace:///missing.pdf"],"text":"Not delivered."});'],
 ] as const) {
     test(`{§message-completion}: failed reply ${label} leaves its message unresolved`, async (t) => {
         const f = await setup(); t.after(() => f.db.close());
@@ -1137,8 +1136,11 @@ for (const completionFirst of [false, true]) {
         assert.equal(first.status, 102);
         assert.deepEqual(await speech(f), ["Delivered answer."], "delivery does not wait for observation");
         assert.equal((await f.db.test_get_channel_by_pathname.get({ pathname: "/answer", name: "body" }))?.content, "42");
-        assert.ok(f.notices.some(({ message }) => message === "All Open Messages resolved. Review new results; emit no OPs if finished."));
-        assert.equal((await f.turn()).status, 200);
+        assert.ok(f.notices.some(({ message }) => message === "All Open Work resolved, but tool call results received for review. Submit nothing to conclude."));
+        const second = await f.turn();
+        assert.equal(second.status, 200);
+        const packet = JSON.parse((await f.db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
+        assert.match(packetSection(packet, "notices"), /> \[!NOTE\]\n> All Open Work resolved, but tool call results received for review\. Submit nothing to conclude\. \[results_pending\]/u);
         assert.deepEqual(await speech(f), ["Delivered answer."], "settlement does not replay the reply");
     });
 

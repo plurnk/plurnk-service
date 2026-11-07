@@ -77,7 +77,7 @@ export default class McpFamilyResources implements RuntimeSchemeFacet {
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult> {
         const statement = statements[0];
         if (statement === undefined || statements.length > 1 || statement.lineMarker !== null || statement.matcher !== null) {
-            return Results.failure(OWNER, "value-whole", 400, "One EDIT sets one MCP server definition, whole.", {}, { retryable: false });
+            return Results.failure(OWNER, "value-whole", 400, "One edit sets one MCP server definition, whole.", {}, { retryable: false });
         }
         const named = McpFamilyResources.#named(statement.target);
         if ("status" in named) return named;
@@ -108,7 +108,7 @@ export default class McpFamilyResources implements RuntimeSchemeFacet {
 
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult> {
         if (statement.lineMarker !== null || statement.matcher !== null) {
-            return Results.failure(OWNER, "value-whole", 400, "KILL retires the whole MCP server definition.", {}, { retryable: false });
+            return Results.failure(OWNER, "value-whole", 400, "kill retires the whole MCP server definition.", {}, { retryable: false });
         }
         const named = McpFamilyResources.#named(statement.target);
         if ("status" in named) return named;

@@ -17,16 +17,14 @@ Every scheme package declares `plurnk: { "kind": "scheme", "name": "<scheme>" }`
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
 | `folderScopes?` | `true` declares that a trailing slash on `FIND` is a collection scope; absent/`false` treats `/` as ordinary resource syntax. |
-| `lineAnchors?` | `true` publishes and accepts shared line anchors for stable textual representations without declaring `EDIT` support. |
-| `textEditScopes?` | `true` declares the shared textual `EDIT` coordinate and collision contract ({§line-anchors}). Handlers receive numeric coordinates only and route standard entry mutation through `ctx.entries.operations.editBatch`. |
-| `metadataModifier?` | `true` opts into `[metadata]` on resource operations ({§slot-order}). Absent/`false` rejects `[metadata]` at dispatch with non-retryable `400 scheme-metadata-unsupported`. |
+| `lineAnchors?` | `true` publishes and accepts shared line anchors for stable textual representations without declaring `edit` support. |
+| `textEditScopes?` | `true` declares the shared textual `edit` coordinate and collision contract ({§line-anchors}). Handlers receive numeric coordinates only and route standard entry mutation through `ctx.entries.operations.editBatch`. |
 | `traits?` | Unique lowercase capability facts matching `^[a-z][a-z0-9-]*$` (e.g. `web`, `interaction`) consumed by {§capability-admission}. |
-| `documentation?` | Deep reference Markdown (loaded from `docs/<name>.md`) with an exact H2 `Summary`, materialized on demand at `plurnk:///<name>.md` (`FIND` projects H2 `Summary`; `READ` retrieves the body). |
+| `documentation?` | Deep reference Markdown (loaded from `docs/<name>.md`) with an exact H2 `Summary`, materialized on demand at `plurnk:///<name>.md` (`find` projects H2 `Summary`; `read` retrieves the body). |
 | `glyph?` | Non-empty opaque client presentation glyph projected through {§mcp-server-definition}; never enters model teaching. |
 | `storedScheme?` | Non-null string persisted to `entries.scheme` when different from `name` (defaults to `name`). |
 
 - The manifest is closed: unknown top-level fields fail admission.
-- **Reserved service metadata keys:** `MetadataOptions.SERVICE_KEYS` (`["lifetime"]`) are stripped from every owner's `options` and surfaced raw beside `options` so no scheme or executor interprets or refuses `lifetime` ({§exec-lifetime}).
 
 ## §scheme-operation-dispatch Handler interface and operation dispatch
 
@@ -49,7 +47,7 @@ export interface SchemeHandler {
 | Seam / helper | Contract |
 |---|---|
 | Operation dispatch | Core owns `READ` for every `category: "data"` scheme and exact-resource `FIND` over its canonical representation; unimplemented optional methods return `501`. Log-targeted `KILL`, `WORK`, `FORK`, and native dispositions (`NOTE`, `WAIT`) are core-owned and never dispatch to scheme handlers. |
-| `prepareRepresentation?(request, ctx)` | Operation-neutral acquisition seam for one exact resource (`{ target, metadata, authority, pathname }`, with no scope, matcher, or channel fragment). Writes canonical channels via `ctx.entries` and returns `200`, `102` while a live `StreamSubscription` remains active ({§exec-stream}), or an exact terminal result. Shared by exact `READ`, exact `FIND`, and exact `COPY`/`MOVE` sources. |
+| `prepareRepresentation?(request, ctx)` | Operation-neutral acquisition seam for one exact resource (`{ target, headers, authority, pathname }`, with no scope, matcher, or channel fragment). Writes canonical channels via `ctx.entries` and returns `200`, `102` while a live `StreamSubscription` remains active ({§exec-stream}), or an exact terminal result. Shared by exact `read`, exact `find`, and exact `copy`/`move` sources. |
 | `prepareFind?(statement, ctx)` | Broad-scope discovery seam invoked before standard entry selection when no custom `find()` is implemented. |
 | `ResourceNames` | Allocates one URI-encoded component per published resource: preserves supplied names, generates 8-hex characters when unnamed, and appends an 8-hex hash suffix on collision without overwriting siblings. |
 | `ByteSource` (`FileByteSource`, `GeneratedByteSource`) | Supplies `size()` (byte count or `null` when absent), 1-based inclusive `read(first, last)`, and optional `nativePath()` (original regular file path or `null`, never creating a copy). Binary channels preserve exact bytes; textual channels require valid UTF-8. |
@@ -130,12 +128,10 @@ Additional framework helpers:
 
 | Problem code | Status | Contract & pinned wording |
 |---|---:|---|
-| `range-not-satisfiable` | `416` | Range lies outside available extent (`Lines and columns count from 1.`, `An exact region names its earlier position first: <SL,SC,EL,EC>.`, `-1 is the only position counted from the end; lines run 1..N.`, `Choose positions within 1..N.`, or ``Range <0,end> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the `<0>` prepend position. Recovery: `<L,M>` selects lines L through M; `<0>` prepends and `<-1>` appends without replacing anything.`` / `Range <0,end> starts at 0; <unit> positions are numbered from 1.`). Unsupported scope arity: `A scope requires one position or an inclusive two-position range.` |
-| `overlapping-edits` | `409` | Two `EDIT` regions overlap, or a whole-resource replacement coexists with another `EDIT`. `Recovery: Submit the whole-resource replacement by itself.` |
+| `range-not-satisfiable` | `416` | Range lies outside available extent (`Lines and columns count from 1.`, `An exact region names its earlier position first: "SL,SC,EL,EC".`, `-1 is the only position counted from the end; lines run 1..N.`, `Choose positions within 1..N.`, or ``Range "0,end" starts at 0, which is not a line; lines are numbered from 1 and 0 is only the "0" prepend position. Recovery: "L,M" selects lines L through M; "0" prepends and "-1" appends without replacing anything.`` / `Range "0,end" starts at 0; <unit> positions are numbered from 1.`). Unsupported scope arity: `A scope requires one position or an inclusive two-position range.` |
+| `overlapping-edits` | `409` | Two `edit` regions overlap, or a whole-resource replacement coexists with another `edit`. `Recovery: Submit the whole-resource replacement by itself.` |
 | `invalid-expression` | `400` | `The <dialect> matcher expression is invalid. Recovery: Revise the matcher expression.` |
 | `unsupported-dialect` | `415` | `The <dialect> matcher is not supported for <mimetype>. Recovery: Use a matcher supported by the resource mimetype.` |
-| `metadata-invalid` | `400` | `[metadata] must be a JSON array.` or `[metadata] must be a JSON array of option objects; every element is an object.` |
-| `metadata-unsupported` | `400` | `Message metadata accepts only attachments.` |
 | `attachments-invalid` | `400` | `attachments must be an array of non-empty resource addresses.` |
 
 ## §capability-ctx Capability context and subscriptions
@@ -148,7 +144,7 @@ Additional framework helpers:
 | `notify`, `projection`, `resources`, `messages` | `notify.streamEvent` (between-turn client metadata signal), `projection`, `resources.capture`, and `messages`. |
 | `interactions` | `request(ClientInteractionRequest, signal?) -> Promise<ClientInteractionResolution>` ({§provider-request-accounting}). |
 | `subscriptions` | `open(pathname, handle)` returns the sole capability retainable after the handler call returns: `StreamSubscription` (`AbortSignal` + `notifyChunk(channel, chunk, mimetype?)` + `close(result, summary?, channelResults?)` that validates `ChannelProducerResult` overrides, settles channel states, unregisters the live handle, and wakes the session). |
-| Proposals (`applyResolution`) | A side-effecting scheme proposes by returning `status: 202`; on acceptance, Core calls `applyResolution({ attrs, metadata, body }, ctx)` ({§log-wire-format}). Accepted `EDIT` proposals may return an aggregate `editReceipt` (using `reviewer-replaced` when the resolver replaced the body). |
+| Proposals (`applyResolution`) | A side-effecting scheme proposes by returning `status: 202`; on acceptance, Core calls `applyResolution({ attrs, headers, body }, ctx)` ({§log-wire-format}). Accepted `edit` proposals may return an aggregate `editReceipt` (using `reviewer-replaced` when the resolver replaced the body). |
 
 ## §resource-tree-scheme Module slice and resource trees
 

@@ -477,7 +477,7 @@ describe("find-result-projection", () => {
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§packet} — the first page a markerless retrieval is
 
 const findAll = (marks: [number, ...number[]] | null = null): FindStatement => ({
-    metadata: null,
+    headers: null,
     op: "find", aside: null,
     target: { kind: "url", raw: "workspace:///**", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/**", query: null, fragment: null },
     lineMarker: marks === null ? null : { marks }, matcher: null, body: null, position: { line: 1, column: 1 },
@@ -585,11 +585,11 @@ const url = (pathname: string): UrlPath => ({
     pathname: `/${pathname}`, query: null, fragment: null,
 });
 const edit = (pathname: string, body: string, lineMarker: LineMarker | null = null): ResolvedEditStatement => ({
-    metadata: null, op: "edit", aside: null, target: url(pathname), lineMarker, body,
+    headers: null, op: "edit", aside: null, target: url(pathname), lineMarker, body,
     matcher: null, position: { line: 1, column: 1 },
 });
 const find = (pathname: string, query: string, marks: LineMarker["marks"] = [1, -1]): FindStatement => ({
-    metadata: null, op: "find", aside: null, target: url(pathname),
+    headers: null, op: "find", aside: null, target: url(pathname),
     lineMarker: { marks }, matcher: { dialect: "fts", raw: `~${query}` }, body: null,
     position: { line: 1, column: 1 },
 });
@@ -775,7 +775,7 @@ test("{§find-result-projection} FTS5 respects literal namespaces and removes de
         assert.deepEqual(resourcePaths(await session.find(ownFind, sibling)), ["session://first/note.txt"]);
         assert.equal((await session.find({ ...ownFind, matcher: { dialect: "fts", raw: "~secondneedle" } }, ctx)).status, 204);
         assert.equal((await session.killEntry({
-            ...find("note.txt", query), op: "kill", target: owned, matcher: null, body: null, lineMarker: null,
+            ...find("note.txt", query), op: "kill", remote: null, target: owned, matcher: null, body: null, lineMarker: null,
         }, ctx)).status, 200);
         await SearchIndex.maintain(ctx);
         assert.equal((await session.find(ownFind, ctx)).status, 204);
@@ -803,7 +803,7 @@ describe("manifest-order", () => {
 
 const url = (p: string): UrlPath => ({ kind: "url", raw: `workspace:///${p}`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: `/${p}`, query: null, fragment: null });
 const fullReplace: LineMarker = { marks: [1, -1] };
-const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ metadata: null, op: "edit", aside: null, target, lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 } });
+const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ headers: null, op: "edit", aside: null, target, lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 } });
 
 test("{§find-result-projection} catalog is mtime-ordered — a re-edited entry sorts to the tail, the rest hold their prefix", async () => {
     const db = await openMigrated();
@@ -850,13 +850,13 @@ const url = (pathname: string): UrlPath => ({
 });
 
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null, target, lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });
 
 const findStmt = (target: UrlPath, matcher: MatcherBody | null, lineMarker: LineMarker | null = null): FindStatement => ({
-    metadata: null,
+    headers: null,
     op: "find", aside: null, target, lineMarker, matcher, body: null,
      position: { line: 1, column: 1 },
 });
@@ -914,7 +914,7 @@ test("{§matcher-prefix-claims}: READ <L> slices by line via the marker slot, no
     const { db, workspaceId, sessionId } = await setup();
     try {
         await seed(db, workspaceId, sessionId, [["lines", "alpha\nbeta\ngamma"]]);
-        const stmt: ReadStatement = { metadata: null, op: "read", aside: null, target: url("lines"), lineMarker: { marks: [2, 2] }, matcher: null, body: null, position: { line: 1, column: 1 } };
+        const stmt: ReadStatement = { headers: null, op: "read", aside: null, target: url("lines"), lineMarker: { marks: [2, 2] }, matcher: null, body: null, position: { line: 1, column: 1 } };
         const r = await readThroughScheme("workspace", null, stmt, makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(r.status, 200);
         assert.match(r.content ?? "", /beta/);

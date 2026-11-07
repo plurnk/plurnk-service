@@ -38,7 +38,7 @@ const url = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const readStmt = (target: UrlPath): ReadStatement => ({
-    metadata: null,
+    headers: null,
     op: "read", aside: null, target, lineMarker: null, matcher: null, body: null,
     position: { line: 1, column: 1 },
 });
@@ -469,7 +469,7 @@ test("{§operation-results} KILL resolves the registry to the owning scheme + st
         const engine = new Engine({ db, schemes });
         const opened = await engine.dispatch({
             statement: {
-                metadata: null,
+                headers: null,
                 op: "read", aside: null, target: urlPath("fakestream", "/feed/x"),
                 lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
             },
@@ -549,7 +549,7 @@ test("{§stream} a public streaming READ returns its 102 row before detached sub
         const engine = new Engine({ db, schemes });
         const opened = await engine.dispatch({
             statement: {
-                metadata: null,
+                headers: null,
                 op: "read", aside: null, target: urlPath("detached", "/feed"),
                 lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
             },

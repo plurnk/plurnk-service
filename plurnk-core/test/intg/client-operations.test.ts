@@ -170,15 +170,14 @@ test("{§methods} {§connection-lifecycle} cancelLoop ends one client operation:
         "a cancelled operation's later statements never run");
     assert.equal(await daemon.cancelLoop({ workspaceId, loopId: inFlightLoop }), false, "a settled operation has nothing left to cancel");
 
-    // Two operations whose dispatch returned while their commands run on, and one detached spawn.
+    // Two operations whose dispatch returned while their commands run on.
     const first = operate([parseOne("await plurnk.held(\"first\");")]);
     const second = operate([parseOne("await plurnk.held(\"second\");")]);
-    const detached = operate([parseOne("await plurnk.held({\"metadata\":[\"{\\\"lifetime\\\":\\\"detached\\\"}\"],\"body\":\"detached\"});")]);
-    for (const operation of [first, second, detached]) {
+    for (const operation of [first, second]) {
         const [started] = await operation.done;
         assert.equal(started?.status, 200, `the dispatch returns once the command starts: ${JSON.stringify(started)}`);
     }
-    await Promise.all(["first", "second", "detached"].map((body) => held.run(body).started.promise));
+    await Promise.all(["first", "second"].map((body) => held.run(body).started.promise));
     const firstLoop = (await first.loop).loopId;
     const secondLoop = (await second.loop).loopId;
     for (const loopId of [firstLoop, secondLoop]) {
@@ -191,12 +190,9 @@ test("{§methods} {§connection-lifecycle} cancelLoop ends one client operation:
     assert.equal(reaped?.result.status, 499, "the reaped command's stream concludes 499");
     assert.equal((await loopOf(daemon, workspaceId, runtime, firstLoop))?.status, 200, "the operation's loop keeps its 200");
     assert.equal(held.run("second").done, false, "a concurrent operation's command in the same workspace runs on");
-    assert.equal(await daemon.cancelLoop({ workspaceId, loopId: (await detached.loop).loopId }), false, "a detached spawn is never reaped");
-    assert.equal(held.run("detached").done, false);
 
     assert.equal(await daemon.cancelLoop({ workspaceId, loopId: secondLoop }), true);
     await held.run("second").ended.promise;
-    assert.equal(held.run("detached").done, false, "only shutdown, KILL, or the session's total reap ends a detached spawn");
 });
 
 test("{§methods} cancelLoop reaps nothing of a model session's loop", async (t) => {
@@ -1084,7 +1080,7 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
 
 describe("question-tool-admission", () => {
 const findStatement = (scheme: "plurnk" | "mcp"): FindStatement => ({
-    metadata: null,
+    headers: null,
     op: "find", aside: null,
     target: {
         kind: "url", raw: `${scheme}:///**`, scheme,
@@ -1096,7 +1092,6 @@ const findStatement = (scheme: "plurnk" | "mcp"): FindStatement => ({
 });
 
 const execStatement = (): ExecStatement => ({
-    metadata: null,
     runtime: "plurnk", aside: null, target: localPath("question"), lineMarker: null,
     body: JSON.stringify({ message: "Which branch?", requestedSchema: { type: "object" } }),
     position: { line: 1, column: 1 },

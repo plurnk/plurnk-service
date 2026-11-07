@@ -73,7 +73,7 @@ export default class BareBatchRunner {
                 "engine:rails",
                 "max-turns",
                 429,
-                `The configured turn ceiling (${ceiling}) is exhausted: ${spent} model calls across the session tree; this BARE made no call.`,
+                `The configured turn ceiling (${ceiling}) is exhausted: ${spent} model calls across the session tree; this bare made no call.`,
                 {},
                 { maximumTurns: ceiling, treeModelCalls: spent, stage: "loop", retryable: false },
             )

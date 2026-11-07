@@ -803,7 +803,7 @@ await plurnk.note({"text":"Continue the task."});`, 10)] }).generate(args);
                     // A person's READ of the model's log, acting for the model session ({§connection-lifecycle}).
                     const [recalled] = await daemon.dispatchClientAction({
                         workspaceId, actor: TEST_OWNER, contextSessionId: run.modelSessionId!,
-                        statements: [{ op: "read", aside: null, metadata: null, target: parsePath(receipt.logPath), lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 0 } }],
+                        statements: [{ op: "read", aside: null, headers: null, target: parsePath(receipt.logPath), lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 0 } }],
                     });
                     assert.equal(recalled.status, 200, JSON.stringify({ logPath: receipt.logPath, recalled }));
                     assert.equal(recalled.content, rx.receipt.effect.context, "log READ and packet share one canonical receipt body");

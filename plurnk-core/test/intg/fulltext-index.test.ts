@@ -519,7 +519,7 @@ test("{§copy} an admitted file type survives reprojection, but not an external 
             channels: { body: { content: "", bytes: Uint8Array.of(1, 2, 3, 4), mimetype: "application/x-readable-binary" } },
         }, ctx);
         assert.equal(proposed.status, 202);
-        assert.equal((await file.applyResolution({ attrs: proposed.attrs as never, metadata: null }, ctx)).status, 200);
+        assert.equal((await file.applyResolution({ attrs: proposed.attrs as never, headers: null }, ctx)).status, 200);
         for (const revision of ["first", "second"]) {
             const projectedCtx = makeSchemeCtx({ ...ctx, mimetypes: binaryProjectionMimetypes(revision) });
             assert.equal(await MembershipMaterialization.materializeMember(pathname, root, projectedCtx, new Map()), null);
@@ -799,7 +799,7 @@ const url = (pathname: string): UrlPath => ({
 });
 
 const edit = (pathname: string, body: string): ResolvedEditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null, target: url(pathname), lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });
@@ -1525,7 +1525,7 @@ test("{§persistent-search-index} a model turn joins an in-flight startup warm b
         const response: MockResponse = {
             assistant: {
                 content: "",
-                ops: [{ op: "send", aside: null, target: null, metadata: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }],
+                ops: [{ op: "send", aside: null, target: null, headers: null, attachments: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }],
                 reasoning: null,
             },
         };

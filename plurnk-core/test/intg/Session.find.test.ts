@@ -46,13 +46,13 @@ const url = (pathname: string): UrlPath => ({
 });
 
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null, target, lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });
 
 const findStmt = (target: UrlPath, matcher: MatcherBody | null = null): FindStatement => ({
-    metadata: null,
+    headers: null,
     op: "find", aside: null, target, lineMarker: null, matcher, body: null,
      position: { line: 1, column: 1 },
 });
@@ -517,7 +517,7 @@ const url = (scheme: string, pathname: string): UrlPath => ({
     pathname: `/${pathname}`, query: null, fragment: null,
 });
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
-    metadata: null,
+    headers: null,
     op: "edit", aside: null, target, lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });
@@ -576,7 +576,7 @@ test("{§find} [catalog] a fenced invocation-form summary lists every tool while
         await workspace.edit(editStmt(url("workspace", "prose.md"), `# prose\n\n## Summary\n\n${prose}\n`), ctx);
         await SearchIndex.maintain(ctx);
         const listing = await workspace.find({
-            metadata: null, op: "find", aside: null, target: url("workspace", "*"),
+            headers: null, op: "find", aside: null, target: url("workspace", "*"),
             lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 1 },
         }, ctx);
         assert.equal(listing.status, 200, JSON.stringify(listing));
@@ -671,20 +671,20 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
-    metadata: null,
+    headers: null,
     op: "read", aside: null, target,
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
 const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null, lineMarker: FindStatement["lineMarker"] = null): FindStatement => ({
-    metadata: null,
+    headers: null,
     op: "find", aside: null, target,
     lineMarker, matcher, body: null,  position: { line: 1, column: 1 },
 });
 
 const seed = async (db: Db, workspaceId: number, sessionId: number, mimetypes: Mimetypes, path: string, content: string): Promise<void> => {
     await new Workspace().edit(
-        { metadata: null, op: "edit", aside: null, target: urlPath("workspace", path), lineMarker: null, matcher: null, body: content, position: { line: 1, column: 1 } },
+        { headers: null, op: "edit", aside: null, target: urlPath("workspace", path), lineMarker: null, matcher: null, body: content, position: { line: 1, column: 1 } },
         makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }),
     );
 };

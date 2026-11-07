@@ -712,7 +712,7 @@ const wire = (db: Awaited<ReturnType<typeof openMigrated>>) => {
 };
 
 const readStatement = (pathname: string): ReadStatement => ({
-    metadata: null,
+    headers: null,
     op: "read",
     aside: null,
     target: {
@@ -1079,7 +1079,7 @@ test("{§execution-output-identity} workspace defaults, session overrides and ma
             assert.equal(cause.result.status, 400);
             assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/env/functionality/name-reserved");
             assert.equal(cause.result.problem.detail, "'PLURNK_BAD' is reserved in env entries.");
-            assert.equal(cause.result.problem.recovery, "READ mcp:///plurnk/env.json for supported configuration paths.");
+            assert.equal(cause.result.problem.recovery, "read mcp:///plurnk/env.json for supported configuration paths.");
             return true;
         });
         await assert.rejects(shared("list", { scope: "session" }), /scope does not match/u);

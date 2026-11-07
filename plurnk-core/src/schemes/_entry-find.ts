@@ -316,9 +316,9 @@ export default class EntryFind {
             return {
                 status: 400,
                 matches: [],
-                error: "FIND requires a target.",
+                error: "find requires a target.",
                 extensions: {
-                    recovery: "Provide the FIND target.",
+                    recovery: "Provide the find target.",
                     retryable: false,
                 },
             };

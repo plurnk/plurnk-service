@@ -171,14 +171,13 @@ export default class ChannelWrite {
     // {§subscriptions}
     static async openSubscription(
         db: Db,
-        { sessionId, entryId, scheme, handle, turnScoped, detached, publishedChannel, source }: {
+        { sessionId, entryId, scheme, handle, publishedChannel, source }: {
             sessionId: number; entryId: number; scheme: string; handle: string;
-            turnScoped?: boolean; detached?: boolean; publishedChannel?: string | null; source?: string;
+            publishedChannel?: string | null; source?: string;
         },
     ): Promise<number> {
         const row = await ChannelWrite.#openSubStmt(db).get<{ id: number }>({
             session_id: sessionId, entry_id: entryId, scheme, handle,
-            turn_scoped: turnScoped ? 1 : 0, detached: detached ? 1 : 0,
             published_channel: publishedChannel ?? null, source: source ?? null });
         if (row === undefined) throw new Error("openSubscription: INSERT ... RETURNING produced no row");
         return row.id;
@@ -282,15 +281,5 @@ export default class ChannelWrite {
         return [...new Set(candidates
             .filter(({ scheme, authority, pathname, stream }) => ChannelWrite.#targetUri(scheme, authority, pathname) === stream)
             .map(({ id }) => id))];
-    }
-
-    // The session's open turn-scoped (`[{"lifetime":"turn"}]`) subscriptions — reaped at the session's next
-    // pre-turn so such a stream never survives into the subsequent turn ({§exec-lifetime}). Any open one at
-    // pre-turn is necessarily from a prior turn (the reap runs before this turn's own spawns).
-    static async findOpenTurnScopedSubscriptionsForSession(
-        db: Db,
-        sessionId: number,
-    ): Promise<Array<{ id: number; scheme: string }>> {
-        return db.find_open_turn_scoped_subscriptions_for_session.all<{ id: number; scheme: string }>({ session_id: sessionId });
     }
 }

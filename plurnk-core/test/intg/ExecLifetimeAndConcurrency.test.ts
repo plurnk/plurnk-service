@@ -10,24 +10,18 @@ import { serverProposals } from "./_approval.ts";
 import { type ExecStatement, type RuntimeTag, type KillStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
-import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { type Executor, type ExecArgs, type ExecResult } from "@plurnk/plurnk-execs";
 import { readStmt, urlPath, execStmt as dslExecStmt, completeStmt, dispositionStmt, noteStmt } from "./_dsl.ts";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { OutputScheme } from "@plurnk/plurnk-schemes";
 import { Mock } from "@plurnk/plurnk-providers";
-import { waitForDb, rpcCall, subscribeNotifications, connect, withDaemon, runLoopToTerminal, waitFor } from "./_rpc.ts";
-import { setTimeout as delay } from "node:timers/promises";
-import { viableWindow } from "./_provider.ts";
-import { makeRawMockResponse, makeMockResponse } from "./_mock.ts";
+import { waitForDb, rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
+import { makeRawMockResponse } from "./_mock.ts";
 import { namedModelSession } from "./_sessions.ts";
 
 
 describe("exec-concurrency", () => {
 const statement = (body: string): ExecStatement => ({
-    metadata: null,
     runtime: "controlled",
     aside: null,
     target: null,
@@ -37,7 +31,7 @@ const statement = (body: string): ExecStatement => ({
 });
 
 const killStatement = (scheme: string, pathname: string): KillStatement => ({
-    metadata: null,
+    headers: null, remote: null,
     op: "kill",
     aside: null,
     target: {
@@ -257,136 +251,6 @@ test("{§exec-lifetime}: KILL cancels queued work without invoking its executor"
         if (previous === undefined) delete process.env.PLURNK_SERVICE_EXEC_CONCURRENCY;
         else process.env.PLURNK_SERVICE_EXEC_CONCURRENCY = previous;
     }
-});
-
-test("{§exec-lifetime}: queue residence does not consume the execution timeout", async () => {
-    const previous = process.env.PLURNK_SERVICE_EXEC_CONCURRENCY;
-    process.env.PLURNK_SERVICE_EXEC_CONCURRENCY = "1";
-    const db = await openMigrated();
-    const executor = new ControlledExecutor();
-    const executors = registry(executor);
-    const schemes = new SchemeRegistry();
-    const exec = schemes.get("exec") as Exec;
-    const engine = new Engine({ db, schemes });
-    engine.setExecutors(executors);
-    try {
-        const workspaceId = await insertWorkspace(db, `exec-timeout-${crypto.randomUUID()}`);
-        const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1);
-        const turnId = await insertTurn(db, loopId, 1, 102);
-        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, loopId, turnId, executors });
-        const attrs = (body: string, pathname: string, timeoutSec?: number) => ({
-            runtime: "controlled",
-            cwd: null,
-            target: null,
-            body,
-            pathname,
-            effect: "pure",
-            ...(timeoutSec === undefined ? {} : { timeoutSec }),
-        });
-
-        assert.deepEqual(
-            await exec.applyResolution({ attrs: attrs("running", "/1/1/1"), metadata: null }, ctx),
-            { status: 200, outcome: "started" },
-        );
-        assert.equal(
-            (await exec.applyResolution({ attrs: attrs("timed", "/1/1/2", 0.03), metadata: null }, ctx)).status,
-            202,
-        );
-        await new Promise<void>((resolve) => setTimeout(resolve, 80));
-        assert.deepEqual(executor.starts, ["running"], "the queued timeout has not admitted the executor");
-
-        executor.release("running");
-        await eventually(() => executor.starts.includes("timed"), "queued work was already timed out before admission");
-        executor.release("timed");
-    } finally {
-        executor.releaseAll();
-        await exec.idle();
-        await db.close();
-        if (previous === undefined) delete process.env.PLURNK_SERVICE_EXEC_CONCURRENCY;
-        else process.env.PLURNK_SERVICE_EXEC_CONCURRENCY = previous;
-    }
-});
-});
-
-describe("exec-detached", () => {
-// {§exec-lifetime} — `[{"lifetime":"detached"}]` outlives the loop (#494): the spawn survives its loop's own 200,
-// is no obligation for that completion, and still ends with the daemon.
-
-
-
-
-
-
-
-
-
-
-let prevDetachedWaitMs: string | undefined;
-beforeAll(() => {
-    prevDetachedWaitMs = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
-    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
-});
-afterAll(() => {
-    if (prevDetachedWaitMs === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
-    else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = prevDetachedWaitMs;
-});
-
-const mockTurn = (dsl: string) => ({
-    assistant: { content: dsl, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
-    assistantRaw: null,
-});
-
-// A host exec that never exits on its own and leaves a heartbeat the test can read from outside.
-const heartbeat = (file: string) => `while true; do date +%s%N > ${file}; sleep 0.05; done`;
-const beat = async (file: string): Promise<string> => (await readFile(file, "utf8").catch(() => "")).trim();
-const beating = async (file: string, ms: number): Promise<boolean> => {
-    const before = await beat(file);
-    await delay(ms);
-    return before !== await beat(file);
-};
-
-test("{§exec-lifetime} a detached spawn is observed once, then outlives its loop and ends with the daemon", async (approvalContext) => {
-    serverProposals(approvalContext, "accept");
-    const dir = await mkdtemp(join(tmpdir(), "exec-detached-"));
-    const file = join(dir, "beat");
-    try {
-        const mock = new Mock({
-            contextWindow: viableWindow(),
-            responses: [mockTurn(`await plurnk.sh({"metadata":["{\\"lifetime\\": \\"detached\\"}"],"command":"${heartbeat(file)}"});
-
-await plurnk.send({"text":"the server stays up"});
-
-await plurnk.send({});`), mockTurn("await plurnk.done({});")],
-        });
-        await withDaemon(mock, async (db, _daemon, addr) => {
-            const ws = await connect(addr);
-            try {
-                await rpcCall(ws, 1, "workspace.create", { name: "exec-detached" });
-                const concluded = subscribeNotifications(ws, "stream/concluded");
-                const run = await rpcCall(ws, 2, "loop.run", { prompt: "leave a server running" });
-                const loopId = (run.result as { loopId: number }).loopId;
-
-                // The detached stream remains live after its invocation is observed.
-                await waitForDb(
-                    () => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }),
-                    (r) => r?.status === 200,
-                    { timeoutMs: 10000 },
-                );
-                await waitForDb(() => beat(file), (b) => b !== "", { timeoutMs: 5000 });
-                assert.equal(mock.received.length, 2, "the invocation still requires a packet before completion");
-                assert.equal(mock.remaining, 0);
-                assert.equal(await beating(file, 400), true, "the detached spawn keeps running after the loop's 200");
-                assert.equal(
-                    (concluded() as Array<{ scheme: string }>).some((c) => c.scheme === "sh"),
-                    false,
-                    "no reap concluded the detached stream at loop end",
-                );
-            } finally { ws.close(); }
-        });
-        // withDaemon stopped the daemon: a detached spawn does not outlive it.
-        await waitForDb(() => beating(file, 300), (moving) => ! moving, { timeoutMs: 10000 });
-    } finally { await rm(dir, { recursive: true, force: true }); }
 });
 });
 
@@ -660,7 +524,6 @@ afterAll(() => {
 });
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
-    metadata: null,
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
@@ -814,44 +677,6 @@ test("{§exec-lifetime} {§diagnostic-observation}: a scope on an execution is r
     assert.equal(problem.recovery, undefined);
 });
 
-test("{§exec-lifetime}: an unreadable lifetime is refused before the spawn, with every form it could take", { timeout: 120_000 }, async () => {
-    const { status, problem } = await refusal("await plurnk.sh({\"command\":\"sleep 0\",\"metadata\":[\"{\\\"lifetime\\\": \\\"30\\\"}\"]});", "exec-lifetime-invalid");
-    assert.equal(status, 400);
-    assert.match(problem.type, /scheme\/exec\/lifetime-invalid$/u);
-    assert.match(problem.detail, /'30' is not a lifetime/u);
-    assert.match(problem.recovery ?? "", /"30s", "30m", "2h".*"loop", "turn", or "detached"/u);
-});
-
-test("{§exec-lifetime}: a tool's opaque metadata is still its own — the service reads no lifetime from it", { timeout: 120_000 }, async () => {
-    // {§executor-contract} — `sh` takes the option-array shape, so a block that is not that shape is
-    // the tool's to refuse. The service must not refuse it first in the name of `lifetime`.
-    const { status, problem } = await refusal("await plurnk.sh({\"command\":\"sleep 0\",\"metadata\":[\" custom syntax \"]});", "exec-lifetime-opaque");
-    assert.equal(status, 400);
-    assert.match(problem.type, /executor\/metadata\/metadata-invalid$/u, "the executor's own refusal, not the service's");
-    assert.doesNotMatch(problem.detail, /lifetime/u);
-});
-
-test("{§exec-lifetime}: a turn-scoped run is reaped at the next pre-turn; a loop-bound one at the loop's end", { timeout: 120_000 }, async (approvalContext) => {
-    serverProposals(approvalContext, "accept");
-    const mock = new Mock({ contextWindow: 100_000, responses: [
-        makeRawMockResponse("await plurnk.sh({\"metadata\":[\"{\\\"lifetime\\\": \\\"turn\\\"}\"],\"command\":\"sleep 45\"});\n\nawait plurnk.note({\"text\":\"Backgrounded for this turn only.\"});", 10),
-        makeRawMockResponse("await plurnk.note({\"text\":\"The next turn begins; the turn-scoped run is gone.\"});", 10),
-        makeRawMockResponse("await plurnk.done({\"text\":\"Done.\"});", 10),
-    ] });
-    await withDaemon(mock, async (db, daemon, addr) => {
-        const client = await connect(addr);
-        try {
-            await rpcCall(client, 1, "workspace.create", { name: "exec-lifetime-turn" });
-            const [workspace] = await daemon.listWorkspaces();
-            const sessionId = await namedModelSession(daemon, workspace.id, "main");
-            const { finalStatus } = await runLoopToTerminal(client, 2, { prompt: "Background it.", sessionId });
-            assert.equal(finalStatus, 200, "the loop concluded without waiting on a stream it no longer holds");
-            const open = await db.test_count_active_subscriptions.get<{ n: number }>({});
-            assert.equal(open?.n, 0, "the turn-scoped stream did not survive into the subsequent turn");
-        } finally { client.close(); }
-    });
-});
-
 // {§exec-lifetime} {§notifications} A loop-bound run ends with its loop, whichever segment of the loop
 // spawned it: reaped at the loop's terminal, its stream concluded before that terminal is announced.
 for (const spawnedBy of ["the ending segment", "a segment before a park"] as const) {
@@ -892,49 +717,5 @@ ${parks ? "await plurnk.wait({\"seconds\":1,\"text\":\"Waiting on it.\"});" : "a
         });
     });
 }
-});
-
-describe("exec-timeout", () => {
-// {§exec-lifetime} — a bounded `[{"lifetime": …}]` caps the spawn. At the deadline the service
-// aborts it (bounded reap) and stamps the stream 504, distinct from a deliberate kill (499).
-// Own file: real subprocess + timing, process-isolated.
-
-
-
-
-
-
-
-test("{§exec-lifetime} a bounded lifetime kills the spawn at its deadline and closes the stream 504", { timeout: 60_000 }, async (approvalContext) => {
-    serverProposals(approvalContext, "accept");
-    // `sleep 30` under a 2-second lifetime: the spawn MUST be killed at its deadline, never run to completion.
-    const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        // Park on the stream: its only conclusion is the reap, so turn 2 sees the 504 close.
-        makeMockResponse("await plurnk.sh({\"metadata\":[\"{\\\"lifetime\\\": \\\"2s\\\"}\"],\"command\":\"sleep 30\"});\n\nawait plurnk.wait({\"text\":\"waiting for the reap\"});", 10),
-        makeMockResponse("await plurnk.done({\"text\":\"the spawn timed out; done\"});", 10),
-    ] });
-    await withDaemon(mock, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "exec-timeout" });
-            const concluded = subscribeNotifications(ws, "stream/concluded");
-            const t0 = Date.now();
-            await runLoopToTerminal(ws, 2, { prompt: "go" }, { timeoutMs: 45_000 });
-            const elapsed = Date.now() - t0;
-            // The proof: the deadline is never early, and a working lifetime ends the loop far short of the 30s the sleep
-            // would take — a correctness check about the contract's own time, not a race.
-            assert.ok(elapsed >= 2_000 && elapsed < 25_000, `the spawn was reaped at its 2s deadline, not run to 30s; elapsed=${elapsed}ms`);
-            const closes = await waitFor(
-                () => concluded() as Array<{ scheme: string; result: { status: number; problem?: { type: string } } }>,
-                (events) => events.some(({ scheme }) => scheme === "sh"),
-            );
-            assert.ok(
-                closes.some((c) => c.result.status === 504
-                    && c.result.problem?.type === "https://problems.plurnk.xyz/scheme/exec/execution-timeout"),
-                `the exec stream closed with the exact lifetime Problem; got ${JSON.stringify(closes.map((c) => c.result))}`,
-            );
-        } finally { ws.close(); }
-    });
-});
 });
 

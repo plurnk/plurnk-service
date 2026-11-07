@@ -47,8 +47,6 @@ export interface ExecArgs {
     runtime: string;
     // The authored fence body; its role comes from the runtime invocation declaration.
     body: string;
-    // Ordered raw header blocks owned by this executor, never the source scheme.
-    metadata: readonly string[] | null;
     // Process working directory — the workspace workspace. Filesystem-touching
     // runtimes resolve relative paths (including `target`) against it; subprocess
     // runtimes spawn in it. null for logical runtimes that touch no filesystem.
@@ -92,7 +90,7 @@ export interface ExecArgs {
     entry?: (path: string | null, content: string | Uint8Array | null, opts: { mimetype?: string; name?: string }) => Promise<string>;
 }
 
-export type ExecInput = Pick<ExecArgs, "runtime" | "body" | "metadata" | "cwd" | "target">;
+export type ExecInput = Pick<ExecArgs, "runtime" | "body" | "cwd" | "target">;
 
 // Preparation owns option validation; the consumer retains the effective cwd.
 export interface ExecPreparation extends SchemeResult {

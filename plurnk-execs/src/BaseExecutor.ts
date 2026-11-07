@@ -1,7 +1,6 @@
 import { OutputScheme } from "@plurnk/plurnk-schemes";
 import type { SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
 import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecPreparation, ExecResult, Executor, ExecutorMetadata, RuntimeAvailability } from "./types.ts";
-import InvocationMetadata from "./InvocationMetadata.ts";
 
 // Base class for runtime executors (parallel to plurnk-mimetypes' BaseHandler).
 // A `@plurnk/plurnk-execs-*` sibling subclasses this and implements `run()`.
@@ -69,7 +68,7 @@ export default abstract class BaseExecutor implements SchemeHandler, Executor {
     abstract get channels(): Readonly<Record<string, ChannelDecl>>;
 
     prepare(input: ExecInput): Promise<ExecPreparation> {
-        return InvocationMetadata.prepare(input);
+        return Promise.resolve({ status: 200, cwd: input.cwd });
     }
 
     // Execute the command. Write output to the declared channels via

@@ -110,7 +110,7 @@ export default class TurnSourceWriter {
         if (content.length === 0) throw new Error("Dispatcher.writeEmission: an admitted emission is never empty");
         const pathname = `/${loopSeq}/${turnSeq}`;
         const statement: ReadStatement = {
-            op: "read", aside: null, metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
+            op: "read", aside: null, headers: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
             target: {
                 kind: "url", raw: `ops://${sessionName}${pathname}`, scheme: "ops",
                 username: null, password: null, hostname: sessionName, port: null, pathname, query: null, fragment: null,
@@ -161,7 +161,7 @@ export default class TurnSourceWriter {
         const lineMarker = tail === null || tail.whole ? null : tail.marker;
         const projected = lineMarker === null ? null : await ReadResolve.resolve({ content: reasoning, mimetype: "text/markdown", lineMarker });
         const statement: ReadStatement = {
-            op: "read", aside: null, metadata: null, lineMarker, matcher: null, body: null, position: UNKNOWN_POSITION,
+            op: "read", aside: null, headers: null, lineMarker, matcher: null, body: null, position: UNKNOWN_POSITION,
             target: {
                 kind: "url", raw: `reasoning://${sessionName}${pathname}`, scheme: "reasoning",
                 username: null, password: null, hostname: sessionName, port: null, pathname, query: null, fragment: null,
@@ -222,6 +222,7 @@ export default class TurnSourceWriter {
             const read: ReadStatement = {
                 ...statement,
                 op: "read",
+                headers: null,
                 matcher: null,
                 body: null,
                 lineMarker: { marks: [1, -1] },
@@ -238,7 +239,7 @@ export default class TurnSourceWriter {
         if (prompt.trim() === "") {
             return { result: this.#failure(
                 "bare-prompt-empty", 422,
-                `BARE has no prompt text: the prompt is the prompt string, a resource path, or both.${statement.aside === null || statement.aside === "" ? "" : " Its aside was not read as the prompt."}`,
+                `bare has no prompt text: the prompt is the prompt string, a resource path, or both.${statement.aside === null || statement.aside === "" ? "" : " Its aside was not read as the prompt."}`,
                 {}, { retryable: false },
             ) };
         }

@@ -19,14 +19,17 @@ const wrapScope = (raw: string): string => {
     return `<${trimmed}>`;
 };
 
-// Scans `<scope>` into ordered numeric components. Separators are `,`
+const unwrapScope = (text: string): string =>
+    text.startsWith("<") && text.endsWith(">") ? text.slice(1, -1) : text;
+
+// Scans range coordinates into ordered numeric components. Separators are `,`
 // (with an optional space) or `-`; a `-` immediately starting a component is its
 // sign, not a separator. The operation owner assigns roles. {§matcher-prefix-claims}
 export const parseLineMarker = (raw: string, position: Position = { line: 0, column: 0 }): LineMarker => {
     const text = wrapScope(raw);
     if (!VALID_NUMERIC_SCOPE.test(text)) {
         throw new PlurnkParseError(position.line, position.column, "visitor",
-            `invalid scope ${JSON.stringify(raw)}; expected numeric coordinates`, "error", OFFSET_RECOVERY);
+            `invalid range ${JSON.stringify(raw)}; expected numeric coordinates`, "error", OFFSET_RECOVERY);
     }
     const inner = text.slice(1, -1);
     const marks: number[] = [];
@@ -57,10 +60,11 @@ export const parseLineMarker = (raw: string, position: Position = { line: 0, col
 // {§matcher-prefix-claims}: normalize authored numeric ranges before anchors resolve.
 export const parseRangeMarker = (raw: string, position: Position = { line: 0, column: 0 }, advise?: Advise): LineMarker => {
     const text = wrapScope(raw);
+    const inner = unwrapScope(text);
     const relative = VALID_RELATIVE_SCOPE.exec(text);
     if (relative === null && (text.includes("+") || !VALID_NUMERIC_SCOPE.test(text))) {
         throw new PlurnkParseError(position.line, position.column, "visitor",
-            `invalid scope ${JSON.stringify(raw)}; use numeric coordinates or \`@hash\` line anchors`, "error", OFFSET_RECOVERY);
+            `invalid range ${JSON.stringify(raw)}; use numeric coordinates or \`@hash\` line anchors`, "error", OFFSET_RECOVERY);
     }
     const marker = relative === null ? parseLineMarker(text, position)
         : { marks: [Number(relative[1]), Number(relative[2])] as [number, number] };
@@ -70,13 +74,13 @@ export const parseRangeMarker = (raw: string, position: Position = { line: 0, co
     if (relative === null && !count) return marker;
     if (start <= 0 || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)) {
         throw new PlurnkParseError(position.line, position.column, "visitor",
-            `Scope ${text} requires a positive start and safe integer coordinates.`);
+            `Range ${JSON.stringify(inner)} requires a positive start and safe integer coordinates.`);
     }
     const last = start + (relative === null ? end - 1 : end);
     if (!Number.isSafeInteger(last)) {
-        throw new PlurnkParseError(position.line, position.column, "visitor", `Scope ${text} exceeds safe integer coordinates.`);
+        throw new PlurnkParseError(position.line, position.column, "visitor", `Range ${JSON.stringify(inner)} exceeds safe integer coordinates.`);
     }
-    advise?.(position, `Scope ${text} was read as <${start},${last}>.`);
+    advise?.(position, `Range ${JSON.stringify(inner)} was read as "${start},${last}".`);
     return { marks: [start, last] };
 };
 
@@ -84,17 +88,17 @@ export const parseTextLineMarker = (raw: string, position: Position = { line: 0,
     const marker = wrapScope(raw);
     if (!VALID_TEXT_SCOPE.test(marker)) {
         throw new PlurnkParseError(position.line, position.column, "visitor",
-            `invalid scope ${JSON.stringify(raw)}; use numeric coordinates or \`@hash\` line anchors`, "error", OFFSET_RECOVERY);
+            `invalid range ${JSON.stringify(raw)}; use numeric coordinates or \`@hash\` line anchors`, "error", OFFSET_RECOVERY);
     }
     // {§parse-recovery} — `42<@abcde>` is the displayed row prefix copied whole: the
-    // scope is the anchor, the digits are dropped, and one advisory names the anchor-only form.
+    // range is the anchor, the digits are dropped, and one advisory names the anchor-only form.
     const prefixed = /^([1-9][0-9]*)(<[\s\S]*)$/u.exec(marker);
     const text = prefixed === null ? marker : prefixed[2];
     if (prefixed !== null) {
-        advise?.(position, `\`${marker}\` was read as the scope \`${text}\`; a scope takes the anchor without its displayed line number.`);
+        advise?.(position, `\`${marker}\` was read as the range ${JSON.stringify(unwrapScope(text))}; a range takes the anchor without its displayed line number.`);
     }
     if (!text.includes("@")) {
-        return parseRangeMarker(text, position, advise);
+        return parseRangeMarker(unwrapScope(text), position, advise);
     }
     const marks = text.slice(1, -1).split(/, ?|-/).map((component) => {
         // {§fence-pairing} — `@210` is the line number 210 with the anchor's sigil, not a hash.
@@ -104,14 +108,14 @@ export const parseTextLineMarker = (raw: string, position: Position = { line: 0,
         }
         return component.startsWith("@") ? component : Number.parseFloat(component);
     });
-    // {§op-methods-op-dispatch} — anchor-bearing scopes retain their offsets, never count recovery.
+    // {§op-methods-op-dispatch} — anchor-bearing ranges retain their offsets, never count recovery.
     const components = text.slice(1, -1).split(/, ?|-/);
     for (const [index, component] of components.entries()) {
         if (!component.startsWith("+")) continue;
         const base = /^(@[0-9A-Za-z]{5})([+-][0-9]+)?$/u.exec(String(marks[index - 1] ?? ""));
         if (base === null) {
             throw new PlurnkParseError(position.line, position.column, "visitor",
-                `invalid scope ${JSON.stringify(text)}; use numeric coordinates or \`@hash\` line anchors`, "error", OFFSET_RECOVERY);
+                `invalid range ${JSON.stringify(unwrapScope(text))}; use numeric coordinates or \`@hash\` line anchors`, "error", OFFSET_RECOVERY);
         }
         const offset = Number(base[2] ?? 0) + Number(component.slice(1));
         marks[index] = offset === 0 ? base[1] : `${base[1]}${offset > 0 ? "+" : ""}${offset}`;

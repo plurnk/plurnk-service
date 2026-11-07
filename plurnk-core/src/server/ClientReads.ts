@@ -26,8 +26,6 @@ interface OpenStreamRow {
     readonly scheme: string;
     readonly authority: string;
     readonly pathname: string;
-    readonly turn_scoped: number;
-    readonly detached: number;
     readonly source: string | null;
     readonly channel: string | null;
     readonly state: ApplicationStreamChannel["state"] | null;
@@ -389,7 +387,6 @@ export default class ClientReads {
             entryId: row.entry_id,
             sessionId: row.session_id,
             target: renderAddress({ scheme: row.scheme, authority: row.authority, pathname: row.pathname }),
-            lifetime: row.detached === 1 ? "detached" : row.turn_scoped === 1 ? "turn" : "loop",
             ...ClientReads.#openedAt(row.source),
             channels,
         }));

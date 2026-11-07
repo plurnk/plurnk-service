@@ -62,20 +62,28 @@ export default class KillHandler {
         if (statement.op !== "kill") throw new Error("unreachable");
         const path = statement.target;
         if (path === null) {
-            return this.#failure("kill-target-required", 400, "KILL requires a target path.", {}, { retryable: false });
+            return this.#failure("kill-target-required", 400, "kill requires a target path.", {}, { retryable: false });
         }
         const schemeName = schemeNameOf(path);
         if (schemeName === null) {
             return this.#failure(
                 "kill-target-scheme-required",
                 400,
-                "KILL target requires a scheme.",
+                "kill target requires a scheme.",
                 {},
                 { retryable: false },
             );
         }
         const binding = await ResourceBindings.resolve(path, ctx);
         const manifest = binding?.manifest;
+        if ((binding !== undefined || schemeName === "session") && schemeName !== "http" && schemeName !== "https" && schemeName !== "ws" && schemeName !== "wss") {
+            if (statement.headers !== null) {
+                return this.#failure("headers-unsupported", 400, `kill on '${schemeName}' does not accept headers.`, {}, { scheme: schemeName, operation: "kill", retryable: false });
+            }
+            if (statement.remote !== null) {
+                return this.#failure("remote-unsupported", 400, `kill on '${schemeName}' does not accept remote.`, {}, { scheme: schemeName, operation: "kill", retryable: false });
+            }
+        }
         // {§op-invariants} — a pattern selects log rows or an entry's lines; both leave before this
         // point. A KILL that still carries one addresses a session, a stream, or a scheme with no
         // lines, and is refused rather than silently widened to its whole target.
@@ -83,7 +91,7 @@ export default class KillHandler {
             return this.#failure(
                 "kill-pattern-unsupported",
                 400,
-                `A KILL pattern selects log rows or an entry's lines; ${schemeName}:// has neither.`,
+                `A kill pattern selects log rows or an entry's lines; ${schemeName}:// has neither.`,
                 {},
                 { retryable: false },
             );
@@ -191,7 +199,7 @@ export default class KillHandler {
             return this.#failure(
                 "entry-operation-unsupported",
                 400,
-                `KILL requires an entry-bearing target; '${schemeName}' does not provide one.`,
+                `kill requires an entry-bearing target; '${schemeName}' does not provide one.`,
                 {},
                 { scheme: schemeName, retryable: false },
             );
@@ -206,7 +214,7 @@ export default class KillHandler {
         });
         if (resolved.result !== null) return resolved.result;
         if (resolved.address === null) {
-            return this.#failure("entry-not-found", 404, "The KILL target does not exist.");
+            return this.#failure("entry-not-found", 404, "The kill target does not exist.");
         }
         const cancelled = await this.#cancelLiveSubscription(schemeName, resolved.address, ctx);
         if (cancelled !== null) return cancelled;

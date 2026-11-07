@@ -118,8 +118,8 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
         const failedRows = await db.test_log_entries_by_turn.all<{ origin: string; rx: string }>({ turn_id: failed.turnId });
         const problem = JSON.parse(failedRows.find(({ origin }) => origin === "model")!.rx).problem;
         assert.match(problem.type, /message-not-implemented$/);
-        assert.equal(problem.detail, "SEND does not deliver messages to workspace entries.");
-        assert.equal(problem.recovery, "To reply, SEND to an Open Message address or omit the target. await plurnk.send({ target: \"session://<name>\", text: \"...\" }); sends a new message.");
+        assert.equal(problem.detail, "send does not deliver messages to workspace entries.");
+        assert.equal(problem.recovery, "To reply, send to an Open Message address or omit the target. await plurnk.send({ target: \"session://<name>\", text: \"...\" }); sends a new message.");
         assert.equal((await db.message_unanswered_count.get({ loop_id: loopId }))?.count, 1);
 
         assert.equal((await run()).status, 102, "both reply forms are messaging, not completion");
@@ -459,7 +459,7 @@ test("{§op-shapes}: a scoped session SEND is refused and admits no task", async
             const receipts = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: initial.loopId });
             const refusal = receipts.map(({ rx }) => JSON.parse(rx)).find((rx) => rx.problem?.type.endsWith("/scope-unsupported"));
             assert.equal(refusal?.status, 400);
-            assert.equal(refusal.problem.detail, "A session SEND takes no scope.");
+            assert.equal(refusal.problem.detail, "A session send takes no scope.");
             assert.deepEqual((await daemon.listSessionLoops({ workspaceId, sessionId }))
                 .filter(({ prompt }) => prompt !== "").map(({ id }) => id), [initial.loopId], "the scoped SEND admitted no task");
             assert.equal(provider.received.length, 2);
@@ -640,7 +640,6 @@ for (const [header, call] of [
         const tx = JSON.parse(wait.tx);
         assert.equal(tx.target?.raw ?? null, header === "wait" ? null : "sh:///missing");
         assert.equal(tx.lineMarker, null);
-        assert.equal(tx.metadata, null);
         assert.equal(tx.body, "Await results.");
         assert.equal(JSON.parse(wait.rx).problem, undefined);
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });

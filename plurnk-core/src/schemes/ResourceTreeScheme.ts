@@ -135,7 +135,7 @@ export default class ResourceTreeScheme extends CoreSchemeAdapterBase implements
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
-        if (statement.target === null) return { ...emptyFindFields(), ...Results.failure(`scheme:${this.manifest.name}`, "target-required", 400, "FIND requires a resource target.") };
+        if (statement.target === null) return { ...emptyFindFields(), ...Results.failure(`scheme:${this.manifest.name}`, "target-required", 400, "find requires a resource target.") };
         const coordinate = entryCoordinateOf(statement.target, "resource");
         const authorityScope = pathScope(coordinate.authority, false);
         const scope = pathScope(coordinate.pathname, true);

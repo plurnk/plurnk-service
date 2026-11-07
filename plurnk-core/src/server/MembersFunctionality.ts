@@ -272,7 +272,7 @@ class MembersResources implements RuntimeSchemeFacet {
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult> {
         const statement = statements[0];
         if (statement === undefined || statements.length > 1 || statement.lineMarker !== null || statement.matcher !== null) {
-            return SchemeResults.failure(SCHEME_OWNER, "value-whole", 400, "One EDIT adds one members glob, whole.", {}, { retryable: false });
+            return SchemeResults.failure(SCHEME_OWNER, "value-whole", 400, "One edit adds one members glob, whole.", {}, { retryable: false });
         }
         const named = MembersResources.#named(statement.target);
         if ("status" in named) return named;
@@ -294,7 +294,7 @@ class MembersResources implements RuntimeSchemeFacet {
 
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult> {
         if (statement.lineMarker !== null || statement.matcher !== null) {
-            return SchemeResults.failure(SCHEME_OWNER, "value-whole", 400, "KILL retires the whole members definition.", {}, { retryable: false });
+            return SchemeResults.failure(SCHEME_OWNER, "value-whole", 400, "kill retires the whole members definition.", {}, { retryable: false });
         }
         const named = MembersResources.#named(statement.target);
         if ("status" in named) return named;

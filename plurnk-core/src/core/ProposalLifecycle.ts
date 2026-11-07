@@ -755,7 +755,9 @@ export default class ProposalLifecycle {
             const applyCtx = this.#applyContext(ids);
             const request = {
                 attrs: isRecord(originalResult.attrs) ? originalResult.attrs : {},
-                metadata: operand.metadata,
+                headers: "headers" in operand ? operand.headers : null,
+                remote: "remote" in operand ? operand.remote : null,
+                attachments: "attachments" in operand ? operand.attachments : null,
                 body: resolution.body,
             };
             const proposalTarget = ProposalLifecycle.#proposalTargetOf(attrs?.proposalTarget);

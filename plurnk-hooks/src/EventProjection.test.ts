@@ -6,7 +6,7 @@ import EventProjection from "./EventProjection.ts";
 const started: ApplicationOperationEvent = {
     sessionId: 7, loopId: 9, turnId: 11, sequence: 2, origin: "model", projectRoot: "/project", phase: "started",
     statement: { op: "read", target: { kind: "local", raw: "README.md" },
-        aside: null, metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION },
+        aside: null, headers: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION },
 };
 
 test("{§hooks-event-projection} operation phase/status select hooks without treating system observations as tools", () => {

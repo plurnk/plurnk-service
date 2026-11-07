@@ -14,7 +14,7 @@ export const preparationRequest = (pathname: string): RepresentationPreparationR
         query: null,
         fragment: null,
     },
-    metadata: null,
+    headers: null,
     authority: "",
     pathname,
 });

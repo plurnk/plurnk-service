@@ -304,7 +304,7 @@ export default class ReadProjector {
                     requestedChannel: selected,
                     availableChannels,
                     ...(pointer !== null
-                        ? { stream, recovery: `READ ${pointer} for the command's ${selected} stream.` }
+                        ? { stream, recovery: `read ${pointer} for the command's ${selected} stream.` }
                         : availableChannels.length === 0
                             ? {}
                             : {
@@ -376,11 +376,11 @@ export default class ReadProjector {
                 return failure(
                     "line-anchor-collision",
                     409,
-                    `READ coordinates collided with current content at ${target}.`,
+                    `read coordinates collided with current content at ${target}.`,
                     {},
                     {
                         target,
-                        recovery: `READ ${target} again with numeric coordinates before reusing its anchors.`,
+                        recovery: `read ${target} again with numeric coordinates before reusing its anchors.`,
                         retryable: false,
                     },
                 );

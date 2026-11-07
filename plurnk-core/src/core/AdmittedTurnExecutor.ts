@@ -1,4 +1,4 @@
-import { TurnDisposition, isExecution, isRecord, writtenOp } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, isRecord, writtenOp } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 // Executing an admitted turn: its ordered statements dispatched, problems and notices recorded, the bare batch when no provider spoke. Split out of TurnRunner, which keeps the delegating entry point.
 import type { BareStatement, DispositionStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
@@ -23,9 +23,6 @@ import LineAnchors from "../content/line-anchors.ts";
 import { ENGINE_PROBLEMS } from "./turn-signals.ts";
 import type { ParseErrorInfo } from "./EmissionSplit.ts";
 import type { EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult, AdmittedTextSource } from "./TurnRunner.ts";
-
-// send/done/fail recipients own their input; resource operations use the manifest.
-const OWNS_METADATA: ReadonlySet<string> = new Set(["send", "done", "fail"]);
 
 // The exec scheme's turn settlement: its own hook, read where a turn settles.
 const settlesTurnSpawns = (handler: object | undefined): handler is {
@@ -233,27 +230,7 @@ export default class AdmittedTurnExecutor {
                 droppedCount++;
                 continue;
             }
-            // {§outside-text} — an unsupported resource option is dropped,
-            // and the model gets one notice, never a refusal. SEND recipients and invocation owners
-            // receive their own input whole ({§op-methods-op-dispatch}).
-            let statement = scheduledStatement;
-            if ("metadata" in statement && statement.metadata !== null && !(isExecution(statement) || OWNS_METADATA.has(statement.op))) {
-                const target = (statement as { target?: { kind: string; scheme?: string } | null }).target;
-                const schemeName = target === null || target === undefined
-                    ? (statement.op === "work" || statement.op === "fork" ? "session" : null)
-                    : target.kind === "url" ? target.scheme ?? null : "file";
-                const manifest = schemeName === null ? undefined : this.#schemes.manifestFor(schemeName, workspaceId);
-                if (manifest !== undefined && manifest.metadataModifier !== true) {
-                    this.#notices.push(workspaceId, sessionId, loopId, {
-                        source: "engine:dispatcher",
-                        kind: "metadata_ignored",
-                        level: "warn",
-                        directive: "YOU SHOULD NOT write [metadata] on an operation that takes none.",
-                        message: `${statement.op} on '${schemeName}' takes no [metadata]; the ${statement.op} ran without it.`,
-                    });
-                    statement = { ...statement, metadata: null };
-                }
-            }
+            const statement = scheduledStatement;
             if (scheduledStatement === finalOp) await settleTurn();
             const { result, commandsExecuted, commandsOmitted } = await observed(
                 "op.dispatch",
@@ -346,8 +323,8 @@ export default class AdmittedTurnExecutor {
                     source: "engine:slicer",
                     kind: "scope_normalized",
                     level: "warn",
-                    directive: "YOU SHOULD write the normalized scope.",
-                    message: `Scope <${normalization.requested.join(",")}> was normalized to <${normalization.canonical.join(",")}>.`,
+                    directive: "YOU SHOULD write the normalized range.",
+                    message: `Range "${normalization.requested.join(",")}" was normalized to "${normalization.canonical.join(",")}".`,
                 });
             }
             // {§op-methods-op-dispatch} — every applied resolution is also a notice, so the row's
@@ -357,8 +334,8 @@ export default class AdmittedTurnExecutor {
                     source: "engine:slicer",
                     kind: "edit_merged",
                     level: "warn",
-                    directive: "YOU SHOULD verify the merged EDIT before building on it.",
-                    message: `EDIT resolution applied: ${rule}; the row's merged fact has the coordinates.`,
+                    directive: "YOU SHOULD verify the merged edit before building on it.",
+                    message: `edit resolution applied: ${rule}; the row's merged fact has the coordinates.`,
                 });
             }
             if (TurnDisposition.is(scheduledStatement) && result.status < 400) waits.push(scheduledStatement);

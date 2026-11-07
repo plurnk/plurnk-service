@@ -380,7 +380,7 @@ for (const [target, status, problem] of [
             if (target === null) {
                 // {§diagnostic-observation} — the refusal states where a prompt is read from, and nothing else.
                 const row = (await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: result.turnId })).find(({ op }) => op === "bare");
-                assert.equal(JSON.parse(row!.rx).problem.detail, "BARE has no prompt text: the prompt is the prompt string, a resource path, or both.");
+                assert.equal(JSON.parse(row!.rx).problem.detail, "bare has no prompt text: the prompt is the prompt string, a resource path, or both.");
             }
         } finally { await db.close(); }
     });

@@ -37,9 +37,9 @@ import { type PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 describe("contract-notices", () => {
 const UNACCOUNTED = "> [!WARNING]\n> 5000 output tokens billed; 1 visible across content and reasoning @ 2:3 [output_unaccounted]";
 // {§operation-results} — the turns under test continue without a `note`, `kill`, or `todo`, and the next packet says so.
-const CONTINUED = "> [!WARNING]\n> YOU MUST persist all new decisions, hypotheses, and facts as `plurnk.note` entries. The turn continued without a `plurnk.note`. [continued_without_note]";
+const CONTINUED = "> [!WARNING]\n> YOU MUST persist all new decisions, hypotheses, and facts as `plurnk.note` tool calls. The turn continued without a `plurnk.note`. [continued_without_note]";
 const scope = (requested: string, canonical: string): string =>
-    `> [!WARNING]\n> YOU SHOULD write the normalized scope. Scope <${requested}> was normalized to <${canonical}>. [scope_normalized]`;
+    `> [!WARNING]\n> YOU SHOULD write the normalized range. Range "${requested}" was normalized to "${canonical}". [scope_normalized]`;
 
 // Response from raw content WITHOUT ops - forces the engine to run the real
 // PlurnkParser rather than Mock's trusted pre-parsed seam.

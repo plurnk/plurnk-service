@@ -305,7 +305,7 @@ export const applySystemPrompt = async (
             {
                 op: "edit",
                 aside: null,
-                metadata: null,
+                headers: null,
                 target: {
                     kind: "url",
                     raw: targetUri,
@@ -349,7 +349,8 @@ const clearSystemPrompt = async (
             {
                 op: "kill",
                 aside: null,
-                metadata: null,
+                headers: null,
+                remote: null,
                 target: {
                     kind: "url",
                     raw: targetUri,

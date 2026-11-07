@@ -210,7 +210,6 @@ export default class RuntimeInvocation {
             aside: null,
             target: example.target === undefined ? null : { kind: "local", raw: example.target },
             lineMarker: null,
-            metadata: null,
             body: example.body ?? null,
             position: UNKNOWN_POSITION,
         }]);
@@ -254,7 +253,6 @@ export default class RuntimeInvocation {
                 aside: null,
                 target: { kind: "local", raw: exactTarget },
                 lineMarker: null,
-                metadata: null,
                 body: null,
                 position: UNKNOWN_POSITION,
             }]);

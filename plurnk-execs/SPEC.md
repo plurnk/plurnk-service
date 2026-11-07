@@ -29,7 +29,7 @@ flowchart LR
 - **Module slice:** A host binds to `Executor` (the contract `BaseExecutor` implements), not to the class. A daemon module contributes runtimes as `RuntimeRegistration`s: a namespace owner, the runtime declaration ({§executor-discovery}), the executor (with optional `forContext(workspaceId, sessionId)` when a module runtime stamps authenticated caller context on outbound protocol calls), its availability, and an optional scheme facet ({§resource-tree-scheme}). The host arbitrates the namespace ({§core-extension-composition}) and publishes each registration ({§module-seam-slices}).
 - **Forbidden in executor extensions:** Direct database, subscription, packet, or wake access; imports from `@plurnk/plurnk-service/*`; mutation of `ExecArgs` or state retained across runs; output through `console.*` instead of declared channels; writes or state transitions for undeclared channels; ignoring `args.signal` at a cancellable boundary; a process or network mechanism unrelated to the executor's declared runtime domain.
 
-## §executor-contract Author surface, sinks, metadata, argv, and channels
+## §executor-contract Author surface, sinks, argv, and channels
 
 ```ts
 abstract class BaseExecutor {
@@ -54,7 +54,6 @@ abstract class BaseExecutor {
 | `body` | The authored fence body, interpreted according to the runtime's invocation declaration. |
 | `cwd` | Consumer-selected project working directory, or `null` for a runtime that has none. |
 | `target` | Consumer-realized optional execution target. Its representation and role come from the invocation declaration. |
-| `metadata` | Exact ordered header blocks owned by the invoked executor, retained separately from the body and target. |
 | `env` | Exact child environment when supplied. A subprocess must use it instead of reconstructing host policy. |
 | `signal` | Consumer cancellation. Every executor must honor it at each cancellable boundary. |
 | `write(channel, chunk, mimetype?)` | Append to a declared channel. An optional mimetype replaces that channel's per-call output type. |
@@ -63,10 +62,7 @@ abstract class BaseExecutor {
 | `interact(request, signal?)` | Await one contracts-owned client interaction ({§provider-request-accounting}). An optional signal narrows, never replaces, the execution's cancellation scope. Core owns identity, pending-state durability, client presentation, and settlement; the executor owns the request and returned payload's meaning. |
 | `entry?(path, content, opts)` | Optionally request consumer-owned entry materialization and receive its canonical model-facing address ({§executor-output-address}). |
 
-- **Invocation metadata ownership:** The invoked executor owns its `[metadata]` for every target kind; an internal source READ carries no execution metadata.
-  - **Preparation:** Optional `prepare(input)` receives `runtime`, `body`, logical `target`, default `cwd`, and ordered raw `metadata`, before effect admission or source acquisition. Validates options without executing the program and returns `200` with a concrete `cwd` or `null`, or one universal failure.
-  - **Framework default:** `BaseExecutor.prepare` refuses unknown fields, duplicates, and malformed values. An unknown field's recovery names every field the run takes, the service's ({§resource-tree-scheme}), and nothing more ({§diagnostic-observation}): `` Its field is `lifetime`. ``
-  - **Execution & evidence:** `run()` receives prepared `cwd`, realized `target`, unchanged `body`, and original `metadata`. Raw metadata follows the transient proposal handoff, never added to proposal attrs or emitted as receipt metadata.
+- **Preparation:** Optional `prepare(input)` receives `runtime`, `body`, logical `target`, and default `cwd` before effect admission or source acquisition. Validates inputs without executing the program and returns `200` with a concrete `cwd` or `null`, or one universal failure. `run()` receives prepared `cwd`, realized `target`, and unchanged `body`.
 - **`tokenizeArgv`:** Splits a command line into argv by shell quoting alone. Plain words split on whitespace; quoted multi-word and quoted empty arguments stay whole; escapes are honoured; nothing is expanded (no variables, command substitution, or metacharacters); unterminated quoting is refused as `CommandSyntaxError`.
 - **Channels:** The executor declares every channel it may write (`ChannelDecl: { mimetype, defaultState? }`). `defaultChannel` is the fragmentless READ channel and defaults to the first declared channel. Subprocess executors declare `stdout` and `stderr` (`stdout` first); logical runtimes commonly declare `results`. Incremental vs atomic publication derives from the channel's mimetype ({§exec-stream}). Generated JSON values use `renderJsonResult` ({§operation-results}) so a top-level result array has one addressable item per physical line.
 
@@ -77,7 +73,7 @@ abstract class BaseExecutor {
 - **Page receipt:** When a tool result is a JSON array whose length equals the requested page size or the tool schema's default (`per_page`, `page_size`, `pageSize`, `limit`, first match), the result carries `page: { size, returned }` ({§exec-stream}). A shorter array, non-array, or call with no page size carries nothing.
 - **Subprocess exit code:** A subprocess that exits resolves `200` with its integer `exitCode` (zero or non-zero), closes its channels, and carries no Problem. A subprocess that did not run to an exit is a failure: `spawn-failed` when it could not start, `cancelled` under the consumer's abort ({§executor-subprocess}), and `terminated-by-signal` when an unsent signal ended it (with `signal` name and `exitCode: -1`).
 - **Notices:** `emit` is only for transient progress or nonterminal observations; runtime-neutral Notice types are re-exported from `@plurnk/plurnk-contracts`.
-- **Effect (`effect(target)`):** Pure, synchronous, cheap, and target-classified (`"host" | "read" | "pure"`), called once before proposal policy. Unknown or unclassifiable work defaults to `host` (human proposal gate); `read` and `pure` are automatically accepted. After acceptance, external execution uses the background stream path ({§exec-lifetime}, {§exec-stream}).
+- **Effect (`effect(target)`):** Pure, synchronous, cheap, and target-classified (`"host" | "read" | "pure"`), called once before proposal policy. Unknown or unclassifiable work defaults to `host` (human proposal gate); `read` and `pure` are automatically accepted. After acceptance, external execution uses the background stream path ({§exec-stream}).
 - **Availability (`probe(signal?)`):** Reports `{ available: boolean, detail?: string }` per runtime tag at boot under a per-probe timeout (`{ available: true }` default). Probe rejection, timeout, or typed `ConfigurationError` during loading/construction/probing marks only that tag unavailable without publishing an executable or output scheme ({§operator-config-workspace-settings}).
 
 ## §executor-output-address Tag-addressed output and optional materialization
@@ -111,7 +107,7 @@ Every available runtime receives one derived read-only scheme face from its tag,
 - **Dynamic declarations (`plurnk.runtimesModule`):** Exported subpath whose `runtimes` or default export returns `RuntimeDecl[] | Promise<RuntimeDecl[]>`. Static `runtimes[]` wins when both are present. Imported only after the extension trust gate (`PLURNK_EXTENSIONS_TRUSTED_ONLY`); untrusted packages execute no code and land in `Discovery.skipped`.
 - **Invocation contract (`RuntimeInvocation`):**
   - `body`: `{ role: string, required: boolean, mimetype?: string }` (malformed body media type counts as a fence-pairing repair under {§fence-pairing}).
-  - `target` (optional): `{ role: string, required: boolean, kind: "literal" | "path" | "resource" | "script" }` ({§exec-lifetime}, {§op-shapes}).
+  - `target` (optional): `{ role: string, required: boolean, kind: "literal" | "path" | "resource" | "script" }` ({§op-shapes}).
   - `exclusive?: true`: body and target are mutually exclusive (requires `target`). Every execution must supply at least a body or target.
   - Exactly one of `example` (`{ body?, target? }`), `signature` (`string`), or `inputSchema` (JSON Schema object) is required.
   - **Blank invocation:** A refusal of an absent required body/target (or neither supplied) carries in `recovery` the invocation's copyable fence (`header` + input preview, or every enabled target's fence for a registry runtime) ({§functionality-coordinator}).
@@ -142,4 +138,4 @@ Every available runtime receives one derived read-only scheme face from its tag,
 | `python3` | `python3 -c <body>` | `python3 <target> ...argv` |
 | Other default-base | `<runtime> -c <body>` | `<runtime> <target> ...argv` |
 
-- **Cancellation:** Executors know only the supplied `AbortSignal` ({§exec-lifetime}). Subprocess cancellation signals the process group: a caller-supplied kill code is delivered once; ordinary cancellation uses `SIGHUP`; loop-end housekeeping may escalate after the consumer-provided grace period.
+- **Cancellation:** Executors know only the supplied `AbortSignal` ({§exec-stream}). Subprocess cancellation signals the process group: a caller-supplied kill code is delivered once; ordinary cancellation uses `SIGHUP`; loop-end housekeeping may escalate after the consumer-provided grace period.

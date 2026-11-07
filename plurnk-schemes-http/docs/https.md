@@ -19,7 +19,7 @@ readable Markdown (a materializer's or the local reader's) is `#readable`, read 
 | `await plurnk.send({ target: "https://…", text })` | POST | Submit the body and stream the response |
 | `await plurnk.edit({ path: "https://…", content })` | PUT | Replace the whole remote resource; a line scope does not apply |
 | `await plurnk.kill({ path: "https://…" })` | none | Cancel a live acquisition of the address, or forget its stored response |
-| `await plurnk.kill({ path: "https://…", metadata: ["{\"remote\": true}"] })` | DELETE | Delete the remote resource and stream the response |
+| `await plurnk.kill({ path: "https://…", remote: true })` | DELETE | Delete the remote resource and stream the response |
 
 A path-pattern `find` searches only web entries already materialized in the
 workspace; a pattern cannot discover the remote web. For matched content, `read`
@@ -57,30 +57,30 @@ For SSE, `read` returns `102` while events continue; origin close settles the
 subscription at `200`, and later cancellation or transfer failure settles it
 at `499` or `502` without rewriting the initial `read`. Re-reading an exact URL
 reuses a complete GET while the operator TTL and the origin's own lifetime
-allow; request metadata, a `Vary` response, a partial `206`, or a POST, PUT or
+allow; request headers, a `Vary` response, a partial `206`, or a POST, PUT or
 DELETE response is never reused as a later GET. Scope never suppresses
 acquisition or refresh.
 
 ## Request headers
 
-Request headers share one `metadata` array of JSON option objects; option objects in the array merge left to right.
+Pass request headers in `headers`:
 
-await plurnk.read({ path: "https://api.example.com/v1/me", metadata: ["{\"Accept\": \"application/json\"}"] });
+await plurnk.read({ path: "https://api.example.com/v1/me", headers: { "Accept": "application/json" } });
 
-await plurnk.edit({ path: "https://api.example.com/v1/thing/42", metadata: ["{\"Content-Type\": \"application/json\"}"], content: "{\"done\":true}" });
+await plurnk.edit({ path: "https://api.example.com/v1/thing/42", headers: { "Content-Type": "application/json" }, content: "{\"done\":true}" });
 
-await plurnk.send({ target: "https://api.example.com/v1/search", metadata: ["{\"Content-Type\": \"application/json\"}"], text: "{\"query\":\"plurnk\"}" });
+await plurnk.send({ target: "https://api.example.com/v1/search", headers: { "Content-Type": "application/json" }, text: "{\"query\":\"plurnk\"}" });
 
-A request with explicit metadata is ineligible for later cache reuse, and its
+A request with explicit `headers` is ineligible for later cache reuse, and its
 HTML uses the local reader projection: request headers never reach the
 materializer. GET acquisition of a GitHub `…/blob/…` URL uses its
 `raw.githubusercontent.com` source; the addressed URL remains entry identity,
 and POST, PUT and DELETE never use that rewrite.
 
 A `plurnk.kill` of an `https://` address never reaches the remote unless it carries
-`metadata: ["{\"remote\": true}"]`: while an acquisition is in flight it cancels that
+`remote: true`: while an acquisition is in flight it cancels that
 acquisition, otherwise it forgets the stored response so the next `read` must
-acquire it again. With `{"remote": true}`, the other options in that object
-are the DELETE request's headers.
+acquire it again. With `remote: true`, `headers` supplies the DELETE request's
+headers.
 
 For a persistent bidirectional connection, `wss://` (`skill://plurnk/wss.md`).

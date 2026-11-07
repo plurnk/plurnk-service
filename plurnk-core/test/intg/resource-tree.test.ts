@@ -154,8 +154,8 @@ for (const [scope, end] of [["<395,12>", 406], ["<395,+12>", 407]] as const) {
         const shown = String(read?.body).split("\n").filter(Boolean).map((line) => line.replace(/^\s*\d+<@[0-9A-Za-z]{5}>/u, ""));
         assert.deepEqual(shown, lines.slice(394, end));
         const notice = packetSection(packet, "notices");
-        assert.ok(notice.includes(`Scope ${scope} was read as <395,${end}>.`), notice);
-        assert.equal(notice.split("\n").filter((line) => line.includes("Scope ")).length, 1);
+        assert.ok(notice.includes(`Range "${scope.slice(1, -1)}" was read as "395,${end}".`), notice);
+        assert.equal(notice.split("\n").filter((line) => line.includes("Range ")).length, 1);
         assert.doesNotMatch(notice, /strike|no_operation|No valid Operation/u);
         const outcomes = await db.test_log_entries_by_turn.all<{ op: string; pathname: string; status_rx: number }>({ turn_id: first.turnId });
         assert.deepEqual(outcomes.filter(({ op, pathname }) => op === "read" && pathname === "/range.txt").map(({ status_rx }) => status_rx), [200]);

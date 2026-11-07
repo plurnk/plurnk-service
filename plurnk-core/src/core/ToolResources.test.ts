@@ -490,7 +490,7 @@ test("{§functionality-model-projection} {§tools-resource-materialization} rend
     );
     assert.match(
         indexDoc.content,
-        /^await plurnk\.copy\(\{"from": "", "to": ""\}\); \/\/ Copy files, entries, streams, or text regions\. \(from: string\|\{path: string, range\?: string, pattern\?: string, metadata\?: string\|string\[\]\}, to: string\|\{path: string, range\?: string, pattern\?: string, metadata\?: string\|string\[\]\}\)$/m,
+        /^await plurnk\.copy\(\{"from": "", "to": ""\}\); \/\/ Copy files, entries, streams, or text regions\. \(from: string\|\{path: string, range\?: string, pattern\?: string, headers\?: object\}, to: string\|\{path: string, range\?: string, pattern\?: string, headers\?: object\}\)$/m,
     );
     assert.doesNotMatch(indexDoc.content, /Schema: mcp:\/\/\/plurnk\//);
     for (const tool of ALL_CORE_OPERATION_TOOLS) {

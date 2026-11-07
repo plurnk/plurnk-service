@@ -34,7 +34,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
     }
 
     get manifest(): SchemeManifest {
-        return { ...this.#manifest, metadataModifier: true };
+        return { ...this.#manifest };
     }
 
     // {§execution-output-identity} A claimed coordinate is governed by its facet's representation.
@@ -77,8 +77,6 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
         ctx: CoreSchemeCallContext,
     ): Promise<RepresentationPreparationResult> {
         if (this.#facet?.claims(EntryCoordinates.foldAuthority(request.authority, request.pathname)) !== true) {
-            if (request.metadata !== null) return Results.failure("scheme:exec", "metadata-unsupported", 400,
-                "Stored execution output does not accept READ metadata.", {}, { retryable: false });
             return { status: 200 };
         }
         return this.#facet.prepareRepresentation?.(request, await this.#facetContext(ctx, request.target)) ?? { status: 200 };
@@ -89,11 +87,6 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
         if (facet?.find !== undefined && this.#claimedPath(statement)) {
             return await facet.find(statement, await this.#facetContext(ctx));
         }
-        if (statement.metadata !== null) return Results.failure("scheme:exec", "metadata-unsupported", 400,
-            "Stored execution output does not accept FIND metadata.", {
-                content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
-                matchingPathCount: 0, matchLocationCount: 0,
-            }, { retryable: false });
         // A facet without a find of its own is searched as ordinary entries, under its own
         // representation and after whatever it prepares.
         const prepared = await this.#facet?.prepareFind?.(statement, await this.#facetContext(ctx, statement.target));
