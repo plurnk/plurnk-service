@@ -239,7 +239,7 @@ export default class File extends CoreSchemeAdapterBase {
                         : ignoredBy !== null
                             // {§membership}
                             ? `Git ignores it (\`${ignoredBy.file}\` line ${ignoredBy.line}): a client or operator members definition can include it, a model definition cannot.`
-                            : "Admit it with `await plurnk.members({ files: [\"<path>\"] });`."
+                            : "Admit it with `await plurnk.members({ path: \"<path>\" });`."
                     : fileMissRecovery(named),
                 retryable: false,
             },

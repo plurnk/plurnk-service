@@ -16,14 +16,14 @@ Nothing is persisted.
 
 await plurnk.schedule({ discover: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20" }); // what time is it, and when would this fire
 
-## add
+## Adding a schedule
 
-`add` persists the rule for this workspace and arms its next occurrence, if any.
+Passing `{ name, rule, target, prompt }` persists the rule for this workspace and arms its next occurrence, if any.
 It is a host effect and requires approval.
 
-await plurnk.schedule({ alias: "daily", rule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20", target: "session://exampleSessionName", prompt: "Text delivered at each occurrence." });
+await plurnk.schedule({ name: "daily", rule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20", target: "session://exampleSessionName", prompt: "Text delivered at each occurrence." });
 
-await plurnk.schedule({ alias: "once", rule: "FREQ=SECONDLY;COUNT=1", target: "session://main", prompt: "One-time reminder." }); // omit DTSTART so it starts at the next whole second when added
+await plurnk.schedule({ name: "once", rule: "FREQ=SECONDLY;COUNT=1", target: "session://main", prompt: "One-time reminder." }); // omit DTSTART so it starts at the next whole second when added
 
 - `rule`: bare `FREQ=…` parts, or a `DTSTART` line and an `RRULE` line. A
   workspace rule ends: it carries `COUNT` or `UNTIL`. Without a `DTSTART` the

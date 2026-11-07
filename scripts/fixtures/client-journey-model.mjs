@@ -56,10 +56,10 @@ const journeys = Object.freeze({
         marker: "Exercise the failed stream finalization.",
         programs: [{
             reasoning: "The stream will finish before its durable close can commit.",
-            content: "await plurnk.sh({ command: \"printf 'retained-stream-output\\\\n'\" });\nawait plurnk.wait({ text: \"Await the command.\" });",
+            content: "await plurnk.sh({ code: \"printf 'retained-stream-output\\\\n'\" });\nawait plurnk.wait({}); // Await the command.",
         }, {
             reasoning: "The additional message reached the parked session.",
-            content: "await plurnk.note({ text: \"The unresolved stream remains an obligation.\" }); // Follow-up accepted while parked.\nawait plurnk.wait({ text: \"Await settlement.\" });",
+            content: "await plurnk.note({ text: \"The unresolved stream remains an obligation.\" }); // Follow-up accepted while parked.\nawait plurnk.wait({}); // Await settlement.",
         }],
     },
     zeroconfig: {

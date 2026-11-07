@@ -293,8 +293,7 @@ test("{§tools-resource-materialization} {§functionality-replacement} client an
             assert.match(String(membersSchema.description), /## When a file you need is not a member/u, "the body teaches the recovery when a file is not a member");
             assert.match(String(membersSchema.description), /PLURNK_SERVICE_MEMBERS_MODEL_SCOPE/u, "the body names the scope ceiling");
             assert.doesNotMatch(String(membersSchema.description), /git add/u, "no recovery asks the model to change the repository");
-            assert.ok(Object.hasOwn(membersSchema.properties, "files"), "the tool schema teaches the family's own add input");
-            assert.ok(Object.hasOwn(membersSchema.properties, "file"), "and its select input");
+            assert.ok(Object.hasOwn(membersSchema.properties, "path"), "the tool schema teaches the unified path input");
             assert.doesNotMatch(String(membersSchema.description), /\breplace\b/iu, "the family serves no replace, so nothing teaches one");
 
             assert.equal(await memberOf(db, workspaceId, "docs/guide.md"), true, "an enabled service definition projects onto the overlay");

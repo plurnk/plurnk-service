@@ -3,7 +3,7 @@ import { ConfigurationError } from "@plurnk/plurnk-meta";
 import AmbientMembers from "./AmbientMembers.ts";
 import { TurnDisposition, PathSyntax, Validator, isExecution, isRecord } from "@plurnk/plurnk-contracts";
 import Turn from "./Turn.ts";
-import type { BareStatement, CapabilityProjection, DispositionStatement, DoneStatement, EditStatement, FailStatement, FindStatement, ForkStatement, KillStatement, NoteStatement, ParsedPath, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, CapabilityProjection, DispositionStatement, DoneStatement, EditStatement, FailStatement, FindStatement, KillStatement, NoteStatement, ParsedPath, PlurnkStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -37,7 +37,6 @@ import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import type EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import SessionControlHandler from "./SessionControlHandler.ts";
-import SessionControlAddress from "./SessionControlAddress.ts";
 import KillHandler from "./KillHandler.ts";
 import TurnDispositionHandler, { type CompletionEvidence, type PacketBoundaries } from "./TurnDispositionHandler.ts";
 import LogWriter from "./LogWriter.ts";
@@ -275,7 +274,6 @@ export default class Dispatcher {
             schemes: this.#schemes,
             weighContent: this.#weighContent,
             logWriter: this.#logWriter,
-            dataRun: this.#dataRun,
             buildSchemeCtx: (context) => this.#buildSchemeCtx(context),
             checkCapabilities: (statement, ctx) => this.#admission.checkCapabilities(statement, ctx),
             operationEvent: (context, phase, result) => this.#operationEvent(context, phase, result),
@@ -681,9 +679,7 @@ export default class Dispatcher {
                     result = curation.result;
                     curationPlan = curation.plan;
                 } else if (statement.op === "fork" || statement.op === "work") {
-                    // {§session-scheme} — a non-address path is the child's prompt resource.
-                    const seeded = await this.#seedSpawnPrompt(statement, schemeCtx);
-                    result = "result" in seeded ? seeded.result : await this.#sessionControl.handleSessionControl(seeded.statement, schemeCtx);
+                    result = await this.#sessionControl.handleSessionControl(statement, schemeCtx);
                 } else if (statement.op === "copy") {
                     result = await this.#resourceMutations.handleCopy(statement, schemeCtx);
                 } else if (statement.op === "move") {
@@ -966,34 +962,6 @@ export default class Dispatcher {
         sessionId: number; loopId: number; turnId: number; sequence: number; fit: ContextFit | undefined;
     }): Promise<number | null> {
         return this.#turnSources.writeReasoning(params);
-    }
-
-    // {§session-scheme} WORK and FORK overload their slot by scheme: a `session://`
-    // path is always the child's address (and keeps the address rules); a path of any other scheme
-    // is read whole and becomes the child's prompt, composed with the body as BARE's combined form.
-    // The durable row keeps the authored statement; only the handler sees the composed one, with no
-    // target, so the child is auto-named exactly as when the slot is empty.
-    async #seedSpawnPrompt(
-        statement: WorkStatement | ForkStatement,
-        ctx: PlurnkSchemeContext,
-    ): Promise<{ statement: WorkStatement | ForkStatement } | { result: DispatchResult }> {
-        if (statement.target === null || SessionControlAddress.isSessionScheme(statement.target)) return { statement };
-        const read: ReadStatement = { ...statement, op: "read", headers: null, matcher: null, body: null, lineMarker: { marks: [1, -1] } };
-        const denial = await this.#admission.checkCapabilities(read, ctx);
-        if (denial !== null) return { result: denial };
-        const result = Results.assertReadResult(await this.#dataRun.run(schemeNameOf(read.target), read, ctx));
-        if (result.status !== 200 && result.status !== 204) return { result };
-        if (result.content !== null && typeof result.content !== "string") {
-            throw new InvalidOperationResultError(`${statement.op} prompt resource read returned non-text content.`);
-        }
-        const prompt = [result.content ?? "", statement.body ?? ""].filter((part) => part !== "").join("\n\n");
-        if (prompt.trim() === "") {
-            return { result: Dispatcher.#failure(
-                "spawn-prompt-empty", 422, `${statement.op} has no prompt text: the resource is empty and there is no body.`, {},
-                { recovery: `Provide a non-empty prompt in \`await plurnk.${statement.op.toLowerCase()}({ prompt: "..." });\`, or name a resource that holds it.`, retryable: false },
-            ) };
-        }
-        return { statement: { ...statement, target: null, body: prompt } };
     }
 
     prepareBarePrompt(

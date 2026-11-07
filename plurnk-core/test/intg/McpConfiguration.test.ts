@@ -235,7 +235,7 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
     const references = await daemon.engine.referenceEntries(workspaceId);
     const mcpToolDoc = references.find(({ scheme, pathname }) => scheme === "mcp" && pathname === "/plurnk/mcp.json")?.content ?? "";
     const mcpSchema = JSON.parse(mcpToolDoc) as { properties: Record<string, unknown> };
-    for (const field of ["alias", "enabled", "remove"]) {
+    for (const field of ["name", "enabled", "remove"]) {
         assert.ok(Object.hasOwn(mcpSchema.properties, field), `the tool schema names ${field}`);
     }
     assert.equal(Object.hasOwn(mcpSchema.properties, "discover"), false, "with no registry the tool schema has no discover");

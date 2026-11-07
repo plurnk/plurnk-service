@@ -52,11 +52,11 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.work({"target":"session://worker_1","prompt":"Audit the module."}); // delegate work',
             'await plurnk.fork({"target":"session://branch_a","prompt":"Try alternative."});',
             'await plurnk.bare({"prompt":"Summarize concisely."});',
-            'await plurnk.send({"target":"session://peer","range":"1,10","headers":{"X-Trace":"1"},"attachments":["report.pdf"],"text":"Status update."}); // notify peer',
+            'await plurnk.send({"target":"session://peer","headers":{"X-Trace":"1"},"attachments":["report.pdf"],"text":"Status update."}); // notify peer',
             'await plurnk.done({"target":"message://main/12345678","attachments":["a.png"],"text":"Completed all tasks."}); // finish',
             'await plurnk.fail({"text":"Blocked by upstream outage."});',
-            'await plurnk.wait({"target":"sh:///12345678","seconds":30,"text":"Waiting for build."}); // wait on build',
-            'await plurnk.sh({"cwd":"packages/core","range":"1,2","command":"npm test"}); // run tests',
+            'await plurnk.wait({"seconds":30}); // wait on build',
+            'await plurnk.sh({"cwd":"packages/core","range":"1,2","code":"npm test"}); // run tests',
             'await plurnk.js({"code":"return 2 + 2;"});',
             'await plurnk.python3({"code":"print(42)"});',
             'await plurnk.env({"action":"list"}); // list env',
@@ -167,36 +167,47 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[18] as FailStatement).body?.raw, '{"error":"failed"}');
         assert.deepEqual((ops[18] as FailStatement).attachments, ["err.log"]);
         assert.equal((ops[20] as DispositionStatement).seconds, 15);
-        assert.equal((ops[22] as DispositionStatement).target?.raw, "session://helper");
+        assert.equal((ops[20] as DispositionStatement).aside, "Waiting 15s.");
+        assert.equal((ops[21] as DispositionStatement).aside, "Waiting for child.");
+        assert.equal((ops[22] as DispositionStatement).target, null);
+        assert.equal((ops[22] as DispositionStatement).aside, "Polling.");
+        assert.equal(PlurnkParser.stringify([ops[22]]), 'await plurnk.wait({"seconds":10}); // Polling.');
     });
 
     test("{§op-shapes}: standalone executors, plurnk Functionality tools, and MCP tools compile to ExecStatement", () => {
         const ops = statementsOf([
             'await plurnk.sh("ls -la");',
             'await plurnk.sh("./script.sh", "--flag", { range: "1,5" });',
-            'await plurnk.sh({ script: "./run.sh", args: ["a", "b c"] });',
+            'await plurnk.sh({ script: "./run.sh", cwd: "packages/core", args: ["a", "b c"] });',
             'await plurnk.sh();',
-            'await plurnk.plurnk("env", { action: "list" });',
+            'await plurnk.plurnk("env", { alias: "FOO", value: "bar" });',
             'await plurnk["env|mcp"]();',
             'await plurnk.custom_exec({ key: "val" });',
             'await gitea("raw_body");',
             'await gitea.issue_read({ owner: "plurnk", repo: "service" }, { range: "1,10" });',
+            'await plurnk.members({ files: ["src/a.ts"] });',
+            'await plurnk.question({ question: "Which?", choices: ["a", "b"], multiSelect: true });',
         ].join("\n"), ["sh", "plurnk", "custom_exec", "gitea"]);
-        assert.equal(ops.length, 9);
+        assert.equal(ops.length, 11);
         assert.equal((ops[0] as ExecStatement).runtime, "sh");
         assert.equal((ops[0] as ExecStatement).body, "ls -la");
         assert.equal((ops[1] as ExecStatement).target?.raw, "./script.sh");
         assert.equal((ops[1] as ExecStatement).body, "--flag");
+        assert.equal((ops[2] as ExecStatement).target?.raw, "./run.sh");
+        assert.equal((ops[2] as ExecStatement).cwd, "packages/core");
         assert.equal((ops[2] as ExecStatement).body, 'a "b c"');
         assert.equal((ops[3] as ExecStatement).body, null);
         assert.equal((ops[4] as ExecStatement).runtime, "plurnk");
         assert.equal((ops[4] as ExecStatement).target?.raw, "env");
+        assert.equal((ops[4] as ExecStatement).body, '{"name":"FOO","value":"bar"}');
         assert.equal((ops[5] as ExecStatement).target?.raw, "env|mcp");
         assert.equal((ops[6] as ExecStatement).runtime, "custom_exec");
         assert.equal((ops[6] as ExecStatement).body, '{"key":"val"}');
         assert.equal((ops[8] as ExecStatement).runtime, "gitea");
         assert.equal((ops[8] as ExecStatement).target?.raw, "issue_read");
         assert.equal(PlurnkParser.stringify([ops[8]]), 'await gitea.issue_read({"owner":"plurnk","repo":"service"}, {"range":"1,10"});');
+        assert.equal(PlurnkParser.stringify([ops[9]]), 'await plurnk.members({"path":["src/a.ts"]});');
+        assert.equal(PlurnkParser.stringify([ops[10]]), 'await plurnk.question({"message":"Which?","options":["a","b"],"multi":true});');
     });
 
     test("{§slot-order}: comma, pipe, and URI lists in read, find, and kill expand in member order", () => {
@@ -315,7 +326,7 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.find({"path":"astropy/io/fits/**","pattern":"/Header|Card|_split/"});',
             'await plurnk.find({"path":"pylint/**","pattern":"/notes/","headers":{"Accept":"text/x-python"}});',
             'await plurnk.note({"text":"Task: Preserve mathematical expressions."});',
-            'await plurnk.sh({"command":"grep -n \\"__radd__\\" django/utils/functional.py"});',
+            'await plurnk.sh({"code":"grep -n \\"__radd__\\" django/utils/functional.py"});',
             'await plurnk.find({"path":"sympy/physics/mechanics/**","range":"1,-1"});',
             'await plurnk.find({"path":"src/**"});',
             'await plurnk.read({"path":"README.md","range":"1,10"});',

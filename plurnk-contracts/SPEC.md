@@ -129,18 +129,18 @@ await <service>.<tool>({ ... });
 | `plurnk.read` | required `path` / `paths` | optional `range`, `pattern`, `headers` | optional `note` normalized to preceding `note` |
 | `plurnk.edit` | required `path` | `range` or `pattern` or `oldText`/`newText` or `edits` for existing target; `content` alone creates; optional `headers` | `content`, `newText`, or `edits` array |
 | `plurnk.copy` / `plurnk.move` | required `from` and `to` | optional `fromRange` / `toRange`, `fromHeaders` / `toHeaders` | none |
-| `plurnk.sh` / `plurnk.js` / `plurnk.python3` | optional `cwd`, `script` | none | `command` (`sh`) or `code` (`js`, `python3`), optional `args` |
+| `plurnk.sh` / `plurnk.js` / `plurnk.python3` | optional `script`, `cwd` | none | `code` (or tolerated `command` / `cmd` / `body`), optional `args` |
 | `plurnk.<functionality>` | tool name (`env`, `mcp`, `members`, `personas`, `schedule`, `skills`, `question`) | none | JSON arguments object |
 | `<service>.<tool>` | external MCP `<service>` and `<tool>` | optional second `{ range }` options arg | JSON arguments object or string |
-| `plurnk.bare` | optional `target` prompt resource | none | `prompt` / `text` |
-| `plurnk.work` / `plurnk.fork` | optional `target` (`session://name` or prompt resource) | none | `prompt` / `text` |
+| `plurnk.bare` | none | none | required `prompt` (or tolerated `text`) |
+| `plurnk.work` / `plurnk.fork` | optional `target` (`session://name`) | none | required `prompt` (or tolerated `text`) |
 | `plurnk.kill` | required `path` / `paths` | optional `range`, `pattern`, `remote`, `headers` | optional `note` distillation on `log:///` |
-| `plurnk.send` | optional `target` recipient | optional `headers`, `attachments` | `text` message body |
-| `plurnk.done` | optional `target` (`message://`) | optional `attachments` | optional `text` final deliverable |
-| `plurnk.fail` | optional `target` (`message://`) | optional `attachments` | optional `text` final failure explanation |
+| `plurnk.send` | optional `target` recipient | optional `headers`, `attachments` | required `text` message body |
+| `plurnk.done` | optional `target` (`message://`) | optional `attachments` | required `text` final deliverable |
+| `plurnk.fail` | optional `target` (`message://`) | optional `attachments` | required `text` final failure explanation |
 | `plurnk.note` | none | none | `text` literal working memory |
 | `plurnk.todo` | none | none | required `items` remaining step list (or tolerated `todos` / `text`) |
-| `plurnk.wait` | optional `target` label | optional `seconds` | `text` wait explanation |
+| `plurnk.wait` | none | optional `seconds` | none (uses trailing `// aside`; tolerated `text` normalizes to `aside`) |
 
 - **Retrieval annotations**: Nonblank `note` options on `find` or `read` normalize into a preceding `note` statement.
 - **Text range algebra**: `"N"` selects whole line `N` (`"0"` prepends, `"-1"` appends on mutation); `"N,M"` selects inclusive lines `N..M`; `"SL,SC,EL,EC"` selects an exact 1-based Unicode code-point region with exclusive end (three-integer ranges normalize to four).

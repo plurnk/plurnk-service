@@ -74,10 +74,6 @@ test("{§capability-admission} classifies the complete PLURNK operation alphabet
         { source: 'await plurnk.fail({ text: "cannot complete" });', expected: [] },
         { source: 'await plurnk.sh({ command: "git status --short" });', expected: [{ operation: "sh", scheme: "exec", runtime: "sh", access: "execute", traits: [] }] },
         { source: 'await plurnk.bare({ prompt: "What is 2 + 2?" });', expected: [{ operation: "bare", access: "execute", traits: [] }] },
-        { source: 'await plurnk.bare({ target: "session://alice/prompt.md", prompt: "" });', expected: [
-            { operation: "bare", access: "execute", traits: [] },
-            { operation: "bare", scheme: "session", access: "observe", traits: [] },
-        ] },
         { source: 'await plurnk.work({ target: "session://child", prompt: "Investigate." });', expected: [{ operation: "work", scheme: "session", access: "control", traits: [] }] },
         { source: 'await plurnk.fork({ target: "session://child", prompt: "Investigate." });', expected: [{ operation: "fork", scheme: "session", access: "control", traits: [] }] },
         { source: 'await plurnk.kill({ path: "README.md" });', expected: [{ operation: "kill", scheme: "file", access: "mutate", traits: [] }] },
@@ -182,7 +178,7 @@ test("{§tools-resource-materialization} scheme references follow supported capa
     for (const operation of ["read", "find", "edit", "copy", "move", "kill"] as const) {
         assert.equal(scoped.allowsSchemeAcross("workspace", 1, [{ only: [{ operation }] }]), true, operation);
     }
-    for (const operation of ["read", "find", "edit", "copy", "move", "kill", "sh", "bare"] as const) {
+    for (const operation of ["read", "find", "edit", "copy", "move", "kill", "sh"] as const) {
         assert.equal(scoped.allowsSchemeAcross("file", 1, [{ only: [{ operation }] }]), true, operation);
     }
     assert.equal(scoped.allowsSchemeAcross("session", 1, [{ only: [{ access: "observe" }] }]), true);

@@ -38,7 +38,7 @@ independently of the definition; an empty definition is invalid.
 
 The instructions are the skill: `await plurnk.read({ path: "skill://<name>/SKILL.md" });` for the
 procedure and `await plurnk.find({ path: "skill://<name>/**" });` for its files. Scripts run with their
-registered executor, for example `await plurnk.js({ path: "skill://<name>/scripts/program.js", args: ["..."] });`,
+registered executor, for example `await plurnk.js({ script: "skill://<name>/scripts/program.js", args: ["..."] });`,
 subject to ordinary operation approval. Skill
 resources are read-only through `skill://`.
 
@@ -67,11 +67,11 @@ archive. Discovery never installs anything.
 
 ## Adding
 
-`add` binds one skill from its source to this workspace and enables it:
+Passing `{ name, source, ref? }` binds one skill from its source to this workspace and enables it:
 
-`await plurnk.skills({ alias: "sql-formatter", source: "https://git.example/acme/skills.git" }); // from a discover candidate`
+`await plurnk.skills({ name: "sql-formatter", source: "https://git.example/acme/skills.git" }); // from a discover candidate`
 
-The alias must equal the skill's standard `name`, which selects it from a source
+`name` must equal the skill's standard `name`, which selects it from a source
 carrying several. Local folders and their `SKILL.md` files stay live references:
 edits remain visible, with supporting files in place. Relative sources resolve
 from the project root; absolute sources also work in headless workspaces.

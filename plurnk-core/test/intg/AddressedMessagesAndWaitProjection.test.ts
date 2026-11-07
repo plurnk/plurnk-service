@@ -445,10 +445,10 @@ test("{§env-delta}: delayed observation preserves each completed loop after new
 });
 
 describe("session-send-scope", () => {
-test("{§op-shapes}: a scoped session SEND is refused and admits no task", async () => {
+test("{§op-shapes}: a range on SEND is refused at parse time and admits no task", async () => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("await plurnk.send({\"target\":\"session://scheduler\",\"range\":\"0,60\",\"text\":\"Unadmitted scheduled instruction.\"});\n\nawait plurnk.note({\"text\":\"Inspect the refusal.\"});"),
-        makeMockResponse("await plurnk.done({\"text\":\"The scope was refused.\"});"),
+        makeRawMockResponse("await plurnk.send({\"target\":\"session://scheduler\",\"range\":\"0,60\",\"text\":\"Unadmitted scheduled instruction.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"The range was refused.\"});"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "send-scope" });
@@ -456,12 +456,8 @@ test("{§op-shapes}: a scoped session SEND is refused and admits no task", async
         try {
             const initial = await daemon.runLoop({ workspaceId, sessionId, prompt: "Send yourself a scoped message." });
             await waitForDb(() => db.test_get_loop_status.get({ id: initial.loopId }), (row) => row?.status === 200);
-            const receipts = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: initial.loopId });
-            const refusal = receipts.map(({ rx }) => JSON.parse(rx)).find((rx) => rx.problem?.type.endsWith("/scope-unsupported"));
-            assert.equal(refusal?.status, 400);
-            assert.equal(refusal.problem.detail, "A session send takes no scope.");
             assert.deepEqual((await daemon.listSessionLoops({ workspaceId, sessionId }))
-                .filter(({ prompt }) => prompt !== "").map(({ id }) => id), [initial.loopId], "the scoped SEND admitted no task");
+                .filter(({ prompt }) => prompt !== "").map(({ id }) => id), [initial.loopId], "the ranged SEND admitted no task");
             assert.equal(provider.received.length, 2);
         } finally { await daemon.cancelSession({ workspaceId, sessionId }); }
     });
@@ -638,16 +634,17 @@ for (const [header, call] of [
         const wait = rows.find(({ op }) => op === "wait");
         assert.ok(wait);
         const tx = JSON.parse(wait.tx);
-        assert.equal(tx.target?.raw ?? null, header === "wait" ? null : "sh:///missing");
+        assert.equal(tx.target ?? null, null);
         assert.equal(tx.lineMarker, null);
-        assert.equal(tx.body, "Await results.");
+        assert.equal(tx.aside, "Await results.");
+        assert.equal(tx.body, null);
         assert.equal(JSON.parse(wait.rx).problem, undefined);
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors)]), [[1, []]]);
     });
 }
 
-test("{§op-shapes} {§loop-completion} WAIT retains literal prose without inventing a response", async () => {
+test("{§op-shapes} {§loop-completion} WAIT retains tolerated prose as aside without inventing a response", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "continuation-inventory");
@@ -668,10 +665,11 @@ test("{§op-shapes} {§loop-completion} WAIT retains literal prose without inven
         const wait = rows.find(({ op }) => op === "wait")!;
         assert.equal(wait.status_rx, 102);
         assert.equal(JSON.parse(wait.rx).detail, "Nothing is in flight. Continuing.");
-        assert.equal(JSON.parse(wait.tx).body, body);
+        assert.equal(JSON.parse(wait.tx).aside, body);
+        assert.equal(JSON.parse(wait.tx).body, null);
         const projection = LogBody.resolve({ op: "wait", tx: JSON.parse(wait.tx), rx: JSON.parse(wait.rx) });
         assert.equal(projection.mimetype, "text/plain");
-        assert.equal(projection.content, body);
+        assert.equal(projection.content, "");
     } finally { await db.close(); }
 });
 

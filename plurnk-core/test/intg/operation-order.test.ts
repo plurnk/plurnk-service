@@ -1031,12 +1031,12 @@ test("{§parse-recovery} a lost boundary refuses only what follows it: the state
 });
 
 test("{§op-shapes} internal turn programs admit a disposition anywhere like model turns", () => {
-    const source = "await plurnk.kill({\"path\":\"log:///1/1/*\"});\n\nawait plurnk.wait({\"text\":\"Continue.\"});";
+    const source = "await plurnk.kill({\"path\":\"log:///1/1/*\"});\n\nawait plurnk.wait({}); // Continue.";
     const statements = TurnOps.parseInternal(source);
     assert.deepEqual(statements.map(({ op }) => op), ["kill", "wait"]);
     assert.equal(TurnOps.renderInternal(statements), source);
     // {§op-shapes} — a program that authors an operation after its disposition is valid turnOps.
-    const first = TurnOps.parseInternal("await plurnk.wait({\"text\":\"Continue.\"});\n\nawait plurnk.kill({\"path\":\"log:///1/1/*\"});");
+    const first = TurnOps.parseInternal("await plurnk.wait({}); // Continue.\n\nawait plurnk.kill({\"path\":\"log:///1/1/*\"});");
     assert.deepEqual(first.map(({ op }) => op), ["wait", "kill"]);
 });
 });

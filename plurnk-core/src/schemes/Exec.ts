@@ -302,7 +302,9 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         if ("status" in routed) return routed;
         const { defaultCwd, resourceSource } = routed;
         let { target } = routed;
-        let cwd: string | null = defaultCwd;
+        let cwd: string | null = typeof statement.cwd === "string" && statement.cwd.length > 0
+            ? (isAbsolute(statement.cwd) ? statement.cwd : resolve(defaultCwd, statement.cwd))
+            : defaultCwd;
 
         // {§exec}: the scope slot is text coordinates, and an execution has none.
         if (statement.lineMarker !== null) return Exec.#refuse(runtime, "scope-unsupported", "An execution takes no scope.", undefined);

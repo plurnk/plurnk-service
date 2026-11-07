@@ -1080,7 +1080,7 @@ test("{§membership-auto-add} knob off: today's contract holds unchanged", { tim
     const read = await h.model("await plurnk.read({\"path\":\"loose.md\"});") as { status: number; problem?: { type?: string; recovery?: string } };
     assert.equal(read.status, 404);
     assert.match(read.problem?.type ?? "", /entry-not-member$/u);
-    assert.equal(read.problem?.recovery, "Admit it with `await plurnk.members({ files: [\"<path>\"] });`.");
+    assert.equal(read.problem?.recovery, "Admit it with `await plurnk.members({ path: \"<path>\" });`.");
     const listed = await h.model("await plurnk.find({\"path\":\"*\"});") as { status: number; results?: unknown };
     assert.doesNotMatch(h.paths(listed), /loose\.md/u, "members only");
     const matched = await h.model("await plurnk.find({\"path\":\"*.md\",\"pattern\":\"loose\"});") as { status: number; results?: unknown };

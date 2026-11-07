@@ -2,7 +2,6 @@ import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import {
     Mock,
@@ -20,7 +19,6 @@ import {
 import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { testProviderCapacity } from "./_provider.ts";
 import { setTimeout as delay } from "node:timers/promises";
-import { type SchemeHandler } from "@plurnk/plurnk-schemes";
 import { type Db } from "../../src/core/Db.ts";
 import { connect, rpcCall, runLoopToTerminal, subscribeNotifications, withDaemon, waitFor } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
@@ -212,179 +210,45 @@ const setup = async (schemes = new SchemeRegistry()) => {
     return { db, workspaceId, sessionId, loopId, engine };
 };
 
-test("{§op-methods-op-dispatch}: resource prompts bypass line and size preview caps after preceding edits, with an optional inline tail", async () => {
+test("{§capability-admission}: BARE respects capability denial before inference", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const prompt = [...Array.from({ length: 24 }, (_, i) => `Finding ${i + 1}`), `Long finding: ${"α".repeat(8_000)} end`].join("\n");
-        const child = new BareWitness(2);
-        const result = await engine.runTurn({
-            workspaceId, sessionId, loopId, messages: [], childProvider: child,
-            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                `await plurnk.edit(${JSON.stringify({ path: "workspace:///prompt.md", content: prompt })});`,
-                "await plurnk.bare({\"target\":\"workspace:///prompt.md\",\"prompt\":\"\"});",
-                "await plurnk.bare({\"target\":\"workspace:///prompt.md\",\"prompt\":\"Compare these findings.\"});",
-                "await plurnk.note({\"text\":\"Continue the task.\"});",
-            ].join("\n"))] }),
-        });
-        assert.equal(result.status, 102);
-        assert.deepEqual(child.calls.map(({ messages }) => messages), [
-            [{ role: "user", content: prompt }],
-            [{ role: "user", content: `${prompt}\n\nCompare these findings.` }],
-        ]);
-        assert.equal(child.maxActive, 2);
-        assert.deepEqual(result.outcomes.map(({ op }) => op), ["edit", "bare", "bare", "note"], "source reads do not mint extra log receipts");
-    } finally { await db.close(); }
-});
-
-test("{§op-methods-op-dispatch}: missing resources preserve the source error without calling the provider or discarding a successful sibling", async () => {
-    const { db, workspaceId, sessionId, loopId, engine } = await setup();
-    try {
+        await db.workspace_capability_policy_update.run({ workspace_id: workspaceId, policy: JSON.stringify({ deny: [{ operation: "bare" }] }) });
         const child = new BareWitness(1);
         const result = await engine.runTurn({
             workspaceId, sessionId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "await plurnk.bare({\"target\":\"workspace:///missing.md\",\"prompt\":\"Do not infer from this tail alone.\"});",
-                "await plurnk.bare({\"prompt\":\"survivor\"});",
+                "await plurnk.bare({\"prompt\":\"inline prompt\"});",
                 "await plurnk.note({\"text\":\"Continue the task.\"});",
             ].join("\n"))] }),
         });
-        assert.deepEqual(child.completions, ["survivor"]);
-        const rows = (await db.test_log_entries_by_turn.all<{ op: string; rx: string; model_call_id: number | null }>({ turn_id: result.turnId })).filter(({ op }) => op === "bare");
-        assert.equal(rows.length, 2);
-        const failure = JSON.parse(rows[0].rx);
-        assert.equal(failure.status, 404);
-        assert.match(failure.problem.type, /\/entry-not-found$/);
-        assert.equal(rows[0].model_call_id, null);
-        assert.notEqual(rows[1].model_call_id, null);
-        const calls = await db.test_model_calls.all<{ kind: string }>({ turn_id: result.turnId });
-        assert.equal(calls.filter(({ kind }) => kind === "bare").length, 1);
-    } finally { await db.close(); }
-});
-
-test("{§op-methods-op-dispatch}: cancellation during source preparation leaves no unstarted inference calls open", async () => {
-    const controller = new AbortController();
-    const cancellation = new Error("cancel prompt acquisition");
-    const schemes = new SchemeRegistry();
-    schemes.register("interrupted-prompt", {
-        manifest: {
-            name: "interrupted-prompt", channels: { body: "text/plain" }, defaultChannel: "body",
-            category: "data", writableBy: ["model"],
-            volatile: false, modelVisible: true,
-        },
-        async prepareRepresentation() {
-            controller.abort(cancellation);
-            throw cancellation;
-        },
-    } satisfies SchemeHandler);
-    const { db, workspaceId, sessionId, loopId, engine } = await setup(schemes);
-    try {
-        const child = new BareWitness(2);
-        await assert.rejects(engine.runTurn({
-            workspaceId, sessionId, loopId, messages: [], childProvider: child, signal: controller.signal,
-            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "await plurnk.bare({\"prompt\":\"first prompt\"});",
-                "await plurnk.bare({\"target\":\"interrupted-prompt:///question.md\",\"prompt\":\"\"});",
-                "await plurnk.bare({\"prompt\":\"last prompt\"});",
-                "await plurnk.note({\"text\":\"Continue the task.\"});",
-            ].join("\n"))] }),
-        }), (error: unknown) => error === cancellation);
         assert.equal(child.calls.length, 0);
-        const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
-        assert.ok(turn);
-        const calls = await db.test_model_calls.all<{ kind: string; state: string }>({ turn_id: turn.id });
-        assert.deepEqual(calls.filter(({ kind }) => kind === "bare"), [], "unstarted inference must not remain active after cancellation");
-    } finally {
-        await schemes.close();
-        await db.close();
-    }
-});
-
-for (const [denied, target] of [
-    [{ operation: "bare" }, ""],
-    [{ operation: "bare" }, " (workspace:///prompt.md)"],
-    [{ scheme: "workspace", access: "observe" }, " (workspace:///prompt.md)"],
-] as const) {
-    test(`{§capability-admission}: BARE${target} respects ${JSON.stringify(denied)} before inference`, async () => {
-        const { db, workspaceId, sessionId, loopId, engine } = await setup();
-        try {
-            await db.workspace_capability_policy_update.run({ workspace_id: workspaceId, policy: JSON.stringify({ deny: [denied] }) });
-            const child = new BareWitness(1);
-            const result = await engine.runTurn({
-                workspaceId, sessionId, loopId, messages: [], childProvider: child,
-                provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                    "await plurnk.edit({\"path\":\"workspace:///prompt.md\",\"content\":\"secret prompt\"});",
-                    `await plurnk.bare(${JSON.stringify({ ...(target ? { target: "workspace:///prompt.md" } : {}), prompt: "inline prompt" })});`,
-                    "await plurnk.note({\"text\":\"Continue the task.\"});",
-                ].join("\n"))] }),
-            });
-            assert.equal(child.calls.length, 0);
-            assert.deepEqual(result.outcomes.filter(({ op }) => op === "bare"), [{ op: "bare", status: 403, problemType: "https://problems.plurnk.xyz/engine/dispatcher/capability-denied" }]);
-            const calls = await db.test_model_calls.all<{ kind: string }>({ turn_id: result.turnId });
-            assert.equal(calls.filter(({ kind }) => kind === "bare").length, 0);
-        } finally { await db.close(); }
-    });
-}
-
-test("{§op-methods-op-dispatch}: a log prompt uses only retained source lines", async () => {
-    const { db, workspaceId, sessionId, loopId, engine } = await setup();
-    try {
-        const first = await engine.runTurn({
-            workspaceId, sessionId, loopId, messages: [],
-            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "await plurnk.edit({\"path\":\"workspace:///source.md\",\"content\":\"first\\nsuperseded\\nlast\"});",
-                "await plurnk.read({\"path\":\"workspace:///source.md\",\"range\":\"1,-1\"});",
-                "await plurnk.note({\"text\":\"Continue the task.\"});",
-            ].join("\n"))] }),
-        });
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; sequence: number; attrs: string }>({ turn_id: first.turnId });
-        const source = rows.find((row) => row.op === "read" && !LogEntryProjection.isEmission(row));
-        assert.ok(source);
-        const turn = await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId });
-        assert.ok(turn);
-        const address = `log:///1/${turn.sequence}/${source.sequence}/read`;
-        const child = new BareWitness(1);
-        const second = await engine.runTurn({
-            workspaceId, sessionId, loopId, messages: [], childProvider: child,
-            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                `await plurnk.kill({"path":"${address}","range":"2"});`,
-                `await plurnk.bare({"target":"${address}","prompt":""});`,
-                "await plurnk.note({\"text\":\"Continue the task.\"});",
-            ].join("\n"))] }),
-        });
-        assert.deepEqual(second.outcomes.filter(({ op }) => op === "bare"), [{ op: "bare", status: 200, problemType: null }]);
-        assert.deepEqual(child.calls.map(({ messages }) => messages), [[{ role: "user", content: "first\nlast" }]]);
+        assert.deepEqual(result.outcomes.filter(({ op }) => op === "bare"), [{ op: "bare", status: 403, problemType: "https://problems.plurnk.xyz/engine/dispatcher/capability-denied" }]);
+        const calls = await db.test_model_calls.all<{ kind: string }>({ turn_id: result.turnId });
+        assert.equal(calls.filter(({ kind }) => kind === "bare").length, 0);
     } finally { await db.close(); }
 });
 
-for (const [target, status, problem] of [
-    ["workspace:///prompt.md#missing", 404, "channel-not-found"],
-    ["unregistered://prompt", 501, "scheme-not-found"],
-    [null, 422, "bare-prompt-empty"],
-] as const) {
-    test(`{§op-methods-op-dispatch}: ${target ?? "empty input"} produces ${problem} without inference`, async () => {
-        const { db, workspaceId, sessionId, loopId, engine } = await setup();
-        try {
-            const child = new BareWitness(1);
-            const result = await engine.runTurn({
-                workspaceId, sessionId, loopId, messages: [], childProvider: child,
-                provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                    "await plurnk.edit({\"path\":\"workspace:///prompt.md\",\"content\":\"source prompt\"});",
-                    `await plurnk.bare(${JSON.stringify({ ...(target === null ? {} : { target }), prompt: "" })});`,
-                    "await plurnk.note({\"text\":\"Continue the task.\"});",
-                ].join("\n"))] }),
-            });
-            const bare = result.outcomes.find(({ op }) => op === "bare");
-            assert.equal(bare?.status, status);
-            assert.ok(bare?.problemType?.endsWith(`/${problem}`));
-            assert.equal(child.calls.length, 0);
-            if (target === null) {
-                // {§diagnostic-observation} — the refusal states where a prompt is read from, and nothing else.
-                const row = (await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: result.turnId })).find(({ op }) => op === "bare");
-                assert.equal(JSON.parse(row!.rx).problem.detail, "bare has no prompt text: the prompt is the prompt string, a resource path, or both.");
-            }
-        } finally { await db.close(); }
-    });
-}
+test("{§op-methods-op-dispatch}: empty input produces bare-prompt-empty without inference", async () => {
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
+    try {
+        const child = new BareWitness(1);
+        const result = await engine.runTurn({
+            workspaceId, sessionId, loopId, messages: [], childProvider: child,
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
+                "await plurnk.bare({\"prompt\":\"\"});",
+                "await plurnk.note({\"text\":\"Continue the task.\"});",
+            ].join("\n"))] }),
+        });
+        const bare = result.outcomes.find(({ op }) => op === "bare");
+        assert.equal(bare?.status, 422);
+        assert.ok(bare?.problemType?.endsWith("/bare-prompt-empty"));
+        assert.equal(child.calls.length, 0);
+        // {§diagnostic-observation} — the refusal states where a prompt is read from, and nothing else.
+        const row = (await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: result.turnId })).find(({ op }) => op === "bare");
+        assert.equal(JSON.parse(row!.rx).problem.detail, "bare has no prompt text: provide a non-empty prompt string.");
+    } finally { await db.close(); }
+});
 
 test("{§op-methods-op-dispatch}: an intervening operation separates concurrent BARE groups", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();

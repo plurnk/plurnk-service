@@ -129,10 +129,7 @@ export default class CapabilityResolver {
             case "fork":
                 return demands(describe(statement.op, "control", statement.target));
             case "bare":
-                return demands(
-                    [{ operation: "bare", access: "execute", traits: [] }],
-                    describe("bare", "observe", statement.target),
-                );
+                return [{ operation: "bare", access: "execute", traits: [] }];
             case "kill": {
                 const scheme = schemeNameOf(statement.target);
                 if (scheme === "log") return [];
@@ -275,7 +272,7 @@ export default class CapabilityResolver {
         // registry is present, else the runtimes the policies themselves name.
         const runtimes = (this.#executors()?.availableRuntimes(workspaceId)
             ?? policies.flatMap((policy) => [...(policy.only ?? []), ...(policy.deny ?? [])]).map((selector) => selector.operation)).filter(isExecutionOp);
-        const observers: readonly CapabilityDescriptor["operation"][] = ["read", "copy", "bare", ...runtimes];
+        const observers: readonly CapabilityDescriptor["operation"][] = ["read", "copy", ...runtimes];
         if (readable && observers.some((operation) => allows(operation, "observe"))) return true;
         if ((entryBearing || typeof handler.find === "function") && allows("find", "observe")) return true;
         if (!manifest.writableBy.includes("model")) return false;

@@ -347,11 +347,33 @@ export default class FunctionalityManager extends BaseExecutor {
     }
 
     static #familyInputSchema(entry: FunctionalityFamilyEntry, verbs: readonly FunctionalityVerb[]): JsonSchema {
-        const properties: Record<string, JsonSchema> = {};
+        const rawProperties: Record<string, JsonSchema> = {};
         const defs: Record<string, JsonSchema> = {};
         for (const verb of ["add", "replace", "enable", "disable", "remove", "list"] as const) {
             if (verbs.includes(verb)) {
-                FunctionalityManager.#collectSchemaProperties(entry.inputSchemas[verb], properties, defs);
+                FunctionalityManager.#collectSchemaProperties(entry.inputSchemas[verb], rawProperties, defs);
+            }
+        }
+        const properties: Record<string, JsonSchema> = {};
+        if (entry.family === "members") {
+            properties.path = {
+                oneOf: [
+                    { type: "string", minLength: 1 },
+                    { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+                ],
+                description: "A shell-path glob or array of globs relative to the project root (leading ! excludes).",
+            };
+            for (const [key, prop] of Object.entries(rawProperties)) {
+                if (key === "files" || key === "file" || key === "scope") continue;
+                properties[key] = prop;
+            }
+        } else {
+            if (rawProperties.alias !== undefined) {
+                properties.name = rawProperties.alias;
+            }
+            for (const [key, prop] of Object.entries(rawProperties)) {
+                if (key === "alias" || key === "scope") continue;
+                properties[key] = prop;
             }
         }
         if (verbs.includes("enable") || verbs.includes("disable")) {
@@ -369,9 +391,14 @@ export default class FunctionalityManager extends BaseExecutor {
         if (verbs.includes("discover") && isRecord(entry.inputSchemas.discover)) {
             const rawDiscoverProps: Record<string, JsonSchema> = {};
             FunctionalityManager.#collectSchemaProperties(entry.inputSchemas.discover, rawDiscoverProps, defs);
-            const { scope: _scope, ...discoverProps } = rawDiscoverProps;
-            if (!Object.hasOwn(properties, "scope") && rawDiscoverProps.scope !== undefined) {
-                properties.scope = rawDiscoverProps.scope;
+            const discoverProps: Record<string, JsonSchema> = {};
+            for (const [key, prop] of Object.entries(rawDiscoverProps)) {
+                if (key === "scope") continue;
+                if (key === "alias") {
+                    discoverProps.name = prop;
+                } else {
+                    discoverProps[key] = prop;
+                }
             }
             const primaryInput = entry.discovery?.inputs[0] ?? "query";
             const allowsEmpty = entry.discovery?.emptyListsAll === true;
@@ -404,7 +431,17 @@ export default class FunctionalityManager extends BaseExecutor {
             sections.push(entry.discovery.details);
         }
         if (verbs.includes("add") && entry.example !== undefined) {
-            sections.push(`await plurnk.${entry.family}(${JSON.stringify(entry.example)});`);
+            const exampleObj: Record<string, unknown> = {};
+            for (const [k, v] of Object.entries(entry.example)) {
+                if (entry.family === "members" && (k === "files" || k === "file")) {
+                    exampleObj.path = v;
+                } else if (k === "alias") {
+                    exampleObj.name = v;
+                } else {
+                    exampleObj[k] = v;
+                }
+            }
+            sections.push(`await plurnk.${entry.family}(${JSON.stringify(exampleObj)});`);
         }
         const docBody = entry.documentBody === undefined ? "" : stripLeadingHeading(entry.documentBody);
         if (docBody.length > 0) {
@@ -454,6 +491,54 @@ export default class FunctionalityManager extends BaseExecutor {
         return listProps !== null && Object.hasOwn(listProps, "scope");
     }
 
+    static #normalizeFamilyInput(
+        entry: FunctionalityFamilyEntry,
+        rawParsed: Record<string, unknown>,
+    ): Record<string, unknown> {
+        const keyMap: Record<string, string> = {};
+        if (entry.family === "members") {
+            const isSingleTargetOp = Object.hasOwn(rawParsed, "remove") || Object.hasOwn(rawParsed, "enabled");
+            const targetKey = isSingleTargetOp ? "file" : "files";
+            for (const k of ["path", "paths", "files", "file", "glob", "name", "alias"]) keyMap[k] = targetKey;
+        } else {
+            for (const k of ["name", "key", "server", "id"]) keyMap[k] = "alias";
+            if (entry.family === "env") {
+                keyMap.environment = "env";
+            } else if (entry.family === "personas") {
+                keyMap.text = "body";
+                keyMap.instructions = "body";
+            } else if (entry.family === "schedule") {
+                keyMap.text = "prompt";
+                keyMap.message = "prompt";
+            } else if (entry.family === "skills") {
+                keyMap.path = "source";
+                keyMap.file = "source";
+                keyMap.dir = "source";
+            }
+        }
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(rawParsed)) {
+            if (v === undefined) continue;
+            const mapped = keyMap[k];
+            if (mapped !== undefined && !Object.hasOwn(rawParsed, mapped) && !Object.hasOwn(out, mapped)) {
+                if (entry.family === "members" && mapped === "files" && typeof v === "string") {
+                    out.files = [v];
+                } else if (entry.family === "members" && mapped === "file" && Array.isArray(v) && v.length === 1 && typeof v[0] === "string") {
+                    out.file = v[0];
+                } else {
+                    out[mapped] = v;
+                }
+            } else if (entry.family === "members" && k === "files" && typeof v === "string") {
+                out.files = [v];
+            } else if (entry.family === "members" && k === "file" && Array.isArray(v) && v.length === 1 && typeof v[0] === "string") {
+                out.file = v[0];
+            } else {
+                out[k] = v;
+            }
+        }
+        return out;
+    }
+
     static #resolveInvocation(
         entry: FunctionalityFamilyEntry,
         verbs: readonly FunctionalityVerb[],
@@ -462,12 +547,13 @@ export default class FunctionalityManager extends BaseExecutor {
         if (rawParsed === null) {
             return { verb: "list", params: {} };
         }
-        const parsed = !FunctionalityManager.#hasScope(entry) && rawParsed.scope === "workspace"
+        const normalized = FunctionalityManager.#normalizeFamilyInput(entry, rawParsed);
+        const parsed = !FunctionalityManager.#hasScope(entry) && normalized.scope === "workspace"
             ? (() => {
-                const { scope: _scope, ...rest } = rawParsed;
+                const { scope: _scope, ...rest } = normalized;
                 return rest;
             })()
-            : rawParsed;
+            : normalized;
         const keys = Object.keys(parsed);
         const nonScopeKeys = keys.filter((key) => key !== "scope");
         if (nonScopeKeys.length === 0) {

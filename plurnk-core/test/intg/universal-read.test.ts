@@ -718,11 +718,11 @@ test("{§tools-resource-materialization} the definition pages' add examples conf
             .flatMap((item) => item.kind === "statement" && "runtime" in item.statement && item.statement.runtime === "plurnk" && item.statement.target?.raw === "mcp" && item.statement.body !== null
                 ? [JSON.parse(item.statement.body) as Record<string, unknown>]
                 : [])
-            .filter((obj) => typeof obj.alias === "string" && ("command" in obj || "url" in obj));
+            .filter((obj) => typeof obj.name === "string" && ("command" in obj || "url" in obj));
         assert.ok(examples.length > 0, `${docName} shows an add example`);
-        for (const { alias, ...definition } of examples) {
-            assert.equal(typeof alias, "string");
-            assert.ok((alias as string).length > 0);
+        for (const { name, ...definition } of examples) {
+            assert.equal(typeof name, "string");
+            assert.ok((name as string).length > 0);
             const validation = Validator.validateJsonSchemaInstance({ $ref: schema }, { type: "url" in definition ? "streamable-http" : "stdio", ...definition });
             assert.equal(validation.valid, true, `${docName}: ${JSON.stringify(definition)} — ${JSON.stringify(validation.errors)}`);
         }

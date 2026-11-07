@@ -31,7 +31,6 @@ import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal, subscribeNotifications, waitFor } from "./_rpc.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { modelOperation } from "./_sessions.ts";
-import { type Db } from "../../src/core/Db.ts";
 
 describe("session-scheme", () => {
 // session:// scheme — spawn + fork (COPY), irc (SEND), terminate (KILL). Same-workspace sisters
@@ -1459,87 +1458,13 @@ test("{§session-scheme} a held name: FORK is 409 naming the working forms, WORK
 });
 });
 
-describe("session-spawn-prompt-resource", () => {
-// {§session-scheme} — WORK's slot is overloaded by scheme: a session:// path names
-// the child; a path of any other scheme is read whole as the child's prompt, composed with the
-// body as BARE's combined form, and the child is auto-named.
-
-
-
-
-
-
-
-
-
-// The brief is created by the parent in the same turn (a creation is a member), then handed to the child by path.
-const parentThenChild = (brief: string, work: string) => new Mock({ contextWindow: 16384, responses: [
-    makeMockResponse(`await plurnk.edit({"path":"brief.md","content":${JSON.stringify(brief)}});
-
-${work}
-
-await plurnk.wait({"text":"delegated"});`, 10),
-    makeMockResponse("await plurnk.done({\"text\":\"child done\"});", 10),
-    makeMockResponse("await plurnk.done({\"text\":\"parent done\"});", 10),
-] });
-
-const childPrompts = async (db: Db, parentSessionId: number) => {
-    const children = await db.test_children_of_session.all<{ id: number; name: string }>({ session_id: parentSessionId });
-    assert.equal(children.length, 1, "exactly one child session exists");
-    const child = children[0];
-    const prompts = (await db.test_messages_by_session.all({ session_id: child.id }))
-        .map(({ body }) => ({ content: body }));
-    return { child, prompts };
-};
-
-test("{§session-scheme}: a file path on WORK is the child's prompt, and the child is auto-named", async (approvalContext) => {
-    serverProposals(approvalContext, "accept");
-    const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
-    try {
-        const mock = parentThenChild("Count the lines in every file.\n", "await plurnk.work({\"target\":\"brief.md\",\"prompt\":\"\"});");
-        await withDaemon(mock, async (db, _daemon, addr) => {
-            const ws = await connect(addr);
-            try {
-                await rpcCall(ws, 1, "workspace.create", { name: "spawn-prompt-file", projectRoot: root });
-                const { finalStatus, loopId, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
-                assert.equal(finalStatus, 200);
-                const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string; tx: string }>({ loop_id: loopId });
-                const work = rows.find((r) => r.op === "work" && r.origin === "model");
-                assert.equal(work?.status_rx, 200, work?.rx ?? "no WORK row");
-                assert.match((JSON.parse(work.tx) as { target: { raw: string } }).target.raw, /brief\.md$/, "the durable row keeps the authored path");
-                assert.match(JSON.parse(work.rx).attrs?.session ?? "", /^session:\/\/[a-f0-9]{8}$/, "the child is auto-named");
-                const { prompts } = await childPrompts(db, modelSessionId!);
-                assert.equal(prompts.length, 1);
-                assert.equal(prompts[0].content, "Count the lines in every file.", "the file's complete READ text is the child's prompt");
-            } finally { ws.close(); }
-        });
-    } finally { await rm(root, { recursive: true, force: true }); }
-});
-
-test("{§session-scheme}: resource then body, joined by a blank line, as BARE composes them", async (approvalContext) => {
-    serverProposals(approvalContext, "accept");
-    const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
-    try {
-        const mock = parentThenChild("The brief.\n", "await plurnk.work({\"target\":\"brief.md\",\"prompt\":\"Also report the total.\"});");
-        await withDaemon(mock, async (db, _daemon, addr) => {
-            const ws = await connect(addr);
-            try {
-                await rpcCall(ws, 1, "workspace.create", { name: "spawn-prompt-combined", projectRoot: root });
-                const { finalStatus, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
-                assert.equal(finalStatus, 200);
-                const { prompts } = await childPrompts(db, modelSessionId!);
-                assert.equal(prompts[0].content, "The brief.\n\nAlso report the total.");
-            } finally { ws.close(); }
-        });
-    } finally { await rm(root, { recursive: true, force: true }); }
-});
-
-test("{§session-scheme}: a missing resource is the operation's failure and spawns nothing; a session:// path keeps the address rules", async (approvalContext) => {
+describe("session-spawn-target-validation", () => {
+test("{§session-scheme}: a non-session target on WORK or FORK is refused and spawns nothing", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
     try {
         const mock = new Mock({ contextWindow: 16384, responses: [
-            makeMockResponse("await plurnk.work({\"target\":\"missing.md\",\"prompt\":\"\"});\n\nawait plurnk.work({\"target\":\"session://bad/path\",\"prompt\":\"x\"});\n\nawait plurnk.note({\"text\":\"tried\"});", 10),
+            makeMockResponse("await plurnk.work({\"target\":\"missing.md\",\"prompt\":\"x\"});\n\nawait plurnk.work({\"target\":\"session://bad/path\",\"prompt\":\"x\"});\n\nawait plurnk.note({\"text\":\"tried\"});", 10),
             makeMockResponse("await plurnk.done({\"text\":\"giving up\"});", 10),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -1551,7 +1476,8 @@ test("{§session-scheme}: a missing resource is the operation's failure and spaw
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
                 const works = rows.filter((r) => r.op === "work" && r.origin === "model");
                 assert.equal(works.length, 2);
-                assert.equal(works[0].status_rx, 404, "the missing resource's own read failure");
+                assert.equal(works[0].status_rx, 400, "a non-session target is refused");
+                assert.equal(JSON.parse(works[0].rx).problem?.type, "https://problems.plurnk.xyz/scheme/session/control-address-invalid");
                 assert.equal(works[1].status_rx, 400);
                 assert.equal(JSON.parse(works[1].rx).problem?.type, "https://problems.plurnk.xyz/scheme/session/control-address-invalid", "a session:// path is still an address attempt");
                 const children = await db.test_children_of_session.all<{ id: number; name: string }>({ session_id: modelSessionId! });
