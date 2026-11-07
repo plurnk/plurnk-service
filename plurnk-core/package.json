@@ -144,7 +144,7 @@
         "minimatch": "^11.0.5",
         "@plurnk/plurnk-digest": "3.2.6",
         "@plurnk/plurnk-otel": "1.0.2",
-        "@plurnk/plurnk-web": "1.0.0"
+        "@plurnk/plurnk-web": "1.1.0"
     },
     "devDependencies": {
         "@modelcontextprotocol/server": "2.4.0",
