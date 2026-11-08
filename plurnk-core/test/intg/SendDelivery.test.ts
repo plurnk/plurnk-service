@@ -175,7 +175,7 @@ for (const transport of ["text", "wire"] as const) {
                 assert.deepEqual(rows.filter(({ op }) => op === "edit").map(({ status_rx }) => status_rx), [200]);
                 assert.deepEqual(rows.filter(({ op }) => op === "error"), []);
                 const emissionRow = rows.find(({ op }) => op === "read");
-                assert.match(JSON.parse(emissionRow?.rx ?? "{}").content ?? "", /await plurnk\.edit\(\{"path":"workspace:\/\/\/fact\.txt","pattern":"Original fact\.","content":"Translated change\."\}\);/u);
+                assert.match(JSON.parse(emissionRow?.rx ?? "{}").content ?? "", /await plurnk\.edit\(\{"path":"workspace:\/\/\/fact\.txt","pattern":"Original fact\.","text":"Translated change\."\}\);/u);
                 const fact = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/fact.txt", scheme: "workspace", name: "body" });
                 assert.equal(fact?.content, "Translated change.");
                 assert.equal(notices.filter(({ message }) =>

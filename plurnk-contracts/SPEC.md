@@ -97,23 +97,23 @@ await <service>.<tool>({ ... });
 
 - **Declarative top-level tool calls**: Every canonical statement is an unwrapped TypeScript/JavaScript `await <service>.<tool>(args);` call (with `await` and trailing `;` optional). `plurnk` is the built-in runtime service (`plurnk.read`, `plurnk.find`, `plurnk.edit`, `plurnk.copy`, `plurnk.move`, `plurnk.kill`, `plurnk.note`, `plurnk.todo`, `plurnk.work`, `plurnk.fork`, `plurnk.bare`, `plurnk.send`, `plurnk.done`, `plurnk.fail`, `plurnk.wait`, REPL tools `plurnk.sh`, `plurnk.js`, `plurnk.python3`, and Functionality tools `plurnk.env`, `plurnk.mcp`, `plurnk.members`, `plurnk.personas`, `plurnk.schedule`, `plurnk.skills`, `plurnk.question`). External MCP servers are peer top-level namespaces (`await <service>.<tool>(args);`).
 - **Bracket property access**: Non-identifier tool names use bracket notation (`await gitea["issue-read"]({ ... });`).
-- **No free JavaScript execution in the parser**: Top-level statements are parsed as declarative calls with literal arguments (`{ ... }`, `[ ... ]`, strings/backticks, numbers, booleans, `null`); variable declarations and control-flow constructs (`const`, `let`, `var`, `if`, `for`, `while`, `function`, `try`) are refused with a parser diagnostic directing JavaScript logic to `await plurnk.js({ code: "..." });`.
+- **No free JavaScript execution in the parser**: Top-level statements are parsed as declarative calls with literal arguments (`{ ... }`, `[ ... ]`, strings/backticks, `<<<EOF ... EOF` heredocs, numbers, booleans, `null`); variable declarations and control-flow constructs (`const`, `let`, `var`, `if`, `for`, `while`, `function`, `try`) are refused with a parser diagnostic directing JavaScript logic to `await plurnk.js({ text: "..." });`.
 
 ### §fence-pairing Statement boundaries, unwrapped tolerances, and canonical rendering
 
 | Rule | Contract |
 | --- | --- |
-| Balanced call boundaries | A statement spans from its `<service>.<tool>(` head through its matching closing `)` and optional `;` and trailing `// aside` comment. Multi-line strings and template literals (`` `...` ``) preserve embedded newlines and treat unescaped `${...}` as literal text. |
+| Balanced call boundaries & heredocs | A statement spans from its `<service>.<tool>(` head through its matching closing `)` and optional `;` and trailing `// aside` comment. In any value position, `<<<TAG\n...\nTAG` (where `TAG` matches `[A-Za-z][A-Za-z0-9_-]{0,16}`, optionally single- or double-quoted on the opener, or placed after `});` as a statement-trailing heredoc) captures raw unescaped text between its opener newline and closer line. Multi-line strings and template literals (`` `...` ``) preserve embedded newlines and treat unescaped `${...}` as literal text. |
 | Markdown fence unwrapping | Code Mode statements require no Markdown fence; if a model wraps `await plurnk.<op>(...)` or `await <service>.<tool>(...)` inside a balanced `ts`, `js`, or plain Markdown code fence, the parser unwraps the block with a warning-severity advisory. |
 | Native and markup tool-call translation | Tool-call wrapper tags (`<tool_call>`, `<tool_calls>`, `<function_call>`, `<function_calls>`, `<｜DSML｜function_calls>`, `<｜｜DSML｜｜ function_calls>`, `<\|tool_call\|>`, `<｜tool▁calls▁begin｜>`, `<\|tool_calls_section_begin\|>`, `<\|python_tag\|>`, `[TOOL_CALLS]`) around Code Mode statements unwrap silently, and structured XML/DSML/token-delimited (`<function=...>`, `<invoke name="...">`, `<｜DSML｜invoke name="...">`, `<plurnk.<op> ... />`, `<｜tool▁call▁begin｜>`, `<\|tool_call_begin\|>`, `<\|tool_call\|>name`) or JSON tool calls targeting `plurnk` operations or `<service>.<tool>` translate silently into canonical Code Mode statements without advisory warnings. |
 | Case-insensitive method recovery | Uppercase or mixed-case method names (`plurnk.READ(...)`, `plurnk.SH(...)`) recover to their lowercase canonical tool name with a warning-severity advisory. |
-| Statement rendering | `PlurnkParser.stringify` formats AST statements back into canonical `await plurnk.<op>({ ... });` or `await <service>.<tool>({ ... });` statements, normalizing empty optional bodies to `null`. |
+| Statement rendering | `PlurnkParser.stringify` formats AST statements back into canonical `await plurnk.<op>({ ... });` or `await <service>.<tool>({ ... });` statements, normalizing empty optional bodies to `null` and rendering any string value containing `\n` (as well as the Turn 0 `Resolve all Open Work.` todo seed) as an inline `<<<EOF\n...\nEOF` heredoc (stepping `EOF1`, `EOF2`, … when the string contains the delimiter). |
 
 ### §slot-order Argument shapes, target groups, and endpoint options
 
 | Construct | Contract |
 | --- | --- |
-| Object and positional argument forms | Core operations accept their canonical `{ ... }` options object (`{ path, range?, pattern?, content?, ... }`) as well as concise positional string/array shorthands (`plurnk.read("a.ts")`, `plurnk.copy("a.ts", "b.ts")`, `plurnk.note("text")`). |
+| Object and positional argument forms | Core operations accept their canonical `{ ... }` options object (`{ path, range?, pattern?, text?, ... }`) as well as concise positional string/array shorthands (`plurnk.read("a.ts")`, `plurnk.copy("a.ts", "b.ts")`, `plurnk.note("text")`). |
 | Target groups and multi-target lists | `plurnk.read`, `plurnk.find`, and `plurnk.kill` accept `path` or `paths` as a string or array of strings; comma/pipe/whitespace-separated `scheme://` URI lists and comma/pipe-separated local path/glob lists outside brackets/braces expand into one statement per target in authored order. |
 | `note` annotation on retrievals | Providing `note` on `plurnk.read` or `plurnk.find` emits a preceding `note` statement before the retrieval(s). |
 | Endpoint and message options | `headers` (`Record<string, string>`) passes HTTP(S) request headers on `plurnk.read`, `plurnk.find`, `plurnk.edit`, `plurnk.send`, `plurnk.kill`, and `plurnk.copy`/`plurnk.move` (`fromHeaders`/`toHeaders`); `remote` (`boolean`) confirms remote HTTP `DELETE` on `plurnk.kill`; `attachments` (`string[]`) attaches resources to `plurnk.send`, `plurnk.done`, and `plurnk.fail`. Unknown option keys on `plurnk.<op>({ ... })` are refused with a parser diagnostic. |
@@ -127,17 +127,17 @@ await <service>.<tool>({ ... });
 | --- | --- | --- | --- |
 | `plurnk.find` | required `path` / `paths` | optional `range`, `pattern`, `headers` | optional `note` normalized to preceding `note` |
 | `plurnk.read` | required `path` / `paths` | optional `range`, `pattern`, `headers` | optional `note` normalized to preceding `note` |
-| `plurnk.edit` | required `path` | `range` or `pattern` or `oldText`/`newText` or `edits` for existing target; `content` alone creates; optional `headers` | `content`, `newText`, or `edits` array |
+| `plurnk.edit` | required `path` | `range` or `pattern` or `oldText`/`newText` or `edits` for existing target; `text` alone creates; optional `headers` | `text` (or tolerated `content`, `replacement`, `newText`, `body`), or `edits` array |
 | `plurnk.copy` / `plurnk.move` | required `from` and `to` | optional `fromRange` / `toRange`, `fromHeaders` / `toHeaders` | none |
-| `plurnk.sh` / `plurnk.js` / `plurnk.python3` | optional `script`, `cwd` | none | `code` (or tolerated `command` / `cmd` / `body`), optional `args` |
+| `plurnk.sh` / `plurnk.js` / `plurnk.python3` | optional `script`, `cwd` | none | `text` (or tolerated `code` / `command` / `cmd` / `body` / `source` / `prompt`), optional `args` |
 | `plurnk.<functionality>` | tool name (`env`, `mcp`, `members`, `personas`, `schedule`, `skills`, `question`) | none | JSON arguments object |
 | `<service>.<tool>` | external MCP `<service>` and `<tool>` | optional second `{ range }` options arg | JSON arguments object or string |
-| `plurnk.bare` | none | none | required `prompt` (or tolerated `text`) |
-| `plurnk.work` / `plurnk.fork` | optional `target` (`session://name`) | none | required `prompt` (or tolerated `text`) |
+| `plurnk.bare` | none | none | required `text` (or tolerated `prompt` / `body` / `content` / `message`) |
+| `plurnk.work` / `plurnk.fork` | optional `target` (`session://name`) | none | required `text` (or tolerated `prompt` / `body` / `content` / `message`) |
 | `plurnk.kill` | required `path` / `paths` | optional `range`, `pattern`, `remote`, `headers` | optional `note` distillation on `log:///` |
-| `plurnk.send` | optional `target` recipient | optional `headers`, `attachments` | required `text` message body |
-| `plurnk.done` | optional `target` (`message://`) | optional `attachments` | required `text` final deliverable |
-| `plurnk.fail` | optional `target` (`message://`) | optional `attachments` | required `text` final failure explanation |
+| `plurnk.send` | optional `target` recipient (caller aliases `user`/`client`/`human`/`operator`/`caller` normalize to `null`) | optional `headers`, `attachments` | required `text` message body |
+| `plurnk.done` | optional `target` (`message://`; caller aliases normalize to `null`) | optional `attachments` | required `text` final deliverable (`plurnk.done()` without arguments is refused) |
+| `plurnk.fail` | optional `target` (`message://`; caller aliases normalize to `null`) | optional `attachments` | required `text` final failure explanation |
 | `plurnk.note` | none | none | `text` literal working memory |
 | `plurnk.todo` | none | none | required `items` remaining step list (or tolerated `todos` / `text`) |
 | `plurnk.wait` | none | optional `seconds` | none (uses trailing `// aside`; tolerated `text` normalizes to `aside`) |

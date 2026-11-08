@@ -14,9 +14,9 @@ an existing session, even after it finishes. Names match
 `[A-Za-z0-9][A-Za-z0-9_-]{0,62}` and are case-sensitive. `plurnk.send` to an existing
 session gives it a follow-up task.
 
-await plurnk.work({ target: "session://child", prompt: "The child's complete task goes here." }); // fresh log
+await plurnk.work({ target: "session://child", text: "The child's complete task goes here." }); // fresh log
 
-await plurnk.fork({ target: "session://exampleSessionName", prompt: "The child's task, continuing from what you already know." }); // a child that begins with your history
+await plurnk.fork({ target: "session://exampleSessionName", text: "The child's task, continuing from what you already know." }); // a child that begins with your history
 
 await plurnk.send({ target: "session://child", text: "The follow-up task or additional information goes here." }); // follow-up to the existing session
 

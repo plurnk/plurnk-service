@@ -137,8 +137,8 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             properties: {
                 path: { type: "string", minLength: 1, description: "Target file or entry path, or glob/extglob for bulk edits (percent-encode `(` as `%28` and `)` as `%29`)." },
                 range: { type: "string", description: "Line, column, or @hash range (see ## range in description)." },
-                pattern: { type: "string", description: "Pattern whose matches are replaced by content (//a/@id selects `id=\"old\"`; $.a selects `\"old\"` including quotes; see skill://plurnk/pattern.md)." },
-                content: { type: "string", description: "Literal replacement source text or file content (replaces the entire match verbatim without adding quotes; empty string deletes)." },
+                pattern: { type: "string", description: "Pattern whose matches are replaced by text (//a/@id selects `id=\"old\"`; $.a selects `\"old\"` including quotes; see skill://plurnk/pattern.md)." },
+                text: { type: "string", description: "Literal replacement source text or file content (replaces the entire match verbatim without adding quotes; empty string deletes)." },
                 headers: HEADERS_SCHEMA,
             },
         },
@@ -157,9 +157,9 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             "",
             "## Examples",
             "",
-            "await plurnk.edit({ path: \"example.md\", range: \"@abcde,@fghij\", content: \"bar\" }); // replace lines 42..43 from read's <@hash> anchors",
+            "await plurnk.edit({ path: \"example.md\", range: \"@abcde,@fghij\", text: \"bar\" }); // replace lines 42..43 from read's <@hash> anchors",
             "",
-            "await plurnk.edit({ path: \"src/**/*.js\", pattern: \"/\\\\bfoo\\\\b/\", content: \"bar\" }); // replace every match (empty content deletes)",
+            "await plurnk.edit({ path: \"src/**/*.js\", pattern: \"/\\\\bfoo\\\\b/\", text: \"bar\" }); // replace every match (empty text deletes)",
         ].join("\n"),
     },
     {
@@ -232,16 +232,16 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         inputSchema: {
             type: "object",
             additionalProperties: false,
-            required: ["prompt"],
+            required: ["text"],
             properties: {
                 target: { type: "string", description: "Child session URI (e.g. \"session://child\" or \"session://child?persona=name&effort=high\")." },
-                prompt: { type: "string", description: "Complete task prompt for the child session." },
+                text: { type: "string", description: "Complete task prompt for the child session." },
             },
         },
         details: [
             "## Examples",
             "",
-            "await plurnk.work({ target: \"session://exampleSessionName\", prompt: \"Describe the child's complete task in the prompt.\" }); // the child's result lands in your log",
+            "await plurnk.work({ target: \"session://exampleSessionName\", text: \"Describe the child's complete task in the prompt.\" }); // the child's result lands in your log",
         ].join("\n"),
     },
     {
@@ -251,16 +251,16 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         inputSchema: {
             type: "object",
             additionalProperties: false,
-            required: ["prompt"],
+            required: ["text"],
             properties: {
                 target: { type: "string", description: "Child session URI (e.g. \"session://child\" or \"session://child?persona=name&effort=high\")." },
-                prompt: { type: "string", description: "Task prompt for the forked child session." },
+                text: { type: "string", description: "Task prompt for the forked child session." },
             },
         },
         details: [
             "## Examples",
             "",
-            "await plurnk.fork({ target: \"session://branchSession\", prompt: \"Explore the alternative approach from our current state.\" });",
+            "await plurnk.fork({ target: \"session://branchSession\", text: \"Explore the alternative approach from our current state.\" });",
         ].join("\n"),
     },
     {
@@ -270,15 +270,15 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
         inputSchema: {
             type: "object",
             additionalProperties: false,
-            required: ["prompt"],
+            required: ["text"],
             properties: {
-                prompt: { type: "string", description: "Self-contained prompt for the toolless model call." },
+                text: { type: "string", description: "Self-contained prompt for the toolless model call." },
             },
         },
         details: [
             "## Examples",
             "",
-            "await plurnk.bare({ prompt: \"A self-contained prompt, with everything it needs pasted in.\" });",
+            "await plurnk.bare({ text: \"A self-contained prompt, with everything it needs pasted in.\" });",
         ].join("\n"),
     },
     {
@@ -398,7 +398,7 @@ const executionOperationTools = (
         if (!capabilities.allowsRuntimeAcross(tag, null, workspaceId, policies)) continue;
         const entry = executors.entry(tag, workspaceId);
         if (entry === undefined) continue;
-        const bodyKey = tag === "sh" || tag === "js" || tag === "python3" ? "code" : "body";
+        const bodyKey = tag === "sh" || tag === "js" || tag === "python3" ? "text" : "body";
         const bodyLabel = tag === "sh"
             ? "Shell code to run."
             : tag === "js"

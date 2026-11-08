@@ -1,16 +1,16 @@
 # sh
 
-`plurnk.sh` runs the `code` with `-c` in the shell its summary names: the
+`plurnk.sh` runs the `text` with `-c` in the shell its summary names: the
 environment's `$SHELL`, or `/bin/sh` when that names no executable file. The code
 reaches it character-perfect, whitespace included; write for that shell.
 
-await plurnk.sh({ code: "printf 'hello\\n' > hello.txt\nwc -l hello.txt" }); // the code is the script itself
+await plurnk.sh({ text: "printf 'hello\\n' > hello.txt\nwc -l hello.txt" }); // the text is the script itself
 
 A `script` runs that script: `await plurnk.sh({ script: "greet.sh" });` runs it with no arguments;
 `args` (an array of argument strings or a shell-quoted string) is passed as its arguments
 (plain words split on whitespace, quoted arguments stay whole, nothing is
 expanded). The interpreter reads the script directly, so it needs no executable
-bit; a script path authored inside inline `code` still follows the kernel's
+bit; a script path authored inside inline `text` still follows the kernel's
 ordinary executable-bit rules. The same applies to local, `session://`, and
 `skill://` script targets across every interpreter.
 
@@ -25,7 +25,7 @@ with the `env` registry (`mcp:///plurnk/env.json`).
 
 The working directory is the workspace project root, or in a workspace without
 one the directory the shell would run in anyway. Setting `cwd` overrides it for
-an inline command or script (`await plurnk.sh({ code: "npm test", cwd: "packages/api" });`); a receipt names the
+an inline command or script (`await plurnk.sh({ text: "npm test", cwd: "packages/api" });`); a receipt names the
 directory, relative to the project root, only when the command ran elsewhere.
 
 ## Channels

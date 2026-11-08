@@ -20,7 +20,7 @@ A `project` persona shadows a `plurnk` one of the same name, which shadows an
 `xdg-global` one, which shadows a `global` one. Plugin personas join their
 installation's scope after standalone personas; npm bundles follow global roots.
 The cascading environment can define or replace a persona above them;
-`plurnk.personas` or `await plurnk.edit({ path: "persona://<name>/PERSONA.md", content });` creates a
+`plurnk.personas` or `await plurnk.edit({ path: "persona://<name>/PERSONA.md", text });` creates a
 workspace override above that. Declared personas are enabled by default. A
 disabled persona remains listed but has no resource tree.
 
@@ -47,7 +47,7 @@ Create or replace a workspace persona directly with `EDIT`, writing either a
 Markdown document with frontmatter (`name` defaults to the target authority when
 omitted) or a JSON definition object:
 
-await plurnk.edit({ path: "persona://professor/PERSONA.md", content: "---\ndescription: Rigorous first-principles teacher.\neffort: high\n---\nExplain from invariants before examples." });
+await plurnk.edit({ path: "persona://professor/PERSONA.md", text: "---\ndescription: Rigorous first-principles teacher.\neffort: high\n---\nExplain from invariants before examples." });
 
 `await plurnk.kill({ path: "persona://professor/PERSONA.md" });` removes a workspace override (restoring
 any inherited definition) or disables an inherited service persona.

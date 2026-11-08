@@ -48,11 +48,11 @@ creation, child observations, waiting, completion, and reply routing.
 
 ## Bare inference
 
-`plurnk.bare({ prompt })`: makes one isolated call to the model, not a persistent session. Nothing
-reaches it but `prompt`: no log, no files, no web, no tools, no memory of
-this loop. It answers from `prompt` and the model's own knowledge alone.
+`plurnk.bare({ text })`: makes one isolated call to the model, not a persistent session. Nothing
+reaches it but `text`: no log, no files, no web, no tools, no memory of
+this loop. It answers from `text` and the model's own knowledge alone.
 
-await plurnk.bare({ prompt: "A self-contained prompt, with everything it needs pasted in." });
+await plurnk.bare({ text: "A self-contained prompt, with everything it needs pasted in." });
 
 The prompt is not truncated to fit; provider capacity still applies.
 Consecutive `bare` calls run concurrently and settle before the turn continues.

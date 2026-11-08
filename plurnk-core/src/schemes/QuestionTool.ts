@@ -24,9 +24,9 @@ import { OperationFailureError } from "../core/results.ts";
 const QUESTION_INPUT_SCHEMA = {
     type: "object",
     additionalProperties: false,
-    required: ["message"],
+    required: ["text"],
     properties: {
-        message: {
+        text: {
             type: "string",
             minLength: 1,
             description: "The question shown to the user (non-empty string).",
@@ -68,7 +68,7 @@ const QUESTION_DETAILS = `## Inputs
 
 | Field | Contract |
 | --- | --- |
-| \`message\` | The question shown to the user (non-empty string). |
+| \`text\` | The question shown to the user (non-empty string). |
 | \`options\` | Optional multiple-choice options (\`string\` or \`{ value, title?, description? }\`). |
 | \`multi\` | Optional \`true\` to allow selecting multiple options (\`false\` by default). |
 | \`schema\` | Optional JSON Schema object (\`requestedSchema\` also accepted) the user's answer must satisfy; \`enum\`/enumNames/oneOf/anyOf/array/boolean/string/number forms supported. |
@@ -150,7 +150,7 @@ const lowerQuestionInput = (parsed: unknown): { message: string; requestedSchema
         const messages: string[] = [];
         for (const [idx, q] of parsed.questions.entries()) {
             if (!isRecord(q)) return null;
-            const rawQText = q.question ?? q.message ?? q.prompt ?? q.text;
+            const rawQText = q.text ?? q.question ?? q.message ?? q.prompt ?? q.content ?? q.body;
             if (typeof rawQText !== "string" || rawQText.length === 0) return null;
             messages.push(rawQText);
             const key = typeof q.header === "string" && q.header.trim().length > 0
@@ -170,7 +170,7 @@ const lowerQuestionInput = (parsed: unknown): { message: string; requestedSchema
             }
             required.push(key);
         }
-        const rawTopMsg = parsed.message ?? parsed.question ?? parsed.prompt;
+        const rawTopMsg = parsed.text ?? parsed.message ?? parsed.question ?? parsed.prompt ?? parsed.content ?? parsed.body;
         const message = typeof rawTopMsg === "string" && rawTopMsg.length > 0
             ? rawTopMsg
             : messages.join("\n");
@@ -179,7 +179,7 @@ const lowerQuestionInput = (parsed: unknown): { message: string; requestedSchema
             requestedSchema: { type: "object", properties, required },
         };
     }
-    const rawMsg = parsed.message ?? parsed.question ?? parsed.prompt ?? parsed.text;
+    const rawMsg = parsed.text ?? parsed.message ?? parsed.question ?? parsed.prompt ?? parsed.content ?? parsed.body;
     if (typeof rawMsg !== "string" || rawMsg.length === 0) return null;
     const rawSchema = parsed.schema ?? parsed.requestedSchema;
     if (rawSchema !== undefined) {
@@ -273,7 +273,7 @@ export default class QuestionTool extends BaseExecutor {
                 400,
                 "The question body must carry a non-empty message (and valid options or schema when supplied).",
                 {},
-                { recovery: "Use `await plurnk.question({ message: \"...\", options: [\"...\"] });` or `{ message, schema }`.", retryable: false },
+                { recovery: "Use `await plurnk.question({ text: \"...\", options: [\"...\"] });` or `{ text, schema }`.", retryable: false },
             );
         }
         signal.throwIfAborted();

@@ -1165,6 +1165,7 @@ for (const partial of [false, true]) {
         const sessionId = await insertSession(db, workspaceId, null, "writer");
         const loopId = await insertLoop(db, sessionId, 1, "Retain the useful finding.");
         const first = "await plurnk.note({\"text\":\"Obsolete line.\\nStill useful.\"});";
+        const firstReplayed = "await plurnk.note({\"text\":<<<EOF\nObsolete line.\nStill useful.\nEOF});";
         const second = "await plurnk.note({\"text\":\"Another finding.\"});";
         const provider = new Mock({ contextWindow: 100000, responses: [
             `${first}\n\n${second}`,
@@ -1174,7 +1175,7 @@ for (const partial of [false, true]) {
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
         assert.equal(result.result.status, 200);
         const before = provider.received[1];
-        assert.deepEqual(before.filter(({ role }) => role === "assistant").map(chatMessageText), [`${first}\n\n${second}`], "the turn's NOTEs replay together");
+        assert.deepEqual(before.filter(({ role }) => role === "assistant").map(chatMessageText), [`${firstReplayed}\n\n${second}`], "the turn's NOTEs replay together");
         const after = provider.received[2];
         assert.deepEqual(after.filter(({ role }) => role === "assistant").map(chatMessageText), [second]);
         const user = after.filter(({ role }) => role === "user").map(chatMessageText).join("\n");

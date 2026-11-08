@@ -12,7 +12,7 @@ while `plurnk.edit`, `plurnk.send`, and `plurnk.kill` address that connection.
 | --- | --- |
 | `await plurnk.read({ path: "wss://host/path" })` | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames |
 | A second `read` of the same address | Read the retained representation; reuse the existing connection without reconnecting |
-| `await plurnk.edit({ path: "wss://host/path", content })` | Propose one whole text frame through an already-open connection, sent on acceptance; ranges and batches are invalid |
+| `await plurnk.edit({ path: "wss://host/path", text })` | Propose one whole text frame through an already-open connection, sent on acceptance; ranges and batches are invalid |
 | `await plurnk.send({ target: "wss://host/path", text })` | Propose one whole text frame, sent on acceptance; it may follow the opening `read` in the same turn |
 | `await plurnk.kill({ path: "wss://host/path" })` | Close or cancel the connection; an address with no connection is `404` |
 
@@ -36,7 +36,7 @@ turn's disposition operation is deferred until the other operations have run.
 
 await plurnk.read({ path: "wss://api.example.com/feed" });
 
-await plurnk.edit({ path: "wss://api.example.com/feed", content: "{\"type\":\"subscribe\",\"channel\":\"updates\"}" });
+await plurnk.edit({ path: "wss://api.example.com/feed", text: "{\"type\":\"subscribe\",\"channel\":\"updates\"}" });
 
 await plurnk.send({ target: "wss://api.example.com/feed", text: "{\"type\":\"ping\"}" });
 

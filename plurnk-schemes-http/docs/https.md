@@ -17,7 +17,7 @@ readable Markdown (a materializer's or the local reader's) is `#readable`, read 
 | `await plurnk.read({ path: "https://…", range })` | GET if needed | Acquire/reuse the complete response, then return the selected scoped text |
 | `await plurnk.find({ path: "https://…", pattern })` | GET if needed | Return matching text regions for a scoped `read` |
 | `await plurnk.send({ target: "https://…", text })` | POST | Submit the body and stream the response |
-| `await plurnk.edit({ path: "https://…", content })` | PUT | Replace the whole remote resource; a line scope does not apply |
+| `await plurnk.edit({ path: "https://…", text })` | PUT | Replace the whole remote resource; a line scope does not apply |
 | `await plurnk.kill({ path: "https://…" })` | none | Cancel a live acquisition of the address, or forget its stored response |
 | `await plurnk.kill({ path: "https://…", remote: true })` | DELETE | Delete the remote resource and stream the response |
 
@@ -67,7 +67,7 @@ Pass request headers in `headers`:
 
 await plurnk.read({ path: "https://api.example.com/v1/me", headers: { "Accept": "application/json" } });
 
-await plurnk.edit({ path: "https://api.example.com/v1/thing/42", headers: { "Content-Type": "application/json" }, content: "{\"done\":true}" });
+await plurnk.edit({ path: "https://api.example.com/v1/thing/42", headers: { "Content-Type": "application/json" }, text: "{\"done\":true}" });
 
 await plurnk.send({ target: "https://api.example.com/v1/search", headers: { "Content-Type": "application/json" }, text: "{\"query\":\"plurnk\"}" });
 

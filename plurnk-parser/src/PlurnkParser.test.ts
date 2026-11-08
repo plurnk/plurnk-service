@@ -43,22 +43,22 @@ describe("PlurnkParser Code Mode", () => {
         const canonical = [
             'await plurnk.find({"path":"src/**/*.ts","range":"1,20","pattern":"/export/","headers":{"Accept":"text/plain"}}); // find exports',
             'await plurnk.read({"path":"README.md","range":"1,50","pattern":"/Plurnk/i","headers":{"Accept":"text/markdown"}}); // read readme',
-            'await plurnk.edit({"path":"src/index.ts","range":"@abcde,@fghij","pattern":"/old/","headers":{"Content-Type":"text/plain"},"content":"export const x = 1;\\n"}); // update export',
+            'await plurnk.edit({"path":"src/index.ts","range":"@abcde,@fghij","pattern":"/old/","headers":{"Content-Type":"text/plain"},"text":<<<EOF\nexport const x = 1;\n\nEOF}); // update export',
             'await plurnk.copy({"from":"a.txt","to":"b.txt"}); // copy file',
             'await plurnk.move({"from":{"path":"src/old.ts","range":"1,10","pattern":"/foo/","headers":{"Accept":"text/plain"}},"to":{"path":"src/new.ts","range":"5,15","pattern":"/bar/","headers":{"Content-Type":"text/plain"}}}); // move slice',
             'await plurnk.kill({"path":"log:///1/1/1/read","range":"1,5","pattern":"/secret/","remote":true,"headers":{"Authorization":"Bearer x"},"note":"distilled summary"}); // prune log',
             'await plurnk.note({"text":"Remember the invariant."}); // working note',
             'await plurnk.todo({"items":["Step 1","Step 2"]}); // update todo',
-            'await plurnk.work({"target":"session://worker_1","prompt":"Audit the module."}); // delegate work',
-            'await plurnk.fork({"target":"session://branch_a","prompt":"Try alternative."});',
-            'await plurnk.bare({"prompt":"Summarize concisely."});',
+            'await plurnk.work({"target":"session://worker_1","text":"Audit the module."}); // delegate work',
+            'await plurnk.fork({"target":"session://branch_a","text":"Try alternative."});',
+            'await plurnk.bare({"text":"Summarize concisely."});',
             'await plurnk.send({"target":"session://peer","headers":{"X-Trace":"1"},"attachments":["report.pdf"],"text":"Status update."}); // notify peer',
             'await plurnk.done({"target":"message://main/12345678","attachments":["a.png"],"text":"Completed all tasks."}); // finish',
             'await plurnk.fail({"text":"Blocked by upstream outage."});',
             'await plurnk.wait({"seconds":30}); // wait on build',
-            'await plurnk.sh({"cwd":"packages/core","range":"1,2","code":"npm test"}); // run tests',
-            'await plurnk.js({"code":"return 2 + 2;"});',
-            'await plurnk.python3({"code":"print(42)"});',
+            'await plurnk.sh({"cwd":"packages/core","range":"1,2","text":"npm test"}); // run tests',
+            'await plurnk.js({"text":"return 2 + 2;"});',
+            'await plurnk.python3({"text":"print(42)"});',
             'await plurnk.env({"action":"list"}); // list env',
             'await gitea.issue_read({"owner":"plurnk","repo":"plurnk-service","index":1}); // read issue',
         ].join("\n\n");
@@ -142,7 +142,7 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.send("session://helper", "Ping.");',
             'await plurnk.send("sh:///12345678", { text: "input\\n", attachments: ["report.pdf"] });',
             'await plurnk.send({ session: "helper", json: { ok: true } });',
-            'await plurnk.done();',
+            'await plurnk.done({});',
             'await plurnk.done("All done.");',
             'await plurnk.done("message://main/1", "Reply.");',
             'await plurnk.fail({ json: { error: "failed" }, attachments: ["err.log"] });',
@@ -207,7 +207,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[8] as ExecStatement).target?.raw, "issue_read");
         assert.equal(PlurnkParser.stringify([ops[8]]), 'await gitea.issue_read({"owner":"plurnk","repo":"service"}, {"range":"1,10"});');
         assert.equal(PlurnkParser.stringify([ops[9]]), 'await plurnk.members({"path":["src/a.ts"]});');
-        assert.equal(PlurnkParser.stringify([ops[10]]), 'await plurnk.question({"message":"Which?","options":["a","b"],"multi":true});');
+        assert.equal(PlurnkParser.stringify([ops[10]]), 'await plurnk.question({"text":"Which?","options":["a","b"],"multi":true});');
     });
 
     test("{§slot-order}: comma, pipe, and URI lists in read, find, and kill expand in member order", () => {
@@ -318,7 +318,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal(rendered, [
             'await plurnk.read({"path":"mcp:///plurnk/sh.json"});',
             'await plurnk.read({"path":"src/a.ts","range":"1,20"});',
-            'await plurnk.edit({"path":"src/a.ts","pattern":"old","content":"new"});',
+            'await plurnk.edit({"path":"src/a.ts","pattern":"old","text":"new"});',
             'await gitea.issue_read({"owner":"plurnk","number":"1414"});',
             'await plurnk.done({"text":"Finished."});',
             'await plurnk.find({"path":"astropy/modeling/**"});',
@@ -326,7 +326,7 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.find({"path":"astropy/io/fits/**","pattern":"/Header|Card|_split/"});',
             'await plurnk.find({"path":"pylint/**","pattern":"/notes/","headers":{"Accept":"text/x-python"}});',
             'await plurnk.note({"text":"Task: Preserve mathematical expressions."});',
-            'await plurnk.sh({"code":"grep -n \\"__radd__\\" django/utils/functional.py"});',
+            'await plurnk.sh({"text":"grep -n \\"__radd__\\" django/utils/functional.py"});',
             'await plurnk.find({"path":"sympy/physics/mechanics/**","range":"1,-1"});',
             'await plurnk.find({"path":"src/**"});',
             'await plurnk.read({"path":"README.md","range":"1,10"});',
@@ -434,6 +434,172 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal(unknownOptResult.items[0]?.kind, "error");
         if (unknownOptResult.items[0]?.kind === "error") {
             assert.match(unknownOptResult.items[0].error.message, /Unknown option `bogus` on `plurnk\.read`\./u);
+        }
+    });
+
+    test("{§fence-pairing} {§op-shapes}: heredocs (<<<EOF) and JS template literals parse raw content losslessly and normalize multiline strings to <<<EOF", () => {
+        // 1. Inline heredoc (Option 1) with EOF}); and EOF\n});
+        const inline1 = statementsOf([
+            "await plurnk.note({\"text\":<<<EOF",
+            "line 1",
+            "line 2",
+            "EOF}); // aside 1",
+            "await plurnk.edit({\"path\":\"a.py\",\"text\":<<<EOF",
+            "def f():",
+            "    return 1",
+            "EOF",
+            "});",
+        ].join("\n"));
+        assert.equal(inline1.length, 2);
+        assert.equal((inline1[0] as NoteStatement).body, "line 1\nline 2");
+        assert.equal((inline1[0] as NoteStatement).aside, "aside 1");
+        assert.equal((inline1[1] as EditStatement).body, "def f():\n    return 1");
+        assert.equal(
+            PlurnkParser.stringify(inline1),
+            [
+                'await plurnk.note({"text":<<<EOF\nline 1\nline 2\nEOF}); // aside 1',
+                'await plurnk.edit({"path":"a.py","text":<<<EOF\ndef f():\n    return 1\nEOF});',
+            ].join("\n\n"),
+        );
+
+        // 2. Statement-trailing heredoc (Option 2) normalized to Option 1
+        const trailing = statementsOf([
+            'await plurnk.note({"text": <<<EOF}); // trailing aside',
+            "alpha",
+            "beta",
+            "EOF",
+        ].join("\n"));
+        assert.equal(trailing.length, 1);
+        assert.equal((trailing[0] as NoteStatement).body, "alpha\nbeta");
+        assert.equal((trailing[0] as NoteStatement).aside, "trailing aside");
+        assert.equal(
+            PlurnkParser.stringify(trailing),
+            'await plurnk.note({"text":<<<EOF\nalpha\nbeta\nEOF}); // trailing aside',
+        );
+
+        // 3. Quoted tags (<<<'EOF', <<<"EOF") and custom tags (<<<END_SCRIPT, <<<PY-1)
+        const customTags = statementsOf([
+            "await plurnk.sh({\"text\":<<<'END_SCRIPT'",
+            "echo \"hello $USER\" && printf '%s\\n' 'a'",
+            "END_SCRIPT});",
+            "await plurnk.python3({\"text\":<<<\"PY-1\"",
+            "x = 1",
+            "y = 2",
+            "PY-1});",
+        ].join("\n"), ["sh", "python3"]);
+        assert.equal(customTags.length, 2);
+        assert.equal((customTags[0] as ExecStatement).body, "echo \"hello $USER\" && printf '%s\\n' 'a'");
+        assert.equal((customTags[1] as ExecStatement).body, "x = 1\ny = 2");
+        assert.equal(
+            PlurnkParser.stringify(customTags),
+            [
+                'await plurnk.sh({"text":"echo \\"hello $USER\\" && printf \'%s\\\\n\' \'a\'"});',
+                'await plurnk.python3({"text":<<<EOF\nx = 1\ny = 2\nEOF});',
+            ].join("\n\n"),
+        );
+
+        // 4. Delimiter collision stepping: EOF in body -> <<<EOF1; EOF and EOF1 in body -> <<<EOF2
+        const withEof = statementsOf('await plurnk.sh({"text":"cat <<EOF\\nhi\\nEOF"});', ["sh"]);
+        assert.equal(
+            PlurnkParser.stringify(withEof),
+            'await plurnk.sh({"text":<<<EOF1\ncat <<EOF\nhi\nEOF\nEOF1});',
+        );
+        const withEof1 = statementsOf('await plurnk.sh({"text":"EOF\\nEOF1"});', ["sh"]);
+        assert.equal(
+            PlurnkParser.stringify(withEof1),
+            'await plurnk.sh({"text":<<<EOF2\nEOF\nEOF1\nEOF2});',
+        );
+        assert.equal(
+            (statementsOf(PlurnkParser.stringify(withEof1), ["sh"])[0] as ExecStatement).body,
+            "EOF\nEOF1",
+        );
+
+        // 5. Lossless newline bijection: "a\nb", "a\nb\n", "\n", ""
+        for (const sample of ["a\nb", "a\nb\n", "\n"]) {
+            const stmt: NoteStatement = { op: "note", aside: null, target: null, lineMarker: null, body: sample, position: { line: 1, column: 0 } };
+            const rendered = PlurnkParser.stringify([stmt]);
+            assert.match(rendered, /<<<EOF\n/u);
+            const reparsed = statementsOf(rendered);
+            assert.equal((reparsed[0] as NoteStatement).body, sample);
+        }
+        const emptyHeredoc = statementsOf("await plurnk.note({\"text\":<<<EOF\nEOF});");
+        assert.equal((emptyHeredoc[0] as NoteStatement).body, null);
+
+        // 6. Raw markdown fences, XML tool tags, unbalanced quotes/parens, and ${...} inside heredoc
+        const complexBody = [
+            "Here is a fenced block and XML wrapper:",
+            "```ts",
+            'const s = `hello ${name}`;',
+            'await plurnk.read({ path: "not_executed.ts" });',
+            "```",
+            '<tool_call>{"name":"plurnk.done","arguments":{"text":"ignored"}}</tool_call>',
+            'Unbalanced quotes " and \' and parens ((( in regex /^\\d+$/',
+        ].join("\n");
+        const complexSource = `await plurnk.done({"text":<<<EOF\n${complexBody}\nEOF});`;
+        const complexParsed = PlurnkParser.parse(complexSource);
+        assert.deepEqual(complexParsed.items.map((item) => item.kind), ["statement"]);
+        assert.equal(((complexParsed.items[0] as { kind: "statement"; statement: DoneStatement }).statement).body?.raw, complexBody);
+
+        // 7. JS template literals with newlines and raw ${...} normalize to <<<EOF
+        const templateParsed = statementsOf([
+            "await plurnk.js({\"text\":`const x = ${1 + 1};",
+            "console.log(x);`});",
+        ].join("\n"), ["js"]);
+        assert.equal((templateParsed[0] as ExecStatement).body, "const x = ${1 + 1};\nconsole.log(x);");
+        assert.equal(
+            PlurnkParser.stringify(templateParsed),
+            "await plurnk.js({\"text\":<<<EOF\nconst x = ${1 + 1};\nconsole.log(x);\nEOF});",
+        );
+
+        // 8. Turn 0 todo ("Resolve all Open Work.") stringifies with <<<EOF
+        const turn0Todo = statementsOf('await plurnk.todo({"items":["Resolve all Open Work."]});');
+        assert.equal(
+            PlurnkParser.stringify(turn0Todo),
+            "await plurnk.todo({\"items\":[<<<EOF\nResolve all Open Work.\nEOF]});",
+        );
+        const turn0Reparsed = statementsOf(PlurnkParser.stringify(turn0Todo));
+        assert.equal((turn0Reparsed[0] as TodoStatement).body, "Resolve all Open Work.");
+    });
+
+    test("{§op-shapes}: text unification and caller target alias normalization across operations", () => {
+        const ops = statementsOf([
+            'await plurnk.edit({ path: "a.ts", pattern: "old", replacement: "new" });',
+            'await plurnk.work({ target: "session://w", text: "do work" });',
+            'await plurnk.fork({ target: "session://f", text: "do fork" });',
+            'await plurnk.bare({ text: "do bare" });',
+            'await plurnk.sh({ text: "echo ok" });',
+            'await plurnk.js({ text: "return 1;" });',
+            'await plurnk.python3({ text: "print(1)" });',
+            'await plurnk.send({ to: "user", text: "Hi user" });',
+            'await plurnk.send({ target: "client", text: "Hi client" });',
+            'await plurnk.send({ recipient: "session://human", text: "Hi human" });',
+            'await plurnk.send("operator", "Positional hi");',
+            'await plurnk.done({ target: "caller", text: "Done caller" });',
+            'await plurnk.done("user", "Done positional");',
+            'await plurnk.fail({ to: "user", text: "Failed user" });',
+        ].join("\n"), ["sh", "js", "python3"]);
+
+        assert.equal(ops.length, 14);
+        assert.equal((ops[0] as EditStatement).body, "new");
+        assert.equal((ops[1] as WorkStatement).body, "do work");
+        assert.equal((ops[2] as ForkStatement).body, "do fork");
+        assert.equal((ops[3] as WorkStatement).body, "do bare");
+        assert.equal((ops[4] as ExecStatement).body, "echo ok");
+        assert.equal((ops[5] as ExecStatement).body, "return 1;");
+        assert.equal((ops[6] as ExecStatement).body, "print(1)");
+        for (const idx of [7, 8, 9, 10]) {
+            assert.equal((ops[idx] as SendStatement).target, null);
+        }
+        assert.equal((ops[11] as DoneStatement).target, null);
+        assert.equal((ops[12] as DoneStatement).target, null);
+        assert.equal((ops[13] as FailStatement).target, null);
+
+        const emptyDone = PlurnkParser.parseStatements("await plurnk.done();");
+        assert.equal(emptyDone.items.length, 1);
+        assert.equal(emptyDone.items[0]?.kind, "error");
+        if (emptyDone.items[0]?.kind === "error") {
+            assert.equal(emptyDone.items[0].error.message, "done requires a text argument.");
+            assert.equal(emptyDone.items[0].error.recovery, 'await plurnk.done({ text: "..." });');
         }
     });
 });

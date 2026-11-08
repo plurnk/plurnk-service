@@ -1077,7 +1077,7 @@ test("{§emission-history} {§emission-history}: a turn's content operations pre
     const workspaceId = await insertWorkspace(db, "paired-operations");
     const sessionId = await insertSession(db, workspaceId, null, "writer");
     const loopId = await insertLoop(db, sessionId, 1, "Write, inspect, and answer.");
-    const edit = "await plurnk.edit({\"path\":\"workspace:///memo.txt\",\"content\":\"Unique replacement.\"});";
+    const edit = "await plurnk.edit({\"path\":\"workspace:///memo.txt\",\"text\":\"Unique replacement.\"});";
     const read = "await plurnk.read({\"path\":\"workspace:///memo.txt\"}); // inspect";
     const note = "await plurnk.note({\"text\":\"An authored memory.\"});";
     const provider = new Mock({ contextWindow: 100000, responses: [

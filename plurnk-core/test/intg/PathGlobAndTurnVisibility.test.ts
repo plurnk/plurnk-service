@@ -592,8 +592,9 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 4);
-    const edit = `await plurnk.edit({"path":"workspace:///memory.md","content":${JSON.stringify(body)}}); // remember`;
-    assert.equal(previous(provider.received[1]), first, "EDIT and NOTE replay whole");
+    const edit = `await plurnk.edit({"path":"workspace:///memory.md","text":<<<EOF\n${body}\nEOF}); // remember`;
+    const firstReplayed = `${edit}\n\nawait plurnk.note({"text":"CURATABLE-MEMORY: retain the actual observation."});`;
+    assert.equal(previous(provider.received[1]), firstReplayed, "EDIT and NOTE replay whole");
     assert.doesNotMatch(userText(provider.received[1]), /REASONING-MEMORY/u);
     assert.doesNotMatch(userText(provider.received[1]), /CURATABLE-MEMORY/u, "the paired NOTE receipt does not duplicate its body");
     assert.equal(previous(provider.received[2]), edit, "the curated NOTE leaves the replay; the surviving EDIT remains");
@@ -603,7 +604,7 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
     assert.match(userText(provider.received[3]), /FULL-BODY line 120/u);
     const reads = await db.test_log_entries_by_session_op_full.all<{ pathname: string; rx: string }>({ session_id: sessionId, op: "read" });
     assert.ok(reads.some(({ pathname, rx }) => pathname === "/1/2" && (JSON.parse(rx) as { content?: string }).content === first));
-    assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate.startsWith("1/2/"))!.rx) as { content: string }).content, first);
+    assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate.startsWith("1/2/"))!.rx) as { content: string }).content, firstReplayed);
 });
 
 test("{§turn-source-resources}: initialization has no replay; canonical content carries interstitial text as the NOTEs it became and preserves row chronology", async (t) => {

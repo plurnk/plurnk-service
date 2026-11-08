@@ -48,8 +48,8 @@ test("{§emission-history}: body curation suppresses the whole replay, never an 
 
 test("{§emission-history} {§fence-pairing}: historical executor identities survive registry removal", () => {
     for (const [operation, executors] of [
-        ['await plurnk["removed-runtime"]("Full tool input.\\n```NOTE\\nA literal example.\\n```");', ["removed-runtime"]],
-        ['await removed-runtime.tool("Full tool input.\\n```NOTE\\nA literal example.\\n```");', []],
+        ['await plurnk["removed-runtime"](<<<EOF\nFull tool input.\n```NOTE\nA literal example.\n```\nEOF);', ["removed-runtime"]],
+        ['await removed-runtime.tool(<<<EOF\nFull tool input.\n```NOTE\nA literal example.\n```\nEOF);', []],
     ] as const) {
         assert.deepEqual([...history(operation, [row(2, "removed-runtime", 0, "Full tool input.")], [...executors]).operations.values()], [operation]);
     }
@@ -67,7 +67,7 @@ test("{§emission-history} {§log-kill-scope}: a failed curation request replays
 test("{§emission-history}: a turn's surviving operations replay together, in program order, before its first surviving receipt", () => {
     const note = 'await plurnk.note({"text":"Read, then fix."}); // plan';
     const read = 'await plurnk.read({"path":"src/a.ts","range":"1,4"});';
-    const edit = 'await plurnk.edit({"path":"src/a.ts","range":"2","content":"fixed"});';
+    const edit = 'await plurnk.edit({"path":"src/a.ts","range":"2","text":"fixed"});';
     const program = `${note}\n\n${read}\n\n${edit}`;
     const rows = [row(2, "note", 0, "Read, then fix."), row(3, "read", 1), row(4, "edit", 2, "fixed")];
     const projected = history(program, rows);

@@ -256,7 +256,7 @@ test("{§turn-source-resources} {§share-packet-names}: the digest writes each r
     const roles = (messages: WireMessage[]) => messages.map(({ role }) => role);
     const draft = await wire("analyst-1-3");
     assert.deepEqual(roles(draft), ["system", "user", "assistant", "user"]);
-    assert.equal(draft[2].content, "await plurnk.edit({\"path\":\"workspace:///a.md\",\"content\":\"alpha\"});\n\nawait plurnk.note({\"text\":\"Wrote the first draft.\"});",
+    assert.equal(draft[2].content, "await plurnk.edit({\"path\":\"workspace:///a.md\",\"text\":\"alpha\"});\n\nawait plurnk.note({\"text\":\"Wrote the first draft.\"});",
         "a turn's complete operations replay together, in program order, before its receipts");
     const original = await readFile(join(digestDir, "analyst-1-2.assistant.md"), "utf8");
     assert.match(original, /"content":"alpha"/u, "forensics keep the exact EDIT body");

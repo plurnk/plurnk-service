@@ -87,7 +87,7 @@ const textOf = (message) => typeof message?.content === "string" ? message.conte
 const pairedReceipts = (messages) => messages.flatMap((message, index) => {
     if (message.role !== "assistant") return [];
     const receipts = parseLogRecords(textOf(messages[index + 1]).split(/\n## /u)[0].trim());
-    return [...textOf(message).matchAll(/^await plurnk\.([A-Za-z]\w*)\((.*)\);/gmu)].map(([, rawOp, request = ""]) => {
+    return [...textOf(message).matchAll(/^await plurnk\.([A-Za-z]\w*)\(([\s\S]*?)\);/gmu)].map(([, rawOp, request = ""]) => {
         const op = rawOp;
         const at = receipts.findIndex((row) =>
             row.logPath.endsWith(`/${op}`) || (row.logPath.endsWith("/plurnk") && row.path === op));
@@ -198,7 +198,7 @@ export const startClientJourneyModel = async () => {
                 assert.equal(delegationRead.status ?? 200, 200);
                 assert.match(String(delegationRead.body ?? ""), /`plurnk\.work` starts a fresh log/u);
                 for (const witness of [
-                    /(?:^|\n) *\d+:await plurnk\.bare\(\{ prompt: "A self-contained prompt, with everything it needs pasted in\." \}\);/u,
+                    /(?:^|\n) *\d+:await plurnk\.bare\(\{ text: "A self-contained prompt, with everything it needs pasted in\." \}\);/u,
                     /(?:^|\n) *\d+:await plurnk\.js\(/u,
                     /(?:^|\n) *\d+:.*\[Complete \.env\.defaults\]\(configuration\/\.env\.defaults\)/u,
                 ]) {

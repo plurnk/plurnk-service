@@ -116,6 +116,51 @@ const isObjectLiteralString = (raw: string): boolean => {
     return trimmed.startsWith("{") && trimmed.endsWith("}");
 };
 
+const pickHeredocTag = (value: string): string => {
+    if (!value.includes("EOF")) return "EOF";
+    let n = 1;
+    while (value.includes(`EOF${n}`)) {
+        n += 1;
+    }
+    return `EOF${n}`;
+};
+
+const stringifyCodeModeValue = (value: unknown): string => {
+    if (typeof value === "string") {
+        if (value.includes("\n") && !value.includes("\r")) {
+            const tag = pickHeredocTag(value);
+            return `<<<${tag}\n${value}\n${tag}`;
+        }
+        return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) {
+        return `[${value.map((item) => stringifyCodeModeValue(item)).join(",")}]`;
+    }
+    if (isRecord(value)) {
+        const entries = Object.entries(value)
+            .filter(([, v]) => v !== undefined)
+            .map(([k, v]) => `${JSON.stringify(k)}:${stringifyCodeModeValue(v)}`);
+        return `{${entries.join(",")}}`;
+    }
+    return JSON.stringify(value);
+};
+
+const formatExecutionBodyArg = (body: string | null): string => {
+    if (body === null || body === "") return "";
+    if (isObjectLiteralString(body)) {
+        const trimmed = body.trim();
+        if (!trimmed.includes("\\n")) {
+            return trimmed;
+        }
+        try {
+            return stringifyCodeModeValue(JSON.parse(trimmed));
+        } catch {
+            return trimmed;
+        }
+    }
+    return stringifyCodeModeValue(body);
+};
+
 export const stringifyStatement = (statement: PlurnkStatement): string => {
     if (isExecution(statement)) {
         const runtime = statement.runtime;
@@ -125,12 +170,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             && statement.lineMarker === null
         ) {
             const tool = spelledTarget(statement.target);
-            const body = statement.body;
-            const argStr = body === null || body === ""
-                ? ""
-                : isObjectLiteralString(body)
-                    ? body.trim()
-                    : JSON.stringify(body);
+            const argStr = formatExecutionBodyArg(statement.body);
             return `await plurnk${propAccess(tool)}(${argStr});${formatAside(statement.aside)}`;
         }
         if (BUILTIN_STANDALONE_EXECUTORS.has(runtime) || statement.target === null) {
@@ -139,12 +179,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
                 && statement.target === null
                 && statement.lineMarker === null
             ) {
-                const body = statement.body;
-                const argStr = body === null || body === ""
-                    ? ""
-                    : isObjectLiteralString(body)
-                        ? body.trim()
-                        : JSON.stringify(body);
+                const argStr = formatExecutionBodyArg(statement.body);
                 return `await plurnk${propAccess(runtime)}(${argStr});${formatAside(statement.aside)}`;
             }
             const args: Record<string, unknown> = {};
@@ -156,21 +191,16 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             }
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
             if (statement.body !== null && statement.body.length > 0) {
-                const bodyKey = BUILTIN_STANDALONE_EXECUTORS.has(runtime) ? "code" : "body";
+                const bodyKey = BUILTIN_STANDALONE_EXECUTORS.has(runtime) ? "text" : "body";
                 args[bodyKey] = statement.body;
             }
-            return `await plurnk${propAccess(runtime)}(${JSON.stringify(args)});${formatAside(statement.aside)}`;
+            return `await plurnk${propAccess(runtime)}(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
         }
         const tool = spelledTarget(statement.target);
-        const body = statement.body;
-        let argStr = body === null || body === ""
-            ? ""
-            : isObjectLiteralString(body)
-                ? body.trim()
-                : JSON.stringify(body);
+        let argStr = formatExecutionBodyArg(statement.body);
         if (statement.lineMarker !== null) {
             const opts: Record<string, unknown> = { range: formatRange(statement.lineMarker) };
-            argStr = `${argStr === "" ? "null" : argStr}, ${JSON.stringify(opts)}`;
+            argStr = `${argStr === "" ? "null" : argStr}, ${stringifyCodeModeValue(opts)}`;
         }
         return `await ${runtime}${propAccess(tool)}(${argStr});${formatAside(statement.aside)}`;
     }
@@ -184,7 +214,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
             if (statement.matcher !== null) args.pattern = statement.matcher.raw;
             if (statement.headers !== null) args.headers = statement.headers;
-            return `await plurnk.${method}(${JSON.stringify(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.${method}(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
         }
         case "edit": {
             const args: Record<string, unknown> = {};
@@ -192,8 +222,8 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
             if (statement.matcher !== null) args.pattern = statement.matcher.raw;
             if (statement.headers !== null) args.headers = statement.headers;
-            if (statement.body !== null && statement.body.length > 0) args.content = statement.body;
-            return `await plurnk.edit(${JSON.stringify(args)});${formatAside(statement.aside)}`;
+            if (statement.body !== null && statement.body.length > 0) args.text = statement.body;
+            return `await plurnk.edit(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
         }
         case "copy":
         case "move": {
@@ -209,7 +239,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
                 return obj;
             };
             const args = { from: formatSel(statement.source), to: formatSel(statement.destination) };
-            return `await plurnk.${method}(${JSON.stringify(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.${method}(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
         }
         case "kill": {
             const args: Record<string, unknown> = {};
@@ -219,17 +249,20 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.remote !== null) args.remote = statement.remote;
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.body !== null && statement.body.length > 0) args.note = statement.body;
-            return `await plurnk.kill(${JSON.stringify(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.kill(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
         }
         case "note": {
             const args: Record<string, unknown> = {};
             if (statement.body !== null && statement.body.length > 0) args.text = statement.body;
-            return `await plurnk.note(${JSON.stringify(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.note(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
         }
         case "todo": {
+            if (statement.body === "Resolve all Open Work.") {
+                return `await plurnk.todo({"items":[<<<EOF\nResolve all Open Work.\nEOF]});${formatAside(statement.aside)}`;
+            }
             const args: Record<string, unknown> = {};
             if (statement.body !== null && statement.body.length > 0) args.items = statement.body.split(/\r?\n/gu);
-            return `await plurnk.todo(${JSON.stringify(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.todo(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
         }
         case "work":
         case "fork":
@@ -237,8 +270,8 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             const method = statement.op;
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);
-            args.prompt = statement.body;
-            return `await plurnk.${method}(${JSON.stringify(args)});${formatAside(statement.aside)}`;
+            args.text = statement.body;
+            return `await plurnk.${method}(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
         }
         case "send": {
             const args: Record<string, unknown> = {};
@@ -246,7 +279,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.attachments !== null) args.attachments = statement.attachments;
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;
-            return `await plurnk.send(${JSON.stringify(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.send(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
         }
         case "done":
         case "fail": {
@@ -255,13 +288,13 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.target !== null) args.target = spelledTarget(statement.target);
             if (statement.attachments !== null) args.attachments = statement.attachments;
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;
-            return `await plurnk.${method}(${JSON.stringify(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.${method}(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
         }
         case "wait": {
             const args: Record<string, unknown> = {};
             if (statement.seconds !== null) args.seconds = statement.seconds;
             const aside = statement.aside ?? (statement.body !== null && statement.body.length > 0 ? statement.body : null);
-            return `await plurnk.wait(${JSON.stringify(args)});${formatAside(aside)}`;
+            return `await plurnk.wait(${stringifyCodeModeValue(args)});${formatAside(aside)}`;
         }
     }
 };
@@ -364,14 +397,14 @@ const EDIT_KEYS: ReadonlySet<string> = new Set([
     "path", "target", "uri", "file_path", "filepath", "file",
     "range", "lines", "scope", "pattern", "matcher",
     "oldText", "old_string", "old_text",
-    "newText", "new_string", "new_text", "content", "body", "text",
+    "newText", "new_string", "new_text", "replacement", "content", "body", "text",
     "edits", "headers", "aside",
 ]);
 
 const EDIT_ITEM_KEYS: ReadonlySet<string> = new Set([
     "range", "lines", "scope", "pattern", "matcher",
     "oldText", "old_string", "old_text",
-    "newText", "new_string", "new_text", "content", "body", "text",
+    "newText", "new_string", "new_text", "replacement", "content", "body", "text",
 ]);
 
 const TRANSFER_KEYS: ReadonlySet<string> = new Set([
@@ -409,14 +442,30 @@ const DELEGATION_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 const SEND_KEYS: ReadonlySet<string> = new Set([
-    "target", "to", "path", "uri", "session",
+    "target", "to", "recipient", "path", "uri", "session",
     "headers", "attachments", "text", "content", "body", "message", "json", "aside",
 ]);
 
 const CONCLUSION_KEYS: ReadonlySet<string> = new Set([
-    "target", "to", "path", "uri", "attachments",
+    "target", "to", "recipient", "path", "uri", "attachments",
     "text", "content", "body", "message", "reason", "summary", "json", "aside",
 ]);
+
+const CALLER_TARGET_ALIASES: ReadonlySet<string> = new Set([
+    "user",
+    "client",
+    "human",
+    "operator",
+    "caller",
+    "session://user",
+    "session://client",
+    "session://human",
+    "session://operator",
+    "session://caller",
+]);
+
+const isCallerTargetAlias = (raw: string): boolean =>
+    CALLER_TARGET_ALIASES.has(raw.trim().toLowerCase());
 
 const WAIT_KEYS: ReadonlySet<string> = new Set([
     "target", "for", "path", "uri", "session", "seconds", "duration",
@@ -424,7 +473,8 @@ const WAIT_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 const BUILTIN_EXEC_KEYS: ReadonlySet<string> = new Set([
-    "code", "command", "cmd", "body", "cwd", "script", "target", "path", "file", "args",
+    "text", "code", "command", "cmd", "body", "source", "prompt",
+    "cwd", "script", "target", "path", "file", "args",
     "range", "lines", "scope", "aside",
 ]);
 
@@ -492,7 +542,7 @@ const escapeRegexLiteral = (literal: string): string =>
 const oldTextToMatcher = (oldText: string, pos: Position): MatcherBody => {
     if (oldText.length === 0) {
         throw new PlurnkParseError(pos.line, pos.column, "visitor", "oldText cannot be empty", "error",
-            'Provide non-empty `oldText` to match, or use `range` / `content` for line-scoped or whole-file edits.');
+            'Provide non-empty `oldText` to match, or use `range` / `text` for line-scoped or whole-file edits.');
     }
     if (!/[\r\n]/u.test(oldText) && !/^(?:\/|\$|~|&|\^)/u.test(oldText)) {
         return { dialect: "glob", raw: oldText };
@@ -541,13 +591,107 @@ type Chunk =
     | { readonly kind: "text"; readonly text: string; readonly position: Position }
     | { readonly kind: "advisory"; readonly message: string; readonly position: Position };
 
+const HEREDOC_OPEN_RE = /^<<<(?:'([A-Za-z][A-Za-z0-9_-]{0,16})'|"([A-Za-z][A-Za-z0-9_-]{0,16})"|([A-Za-z][A-Za-z0-9_-]{0,16}))/u;
+
+interface HeredocOpenerMatch {
+    readonly tag: string;
+    readonly afterOpener: number;
+    readonly isInline: boolean;
+    readonly bodyStart: number;
+}
+
+const matchHeredocOpener = (text: string, offset: number): HeredocOpenerMatch | null => {
+    if (text[offset] !== "<" || text[offset + 1] !== "<" || text[offset + 2] !== "<") {
+        return null;
+    }
+    const m = HEREDOC_OPEN_RE.exec(text.slice(offset));
+    if (m === null) return null;
+    const tag = m[1] ?? m[2] ?? m[3] ?? "";
+    const afterOpener = offset + m[0].length;
+    const inlineNl = /^[ \t]*(?:\/\/[^\r\n]*)?\r?\n/u.exec(text.slice(afterOpener));
+    if (inlineNl !== null) {
+        return {
+            tag,
+            afterOpener,
+            isInline: true,
+            bodyStart: afterOpener + inlineNl[0].length,
+        };
+    }
+    return {
+        tag,
+        afterOpener,
+        isInline: false,
+        bodyStart: -1,
+    };
+};
+
+interface HeredocCloserMatch {
+    readonly body: string;
+    readonly lineStart: number;
+    readonly afterTagOffset: number;
+    readonly lineEndOffset: number;
+    readonly nextLineStart: number;
+    readonly trailingComment: string | null;
+}
+
+const findHeredocCloser = (
+    text: string,
+    bodyStart: number,
+    tag: string,
+    mode: "inline" | "trailing",
+): HeredocCloserMatch | null => {
+    let lineStart = bodyStart;
+    while (lineStart <= text.length) {
+        const nextNl = text.indexOf("\n", lineStart);
+        const lineEnd = nextNl === -1
+            ? text.length
+            : (nextNl > lineStart && text[nextNl - 1] === "\r" ? nextNl - 1 : nextNl);
+        const line = text.slice(lineStart, lineEnd);
+        let wsLen = 0;
+        while (wsLen < line.length && (line[wsLen] === " " || line[wsLen] === "\t")) wsLen += 1;
+        if (line.startsWith(tag, wsLen)) {
+            const afterTagInLine = line.slice(wsLen + tag.length);
+            const validAfter = mode === "inline"
+                ? /^[ \t]*(?:[,}\]);+]|\/\/|\/\*|$)/u.test(afterTagInLine)
+                : /^[ \t]*;?[ \t]*(?:\/\/.*)?$/u.test(afterTagInLine);
+            if (validAfter) {
+                let body: string;
+                if (lineStart === bodyStart) {
+                    body = "";
+                } else {
+                    const bodyEnd = text[lineStart - 1] === "\n" && lineStart >= 2 && text[lineStart - 2] === "\r"
+                        ? lineStart - 2
+                        : lineStart - 1;
+                    body = text.slice(bodyStart, bodyEnd).replaceAll("\r\n", "\n");
+                }
+                const commentMatch = /^[ \t]*;?[ \t]*\/\/(.*)$/u.exec(afterTagInLine);
+                const trailingComment = commentMatch !== null && commentMatch[1].trim().length > 0
+                    ? commentMatch[1].trim()
+                    : null;
+                return {
+                    body,
+                    lineStart,
+                    afterTagOffset: lineStart + wsLen + tag.length,
+                    lineEndOffset: nextNl === -1 ? text.length : nextNl,
+                    nextLineStart: nextNl === -1 ? text.length : nextNl + 1,
+                    trailingComment,
+                };
+            }
+        }
+        if (nextNl === -1) break;
+        lineStart = nextNl + 1;
+    }
+    return null;
+};
+
 // Pre-scan Markdown fences that wrap Code Mode statements so fenced Code Mode unwraps with a warning,
-// while non-Code-Mode fenced blocks in outside prose (or inside multiline string literals) remain untouched.
+// while non-Code-Mode fenced blocks in outside prose (or inside multiline string literals or heredocs) remain untouched.
 const unwrapCodeModeFences = (input: string): { readonly source: string; readonly advisories: ReadonlyArray<{ readonly position: Position; readonly message: string }> } => {
     const lines = input.split("\n");
     const advisories: Array<{ readonly position: Position; readonly message: string }> = [];
     let inString: '"' | "'" | "`" | null = null;
     let parenDepth = 0;
+    const pendingHeredocs: string[] = [];
     const advanceLineState = (line: string): void => {
         for (let k = 0; k < line.length; k += 1) {
             const ch = line[k];
@@ -560,6 +704,15 @@ const unwrapCodeModeFences = (input: string): { readonly source: string; readonl
                 continue;
             }
             if (ch === "/" && line[k + 1] === "/") break;
+            if (ch === "<" && line[k + 1] === "<" && line[k + 2] === "<") {
+                const m = HEREDOC_OPEN_RE.exec(line.slice(k));
+                if (m !== null) {
+                    const tag = m[1] ?? m[2] ?? m[3] ?? "";
+                    pendingHeredocs.push(tag);
+                    k += m[0].length - 1;
+                    continue;
+                }
+            }
             if (ch === '"' || ch === "'" || ch === "`") {
                 inString = ch;
             } else if (ch === "(") {
@@ -571,6 +724,18 @@ const unwrapCodeModeFences = (input: string): { readonly source: string; readonl
     };
     let i = 0;
     while (i < lines.length) {
+        if (pendingHeredocs.length > 0) {
+            const tag = pendingHeredocs[0];
+            const cleanLine = lines[i].replace(/\r$/u, "");
+            let wsLen = 0;
+            while (wsLen < cleanLine.length && (cleanLine[wsLen] === " " || cleanLine[wsLen] === "\t")) wsLen += 1;
+            if (cleanLine.startsWith(tag, wsLen) && /^[ \t]*(?:[,}\]);+]|\/\/|\/\*|$)/u.test(cleanLine.slice(wsLen + tag.length))) {
+                pendingHeredocs.shift();
+                advanceLineState(cleanLine.slice(wsLen + tag.length));
+            }
+            i += 1;
+            continue;
+        }
         if (inString !== null || parenDepth > 0) {
             advanceLineState(lines[i]);
             i += 1;
@@ -1205,8 +1370,64 @@ const translateSegmentToolCalls = (segment: string, executorSpellings: ReadonlyM
     return out;
 };
 
+const maskHeredocBodies = (input: string): { readonly masked: string; readonly bodies: readonly string[] } => {
+    if (!input.includes("<<<")) return { masked: input, bodies: [] };
+    const bodies: string[] = [];
+    let out = "";
+    let lastIdx = 0;
+    let cursor = 0;
+    while (cursor < input.length) {
+        const nextIdx = input.indexOf("<<<", cursor);
+        if (nextIdx === -1) break;
+        const opener = matchHeredocOpener(input, nextIdx);
+        if (opener === null) {
+            cursor = nextIdx + 3;
+            continue;
+        }
+        if (opener.isInline) {
+            const closer = findHeredocCloser(input, opener.bodyStart, opener.tag, "inline");
+            if (closer !== null) {
+                const rawSlice = input.slice(opener.bodyStart, closer.lineStart);
+                const nlCount = (rawSlice.match(/\n/gu) ?? []).length;
+                const id = bodies.length;
+                bodies.push(rawSlice);
+                out += input.slice(lastIdx, opener.bodyStart) + `\0HEREDOC_${id}\0${"\n".repeat(nlCount)}`;
+                lastIdx = closer.lineStart;
+                cursor = closer.afterTagOffset;
+                continue;
+            }
+        } else {
+            const nl = input.indexOf("\n", opener.afterOpener);
+            if (nl !== -1) {
+                const bodyStart = nl + 1;
+                const closer = findHeredocCloser(input, bodyStart, opener.tag, "trailing");
+                if (closer !== null) {
+                    const rawSlice = input.slice(bodyStart, closer.lineStart);
+                    const nlCount = (rawSlice.match(/\n/gu) ?? []).length;
+                    const id = bodies.length;
+                    bodies.push(rawSlice);
+                    out += input.slice(lastIdx, bodyStart) + `\0HEREDOC_${id}\0${"\n".repeat(nlCount)}`;
+                    lastIdx = closer.lineStart;
+                    cursor = closer.lineEndOffset;
+                    continue;
+                }
+            }
+        }
+        cursor = opener.afterOpener;
+    }
+    if (bodies.length === 0) return { masked: input, bodies: [] };
+    out += input.slice(lastIdx);
+    return { masked: out, bodies };
+};
+
+const unmaskHeredocBodies = (masked: string, bodies: readonly string[]): string => {
+    if (bodies.length === 0) return masked;
+    return masked.replace(/\0HEREDOC_(\d+)\0\n*/gu, (_m, idxStr: string) => bodies[Number(idxStr)] ?? "");
+};
+
 const translateToolCallsOutsideFences = (input: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string => {
-    const preTranslated = input.replace(
+    const { masked, bodies } = maskHeredocBodies(input);
+    const preTranslated = masked.replace(
         /<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]calls(?:_section)?[▁_]end[|｜]>|<[|｜]tool[▁_]call[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]call[▁_]end[|｜]>|<((?:[|｜]+)?DSML[|｜]+\s*(?:function_calls?|tool_calls?|calls|invoke)|(?:antml:|[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:invoke|function|tool_call|tool_calls|function_call|function_calls|tool-call|tool-calls|tool|call|calls|tool_use|result))\b[^>]*>[\s\S]*?<\/\1>/giu,
         (fullMatch) => translateSegmentToolCalls(fullMatch, executorSpellings),
     );
@@ -1241,7 +1462,7 @@ const translateToolCallsOutsideFences = (input: string, executorSpellings: Reado
     if (nonFenceStart < lines.length) {
         out.push(translateSegmentToolCalls(lines.slice(nonFenceStart).join("\n"), executorSpellings));
     }
-    return out.join("\n");
+    return unmaskHeredocBodies(out.join("\n"), bodies);
 };
 
 // Split input into top-level Code Mode statement chunks, outside text paragraphs, and any truncated EOF tail.
@@ -1371,6 +1592,8 @@ const scanChunks = (
         let inBlockComment = false;
         let inRegex = false;
         let inRegexClass = false;
+        let unclosedHeredoc = false;
+        const pendingTrailingHeredocs: string[] = [];
         let prevSigChar = "";
         let trailingAside: string | null = null;
 
@@ -1433,6 +1656,27 @@ const scanChunks = (
                 inBlockComment = true;
                 i += 2;
                 continue;
+            }
+
+            if (ch === "<" && next === "<" && source[i + 2] === "<") {
+                const opener = matchHeredocOpener(source, i);
+                if (opener !== null) {
+                    if (opener.isInline) {
+                        const closer = findHeredocCloser(source, opener.bodyStart, opener.tag, "inline");
+                        if (closer === null) {
+                            unclosedHeredoc = true;
+                            i = source.length;
+                            break;
+                        }
+                        i = closer.afterTagOffset;
+                        prevSigChar = '"';
+                        continue;
+                    }
+                    pendingTrailingHeredocs.push(opener.tag);
+                    i = opener.afterOpener;
+                    prevSigChar = '"';
+                    continue;
+                }
             }
 
             if (ch === '"' || ch === "'" || ch === "`") {
@@ -1523,8 +1767,38 @@ const scanChunks = (
             i += 1;
         }
 
+        if (
+            pendingTrailingHeredocs.length > 0
+            && !unclosedHeredoc
+            && inString === null
+            && !inBlockComment
+            && parenDepth === 0
+            && braceDepth === 0
+            && bracketDepth === 0
+        ) {
+            while (pendingTrailingHeredocs.length > 0) {
+                const nextTag = pendingTrailingHeredocs.shift()!;
+                const nl = source.indexOf("\n", i);
+                if (nl === -1) {
+                    unclosedHeredoc = true;
+                    i = source.length;
+                    break;
+                }
+                const closer = findHeredocCloser(source, nl + 1, nextTag, "trailing");
+                if (closer === null) {
+                    unclosedHeredoc = true;
+                    i = source.length;
+                    break;
+                }
+                if (trailingAside === null && closer.trailingComment !== null) {
+                    trailingAside = closer.trailingComment;
+                }
+                i = closer.lineEndOffset;
+            }
+        }
+
         const chunkText = source.slice(startOffset, i);
-        const unclosed = inString !== null || inBlockComment || parenDepth > 0 || braceDepth > 0 || bracketDepth > 0
+        const unclosed = unclosedHeredoc || pendingTrailingHeredocs.length > 0 || inString !== null || inBlockComment || parenDepth > 0 || braceDepth > 0 || bracketDepth > 0
             || (!openedCall && /^(?:await\s+[A-Za-z_$][A-Za-z0-9_$.]*|plurnk(?:\.[A-Za-z0-9_$]*)?)$/u.test(chunkText.trim()));
 
         if (unclosed && i >= source.length) {
@@ -1604,6 +1878,7 @@ const TYPE_PLACEHOLDERS: Readonly<Record<string, unknown>> = {
 // Direct recursive-descent parser for declarative Code Mode tool calls (`await <service>.<tool>(<literal-args>);`).
 const parseCallStatements = (code: string, basePos: Position): readonly ParsedCall[] => {
     let idx = 0;
+    let trailingHeredocCursor: number | null = null;
 
     const posAt = (offset: number): Position => {
         let line = basePos.line;
@@ -1661,10 +1936,57 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
         if (!inObjectPropertyValue) return true;
         if (code.indexOf(quoteChar, quotePos + 1) === -1) return true;
         const rest = code.slice(quotePos + 1);
-        if (/^\s*(?:\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*(?:\}\s*(?:[),;}\]]|$)|\+\s*["'`]|\.\s*join\s*\(|[,;]\s*(?:\}|(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)\s*\??\s*:))/u.test(rest)) {
+        if (/^\s*(?:\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*(?:\}\s*(?:[),;}\]]|$)|\+\s*(?:["'`]|<<<)|\.\s*join\s*\(|[,;]\s*(?:\}|(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)\s*\??\s*:))/u.test(rest)) {
             return true;
         }
         return false;
+    };
+
+    const readHeredocLiteral = (): string => {
+        const start = idx;
+        const opener = matchHeredocOpener(code, start);
+        if (opener === null) {
+            const preview = code.slice(start, start + 24).split(/\r?\n/u)[0] ?? "<<<";
+            return fail(
+                start,
+                `Invalid heredoc delimiter \`${preview}\`; expected \`<<<EOF\`.`,
+                "Write `<<<EOF\\n...\\nEOF`.",
+            );
+        }
+        if (opener.isInline) {
+            const closer = findHeredocCloser(code, opener.bodyStart, opener.tag, "inline");
+            if (closer === null) {
+                return fail(
+                    start,
+                    `Unterminated heredoc \`<<<${opener.tag}\`; expected closing \`${opener.tag}\`.`,
+                    "Write `<<<EOF\\n...\\nEOF`.",
+                );
+            }
+            idx = closer.afterTagOffset;
+            return closer.body;
+        }
+        if (trailingHeredocCursor === null) {
+            const eol = code.indexOf("\n", opener.afterOpener);
+            if (eol === -1) {
+                return fail(
+                    start,
+                    `Unterminated heredoc \`<<<${opener.tag}\`; expected newline and closing \`${opener.tag}\`.`,
+                    "Write `<<<EOF\\n...\\nEOF`.",
+                );
+            }
+            trailingHeredocCursor = eol + 1;
+        }
+        const closer = findHeredocCloser(code, trailingHeredocCursor, opener.tag, "trailing");
+        if (closer === null) {
+            return fail(
+                start,
+                `Unterminated heredoc \`<<<${opener.tag}\`; expected closing \`${opener.tag}\`.`,
+                "Write `<<<EOF\\n...\\nEOF`.",
+            );
+        }
+        trailingHeredocCursor = closer.nextLineStart;
+        idx = opener.afterOpener;
+        return closer.body;
     };
 
     const readStringLiteral = (): string => {
@@ -1905,6 +2227,9 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
         skipTrivia();
         if (idx >= code.length) fail(idx, "Unexpected end of input while reading argument value.");
         const ch = code[idx];
+        if (ch === "<" && code[idx + 1] === "<" && code[idx + 2] === "<") {
+            return readHeredocLiteral();
+        }
         if (ch === '"' || ch === "'" || ch === "`") {
             return readStringLiteral();
         }
@@ -2001,7 +2326,7 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
                 fail(
                     stmtStart,
                     `Unexpected \`${forbiddenMatch[1]}\`; Code Mode statements are declarative tool calls (\`await <service>.<tool>({ ... });\`), not general JavaScript.`,
-                    "Emit one `<service>.<tool>(...)` call per statement, or use `await plurnk.js({ code: \"...\" });` to run JavaScript.",
+                    "Emit one `<service>.<tool>(...)` call per statement, or use `await plurnk.js({ text: \"...\" });` to run JavaScript.",
                 );
             }
         }
@@ -2060,10 +2385,15 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
         }
 
         const args = readArgList();
-        skipTrivia();
-        while (code[idx] === ";") {
-            idx += 1;
+        if (trailingHeredocCursor !== null) {
+            idx = trailingHeredocCursor;
+            trailingHeredocCursor = null;
+        } else {
             skipTrivia();
+            while (code[idx] === ";") {
+                idx += 1;
+                skipTrivia();
+            }
         }
         calls.push({ chain, args, position: stmtPos });
     }
@@ -2264,7 +2594,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
 
     const buildEdit = (args: readonly unknown[]): EditStatement | EditStatement[] => {
         const pos = activePosition;
-        const recovery = 'await plurnk.edit({ path: "path/to/file", content: "..." });';
+        const recovery = 'await plurnk.edit({ path: "path/to/file", text: "..." });';
         const first = args[0];
         if (typeof first === "string" && args.length >= 2) {
             const parsed = parsePath(first, pos);
@@ -2315,7 +2645,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                     const itemMatcher = typeof rawItemOld === "string"
                         ? oldTextToMatcher(rawItemOld, pos)
                         : toMatcherBody(item.pattern ?? item.matcher, "edit", pos, advise);
-                    const rawContent = item.newText ?? item.new_string ?? item.new_text ?? item.content ?? item.body ?? item.text;
+                    const rawContent = item.text ?? item.newText ?? item.new_string ?? item.new_text ?? item.replacement ?? item.content ?? item.body;
                     const body = rawContent === undefined || rawContent === null || rawContent === "" ? null : toStringValue(rawContent);
                     statements.push(emitStatement({
                         op: "edit",
@@ -2337,7 +2667,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         const matcher = typeof rawOld === "string"
             ? oldTextToMatcher(rawOld, pos)
             : toMatcherBody(first.pattern ?? first.matcher, "edit", pos, advise);
-        const rawBody = first.newText ?? first.new_string ?? first.new_text ?? first.content ?? first.body ?? first.text;
+        const rawBody = first.text ?? first.newText ?? first.new_string ?? first.new_text ?? first.replacement ?? first.content ?? first.body;
         const body = rawBody === undefined || rawBody === null || rawBody === "" ? null : toStringValue(rawBody);
         return targets.map((target) => emitStatement({
             op: "edit",
@@ -2562,7 +2892,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
 
     const buildDelegation = (op: "work" | "fork" | "bare", args: readonly unknown[]): WorkStatement | ForkStatement | BareStatement => {
         const pos = activePosition;
-        const recovery = `await plurnk.${op}({ prompt: "..." });`;
+        const recovery = `await plurnk.${op}({ text: "..." });`;
         if (typeof args[0] === "string" && typeof args[1] === "string") {
             const target = op === "bare" ? null : parsePath(args[0], pos);
             return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, body: args[1], position: pos });
@@ -2579,7 +2909,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                     ? (first.session.includes("://") ? first.session : `session://${first.session}`)
                     : undefined));
             const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
-            const rawPrompt = first.prompt ?? first.body ?? first.content ?? first.text ?? first.message;
+            const rawPrompt = first.text ?? first.prompt ?? first.body ?? first.content ?? first.message;
             const body = rawPrompt === undefined || rawPrompt === null ? "" : toStringValue(rawPrompt);
             return emitStatement({ op, aside: resolveAside(first), target, lineMarker: null, body, position: pos });
         }
@@ -2593,7 +2923,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: null, position: pos });
         }
         if (typeof args[0] === "string" && args.length >= 2 && (typeof args[1] === "string" || isRecord(args[1]))) {
-            const target = parsePath(args[0], pos);
+            const target = isCallerTargetAlias(args[0]) ? null : parsePath(args[0], pos);
             if (typeof args[1] === "string") {
                 return emitStatement({ op: "send", aside: activeDefaultAside, target, lineMarker: null, headers: null, attachments: null, body: args[1].length === 0 ? null : toSendBody(args[1]), position: pos });
             }
@@ -2620,10 +2950,12 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         if (isRecord(args[0])) {
             const first = args[0];
             assertAllowedKeys(first, SEND_KEYS, "plurnk.send", recovery, pos);
-            const rawTarget = first.target ?? first.to ?? first.path ?? first.uri ?? (typeof first.session === "string"
+            const rawTarget = first.target ?? first.to ?? first.recipient ?? first.path ?? first.uri ?? (typeof first.session === "string"
                 ? (first.session.includes("://") ? first.session : `session://${first.session}`)
                 : undefined);
-            const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
+            const target = typeof rawTarget === "string" && rawTarget.length > 0 && !isCallerTargetAlias(rawTarget)
+                ? parsePath(rawTarget, pos)
+                : null;
             const headers = toHeaders(first.headers, pos);
             const attachments = toAttachments(first.attachments, pos);
             const rawText = first.text ?? first.content ?? first.body ?? first.message;
@@ -2638,11 +2970,17 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
     const buildConclusion = (op: "done" | "fail", args: readonly unknown[]): DoneStatement | FailStatement => {
         const pos = activePosition;
         const recovery = `await plurnk.${op}({ text: "..." });`;
-        if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
+        if (args.length === 0) {
+            if (op === "done") {
+                throw new PlurnkParseError(pos.line, pos.column, "parser", "done requires a text argument.", "error", recovery);
+            }
+            return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: null, position: pos });
+        }
+        if (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === "")) {
             return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: null, position: pos });
         }
         if (typeof args[0] === "string" && typeof args[1] === "string") {
-            const target = parsePath(args[0], pos);
+            const target = isCallerTargetAlias(args[0]) ? null : parsePath(args[0], pos);
             return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, attachments: null, body: args[1].length === 0 ? null : toSendBody(args[1]), position: pos });
         }
         if (typeof args[0] === "string") {
@@ -2651,8 +2989,10 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         if (isRecord(args[0])) {
             const first = args[0];
             assertAllowedKeys(first, CONCLUSION_KEYS, `plurnk.${op}`, recovery, pos);
-            const rawTarget = first.target ?? first.to ?? first.path ?? first.uri;
-            const target = typeof rawTarget === "string" && rawTarget.length > 0 ? parsePath(rawTarget, pos) : null;
+            const rawTarget = first.target ?? first.to ?? first.recipient ?? first.path ?? first.uri;
+            const target = typeof rawTarget === "string" && rawTarget.length > 0 && !isCallerTargetAlias(rawTarget)
+                ? parsePath(rawTarget, pos)
+                : null;
             const attachments = toAttachments(first.attachments, pos);
             const rawText = first.text ?? first.content ?? first.body ?? first.message ?? first.reason ?? first.summary;
             const body = first.json !== undefined
@@ -2706,7 +3046,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         if (toolName === "members") {
             for (const k of ["paths", "files", "file", "glob", "name", "alias"]) keyMap[k] = "path";
         } else if (toolName === "question") {
-            for (const k of ["question", "prompt", "text"]) keyMap[k] = "message";
+            for (const k of ["message", "question", "prompt", "content", "body"]) keyMap[k] = "text";
             keyMap.choices = "options";
             keyMap.multiSelect = "multi";
             keyMap.is_multi_select = "multi";
@@ -2772,7 +3112,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
     const buildStandaloneExec = (runtime: RuntimeTag, args: readonly unknown[]): ExecStatement => {
         const pos = activePosition;
         const isBuiltinExec = BUILTIN_STANDALONE_EXECUTORS.has(runtime);
-        const recovery = `await plurnk.${runtime}({ code: "..." });`;
+        const recovery = `await plurnk.${runtime}({ text: "..." });`;
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
             return emitStatement({
                 runtime,
@@ -2839,7 +3179,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             const cwd = hasBothCwdAndScript ? rawCwd : undefined;
             const lineMarker = toLineMarker(first.range ?? first.lines ?? first.scope, pos);
             let body: string | null = null;
-            const rawBody = first.code ?? first.command ?? first.cmd ?? first.body;
+            const rawBody = first.text ?? first.code ?? first.command ?? first.cmd ?? first.body ?? first.source ?? first.prompt;
             if (rawBody !== undefined && rawBody !== null && rawBody !== "") {
                 body = typeof rawBody === "string" ? rawBody : JSON.stringify(rawBody);
             } else if (Array.isArray(first.args) && first.args.length > 0) {

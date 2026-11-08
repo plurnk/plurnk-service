@@ -7,7 +7,7 @@ Select text or AST nodes with literal, glob (*, **, ?(p), @(p), !(p)), regex (/r
 A path chooses resources; a pattern selects within the addressed channel.
 The selection has the same meaning across operations. `plurnk.find` reports matches;
 `plurnk.read` shows their source lines and locations; `plurnk.edit` replaces each selected span
-with its literal `content`. `plurnk.copy` transfers selected text; `plurnk.move` transfers then removes
+with its literal `text`. `plurnk.copy` transfers selected text; `plurnk.move` transfers then removes
 it; textual `plurnk.kill` removes it. Surrounding text displayed by `read` is not part of
 the match. Multiple fragments are concatenated in source order without added
 separators.
@@ -56,8 +56,8 @@ For source `const first = connect(); const second = connect();`:
 | --- | --- |
 | `plurnk.find({ path: "client.js", pattern: "/connect/" })` | Two locations: `<1,15,1,22>` and `<1,41,1,48>` |
 | `plurnk.read({ path: "client.js", pattern: "/connect/" })` | The source line once, with both match locations |
-| `plurnk.edit({ path: "client.js", pattern: "/connect/", content: "open" })` | `const first = open(); const second = open();` |
-| `plurnk.edit({ path: "client.js", range: "1,15,1,22", pattern: "/connect/", content: "open" })` | Only the first occurrence changes |
+| `plurnk.edit({ path: "client.js", pattern: "/connect/", text: "open" })` | `const first = open(); const second = open();` |
+| `plurnk.edit({ path: "client.js", range: "1,15,1,22", pattern: "/connect/", text: "open" })` | Only the first occurrence changes |
 
 A source scope narrows mutation and transfer selections to complete matches inside it.
 A `read` shows the whole selection when it fits the budget and its size otherwise; what a later pattern selects is never limited by what was shown.
@@ -65,26 +65,26 @@ Coordinates always refer to the addressed source channel, not receipt
 decorations or another channel's rendered text.
 
 Regex anchors `^` and `$` address line boundaries; a match may span lines.
-`edit`'s `content` is literal replacement text, not regex substitution syntax.
+`edit`'s `text` is literal replacement text, not regex substitution syntax.
 
 ## Elements and text
 
 For source `<root><item>A</item><other>B</other></root>`:
 
-await plurnk.edit({ path: "items.xml", pattern: "//item/text()", content: "C" });
+await plurnk.edit({ path: "items.xml", pattern: "//item/text()", text: "C" });
 
 produces `<root><item>C</item><other>B</other></root>`.
 
-await plurnk.edit({ path: "items.xml", pattern: "//item", content: "<label>C</label>" });
+await plurnk.edit({ path: "items.xml", pattern: "//item", text: "<label>C</label>" });
 
 produces `<root><label>C</label><other>B</other></root>`. `label` is an ordinary
 XML element name in the replacement text, not Plurnk syntax.
 
-An empty `content` removes the selected source text. In mixed content
+An empty `text` removes the selected source text. In mixed content
 `<item>A<b>B</b>C</item>`, `//item/text()` selects `A` and `C`, not the nested
-`B`; replacement `content` `"X"` produces `<item>X<b>B</b>X</item>`.
+`B`; replacement `text` `"X"` produces `<item>X<b>B</b>X</item>`.
 
-For `<item id="old"/>`, `//item/@id` selects `id="old"`. `edit` `content`
+For `<item id="old"/>`, `//item/@id` selects `id="old"`. `edit` `text`
 `"id=\"new\""` replaces that attribute; `kill` removes it. Entity spellings and
 quotes are preserved by `copy`: text `A &amp; B` copies as `A &amp; B`.
 
@@ -92,20 +92,20 @@ quotes are preserved by `copy`: text `A &amp; B` copies as `A &amp; B`.
 
 For source `{"host":"old","port":80}`:
 
-await plurnk.edit({ path: "settings.json", pattern: "$.host", content: "\"new\"" });
+await plurnk.edit({ path: "settings.json", pattern: "$.host", text: "\"new\"" });
 
 produces `{"host":"new","port":80}`. The selected value includes its original
-quotes and escapes, not the property name or colon. The replacement `content` is
+quotes and escapes, not the property name or colon. The replacement `text` is
 source text: `edit` does not quote, escape, or serialize it for you.
 
-`content: "new"` would instead produce `{"host":new,"port":80}`, which is invalid
-JSON. `content: "null"` assigns JSON null; `content: "\"null\""` assigns the string `null`.
-Selecting only the substring with `/old/` lets `content: "new"` retain the existing
+`text: "new"` would instead produce `{"host":new,"port":80}`, which is invalid
+JSON. `text: "null"` assigns JSON null; `text: "\"null\""` assigns the string `null`.
+Selecting only the substring with `/old/` lets `text: "new"` retain the existing
 quotes. The quotes follow what was selected, not a separate `edit` requirement.
 
 Likewise, `$[0]` selects an array element's value, not an adjacent comma.
 Replacing the containing array can remove an element structurally;
-empty-content replacement only removes the selected text.
+empty-text replacement only removes the selected text.
 
 ## Bytes
 
