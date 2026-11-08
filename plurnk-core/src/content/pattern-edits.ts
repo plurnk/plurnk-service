@@ -61,8 +61,42 @@ export default class PatternEdits {
                 || compare(left.endLine, left.endColumn, right.endLine, right.endColumn));
     }
 
-    static replacements(spans: readonly TextRegion[], body: string): PatternEdit[] {
-        return spans.map(({ startLine, startColumn, endLine, endColumn }) => ({ marker: { marks: [startLine, startColumn, endLine, endColumn] as [number, number, number, number] }, body }));
+    static #isValidJsonValue(raw: string): boolean {
+        try {
+            JSON.parse(raw);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    static replacements(
+        spans: readonly TextRegion[],
+        body: string,
+        context?: { readonly content: string; readonly mimetype: string; readonly dialect: MatcherBody["dialect"] },
+    ): PatternEdit[] {
+        const quoteJsonStrings = context !== undefined
+            && context.mimetype === "application/json"
+            && (context.dialect === "jsonpath" || context.dialect === "xpath")
+            && body.length > 0
+            && !PatternEdits.#isValidJsonValue(body);
+        const coordinates = quoteJsonStrings ? new TextCoordinates(context.content) : null;
+        return spans.map(({ startLine, startColumn, endLine, endColumn }) => {
+            let effectiveBody = body;
+            if (coordinates !== null && context !== undefined) {
+                const slice = context.content.slice(
+                    coordinates.offsetAtPosition(startLine, startColumn),
+                    coordinates.offsetAtPosition(endLine, endColumn),
+                );
+                if (slice.length >= 2 && slice.startsWith('"') && slice.endsWith('"')) {
+                    effectiveBody = JSON.stringify(body);
+                }
+            }
+            return {
+                marker: { marks: [startLine, startColumn, endLine, endColumn] as [number, number, number, number] },
+                body: effectiveBody,
+            };
+        });
     }
 
     static text(content: string, spans: readonly TextRegion[]): string {

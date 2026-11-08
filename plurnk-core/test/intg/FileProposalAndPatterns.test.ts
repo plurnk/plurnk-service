@@ -1024,6 +1024,10 @@ test("{§edit-pattern} {§edit} a jsonpath pattern with an empty body removes th
         assert.match(String(refused.problem?.type), /\/edit-format-invalid$/);
         assert.equal(await body(), '{"items": [\n  {"name": "b", "price": 50}\n]}');
 
+        const stringEdit = await dispatch(editStmt(urlPath("workspace", "/data.json"), "db.example", null, { dialect: "jsonpath", raw: "$.items[0].name" }));
+        assert.equal(stringEdit.status, 200, JSON.stringify(stringEdit));
+        assert.equal(await body(), '{"items": [\n  {"name": "db.example", "price": 50}\n]}');
+
         const r = await dispatch(editStmt(urlPath("workspace", "/data.json"), "", null, { dialect: "jsonpath", raw: "$.items[?(@.price > 20)]" }));
         assert.equal(r.status, 200, JSON.stringify(r));
         assert.equal(r.matched, 1);
