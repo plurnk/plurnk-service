@@ -569,9 +569,11 @@ export default class ProposalLifecycle {
                     : "/";
             return { type: "command", command, cwd };
         }
-        const targetPath = target.pathname
-            ?? target.scheme
-            ?? (typeof attrs.path === "string" ? attrs.path : null);
+        const nonEmpty = (value: unknown): string | null =>
+            typeof value === "string" && value.length > 0 ? value : null;
+        const targetPath = nonEmpty(target.pathname)
+            ?? nonEmpty(target.scheme)
+            ?? nonEmpty(attrs.path);
         const title = targetPath === null ? op : `${op} (${targetPath})`;
         const kind = ProposalLifecycle.#toolKindOf(op, target.scheme);
         const locations = targetPath !== null ? [{ path: targetPath }] : undefined;

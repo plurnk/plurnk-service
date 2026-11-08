@@ -650,10 +650,14 @@ describe("PlurnkParser Code Mode", () => {
             '<tool_call>{"name": "plurnk.note", "text": "Flat JSON tool call"}</tool_call>',
             // 5. Hallucinated `id` / `call_id` / `tool_call_id` in Code Mode options objects
             'await plurnk.read({ id: "call_1", call_id: "c2", tool_call_id: "tc3", path: "src/k.py" });',
+            // 6. Bare script filename in `text` for js/python3, session:// target on done, and plurnk["<service>"].<tool>
+            'await plurnk.js({ text: "report.mjs", cwd: "." })',
+            'await plurnk.done({ target: "session://main", text: "The codename is AURORA." })',
+            'await plurnk["verification-service"].verification_code({})',
         ].join("\n\n");
 
-        const ops = statementsOf(turn, ["sh", "plurnk"]);
-        assert.equal(ops.length, 17);
+        const ops = statementsOf(turn, ["sh", "js", "plurnk"]);
+        assert.equal(ops.length, 20);
         assert.equal((ops[0] as ExecStatement).runtime, "sh");
         assert.equal((ops[0] as ExecStatement).body, 'python -c "print(1)"');
         assert.equal((ops[1] as EditStatement).target?.raw, "src/a.py");
@@ -679,5 +683,13 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[14] as EditStatement).body, "w = 4");
         assert.equal((ops[15] as NoteStatement).body, "Flat JSON tool call");
         assert.equal((ops[16] as ReadStatement).target?.raw, "src/k.py");
+        assert.equal((ops[17] as ExecStatement).runtime, "js");
+        assert.equal((ops[17] as ExecStatement).target?.raw, "report.mjs");
+        assert.equal((ops[17] as ExecStatement).cwd, ".");
+        assert.equal((ops[17] as ExecStatement).body, null);
+        assert.equal((ops[18] as DoneStatement).target, null);
+        assert.equal((ops[18] as DoneStatement).body?.raw, "The codename is AURORA.");
+        assert.equal((ops[19] as ExecStatement).runtime, "verification-service");
+        assert.equal((ops[19] as ExecStatement).target?.raw, "verification_code");
     });
 });
