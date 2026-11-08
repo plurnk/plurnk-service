@@ -75,6 +75,28 @@ export default class DbProjectionCaps implements ProjectionCaps {
         }
     }
 
+    async validateContent(
+        content: string,
+        mimetype: string,
+        original: string | null = null,
+    ): Promise<string | null> {
+        if (content.length === 0) return null;
+        const mimetypes = this.#ctx.mimetypes;
+        if (mimetypes === undefined) return null;
+        if (original !== null && original.length > 0 && (await this.validateContent(original, mimetype, null)) !== null) {
+            return null;
+        }
+        try {
+            await mimetypes.process({ content, hint: mimetype }, { channels: [] });
+            return null;
+        } catch (cause) {
+            if (isMimetypeInputError(cause)) {
+                return ErrorDetail.preview(cause.cause ?? cause);
+            }
+            return null;
+        }
+    }
+
     async parseIssueTransition(
         original: string | null,
         updated: string,

@@ -47,6 +47,7 @@ export default class LoopDriver {
     readonly #strikes: StrikeRail;
     readonly #withWorkspaceTurn: WithWorkspaceTurn;
     readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
+    readonly #workspaceNotices = new Map<number, readonly Notice[]>();
     readonly #runTurn: (args: Parameters<TurnRunner["runTurn"]>[0]) => ReturnType<TurnRunner["runTurn"]>;
 
     constructor({ loopSignals, db, lifecycle, schemes, notices, strikes, withWorkspaceTurn, workspaceTurnStarting, runTurn }: {
@@ -98,7 +99,6 @@ export default class LoopDriver {
         const turnIds = await this.#lifecycle.turnIds(loopId);
         let modelTurnCount = await this.#lifecycle.modelTurnCount(loopId);
         let invalidEmissionRecoveryEntryId: number | null = null;
-        let workspaceNotices: readonly Notice[] = [];
         const loopAbort = new AbortController();
         // Native composition retains session cancellation for streams surviving a wait
         // without leaving one caller-signal listener per execution segment.
@@ -224,9 +224,14 @@ export default class LoopDriver {
                 const turn = await this.#withWorkspaceTurn(workspaceId, sessionId, async () => {
                     executionSignal.throwIfAborted();
                     const notices = await this.#workspaceTurnStarting?.({ workspaceId, sessionId, loopId }) ?? [];
-                    if (!isDeepStrictEqual(notices, workspaceNotices)) {
-                        for (const notice of notices) this.#notices.push(workspaceId, sessionId, loopId, notice);
-                        workspaceNotices = notices;
+                    const priorNotices = this.#workspaceNotices.get(workspaceId) ?? [];
+                    if (!isDeepStrictEqual(notices, priorNotices)) {
+                        for (const notice of notices) {
+                            if (!priorNotices.some((prior) => isDeepStrictEqual(prior, notice))) {
+                                this.#notices.push(workspaceId, sessionId, loopId, notice);
+                            }
+                        }
+                        this.#workspaceNotices.set(workspaceId, notices);
                     }
                     return observed( // {§observability-boundary}
                         "loop.turn",

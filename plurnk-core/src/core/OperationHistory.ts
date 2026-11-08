@@ -29,7 +29,7 @@ export default class OperationHistory {
         const seen = new Set<string>();
         for (const entry of entries) {
             const program = byTurn.get(OperationHistory.#turn(entry));
-            if (program === undefined || (entry.origin !== "model" && entry.origin !== "_plurnk")) continue;
+            if (program === undefined || (entry.origin !== "model" && entry.origin !== "_plurnk") || entry.source != null) continue;
             const ordinal = isRecord(entry.attrs) ? entry.attrs.emissionIndex : undefined;
             if (ordinal === undefined) continue;
             if (typeof ordinal !== "number" || !Number.isSafeInteger(ordinal) || ordinal < 0 || program[ordinal] === undefined) {

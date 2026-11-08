@@ -256,7 +256,7 @@ describe("{§html-readable-text} xpath addresses the parse5 tree with its source
         const elements = await h.query(html, "xpath", "//p");
         assert.deepEqual(elements[0].regions, [{ startLine: 2, startColumn: 8, endLine: 4, endColumn: 5 }]);
         const attributes = await h.query(html, "xpath", "//p/@title");
-        assert.deepEqual(attributes[0].regions, [{ startLine: 2, startColumn: 11, endLine: 2, endColumn: 26 }], "the selected attribute keeps its own lexical source");
+        assert.deepEqual(attributes[0].regions, [{ startLine: 2, startColumn: 18, endLine: 2, endColumn: 25 }], "the selected attribute keeps its own lexical value source");
         assert.equal(attributes[0].matched, "a&b");
     });
 });
@@ -547,7 +547,9 @@ describe("{§html-readable-text} both structural dialects address the source mar
 for (const { source, pattern, selected } of [
     { source: '<p>first<br>second</p><p>other', pattern: '//p', selected: ['<p>first<br>second</p>', '<p>other'] },
     { source: '<ul><li>A<li>B</ul>', pattern: '//li', selected: ['<li>A', '<li>B'] },
-    { source: '<a href = \'/here\'>here</a>', pattern: '//a/@href', selected: ["href = '/here'"] },
+    { source: '<a href = \'/here\'>here</a>', pattern: '//a/@href', selected: ['/here'] },
+    { source: '<input value=plain disabled>', pattern: '//input/@value', selected: ['plain'] },
+    { source: '<input value=plain disabled>', pattern: '//input/@disabled', selected: ['disabled'] },
     { source: '<p>left <b>bold</b> &amp; right</p>', pattern: '//p/text()', selected: ['left ', ' &amp; right'] },
     { source: '😀\r\n<p>😀&amp;</p>', pattern: '//p/text()', selected: ['😀&amp;'] },
     { source: '<script>if (a < b) f();</script>', pattern: '//script/text()', selected: ['if (a < b) f();'] },

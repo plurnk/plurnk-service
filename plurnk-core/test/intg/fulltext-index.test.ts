@@ -182,7 +182,9 @@ test("{§zero-width-column-one-insert} jsonpath on malformed-JSON entry returns 
     try {
         const k = new Workspace();
         const broken = '{"host": "db.internal", "pool":}';  // trailing-colon: not valid JSON
-        await k.edit(editStmt(urlPath("workspace", "/config.json"), broken), makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }));
+        const refused = await k.edit(editStmt(urlPath("workspace", "/config.json"), broken), makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }));
+        assert.equal(refused.status, 422, "editing/creating malformed JSON is rejected by format validation");
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/config.json", channel: "body", content: broken, mimetype: "application/json" });
 
         const r = await readThroughScheme("workspace", null,
             readStmt(urlPath("workspace", "/config.json")),

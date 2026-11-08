@@ -56,6 +56,7 @@ export default class SessionTranslator {
     readonly #concludedStreamStatusByEntryId = new Map<number, number>();
     readonly #concludedStreamStatusByTarget = new Map<string, number>();
     readonly #planIdByCoordinate = new Map<string, string>();
+    readonly #emittedConfigurationNotices = new Set<string>();
     #todoLoopSeq: number | null = null;
     #todoHistory: string[] = [];
 
@@ -740,6 +741,11 @@ export default class SessionTranslator {
     }
 
     notice(notice: Notice): AcpSessionUpdate[] {
+        if (notice.source === "engine:configuration") {
+            const key = JSON.stringify(notice);
+            if (this.#emittedConfigurationNotices.has(key)) return [];
+            this.#emittedConfigurationNotices.add(key);
+        }
         const severity = notice.level === "error"
             ? "error"
             : notice.level === "warn"

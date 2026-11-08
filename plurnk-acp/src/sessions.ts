@@ -934,14 +934,21 @@ export const resolveSessionBinding = async (
 
     const canonicalSessionId = formatSessionId(workspaceId, session.name);
     const acpSessionId = rawSessionId !== undefined && rawSessionId.length > 0 ? rawSessionId : canonicalSessionId;
-    const translator = new SessionTranslator({
-        acpSessionId,
-        workspaceId,
-        sessionId: session.id,
-        sessionName: session.name,
-        origin,
-        ...(historyPageChars !== undefined ? { historyPageChars } : {}),
-    });
+    const existingBound = peer.sessions.get(acpSessionId) ?? peer.sessions.get(canonicalSessionId);
+    const translator =
+        existingBound !== undefined &&
+        existingBound.workspaceId === workspaceId &&
+        existingBound.sessionId === session.id &&
+        existingBound.acpSessionId === acpSessionId
+            ? existingBound.translator
+            : new SessionTranslator({
+                  acpSessionId,
+                  workspaceId,
+                  sessionId: session.id,
+                  sessionName: session.name,
+                  origin,
+                  ...(historyPageChars !== undefined ? { historyPageChars } : {}),
+              });
 
     const bound: BoundSession = {
         acpSessionId,

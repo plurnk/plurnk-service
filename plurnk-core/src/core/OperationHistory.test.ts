@@ -35,6 +35,8 @@ test("{§emission-history} {§op-methods-op-dispatch}: a fan-out replays once wi
 test("{§emission-history}: missing legacy provenance leaves a receipt self-describing; malformed recorded provenance fails at its owner", () => {
     const operation = 'await plurnk.note({"text":"Memory."});';
     assert.equal(history(operation, [row(2, "note", undefined, "Memory.")]).paired.size, 0);
+    assert.equal(history(operation, [{ ...row(2, "send", 5, "pong"), origin: "_plurnk", source: "session://pong" }]).paired.size, 0,
+        "ambient rows from another session carry a source and never address the observer turn's emission");
     for (const ordinal of [-1, 0.5, 1, "0", null]) {
         assert.throws(() => history(operation, [row(2, "note", ordinal, "Memory.")]), /ordinal must address its frozen emission/u);
     }

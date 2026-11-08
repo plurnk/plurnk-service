@@ -245,14 +245,14 @@ for (const decision of ["accept", "reject", "drift"] as const) test(`{§zero-wid
         assert.equal((await creating).status, 200);
         const pending = deferred<number>();
         const editing = ctx.engine.dispatch({ ...ctx, sequence: 2, origin: "model", onDispatch: pending.resolve,
-            statement: { ...fileEditStmt("source.xml", 'id="new"'), matcher: { dialect: "xpath" as const, raw: "//item/@id" } } });
+            statement: { ...fileEditStmt("source.xml", 'new'), matcher: { dialect: "xpath" as const, raw: "//item/@id" } } });
         const id = await pending.promise;
         if (decision === "drift") await writeFile(join(root, "source.xml"), original.replace("old", "external"));
         ctx.engine.resolveProposal(id, decision === "reject" ? { decision: "reject", outcome: "declined" } : { decision: "accept" });
         const result = await editing;
         assert.equal(result.status, decision === "accept" ? 200 : decision === "reject" ? 400 : 409, JSON.stringify(result));
         assert.equal(await readFile(join(root, "source.xml"), "utf8"), decision === "accept"
-            ? '<root><item id="new" class="kept"/></root>' : decision === "drift" ? original.replace("old", "external") : original);
+            ? '<root><item id = "new" class="kept"/></root>' : decision === "drift" ? original.replace("old", "external") : original);
         if (decision !== "accept") assert.match(String(result.problem?.type), decision === "reject" ? /\/rejected$/ : /\/edit-collision$/);
     });
 });
@@ -962,13 +962,18 @@ test("{§edit-pattern} a node-selecting pattern replaces each node's whole regio
     } finally { await db.close(); }
 });
 
-test("{§edit-pattern} a jsonpath pattern with an empty body removes the selected nodes' text", async () => {
-    const { db, dispatch, body } = await setup('{"items": [\n  {"name": "a", "price": 10},\n  {"name": "b", "price": 50}\n]}', "/data.json");
+test("{§edit-pattern} {§edit} a jsonpath pattern with an empty body removes the selected nodes' text when valid and refuses when format-breaking", async () => {
+    const { db, dispatch, body } = await setup('{"items": [\n  {"name": "b", "price": 50}\n]}', "/data.json");
     try {
+        const refused = await dispatch(editStmt(urlPath("workspace", "/data.json"), "unquoted", null, { dialect: "jsonpath", raw: "$.items[?(@.price > 20)]" }));
+        assert.equal(refused.status, 422, JSON.stringify(refused));
+        assert.match(String(refused.problem?.type), /\/edit-format-invalid$/);
+        assert.equal(await body(), '{"items": [\n  {"name": "b", "price": 50}\n]}');
+
         const r = await dispatch(editStmt(urlPath("workspace", "/data.json"), "", null, { dialect: "jsonpath", raw: "$.items[?(@.price > 20)]" }));
         assert.equal(r.status, 200, JSON.stringify(r));
         assert.equal(r.matched, 1);
-        assert.equal(await body(), '{"items": [\n  {"name": "a", "price": 10},\n  \n]}');
+        assert.equal(await body(), '{"items": [\n  \n]}');
     } finally { await db.close(); }
 });
 
@@ -1160,15 +1165,15 @@ const cases = [
     { name: "regex", extension: "txt", pattern: "/needle/", content: TEXT, lines: TEXT_LINES, edited: "spare\none replacement end\nspare\nreplacement", copied: "needleneedle", removed: "spare\none  end\nspare\n" },
     { name: "full-text", extension: "txt", pattern: "~needle", content: TEXT, lines: TEXT_LINES, edited: "spare\none replacement end\nspare\nreplacement", copied: "needleneedle", removed: "spare\none  end\nspare\n" },
     { name: "XPath", extension: "xml", pattern: "//item", content: "<root>\n<item>needle</item>\n<other/>\n<item>needle</item>\n</root>", lines: TEXT_LINES, edited: "<root>\nreplacement\n<other/>\nreplacement\n</root>", copied: "<item>needle</item><item>needle</item>", removed: "<root>\n\n<other/>\n\n</root>" },
-    { name: "JSONPath", extension: "json", pattern: '$[?(@ == "needle")]', content: '[\n"needle",\n"spare",\n"needle"\n]', lines: TEXT_LINES, edited: '[\nreplacement,\n"spare",\nreplacement\n]', copied: '"needle""needle"', removed: '[\n,\n"spare",\n\n]' },
+    { name: "JSONPath", extension: "json", pattern: '$[?(@ == "needle")]', content: '[\n"needle",\n"spare",\n"needle"\n]', lines: TEXT_LINES, replacement: '"replacement"', edited: '[\n"replacement",\n"spare",\n"replacement"\n]', copied: '"needle""needle"', removed: null },
     { name: "graph definition", extension: "js", pattern: "&needle", content: "function needle() {}\nconst spare = 2;", lines: [1], edited: "replacement\nconst spare = 2;", copied: "function needle() {}", removed: "\nconst spare = 2;" },
     { name: "graph reference", extension: "js", pattern: "&<needle", content: "const value = needle(input); record(value);", lines: [1], edited: "const value = replacement(input); record(value);", copied: "needle", removed: "const value = (input); record(value);" },
     { name: "inline XPath element", extension: "xml", pattern: "//item", content: "<root><item>A</item><other>B</other></root>", lines: [1], edited: "<root>replacement<other>B</other></root>", copied: "<item>A</item>", removed: "<root><other>B</other></root>" },
     { name: "inline XPath text", extension: "xml", pattern: "//item/text()", content: "<root><item>A</item><other>B</other></root>", lines: [1], edited: "<root><item>replacement</item><other>B</other></root>", copied: "A", removed: "<root><item></item><other>B</other></root>" },
-    { name: "JSON member value", extension: "json", pattern: "$.host", content: '{"host":"old","port":80}', lines: [1], edited: '{"host":replacement,"port":80}', copied: '"old"', removed: '{"host":,"port":80}' },
-    { name: "XPath attribute", extension: "xml", pattern: "//item/@id", content: '<item id="old" class="other"/>', lines: [1], edited: '<item replacement class="other"/>', copied: 'id="old"', removed: '<item  class="other"/>' },
+    { name: "JSON member value", extension: "json", pattern: "$.host", content: '{"host":"old","port":80}', lines: [1], replacement: '"replacement"', edited: '{"host":"replacement","port":80}', copied: '"old"', removed: null },
+    { name: "XPath attribute", extension: "xml", pattern: "//item/@id", content: '<item id="old" class="other"/>', lines: [1], edited: '<item id="replacement" class="other"/>', copied: 'old', removed: '<item id="" class="other"/>' },
     { name: "XPath entity text", extension: "xml", pattern: "//item/text()", content: '<item>A &amp; B</item>', lines: [1], edited: '<item>replacement</item>', copied: 'A &amp; B', removed: '<item></item>' },
-    { name: "HTML attribute", extension: "html", pattern: "//input/@value", content: '<input value="old"><p>stay</p>', lines: [1], edited: '<input replacement><p>stay</p>', copied: 'value="old"', removed: '<input ><p>stay</p>' },
+    { name: "HTML attribute", extension: "html", pattern: "//input/@value", content: '<input value="old"><p>stay</p>', lines: [1], edited: '<input value="replacement"><p>stay</p>', copied: 'old', removed: '<input value=""><p>stay</p>' },
     { name: "CSV cell", extension: "csv", pattern: "$[0].name", content: 'name,age\n"old",42', lines: [2], edited: 'name,age\nreplacement,42', copied: '"old"', removed: 'name,age\n,42' },
     { name: "INI value", extension: "ini", pattern: "$.main.name", content: '[main]\nname = old', lines: [2], edited: '[main]\nname = replacement', copied: 'old', removed: '[main]\nname = ' },
     { name: "dotenv value", extension: "env", pattern: "$.NAME", content: 'NAME="old" # keep', lines: [1], edited: 'NAME=replacement # keep', copied: '"old"', removed: 'NAME= # keep' },
@@ -1196,10 +1201,11 @@ for (const specimen of cases) {
                 assert.equal(findItem?.kind, "statement");
                 if (findItem?.kind !== "statement" || findItem.statement.op !== "find") throw new Error("Expected parsed FIND");
                 const matcher = findItem.statement.matcher;
+                const replacement = "replacement" in specimen ? specimen.replacement : "replacement";
                 const code = transfer
                     ? `await plurnk.${operation.toLowerCase()}(${JSON.stringify({ from: source, to: destination })});`
                     : operation === "edit"
-                        ? `await plurnk.edit(${JSON.stringify({ path: source, content: "replacement" })});`
+                        ? `await plurnk.edit(${JSON.stringify({ path: source, text: replacement })});`
                         : `await plurnk.${operation.toLowerCase()}(${JSON.stringify({ path: source, pattern: specimen.pattern })});`;
                 const parsed = PlurnkParser.parseStatements(code);
                 assert.equal(parsed.items.length, 1, JSON.stringify(parsed));
@@ -1213,8 +1219,9 @@ for (const specimen of cases) {
                         : item.statement;
                 const result = await engine.dispatch({ ...env, statement, sequence: 1, origin: "client" });
                 const body = async (path: string) => (await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: path, name: "body" }))?.content;
+                const formatInvalidRemoval = (operation === "kill" || operation === "move") && specimen.removed === null;
                 const unchanged = operation === "kill" && specimen.removed === specimen.content;
-                assert.equal(result.status, transfer ? 201 : unchanged ? 304 : 200, JSON.stringify(result));
+                assert.equal(result.status, formatInvalidRemoval ? 422 : transfer ? 201 : unchanged ? 304 : 200, JSON.stringify(result));
                 const lines = specimen.content.split("\n");
                 if (operation === "find") {
                     assert.deepEqual((result.results as { region: { startLine: number; endLine: number } }[])
@@ -1230,7 +1237,7 @@ for (const specimen of cases) {
                     if (transfer) {
                         assert.equal(await body("/selected.txt"), specimen.copied);
                     }
-                    assert.equal(await body(pathname), operation === "copy" ? specimen.content : specimen.removed);
+                    assert.equal(await body(pathname), operation === "copy" || formatInvalidRemoval ? specimen.content : specimen.removed);
                 }
             } finally {
                 await db.close();
