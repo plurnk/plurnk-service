@@ -1,49 +1,21 @@
 # schedule
 
-A schedule delivers a message to a session at each occurrence of a recurrence
-rule. The rule is RFC 5545 text, the `RRULE` grammar calendars use, and the
-message arrives like any other, from `schedule://<alias>`, joining the
-session's live loop or starting one. The packet carries no clock: `discover`
-tells the time when asked. A child's conclusion and a stream's settlement wake
-the loop without a rule.
+A schedule delivers a message from `schedule://<name>` to `target` (`session://<name>`) at each occurrence of an RFC 5545 `RRULE` in `TZ` (from `plurnk.env`, or UTC). The packet carries no clock; `discover` reports current time.
 
-## discover: read the time, preview a rule
+| Call | Effect |
+| --- | --- |
+| `await plurnk.schedule({});` | List rules with time zone, summary, status (`active`, `exhausted`, `unavailable`), and next occurrence. |
+| `await plurnk.schedule({ discover: true });` | Return the current time in the effective zone without persisting anything. |
+| `await plurnk.schedule({ discover: "<rule>" });` | Return the current time and preview the first occurrences of `<rule>` without persisting. |
+| `await plurnk.schedule({ name, rule, target, prompt });` | Persist and arm a workspace schedule (host effect). |
+| `await plurnk.schedule({ name, enabled: false });` | Disarm (`false`) or re-arm/retry (`true`) a rule. |
+| `await plurnk.schedule({ name, remove: true });` | Remove a workspace rule. |
 
-`discover` with `{"discover": true}` tells the current time in the effective zone. With
-`{"discover": "<rule text>"}` it returns one inert candidate whose summary opens
-with the current time in the effective zone and previews the first occurrences.
-Nothing is persisted.
-
-await plurnk.schedule({ discover: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20" }); // what time is it, and when would this fire
-
-## Adding a schedule
-
-Passing `{ name, rule, target, prompt }` persists the rule for this workspace and arms its next occurrence, if any.
-It is a host effect and requires approval.
+await plurnk.schedule({ discover: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20" }); // current time and occurrence preview
 
 await plurnk.schedule({ name: "daily", rule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20", target: "session://exampleSessionName", prompt: "Text delivered at each occurrence." });
 
-await plurnk.schedule({ name: "once", rule: "FREQ=SECONDLY;COUNT=1", target: "session://main", prompt: "One-time reminder." }); // omit DTSTART so it starts at the next whole second when added
+await plurnk.schedule({ name: "once", rule: "FREQ=SECONDLY;COUNT=1", target: "session://main", prompt: "One-time reminder." }); // omit DTSTART to start at the next whole second
 
-- `rule`: bare `FREQ=…` parts, or a `DTSTART` line and an `RRULE` line. A
-  workspace rule ends: it carries `COUNT` or `UNTIL`. Without a `DTSTART` the
-  rule starts at the next whole second when added; `BYHOUR`, `BYMINUTE`,
-  `BYSECOND` and `BYDAY` place it.
-- `target`: the session that receives the message, `session://<name>`; any
-  session in this workspace, the sender included.
-- `prompt`: the message delivered at each occurrence.
-
-Times are read in `TZ`: the workspace's `env` family sets it for every rule
-and every command; UTC otherwise.
-
-## list, enable, disable, remove
-
-`list` shows each rule with its zone, its wording, and its next occurrence.
-`exhausted` means no future occurrence, not proof of delivery. A rule that could
-not deliver is `unavailable` with the exact Problem; `enable` retries it.
-`disable` disarms without forgetting; `remove` forgets.
-
-## Receiving a scheduled message
-
-It arrives as an open message from `schedule://<alias>`, in the loop the
-session is in or in a new one, and is answered as any message is.
+- `rule`: bare `FREQ=…` parts, or optional `DTSTART` + `RRULE`. Workspace rules must bound occurrences with `COUNT` or `UNTIL`. Omit `DTSTART` on relative rules so they start at the next whole second when added.
+- Scheduled messages arrive as Open Messages from `schedule://<name>`, waking a parked session or starting a loop, and are answered with `plurnk.done` / `plurnk.fail` / `plurnk.send`.

@@ -79,7 +79,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
     readonly docsDir = resolve(import.meta.dirname, "..");
     readonly discovery: FunctionalityDiscovery = {
         inputs: ["source"],
-        details: "`source` lists the Agent Skills one source carries: a git remote as a full https or ssh URL, an MCP server (`<server>:///`, `<server>:///skills`, or `<server>:///skills/<name>`), a folder, a lone SKILL.md, or a zip or tar archive. A candidate carries the exact definition to add.",
+        details: "`{\"discover\": \"<source>\"}` lists the Agent Skills one source carries (git URL, `<server>:///skills`, folder, `SKILL.md`, or `.zip`/`.tar` archive) with the exact definition to add.",
     };
 
     readonly #seam: SourceSeam;

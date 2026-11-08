@@ -234,7 +234,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["text"],
             properties: {
-                target: { type: "string", description: "Child session URI (e.g. \"session://child\" or \"session://child?persona=name&effort=high\")." },
+                target: { type: "string", description: "Child session URI (e.g. \"session://child\")." },
                 text: { type: "string", description: "Complete task prompt for the child session." },
             },
         },
@@ -253,7 +253,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["text"],
             properties: {
-                target: { type: "string", description: "Child session URI (e.g. \"session://child\" or \"session://child?persona=name&effort=high\")." },
+                target: { type: "string", description: "Child session URI (e.g. \"session://child\")." },
                 text: { type: "string", description: "Task prompt for the forked child session." },
             },
         },

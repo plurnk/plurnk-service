@@ -71,7 +71,7 @@ const QUESTION_DETAILS = `## Inputs
 | \`text\` | The question shown to the user (non-empty string). |
 | \`options\` | Optional multiple-choice options (\`string\` or \`{ value, title?, description? }\`). |
 | \`multi\` | Optional \`true\` to allow selecting multiple options (\`false\` by default). |
-| \`schema\` | Optional JSON Schema object (\`requestedSchema\` also accepted) the user's answer must satisfy; \`enum\`/enumNames/oneOf/anyOf/array/boolean/string/number forms supported. |
+| \`schema\` | Optional JSON Schema object (\`{ type: "object", properties, required? }\`) the user's answer must satisfy. |
 
 The result is \`{ "action": "accept", "content": <answer> }\`, \`{ "action": "decline" }\`, or \`{ "action": "cancel" }\`; a waiting loop resumes when the answer arrives.`;
 

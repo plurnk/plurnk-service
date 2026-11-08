@@ -1,123 +1,31 @@
 # mcp
 
-An MCP server publishes tools, and an enabled server is a runtime here under
-its own name. A tool runs as a statement naming the
-server and the tool with its JSON arguments:
+An enabled MCP server is a runtime under its own name (`await <server>.<tool>({ ... });`) and exposes its catalog at `mcp:///<server>.md` (tool index), `mcp:///<server>/<tool>.json` (per-tool schema), and `mcp:///<server>.json` (`{"tools":[...]}`).
 
 await files.list_directory({ path: "/absolute/project/path" });
 
-One statement runs one tool, and the result is that call's output.
-`mcp:///<server>.md` lists a server's invocations and their
-required top-level inputs; each invocation links to the complete raw input
-schema. Its sibling `<server>.json` contains `{"tools":[...]}` with complete
-tool definitions, including input/output schemas, descriptions, and annotations.
-Both documents reflect the same enabled tools. JSONPath selects individual
-definitions without reading the whole catalog:
-
 await plurnk.read({ path: "mcp:///files.json", pattern: "$.tools[?(@.name==\"list_directory\")]" });
-
-The turn-0 `plurnk.mcp` receipt shows every server, including disabled
-ones and unavailable ones with their exact Problem; `enable` turns a server on,
-and `await plurnk.find({ path: "mcp:///*.md" });` surveys active servers' Markdown documents. An unavailable server's Problem
-reports elapsed preparation time, its configured timeout, and any bounded,
-redacted connection diagnostic or session stderr available to the host.
 
 ## discover, then add
 
-`discover` is present when the operator configures an MCP Registry. It takes
-`{"discover": "<name>"}` and searches that registry; each candidate carries the
-exact definition to add. Discovery never persists or enables anything.
-
-Passing `{ name, ... }` saves and enables a workspace definition, then reports its connection
-state. It is a host effect, subject to approval. Inspect that state:
-saved configuration does not imply a connected server.
+| Call | Effect |
+| --- | --- |
+| `await plurnk.mcp({});` | List servers (active, disabled, or `unavailable` with exact Problem and connection diagnostic). |
+| `await plurnk.mcp({ discover: "<query>" });` | Search the configured MCP Registry by name and return addable candidate definitions without persisting. |
+| `await plurnk.mcp({ name, type: "stdio", command, args?, env?, cwd? });` | Save, enable, and connect a local stdio server (complete replacement; omitted fields do not inherit). |
+| `await plurnk.mcp({ name, type: "streamable-http", url, headers?, authorization? });` | Save, enable, and connect a remote HTTP server (holds for OAuth sign-in when required). |
+| `await plurnk.mcp({ name, enabled: false });` | Disconnect and withdraw tools (`false`) or reconnect (`true`) without deleting the definition. |
+| `await plurnk.mcp({ name, remove: true });` | Remove a workspace override and restore any inherited definition. |
 
 await plurnk.mcp({ name: "files", type: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"] });
 
-A complete definition names `name` and one transport: `stdio` has `command` and optional
-`args`, `env`, `cwd`; `streamable-http` has `url` and optional `headers`,
-`authorization`. Native definitions run local commands without a shell, in workspace-owned state
-unless `cwd` supplies an absolute directory. Use absolute project paths in
-arguments. This is file placement, not a sandbox or plugin installation.
-A tool marked `readOnlyHint` runs as a read; other tools retain the `host` effect.
+`await plurnk.mcp({ name: "remote", type: "streamable-http", url: "https://example.com/mcp" });`
 
-To change a definition, pass the same flat `{ name, ... }` shape.
-Supply the complete definition; omitted fields are not inherited. It retains
-enabledness and preserves the old server if the replacement is refused. A disabled
-definition is saved without connecting; a new server is created enabled.
+## Sources, environment, and inbound work
 
-## Environment
-
-Shared definitions may come from the project's `.agents/mcp.json`,
-`$XDG_CONFIG_HOME/plurnk/mcp.json`, `$XDG_CONFIG_HOME/agents/mcp.json`, or
-`~/.agents/mcp.json`, each
-containing a `mcpServers` map. Nearer files override farther ones; environment
-definitions override files. `list` reports the winning file and entry.
-Live management changes the workspace, never those files. File edits are
-picked up before the next turn; enabledness, tool filters, and Open Work bindings
-use `PLURNK_MCP_<alias>_ENABLED`, `PLURNK_MCP_<alias>_TOOLS`,
-`PLURNK_MCP_<alias>_WORKSPACE`, and `PLURNK_MCP_<alias>_SESSION`.
-
-Definitions may also set `plurnkSession` (default target session) and
-`plurnkWorkspace` (workspace name, array of workspace names, or `"*"` for
-operator-scoped definitions; workspace-scoped definitions are confined to their
-own workspace). Read-only host variables `PLURNK_WORKSPACE`, `PLURNK_SESSION`
-(when bound), `PLURNK_PROJECT_ROOT` (when present), and `PLURNK_STATE_DIR` are
-available to `${NAME}` expansion and `stdio` subprocesses. Inbound
-`sampling/createMessage` requests arrive as Open Messages at
-`<server>:///messages/<id>` and are answered with `plurnk.done` (or declined with
-`plurnk.fail`); subscribable resources (`await plurnk.read({ path: "<server>:///resources/<uri>" });`) open
-a stream that wakes the session when `notifications/resources/updated` arrives.
-
-Installed Agent Plugins contribute servers from their root `mcp.json` through
-the same family. Within each scope standalone definitions win; nearer scopes
-win over farther ones. Plugin commands default to the plugin root and receive
-`PLUGIN_ROOT` plus a persistent `PLUGIN_DATA` directory. Their arguments,
-environment values, and cwd expand only those two placeholders; HTTP values
-and all other placeholder-like text remain literal. `list` identifies the
-source. A complete workspace override replaces these plugin semantics too.
-
-A local server's inherited environment excludes Plurnk settings and model
-provider keys; explicit definition bindings are separate.
-Workspace variables set with `plurnk.env` (`mcp:///plurnk/env.json`) apply on top at
-every server launch; session-local overrides do not. A running server keeps its
-launch environment; `disable` then `enable` restarts it with the current
-workspace values, without a daemon restart.
+- **Precedence**: workspace override > `PLURNK_MCP_<alias>` > `.agents/mcp.json` > `$XDG_CONFIG_HOME/plurnk/mcp.json` > `$XDG_CONFIG_HOME/agents/mcp.json` > `~/.agents/mcp.json` (plus enabled Agent Plugin `mcp.json` files, which receive `PLUGIN_ROOT` and `PLUGIN_DATA`).
+- **Environment & `${NAME}` expansion**: stdio servers inherit host variables (excluding `PLURNK_*` and provider keys) plus workspace `plurnk.env` entries (`disable` then `enable` restarts with updated workspace `env`). Native definitions expand `${NAME}` (including `PLURNK_WORKSPACE`, `PLURNK_SESSION`, `PLURNK_PROJECT_ROOT`, `PLURNK_STATE_DIR`, and operator credentials like `"env": {"GEMINI_API_KEY": "${GEMINI_API_KEY}"}`) in `args`, `env`, `cwd`, `headers`, and `authorization`.
 
 `await plurnk.env({ name: "SERVICE_TOKEN", value: "<credential>" });`
 
-Native definitions resolve `${NAME}` once against the operator's environment
-with workspace values and masks applied, in arguments, environment values,
-working directories, HTTP headers, and authorization. This includes credentials
-excluded from inheritance: `"env": {"GEMINI_API_KEY": "${GEMINI_API_KEY}"}` in a
-native server definition supplies that key only to that server. The definition
-retains the reference, not a copied credential, and follows ordinary launch
-approval. A missing reference prevents launch.
-Structured authorization secrets must be references, not literal credentials.
-
-## Authorization
-
-For an OAuth server, start by adding its URL; the client supplies the callback.
-
-`await plurnk.mcp({ name: "remote", type: "streamable-http", url: "https://example.com/mcp" });`
-
-When a server requires OAuth sign-in, Plurnk notifies the user in the client and
-holds `add`, `replace`, or `enable` until sign-in completes. Once the operation
-returns `active`, the server's tool reference is ready for the next turn; an
-active server's `detail.grant` names the sign-in it holds. Neither the sign-in
-URL nor callback is a resource to read.
-
-An advanced `authorization` definition can specify scope, client registration,
-the authorization server (`issuer`) or extra request parameters; the add schema
-describes it. A fixed redirect is optional. Bearer credentials
-remain environment references. `unavailable` includes a Problem: repair its
-reported cause rather than assuming every failure is an OAuth challenge.
-
-## Lifecycle
-
-`disable` withdraws a server's tools while keeping its definition. `remove`
-undoes the workspace definition and restores any inherited definition and
-enabled state; use `disable` to suppress an inherited server. Neither action
-deletes configuration files or saved results. The runtime document projects
-the enabled-tool snapshot: after
-`enable`, find the reference again before relying on a tool's signature.
+- **Inbound work & subscriptions**: `PLURNK_MCP_<alias>_WORKSPACE` / `plurnkWorkspace` and `PLURNK_MCP_<alias>_SESSION` / `plurnkSession` route inbound `sampling/createMessage` requests to `<server>:///messages/<id>` (answered with `plurnk.done` or `plurnk.fail`). Reading `<server>:///resources/<uri>` opens a subscription stream that wakes the session on `notifications/resources/updated`.

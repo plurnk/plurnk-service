@@ -18,10 +18,10 @@ const journeys = Object.freeze({
         marker: "Exercise installed file publication and persistence.",
         programs: [{
             reasoning: "Create the project file.",
-            content: "await plurnk.edit({ path: \"integrity.txt\", content: \"before\" });",
+            content: "await plurnk.edit({ path: \"integrity.txt\", text: \"before\" });",
         }, {
             reasoning: "Replace the observed file through its normal proposal path.",
-            content: "await plurnk.edit({ path: \"integrity.txt\", range: \"1,-1\", content: \"after\" });",
+            content: "await plurnk.edit({ path: \"integrity.txt\", range: \"1,-1\", text: \"after\" });",
         }, {
             reasoning: "The file operations have settled.",
             content: "await plurnk.done({ text: \"The installed file journey is complete.\" });",
@@ -56,7 +56,7 @@ const journeys = Object.freeze({
         marker: "Exercise the failed stream finalization.",
         programs: [{
             reasoning: "The stream will finish before its durable close can commit.",
-            content: "await plurnk.sh({ code: \"printf 'retained-stream-output\\\\n'\" });\nawait plurnk.wait({}); // Await the command.",
+            content: "await plurnk.sh({ text: \"printf 'retained-stream-output\\\\n'\" });\nawait plurnk.wait({}); // Await the command.",
         }, {
             reasoning: "The additional message reached the parked session.",
             content: "await plurnk.note({ text: \"The unresolved stream remains an obligation.\" }); // Follow-up accepted while parked.\nawait plurnk.wait({}); // Await settlement.",
