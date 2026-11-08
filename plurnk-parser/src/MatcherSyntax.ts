@@ -71,6 +71,69 @@ const liftInlineFlags = (pattern: string, flags: string, pos: Position, advise?:
     return { pattern: pattern.slice(inline[0].length), flags: lifted };
 };
 
+const stripLeadingTilde = (pattern: string, pos: Position, advise?: Advise): string => {
+    if (!/^~(?=[A-Za-z0-9_"'])/u.test(pattern)) return pattern;
+    advise?.(pos, `\`/~${pattern.slice(1)}\` combines \`/\` (regex) and \`~\` (full-text); read as the regex \`/${pattern.slice(1)}/\`.`);
+    return pattern.slice(1);
+};
+
+const repairUnbalancedRegexDelimiters = (pattern: string): string | null => {
+    const toEscape = new Set<number>();
+    let classOpen: number | null = null;
+    for (let i = 0; i < pattern.length; i += 1) {
+        const ch = pattern[i];
+        if (ch === "\\") {
+            i += 1;
+            continue;
+        }
+        if (ch === "[" && classOpen === null) {
+            classOpen = i;
+        } else if (ch === "]" && classOpen !== null) {
+            classOpen = null;
+        }
+    }
+    if (classOpen !== null) {
+        toEscape.add(classOpen);
+    }
+    let inClass = false;
+    const openParens: number[] = [];
+    for (let i = 0; i < pattern.length; i += 1) {
+        const ch = pattern[i];
+        if (ch === "\\") {
+            i += 1;
+            continue;
+        }
+        if (ch === "[" && !toEscape.has(i) && !inClass) {
+            inClass = true;
+            continue;
+        }
+        if (ch === "]" && inClass) {
+            inClass = false;
+            continue;
+        }
+        if (inClass) continue;
+        if (ch === "(") {
+            openParens.push(i);
+        } else if (ch === ")") {
+            if (openParens.length > 0) {
+                openParens.pop();
+            } else {
+                toEscape.add(i);
+            }
+        }
+    }
+    for (const idx of openParens) {
+        toEscape.add(idx);
+    }
+    if (toEscape.size === 0) return null;
+    let out = "";
+    for (let i = 0; i < pattern.length; i += 1) {
+        if (toEscape.has(i)) out += "\\";
+        out += pattern[i];
+    }
+    return out;
+};
+
 // {§parse-recovery}
 const isSedRange = (raw: string): boolean =>
     /^\/(?:\\.|[^\\/])+\/[a-z]*(?:\s*,\s*(?:\/(?:\\.|[^\\/])+\/[a-z]*|[+-]?\d+)?)+$/iu.test(raw);
@@ -99,9 +162,16 @@ const tryParseSlashRegex = (raw: string, pos: Position, advise?: Advise):
         if (raw[i] === "/" && !inClass) break;
         i++;
     }
+    if (i >= raw.length && inClass) {
+        const closeMatch = /(?<!\\)\/([dgimsuvy]*)$/u.exec(raw);
+        if (closeMatch !== null && closeMatch.index > 0) {
+            i = closeMatch.index;
+            inClass = false;
+        }
+    }
     if (i >= raw.length) {
         if (raw.length === 1) return { ok: false, reason: "empty" };
-        const inline = liftInlineFlags(readAlternation(raw.slice(1), pos, stage), "", pos, stage);
+        const inline = liftInlineFlags(stripLeadingTilde(readAlternation(raw.slice(1), pos, stage), pos, stage), "", pos, stage);
         try { new RegExp(inline.pattern, inline.flags); }
         catch (e) { return { ok: false, reason: "invalid", detail: detail(e), flags: inline.flags, pattern: inline.pattern }; }
         const excerpt = raw.length > 80 ? `${raw.slice(0, 80)}…` : raw;
@@ -116,10 +186,18 @@ const tryParseSlashRegex = (raw: string, pos: Position, advise?: Advise):
         stage(pos, `\`-${shell[1]}\` after the pattern was read as the flags \`${shell[1]}\`; flags go right after the closing \`/\`.`);
     }
     const trailing = shell === null ? /^([A-Za-z]*)[\t ]/u.exec(authored) : null;
-    const inline = liftInlineFlags(readAlternation(raw.slice(1, i), pos, stage), shell?.[1] ?? trailing?.[1] ?? authored, pos, stage);
-    const { pattern, flags } = inline;
+    const inline = liftInlineFlags(stripLeadingTilde(readAlternation(raw.slice(1, i), pos, stage), pos, stage), shell?.[1] ?? trailing?.[1] ?? authored, pos, stage);
+    let { pattern } = inline;
+    const { flags } = inline;
     try { new RegExp(pattern, flags); }
-    catch (e) { return { ok: false, reason: "invalid", detail: detail(e), flags, pattern }; }
+    catch (e) {
+        const repaired = /^[dgimsuvy]*$/u.test(flags) ? repairUnbalancedRegexDelimiters(pattern) : null;
+        if (repaired === null) return { ok: false, reason: "invalid", detail: detail(e), flags, pattern };
+        try { new RegExp(repaired, flags); }
+        catch { return { ok: false, reason: "invalid", detail: detail(e), flags, pattern }; }
+        pattern = repaired;
+        stage(pos, `Unescaped delimiter in \`${raw}\` was read literally as \`/${repaired}/${flags}\`; prefer \`pattern: <<<EOF\\n...\\nEOF\` for literal code.`);
+    }
     if (trailing !== null) return { ok: false, reason: "trailing" };
     for (const [p, m] of staged) advise?.(p, m);
     return { ok: true, pattern, flags };
@@ -161,14 +239,24 @@ const readRegexList = (raw: string, pos: Position, advise?: Advise): { pattern: 
 // {§matcher-prefix-claims}
 export const parseMatcher = (body: string, op = "read", pos: Position = { line: 0, column: 0 }, advise?: Advise): MatcherBody => {
     const raw = body.replace(/(?:\r\n|\r|\n)$/u, "");
-    const lineCount = raw.split(/\r\n|\r|\n/u).length;
-    if (lineCount !== 1) {
-        return unreadable(raw, `Matcher has ${lineCount} lines; expected 1.`,
-            "Write the pattern on one line.");
+    if (/[\r\n]/u.test(raw)) {
+        if (raw.startsWith("/") && !raw.startsWith("//") && /(?<!\\)\/[dgimsuvy]*$/u.test(raw)) {
+            const regex = tryParseSlashRegex(raw, pos, advise);
+            if (regex.ok) return { dialect: "regex", raw, pattern: regex.pattern, flags: regex.flags };
+        }
+        return { dialect: "glob", raw };
     }
     if (raw.startsWith("//")) {
         try { xpath.parse(raw); }
         catch (e) {
+            const repaired = raw.replace(/(?<=[A-Za-z0-9_*\]])@(?=[A-Za-z_*])/gu, "/@");
+            if (repaired !== raw) {
+                try {
+                    xpath.parse(repaired);
+                    advise?.(pos, `\`${raw}\` was read as the XPath \`${repaired}\`; separate an attribute step with \`/@\`.`);
+                    return { dialect: "xpath", raw: repaired };
+                } catch { /* fall through */ }
+            }
             return unreadable(raw, `pattern leads with \`//\` but is not a valid xpath selector - ${detail(e)}`,
                 "Write an XPath 1.0 selector after `//`, such as `//dependencies/*`.");
         }
@@ -180,6 +268,13 @@ export const parseMatcher = (body: string, op = "read", pos: Position = { line: 
         const pattern = `^${inline.pattern}`;
         try { new RegExp(pattern, inline.flags); }
         catch (e) {
+            const repaired = repairUnbalancedRegexDelimiters(pattern);
+            if (repaired !== null) {
+                try {
+                    new RegExp(repaired, inline.flags);
+                    return { dialect: "regex", raw, pattern: repaired, flags: inline.flags };
+                } catch { /* fall through */ }
+            }
             return unreadable(raw, `pattern leads with \`^\` but is not a valid regex - ${detail(e)}`,
                 REGEX_FORM);
         }

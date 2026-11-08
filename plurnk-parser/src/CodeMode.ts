@@ -125,9 +125,9 @@ const pickHeredocTag = (value: string): string => {
     return `EOF${n}`;
 };
 
-const stringifyCodeModeValue = (value: unknown): string => {
+const stringifyCodeModeValue = (value: unknown, key?: string): string => {
     if (typeof value === "string") {
-        if (value.includes("\n") && !value.includes("\r")) {
+        if ((key === "pattern" || value.includes("\n")) && !value.includes("\r")) {
             const tag = pickHeredocTag(value);
             return `<<<${tag}\n${value}\n${tag}`;
         }
@@ -139,7 +139,7 @@ const stringifyCodeModeValue = (value: unknown): string => {
     if (isRecord(value)) {
         const entries = Object.entries(value)
             .filter(([, v]) => v !== undefined)
-            .map(([k, v]) => `${JSON.stringify(k)}:${stringifyCodeModeValue(v)}`);
+            .map(([k, v]) => `${JSON.stringify(k)}:${stringifyCodeModeValue(v, k)}`);
         return `{${entries.join(",")}}`;
     }
     return JSON.stringify(value);
@@ -305,8 +305,15 @@ const toSendBody = (raw: string): SendBody => {
     return { raw, json };
 };
 
+const QUOTED_HEREDOC_RE = /^<<<?-?(['"]?)([A-Za-z][A-Za-z0-9_-]{0,16})\1[ \t]*\r?\n([\s\S]*?)\r?\n\2[ \t]*\r?\n?$/u;
+
+const unwrapQuotedHeredoc = (raw: string): string | null => {
+    const m = QUOTED_HEREDOC_RE.exec(raw);
+    return m !== null ? m[3].replaceAll("\r\n", "\n") : null;
+};
+
 const toStringValue = (value: unknown): string => {
-    if (typeof value === "string") return value;
+    if (typeof value === "string") return unwrapQuotedHeredoc(value) ?? value;
     if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
     if (value === null || value === undefined) return "";
     return JSON.stringify(value);
@@ -370,6 +377,7 @@ const IGNORED_OPTION_KEYS: ReadonlySet<string> = new Set([
     "id",
     "call_id",
     "tool_call_id",
+    "timeout",
 ]);
 
 const assertAllowedKeys = (
@@ -535,7 +543,15 @@ const toTextLineMarker = (value: unknown, pos: Position, advise?: Advise): TextL
     return parseTextLineMarker(raw, pos, advise);
 };
 
-const toMatcherBody = (value: unknown, op: string, pos: Position, advise?: Advise): MatcherBody | null => {
+const HEREDOC_OBJECT_KEYS = new WeakMap<Record<string, unknown>, ReadonlySet<string>>();
+
+const hasHeredocKey = (obj: Record<string, unknown> | null | undefined, ...keys: string[]): boolean => {
+    if (obj === null || obj === undefined) return false;
+    const set = HEREDOC_OBJECT_KEYS.get(obj);
+    return set !== undefined && keys.some((k) => set.has(k));
+};
+
+const toMatcherBody = (value: unknown, op: string, pos: Position, advise?: Advise, isHeredoc = false): MatcherBody | null => {
     if (value === undefined || value === null) return null;
     if (value instanceof RegExp) {
         return {
@@ -547,13 +563,47 @@ const toMatcherBody = (value: unknown, op: string, pos: Position, advise?: Advis
     }
     if (typeof value === "string") {
         if (value.length === 0) return null;
-        return parseMatcher(value, op, pos, advise);
+        const unwrappedHeredoc = unwrapQuotedHeredoc(value);
+        const effectiveHeredoc = isHeredoc || unwrappedHeredoc !== null;
+        const raw = effectiveHeredoc
+            ? (unwrappedHeredoc ?? value).replace(/(?:\r\n|\r|\n)$/u, "")
+            : value;
+        if (raw.length === 0) return null;
+        if (
+            effectiveHeredoc
+            && !/[\r\n]/u.test(raw)
+            && raw.startsWith("/")
+            && !raw.startsWith("//")
+            && !/(?<!\\)\/[dgimsuvy]*$/u.test(raw)
+        ) {
+            return oldTextToMatcher(raw, pos);
+        }
+        const parsed = parseMatcher(raw, op, pos, advise);
+        if (
+            parsed.dialect === "unreadable"
+            && (
+                effectiveHeredoc
+                || (
+                    op === "edit"
+                    && (/^\/\/(?:\s|\/)/u.test(raw) || (raw.startsWith("$") && !/^\$(?:\.|\[|\.\.)/u.test(raw)) || /^&(?:&|\s)/u.test(raw))
+                )
+            )
+        ) {
+            if (!effectiveHeredoc) {
+                advise?.(
+                    pos,
+                    `Pattern \`${raw}\` is not a valid ${raw.startsWith("//") ? "xpath" : raw.startsWith("$") ? "jsonpath" : "graph"} selector and was read literally; prefer \`pattern: <<<EOF\\n...\\nEOF\` for literal code.`,
+                );
+            }
+            return oldTextToMatcher(raw, pos);
+        }
+        return parsed;
     }
     if (isRecord(value) && typeof value.dialect === "string" && typeof value.raw === "string") {
         return parseMatcher(value.raw, op, pos, advise);
     }
     throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid pattern ${JSON.stringify(value)}`, "error",
-        'Write a pattern string such as `"/needle/i"`, `"$..items"`, or `"*.ts"`.');
+        'Write a pattern such as `<<<EOF\\n...\\nEOF`, `"/needle/i"`, `"$..items"`, or `"*.ts"`.');
 };
 
 const escapeRegexLiteral = (literal: string): string =>
@@ -564,7 +614,11 @@ const oldTextToMatcher = (oldText: string, pos: Position): MatcherBody => {
         throw new PlurnkParseError(pos.line, pos.column, "visitor", "oldText cannot be empty", "error",
             'Provide non-empty `oldText` to match, or use `range` / `text` for line-scoped or whole-file edits.');
     }
-    if (!/[\r\n]/u.test(oldText) && !/^(?:\/|\$|~|&|\^)/u.test(oldText)) {
+    const isMultilineSlashRegexLike = /[\r\n]/u.test(oldText)
+        && oldText.startsWith("/")
+        && !oldText.startsWith("//")
+        && /(?<!\\)\/[dgimsuvy]*$/u.test(oldText);
+    if ((/[\r\n]/u.test(oldText) && !isMultilineSlashRegexLike) || !/^(?:\/|\$|~|&|\^)/u.test(oldText)) {
         return { dialect: "glob", raw: oldText };
     }
     const pattern = escapeRegexLiteral(oldText);
@@ -598,7 +652,7 @@ const parseSelectionInput = (
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a non-empty '${role}' target.`, "error");
         }
         const lineMarker = toTextLineMarker(input.range ?? input.lines ?? input.scope, pos, advise);
-        const matcher = toMatcherBody(input.pattern ?? input.matcher ?? input.query, op, pos, advise);
+        const matcher = toMatcherBody(input.pattern ?? input.matcher ?? input.query, op, pos, advise, hasHeredocKey(input, "pattern", "matcher", "query"));
         const headers = toHeaders(input.headers, pos);
         return { target, lineMarker, matcher, headers };
     }
@@ -1139,13 +1193,14 @@ const replaceXmlInvocations = (
     let translated = false;
     // 1. Malformed inline-call invoke tag, e.g. <｜｜DSML｜｜ invoke name="plurnk.find({...})</｜｜DSML｜｜ parameter></｜｜DSML｜｜ invoke> or self-closing <｜｜DSML｜｜ invoke name="plurnk.note({...}) />
     let out = text.replace(
-        /<(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|[A-Za-z_$][A-Za-z0-9$]*[._:-])?(invoke|function|tool_call|function_call|tool-call|tool|call|tool_use|tool-use|result)\b[^\r\n>]*?\bname=[“”"'‘’]((?:await\s+)?[A-Za-z_$][A-Za-z0-9_$.:-]*)\s*\(([\s\S]*?)\)\s*[“”"'‘’]?(?:\s*\/>|(?:\s*>|\s*<\/(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:parameter|param|arg|argument)>)(?:(?!<(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|[A-Za-z_$][A-Za-z0-9$]*[._:-])?\1\b)[\s\S])*?<\/(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|[A-Za-z_$][A-Za-z0-9$]*[._:-])?\1>)/giu,
-        (fullMatch, _verb: string, rawName: string, rawArgs: string) => {
+        /<(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|[A-Za-z_$][A-Za-z0-9$]*[._:-])?(invoke|function|tool_call|function_call|tool-call|tool|call|tool_use|tool-use|result)\b[^\r\n>]*?\bname=[“”"'‘’]((?:await\s+)?[A-Za-z_$][A-Za-z0-9_$.:-]*)\s*\(([\s\S]*?)\)\s*;?\s*[“”"'‘’]?([ \t]*\/\/[^\r\n<]*)?[“”"'‘’]?(?:\s*\/>|(?:\s*>|\s*<\/(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:parameter|param|arg|argument)>)(?:(?!<(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|[A-Za-z_$][A-Za-z0-9$]*[._:-])?\1\b)[\s\S])*?<\/(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|[A-Za-z_$][A-Za-z0-9$]*[._:-])?\1>)/giu,
+        (fullMatch, _verb: string, rawName: string, rawArgs: string, rawComment: string | undefined) => {
             const target = resolveToolCallTarget(rawName.replace(/^await\s+/iu, ""), executorSpellings, false, defaultService);
             if (target === null) return fullMatch;
             translated = true;
             const args = rawArgs.trim();
-            return padNewlines(args.length === 0 ? `${target}();` : `${target}(${args});`, fullMatch);
+            const commentSuffix = rawComment === undefined ? "" : rawComment.replace(/[“”"'‘’]+$/u, "");
+            return padNewlines(args.length === 0 ? `${target}();${commentSuffix}` : `${target}(${args});${commentSuffix}`, fullMatch);
         },
     );
 
@@ -2052,6 +2107,7 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
     };
 
     let inObjectPropertyValue = false;
+    let lastValueWasHeredoc = false;
 
     const isLikelyObjectValueStringClose = (quotePos: number, quoteChar: string): boolean => {
         if (!inObjectPropertyValue) return true;
@@ -2064,6 +2120,7 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
     };
 
     const readHeredocLiteral = (): string => {
+        lastValueWasHeredoc = true;
         const start = idx;
         const opener = matchHeredocOpener(code, start);
         if (opener === null) {
@@ -2218,6 +2275,7 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
         const start = idx;
         idx += 1; // consume `{`
         const obj: Record<string, unknown> = {};
+        const heredocKeys = new Set<string>();
         const prevInObjectPropertyValue = inObjectPropertyValue;
         inObjectPropertyValue = false;
         try {
@@ -2225,6 +2283,7 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
                 skipTrivia();
                 if (code[idx] === "}") {
                     idx += 1;
+                    if (heredocKeys.size > 0) HEREDOC_OBJECT_KEYS.set(obj, heredocKeys);
                     return obj;
                 }
                 let key: string;
@@ -2250,11 +2309,14 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
                 idx += 1;
                 inObjectPropertyValue = true;
                 let value: unknown;
+                let propWasHeredoc = false;
                 try {
                     value = readValueExpr();
+                    propWasHeredoc = lastValueWasHeredoc;
                 } finally {
                     inObjectPropertyValue = false;
                 }
+                if (propWasHeredoc) heredocKeys.add(key);
                 obj[key] = value;
                 skipTrivia();
                 if (code[idx] === "," || code[idx] === ";") {
@@ -2263,6 +2325,7 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
                 }
                 if (code[idx] === "}") {
                     idx += 1;
+                    if (heredocKeys.size > 0) HEREDOC_OBJECT_KEYS.set(obj, heredocKeys);
                     return obj;
                 }
                 fail(idx, `Expected \`,\` or \`}\` in object literal after \`${key}\`.`);
@@ -2390,7 +2453,9 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
     };
 
     const readValueExpr = (): unknown => {
+        lastValueWasHeredoc = false;
         let value = readPrimaryValue();
+        const firstWasHeredoc = lastValueWasHeredoc;
         skipTypeSuffix();
         while (idx < code.length) {
             const saved = idx;
@@ -2404,6 +2469,7 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
             idx = saved;
             break;
         }
+        lastValueWasHeredoc = firstWasHeredoc;
         return value;
     };
 
@@ -2621,7 +2687,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: second.note, position: pos });
             }
             const aside = resolveAside(second);
-            const matcher = toMatcherBody(second?.pattern ?? second?.matcher ?? second?.query, op, pos, advise);
+            const matcher = toMatcherBody(second?.pattern ?? second?.matcher ?? second?.query, op, pos, advise, hasHeredocKey(second, "pattern", "matcher", "query"));
             const headers = toHeaders(second?.headers, pos);
             return targets.map((target) => emitStatement(op === "read" ? {
                 op: "read",
@@ -2649,7 +2715,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: first.note, position: pos });
             }
             const aside = resolveAside(first);
-            const matcher = toMatcherBody(first.pattern ?? first.matcher ?? first.query, op, pos, advise);
+            const matcher = toMatcherBody(first.pattern ?? first.matcher ?? first.query, op, pos, advise, hasHeredocKey(first, "pattern", "matcher", "query"));
             const headers = toHeaders(first.headers, pos);
             const rawPaths = first.paths ?? first.targets ?? first.path ?? first.target ?? first.uri ?? first.file_path ?? first.filepath ?? first.file;
             if (Array.isArray(rawPaths)) {
@@ -2773,7 +2839,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                     const rawItemOld = item.oldText ?? item.old_string ?? item.old_text;
                     const itemMatcher = typeof rawItemOld === "string"
                         ? oldTextToMatcher(rawItemOld, pos)
-                        : toMatcherBody(item.pattern ?? item.matcher, "edit", pos, advise);
+                        : toMatcherBody(item.pattern ?? item.matcher, "edit", pos, advise, hasHeredocKey(item, "pattern", "matcher"));
                     const rawContent = item.text ?? item.newText ?? item.new_string ?? item.new_text ?? item.replacement ?? item.content ?? item.body;
                     const body = rawContent === undefined || rawContent === null || rawContent === "" ? null : toStringValue(rawContent);
                     statements.push(emitStatement({
@@ -2795,7 +2861,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         const rawOld = first.oldText ?? first.old_string ?? first.old_text;
         const matcher = typeof rawOld === "string"
             ? oldTextToMatcher(rawOld, pos)
-            : toMatcherBody(first.pattern ?? first.matcher, "edit", pos, advise);
+            : toMatcherBody(first.pattern ?? first.matcher, "edit", pos, advise, hasHeredocKey(first, "pattern", "matcher"));
         const rawBody = first.text ?? first.newText ?? first.new_string ?? first.new_text ?? first.replacement ?? first.content ?? first.body;
         const body = rawBody === undefined || rawBody === null || rawBody === "" ? null : toStringValue(rawBody);
         return targets.map((target) => emitStatement({
@@ -2830,13 +2896,13 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         const source: ResourceSelection = {
             target: sourceBase.target,
             lineMarker: sourceBase.lineMarker ?? toTextLineMarker(first.range ?? first.lines ?? first.scope ?? first.sourceRange ?? first.fromRange, pos, advise),
-            matcher: sourceBase.matcher ?? toMatcherBody(first.pattern ?? first.matcher ?? first.sourcePattern ?? first.fromPattern, op, pos, advise),
+            matcher: sourceBase.matcher ?? toMatcherBody(first.pattern ?? first.matcher ?? first.sourcePattern ?? first.fromPattern, op, pos, advise, hasHeredocKey(first, "pattern", "matcher", "sourcePattern", "fromPattern")),
             headers: sourceBase.headers ?? toHeaders(first.headers ?? first.sourceHeaders ?? first.fromHeaders, pos),
         };
         const destination: ResourceSelection = {
             target: destBase.target,
             lineMarker: destBase.lineMarker ?? toTextLineMarker(first.toRange ?? first.destinationRange ?? first.destRange, pos, advise),
-            matcher: destBase.matcher ?? toMatcherBody(first.toPattern ?? first.destinationPattern, op, pos, advise),
+            matcher: destBase.matcher ?? toMatcherBody(first.toPattern ?? first.destinationPattern, op, pos, advise, hasHeredocKey(first, "toPattern", "destinationPattern")),
             headers: destBase.headers ?? toHeaders(first.toHeaders ?? first.destinationHeaders, pos),
         };
         return emitStatement({
@@ -2876,7 +2942,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             const rawNote = typeof args[1] === "string" ? args[1] : (second?.note ?? second?.distillation ?? second?.body ?? second?.content ?? second?.text);
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
             const lineMarker = toTextLineMarker(second?.range ?? second?.lines ?? second?.scope, pos, advise);
-            const matcher = toMatcherBody(second?.pattern ?? second?.matcher, "kill", pos, advise);
+            const matcher = toMatcherBody(second?.pattern ?? second?.matcher, "kill", pos, advise, hasHeredocKey(second, "pattern", "matcher"));
             const remote = toRemote(second?.remote, pos);
             const headers = toHeaders(second?.headers, pos);
             const aside = resolveAside(second);
@@ -2899,7 +2965,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             const rawNote = first.note ?? first.distillation ?? first.body ?? first.content ?? first.text;
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
             const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.scope, pos, advise);
-            const matcher = toMatcherBody(first.pattern ?? first.matcher, "kill", pos, advise);
+            const matcher = toMatcherBody(first.pattern ?? first.matcher, "kill", pos, advise, hasHeredocKey(first, "pattern", "matcher"));
             const remote = toRemote(first.remote, pos);
             const headers = toHeaders(first.headers, pos);
 

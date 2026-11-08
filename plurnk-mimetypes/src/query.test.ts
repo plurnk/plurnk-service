@@ -237,6 +237,43 @@ describe("{§mimetype-query} queryGlob", () => {
     it("{§mimetype-query} does not invent a whole line for empty content", () => {
         assert.deepEqual(queryGlob("", "*"), []);
     });
+
+    it("{§mimetype-query} {§parse-recovery} matches multiline literal patterns across LF and CRLF", () => {
+        const text = "def compute(items):\r\n    return items[0] + (1 * 2)\r\n";
+        const pattern = "def compute(items):\n    return items[0] + (1 * 2)";
+        const out = queryGlob(text, pattern);
+        assert.equal(out.length, 1);
+        assert.deepEqual(out[0].regions, [{
+            startLine: 1, startColumn: 1, endLine: 2, endColumn: 30,
+        }]);
+    });
+
+    it("{§mimetype-query} {§parse-recovery} matches literal code snippets containing glob characters ([0], *args, {a}) when present in source", () => {
+        const text = "class Foo:\n    def bar(self, *args, **kwargs):\n        return self.items[0]";
+        const out1 = queryGlob(text, "def bar(self, *args, **kwargs):");
+        assert.equal(out1.length, 1);
+        assert.deepEqual(out1[0].regions, [{
+            startLine: 2, startColumn: 5, endLine: 2, endColumn: 36,
+        }]);
+        const out2 = queryGlob(text, "return self.items[0]");
+        assert.equal(out2.length, 1);
+        assert.deepEqual(out2[0].regions, [{
+            startLine: 3, startColumn: 9, endLine: 3, endColumn: 29,
+        }]);
+    });
+
+    it("{§mimetype-query} {§parse-recovery} queryRegex falls back to literal or escaped-paren match when unescaped code delimiters match 0 times as regex", () => {
+        const text = "    result = compute(a, b)\n    val = items[0]\n";
+        const out1 = queryRegex(text, "compute(a, b)");
+        assert.equal(out1.length, 1);
+        assert.equal(out1[0].matched, "compute(a, b)");
+        const out2 = queryRegex(text, "items[0]");
+        assert.equal(out2.length, 1);
+        assert.equal(out2[0].matched, "items[0]");
+        const out3 = queryRegex(text, "compute(a,\\s*b)");
+        assert.equal(out3.length, 1);
+        assert.equal(out3[0].matched, "compute(a, b)");
+    });
 });
 
 describe("{§mimetype-query} queryJsonpathObject: bare-leaves outline (default)", () => {

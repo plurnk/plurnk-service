@@ -35,6 +35,27 @@ function textLocations(text: string): LocateMatch {
     };
 }
 
+function escapeLiteralPattern(literal: string): string {
+    return literal.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&").replace(/\r\n|\r|\n/gu, "\\r?\\n");
+}
+
+function execRegexMatches(text: string, regex: RegExp, unicode: boolean, locate: LocateMatch): QueryMatch[] {
+    const out: QueryMatch[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(text)) !== null) {
+        out.push({
+            matched: shapeMatched(m),
+            text: m[0],
+            ...locate(m.index, m.index + m[0].length),
+        });
+        // Defend against zero-length matches infinite-looping the global regex.
+        if (m[0].length === 0) {
+            regex.lastIndex = advanceStringIndex(text, regex.lastIndex, unicode);
+        }
+    }
+    return out;
+}
+
 // regex against arbitrary text. Returns one QueryMatch per match. Polymorphic
 // `matched` shape under {§mimetype-query}:
 //   - no captures → string (the whole match)
@@ -54,18 +75,29 @@ export function queryRegex(text: string, pattern: string, flags?: string, locate
         throw new InvalidExpressionError({ dialect: "regex", expression: pattern, cause });
     }
 
-    const out: QueryMatch[] = [];
     const unicode = withGlobal.includes("u") || withGlobal.includes("v");
-    let m: RegExpExecArray | null;
-    while ((m = regex.exec(text)) !== null) {
-        out.push({
-            matched: shapeMatched(m),
-            text: m[0],
-            ...locate(m.index, m.index + m[0].length),
-        });
-        // Defend against zero-length matches infinite-looping the global regex.
-        if (m[0].length === 0) {
-            regex.lastIndex = advanceStringIndex(text, regex.lastIndex, unicode);
+    const out = execRegexMatches(text, regex, unicode, locate);
+    if (out.length > 0 || text.length === 0) return out;
+
+    // {§parse-recovery} — when a regex with unescaped code delimiters (`(`, `)`, `[`, `]`, `$`)
+    // produces 0 matches, check whether the pattern (or the pattern with literal parens) matches source text.
+    if (/[()[\]{}$^]/u.test(pattern)) {
+        const literalCandidate = pattern.replace(/\\\//gu, "/");
+        if (literalCandidate.length > 1) {
+            const literalFlags = effective.includes("i") ? "giu" : "gu";
+            const literalRegex = new RegExp(escapeLiteralPattern(literalCandidate), literalFlags);
+            const literalMatches = execRegexMatches(text, literalRegex, true, locate);
+            if (literalMatches.length > 0) return literalMatches;
+        }
+        if (/(?<!\\)[()]/u.test(pattern)) {
+            const escapedParens = pattern.replace(/(?<!\\)([()])/gu, "\\$1");
+            try {
+                const parenRegex = new RegExp(escapedParens, withGlobal);
+                const parenMatches = execRegexMatches(text, parenRegex, unicode, locate);
+                if (parenMatches.length > 0) return parenMatches;
+            } catch {
+                // Ignore if escaping parens invalidates a construct
+            }
         }
     }
     return out;
@@ -85,8 +117,21 @@ function advanceStringIndex(text: string, index: number, unicode: boolean): numb
 
 // {§mimetype-query} — literals select occurrences; glob syntax selects whole lines.
 export function queryGlob(text: string, pattern: string, locate: LocateMatch = textLocations(text)): QueryMatch[] {
-    if (!PathSyntax.hasGlob(pattern)) return queryRegex(text, pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "u", locate);
-    const regex = globToRegex(pattern);
+    if (/[\r\n]/u.test(pattern) || !PathSyntax.hasGlob(pattern)) {
+        return queryRegex(text, escapeLiteralPattern(pattern), "u", locate);
+    }
+    if (pattern.length > 1 && text.includes(pattern)) {
+        return queryRegex(text, escapeLiteralPattern(pattern), "u", locate);
+    }
+    let regex: RegExp;
+    try {
+        regex = globToRegex(pattern);
+    } catch (err) {
+        if (text.includes(pattern)) {
+            return queryRegex(text, escapeLiteralPattern(pattern), "u", locate);
+        }
+        throw err;
+    }
     const coordinates = new TextCoordinates(text);
     const lines = coordinates.logicalLines();
     const out: QueryMatch[] = [];

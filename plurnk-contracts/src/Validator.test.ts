@@ -851,7 +851,7 @@ test("{§path-syntax} Validator: ParsedPath accepts local and url decompositions
     }).valid, false);
 });
 
-test("{§matcher-prefix-claims} Validator: MatcherBody accepts only canonical single-line graph forms and rejects multiline raw input", () => {
+test("{§matcher-prefix-claims} Validator: MatcherBody accepts canonical graph forms, multiline glob/regex patterns, and rejects multiline structural/fts/graph raw input", () => {
     const matcherBodySchema = { $ref: "https://schemas.plurnk.xyz/v0/MatcherBody.json" };
     for (const raw of ["&symbol", "&<symbol", "&>symbol"]) {
         assert.equal(Validator.validateJsonSchemaInstance(matcherBodySchema, { dialect: "graph", raw }).valid, true, raw);
@@ -861,12 +861,16 @@ test("{§matcher-prefix-claims} Validator: MatcherBody accepts only canonical si
     }
     for (const matcher of [
         { dialect: "xpath", raw: "//one\n//two" },
-        { dialect: "regex", raw: "/one/\n/two/", pattern: "one", flags: "" },
         { dialect: "jsonpath", raw: "$.one\n$.two" },
         { dialect: "fts", raw: "~one\ntwo" },
-        { dialect: "glob", raw: "one\ntwo" },
     ]) {
         assert.equal(Validator.validateJsonSchemaInstance(matcherBodySchema, matcher).valid, false, matcher.dialect);
+    }
+    for (const matcher of [
+        { dialect: "glob", raw: "one\ntwo" },
+        { dialect: "regex", raw: "/one\ntwo/s", pattern: "one\ntwo", flags: "s" },
+    ]) {
+        assert.equal(Validator.validateJsonSchemaInstance(matcherBodySchema, matcher).valid, true, matcher.dialect);
     }
 });
 

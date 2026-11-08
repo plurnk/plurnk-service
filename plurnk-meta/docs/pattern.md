@@ -2,20 +2,21 @@
 
 ## Summary
 
-Select text or AST nodes with literal, glob (*, **, ?(p), @(p), !(p)), regex (/re/im), full-text (~query, ~"phrase"), XPath (//fn[name='x']), JSONPath ($.a.b), and symbol (&Foo, &?Foo, &>Foo, &<Foo) patterns.
+Select text or AST nodes with literal (<<<EOF), glob (*, **, ?(p), @(p), !(p)), regex (/re/im), full-text (~query, ~"phrase"), XPath (//fn[name='x']), JSONPath ($.a.b), and symbol (&Foo, &?Foo, &>Foo, &<Foo) patterns.
 
 A `path` chooses resources; a `pattern` selects within the addressed channel with identical semantics across operations:
 - `plurnk.find`: reports matching resources and match regions.
 - `plurnk.read`: shows matching source lines and match locations (surrounding context displayed by `read` is not part of the match).
 - `plurnk.edit`: replaces each selected span with literal `text` (`""` deletes; edits that break a validated JSON/XML/HTML/etc. format are rejected with `422 edit-format-invalid`).
 - `plurnk.copy` / `plurnk.move` / `plurnk.kill`: copies, moves, or deletes the selected spans (multiple fragments concatenate in source order without separators).
+- Prefer a multiline `<<<EOF` heredoc for literal code patterns so parentheses, brackets, quotes, and backslashes require no escaping.
 - Percent-encode path characters that collide with URI/glob syntax in `file:///` or relative paths (`#` as `%23`, `%` as `%25`, `(` as `%28`, `)` as `%29`, `\` as `%5C`).
 
 ## Pattern Dialects
 
 | Prefix | Dialect | Pattern | Selection |
 | --- | --- | --- | --- |
-| none | literal | `retry` | Each literal substring occurrence |
+| none | literal (single or multiline) | `<<<EOF` heredoc, `"connect(a, b)"`, `"retry"` | Each literal substring or multiline block occurrence (no escaping needed) |
 | none | glob / extglob | `*retry*`, `?(export )?(async )function *` | Each whole line matching the glob or extglob |
 | `/` | regex (ECMAScript) | `/\bretry\b/i` | Each complete ECMAScript regex match (`^`/`$` match line boundaries) |
 | `~` | full-text (SQLite FTS5) | `~retry`, `~"exact phrase"` | FTS5 token occurrences across indexed resources |
@@ -34,10 +35,24 @@ For source `const first = connect(); const second = connect();`:
 
 | Operation | Result |
 | --- | --- |
-| `plurnk.find({ path: "client.js", pattern: "/connect/" })` | Two locations: `<1,15,1,22>` and `<1,41,1,48>` |
-| `plurnk.read({ path: "client.js", pattern: "/connect/" })` | The source line once, with both match locations |
-| `plurnk.edit({ path: "client.js", pattern: "/connect/", text: "open" })` | `const first = open(); const second = open();` |
-| `plurnk.edit({ path: "client.js", range: "1,15,1,22", pattern: "/connect/", text: "open" })` | Only the first occurrence changes |
+| `plurnk.find({ path: "client.js", pattern: "connect()" })` | Two locations: `<1,15,1,24>` and `<1,41,1,50>` |
+| `plurnk.read({ path: "client.js", pattern: "connect()" })` | The source line once, with both match locations |
+| `plurnk.edit({ path: "client.js", pattern: "connect()", text: "open()" })` | `const first = open(); const second = open();` |
+| `plurnk.edit({ path: "client.js", range: "1,15,1,24", pattern: "connect()", text: "open()" })` | Only the first occurrence changes |
+
+await plurnk.edit({
+  path: "client.js",
+  pattern: <<<EOF
+function connect(a, b) {
+  return oldPool(a, b);
+}
+EOF,
+  text: <<<EOF
+function connect(a, b) {
+  return newPool(a, b);
+}
+EOF
+})
 
 ## XML/HTML (XPath) and JSON (JSONPath) edits
 

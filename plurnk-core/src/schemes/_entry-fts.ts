@@ -20,9 +20,14 @@ export default class EntryFts {
     // punctuation (`inherited-members`, `x.y`, `c++`) parses as a column filter or a syntax error.
     // Each such word becomes the phrase its tokens already are; FTS5's own syntax passes untouched.
     static nativeQuery(query: string): string {
+        const normalized = query.replace(/"(?:[^"]|"")*"?|[^"]+/gu, (segment) =>
+            segment.startsWith("\"")
+                ? segment
+                : segment.replace(/\.\*/gu, " ").replace(/(?<=\S)\s*\|\s*(?=\S)/gu, " OR "),
+        );
         let near = 0;
         let pendingNear = false;
-        return query.replace(/"(?:[^"]|"")*"?|[()]|[^\s()"]+/gu, (token) => {
+        return normalized.replace(/"(?:[^"]|"")*"?|[()]|[^\s()"]+/gu, (token) => {
             if (token === "(") {
                 if (pendingNear || near > 0) near += 1;
                 pendingNear = false;

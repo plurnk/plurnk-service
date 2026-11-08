@@ -107,7 +107,7 @@ await <service>.<tool>({ ... })
 | Markdown fence unwrapping | Code Mode statements require no Markdown fence; if a model wraps `await plurnk.<op>(...)` or `await <service>.<tool>(...)` inside a balanced `ts`, `js`, or plain Markdown code fence, the parser unwraps the block with a warning-severity advisory. |
 | Native and markup tool-call translation | Tool-call wrapper tags (`<tool_call>`, `<tool_calls>`, `<function_call>`, `<function_calls>`, `<｜DSML｜function_calls>`, `<｜｜DSML｜｜ function_calls>`, `<\|tool_call\|>`, `<｜tool▁calls▁begin｜>`, `<\|tool_calls_section_begin\|>`, `<\|python_tag\|>`, `[TOOL_CALLS]`) around Code Mode statements unwrap silently, and structured XML/DSML/token-delimited (`<function=...>`, `<invoke name="...">`, `<｜DSML｜invoke name="...">`, `<plurnk.<op> ... />`, `<｜tool▁call▁begin｜>`, `<\|tool_call_begin\|>`, `<\|tool_call\|>name`) or JSON tool calls targeting `plurnk` operations or `<service>.<tool>` translate silently into canonical Code Mode statements without advisory warnings. |
 | Case-insensitive method recovery | Uppercase or mixed-case method names (`plurnk.READ(...)`, `plurnk.SH(...)`) recover to their lowercase canonical tool name with a warning-severity advisory. |
-| Statement rendering | `PlurnkParser.stringify` formats AST statements back into canonical `await plurnk.<op>({ ... })` or `await <service>.<tool>({ ... })` statements, normalizing empty optional bodies to `null` and rendering any string value containing `\n` (as well as the Turn 0 `Resolve all Open Work.` todo seed) as an inline `<<<EOF\n...\nEOF` heredoc (stepping `EOF1`, `EOF2`, … when the string contains the delimiter). |
+| Statement rendering | `PlurnkParser.stringify` formats AST statements back into canonical `await plurnk.<op>({ ... })` or `await <service>.<tool>({ ... })` statements, normalizing empty optional bodies to `null` and rendering every `pattern` field and any string value containing `\n` (as well as the Turn 0 `Resolve all Open Work.` todo seed) as an inline `<<<EOF\n...\nEOF` heredoc (stepping `EOF1`, `EOF2`, … when the string contains the delimiter). |
 
 ### §slot-order Argument shapes, target groups, and endpoint options
 
@@ -159,20 +159,20 @@ await <service>.<tool>({ ... })
 
 ## §matcher-prefix-claims 5. Bulk pattern matching and scope markers
 
-`plurnk.find`, `plurnk.read`, `plurnk.kill`, and `plurnk.edit` accept a single-line `pattern` matcher classified by leading sigil:
+`plurnk.find`, `plurnk.read`, `plurnk.kill`, and `plurnk.edit` accept a `pattern` matcher classified by leading sigil (`glob` and `regex` may span multiple lines; `xpath`, `jsonpath`, `fts`, and `graph` are single-line):
 
 | Prefix | Dialect | Validation & tolerance |
 | --- | --- | --- |
 | `//` | `xpath` | Validated with XPath 1.0 parser before regex classification |
-| `/` or `^` | `regex` | ECMAScript `RegExp`; tolerates `\|` alternation, trailing `-flags`, and glob-shaped `/*text*/` with advisories |
+| `/` or `^` | `regex` | ECMAScript `RegExp`; tolerates `\|` alternation, trailing `-flags`, `/~.../` mixed prefix, unbalanced unescaped `(`, `)`, or `[`, and glob-shaped `/*text*/` with advisories |
 | `$` | `jsonpath` | Validated with RFC 9535 `json-p3` |
 | `~` | `fulltext` | Single-line FTS5 query string |
 | `&` | `graph` | `&symbol`, `&<symbol`, or `&>symbol` relation query |
-| none | `glob` | Fallback shell glob or literal substring |
+| none | `glob` | Fallback shell glob or single/multiline literal substring (`<<<EOF...EOF`) |
 
 - **Soft matcher refusal**: An invalid matcher expression is admitted as `matcher.dialect = "unreadable"` with its diagnostic and working-form `recovery` so only that operation fails `400 grammar/matcher/unreadable-pattern` while sibling statements in the turn still execute.
 - **Statement recovery and argument tolerances**: Statement errors recover at the next top-level call; an inline `<L,M>` range written inside `path<L,M>` is lifted with a warning; extra positional arguments beyond the operation's arity fail only that statement.
-- **Line anchors and range recovery**: `TextLineMarker` accepts `@<5 Base62 chars>` line anchors in line positions; reversed or zero-based two-number ranges (`"0,N"`, `"M,N"` with `M > N`, `"N,+K"`) normalize with a warning advisory.
+- **Line anchors and range recovery**: `TextLineMarker` accepts `@<5 Base62 chars>` line anchors (with optional `[+-]K` offsets or surrounding `<...>`) in line positions; reversed or zero-based two-number ranges (`"0,N"`, `"M,N"` with `M > N`, `"N,+K"`, `"@hash,1"`) normalize with a warning advisory.
 
 ---
 

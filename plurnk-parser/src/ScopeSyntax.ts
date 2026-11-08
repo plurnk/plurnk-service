@@ -85,7 +85,14 @@ export const parseRangeMarker = (raw: string, position: Position = { line: 0, co
 };
 
 export const parseTextLineMarker = (raw: string, position: Position = { line: 0, column: 0 }, advise?: Advise): TextLineMarker => {
-    const marker = wrapScope(raw);
+    let marker = wrapScope(raw);
+    if (!VALID_TEXT_SCOPE.test(marker) && /<@[0-9A-Za-z]{5}(?:[+-][0-9]+)?>/u.test(raw)) {
+        const stripped = raw.trim().replace(/(?:[1-9][0-9]*)?<(@[0-9A-Za-z]{5}(?:[+-][0-9]+)?)>/gu, "$1");
+        marker = wrapScope(stripped);
+        if (VALID_TEXT_SCOPE.test(marker)) {
+            advise?.(position, `\`${raw.trim()}\` was read as the range ${JSON.stringify(unwrapScope(marker))}; a range takes the anchor without \`<...>\` brackets.`);
+        }
+    }
     if (!VALID_TEXT_SCOPE.test(marker)) {
         throw new PlurnkParseError(position.line, position.column, "visitor",
             `invalid range ${JSON.stringify(raw)}; use numeric coordinates or \`@hash\` line anchors`, "error", OFFSET_RECOVERY);
@@ -100,7 +107,24 @@ export const parseTextLineMarker = (raw: string, position: Position = { line: 0,
     if (!text.includes("@")) {
         return parseRangeMarker(unwrapScope(text), position, advise);
     }
-    const marks = text.slice(1, -1).split(/, ?|-/).map((component) => {
+    const inner = text.slice(1, -1);
+    const components: string[] = [];
+    let cursor = 0;
+    while (cursor < inner.length) {
+        const match = /^(@[0-9A-Za-z]{5}(?:[+-][0-9]+)?|@[0-9]{1,4}|\+[0-9]+|-?[0-9]+(?:\.[0-9]+)?)/u.exec(inner.slice(cursor));
+        if (match === null) break;
+        components.push(match[1]);
+        cursor += match[1].length;
+        if (inner[cursor] === ",") {
+            cursor += 1;
+            if (inner[cursor] === " ") cursor += 1;
+        } else if (inner[cursor] === "-") {
+            cursor += 1;
+        } else {
+            break;
+        }
+    }
+    const marks = components.map((component) => {
         // {§fence-pairing} — `@210` is the line number 210 with the anchor's sigil, not a hash.
         if (/^@[0-9]{1,4}$/u.test(component)) {
             advise?.(position, `\`${component}\` was read as line ${component.slice(1)}; an anchor is five characters (\`@abcde\`).`);
@@ -109,7 +133,6 @@ export const parseTextLineMarker = (raw: string, position: Position = { line: 0,
         return component.startsWith("@") ? component : Number.parseFloat(component);
     });
     // {§op-methods-op-dispatch} — anchor-bearing ranges retain their offsets, never count recovery.
-    const components = text.slice(1, -1).split(/, ?|-/);
     for (const [index, component] of components.entries()) {
         if (!component.startsWith("+")) continue;
         const base = /^(@[0-9A-Za-z]{5})([+-][0-9]+)?$/u.exec(String(marks[index - 1] ?? ""));
@@ -119,6 +142,10 @@ export const parseTextLineMarker = (raw: string, position: Position = { line: 0,
         }
         const offset = Number(base[2] ?? 0) + Number(component.slice(1));
         marks[index] = offset === 0 ? base[1] : `${base[1]}${offset > 0 ? "+" : ""}${offset}`;
+    }
+    if (marks.length === 2 && typeof marks[0] === "string" && marks[0].startsWith("@") && marks[1] === 1) {
+        advise?.(position, `Range "${marks[0]},1" was read as "${marks[0]}".`);
+        return { marks: [marks[0]] };
     }
     if (!atLeastOne(marks)) throw new Error("an anchor marker names at least one mark");
     return { marks };
