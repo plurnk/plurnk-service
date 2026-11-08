@@ -96,6 +96,15 @@ export const assertAllowedKeys = (
     pos: Position,
 ): void => {
     for (const [key, value] of Object.entries(obj)) {
+        if (
+            key === "text" &&
+            !allowed.has("text") &&
+            ((typeof value === "string" && (value.trim() === "" || value.trim() === "{}")) ||
+                (isRecord(value) && Object.keys(value).length === 0))
+        ) {
+            delete obj.text;
+            continue;
+        }
         if (value !== undefined && !allowed.has(key) && !IGNORED_OPTION_KEYS.has(key)) {
             throw new PlurnkParseError(
                 pos.line,

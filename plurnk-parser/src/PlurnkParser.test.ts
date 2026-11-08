@@ -862,5 +862,18 @@ describe("PlurnkParser Code Mode", () => {
         assert.deepEqual((ops[14] as ReadStatement).lineMarker, { marks: ["@kxY9P", "@KPq8W"] });
         assert.deepEqual((ops[15] as EditStatement).lineMarker, { marks: ["@kxY9P", 5, "@KPq8W"] });
         assert.deepEqual((ops[16] as EditStatement).lineMarker, { marks: ["@kxY9P", 1, "@KPq8W", 35] });
+
+        const dummyEmptyText = PlurnkParser.parse([
+            '<tool_call>\n<function=plurnk.read>\n<parameter=text>\n{}\n</parameter>\n<parameter=path>\nnote://main/1/15/2\n</parameter>\n</function>\n</tool_call>',
+            'await plurnk.find({ path: "src/**", text: "" });',
+        ].join("\n\n"));
+        const dummyOps = dummyEmptyText.items.filter((i) => i.kind === "statement").map((i) => i.statement);
+        assert.equal(dummyOps.length, 2);
+        assert.equal((dummyOps[0] as ReadStatement).target?.raw, "note://main/1/15/2");
+        assert.equal((dummyOps[1] as FindStatement).target?.raw, "src/**");
+
+        const nonEmptyTextOnRead = PlurnkParser.parse('await plurnk.read({ path: "src/a.py", text: "not-empty" });');
+        assert.equal(nonEmptyTextOnRead.items.filter((i) => i.kind === "statement").length, 0);
+        assert.ok(nonEmptyTextOnRead.items.some((i) => i.kind === "error" && i.error.message.includes("Unknown option `text` on `plurnk.read`")));
     });
 });
