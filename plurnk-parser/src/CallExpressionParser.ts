@@ -499,7 +499,7 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
                 idx += 1;
                 continue;
             }
-            if (code[idx] === ")") {
+            if (code[idx] === ")" || (code[idx] === "}" && /^;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx + 1)))) {
                 idx += 1;
                 return args;
             }
@@ -597,7 +597,12 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
             trailingHeredocCursor = null;
         } else {
             skipTrivia();
-            while (code[idx] === ";" || code[idx] === "}" || code[idx] === ")") {
+            while (
+                code[idx] === ";"
+                || code[idx] === "}"
+                || code[idx] === ")"
+                || (code[idx] === "." && /^[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx + 1)))
+            ) {
                 idx += 1;
                 skipTrivia();
             }

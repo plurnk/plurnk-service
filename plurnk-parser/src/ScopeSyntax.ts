@@ -16,6 +16,10 @@ const stripBoundaryCommas = (s: string): string =>
 
 const wrapScope = (raw: string): string => {
     const trimmed = raw.trim();
+    const linesCount = /^([1-9][0-9]*)\s+lines?$/iu.exec(trimmed);
+    if (linesCount !== null) {
+        return `<1,${linesCount[1]}>`;
+    }
     if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
         return `<${stripBoundaryCommas(trimmed.slice(1, -1))}>`;
     }

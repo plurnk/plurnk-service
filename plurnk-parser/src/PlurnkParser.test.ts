@@ -936,5 +936,22 @@ describe("PlurnkParser Code Mode", () => {
         if (barePlurnkFn.items[0]?.kind === "error") {
             assert.match(barePlurnkFn.items[0].error.message, /Missing operation name on `plurnk`/);
         }
+
+        const mimoorAndBonsaiRecoveries = PlurnkParser.parse([
+            '<tool_call><function=plurnk.read><parameter=params>{"path": "workspace:///catalog.xml"}</parameter></function></tool_call>',
+            'await plurnk.edit({"path": "workspace:///france/capital", "text": "Paris"}}',
+            'await plurnk.note({"text":"Replaced `gamma` with `gamma prime` in workspace:///notes.md"}).',
+            'await plurnk.read({"path":"workspace:///notes.md","range":"7 lines"})',
+            'await plurnk.note({"properties":{"text":"Noted"},"range":"1,-1"})',
+        ].join("\n\n"));
+        assert.equal(mimoorAndBonsaiRecoveries.items.every((i) => i.kind === "statement"), true);
+        const mbOps = mimoorAndBonsaiRecoveries.items.filter((i) => i.kind === "statement").map((i) => i.statement);
+        assert.equal(mbOps.length, 5);
+        assert.equal((mbOps[0] as ReadStatement).target?.raw, "workspace:///catalog.xml");
+        assert.equal((mbOps[1] as EditStatement).target?.raw, "workspace:///france/capital");
+        assert.equal((mbOps[1] as EditStatement).body, "Paris");
+        assert.equal((mbOps[2] as NoteStatement).body, "Replaced `gamma` with `gamma prime` in workspace:///notes.md");
+        assert.deepEqual((mbOps[3] as ReadStatement).lineMarker, { marks: [1, 7] });
+        assert.equal((mbOps[4] as NoteStatement).body, "Noted");
     });
 });
