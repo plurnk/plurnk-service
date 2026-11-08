@@ -519,13 +519,23 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
             }
         }
 
+        while (code[idx] === "(") {
+            idx += 1;
+            skipTrivia();
+        }
+
         const awaitMatch = /^await\b/u.exec(code.slice(idx));
         if (awaitMatch !== null) {
             const after = code.slice(idx + 5).trimStart();
-            if (!after.startsWith(".") && !after.startsWith("[") && !after.startsWith("(")) {
+            if (!after.startsWith(".") && !after.startsWith("[")) {
                 idx += 5;
                 skipTrivia();
             }
+        }
+
+        while (code[idx] === "(") {
+            idx += 1;
+            skipTrivia();
         }
 
         const headMatch = /^[A-Za-z_$][A-Za-z0-9_$-]*/u.exec(code.slice(idx));
