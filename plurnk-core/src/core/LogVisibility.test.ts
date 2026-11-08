@@ -58,7 +58,7 @@ test("{§log-kill-scope} LogVisibility rejects character regions but treats abse
             status: 400,
             code: "curation-scope-invalid",
             detail: "Log-body scopes require one line or an inclusive two-line range; received 4 coordinates.",
-            recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/1/1\" }); with no range retires the whole row.",
+            recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/1/1\" }) with no range retires the whole row.",
         },
     );
     assert.deepEqual(
@@ -72,7 +72,7 @@ test("{§log-kill-scope} LogVisibility rejects character regions but treats abse
             status: 400,
             code: "curation-scope-invalid",
             detail: "Range <3,2> runs backward; a range names its first line first.",
-            recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/1/1\" }); with no range retires the whole row.",
+            recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/1/1\" }) with no range retires the whole row.",
         },
     );
 });
@@ -85,7 +85,7 @@ test("{§log-kill-scope} {§slicer-text-algebra}: a zero or backward log-body sc
         status: 416,
         code: "range-not-satisfiable",
         detail: "Range <0,-1> starts at 0, which is not a line; lines are numbered from 1.",
-        recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/9/2/read\" }); with no range retires the whole row.",
+        recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/9/2/read\" }) with no range retires the whole row.",
     });
     assert.deepEqual(refusal([0, -1], ""), refusal([0, -1]), "an empty body is refused by the same rule, never clamped");
     assert.deepEqual(refusal([0, 17]), {
@@ -93,21 +93,21 @@ test("{§log-kill-scope} {§slicer-text-algebra}: a zero or backward log-body sc
         status: 416,
         code: "range-not-satisfiable",
         detail: "Range <0,17> starts at 0, which is not a line; lines are numbered from 1.",
-        recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/9/2/read\" }); with no range retires the whole row.",
+        recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/9/2/read\" }) with no range retires the whole row.",
     });
     assert.deepEqual(refusal([0]), {
         ok: false,
         status: 400,
         code: "curation-scope-invalid",
         detail: "<0> is not a line of a log body; lines are numbered from 1.",
-        recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/9/2/read\" }); with no range retires the whole row.",
+        recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/9/2/read\" }) with no range retires the whole row.",
     });
     assert.deepEqual(refusal([2, 0]), {
         ok: false,
         status: 400,
         code: "curation-scope-invalid",
         detail: "Range <2,0> ends at 0, which is not a line; a range ends at a line from 1, or at -1 for the last line.",
-        recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/9/2/read\" }); with no range retires the whole row.",
+        recovery: "Trim one line with range \"L\" or lines L through M with range \"L,M\"; await plurnk.kill({ path: \"log:///1/9/2/read\" }) with no range retires the whole row.",
     });
     for (const [marks, range] of [[[1, -1], [1, -1]], [[1], [1, 1]], [[2, 3], [2, 3]]] as const) {
         assert.deepEqual(LogVisibility.resolveScope({ marks: [...marks] }, "log:///1/9/2/read", "a\nb\nc"), { ok: true, range: [...range] }, "the forms the recoveries name work");

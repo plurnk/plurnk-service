@@ -58,7 +58,7 @@
     },
     "dependencies": {
         "@plurnk/plurnk-contracts": "^7.3.0",
-        "json-p3": "^3.0.2",
+        "json-p3": "^3.0.3",
         "xpath": "^0.0.36"
     },
     "devDependencies": {

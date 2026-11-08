@@ -766,7 +766,7 @@ for (const runtime of ["sh", "js", "python3"]) test(`{§op-shapes}: installed ${
         assert.ok(doc, "the installed executor's documentation reaches the session");
         const details = (JSON.parse(doc.content) as { description?: string }).description ?? "";
         const readme = await readFile(new URL("README.md", import.meta.resolve("@plurnk/plurnk-execs-common/package.json")), "utf8");
-        const pattern = new RegExp(`await\\s+plurnk\\.${runtime}\\(\\{[^\\n]+\\}\\);`, "g");
+        const pattern = new RegExp(`await\\s+plurnk\\.${runtime}\\(\\{[^\\n]+\\}\\)`, "g");
         const examples = [details, readme].flatMap((content) => [...content.matchAll(pattern)].map((m) => ({ raw: m[0] })));
         assert.ok(examples.length > 0, `${runtime} has executable examples`);
         const execs = examples.flatMap(({ raw }) => {
@@ -823,7 +823,7 @@ test("{§exec-stream}: materialized shell documentation demonstrates scoped READ
         });
         assert.ok(doc, "the installed shell's documentation reaches the session");
         const details = (JSON.parse(doc.content) as { description?: string }).description ?? "";
-        const examples = [...details.matchAll(/^await\s+plurnk\.read\(\{[^\n]+\}\);$/gm)].map((m) => m[0]);
+        const examples = [...details.matchAll(/^await\s+plurnk\.read\(\{[^\n]+\}\)$/gm)].map((m) => m[0]);
         const reads = examples.flatMap((source) => {
             const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
             assert.equal(parsed.unparsedTail, undefined, source);

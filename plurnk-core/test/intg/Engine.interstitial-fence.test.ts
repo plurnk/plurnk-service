@@ -874,7 +874,7 @@ test("{§outside-text} prose before, between and after fences lands as NOTEs in 
         assert.equal([...user.matchAll(/^### log:\/\/\/1\/2\/\d+\/note · \d+/gmu)].length, 3, "each annotation retains its own receipt");
         assert.doesNotMatch(user, /Thinking out loud|Between the two|And a trailing remark/u, "receipts do not duplicate the annotations");
         const assistant = PacketWire.renderSlot(packet.sections, "assistant");
-        assert.match(assistant, /await plurnk\.note\(\{"text":"Thinking out loud first\."\}\);[\s\S]*await plurnk\.note\(\{"text":"Between the two\."\}\);[\s\S]*await plurnk\.note\(\{"text":"And a trailing remark\."\}\);/u, `the replay carries them as NOTE statements:\n${assistant}`);
+        assert.match(assistant, /await plurnk\.note\(\{"text":"Thinking out loud first\."\}\)\n\n[\s\S]*await plurnk\.note\(\{"text":"Between the two\."\}\)\n\n[\s\S]*await plurnk\.note\(\{"text":"And a trailing remark\."\}\)/u, `the replay carries them as NOTE statements:\n${assistant}`);
     } finally { await db.close(); }
 });
 });

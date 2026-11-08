@@ -438,10 +438,12 @@ export default class EntryFind {
         // {§fs-namespace} — an exact-path miss is ENOENT; an empty glob or folder
         // survey is a successful empty result.
         if (!multipleAuthorities && scope?.kind === "exact" && scope.pathname.length > 0) {
-            const exact = await ctx.db.crud_find_workspace_entry.get<{ id: number }>({
-                workspace_id: ctx.workspaceId,
-                scheme, authority, pathname: scope.pathname,
-            });
+            const exact = address.visible !== undefined && !(await address.visible(scope.pathname))
+                ? undefined
+                : await ctx.db.crud_find_workspace_entry.get<{ id: number }>({
+                    workspace_id: ctx.workspaceId,
+                    scheme, authority, pathname: scope.pathname,
+                });
             // {§membership-auto-add} — an exact miss on a candidate is a listing or a match, not a 404.
             const ambientExact = exact === undefined && address.ambient !== undefined && scheme === "file"
                 && (await address.ambient.candidates(scope.pathname)).includes(scope.pathname);
@@ -487,7 +489,7 @@ export default class EntryFind {
         candidates = candidates.filter((candidate) => pathScopeMatches(authorityScope, candidate.authority));
         if (address.visible !== undefined) {
             candidates = (await Promise.all(candidates.map(async (candidate) => ({
-                candidate: candidate.content !== undefined && candidate.pathname.endsWith(".md")
+                candidate: candidate.content !== undefined && (candidate.pathname.endsWith(".md") || candidate.pathname.endsWith(".json"))
                     ? {
                         ...candidate,
                         content: await ToolResources.filterDocumentForVisibleTools(candidate.pathname, candidate.content, address.visible!),
@@ -791,12 +793,17 @@ export default class EntryFind {
         manifest: SchemeManifest,
         address: FindAddress,
     ): Promise<FindResult> {
-        let match = await EntryFind.#matchPathnames(statement, ctx, manifest, address);
+        const scheme = EntryCrud.identityScheme(manifest);
+        const visible = address.visible ?? ((scheme === "mcp" || scheme === "plurnk" || scheme === "workspace")
+            ? await ctx.referenceVisibility?.()
+            : undefined);
+        const effectiveAddress: FindAddress = visible === undefined ? address : { ...address, visible };
+        let match = await EntryFind.#matchPathnames(statement, ctx, manifest, effectiveAddress);
         // {§matcher-dispatch} — a still-deriving index is settled once and the
         // selection re-run, so the model gets an answer, not a wait.
         if (match.status === 503 && match.extensions?.stage === "search-index" && ctx.settleDerivations !== undefined) {
             await ctx.settleDerivations();
-            match = await EntryFind.#matchPathnames(statement, ctx, manifest, address);
+            match = await EntryFind.#matchPathnames(statement, ctx, manifest, effectiveAddress);
         }
         const empty = emptyFindFields();
         // {§membership-auto-add} — the FIND proposes the admission of the candidates its pattern matched.
@@ -821,10 +828,9 @@ export default class EntryFind {
                 match.extensions,
             );
         }
-        const scheme = EntryCrud.identityScheme(manifest);
         const projectRoot = scheme === "file" ? await FileAddress.projectRoot(ctx) : null;
         const authoredCoordinate = EntryFind.#scopeCoordinateOf(statement, manifest);
-        const authority = address.authority ?? authoredCoordinate?.authority ?? "";
+        const authority = effectiveAddress.authority ?? authoredCoordinate?.authority ?? "";
         const multipleAuthorities = PathSyntax.hasGlob(authority);
         const addressOf = (pathname: string): string => multipleAuthorities
             ? pathname
@@ -842,8 +848,8 @@ export default class EntryFind {
         for (const m of match.matches) {
             const row = byPath.get(addressOf(m.pathname));
             if (row !== undefined) {
-                if (address.visible !== undefined && m.pathname.endsWith(".md") && row[0].aside !== undefined) {
-                    const filteredAside = await ToolResources.filterSummaryForVisibleTools(m.pathname, row[0].aside, address.visible);
+                if (effectiveAddress.visible !== undefined && m.pathname.endsWith(".md") && row[0].aside !== undefined) {
+                    const filteredAside = await ToolResources.filterSummaryForVisibleTools(m.pathname, row[0].aside, effectiveAddress.visible);
                     if (filteredAside !== row[0].aside) {
                         resources.push({ item: [{ ...row[0], aside: filteredAside }, ...row.slice(1)], match: m });
                         continue;
@@ -853,8 +859,8 @@ export default class EntryFind {
                 continue;
             }
             // {§membership-auto-add} — a listed candidate has no catalog row; its row is read from disk.
-            if (match.ambient?.has(m.pathname) && address.ambient !== undefined) {
-                const item = await EntryFind.#ambientItem(address.ambient, m.pathname, addressOf(m.pathname), ctx.weigh);
+            if (match.ambient?.has(m.pathname) && effectiveAddress.ambient !== undefined) {
+                const item = await EntryFind.#ambientItem(effectiveAddress.ambient, m.pathname, addressOf(m.pathname), ctx.weigh);
                 if (item !== null) resources.push({ item, match: m });
             }
         }

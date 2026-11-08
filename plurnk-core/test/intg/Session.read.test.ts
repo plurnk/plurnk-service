@@ -926,7 +926,7 @@ test("{§skills-module} a model discovers a skill and reads its original tree th
         assert.match(provider.packets[1], /references\/guide\.md/, "source-relative links survive unchanged");
         assert.match(provider.packets[2], /REFERENCE_SENTINEL/);
         assert.match(provider.packets[2], /NESTED_SENTINEL/);
-        const binaryRequest = provider.packets[2].indexOf("await plurnk.read({\"path\":\"skill://sample/assets/sample.bin\",\"range\":\"1,-1\"});");
+        const binaryRequest = provider.packets[2].indexOf("await plurnk.read({\"path\":\"skill://sample/assets/sample.bin\",\"range\":\"1,-1\"})");
         assert.ok(binaryRequest >= 0, "the complete binary READ replays with its turn, before the turn's results");
         const reads = provider.packets[2].slice(binaryRequest).split(/\n\n(?=### log:\/\/\/)/).filter((section) => /^### log:\/\/\/1\/3\/\d+\/read \(skill:\/\/sample\/\S+\) · \d+$/m.test(section));
         assert.equal(reads.length, 3, "the turn's READ receipts follow it, in program order");

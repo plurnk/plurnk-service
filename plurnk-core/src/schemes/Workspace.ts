@@ -176,9 +176,7 @@ export default class Workspace extends CoreSchemeAdapterBase {
                 retryable: false,
             });
         }
-        // {§question-tool} The shared reserved tree, as this session may see it.
-        const visible = await core.referenceVisibility?.();
-        return EntryFind.findWorkspaceEntries(statement, core, Workspace.manifest, { authority: "", ...(visible === undefined ? {} : { visible }) });
+        return EntryFind.findWorkspaceEntries(statement, core, Workspace.manifest, { authority: "" });
     }
 
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {

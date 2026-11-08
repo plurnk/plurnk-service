@@ -26,11 +26,11 @@ test("{§tools-resource-materialization} renders a general runtime as one self-d
     assert.match(content, /^# example$/m);
     assert.match(
         content,
-        /^## Summary\n\nawait plurnk\.example\("something"\); \/\/ Compute a thing\.$/m,
+        /^## Summary\n\nawait plurnk\.example\("something"\) \/\/ Compute a thing\.$/m,
     );
     assert.match(content, /^## Invocation$/m);
     assert.match(content, /^\| body \| required: query \|$/m);
-    assert.match(content, /await plurnk\.example\("something"\); \/\/ Compute a thing\./);
+    assert.match(content, /await plurnk\.example\("something"\) \/\/ Compute a thing\./);
     const summary = content.split("## Summary\n\n")[1].split("\n\n")[0];
     assert.equal(Lexer.lex(summary)[0]?.type, "paragraph", "the generic Markdown Summary projection can discover the Code Mode invocation");
     const parsed = PlurnkParser.parseStatements(summary, { executors: ["example", "fixture", "brave", "sh"] });
@@ -90,12 +90,12 @@ test("{§tools-resource-materialization} retains authored non-schema invocations
     assert.match(runtimeDoc, /^## Tools\n\nawait gitea[\s\S]*$/m);
     assert.match(
         runtimeDoc,
-        /^await gitea\.index\(\{"owner"\?: string\}\); \/\/ List repository issues\.$/m,
+        /^await gitea\.index\(\{"owner"\?: string\}\) \/\/ List repository issues\.$/m,
         "the invocation line is the whole teaching for a detail-less tool — no pointer",
     );
     assert.match(
         runtimeDoc,
-        /^await gitea\["issue\/read"\]\(\{"owner": string, "repo": string, "index": integer\}\); \/\/ Read one issue and its discussion\.$/m,
+        /^await gitea\["issue\/read"\]\(\{"owner": string, "repo": string, "index": integer\}\) \/\/ Read one issue and its discussion\.$/m,
     );
     assert.doesNotMatch(runtimeDoc, /Schema: session:/, "no schema is fabricated for authored signatures");
     assert.doesNotMatch(runtimeDoc, /tool_name/, "the runtime document cannot advertise a rejected generic target");
@@ -130,7 +130,7 @@ test("{§capability-admission} derives an inventory summary from the effective e
     });
 
     const runtimeDoc = resources[0]?.content ?? "";
-    assert.match(runtimeDoc, /^## Summary\n\nawait fixture\.echo\(\{"message": string\}\);$/m);
+    assert.match(runtimeDoc, /^## Summary\n\nawait fixture\.echo\(\{"message": string\}\)$/m);
     assert.doesNotMatch(runtimeDoc, /fail/);
 });
 
@@ -174,7 +174,7 @@ test("{§find} a large runtime's inventory summary names every tool", () => {
         details: "",
         registry: { tools: ["brave_web_search", "brave_news_search"].map(tool) },
     });
-    assert.match(small[0]?.content ?? "", /^## Summary\n\nawait brave\["brave_web_search\|brave_news_search"\]\(\); \/\/ Brave Search MCP Server/m, "a runtime that fits lists every tool");
+    assert.match(small[0]?.content ?? "", /^## Summary\n\nawait brave\["brave_web_search\|brave_news_search"\]\(\) \/\/ Brave Search MCP Server/m, "a runtime that fits lists every tool");
 });
 
 test("{§tools-resource-materialization} keeps a concrete invocation's multiline body inside the summary witness", () => {
@@ -194,14 +194,14 @@ test("{§tools-resource-materialization} keeps a concrete invocation's multiline
     });
     const document = resources[0].content;
     const renderedSummary = document.split("## Summary\n\n")[1].split("\n\n")[0];
-    assert.equal(renderedSummary, `await fixture.echo(${body}); // Echo structured input`);
-    assert.ok(document.includes(`await fixture.echo(${body}); // Echo structured input.`), "the full invocation retains its physical newlines");
+    assert.equal(renderedSummary, `await fixture.echo(${body}) // Echo structured input`);
+    assert.ok(document.includes(`await fixture.echo(${body}) // Echo structured input.`), "the full invocation retains its physical newlines");
 });
 
 test("{§tools-resource-materialization} a registry-less runtime with no details is marked invocation-only in its summary", () => {
     const invocation = { body: { role: "the program", required: false }, example: { body: "1+1" } };
     const [bare] = ToolResources.render({ runtime: "calc", summary: "Evaluate calculations.", invocation, details: "   ", registry: null });
-    assert.match(bare.content, /^await plurnk\.calc\("1\+1"\); \/\/ Evaluate calculations\. \(invocation only\)$/mu, "the summary line, and so the catalog row, says the document is header-only");
+    assert.match(bare.content, /^await plurnk\.calc\("1\+1"\) \/\/ Evaluate calculations\. \(invocation only\)$/mu, "the summary line, and so the catalog row, says the document is header-only");
     const [taught] = ToolResources.render({ runtime: "calc", summary: "Evaluate calculations.", invocation, details: "Set `scale` first.", registry: null });
     assert.doesNotMatch(taught.content, /invocation only/u, "a runtime with a body is not marked");
     assert.ok(taught.content.endsWith("Set `scale` first."), "the body closes the document");
@@ -216,7 +216,7 @@ test("{§functionality-model-projection} plurnk runtime summary advertises effec
             })) },
         });
         const summary = resource.content.split("## Summary\n\n")[1].split("\n\n")[0];
-        assert.equal(summary, `await plurnk[${JSON.stringify(tools.join("|"))}](); // Core operations, code execution, workspace configuration (env, mcp, members, personas, schedule, skills), and user questions.`);
+        assert.equal(summary, `await plurnk[${JSON.stringify(tools.join("|"))}]() // Core operations, code execution, workspace configuration (env, mcp, members, personas, schedule, skills), and user questions.`);
     }
 });
 
@@ -284,7 +284,7 @@ test("{§executor-discovery} catalogs required top-level fields in the skeleton,
     assert.equal(family?.pathname, "/gitea.md");
     assert.equal(detail?.scheme, "mcp");
     assert.equal(detail?.pathname, "/gitea/issue%2Fread.json");
-    assert.match(family.content, /^await gitea\["issue\/read"\]\(\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\); \/\/ List issues\. \(filter: \{state\?: "open"\|"closed"\}, mode: "open"\|"all"; page\?: integer\)$/m);
+    assert.match(family.content, /^await gitea\["issue\/read"\]\(\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\) \/\/ List issues\. \(filter: \{state\?: "open"\|"closed"\}, mode: "open"\|"all"; page\?: integer\)$/m);
     assert.doesNotMatch(family.content, /Schema:/);
     assert.doesNotMatch(family.content, /oneOf|Selection|minItems/);
     const parsed = JSON.parse(detail.content) as Record<string, unknown>;
@@ -303,7 +303,7 @@ test("{§executor-discovery} top-level object unions preview the first branch an
         { properties: { second: { type: "number" } }, required: ["second"] },
     ] };
     const [family, detail] = render("conditional", conditional);
-    assert.match(family.content, /^await conditional\["issue\/read"\]\(\{"first": ""\}\); \/\/ List issues\. \(\{first: string\}\|\{second: number\}\)$/m);
+    assert.match(family.content, /^await conditional\["issue\/read"\]\(\{"first": ""\}\) \/\/ List issues\. \(\{first: string\}\|\{second: number\}\)$/m);
     assert.doesNotMatch(family.content, /oneOf/);
     const parsed = JSON.parse(detail.content) as Record<string, unknown>;
     assert.deepEqual(parsed.oneOf, conditional.oneOf);
@@ -360,7 +360,7 @@ test("{§tools-resource-materialization} a featured exact tool includes its requ
         runtime: "brave", summary, details: "", invocation: tool.invocation,
         registry: { tools: [tool, { ...tool, target: "news" }] },
     })[0].content.split("## Summary\n\n")[1].split("\n\n")[0];
-    assert.equal(family("await brave.search(); // Search documents"), 'await brave.search({"query": ""}); // Search documents');
+    assert.equal(family("await brave.search(); // Search documents"), 'await brave.search({"query": ""}) // Search documents');
     for (const authored of [
         "Search documents and news.",
         'await brave["search|news"]();',
@@ -421,7 +421,7 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
             },
         }] },
     })[0].content;
-    assert.match(withOptions, /^await gitea\.search\(\{"query": ""\}\); \/\/ Search repos\. \(page\?: integer, sort\?: string, state\?: "open"\|"closed"\|"all", labels\?: string\[\]\)$/m);
+    assert.match(withOptions, /^await gitea\.search\(\{"query": ""\}\) \/\/ Search repos\. \(page\?: integer, sort\?: string, state\?: "open"\|"closed"\|"all", labels\?: string\[\]\)$/m);
 
     const fillForm = {
         type: "object",
@@ -449,7 +449,7 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
             target: { role: "MCP tool", required: true, kind: "literal" },
             inputSchema: fillForm,
         }, "browser_fill_form"),
-        'await browser.browser_fill_form({"fields": []}); // (fields: {target: string, name: string, type: "textbox"|"checkbox"|"radio"|"combobox"|"slider", value: string, element?: string}[])',
+        'await browser.browser_fill_form({"fields": []}) // (fields: {target: string, name: string, type: "textbox"|"checkbox"|"radio"|"combobox"|"slider", value: string, element?: string}[])',
     );
 
     const noOptions = ToolResources.render({
@@ -467,7 +467,7 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
             },
         }] },
     })[0].content;
-    assert.match(noOptions, /^await gitea\.search\(\{"query": ""\}\); \/\/ Search repos\.$/m);
+    assert.match(noOptions, /^await gitea\.search\(\{"query": ""\}\) \/\/ Search repos\.$/m);
 });
 
 test("{§functionality-model-projection} {§tools-resource-materialization} renders all 15 Core VM operations on mcp:///plurnk.md with parseable examples", () => {
@@ -486,11 +486,11 @@ test("{§functionality-model-projection} {§tools-resource-materialization} rend
     assert.ok(indexDoc);
     assert.match(
         indexDoc.content,
-        /^await plurnk\.todo\(\{"items": \[\]\}\); \/\/ Replace the session's remaining TODO list\.$/m,
+        /^await plurnk\.todo\(\{"items": \[\]\}\) \/\/ Replace the session's remaining TODO list\.$/m,
     );
     assert.match(
         indexDoc.content,
-        /^await plurnk\.copy\(\{"from": "", "to": ""\}\); \/\/ Copy files, entries, streams, or text regions\. \(from: string\|\{path: string, range\?: string, pattern\?: string, headers\?: object\}, to: string\|\{path: string, range\?: string, pattern\?: string, headers\?: object\}\)$/m,
+        /^await plurnk\.copy\(\{"from": "", "to": ""\}\) \/\/ Copy files, entries, streams, or text regions\. \(from: string\|\{path: string, range\?: string, pattern\?: string, headers\?: object\}, to: string\|\{path: string, range\?: string, pattern\?: string, headers\?: object\}\)$/m,
     );
     assert.doesNotMatch(indexDoc.content, /Schema: mcp:\/\/\/plurnk\//);
     for (const tool of ALL_CORE_OPERATION_TOOLS) {

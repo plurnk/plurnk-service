@@ -450,7 +450,7 @@ export default class FunctionalityManager extends BaseExecutor {
                     exampleObj[k] = v;
                 }
             }
-            sections.push(`await plurnk.${entry.family}(${JSON.stringify(exampleObj)});`);
+            sections.push(`await plurnk.${entry.family}(${JSON.stringify(exampleObj)})`);
         }
         if (docBody.length > 0) {
             sections.push(docBody);

@@ -23,22 +23,22 @@ PLURNK_SKILLS_code_review_ENABLED=0
 
 ## Reading and authoring a skill
 
-- Read instructions with `await plurnk.read({ path: "skill://<name>/SKILL.md" });` and list companion files with `await plurnk.find({ path: "skill://<name>/**" });`.
-- Run skill scripts with their executor (e.g. `await plurnk.js({ script: "skill://<name>/scripts/program.js", args: ["..."] });`). `skill://` is read-only.
+- Read instructions with `await plurnk.read({ path: "skill://<name>/SKILL.md" })` and list companion files with `await plurnk.find({ path: "skill://<name>/**" })`.
+- Run skill scripts with their executor (e.g. `await plurnk.js({ script: "skill://<name>/scripts/program.js", args: ["..."] })`). `skill://` is read-only.
 - Author or edit project skills in the filesystem with `plurnk.edit` (and remove with `plurnk.kill`); standard roots are rescanned before every turn and hot-loaded into `skill://<name>/`:
 
-await plurnk.edit({ path: ".agents/skills/code-review/SKILL.md", text: "---\nname: code-review\ndescription: Check diffs for contract, test, and migration regressions.\n---\n\nInspect changed files against the owning `SPEC.md` before approving." });
+await plurnk.edit({ path: ".agents/skills/code-review/SKILL.md", text: "---\nname: code-review\ndescription: Check diffs for contract, test, and migration regressions.\n---\n\nInspect changed files against the owning `SPEC.md` before approving." })
 
 ## Adding
 
 | Call | Effect |
 | --- | --- |
-| `await plurnk.skills({});` | List skills with status, provenance, and any Problem. |
-| `await plurnk.skills({ discover: "<source>" });` | Inspect a source (git `https`/`ssh` URL, `<server>:///skills`, folder, `SKILL.md`, or `.zip`/`.tar` archive) and return addable candidates without installing. |
-| `await plurnk.skills({ name, source, ref? });` | Bind and enable skill `name` from `source` (optional git branch/tag `ref`). |
-| `await plurnk.skills({ name, enabled: false });` | Disable (`false`) or re-enable (`true`) a skill without removing its definition. |
-| `await plurnk.skills({ name, remove: true });` | Remove a workspace override and restore any inherited definition. |
+| `await plurnk.skills({})` | List skills with status, provenance, and any Problem. |
+| `await plurnk.skills({ discover: "<source>" })` | Inspect a source (git `https`/`ssh` URL, `<server>:///skills`, folder, `SKILL.md`, or `.zip`/`.tar` archive) and return addable candidates without installing. |
+| `await plurnk.skills({ name, source, ref? })` | Bind and enable skill `name` from `source` (optional git branch/tag `ref`). |
+| `await plurnk.skills({ name, enabled: false })` | Disable (`false`) or re-enable (`true`) a skill without removing its definition. |
+| `await plurnk.skills({ name, remove: true })` | Remove a workspace override and restore any inherited definition. |
 
-`await plurnk.skills({ name: "sql-formatter", source: "https://git.example/acme/skills.git" }); // from a discover candidate`
+`await plurnk.skills({ name: "sql-formatter", source: "https://git.example/acme/skills.git" }) // from a discover candidate`
 
 - Local folders and `SKILL.md` paths stay live references; git, MCP, and archive sources materialize into workspace storage pinned to their commit or manifest digest.

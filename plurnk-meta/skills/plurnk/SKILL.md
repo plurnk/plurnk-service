@@ -26,5 +26,5 @@ description: Configure, customize, extend, and integrate Plurnk — settings (.e
 | Running code: the shell and each interpreter's body, script, arguments, exit status | `mcp:///plurnk.md`, `mcp:///plurnk/sh.json`, `mcp:///plurnk/js.json`, `mcp:///plurnk/python3.json` |
 | Enabled MCP server invocations and schemas | `mcp:///` |
 
-Read the relevant reference with `plurnk.read`; `plurnk.find` selects paths and searches their bodies or symbols across `skill://plurnk/**` (for example `await plurnk.find({ path: "skill://plurnk/packages/**/SPEC.md", pattern: "/§tag/" });` or `await plurnk.find({ path: "skill://plurnk/packages/**/dist/*.d.ts", pattern: "&Symbol" });`), and `await plurnk.kill({ path: "log:///...", note: "..." });` retires read slices once applied.
+Read the relevant reference with `plurnk.read`; `plurnk.find` selects paths and searches their bodies or symbols across `skill://plurnk/**` (for example `await plurnk.find({ path: "skill://plurnk/packages/**/SPEC.md", pattern: "/§tag/" })` or `await plurnk.find({ path: "skill://plurnk/packages/**/dist/*.d.ts", pattern: "&Symbol" })`), and `await plurnk.kill({ path: "log:///...", note: "..." })` retires read slices once applied.
 Defaults describe available settings; `plurnk-service config` and `plurnk-service config show` inspect the operator's effective configuration.

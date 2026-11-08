@@ -22,7 +22,7 @@ Coordinate sessions (`work`, `fork`), request isolated `bare` inference, and man
 
 `plurnk.bare({ text })` runs one stateless, toolless model call with no log, files, or tools—only `text`:
 
-await plurnk.bare({ text: "A self-contained prompt, with everything it needs pasted in." });
+await plurnk.bare({ text: "A self-contained prompt, with everything it needs pasted in." })
 
 Consecutive `bare` calls run concurrently and return their answers as ordinary `bare` receipts in the next packet.
 
