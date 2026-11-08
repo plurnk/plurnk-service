@@ -182,7 +182,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             const aside = resolveAside(first);
             const matcher = toMatcherBody(first.pattern ?? first.matcher ?? first.query, op, pos, advise, hasHeredocKey(first, "pattern", "matcher", "query"));
             const headers = toHeaders(first.headers, pos);
-            const rawPaths = first.paths ?? first.targets ?? first.path ?? first.target ?? first.uri ?? first.file_path ?? first.filepath ?? first.file;
+            const rawPaths = first.paths ?? first.targets ?? first.resources ?? first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filepath ?? first.file;
             if (Array.isArray(rawPaths)) {
                 if (rawPaths.length === 0 && op === "read") {
                     throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
@@ -277,7 +277,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires an options object with `path`.", "error", recovery);
         }
         assertAllowedKeys(first, EDIT_KEYS, "plurnk.edit", recovery, pos);
-        const rawPath = first.path ?? first.target ?? first.uri ?? first.file_path ?? first.filepath ?? first.file;
+        const rawPath = first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filepath ?? first.file;
         if (typeof rawPath !== "string" || rawPath.length === 0) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error", recovery);
         }
@@ -425,7 +425,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         }
         if (isRecord(first)) {
             assertAllowedKeys(first, KILL_KEYS, "plurnk.kill", recovery, pos);
-            const rawPaths = first.paths ?? first.targets ?? first.path ?? first.target ?? first.uri ?? first.file_path ?? first.filepath ?? first.file;
+            const rawPaths = first.paths ?? first.targets ?? first.resources ?? first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filepath ?? first.file;
             const aside = resolveAside(first);
             const rawNote = first.note ?? first.distillation ?? first.body ?? first.content ?? first.text;
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
@@ -511,7 +511,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             return item;
         }
         if (isRecord(item)) {
-            const text = toStringValue(item.text ?? item.content ?? item.title ?? item.task ?? "");
+            const text = toStringValue(item.text ?? item.content ?? item.title ?? item.task ?? item.item ?? item.description ?? item.name ?? "");
             const status = item.status ?? (item.completed === true || item.done === true ? "done" : "pending");
             const box = status === "done" || status === "completed" || status === "x"
                 ? "[x]"
@@ -972,6 +972,16 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             if (typeof args[0] === "string" && args.length > 1) {
                 buildPlurnkTool(args[0], args.slice(1));
                 return;
+            }
+            if (isRecord(args[0])) {
+                throw new PlurnkParseError(
+                    activePosition.line,
+                    activePosition.column,
+                    "parser",
+                    "Missing operation name on `plurnk`; write `plurnk.<op>({ ... })`.",
+                    "error",
+                    "Use a core operation (`plurnk.read`, `plurnk.edit`, `plurnk.note`, `plurnk.done`, ...).",
+                );
             }
             buildStandaloneExec("plurnk", args);
             return;

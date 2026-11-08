@@ -291,7 +291,7 @@ export default class Slicer {
             const stripped = content.length > 0 && !/[\r\n]$/.test(content)
                 ? body.replace(/(?:\r\n|\r|\n)$/, "")
                 : body;
-            const prefix = stripped.length > 0 && content.length > 0 && !/[\r\n]$/.test(content)
+            const prefix = stripped.length > 0 && content.length > 0 && !/[\r\n]$/.test(content) && !/^[\r\n]/.test(stripped)
                 ? separator
                 : "";
             const suffix = stripped.length > 0 && /[\r\n]$/.test(content) && !/[\r\n]$/.test(stripped)

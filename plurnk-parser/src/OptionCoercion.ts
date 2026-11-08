@@ -95,12 +95,19 @@ export const assertAllowedKeys = (
     recovery: string,
     pos: Position,
 ): void => {
+    if (!allowed.has("text") && isRecord(obj.text)) {
+        const nested = obj.text;
+        delete obj.text;
+        for (const [nk, nv] of Object.entries(nested)) {
+            if (!(nk in obj)) obj[nk] = nv;
+        }
+    }
     for (const [key, value] of Object.entries(obj)) {
         if (
             key === "text" &&
             !allowed.has("text") &&
-            ((typeof value === "string" && (value.trim() === "" || value.trim() === "{}")) ||
-                (isRecord(value) && Object.keys(value).length === 0))
+            typeof value === "string" &&
+            (value.trim() === "" || value.trim() === "{}")
         ) {
             delete obj.text;
             continue;
@@ -119,13 +126,13 @@ export const assertAllowedKeys = (
 };
 
 export const READ_FIND_KEYS: ReadonlySet<string> = new Set([
-    "path", "paths", "target", "targets", "uri", "file_path", "filepath", "file",
+    "path", "paths", "target", "targets", "uri", "resource", "resources", "file_path", "filepath", "file",
     "range", "lines", "scope", "limit", "pattern", "matcher", "query",
     "headers", "note", "aside",
 ]);
 
 export const EDIT_KEYS: ReadonlySet<string> = new Set([
-    "path", "target", "uri", "file_path", "filepath", "file",
+    "path", "target", "uri", "resource", "file_path", "filepath", "file",
     "range", "lines", "scope", "pattern", "matcher",
     "oldText", "old_string", "old_text",
     "newText", "new_string", "new_text", "replacement", "content", "body", "text",
@@ -150,18 +157,18 @@ export const TRANSFER_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 export const SELECTION_KEYS: ReadonlySet<string> = new Set([
-    "path", "target", "uri", "range", "lines", "scope", "pattern", "matcher", "query", "headers",
+    "path", "target", "uri", "resource", "range", "lines", "scope", "pattern", "matcher", "query", "headers",
 ]);
 
 export const KILL_KEYS: ReadonlySet<string> = new Set([
-    "path", "paths", "target", "targets", "uri", "file_path", "filepath", "file",
+    "path", "paths", "target", "targets", "uri", "resource", "resources", "file_path", "filepath", "file",
     "range", "lines", "scope", "pattern", "matcher",
     "note", "distillation", "body", "content", "text",
     "remote", "headers", "aside",
 ]);
 
 export const NOTE_KEYS: ReadonlySet<string> = new Set([
-    "text", "content", "body", "note", "message", "aside",
+    "text", "content", "body", "note", "message", "path", "target", "uri", "resource", "aside",
 ]);
 
 export const TODO_KEYS: ReadonlySet<string> = new Set([
@@ -411,7 +418,7 @@ export const parseSelectionInput = (
     }
     if (isRecord(input)) {
         assertAllowedKeys(input, SELECTION_KEYS, `plurnk.${op}.${role}`, `await plurnk.${op}({ from: "source", to: "destination" })`, pos);
-        const rawPath = input.path ?? input.target ?? input.uri;
+        const rawPath = input.path ?? input.target ?? input.uri ?? input.resource;
         if (typeof rawPath !== "string" || rawPath.length === 0) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a '${role}.path' target.`, "error",
                 `await plurnk.${op}({ from: "source", to: "destination" })`);

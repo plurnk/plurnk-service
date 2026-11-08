@@ -209,10 +209,13 @@ export default class EditMutations {
             if (typeof body !== "string" || body.length === 0) return statement;
             const rows = body.split("\n");
             const filled = rows.filter((row) => row.length > 0);
-            if (filled.length === 0 || !filled.every((row) => LineAnchors.isAnchoredLine(row))) return statement;
-            const pasted = filled.map((row) => { const match = /^ *(\d+)<(@[0-9A-Za-z]{5})>/.exec(row)!; return { hash: match[2], line: Number(match[1]) }; });
+            if (filled.length === 0 || !filled.every((row) => /^ *(?:[1-9]\d*)?<@[0-9A-Za-z]{5}>/.test(row))) return statement;
+            const pasted = filled.map((row) => {
+                const match = /^ *(\d+)?<(@[0-9A-Za-z]{5})>/.exec(row)!;
+                return { hash: match[2], line: match[1] === undefined ? null : Number(match[1]) };
+            });
             const verifies = (anchors: readonly string[], startLine: number): boolean =>
-                pasted.every(({ hash, line }) => anchors[line - startLine] === hash);
+                pasted.every(({ hash, line }) => line !== null ? anchors[line - startLine] === hash : anchors.includes(hash));
             const verified = verifies(lineAnchors, 1);
             const source = verified ? "current" : (await publishedAnchors()).some(({ anchors, startLine }) => verifies(anchors, startLine)) ? "log" : null;
             if (source === null) {
@@ -222,7 +225,7 @@ export default class EditMutations {
             prefixFact = { rule: "rendered-prefix-stripped", lines: filled.length, source };
             // A rendered row per line: a blank last line keeps its terminator so the paste
             // reproduces exactly the lines it rendered.
-            const stripped = rows.map((row) => row.replace(/^ *\d+<@[0-9A-Za-z]{5}>/, ""));
+            const stripped = rows.map((row) => row.replace(/^ *\d*<@[0-9A-Za-z]{5}>/, ""));
             return { ...statement, body: stripped.join("\n") + (stripped.length > 1 && stripped.at(-1) === "" ? "\n" : "") };
         };
         const statement = await stripRendered(authored);

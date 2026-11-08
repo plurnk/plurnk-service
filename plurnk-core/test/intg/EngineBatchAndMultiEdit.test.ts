@@ -268,7 +268,7 @@ await plurnk.note({"text":"editing"});`, 50)] }).generate(args);
                 // Line 4 changes out-of-band after the READ: line 2's neighbourhood now differs, so the
                 // pasted prefixes no longer verify against the current anchors - only against the READ's.
                 await writeFile(join(root, "f.go"), SOURCE.replace("\treturn a\n", "\treturn a // changed\n"));
-                pending.body = `1<${anchors[0]}>var x int64\n2<${anchors[1]}>`;
+                pending.body = `1<${anchors[0]}>var x int64\n<${anchors[1]}>`;
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit" });
                 assert.equal(second.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ session_id: second.modelSessionId! }));
