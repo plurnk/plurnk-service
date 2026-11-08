@@ -46,7 +46,10 @@ const queryFrom = (url: URL): string | null => {
  */
 export const parsePath = (raw: string, pos: Position = { line: 0, column: 0 }): ParsedPath | null => {
     if (raw.length === 0) return null;
-    const target = PathSyntax.unescapeTarget(raw);
+    const unescaped = PathSyntax.unescapeTarget(raw);
+    const target = /^log:\/\/\/[^\s()]+(?:\s+\([^()]+\))?(?:\s*·\s*\d+)?\s*$/iu.test(unescaped)
+        ? unescaped.replace(/\s+\([^()]+\)(?:\s*·\s*\d+)?\s*$|\s*·\s*\d+\s*$/u, "")
+        : unescaped;
     if (!EXPLICIT_URI.test(target)) {
         // {§op-shapes} — `#channel` after a bare path is the channel, exactly as on a
         // URL; a spelling that opens with `#` names no path, so it stays whole.
