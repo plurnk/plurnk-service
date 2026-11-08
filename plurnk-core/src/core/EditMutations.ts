@@ -408,12 +408,17 @@ export default class EditMutations {
         if (typeof content !== "string" || typeof identity !== "string" || identity.length === 0) {
             throw new InvalidOperationResultError(`Scheme '${schemeName}' supplied pattern ${operation} source ${current.status} without textual content and its anchor identity.`);
         }
+        const resolvedMimetype = typeof mimetype === "string" ? mimetype : "text/plain";
         const matched = await PatternSelection.match({
-            matcher, content, target, mimetype: typeof mimetype === "string" ? mimetype : "text/plain",
+            matcher, content, target, mimetype: resolvedMimetype,
             marks: resolved.lineMarker?.marks, ctx, scheme: schemeName, operation,
         });
         if ("result" in matched) return matched;
-        const edits = PatternEdits.replacements(matched.spans, resolved.body ?? "");
+        const edits = PatternEdits.replacements(matched.spans, resolved.body ?? "", {
+            content,
+            mimetype: resolvedMimetype,
+            dialect: matcher.dialect,
+        });
         const tokens = LineAnchors.tokens(identity, content);
         const checks: LineAnchorCheck[] = PatternEdits.touchedLines(edits).flatMap((line) => tokens[line - 1] === undefined ? [] : [{ anchor: tokens[line - 1], line }]);
         return {
