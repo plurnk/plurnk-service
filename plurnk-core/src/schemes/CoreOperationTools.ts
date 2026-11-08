@@ -86,7 +86,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "find",
         target: "find",
-        summary: "List matching paths, or match locations inside a path; range pages results.",
+        summary: "List matching paths, or match pattern locations inside a path; range pages results.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
@@ -136,7 +136,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             required: ["path"],
             properties: {
                 path: { type: "string", minLength: 1, description: "Target file or entry path, or glob/extglob for bulk edits (percent-encode `(` as `%28` and `)` as `%29`)." },
-                range: { type: "string", description: "Line, column, or @hash range (see ## range in description)." },
+                range: { type: "string", description: "@hash, line, or column range (e.g. \"@start,@end\"; see ## range in description)." },
                 pattern: { type: "string", description: "Pattern whose matches are replaced by text (//a/@id selects `old` inside `id=\"old\"`; $.a selects `\"old\"` including quotes; see skill://plurnk/pattern.md)." },
                 text: { type: "string", description: "Literal replacement source text or file content (replaces the entire match verbatim without adding quotes; empty string deletes)." },
                 headers: HEADERS_SCHEMA,
@@ -149,10 +149,10 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             "",
             "| form | endpoint rule |",
             "| --- | --- |",
-            "| `\"L\"`, `\"@hash\"` | one line |",
-            "| `\"SL,EL\"`, `\"@start,@end\"` | lines SL through EL, inclusive (`\"1,-1\"` replaces the whole entry) |",
+            "| `\"@hash\"`, `\"L\"` | one line |",
+            "| `\"@start,@end\"`, `\"SL,EL\"` | lines SL through EL, inclusive (`\"1,-1\"` replaces the whole entry) |",
             "| `\"SL,SC,EL,EC\"` | start included, end excluded — `\"@abcde,5,@abcde,8\"` is `bar` in line 42 `foo bar baz` |",
-            "| `\"L,1,L,1\"`, `\"@hash,1,@hash,1\"` | insert before that line |",
+            "| `\"@hash,1,@hash,1\"`, `\"L,1,L,1\"` | insert before that line |",
             "| `\"0\"`, `\"-1\"` | insert before the first / after the last line (`-1` as an end line is the last line) |",
             "",
             "## Examples",

@@ -171,9 +171,17 @@ export default class FunctionalityManager extends BaseExecutor {
             ? executors.entry(plurnkRuntimeDecl.name, workspaceId)
             : undefined;
         const resourcesPath = entry?.resourcesPath ?? plurnkRuntimeDecl.resourcesPath;
+        const rawSummary = entry?.summary ?? plurnkRuntimeDecl.summary;
+        const hasQuestion = tools.some(({ target }) => target === "question");
+        const summary = typeof rawSummary === "object" && !hasQuestion
+            ? {
+                ...rawSummary,
+                description: "Core operations, code execution, and workspace configuration (env, mcp, members, personas, schedule, skills).",
+            }
+            : rawSummary;
         return ToolResources.render({
             runtime: plurnkRuntimeDecl.name,
-            summary: entry?.summary ?? plurnkRuntimeDecl.summary,
+            summary,
             invocation: entry?.invocation ?? {
                 body: { role: "JSON arguments", required: false, mimetype: "application/json" },
                 target: { role: "Plurnk tool", required: true, kind: "literal" },

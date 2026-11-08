@@ -13,6 +13,7 @@ import { contentHash } from "../core/content-hash.ts";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import NativeContent from "../core/NativeContent.ts";
 import FileAddress from "../core/FileAddress.ts";
+import ToolResources from "../core/ToolResources.ts";
 
 // Shared static-method helpers for workspace entry-bearing schemes.
 // Each scheme passes its manifest; helpers extract scheme name, channels,
@@ -467,17 +468,28 @@ export default class EntryOps {
                 missExtensions(scheme, path),
             );
         }
+        let representation = stored.entry;
+        if ((scheme === "mcp" || scheme === "plurnk") && ctx.writer !== "_plurnk" && ctx.referenceVisibility !== undefined && pathname.endsWith(".md")) {
+            const visible = await ctx.referenceVisibility();
+            const channels = Object.fromEntries(await Promise.all(
+                Object.entries(representation.channels).map(async ([name, ch]) => [
+                    name,
+                    { ...ch, content: await ToolResources.filterDocumentForVisibleTools(pathname, ch.content, visible) },
+                ]),
+            ));
+            representation = { ...representation, channels };
+        }
         // {§binary-parity} — a DB entry keeps binary bytes base64 in its default channel content; when
         // the scheme supplied no byte source, recover one from that content so the byte view and #bytes
         // read exactly as a File member's do. A text channel is left as text.
-        const effectiveBytes = bytes ?? await EntryCrud.storedByteSource(stored.entry, manifest.defaultChannel, ctx.mimetypes);
+        const effectiveBytes = bytes ?? await EntryCrud.storedByteSource(representation, manifest.defaultChannel, ctx.mimetypes);
         return ReadProjector.project({
             statement,
             manifest: { ...manifest, name: scheme },
             publishesLineAnchors,
             target: path,
             identity,
-            representation: stored.entry,
+            representation,
             context: ctx,
             mimetypes: ctx.mimetypes,
             ...(ctx.weigh === undefined ? {} : { weigh: ctx.weigh }),

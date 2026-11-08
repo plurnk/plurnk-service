@@ -1410,6 +1410,16 @@ test("{§membership} {§executor-policy}: the daemon trusts the repository it wa
     assert.deepEqual(pins(trusted), { ...kept, "safe.directory": "/srv/work/repo" }, "a root is trusted by its path alone");
     assert.equal(trusted.GIT_CONFIG_GLOBAL, "/dev/null");
     assert.equal(trusted.GIT_CONFIG_SYSTEM, "/dev/null");
+    const subdirTrusted = hermeticGitEnv(["/srv/work/repo", "/srv/work/repo/sub", "/srv/work/repo"]);
+    const subdirEntries = Array.from({ length: Number(subdirTrusted.GIT_CONFIG_COUNT) },
+        (_, index) => [subdirTrusted[`GIT_CONFIG_KEY_${index}`], subdirTrusted[`GIT_CONFIG_VALUE_${index}`]]);
+    assert.deepEqual(subdirEntries, [
+        ["core.fsmonitor", "false"],
+        ["core.hooksPath", "/dev/null"],
+        ["core.excludesFile", excludesFile()],
+        ["safe.directory", "/srv/work/repo"],
+        ["safe.directory", "/srv/work/repo/sub"],
+    ], "subdirectory probes pin both the workspace root and the probed directory without duplicates");
 });
 });
 
