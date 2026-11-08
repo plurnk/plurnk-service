@@ -20,28 +20,29 @@
 
 ```mermaid
 flowchart LR
-    canon["Canonical model teaching<br/>plurnk.md"]
-    free["Other admitted input"]
-    syntax["Code Mode parser<br/>CodeMode.ts"]
+    canon["Canonical model teaching<br/>plurnk.md (Heredoc Code Mode)"]
+    free["Other admitted input<br/>(post-training envelopes & near-misses)"]
+    syntax["Heredoc Code Mode parser & RENO<br/>CodeMode.ts · CodeSerializer.ts"]
     ast["Typed, serializable AST<br/>PlurnkStatement"]
-    runtime["Runtime owners<br/>stateful semantics and effects"]
+    runtime["Runtime owners<br/>execution & ops:// reflection"]
     canon --> syntax
     canon --> free
     free --> syntax
     syntax --> ast
     ast --> runtime
+    ast -->|"PlurnkParser.stringify"| syntax
 ```
 
 | Layer | Owner or artifact | Contract |
 | --- | --- | --- |
 | Stable current law | `SPEC.md` | Owns invariants and boundaries; forge issues retain history |
-| Canonical model teaching | `plurnk.md` | Teaches the lean Code Mode call syntax and operational model the model should emit |
-| Accepted syntax | `CodeMode.ts`, `ChunkScanner.ts`, `CallExpressionParser.ts`, `StatementLowering.ts`, `CodeSerializer.ts`, `NativeEnvelopes.ts`, `HeredocSyntax.ts`, `MatcherSyntax.ts`, `ScopeSyntax.ts`, `TargetSyntax.ts` | Recognizes declarative `await <service>.<tool>(args)` calls, literal argument shapes, deterministic native tool-call envelopes, and outside text |
+| Canonical model teaching | `plurnk.md` | Teaches the lean Heredoc Code Mode call syntax and operational model the model should emit |
+| Accepted syntax & RENO | `CodeMode.ts`, `ChunkScanner.ts`, `CallExpressionParser.ts`, `OptionCoercion.ts`, `StatementLowering.ts`, `CodeSerializer.ts`, `NativeEnvelopes.ts`, `XmlEnvelopes.ts`, `HeredocSyntax.ts`, `MatcherSyntax.ts`, `ScopeSyntax.ts`, `TargetSyntax.ts` | Recognizes declarative `await <service>.<tool>(args)` calls with `<<<EOF` heredocs, normalizes deterministic post-training tool-call envelopes and argument near-misses on admission, and serializes canonical Heredoc Code Mode for `ops://` reflection |
 | Typed admission | `PlurnkStatement` AST | Produces JSON-serializable unions and validates deterministic path/scope/matcher syntax |
 | Shared wire data | `schema/*.json` | Defines runtime-neutral data shapes projected into generated TypeScript |
 | Stateful behavior | consuming runtime | Resolves addresses, permissions, selection arithmetic, effects, and lifecycle |
 
-- **Authoritative representations**: JSON Schema is authoritative for shared wire data shapes; TypeScript types are generated from `schema/*.json`; `@plurnk/plurnk-parser` is authoritative for accepted Code Mode syntax.
+- **Authoritative representations**: JSON Schema is authoritative for shared wire data shapes; TypeScript types are generated from `schema/*.json`; `@plurnk/plurnk-parser` is authoritative for accepted Heredoc Code Mode syntax and Reflective Emission Normalization (RENO).
 - **ACP discovery and schema enforcement**: `AcpDiscovery` enumerates the installed ACP v2 actions (`scope`, `inputSchema`, `outputSchema`), notifications (`payloadSchema`), and `display` capabilities. Boundary validators enforce these schemas without mutating them and report structured validation `issues` in RFC 9457 Problem `detail`.
 - **JSON result and document presentation**: `renderJsonResult` formats compact aggregate operation rows (placing top-level array items on individual lines without rewriting stored JSON coordinates). `formatJsonDocument` performs two-space whitespace-only formatting of complete strict JSON documents before representation storage.
 
@@ -87,7 +88,7 @@ flowchart LR
 
 ---
 
-## §operation-fences 2. Canonical Code Mode statement form
+## §operation-fences 2. Canonical Heredoc Code Mode statement form
 
 ```ts
 await plurnk.<op>({ ... }) // optional aside
@@ -95,19 +96,19 @@ await plurnk.<op>({ ... }) // optional aside
 await <service>.<tool>({ ... })
 ```
 
-- **Declarative top-level tool calls**: Every canonical statement is an unwrapped TypeScript/JavaScript `await <service>.<tool>(args)` call (with `await` and trailing `;` optional). `plurnk` is the built-in runtime service (`plurnk.read`, `plurnk.find`, `plurnk.edit`, `plurnk.copy`, `plurnk.move`, `plurnk.kill`, `plurnk.note`, `plurnk.todo`, `plurnk.work`, `plurnk.fork`, `plurnk.bare`, `plurnk.send`, `plurnk.done`, `plurnk.fail`, `plurnk.wait`, REPL tools `plurnk.sh`, `plurnk.js`, `plurnk.python3`, and Functionality tools `plurnk.env`, `plurnk.mcp`, `plurnk.members`, `plurnk.personas`, `plurnk.schedule`, `plurnk.skills`, `plurnk.question`). External MCP servers are peer top-level namespaces (`await <service>.<tool>(args)`).
+- **Declarative top-level tool calls**: Every canonical Heredoc Code Mode statement is an unwrapped TypeScript/JavaScript `await <service>.<tool>(args)` call (with `await` and trailing `;` optional). `plurnk` is the built-in runtime service (`plurnk.read`, `plurnk.find`, `plurnk.edit`, `plurnk.copy`, `plurnk.move`, `plurnk.kill`, `plurnk.note`, `plurnk.todo`, `plurnk.work`, `plurnk.fork`, `plurnk.bare`, `plurnk.send`, `plurnk.done`, `plurnk.fail`, `plurnk.wait`, REPL tools `plurnk.sh`, `plurnk.js`, `plurnk.python3`, and Functionality tools `plurnk.env`, `plurnk.mcp`, `plurnk.members`, `plurnk.personas`, `plurnk.schedule`, `plurnk.skills`, `plurnk.question`). External MCP servers are peer top-level namespaces (`await <service>.<tool>(args)`).
 - **Bracket property access**: Non-identifier tool names use bracket notation (`await gitea["issue-read"]({ ... })`).
 - **No free JavaScript execution in the parser**: Top-level statements are parsed as declarative calls with literal arguments (`{ ... }`, `[ ... ]`, strings/backticks, `<<<EOF ... EOF` heredocs, numbers, booleans, `null`); variable declarations and control-flow constructs (`const`, `let`, `var`, `if`, `for`, `while`, `function`, `try`) are refused with a parser diagnostic directing JavaScript logic to `await plurnk.js({ text: "..." })`.
 
-### §fence-pairing Statement boundaries, unwrapped tolerances, and canonical rendering
+### §fence-pairing Statement boundaries, RENO admission tolerances, and reflective rendering
 
 | Rule | Contract |
 | --- | --- |
 | Balanced call boundaries & heredocs | A statement spans from its `<service>.<tool>(` head through its matching closing `)` and optional `;` and trailing `// aside` comment. In any value position, `<<<TAG\n...\nTAG` (where `TAG` matches `[A-Za-z][A-Za-z0-9_-]{0,16}`, optionally single- or double-quoted on the opener, or placed after `});` as a statement-trailing heredoc) captures raw unescaped text between its opener newline and closer line. Multi-line strings and template literals (`` `...` ``) preserve embedded newlines and treat unescaped `${...}` as literal text. |
-| Markdown fence unwrapping | Code Mode statements require no Markdown fence; if a model wraps `await plurnk.<op>(...)` or `await <service>.<tool>(...)` inside a balanced `ts`, `js`, or plain Markdown code fence, the parser unwraps the block with a warning-severity advisory. |
-| Native and markup tool-call translation | Tool-call wrapper tags (`<tool_call>`, `<tool_calls>`, `<function_call>`, `<function_calls>`, `<｜DSML｜function_calls>`, `<｜｜DSML｜｜ function_calls>`, `<\|tool_call\|>`, `<｜tool▁calls▁begin｜>`, `<\|tool_calls_section_begin\|>`, `<\|python_tag\|>`, `[TOOL_CALLS]`) around Code Mode statements unwrap silently, and structured XML/DSML/token-delimited (`<function=...>`, `<invoke name="...">`, `<｜DSML｜invoke name="...">`, `<plurnk.<op> ... />`, `<｜tool▁call▁begin｜>`, `<\|tool_call_begin\|>`, `<\|tool_call\|>name`) or JSON tool calls targeting `plurnk` operations or `<service>.<tool>` translate silently into canonical Code Mode statements without advisory warnings. |
+| Markdown fence unwrapping | Heredoc Code Mode statements require no Markdown fence; if a model wraps `await plurnk.<op>(...)` or `await <service>.<tool>(...)` inside a balanced `ts`, `js`, or plain Markdown code fence, the parser unwraps the block with a warning-severity advisory. |
+| Native and markup tool-call translation | Tool-call wrapper tags (`<tool_call>`, `<tool_calls>`, `<function_call>`, `<function_calls>`, `<｜DSML｜function_calls>`, `<｜｜DSML｜｜ function_calls>`, `<\|tool_call\|>`, `<｜tool▁calls▁begin｜>`, `<\|tool_calls_section_begin\|>`, `<\|python_tag\|>`, `[TOOL_CALLS]`) around Code Mode statements unwrap silently, and structured XML/DSML/token-delimited (`<function=...>`, `<invoke name="...">`, `<｜DSML｜invoke name="...">`, `<plurnk.<op> ... />`, `<｜tool▁call▁begin｜>`, `<\|tool_call_begin\|>`, `<\|tool_call\|>name`) or JSON tool calls targeting `plurnk` operations or `<service>.<tool>` translate silently into canonical Heredoc Code Mode statements without advisory warnings. |
 | Case-insensitive method recovery | Uppercase or mixed-case method names (`plurnk.READ(...)`, `plurnk.SH(...)`) recover to their lowercase canonical tool name with a warning-severity advisory. |
-| Statement rendering | `PlurnkParser.stringify` formats AST statements back into canonical `await plurnk.<op>({ ... })` or `await <service>.<tool>({ ... })` statements, normalizing empty optional bodies to `null` and rendering every `pattern` field and any string value containing `\n` (as well as the Turn 0 `Resolve all Open Work.` todo seed) as an inline `<<<EOF\n...\nEOF` heredoc (stepping `EOF1`, `EOF2`, … when the string contains the delimiter). |
+| Reflective statement rendering | `PlurnkParser.stringify` formats AST statements back into canonical `await plurnk.<op>({ ... })` or `await <service>.<tool>({ ... })` Heredoc Code Mode statements for `ops://` reflection, normalizing empty optional bodies to `null` and rendering every `pattern` field and any string value containing `\n` (as well as the Turn 0 `Resolve all Open Work.` todo seed) as an inline `<<<EOF\n...\nEOF` heredoc (stepping `EOF1`, `EOF2`, … when the string contains the delimiter). |
 
 ### §slot-order Argument shapes, target groups, and endpoint options
 
@@ -221,7 +222,7 @@ await <service>.<tool>({ ... })
 
 ---
 
-## §parse-recovery 8. Parse diagnostics, tolerances, and error shapes
+## §parse-recovery 8. Reflective Emission Normalization (RENO), tolerances, and error shapes
 
 `PlurnkParseError` is a JSON-serializable `Error` carrying `{ line, column, source: "lexer" | "parser" | "visitor", severity: "error" | "warning", recovery?, attempt?, operationOmitted }`:
 
@@ -234,6 +235,6 @@ await <service>.<tool>({ ... })
 
 | Mechanism | Contract |
 | --- | --- |
-| Working-form recovery & attempt | Every hard error (`severity: "error"`) populates `recovery` with the canonical Code Mode syntax of the refused construct and `attempt` (`{ text, verb }`) with the refused statement's source text; `operationOmitted` marks unexecuted call fragments. Each malformed statement produces at most one hard error. |
-| Regex and matcher tolerances | Lifts leading PCRE inline flags `(?ims)` with a warning; folds comma-separated `/pattern/` lists on `find` and `read` into alternation with a warning while refusing numeric/open sed ranges (`/a/,+N`, `/a/,-1`, `/a/,`) and mutating `/a/,/b/` ranges; diagnoses trailing text after `/pattern/flags`; recovers unclosed `/pattern` at EOL. |
-| Statement & argument tolerances | Lifts inline `<L,M>` ranges from `path<L,M>` strings with a warning; recovers bare `edit` anchors (`@abcde`), combined `42<@abcde>` ranges, trailing commas in range lists (`"17,18,"`), unbalanced angle brackets around `@hash` ranges (`"<@abcde,@fghij"`), and anchor-first column tuples (`"@SL,@EL,SC[,EC]"`); recovers extra or transposed delimiters on heredoc closers (`EOF)})`, `EOF)}`, `EOF)]`); transduces foreign native tool-call envelopes (`<tool_call>`, `<TOOLCALL>`, `<\|tool_call_start\|>`, `<\|python_tag\|>`, `[TOOL_CALLS]...[ARGS]`, `Action:` JSON fences, `<arg_key>`/`<arg_value>`, `<seed:think>`); unwraps Markdown-fenced Code Mode statements with a warning; and sets `unparsedTail` when an unclosed string, comment, parenthesis, bracket, or brace reaches end of input. |
+| Working-form recovery & attempt | Every hard error (`severity: "error"`) populates `recovery` with the canonical Heredoc Code Mode syntax of the refused construct and `attempt` (`{ text, verb }`) with the refused statement's source text; `operationOmitted` marks unexecuted call fragments. Each malformed statement produces at most one hard error. |
+| Regex and matcher tolerances | Lifts leading PCRE inline flags `(?ims)` with a warning; recognizes unslashed line-anchored regexes opening with `^` or closing with `$`; folds comma-separated `/pattern/` lists on `find` and `read` into alternation with a warning while refusing numeric/open sed ranges (`/a/,+N`, `/a/,-1`, `/a/,`) and mutating `/a/,/b/` ranges; diagnoses trailing text after `/pattern/flags`; recovers unclosed `/pattern` at EOL. |
+| Statement & argument tolerances (RENO) | Lifts inline `<L,M>` ranges from `path<L,M>` strings with a warning; recovers bare `edit` anchors (`@abcde`), combined `42<@abcde>` ranges, trailing commas in range lists (`"17,18,"`), unbalanced angle brackets around `@hash` ranges (`"<@abcde,@fghij"`), anchor-first column tuples (`"@SL,@EL,SC[,EC]"`), and packet-header line counts (`"N lines"`); recovers extra or transposed delimiters on heredoc closers (`EOF)})`, `EOF)}`, `EOF)]`) and closing `}}` call braces; unwraps nested parameter wrappers (`params`, `parameters`, `arguments`, `args`, `input`, `options`, `properties`, `text`); transduces foreign native tool-call envelopes (`<tool_call>`, `<TOOLCALL>`, `<\|tool_call_start\|>`, `<\|python_tag\|>`, `[TOOL_CALLS]...[ARGS]`, `Action:` JSON fences, `<arg_key>`/`<arg_value>`, `<seed:think>`, `<mm:think>`); unwraps Markdown-fenced Code Mode statements with a warning; and sets `unparsedTail` when an unclosed string, comment, parenthesis, bracket, or brace reaches end of input. |

@@ -24,7 +24,8 @@ Requires Node.js 26 or newer.
 | Published JSON Schemas          | `@plurnk/plurnk-contracts/schema/*.json`             |
 
 JSON Schema owns shared wire shapes, generated TypeScript projects those
-shapes, and `@plurnk/plurnk-parser` owns accepted Code Mode syntax. See SPEC
+shapes, and `@plurnk/plurnk-parser` owns accepted Heredoc Code Mode syntax and
+Reflective Emission Normalization (RENO). See SPEC
 {§contract-representations}.
 
 ## Parser

@@ -61,7 +61,7 @@ extensions included in the default installation. The terminal client is a separa
 - `plurnk-contracts` owns the model-facing language contract, the AST and
   shared types and schemas, runtime-neutral Problems, operation results, Notices,
   and text coordinates.
-- `plurnk-parser` owns the Code Mode parser (`PlurnkParser` and `parsePath`) that
+- `plurnk-parser` owns the Heredoc Code Mode parser (`PlurnkParser` and `parsePath`) that
   implements that language. Its importers are the service's execution path, `plurnk-acp`
   (`parseStatements`, for client-authored blocks), `plurnk-mcp` (`lowerToolCall`, for
   inbound `/mcp` tool calls) and `plurnk-execs` (`parseStatements` and `propAccess`, for

@@ -79,11 +79,15 @@ flowchart LR
 ```
 
 [`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the
-model-facing canon. It is intentionally narrower than the tolerant parser:
-one contract with deliberately different projections. A tolerant ingester
-accepting a spelling does not make that spelling canonical teaching. Language
-and schema behavior remain owned by the contracts package; this root document
-does not restate their teaching.
+model-facing canon for **Heredoc Code Mode** (`await <service>.<tool>({ ... })`
+with `<<<EOF` raw blocks). It is intentionally narrower than **Reflective
+Emission Normalization (RENO)** ({§parse-recovery}, {§fence-pairing},
+{§turn-source-resources}): one contract with deliberately different projections.
+RENO normalizes unambiguous post-training tool-call envelopes and syntax
+near-misses on admission and reflects the canonical statement form back into
+`ops://`, while `plurnk.md` teaches only the canonical form. Language and schema
+behavior remain owned by the contracts package; this root document does not
+restate their teaching.
 
 ## Package ownership
 

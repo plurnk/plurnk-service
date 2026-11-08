@@ -1,6 +1,6 @@
 # @plurnk/plurnk-parser
 
-The Code Mode parser for the PLURNK model language: unwrapped TypeScript/JavaScript statement admission (`await plurnk.<op>(...)` and `await <server>.<tool>(...)`), canonical serialization, and path decomposition. It implements the language that [`@plurnk/plurnk-contracts`](../plurnk-contracts) specifies and teaches; the AST and wire types it produces are the contracts package's.
+The Heredoc Code Mode parser and Reflective Emission Normalization (RENO) engine for the PLURNK model language: unwrapped TypeScript/JavaScript statement admission (`await plurnk.<op>(...)` and `await <server>.<tool>(...)`) with `<<<EOF` raw literals, deterministic post-training envelope transduction, canonical reflective serialization (`PlurnkParser.stringify`), and path decomposition. It implements the language that [`@plurnk/plurnk-contracts`](../plurnk-contracts) specifies and teaches; the AST and wire types it produces are the contracts package's.
 
 ## Install
 
