@@ -1060,7 +1060,7 @@ flowchart LR
 | 1 | `definition` | `system` | Stripped table projection of `plurnk-contracts/plurnk.md` (read fresh per loop start and wake) |
 | 2 | `system-policy` | `system` | Concatenated contents of `PLURNK_SERVICE_POLICY` when explicitly set, or `$XDG_CONFIG_HOME/agents/AGENTS(.local)?.md`, `~/.agents/AGENTS(.local)?.md`, and `$XDG_CONFIG_HOME/plurnk/AGENTS(.local)?.md` (`AGENTS.md` seeded on first boot from `@plurnk/plurnk-meta/POLICY.md`), followed by any project-tier `<projectRoot>/AGENTS(.local)?.md` and session-tier `session://<session>/AGENTS.md` |
 | 3 | `inject` | `system` | `## Operator Notes` when `PLURNK_SERVICE_PACKET_INJECT` is non-empty |
-| 4–5 | `log`, `log/<coord>`, `emission-history/<coord>` | `user` / `assistant` | Initial retained log records (`## Log`) up to the first replayed turn's first surviving receipt, then alternating `assistant` (replayed turn's emitted operations) and `user` (`emission-history/<first-surviving-receipt-coordinate>` paired receipts plus following non-receipt log records), ending with remaining `log/<first-record-coordinate>` records |
+| 4–5 | `log`, `log/<coord>`, `emission-history/<coord>` | `user` / `assistant` | Initial retained log records (`## Log`) through the first replayed turn's emission row, then alternating `assistant` (`emission-history/<emission-coordinate>` replayed operations) and `user` (`log/<first-record-coordinate>` paired receipts plus following log records), ending with remaining `log/<first-record-coordinate>` records |
 | 6 | `git` | `user` | `## Git Status` `> [!NOTE]` summary when workspace is a Git repository |
 | 7 | `budget` | `user` | `## Context` JSON gauge (`tokens`, `budget`, `percent`, and pressure `largest`) |
 | 8 | `session` | `user` | `## Session` JSON (`{"path": "session://<name>", "parent": <address\|null>, "owner": {"address": "<owner>", "interactive": <boolean>}, "loop": L, "turn": T}`) |
@@ -1077,14 +1077,14 @@ Wire message grouping: Message 1 is `system` (`1–3`); Message 2 is `user` (ini
 
 | Value | Contract |
 | --- | --- |
-| `all` (default) | Replays every eligible prior turn in the session (including across loops) that still has at least one surviving non-killed log receipt |
-| `latest` | Replays only the immediately preceding completed model inference turn in the session (never falling back to an earlier turn if that turn has no surviving receipts) |
+| `all` (default) | Replays every eligible prior turn in the session (including across loops) that still has at least one surviving operation |
+| `latest` | Replays only the immediately preceding completed model inference turn in the session (never falling back to an earlier turn if that turn has no surviving operations) |
 | `none` | Renders all retained log records in a single `user` `log` section without `assistant` turn replay |
 
 Eligibility and paired-receipt rules:
 
-- **Admitted content turn**: A turn is eligible for emission-history replay when it produced an admitted content program and has an active emission row (`ops://<session>/<loop>/<turn>`), including on turns where valid statements executed alongside recoverable syntax errors. Each dispatched content operation records its `op_seq` ordinal in the turn's frozen canonical program; fan-out receipts retain that same ordinal.
-- **Paired receipt (`→ path`)**: In a replayed turn, the `assistant` message carries the authored operation (including its `<!-- aside -->` modifier and its request body for `EDIT`, `NOTE`, `TODO`, `SEND`, `WORK`, `FORK`, or exec). Its paired receipt in the following `user` section (`emission-history/<first-surviving-receipt-coordinate>`) renders an `### <VERB> ... → <path>` H3 heading and retains retrieval/tool output, landed edit context windows, problem details, extents, and status codes while omitting the authored request body and aside so they are never duplicated on the wire.
+- **Admitted content turn**: A turn is eligible for emission-history replay when it produced an admitted content program and has an active emission row (`ops://<session>/<loop>/<turn>`), including on turns where valid statements executed alongside recoverable syntax errors. Each dispatched content operation records its `emissionIndex` ordinal in the turn's frozen canonical program; fan-out receipts retain that same ordinal.
+- **Paired receipt & curation replay**: In a replayed turn (`emission-history/<emission-coordinate>`, immediately after the turn's emission row), the `assistant` message carries every surviving operation in program order—including its `// aside` comment and its request body for `edit`, `note`, `todo`, `send`, `done`, `fail`, `work`, `fork`, or exec, plus any active `log://` `kill` operation (rendered with `body: null` without a `### log:///.../kill` receipt on `200`, while any `note` body lands as its distilled `### log:///<L>/<T>/<A>/note` receipt, {§log-kill-scope}). Paired receipts in the following `user` section render `### log:///<L>/<T>/<A>/<leaf>` headings and retain retrieval/tool output, landed edit context windows, problem details, extents, and status codes while omitting the authored request body and aside so they are never duplicated on the wire.
 - **No synthetic turns**: Unexecuted operations after a stop boundary ({§op-methods-op-dispatch}) or exhausted rejected turns produce no emission-history pair.
 
 ### §tokenomics Tokenomics: one room, one gauge, one rule

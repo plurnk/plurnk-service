@@ -122,7 +122,13 @@ SELECT le.id, json_extract(le.rx, '$.content') AS content,
         FROM log_entries op_le
         WHERE op_le.turn_id = p.id AND op_le.origin IN ('model', '_plurnk')
           AND json_valid(op_le.tx) AND json_type(op_le.tx, '$.runtime') = 'text'
-    )) AS executors
+    )) AS executors,
+    (SELECT json_group_array(DISTINCT json_extract(kill_le.attrs, '$.emissionIndex'))
+     FROM active_log_entries kill_le
+     WHERE kill_le.turn_id = p.id
+       AND kill_le.op = 'kill'
+       AND kill_le.scheme = 'log'
+       AND json_type(kill_le.attrs, '$.emissionIndex') = 'integer') AS kills
 FROM completed p
 JOIN active_log_entries le ON le.turn_id = p.id AND json_extract(le.attrs, '$.kind') = 'emission'
 WHERE ($latest_only = 0 OR p.recency = 1)

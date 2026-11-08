@@ -320,17 +320,17 @@ export default class PacketBuilder {
             items = [];
         };
         for (const [index, row] of log.entries()) {
-            const emission = turns.get(String(row.coordinate));
-            if (emission !== undefined) {
-                flush();
-                logSections.push({ name: `emission-history/${String(row.coordinate)}`, slot: "assistant", header: null, content: emission });
-            }
             if (items.length === 0 && logSections.length > 0) name = `log/${String(row.coordinate)}`;
             items.push(renderedLog.records[index]);
             const native = nativeRows.get(String(row.coordinate));
             if (native !== undefined) {
                 flush();
                 nativeParts.push({ ...native, section: name });
+            }
+            const emission = turns.get(String(row.coordinate));
+            if (emission !== undefined) {
+                flush();
+                logSections.push({ name: `emission-history/${String(row.coordinate)}`, slot: "assistant", header: null, content: emission });
             }
         }
         flush();

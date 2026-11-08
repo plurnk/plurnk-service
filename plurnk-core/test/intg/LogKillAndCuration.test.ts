@@ -1177,7 +1177,7 @@ for (const partial of [false, true]) {
         const before = provider.received[1];
         assert.deepEqual(before.filter(({ role }) => role === "assistant").map(chatMessageText), [`${firstReplayed}\n\n${second}`], "the turn's NOTEs replay together");
         const after = provider.received[2];
-        assert.deepEqual(after.filter(({ role }) => role === "assistant").map(chatMessageText), [second]);
+        assert.deepEqual(after.filter(({ role }) => role === "assistant").map(chatMessageText), [second, `await plurnk.kill({"path":"log:///1/2/3/note"${partial ? ',"range":"1"' : ""}});`]);
         const user = after.filter(({ role }) => role === "user").map(chatMessageText).join("\n");
         assert.doesNotMatch(user, /Obsolete line\./u);
         assert.match(user, /### log:\/\/\/1\/2\/4\/note · \d+/u, "the other NOTE retains its own curation handle");

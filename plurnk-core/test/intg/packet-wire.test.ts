@@ -291,19 +291,20 @@ test("{§emission-history}: retiring an emission removes only that turn's replay
         await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 5 });
         assert.equal(provider.received.length, 4);
         assert.equal(previousProgram(provider.received[2]), `${firstNote}\n\nawait plurnk.send({"text":"First progress update."});\n\n${secondNote}\n\nawait plurnk.send({"text":"Second progress update."});`);
-        assert.equal(previousProgram(provider.received[3]), `${secondNote}\n\nawait plurnk.send({"text":"Second progress update."});`, "curation removes the retired turn's replay without replaying the successful curation KILL itself");
+        assert.equal(previousProgram(provider.received[3]), `${secondNote}\n\nawait plurnk.send({"text":"Second progress update."});\n\n${curate}`, "curation removes the retired turn's replay while replaying the curation KILL without a kill receipt");
         const request = provider.received[3];
         const index = request.findIndex(({ role }) => role === "assistant");
         assert.match(chatMessageText(request[index - 1]).split("\n\n").at(-1)!, announcementOf(3), "the surviving turn keeps its source announcement");
         const log = observations(request);
         assert.doesNotMatch(log, /### log:\/\/\/1\/2\/\d+\/emission/u, "only the retired emission row is gone");
+        assert.doesNotMatch(log, /### log:\/\/\/1\/4\/\d+\/kill/u, "successful curation KILL adds no kill receipt row to the log");
         assert.match(log, /### log:\/\/\/1\/2\/\d+\/note · \d+\n[^\n]*\n1:First finding\./u, "the retired turn's NOTE is an ordinary row again, body and all");
         const source = await db.turn_source_read.get<{ content: string }>({ workspace_id: workspaceId, session_name: "writer", loop_seq: 1, turn_seq: 2, kind: "ops", sequence: 0 });
         assert.equal(source?.content, `${firstNote}\n\nawait plurnk.send({"text":"First progress update."});`, "the immutable source is untouched");
     } finally { await db.close(); }
 }));
 
-test("{§emission-history}: mixed KILL targets execute normally; a retired NOTE leaves the replay, the distillation stays in the log, and sources stay readable", async (t) => {
+test("{§emission-history}: mixed KILL targets execute normally; a retired NOTE leaves the replay, curation KILLs replay without duplicating distillation, and sources stay readable", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "history-mixed-curation");
@@ -321,7 +322,7 @@ test("{§emission-history}: mixed KILL targets execute normally; a retired NOTE 
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 3);
     assert.equal(previousProgram(provider.received[1]), first, "before curation the turn replays EDIT and NOTE");
-    assert.equal(previousProgram(provider.received[2]), "await plurnk.kill({\"path\":\"workspace:///memo.md\"});", "the file deletion remains; successful curation and retired operations do not replay");
+    assert.equal(previousProgram(provider.received[2]), `${mixed}\n\nawait plurnk.kill({"path":"log:///1/2/*/edit"});`, "retired operations leave the replay; curation KILLs replay without their distilled note body");
     const log = observations(provider.received[2]);
     assert.doesNotMatch(log, /Superseded memory\./u, "the curated NOTE is gone from row and replay alike");
     assert.match(log, /The draft was removed\./u, "the KILL body still distills into an ordinary NOTE row");
