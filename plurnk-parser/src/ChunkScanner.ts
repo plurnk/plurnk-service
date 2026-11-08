@@ -148,6 +148,7 @@ export const scanChunks = (
         const pendingTrailingHeredocs: string[] = [];
         let prevSigChar = "";
         let trailingAside: string | null = null;
+        let codeEndOffset: number | null = null;
 
         while (i < source.length) {
             const ch = source[i];
@@ -267,6 +268,23 @@ export const scanChunks = (
                         const eol = source.indexOf("\n", i + 2);
                         trailingAside = (eol === -1 ? source.slice(i + 2) : source.slice(i + 2, eol)).replace(/\r$/u, "").trim();
                         i = eol === -1 ? source.length : eol;
+                    } else if (pendingTrailingHeredocs.length === 0 && source[i] === "<" && source[i + 1] === "<") {
+                        const attachedOpener = matchHeredocOpener(source, i);
+                        if (attachedOpener !== null) {
+                            const nl = source.indexOf("\n", attachedOpener.afterOpener);
+                            if (nl === -1 || source.slice(attachedOpener.afterOpener).trim() === "") {
+                                codeEndOffset = i;
+                                i = source.length;
+                            } else {
+                                const closer = findHeredocCloser(source, nl + 1, attachedOpener.tag, "trailing");
+                                if (closer !== null) {
+                                    codeEndOffset = i;
+                                    const asideBody = closer.body.trim();
+                                    if (asideBody.length > 0) trailingAside = asideBody.replaceAll(/\r?\n/gu, " ");
+                                    i = closer.lineEndOffset;
+                                }
+                            }
+                        }
                     }
                     break;
                 }
@@ -362,7 +380,7 @@ export const scanChunks = (
             }
         }
 
-        const chunkText = source.slice(startOffset, i);
+        const chunkText = source.slice(startOffset, codeEndOffset ?? i);
         const unclosed = unclosedHeredoc || pendingTrailingHeredocs.length > 0 || inString !== null || inBlockComment || parenDepth > 0 || braceDepth > 0 || bracketDepth > 0
             || (!openedCall && /^(?:await\s+[A-Za-z_$][A-Za-z0-9_$.]*|plurnk(?:\.[A-Za-z0-9_$]*)?)$/u.test(chunkText.trim()));
 

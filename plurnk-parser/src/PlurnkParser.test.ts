@@ -908,5 +908,33 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((mmOps[0] as DoneStatement).body?.raw, "db.internal");
         assert.equal((mmOps[1] as KillStatement).target?.raw, "log:///1/2/2/read");
         assert.equal(((mmOps[1] as KillStatement).target as { pathname?: string }).pathname, "/1/2/2/read");
+
+        const lfmAndSolarRecoveries = PlurnkParser.parse([
+            '<tool_call>\n<function=plurnk.read>\n<parameter=text>\n{"resource":"note://main/1/35/2"}\n</parameter>\n</function>\n</tool_call>',
+            '<tool_call>\n<function=plurnk.read>\n<parameter={"path": "mcp:///plurnk.md"}\n</parameter>\n</function>\n</tool_call>',
+            '<tool_call>\n<function=plurnk.note>\n<parameter=path>\nnote://main/1/14/2\n</parameter>\n<parameter=text>\nFound 2 occurrences.\n</parameter>\n</function>\n</tool_call>',
+            'await plurnk.todo({"items":[{"done":false,"item":"replace workspace:///notes.md line 2 with `beta prime`","note":""}}])',
+            'I will read the file first.<|tool_call:start|>plurnk.read({"path":"workspace:///notes.md","range":"1,-1"}) // Find the exact line',
+            'await plurnk.read({"path": "workspace:///config.json"})<<<EOF\nplurnk.note calls were already submitted.\nEOF',
+            'await plurnk.done({"text":"Done"})<<<EOF',
+        ].join("\n\n"));
+        const lsOps = lfmAndSolarRecoveries.items.filter((i) => i.kind === "statement").map((i) => i.statement);
+        assert.equal(lsOps.length, 7);
+        assert.equal((lsOps[0] as ReadStatement).target?.raw, "note://main/1/35/2");
+        assert.equal((lsOps[1] as ReadStatement).target?.raw, "mcp:///plurnk.md");
+        assert.equal((lsOps[2] as NoteStatement).body, "Found 2 occurrences.");
+        assert.equal((lsOps[3] as TodoStatement).body, "- [ ] replace workspace:///notes.md line 2 with `beta prime`");
+        assert.equal((lsOps[4] as ReadStatement).target?.raw, "workspace:///notes.md");
+        assert.equal((lsOps[5] as ReadStatement).aside, "plurnk.note calls were already submitted.");
+        assert.equal((lsOps[6] as DoneStatement).body?.raw, "Done");
+
+        const barePlurnkFn = PlurnkParser.parse(
+            '<tool_call>\n<function=plurnk>\n<parameter=path>\nnote://main/1/32/2\n</parameter>\n</function>\n</tool_call>',
+            { executors: ["sh", "js", "python3", "plurnk"] },
+        );
+        assert.equal(barePlurnkFn.items[0]?.kind, "error");
+        if (barePlurnkFn.items[0]?.kind === "error") {
+            assert.match(barePlurnkFn.items[0].error.message, /Missing operation name on `plurnk`/);
+        }
     });
 });

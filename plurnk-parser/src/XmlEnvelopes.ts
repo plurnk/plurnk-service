@@ -302,7 +302,9 @@ export const parseXmlToolCallBody = (body: string): unknown => {
     if (matchedDirectField) return directParams;
 
     const cleaned = unwrappedBody
-        .replace(/<\/?(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|[A-Za-z_$][A-Za-z0-9_$]*[._:-])?(?:parameter|param|arg|argument)\b[^>]*>/giu, "")
+        .replace(/<(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|[A-Za-z_$][A-Za-z0-9_$]*[._:-])?(?:parameter|param|arg|argument)\s*=\s*(?=\{)/giu, "")
+        .replace(/<\/?(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|[A-Za-z_$][A-Za-z0-9_$]*[._:-])?(?:parameter|param|arg|argument)\b[^<>]*>/giu, "")
+        .replace(/\}>\s*$/u, "}")
         .trim()
         .replace(/^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/iu, "$1")
         .trim();

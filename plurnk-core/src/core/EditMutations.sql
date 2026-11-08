@@ -10,6 +10,5 @@ FROM active_log_entries le
 WHERE le.session_id = $session_id
   AND le.op = 'read' AND le.status_rx = 200
   AND json_valid(le.rx)
-  AND json_extract(le.rx, '$.lineAnchorIdentity') = $identity
   AND json_type(le.rx, '$.lineAnchors') = 'array'
-ORDER BY le.id;
+ORDER BY json_extract(le.rx, '$.lineAnchorIdentity') = $identity DESC, le.id;

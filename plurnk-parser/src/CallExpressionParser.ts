@@ -26,6 +26,7 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
     let idx = 0;
     let trailingHeredocCursor: number | null = null;
     let transposedCallClose = false;
+    let transposedArrayObjectClose = false;
 
     const posAt = (offset: number): Position => {
         let line = basePos.line;
@@ -299,6 +300,11 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
                     if (heredocKeys.size > 0) HEREDOC_OBJECT_KEYS.set(obj, heredocKeys);
                     return obj;
                 }
+                if (transposedArrayObjectClose && code[idx] === ")") {
+                    transposedArrayObjectClose = false;
+                    if (heredocKeys.size > 0) HEREDOC_OBJECT_KEYS.set(obj, heredocKeys);
+                    return obj;
+                }
                 const strayParenBeforeBrace = /^\)+[ \t]*\}[ \t]*(?=[,)\]])/u.exec(code.slice(idx));
                 if (strayParenBeforeBrace !== null) {
                     idx += strayParenBeforeBrace[0].length;
@@ -344,9 +350,12 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
                     idx += 1;
                     break;
                 }
-                const strayParenBeforeBracket = /^\)+[ \t]*\][ \t]*(?=[,)\]}])/u.exec(code.slice(idx));
-                if (strayParenBeforeBracket !== null) {
-                    idx += strayParenBeforeBracket[0].length;
+                const strayBeforeBracket = /^[)}]+[ \t]*\][ \t]*(?=[,)\]}])/u.exec(code.slice(idx));
+                if (strayBeforeBracket !== null) {
+                    if (strayBeforeBracket[0].includes("}") && code[idx + strayBeforeBracket[0].length] === ")") {
+                        transposedArrayObjectClose = true;
+                    }
+                    idx += strayBeforeBracket[0].length;
                     break;
                 }
                 fail(idx, "Expected `,` or `]` in array literal.");
