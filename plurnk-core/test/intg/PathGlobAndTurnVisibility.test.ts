@@ -597,9 +597,9 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
     assert.equal(previous(provider.received[1]), firstReplayed, "EDIT and NOTE replay whole");
     assert.doesNotMatch(userText(provider.received[1]), /REASONING-MEMORY/u);
     assert.doesNotMatch(userText(provider.received[1]), /CURATABLE-MEMORY/u, "the paired NOTE receipt does not duplicate its body");
-    assert.equal(previous(provider.received[2]), edit, "the curated NOTE leaves the replay; the surviving EDIT remains");
+    assert.equal(previous(provider.received[2]), `${edit}\n\n${curate}`, "the curated NOTE leaves the replay; the surviving EDIT and log KILL remain");
     assert.doesNotMatch(userText(provider.received[2]), /CURATABLE-MEMORY/u, "the curated NOTE has no historical replay duplicate");
-    assert.equal(previous(provider.received[3]), `${edit}\n\n${read}`, "the explicit source READ joins the surviving history");
+    assert.equal(previous(provider.received[3]), `${edit}\n\n${curate}\n\n${read}`, "the explicit source READ joins the surviving history");
     assert.match(userText(provider.received[3]), /CURATABLE-MEMORY/u, "an explicit READ retrieves the complete program");
     assert.match(userText(provider.received[3]), /FULL-BODY line 120/u);
     const reads = await db.test_log_entries_by_session_op_full.all<{ pathname: string; rx: string }>({ session_id: sessionId, op: "read" });

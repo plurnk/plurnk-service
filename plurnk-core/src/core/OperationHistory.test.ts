@@ -57,27 +57,30 @@ test("{§emission-history} {§fence-pairing}: historical executor identities sur
     }
 });
 
-test("{§emission-history} {§log-kill-scope}: a failed curation request replays without duplicating its separately recorded NOTE", () => {
-    const operation = 'await plurnk.kill({"path":"log:///9/9/9","note":"Still worth remembering."});';
+test("{§emission-history} {§log-kill-scope}: a curation request replays without a kill receipt or duplicating its separately recorded NOTE", () => {
+    const operation = 'await plurnk.kill({"path":"log:///9/9/9","note":"Still worth remembering."}); // reclaim';
     const failed = { ...row(2, "kill", 0), rx: { status: 404 } };
     const distilled = row(3, "note", undefined, "Still worth remembering.");
     const projected = history(operation, [failed, distilled]);
-    assert.deepEqual([...projected.operations.values()], ['await plurnk.kill({"path":"log:///9/9/9"});']);
+    assert.deepEqual([...projected.operations.values()], ['await plurnk.kill({"path":"log:///9/9/9"}); // reclaim']);
     assert.deepEqual([...projected.paired.keys()], ["1/2/2"]);
+    const receiptless = OperationHistory.project([announcement, distilled], [{ id: 1, content: operation, executors: "[]", kills: "[0]" }]);
+    assert.deepEqual([...receiptless.turns], [["1/2/1", 'await plurnk.kill({"path":"log:///9/9/9"}); // reclaim']]);
+    assert.equal(receiptless.paired.size, 0);
 });
 
-test("{§emission-history}: a turn's surviving operations replay together, in program order, before its first surviving receipt", () => {
+test("{§emission-history}: a turn's surviving operations replay together, in program order, immediately after its emission row", () => {
     const note = 'await plurnk.note({"text":"Read, then fix."}); // plan';
     const read = 'await plurnk.read({"path":"src/a.ts","range":"1,4"});';
     const edit = 'await plurnk.edit({"path":"src/a.ts","range":"2","text":"fixed"});';
     const program = `${note}\n\n${read}\n\n${edit}`;
     const rows = [row(2, "note", 0, "Read, then fix."), row(3, "read", 1), row(4, "edit", 2, "fixed")];
     const projected = history(program, rows);
-    assert.deepEqual([...projected.turns], [["1/2/2", `${note}\n\n${read}\n\n${edit}`]], "one assistant message for the turn, anchored at its first receipt");
+    assert.deepEqual([...projected.turns], [["1/2/1", `${note}\n\n${read}\n\n${edit}`]], "one assistant message for the turn, anchored at its emission row");
     assert.deepEqual([...projected.operations.keys()], ["1/2/2", "1/2/3", "1/2/4"], "each operation keeps its own receipt for accounting");
-    assert.deepEqual([...history(program, rows.slice(1)).turns], [["1/2/3", `${read}\n\n${edit}`]], "a retired operation leaves the turn's replay, which moves to the first surviving receipt");
+    assert.deepEqual([...history(program, rows.slice(1)).turns], [["1/2/1", `${read}\n\n${edit}`]], "a retired operation leaves the turn's replay anchored at its emission row");
     const later = { ...row(2, "read", 0), coordinate: "1/3/2" };
     const twoTurns = OperationHistory.project([announcement, ...rows, { ...announcement, id: 9, coordinate: "1/3/1" }, later],
         [{ id: 1, content: program, executors: "[]" }, { id: 9, content: read, executors: "[]" }]);
-    assert.deepEqual([...twoTurns.turns.keys()], ["1/2/2", "1/3/2"], "each turn has its own message");
+    assert.deepEqual([...twoTurns.turns.keys()], ["1/2/1", "1/3/1"], "each turn has its own message");
 });
