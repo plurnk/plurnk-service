@@ -792,4 +792,75 @@ describe("PlurnkParser Code Mode", () => {
         assert.deepEqual(edit12.matcher, { dialect: "glob", raw: "<root>C</root>" });
         assert.equal(edit12.body, "<root>D</root>");
     });
+
+    test("{§fence-pairing} {§parse-recovery} {§matcher-prefix-claims}: exotic native envelopes (GLM arg_key, Liquid LFM pythonic, Nemotron TOOLCALL, Mistral ARGS, Granite multiline JSON, Cohere Action, Seed think), heredoc closer transpositions, and anchor-first coordinate tuples recover deterministically", () => {
+        const turn = [
+            // 1. Z.AI GLM-4.5 / GLM-5 `<tool_call>name\n<arg_key>k</arg_key><arg_value>v</arg_value></tool_call>` and unclosed `<|tool_call|>`
+            "<tool_call>plurnk.read\n<arg_key>path</arg_key>\n<arg_value>src/glm.py</arg_value>\n<arg_key>range</arg_key>\n<arg_value>10,20</arg_value>\n</tool_call>",
+            "<|tool_call|>edit\n<arg_key>path</arg_key>\n<arg_value>src/glm.py</arg_value>\n<arg_key>text</arg_key>\n<arg_value>def glm():\n    return 42</arg_value>",
+            // 2. Liquid AI LFM-2 / LFM-3 Pythonic `<|tool_call_start|>[func(k="v", ...)]<|tool_call_end|>`
+            '<|tool_call_start|>[plurnk.read(path="src/lfm.py", range="1,30"), edit(path="src/lfm.py", text="""line1\n\nline2""")]<|tool_call_end|>',
+            // 3. NVIDIA Nemotron `<TOOLCALL>[...]</TOOLCALL>`
+            '<TOOLCALL>[{"name": "plurnk.find", "arguments": {"path": "src/**", "pattern": "needle"}}]</TOOLCALL>',
+            // 4. Mistral Tekken v7+ `[TOOL_CALLS]name[ARGS]{...}` (chained & multiline with blank lines inside JSON strings)
+            '[TOOL_CALLS]plurnk.read[ARGS]{"path": "src/mistral.py"}[TOOL_CALLS]plurnk.edit[ARGS]{"path": "src/mistral.py", "text": "def f():\\n\\n    return 1"}',
+            // 5. IBM Granite 4 unclosed `<|tool_call|>[...]` with actual blank lines inside pretty-printed JSON
+            '<|tool_call|>[\n  {\n    "name": "plurnk.edit",\n    "arguments": {\n      "path": "src/granite.py",\n\n      "text": "updated"\n    }\n  }\n]',
+            // 6. Cohere Command R / A `Action: ```json ... ````
+            'Action: ```json\n[{"tool_name": "plurnk.read", "parameters": {"path": "src/cohere.py"}}]\n```',
+            // 7. ByteDance Seed `<seed:think>...</seed:think>` stripped before Code Mode
+            '<seed:think>Thinking step 1\n\nThinking step 2</seed:think>\nawait plurnk.read({ path: "src/seed.py", server: "local", extent: "full" });',
+            // 8. Heredoc closer transpositions (`EOF)})`, `EOF)}`, and `EOF)]`)
+            "await plurnk.edit({ path: \"src/closer.py\", pattern: <<<EOF\nold_code()\nEOF, text: <<<EOF\nnew_code()\nEOF)})",
+            "await plurnk.edit({ path: \"src/closer2.py\", text: <<<EOF\ntransposed()\nEOF)} // transposed closer aside",
+            "await plurnk.todo({ items: [<<<EOF\nFirst task\nEOF)] });",
+            // 9. Coordinate recoveries: trailing comma `"17,18,"`, unbalanced `<@hash`, anchor-first 3-tuple and 4-tuple
+            'await plurnk.read({ path: "src/coords.py", range: "17,18," });',
+            'await plurnk.read({ path: "src/coords.py", range: "<@kxY9P,@KPq8W" });',
+            'await plurnk.edit({ path: "src/coords.py", range: "@kxY9P,@KPq8W,5", text: "col3" });',
+            'await plurnk.edit({ path: "src/coords.py", range: "@kxY9P,@KPq8W,1,35", text: "col4" });',
+        ].join("\n\n");
+
+        const parsed = PlurnkParser.parse(turn, { executors: ["sh"] });
+        const hardErrors = parsed.items.filter((i) => i.kind === "error" && i.error.severity === "error");
+        assert.deepEqual(hardErrors, []);
+        const ops = parsed.items.filter((i) => i.kind === "statement").map((i) => i.statement);
+        assert.equal(ops.length, 17);
+
+        assert.equal((ops[0] as ReadStatement).target?.raw, "src/glm.py");
+        assert.deepEqual((ops[0] as ReadStatement).lineMarker, { marks: [10, 20] });
+        assert.equal((ops[1] as EditStatement).target?.raw, "src/glm.py");
+        assert.equal((ops[1] as EditStatement).body, "def glm():\n    return 42");
+
+        assert.equal((ops[2] as ReadStatement).target?.raw, "src/lfm.py");
+        assert.deepEqual((ops[2] as ReadStatement).lineMarker, { marks: [1, 30] });
+        assert.equal((ops[3] as EditStatement).target?.raw, "src/lfm.py");
+        assert.equal((ops[3] as EditStatement).body, "line1\n\nline2");
+
+        assert.equal((ops[4] as FindStatement).target?.raw, "src/**");
+        assert.equal((ops[5] as ReadStatement).target?.raw, "src/mistral.py");
+        assert.equal((ops[6] as EditStatement).target?.raw, "src/mistral.py");
+        assert.equal((ops[6] as EditStatement).body, "def f():\n\n    return 1");
+
+        assert.equal((ops[7] as EditStatement).target?.raw, "src/granite.py");
+        assert.equal((ops[7] as EditStatement).body, "updated");
+
+        assert.equal((ops[8] as ReadStatement).target?.raw, "src/cohere.py");
+        assert.equal((ops[9] as ReadStatement).target?.raw, "src/seed.py");
+
+        assert.equal((ops[10] as EditStatement).target?.raw, "src/closer.py");
+        assert.equal((ops[10] as EditStatement).matcher?.raw, "old_code()");
+        assert.equal((ops[10] as EditStatement).body, "new_code()");
+
+        assert.equal((ops[11] as EditStatement).target?.raw, "src/closer2.py");
+        assert.equal((ops[11] as EditStatement).body, "transposed()");
+        assert.equal((ops[11] as EditStatement).aside, "transposed closer aside");
+
+        assert.equal((ops[12] as TodoStatement).body, "First task");
+
+        assert.deepEqual((ops[13] as ReadStatement).lineMarker, { marks: [17, 18] });
+        assert.deepEqual((ops[14] as ReadStatement).lineMarker, { marks: ["@kxY9P", "@KPq8W"] });
+        assert.deepEqual((ops[15] as EditStatement).lineMarker, { marks: ["@kxY9P", 5, "@KPq8W"] });
+        assert.deepEqual((ops[16] as EditStatement).lineMarker, { marks: ["@kxY9P", 1, "@KPq8W", 35] });
+    });
 });

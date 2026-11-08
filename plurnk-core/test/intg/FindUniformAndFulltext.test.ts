@@ -717,7 +717,7 @@ test("{§find-result-projection}: a word with inner punctuation searches its tok
         for (const [path, body] of [
             ["autodoc.rst", "The :inherited-members: option documents inherited members."],
             ["other.rst", "members inherited from a base, in the other order"],
-            ["cpp.rst", "Parsers for c++ and x.y paths under a/b."],
+            ["cpp.rst", "Parsers for c++ and x.y paths under a/b, plus do_event(slider) and all(items)."],
         ]) assert.equal((await session.edit(edit(path, body), ctx)).status, 201);
         await SearchIndex.maintain(ctx);
         for (const [query, paths] of [
@@ -727,6 +727,9 @@ test("{§find-result-projection}: a word with inner punctuation searches its tok
             ["x.y OR a/b", ["cpp.rst"]],
             ["x.y|a/b", ["cpp.rst"]],
             ["^parsers-for*", ["cpp.rst"]],
+            ["all(", ["cpp.rst"]],
+            ["do_event(slider", ["cpp.rst"]],
+            ["do_event(slider)", ["cpp.rst"]],
         ] as const) {
             const result = await session.find(find("*", query), ctx);
             assert.equal(result.status, 200, `${query}: ${JSON.stringify(result.problem)}`);

@@ -27,7 +27,7 @@ export default class EntryFts {
         );
         let near = 0;
         let pendingNear = false;
-        return normalized.replace(/"(?:[^"]|"")*"?|[()]|[^\s()"]+/gu, (token) => {
+        return normalized.replace(/"(?:[^"]|"")*"?|(?!NEAR\b)[A-Za-z0-9_]+(?:\([^()\s"]*\)|[()][^\s()"]*)+|[()]|[^\s()"]+/gu, (token) => {
             if (token === "(") {
                 if (pendingNear || near > 0) near += 1;
                 pendingNear = false;

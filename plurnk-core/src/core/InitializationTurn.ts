@@ -26,7 +26,7 @@ const readFilesItems = (): number | null => {
 
 // {§session-initialization-entry} — the closing TODO after the initialization surveys.
 const INITIALIZATION_CLOSING_TODO: TodoStatement = {
-    op: "todo", aside: "<<<EOF ... EOF multiline string", target: null, lineMarker: null,
+    op: "todo", aside: null, target: null, lineMarker: null,
     body: "Resolve all Open Work.", position: UNKNOWN_POSITION,
 };
 
