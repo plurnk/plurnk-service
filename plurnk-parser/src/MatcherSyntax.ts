@@ -262,10 +262,10 @@ export const parseMatcher = (body: string, op = "read", pos: Position = { line: 
         }
         return { dialect: "xpath", raw };
     }
-    // {§parse-recovery} — a matcher opening with `^` is a regex written without slashes or flags.
-    if (raw.startsWith("^")) {
-        const inline = liftInlineFlags(readAlternation(raw.slice(1), pos, advise), "", pos, advise);
-        const pattern = `^${inline.pattern}`;
+    // {§parse-recovery} — a matcher opening with `^` or closing with `$` is a regex written without slashes or flags.
+    if (raw.startsWith("^") || (raw.length > 1 && !/^[/$~&]/u.test(raw) && /(?<!\\)\$$/u.test(raw))) {
+        const inline = liftInlineFlags(readAlternation(raw.startsWith("^") ? raw.slice(1) : raw, pos, advise), "", pos, advise);
+        const pattern = raw.startsWith("^") ? `^${inline.pattern}` : inline.pattern;
         try { new RegExp(pattern, inline.flags); }
         catch (e) {
             const repaired = repairUnbalancedRegexDelimiters(pattern);
@@ -275,6 +275,7 @@ export const parseMatcher = (body: string, op = "read", pos: Position = { line: 
                     return { dialect: "regex", raw, pattern: repaired, flags: inline.flags };
                 } catch { /* fall through */ }
             }
+            if (!raw.startsWith("^")) return { dialect: "glob", raw };
             return unreadable(raw, `pattern leads with \`^\` but is not a valid regex - ${detail(e)}`,
                 REGEX_FORM);
         }
