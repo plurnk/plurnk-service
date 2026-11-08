@@ -245,9 +245,11 @@ export const scanChunks = (
             }
 
             if (ch === "(") {
-                parenDepth += 1;
-                openedCall = true;
-                prevSigChar = ch;
+                if (prevSigChar !== "") {
+                    parenDepth += 1;
+                    openedCall = true;
+                    prevSigChar = ch;
+                }
                 i += 1;
                 continue;
             }

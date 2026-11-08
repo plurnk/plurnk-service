@@ -875,5 +875,17 @@ describe("PlurnkParser Code Mode", () => {
         const nonEmptyTextOnRead = PlurnkParser.parse('await plurnk.read({ path: "src/a.py", text: "not-empty" });');
         assert.equal(nonEmptyTextOnRead.items.filter((i) => i.kind === "statement").length, 0);
         assert.ok(nonEmptyTextOnRead.items.some((i) => i.kind === "error" && i.error.message.includes("Unknown option `text` on `plurnk.read`")));
+
+        const parenthesizedTurn = PlurnkParser.parse([
+            '(await plurnk.edit({"path":"workspace:///catalog.xml","pattern":"//item","text":"<item id=\\"new\\">C</item>"}))',
+            '(await plurnk.edit({"path":"workspace:///config.json","pattern":"$.host","text":"\\"host\\":\\"db.example\\""}))',
+            '(await the next step in prose)',
+        ].join("\n\n"));
+        const parenOps = parenthesizedTurn.items.filter((i) => i.kind === "statement").map((i) => i.statement);
+        const parenTexts = parenthesizedTurn.items.filter((i) => i.kind === "text");
+        assert.equal(parenOps.length, 2);
+        assert.equal((parenOps[0] as EditStatement).target?.raw, "workspace:///catalog.xml");
+        assert.equal((parenOps[1] as EditStatement).target?.raw, "workspace:///config.json");
+        assert.equal(parenTexts.length, 1);
     });
 });

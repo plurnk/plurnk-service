@@ -143,7 +143,7 @@ export default class AdmittedTurnExecutor {
                 result: Results.failure("engine:rail", problem.code, problem.status, problem.detail, {}, extensions),
             });
         };
-        const emptyTurnExtensions = { stage: "dispatch-admission", recovery: "Emit at least one unfenced tool call (`await plurnk.<op>({ ... })`).", retryable: true };
+        const emptyTurnExtensions = { stage: "dispatch-admission", recovery: "Emit at least one unfenced tool call (`await plurnk.<op>({ ... })`), or `await plurnk.done({ text: \"...\" })` to conclude.", retryable: true };
         const waits: DispositionStatement[] = [];
         const pendingEngineErrors: EngineProblemKind[] = [];
         let realCommands = 0;
