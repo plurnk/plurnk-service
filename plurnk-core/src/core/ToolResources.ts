@@ -207,7 +207,7 @@ export default class ToolResources {
         visible: (pathname: string) => boolean | Promise<boolean>,
     ): Promise<string | undefined> {
         if (aside === undefined || !pathname.endsWith(".md") || pathname.slice(1).includes("/")) return aside;
-        const match = /^(await\s+[A-Za-z0-9_$-]+)\["([^"]+)"\](\([\s\S]*?\);\s*\/\/\s*)([\s\S]*)$/u.exec(aside);
+        const match = /^(await\s+[A-Za-z0-9_$-]+)\["([^"]+)"\](\([\s\S]*?\);?\s*\/\/\s*)([\s\S]*)$/u.exec(aside);
         if (match === null) return aside;
         const [, prefix, rawTools, callAndComment, description] = match;
         const root = pathname.slice(0, -".md".length);
@@ -233,7 +233,7 @@ export default class ToolResources {
         content: string,
         visible: (pathname: string) => boolean | Promise<boolean>,
     ): Promise<string> {
-        if (!pathname.endsWith(".md") || pathname.slice(1).includes("/")) return content;
+        if ((!pathname.endsWith(".md") && !pathname.endsWith(".json")) || pathname.slice(1).includes("/")) return content;
         if (pathname === "/plurnk.md" && !(await visible("/plurnk/question.json"))) {
             return content
                 .replace("|question\"]", "\"]")
@@ -241,7 +241,15 @@ export default class ToolResources {
                     ", workspace configuration (env, mcp, members, personas, schedule, skills), and user questions.",
                     ", and workspace configuration (env, mcp, members, personas, schedule, skills).",
                 )
-                .replace(/\n\nawait plurnk\.question\([^\n]*\n\/\/ schema: [^\n]*\/plurnk\/question\.json/u, "");
+                .replace(/\n\nawait plurnk\.question\([^\n]*/u, "");
+        }
+        if (pathname === "/plurnk.json" && !(await visible("/plurnk/question.json"))) {
+            const parsed: unknown = JSON.parse(content);
+            if (typeof parsed === "object" && parsed !== null && "tools" in parsed && Array.isArray(parsed.tools)) {
+                const tools = parsed.tools.filter((tool): boolean =>
+                    typeof tool !== "object" || tool === null || !("name" in tool) || tool.name !== "question");
+                return JSON.stringify({ ...parsed, tools }, null, 2);
+            }
         }
         return content;
     }

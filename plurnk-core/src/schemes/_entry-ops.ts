@@ -456,7 +456,12 @@ export default class EntryOps {
         const projectRoot = scheme === "file" ? await FileAddress.projectRoot(ctx) : null;
         const path = EntryManifest.toPath(scheme, authority, pathname, projectRoot);
         const identity = EntryManifest.channelPath({ scheme, authority, pathname }, selectedChannel, manifest.defaultChannel, projectRoot);
-        const stored = await EntryCrud.readEntry({ authority, pathname }, ctx, scheme);
+        const visible = (scheme === "mcp" || scheme === "plurnk" || scheme === "workspace") && ctx.referenceVisibility !== undefined
+            ? await ctx.referenceVisibility()
+            : undefined;
+        const stored = visible !== undefined && !visible(pathname)
+            ? { status: 404, entry: null }
+            : await EntryCrud.readEntry({ authority, pathname }, ctx, scheme);
         // {§read} + {§fs-namespace} — ENOENT carries its fact, the RESOLVED name in wire
         // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
         if (stored.entry === null) {
@@ -469,8 +474,7 @@ export default class EntryOps {
             );
         }
         let representation = stored.entry;
-        if ((scheme === "mcp" || scheme === "plurnk") && ctx.writer !== "_plurnk" && ctx.referenceVisibility !== undefined && pathname.endsWith(".md")) {
-            const visible = await ctx.referenceVisibility();
+        if (visible !== undefined && (pathname.endsWith(".md") || pathname.endsWith(".json"))) {
             const channels = Object.fromEntries(await Promise.all(
                 Object.entries(representation.channels).map(async ([name, ch]) => [
                     name,

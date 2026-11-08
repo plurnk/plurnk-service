@@ -256,14 +256,14 @@ test("{§turn-source-resources} {§share-packet-names}: the digest writes each r
     const roles = (messages: WireMessage[]) => messages.map(({ role }) => role);
     const draft = await wire("analyst-1-3");
     assert.deepEqual(roles(draft), ["system", "user", "assistant", "user"]);
-    assert.equal(draft[2].content, "await plurnk.edit({\"path\":\"workspace:///a.md\",\"text\":\"alpha\"});\n\nawait plurnk.note({\"text\":\"Wrote the first draft.\"});",
+    assert.equal(draft[2].content, "await plurnk.edit({\"path\":\"workspace:///a.md\",\"text\":\"alpha\"})\n\nawait plurnk.note({\"text\":\"Wrote the first draft.\"})",
         "a turn's complete operations replay together, in program order, before its receipts");
     const original = await readFile(join(digestDir, "analyst-1-2.assistant.md"), "utf8");
     assert.match(original, /"content":"alpha"/u, "forensics keep the exact EDIT body");
     assert.match(original, /Wrote the first draft\./u, "forensics keep the exact NOTE body");
     const last = await wire("analyst-1-4");
     assert.deepEqual(roles(last), ["system", "user", "assistant", "user"], "curation retires the old turn's replay; the curating turn replays as its own KILL and NOTE");
-    assert.equal(last[2].content, "await plurnk.kill({\"path\":\"log:///1/2/2/emission\"});\n\nawait plurnk.note({\"text\":\"Retired the first emission.\"});", "the curating KILL and NOTE replay in assistant history");
+    assert.equal(last[2].content, "await plurnk.kill({\"path\":\"log:///1/2/2/emission\"})\n\nawait plurnk.note({\"text\":\"Retired the first emission.\"})", "the curating KILL and NOTE replay in assistant history");
     assert.doesNotMatch(last[1].content, /Retired the first emission\./u);
     assert.match(last[1].content, /Wrote the first draft\./u, "the retired turn is no longer replayed, so its NOTE stands as an ordinary row with its body");
     const curation = await readFile(join(digestDir, "analyst-1-3.assistant.md"), "utf8");

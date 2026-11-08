@@ -376,7 +376,7 @@ All `file` operations resolve targets through `Namespace` and `plurnk-uri` befor
 | --- | --- |
 | Name resolution & home expansion | Local paths and `file://` URLs (decoded once from percent-encoding; rejecting `%00`, `%2F`, invalid UTF-8, or non-empty hostnames with `400 invalid-file-url`) resolve against `project_root` (or `os.homedir()` for `~` / `~/...`). A literal in-root `~` segment is written `./~`. |
 | Canonical key & wire canon | Inside `project_root`, the stored `entries.pathname` and wire address are the normalized relative path (`src/a.ts`); outside `project_root`, the stored key is the relative climb (`../sibling/a.ts`) while model-facing wire/problem rendering spells the absolute path. Model-authored non-canonical spellings (`/abs/in/root` or `~/...`) resolve to the canonical key and emit a `path_normalized` notice. |
-| Visibility & directory targets | Only paths granted by `git` or `constraint` (`members` / `create`) exist in `file`. Addressing a directory on `READ` or `KILL` returns `404 path-is-directory` with recovery `await plurnk.find({ path: "<dir>/" });`; on `EDIT` it returns `403 path-is-directory`; on `plurnk.find({ path: "<dir>" })` (with or without trailing `/` for in-root directories) it surveys member descendants. |
+| Visibility & directory targets | Only paths granted by `git` or `constraint` (`members` / `create`) exist in `file`. Addressing a directory on `READ` or `KILL` returns `404 path-is-directory` with recovery `await plurnk.find({ path: "<dir>/" })`; on `EDIT` it returns `403 path-is-directory`; on `plurnk.find({ path: "<dir>" })` (with or without trailing `/` for in-root directories) it surveys member descendants. |
 | Read/miss refusals | Inside `project_root`, a missing path returns `404 entry-not-found` naming `FIND`, `EDIT`, and `plurnk.members`, while outside `project_root` a missing path returns `404 entry-not-found` naming the absolute address and the `namespace` scope requirement; an on-disk non-member file (inside or outside `project_root`) returns `404 entry-not-member` naming either the active exclusion rule, the ignoring Git file and line (`.gitignore`, `.git/info/exclude`, user excludes), or `plurnk.members`. |
 
 ### §fs-write-surface Filesystem Write Surface and Creation Incorporation
@@ -482,7 +482,7 @@ token      = base62( sha256(utf8(hash_input))[0..4] )   // 5 base62 chars from f
 ## §edit EDIT
 
 ```ts
-await plurnk.edit({ path: "<target>", range: "<scope>", pattern: "<pattern>", text: "<body>" }); // aside
+await plurnk.edit({ path: "<target>", range: "<scope>", pattern: "<pattern>", text: "<body>" }) // aside
 ```
 
 | Form | Behavior |
@@ -507,7 +507,7 @@ An `await plurnk.edit({ path: "<target>", range?: "<scope>", pattern: "<pattern>
 ## §read READ
 
 ```ts
-await plurnk.read({ path: "<target>", range: "<scope>", pattern: "<pattern>" }); // aside
+await plurnk.read({ path: "<target>", range: "<scope>", pattern: "<pattern>" }) // aside
 ```
 
 | Form | Behavior |
@@ -566,7 +566,7 @@ Every settled text mutation (`EDIT`, `COPY`, `MOVE`) produces a structured `Edit
 ## §copy COPY (engine-orchestrated)
 
 ```ts
-await plurnk.copy({ from: "<source>", to: "<destination>", fromRange: "<source-scope>", pattern: "<source-pattern>", toRange: "<dest-scope>" });
+await plurnk.copy({ from: "<source>", to: "<destination>", fromRange: "<source-scope>", pattern: "<source-pattern>", toRange: "<dest-scope>" })
 ```
 
 - Reads `source` (sliced by `<source-scope>` and/or filtered by `<source-pattern>`) and writes the selected content or bytes into `destination` at `<dest-scope>` (`201` created, `200` updated, `204` zero pattern matches, `304` no-op, `404` missing source, `403` read-only destination, `409` self-overwrite without scope). Patterns on `destination` fail `400` `pattern-destination-unsupported`.
@@ -575,7 +575,7 @@ await plurnk.copy({ from: "<source>", to: "<destination>", fromRange: "<source-s
 ## §move MOVE (engine-orchestrated)
 
 ```ts
-await plurnk.move({ from: "<source>", to: "<destination>", fromRange: "<source-scope>", pattern: "<source-pattern>", toRange: "<dest-scope>" });
+await plurnk.move({ from: "<source>", to: "<destination>", fromRange: "<source-scope>", pattern: "<source-pattern>", toRange: "<dest-scope>" })
 ```
 
 - Decomposes into destination write followed by source removal: whole-resource `MOVE` (unscoped or `<1,-1>` onto a new/whole destination) deletes/unlinks the source resource and transfers generated membership picks; scoped or pattern `MOVE` removes only the transferred spans/bytes from `source` (using pre-mutation coordinates when `source` and `destination` are the same channel).
@@ -584,7 +584,7 @@ await plurnk.move({ from: "<source>", to: "<destination>", fromRange: "<source-s
 ## §find FIND
 
 ```ts
-await plurnk.find({ path: "<target>", range: "<scope>", pattern: "<pattern>" });
+await plurnk.find({ path: "<target>", range: "<scope>", pattern: "<pattern>" })
 ```
 
 - **Target scope**: An exact path inspects that single resource; a trailing slash (`folder/`) or single-segment `*` lists immediate children (summarizing subdirectories as `dir/**` with item counts and token weights); `**` traverses recursively. Path globs support `*`, `**`, `?`, `[...]`, `{a,b}`, and extglobs, resolved strictly within workspace membership.
@@ -1172,7 +1172,7 @@ sequenceDiagram
 
 | Code | Status | Contract |
 | --- | ---: | --- |
-| `target-required` | 400 | *OP* requires a target path. Recovery: Provide the target path: `await plurnk.<op>({ path: "..." });`. |
+| `target-required` | 400 | *OP* requires a target path. Recovery: Provide the target path: `await plurnk.<op>({ path: "..." })`. |
 | `target-cardinality` | 400 | *OP* *operand* matched *n* resources; expected one. Recovery: Name one source and one destination per pair. |
 | `scheme-not-found` | 501 | Scheme '*name*' is not registered. Recovery: `Registered schemes: *names*.` |
 | `headers-unsupported` | 400 | *op* on '*scheme*' does not accept `headers`. |
@@ -1186,7 +1186,7 @@ sequenceDiagram
 | `exec-source-not-data` | 501 | Scheme '*name*' is not a data source for an execution. |
 | `writer-forbidden` | 403 | Writer '*origin*' cannot modify scheme '*name*'. |
 | `capability-denied` | 403 | Capability '*route*' is denied by *scope* policy. |
-| `spawn-prompt-empty` | 422 | *op* has no prompt text. Recovery: Provide a non-empty prompt in `await plurnk.<op>({ prompt: "..." });`. |
+| `spawn-prompt-empty` | 422 | *op* has no prompt text. Recovery: Provide a non-empty prompt in `await plurnk.<op>({ prompt: "..." })`. |
 | `message-not-found` | 404 | No accepted message exists at *address*. |
 | `send-target-required` | 400 | *op* has no recipient and its loop has no published message. Recovery: Name a recipient address. |
 | `edit-collision` | 409 | edit collided with the current resource state ({§edit}). Recovery: *n* of *m* edits applied. read the target for current coordinates. |
@@ -1202,7 +1202,7 @@ sequenceDiagram
 | `channel-required` | 400 | The '*scheme*' scheme has no default channel. Recovery: Address a named channel with a URI fragment. |
 | `binary-source-unsupported` | 415 | Channel #*name* is binary and its scheme keeps no bytes to transfer. |
 | `fork-unaddressed` | 404 | This client operation acts for no session, so fork has no log to branch ({§connection-lifecycle}). |
-| `session-name-conflict` | 409 | Session '*name*' already exists in this workspace. Recovery: `await plurnk.work({ name: "*name*", prompt: "..." });` or `await plurnk.send({ target: "session://*name*", text: "..." });` delivers a message to the live session; fork with a name no session holds ({§session-scheme}). |
+| `session-name-conflict` | 409 | Session '*name*' already exists in this workspace. Recovery: `await plurnk.work({ name: "*name*", prompt: "..." })` or `await plurnk.send({ target: "session://*name*", text: "..." })` delivers a message to the live session; fork with a name no session holds ({§session-scheme}). |
 | `no-operation` | 422 | The turn performed no operation ({§engine-rails}). |
 | `send-target-not-a-recipient` | 400 | The addressed scheme is not a send recipient. Recovery: Name a message address or a recipient that implements send. |
 | `invalid-operation-syntax` | 400 | The parser's diagnostic for an invalid operation in an admitted turn. |
@@ -1255,7 +1255,7 @@ sequenceDiagram
 | `file-create-excluded` | 403 | A members exclusion (`!_glob_`) covers '*path*'. Recovery: Remove or disable the excluding members definition, or choose another path. |
 | `file-create-gitignored` | 403 | Active Git policy ignores '*path*', and no members definition includes it. Recovery: Choose a Git-admitted path or add a members definition that includes it. |
 | `file-materialization-limit` | 413 | The file exceeds the materialization byte limit and is not read into the workspace. |
-| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: find lists paths. edit creates files; `await plurnk.members({ path: "<path>" });` admits existing files. |
+| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: find lists paths. edit creates files; `await plurnk.members({ path: "<path>" })` admits existing files. |
 | `body-channel-required` | 400 | A file write requires a body channel. |
 | `write-failed` | 500 | Publication or its settlement failed; distinguishes an unpublished write from an already-published one. |
 | `creation-rollback-failed` | 500 | Incorporating a newly created file failed, and rollback was incomplete. |
@@ -1286,7 +1286,7 @@ sequenceDiagram
 | `session-target-required` / `workspace-target-required` | 400 | edit requires a `session://` or `workspace:///` target. |
 | `workspace-authority-unsupported` | 400 | A `workspace:///` address takes no authority. Recovery: Use `workspace:///path` for shared workspace entries or `session://<name>/path` for session scratch. |
 | `binary-edit-unsupported` | 415 | The #*channel* channel is binary and cannot be edited. |
-| `message-not-implemented` | 501 | send does not deliver messages to *scheme* entries. Recovery: To reply, send to an Open Message address or omit the target. `await plurnk.send({ target: "session://<name>", text: "..." });` sends a new message. |
+| `message-not-implemented` | 501 | send does not deliver messages to *scheme* entries. Recovery: To reply, send to an Open Message address or omit the target. `await plurnk.send({ target: "session://<name>", text: "..." })` sends a new message. |
 | `session-entity-not-editable` / `workspace-entity-not-editable` | 400 | A session or workspace entity is not an editable entry. Recovery: edit requires an entry path, such as `workspace:///example.md`. |
 | `message-empty` | 400 | send has no message text or attachments. |
 | `scope-unsupported` | 400 | A session send takes no scope. |
@@ -1352,7 +1352,7 @@ The workspace Functionality Coordinator materializes self-documentation, skills,
 
 | Surface | Materialized URIs & contract |
 | --- | --- |
-| Executable tools | Materializes `plurnk` tool and execution operation (`sh`, `js`, `python3`) summaries on `mcp:///plurnk.md` (with `<percent-encoded-target>.json` schemas and `mcp:///plurnk.json` catalog) and MCP/external runtime reference pages at `mcp:///<runtime>.md` (or `plurnk:///<runtime>.md` when the executor omits `resourcesPath: "/tools"`). At Turn 0, the engine seeds `await plurnk.find({ path: "mcp:///*.md", range: "1,-1" });`, `await plurnk.read({ path: "mcp:///plurnk.md", range: "1,-1" });`, and `await plurnk.read({ path: "mcp:///plurnk/edit.json" });`. Header-only runtimes end their summary aside with `(invocation only)`. |
+| Executable tools | Materializes `plurnk` tool and execution operation (`sh`, `js`, `python3`) summaries on `mcp:///plurnk.md` (with `<percent-encoded-target>.json` schemas and `mcp:///plurnk.json` catalog) and MCP/external runtime reference pages at `mcp:///<runtime>.md` (or `plurnk:///<runtime>.md` when the executor omits `resourcesPath: "/tools"`). At Turn 0, the engine seeds `await plurnk.find({ path: "mcp:///*.md", range: "1,-1" })`, `await plurnk.read({ path: "mcp:///plurnk.md", range: "1,-1" })`, and `await plurnk.read({ path: "mcp:///plurnk/edit.json" })`. Header-only runtimes end their summary aside with `(invocation only)`. |
 | Scheme reference pages | Materializes third-party scheme reference cards at `plurnk:///<scheme>.md`; listing a scheme in `PLURNK_SERVICE_DOCS_EXCLUDE` omits its reference `.md` without disabling the scheme. |
 | Bundled `plurnk` skill | Served through the `skill://` scheme at `skill://plurnk/SKILL.md`, with flat reference chapters at `skill://plurnk/{configuration,copy-move,delegation,extensibility,https,models,pattern,session,wss}.md`, configuration artifacts at `skill://plurnk/configuration/{.env.defaults,plurnk.service,plurnk.nginx.conf}`, and package specifications/types at `skill://plurnk/packages/<package>/SPEC.md` and `skill://plurnk/packages/<package>/dist/**/*.d.ts`. |
 | File membership (`members` Functionality family) | Configured via `PLURNK_MEMBERS_<alias>=<glob>` (`!glob` excludes; gated by `PLURNK_MEMBERS_ENABLED` and `PLURNK_MEMBERS_<alias>_ENABLED`), operated via `workspace.members.<verb>`, `await plurnk.members(...)` (`list`, `discover`, `add`, `enable`, `disable`, `remove`), or `members:///<glob>` (`READ`, `EDIT`, `KILL`), bounded for model `add` by `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (`none < root < namespace`; violations fail `403 https://problems.plurnk.xyz/members/functionality/model-scope`), persisted in `workspace_constraints` (`source: "members" \| "model"`, preserving `source: "create"`), and materialized as `plurnk:///members/<percent-encoded-glob>.md`. Outside-root directory globs (`../<dir>/**`) and nested repository / submodule globs (`<dir>/**`, #1400) resolve tracked files via `git ls-files` and respect `.gitignore` for ambient candidates when `<dir>` is a Git working tree. |

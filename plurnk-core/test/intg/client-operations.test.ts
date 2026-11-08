@@ -862,7 +862,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         const firstPacket = packet(provider.requests, 0);
         assert.match(firstPacket, /mcp:\/\/\/plurnk\.md/,
             "the initial survey lists the MCP manager alongside active servers");
-        assert.match(firstPacket, /await fixture\.echo\(\{\\"message\\": \\"\\"\}\); \/\/ Echo tools for transport testing\./);
+        assert.match(firstPacket, /await fixture\.echo\(\{\\"message\\": \\"\\"\}\) \/\/ Echo tools for transport testing\./);
         assert.doesNotMatch(firstPacket, /Pass the message field unchanged/, "full server instructions are not pushed into turn0");
         assert.match(firstPacket, /mcp:\/\/\/fixture\.md/);
         assert.doesNotMatch(firstPacket, /mcp:\/\/\/fixture\/echo\.json/, "turn 0 surveys server summaries only, not tool schemas");
@@ -1130,6 +1130,10 @@ const boot = async (capabilities: CapabilityPolicy = {}) => {
     ]);
     const workspaceId = await insertWorkspace(db, `tool-admission-${crypto.randomUUID()}`);
     const sessionId = await insertSession(db, workspaceId);
+    (await engine.prepareWorkspaceRuntimes(workspaceId, "mcp", [], [{
+        name: "mcp",
+        facet: { claims: () => false },
+    }]))();
     await db.test_set_workspace_settings.run({
         id: workspaceId,
         settings: JSON.stringify({ capabilities }),
@@ -1138,17 +1142,27 @@ const boot = async (capabilities: CapabilityPolicy = {}) => {
     const loopId = await insertLoop(db, sessionId, 2, "admission");
     const turnId = await insertTurn(db, loopId, 1, 102);
     const dispatch = { workspaceId, sessionId, loopId, turnId, origin: "model" as const };
-    // What the session's FIND of the reserved reference set shows: its paths and its rendered catalog.
+    // What the session's FIND of the reserved reference set and Turn 0's READ of mcp:///plurnk.md show.
     const catalog = async () => {
         const plurnkFound = await engine.dispatch({ ...dispatch, sequence: 101, statement: findStatement("plurnk") });
         const mcpFound = await engine.dispatch({ ...dispatch, sequence: 102, statement: findStatement("mcp") });
+        const turn0Read = await engine.dispatch({
+            ...dispatch, origin: "_plurnk", sequence: 103,
+            statement: readStmt({ ...urlPath("mcp", "/plurnk.md"), hostname: null }, { marks: [1, -1] }),
+        });
+        const jsonCatalogRead = await engine.dispatch({
+            ...dispatch, sequence: 104,
+            statement: readStmt({ ...urlPath("mcp", "/plurnk.json"), hostname: null }, { marks: [1, -1] }),
+        });
         assert.equal(plurnkFound.status, 200);
         assert.equal(mcpFound.status, 200);
+        assert.equal(turn0Read.status, 200);
+        assert.equal(jsonCatalogRead.status, 200);
         const paths = [
             ...(plurnkFound.results as Array<Array<{ path: string }>>).map((group) => group[0]?.path ?? ""),
             ...(mcpFound.results as Array<Array<{ path: string }>>).map((group) => group[0]?.path ?? ""),
         ];
-        const content = [plurnkFound.content, mcpFound.content]
+        const content = [plurnkFound.content, mcpFound.content, turn0Read.content, jsonCatalogRead.content]
             .filter((part): part is string => typeof part === "string" && part.length > 0)
             .join("\n");
         return { paths, content };
@@ -1194,6 +1208,19 @@ for (const [label, owner] of [
         assert.ok(paths.some((path) => path.endsWith("/plurnk/members.json")), "noninteractive plurnk tools remain discoverable");
         assert.ok(!paths.some((path) => path.endsWith("/plurnk/question.json")), "the shared reference set hides the tool from this session");
         assert.ok(!content.includes("question"), "the rendered catalog agrees with the location list");
+        const directRead = await engine.dispatch({
+            ...dispatch, sequence: 105,
+            statement: readStmt({ ...urlPath("mcp", "/plurnk/question.json"), hostname: null }, { marks: [1, -1] }),
+        });
+        assert.equal(directRead.status, 404);
+        const directFind = await engine.dispatch({
+            ...dispatch, sequence: 106,
+            statement: {
+                ...findStatement("mcp"),
+                target: { ...urlPath("mcp", "/plurnk/question.json"), hostname: null },
+            },
+        });
+        assert.equal(directFind.status, 404);
         const result = await engine.dispatch({ ...dispatch, sequence: 2, statement: execStatement() });
         assert.equal(result.status, 403);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");

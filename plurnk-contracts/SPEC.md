@@ -36,7 +36,7 @@ flowchart LR
 | --- | --- | --- |
 | Stable current law | `SPEC.md` | Owns invariants and boundaries; forge issues retain history |
 | Canonical model teaching | `plurnk.md` | Teaches the lean Code Mode call syntax and operational model the model should emit |
-| Accepted syntax | `CodeMode.ts`, `MatcherSyntax.ts`, `ScopeSyntax.ts`, `TargetSyntax.ts` | Recognizes declarative `await <service>.<tool>(args);` calls, literal argument shapes, and outside text |
+| Accepted syntax | `CodeMode.ts`, `MatcherSyntax.ts`, `ScopeSyntax.ts`, `TargetSyntax.ts` | Recognizes declarative `await <service>.<tool>(args)` calls, literal argument shapes, and outside text |
 | Typed admission | `PlurnkStatement` AST | Produces JSON-serializable unions and validates deterministic path/scope/matcher syntax |
 | Shared wire data | `schema/*.json` | Defines runtime-neutral data shapes projected into generated TypeScript |
 | Stateful behavior | consuming runtime | Resolves addresses, permissions, selection arithmetic, effects, and lifecycle |
@@ -90,14 +90,14 @@ flowchart LR
 ## §operation-fences 2. Canonical Code Mode statement form
 
 ```ts
-await plurnk.<op>({ ... }); // optional aside
+await plurnk.<op>({ ... }) // optional aside
 
-await <service>.<tool>({ ... });
+await <service>.<tool>({ ... })
 ```
 
-- **Declarative top-level tool calls**: Every canonical statement is an unwrapped TypeScript/JavaScript `await <service>.<tool>(args);` call (with `await` and trailing `;` optional). `plurnk` is the built-in runtime service (`plurnk.read`, `plurnk.find`, `plurnk.edit`, `plurnk.copy`, `plurnk.move`, `plurnk.kill`, `plurnk.note`, `plurnk.todo`, `plurnk.work`, `plurnk.fork`, `plurnk.bare`, `plurnk.send`, `plurnk.done`, `plurnk.fail`, `plurnk.wait`, REPL tools `plurnk.sh`, `plurnk.js`, `plurnk.python3`, and Functionality tools `plurnk.env`, `plurnk.mcp`, `plurnk.members`, `plurnk.personas`, `plurnk.schedule`, `plurnk.skills`, `plurnk.question`). External MCP servers are peer top-level namespaces (`await <service>.<tool>(args);`).
-- **Bracket property access**: Non-identifier tool names use bracket notation (`await gitea["issue-read"]({ ... });`).
-- **No free JavaScript execution in the parser**: Top-level statements are parsed as declarative calls with literal arguments (`{ ... }`, `[ ... ]`, strings/backticks, `<<<EOF ... EOF` heredocs, numbers, booleans, `null`); variable declarations and control-flow constructs (`const`, `let`, `var`, `if`, `for`, `while`, `function`, `try`) are refused with a parser diagnostic directing JavaScript logic to `await plurnk.js({ text: "..." });`.
+- **Declarative top-level tool calls**: Every canonical statement is an unwrapped TypeScript/JavaScript `await <service>.<tool>(args)` call (with `await` and trailing `;` optional). `plurnk` is the built-in runtime service (`plurnk.read`, `plurnk.find`, `plurnk.edit`, `plurnk.copy`, `plurnk.move`, `plurnk.kill`, `plurnk.note`, `plurnk.todo`, `plurnk.work`, `plurnk.fork`, `plurnk.bare`, `plurnk.send`, `plurnk.done`, `plurnk.fail`, `plurnk.wait`, REPL tools `plurnk.sh`, `plurnk.js`, `plurnk.python3`, and Functionality tools `plurnk.env`, `plurnk.mcp`, `plurnk.members`, `plurnk.personas`, `plurnk.schedule`, `plurnk.skills`, `plurnk.question`). External MCP servers are peer top-level namespaces (`await <service>.<tool>(args)`).
+- **Bracket property access**: Non-identifier tool names use bracket notation (`await gitea["issue-read"]({ ... })`).
+- **No free JavaScript execution in the parser**: Top-level statements are parsed as declarative calls with literal arguments (`{ ... }`, `[ ... ]`, strings/backticks, `<<<EOF ... EOF` heredocs, numbers, booleans, `null`); variable declarations and control-flow constructs (`const`, `let`, `var`, `if`, `for`, `while`, `function`, `try`) are refused with a parser diagnostic directing JavaScript logic to `await plurnk.js({ text: "..." })`.
 
 ### §fence-pairing Statement boundaries, unwrapped tolerances, and canonical rendering
 
@@ -107,7 +107,7 @@ await <service>.<tool>({ ... });
 | Markdown fence unwrapping | Code Mode statements require no Markdown fence; if a model wraps `await plurnk.<op>(...)` or `await <service>.<tool>(...)` inside a balanced `ts`, `js`, or plain Markdown code fence, the parser unwraps the block with a warning-severity advisory. |
 | Native and markup tool-call translation | Tool-call wrapper tags (`<tool_call>`, `<tool_calls>`, `<function_call>`, `<function_calls>`, `<｜DSML｜function_calls>`, `<｜｜DSML｜｜ function_calls>`, `<\|tool_call\|>`, `<｜tool▁calls▁begin｜>`, `<\|tool_calls_section_begin\|>`, `<\|python_tag\|>`, `[TOOL_CALLS]`) around Code Mode statements unwrap silently, and structured XML/DSML/token-delimited (`<function=...>`, `<invoke name="...">`, `<｜DSML｜invoke name="...">`, `<plurnk.<op> ... />`, `<｜tool▁call▁begin｜>`, `<\|tool_call_begin\|>`, `<\|tool_call\|>name`) or JSON tool calls targeting `plurnk` operations or `<service>.<tool>` translate silently into canonical Code Mode statements without advisory warnings. |
 | Case-insensitive method recovery | Uppercase or mixed-case method names (`plurnk.READ(...)`, `plurnk.SH(...)`) recover to their lowercase canonical tool name with a warning-severity advisory. |
-| Statement rendering | `PlurnkParser.stringify` formats AST statements back into canonical `await plurnk.<op>({ ... });` or `await <service>.<tool>({ ... });` statements, normalizing empty optional bodies to `null` and rendering any string value containing `\n` (as well as the Turn 0 `Resolve all Open Work.` todo seed) as an inline `<<<EOF\n...\nEOF` heredoc (stepping `EOF1`, `EOF2`, … when the string contains the delimiter). |
+| Statement rendering | `PlurnkParser.stringify` formats AST statements back into canonical `await plurnk.<op>({ ... })` or `await <service>.<tool>({ ... })` statements, normalizing empty optional bodies to `null` and rendering any string value containing `\n` (as well as the Turn 0 `Resolve all Open Work.` todo seed) as an inline `<<<EOF\n...\nEOF` heredoc (stepping `EOF1`, `EOF2`, … when the string contains the delimiter). |
 
 ### §slot-order Argument shapes, target groups, and endpoint options
 

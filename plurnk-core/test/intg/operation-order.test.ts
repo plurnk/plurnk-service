@@ -1031,7 +1031,7 @@ test("{§parse-recovery} a lost boundary refuses only what follows it: the state
 });
 
 test("{§op-shapes} internal turn programs admit a disposition anywhere like model turns", () => {
-    const source = "await plurnk.kill({\"path\":\"log:///1/1/*\"});\n\nawait plurnk.wait({}); // Continue.";
+    const source = "await plurnk.kill({\"path\":\"log:///1/1/*\"})\n\nawait plurnk.wait({}) // Continue.";
     const statements = TurnOps.parseInternal(source);
     assert.deepEqual(statements.map(({ op }) => op), ["kill", "wait"]);
     assert.equal(TurnOps.renderInternal(statements), source);

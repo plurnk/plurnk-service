@@ -125,7 +125,7 @@ test("{§provider-failure-normalization}: blank emissions retain their wire chan
         assert.equal(await readFile(join(digestDir, `${stems[2]}.assistant.md`), "utf8"), "await plurnk.done({\"text\":\"Inspected.\"});");
         const report = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.doesNotMatch(report, /rejected-emissions=/);
-        assert.match(await readFile(join(digestDir, `${stems[2]}.request.md`), "utf8"), /await plurnk\.read\(\{"path":"example\.txt"\}\);/);
+        assert.match(await readFile(join(digestDir, `${stems[2]}.request.md`), "utf8"), /await plurnk\.read\(\{"path":"example\.txt"\}\)/);
         assert.doesNotMatch(await readFile(join(digestDir, `${stems[2]}.user.md`), "utf8"), /native tool calls/);
     } finally {
         if (priorFiles === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = priorFiles;

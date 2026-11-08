@@ -1083,7 +1083,7 @@ test("{§exec-stream} a 40-line stream closes as its first page with the extent;
             const request = provider.received.at(-1)!;
             const launch = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes("seq 1 40"));
             const observed = request.findIndex((message) => message.role === "user" && chatMessageText(message).includes(`### ${terminal.logPath}`));
-            const tailRead = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes(`await plurnk.read({"path":"${String(terminal.path)}","range":"38,40"});`));
+            const tailRead = request.findIndex((message) => message.role === "assistant" && chatMessageText(message).includes(`await plurnk.read({"path":"${String(terminal.path)}","range":"38,40"})`));
             assert.ok(launch >= 0 && observed > launch && tailRead > observed,
                 `{§emission-history}: launch ${launch}, asynchronous observation ${observed}, subsequent program ${tailRead} must remain in causal order`);
         } finally {
@@ -1260,7 +1260,7 @@ for (const body of [null, '{"query":"fixture"}']) {
         assert.ok(invocation);
         assert.equal(invocation.lines, undefined);
         assert.equal(invocation.path, "inspect", "the receipt names the invoked tool, as its paired operation does");
-        assert.ok(provider.received[1].some((message) => message.role === "assistant" && chatMessageText(message) === `await fixture.inspect(${body ?? ""});`),
+        assert.ok(provider.received[1].some((message) => message.role === "assistant" && chatMessageText(message) === `await fixture.inspect(${body ?? ""})`),
             "the complete invocation remains distinct from its output");
         const automatic = observed.find((row) => row.path === invocation.stream && row.logPath.endsWith("/read"));
         assert.ok(automatic);
@@ -1269,12 +1269,12 @@ for (const body of [null, '{"query":"fixture"}']) {
         assert.equal(automatic.range, "40 lines", "the automatic observation is a markerless READ: whole, because it fits ({§tokenomics})");
         const failed = (await packet(3)).find((row) => /^log:\/\/\/1\/3\/\d+\/read$/u.test(row.logPath) && row.status === 416);
         assert.ok(failed);
-        assert.ok(provider.received[2].some((message) => message.role === "assistant" && chatMessageText(message) === `await plurnk.read({"path":"${invocation.logPath}","range":"17,40"});`));
+        assert.ok(provider.received[2].some((message) => message.role === "assistant" && chatMessageText(message) === `await plurnk.read({"path":"${invocation.logPath}","range":"17,40"})`));
         assert.equal((failed.problem as { range: { total: number } }).range.total, body === null ? 0 : 1);
         if (body === null) assert.equal((failed.problem as { stream: string }).stream, invocation.stream);
         const explicit = (await packet(4)).find((row) => /^log:\/\/\/1\/4\/\d+\/read$/u.test(row.logPath) && row.origin === undefined);
         assert.ok(explicit, "the actual MCP output is read at the address advertised in the packet");
-        assert.ok(provider.received[3].some((message) => message.role === "assistant" && chatMessageText(message) === `await plurnk.read({"path":"${String(invocation.stream)}","range":"17,40"});`));
+        assert.ok(provider.received[3].some((message) => message.role === "assistant" && chatMessageText(message) === `await plurnk.read({"path":"${String(invocation.stream)}","range":"17,40"})`));
         assert.equal(explicit.terminal, true, "MCP's JSON channel declaration does not hide its lifecycle");
         assert.equal(explicit.range, "<17,40> of 40 lines");
         assert.match(String(explicit.body), /40:result 40\n$/u);

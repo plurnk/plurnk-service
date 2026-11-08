@@ -171,7 +171,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
         ) {
             const tool = spelledTarget(statement.target);
             const argStr = formatExecutionBodyArg(statement.body);
-            return `await plurnk${propAccess(tool)}(${argStr});${formatAside(statement.aside)}`;
+            return `await plurnk${propAccess(tool)}(${argStr})${formatAside(statement.aside)}`;
         }
         if (BUILTIN_STANDALONE_EXECUTORS.has(runtime) || statement.target === null) {
             if (
@@ -180,7 +180,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
                 && statement.lineMarker === null
             ) {
                 const argStr = formatExecutionBodyArg(statement.body);
-                return `await plurnk${propAccess(runtime)}(${argStr});${formatAside(statement.aside)}`;
+                return `await plurnk${propAccess(runtime)}(${argStr})${formatAside(statement.aside)}`;
             }
             const args: Record<string, unknown> = {};
             if (statement.cwd !== undefined && statement.cwd !== null) {
@@ -194,7 +194,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
                 const bodyKey = BUILTIN_STANDALONE_EXECUTORS.has(runtime) ? "text" : "body";
                 args[bodyKey] = statement.body;
             }
-            return `await plurnk${propAccess(runtime)}(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
+            return `await plurnk${propAccess(runtime)}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         const tool = spelledTarget(statement.target);
         let argStr = formatExecutionBodyArg(statement.body);
@@ -202,7 +202,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             const opts: Record<string, unknown> = { range: formatRange(statement.lineMarker) };
             argStr = `${argStr === "" ? "null" : argStr}, ${stringifyCodeModeValue(opts)}`;
         }
-        return `await ${runtime}${propAccess(tool)}(${argStr});${formatAside(statement.aside)}`;
+        return `await ${runtime}${propAccess(tool)}(${argStr})${formatAside(statement.aside)}`;
     }
 
     switch (statement.op) {
@@ -214,7 +214,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
             if (statement.matcher !== null) args.pattern = statement.matcher.raw;
             if (statement.headers !== null) args.headers = statement.headers;
-            return `await plurnk.${method}(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.${method}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "edit": {
             const args: Record<string, unknown> = {};
@@ -223,7 +223,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.matcher !== null) args.pattern = statement.matcher.raw;
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.body !== null && statement.body.length > 0) args.text = statement.body;
-            return `await plurnk.edit(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.edit(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "copy":
         case "move": {
@@ -239,7 +239,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
                 return obj;
             };
             const args = { from: formatSel(statement.source), to: formatSel(statement.destination) };
-            return `await plurnk.${method}(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.${method}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "kill": {
             const args: Record<string, unknown> = {};
@@ -249,20 +249,20 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.remote !== null) args.remote = statement.remote;
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.body !== null && statement.body.length > 0) args.note = statement.body;
-            return `await plurnk.kill(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.kill(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "note": {
             const args: Record<string, unknown> = {};
             if (statement.body !== null && statement.body.length > 0) args.text = statement.body;
-            return `await plurnk.note(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.note(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "todo": {
             if (statement.body === "Resolve all Open Work.") {
-                return `await plurnk.todo({"items":[<<<EOF\nResolve all Open Work.\nEOF]});${formatAside(statement.aside)}`;
+                return `await plurnk.todo({"items":[<<<EOF\nResolve all Open Work.\nEOF]})${formatAside(statement.aside)}`;
             }
             const args: Record<string, unknown> = {};
             if (statement.body !== null && statement.body.length > 0) args.items = statement.body.split(/\r?\n/gu);
-            return `await plurnk.todo(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.todo(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "work":
         case "fork":
@@ -271,7 +271,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.target = spelledTarget(statement.target);
             args.text = statement.body;
-            return `await plurnk.${method}(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.${method}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "send": {
             const args: Record<string, unknown> = {};
@@ -279,7 +279,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.attachments !== null) args.attachments = statement.attachments;
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;
-            return `await plurnk.send(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.send(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "done":
         case "fail": {
@@ -288,13 +288,13 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             if (statement.target !== null) args.target = spelledTarget(statement.target);
             if (statement.attachments !== null) args.attachments = statement.attachments;
             if (statement.body !== null && statement.body.raw.length > 0) args.text = statement.body.raw;
-            return `await plurnk.${method}(${stringifyCodeModeValue(args)});${formatAside(statement.aside)}`;
+            return `await plurnk.${method}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
         case "wait": {
             const args: Record<string, unknown> = {};
             if (statement.seconds !== null) args.seconds = statement.seconds;
             const aside = statement.aside ?? (statement.body !== null && statement.body.length > 0 ? statement.body : null);
-            return `await plurnk.wait(${stringifyCodeModeValue(args)});${formatAside(aside)}`;
+            return `await plurnk.wait(${stringifyCodeModeValue(args)})${formatAside(aside)}`;
         }
     }
 };
@@ -568,16 +568,16 @@ const parseSelectionInput = (
         const target = parsePath(input, pos);
         if (target === null) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a non-empty '${role}' target.`, "error",
-                `await plurnk.${op}({ from: "source", to: "destination" });`);
+                `await plurnk.${op}({ from: "source", to: "destination" })`);
         }
         return { target, lineMarker: null, matcher: null, headers: null };
     }
     if (isRecord(input)) {
-        assertAllowedKeys(input, SELECTION_KEYS, `plurnk.${op}.${role}`, `await plurnk.${op}({ from: "source", to: "destination" });`, pos);
+        assertAllowedKeys(input, SELECTION_KEYS, `plurnk.${op}.${role}`, `await plurnk.${op}({ from: "source", to: "destination" })`, pos);
         const rawPath = input.path ?? input.target ?? input.uri;
         if (typeof rawPath !== "string" || rawPath.length === 0) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a '${role}.path' target.`, "error",
-                `await plurnk.${op}({ from: "source", to: "destination" });`);
+                `await plurnk.${op}({ from: "source", to: "destination" })`);
         }
         const target = parsePath(rawPath, pos);
         if (target === null) {
@@ -589,7 +589,7 @@ const parseSelectionInput = (
         return { target, lineMarker, matcher, headers };
     }
     throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires both from and to targets.`, "error",
-        `await plurnk.${op}({ from: "source", to: "destination" });`);
+        `await plurnk.${op}({ from: "source", to: "destination" })`);
 };
 
 type Chunk =
@@ -962,22 +962,22 @@ const resolveToolCallTarget = (
 
 const formatTranslatedCall = (target: string, rawArgs: unknown): string => {
     if (rawArgs === undefined || rawArgs === null) {
-        return `${target}();`;
+        return `${target}()`;
     }
     if (typeof rawArgs === "string") {
         const trimmed = rawArgs.trim();
-        if (trimmed.length === 0) return `${target}();`;
+        if (trimmed.length === 0) return `${target}()`;
         try {
             const parsed: unknown = JSON.parse(trimmed);
             return formatTranslatedCall(target, parsed);
         } catch {
-            return `${target}(${JSON.stringify(rawArgs)});`;
+            return `${target}(${JSON.stringify(rawArgs)})`;
         }
     }
     if (Array.isArray(rawArgs)) {
-        return `${target}(${rawArgs.map((item) => JSON.stringify(item)).join(", ")});`;
+        return `${target}(${rawArgs.map((item) => JSON.stringify(item)).join(", ")})`;
     }
-    return `${target}(${JSON.stringify(rawArgs)});`;
+    return `${target}(${JSON.stringify(rawArgs)})`;
 };
 
 const coerceToolParamValue = (rawVal: string): unknown => {
@@ -2011,7 +2011,7 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
             "parser",
             message,
             "error",
-            recovery ?? "Write valid Code Mode calls such as `await plurnk.read({ path: \"file.txt\" });`.",
+            recovery ?? "Write valid Code Mode calls such as `await plurnk.read({ path: \"file.txt\" })`.",
         );
     };
 
@@ -2440,8 +2440,8 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
             if (!after.startsWith(".") && !after.startsWith("[")) {
                 fail(
                     stmtStart,
-                    `Unexpected \`${forbiddenMatch[1]}\`; Code Mode statements are declarative tool calls (\`await <service>.<tool>({ ... });\`), not general JavaScript.`,
-                    "Emit one `<service>.<tool>(...)` call per statement, or use `await plurnk.js({ text: \"...\" });` to run JavaScript.",
+                    `Unexpected \`${forbiddenMatch[1]}\`; Code Mode statements are declarative tool calls (\`await <service>.<tool>({ ... })\`), not general JavaScript.`,
+                    "Emit one `<service>.<tool>(...)` call per statement, or use `await plurnk.js({ text: \"...\" })` to run JavaScript.",
                 );
             }
         }
@@ -2563,8 +2563,8 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
     const buildReadOrFind = (op: "read" | "find", args: readonly unknown[]): PlurnkStatement | PlurnkStatement[] => {
         const pos = activePosition;
         const recovery = op === "read"
-            ? 'await plurnk.read({ path: "path/to/file" });'
-            : 'await plurnk.find({ path: "**", pattern: "/needle/" });';
+            ? 'await plurnk.read({ path: "path/to/file" })'
+            : 'await plurnk.find({ path: "**", pattern: "/needle/" })';
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null))) {
             if (op === "read") {
                 throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
@@ -2709,7 +2709,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
 
     const buildEdit = (args: readonly unknown[]): EditStatement | EditStatement[] => {
         const pos = activePosition;
-        const recovery = 'await plurnk.edit({ path: "path/to/file", text: "..." });';
+        const recovery = 'await plurnk.edit({ path: "path/to/file", text: "..." })';
         const first = args[0];
         if (typeof first === "string" && args.length >= 2) {
             const parsed = parsePath(first, pos);
@@ -2798,7 +2798,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
 
     const buildTransfer = (op: "copy" | "move", args: readonly unknown[]): CopyStatement | MoveStatement => {
         const pos = activePosition;
-        const recovery = `await plurnk.${op}({ from: "source", to: "destination" });`;
+        const recovery = `await plurnk.${op}({ from: "source", to: "destination" })`;
         if (typeof args[0] === "string" && typeof args[1] === "string") {
             const source = parseSelectionInput(args[0], op, "from", pos, advise);
             const destination = parseSelectionInput(args[1], op, "to", pos, advise);
@@ -2836,7 +2836,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
 
     const buildKill = (args: readonly unknown[]): KillStatement | KillStatement[] => {
         const pos = activePosition;
-        const recovery = 'await plurnk.kill({ path: "log:///1/1/1/read" });';
+        const recovery = 'await plurnk.kill({ path: "log:///1/1/1/read" })';
         const first = args[0];
         if (Array.isArray(first)) {
             if (first.length === 0) {
@@ -2953,7 +2953,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             return emitStatement({ op: "note", aside: activeDefaultAside, target: null, lineMarker: null, body: first, position: pos });
         }
         if (isRecord(first)) {
-            assertAllowedKeys(first, NOTE_KEYS, "plurnk.note", 'await plurnk.note({ text: "..." });', pos);
+            assertAllowedKeys(first, NOTE_KEYS, "plurnk.note", 'await plurnk.note({ text: "..." })', pos);
             const rawText = first.text ?? first.content ?? first.body ?? first.note ?? first.message;
             const body = rawText === undefined || rawText === null || rawText === "" ? null : toStringValue(rawText);
             return emitStatement({ op: "note", aside: resolveAside(first), target: null, lineMarker: null, body, position: pos });
@@ -2992,7 +2992,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             return emitStatement({ op: "todo", aside: activeDefaultAside, target: null, lineMarker: null, body, position: pos });
         }
         if (isRecord(first)) {
-            assertAllowedKeys(first, TODO_KEYS, "plurnk.todo", 'await plurnk.todo({ items: ["..."] });', pos);
+            assertAllowedKeys(first, TODO_KEYS, "plurnk.todo", 'await plurnk.todo({ items: ["..."] })', pos);
             const rawItems = Array.isArray(first.items) ? first.items : (Array.isArray(first.todos) ? first.todos : null);
             if (rawItems !== null) {
                 const body = rawItems.length === 0 ? null : rawItems.map(formatTodoItem).join("\n");
@@ -3007,7 +3007,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
 
     const buildDelegation = (op: "work" | "fork" | "bare", args: readonly unknown[]): WorkStatement | ForkStatement | BareStatement => {
         const pos = activePosition;
-        const recovery = `await plurnk.${op}({ text: "..." });`;
+        const recovery = `await plurnk.${op}({ text: "..." })`;
         if (typeof args[0] === "string" && typeof args[1] === "string") {
             const target = op === "bare" ? null : parsePath(args[0], pos);
             return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, body: args[1], position: pos });
@@ -3033,7 +3033,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
 
     const buildSend = (args: readonly unknown[]): SendStatement => {
         const pos = activePosition;
-        const recovery = 'await plurnk.send({ target: "session://name", text: "..." });';
+        const recovery = 'await plurnk.send({ target: "session://name", text: "..." })';
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
             return emitStatement({ op: "send", aside: activeDefaultAside, target: null, lineMarker: null, headers: null, attachments: null, body: null, position: pos });
         }
@@ -3084,7 +3084,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
 
     const buildConclusion = (op: "done" | "fail", args: readonly unknown[]): DoneStatement | FailStatement => {
         const pos = activePosition;
-        const recovery = `await plurnk.${op}({ text: "..." });`;
+        const recovery = `await plurnk.${op}({ text: "..." })`;
         if (args.length === 0) {
             if (op === "done") {
                 throw new PlurnkParseError(pos.line, pos.column, "parser", "done requires a text argument.", "error", recovery);
@@ -3120,7 +3120,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
 
     const buildWait = (args: readonly unknown[]): DispositionStatement => {
         const pos = activePosition;
-        const recovery = "await plurnk.wait({ seconds: 30 });";
+        const recovery = "await plurnk.wait({ seconds: 30 })";
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
             return emitStatement({ op: "wait", aside: activeDefaultAside, target: null, lineMarker: null, seconds: null, body: null, position: pos });
         }
@@ -3227,7 +3227,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
     const buildStandaloneExec = (runtime: RuntimeTag, args: readonly unknown[]): ExecStatement => {
         const pos = activePosition;
         const isBuiltinExec = BUILTIN_STANDALONE_EXECUTORS.has(runtime);
-        const recovery = `await plurnk.${runtime}({ text: "..." });`;
+        const recovery = `await plurnk.${runtime}({ text: "..." })`;
         if (args.length === 0 || (args.length === 1 && (args[0] === undefined || args[0] === null || args[0] === ""))) {
             return emitStatement({
                 runtime,
@@ -3478,7 +3478,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 "parser",
                 `Unknown operation \`${head}\`.`,
                 "error",
-                "Write `await plurnk.<op>({ ... });` or `await <service>.<tool>({ ... });`.",
+                "Write `await plurnk.<op>({ ... })` or `await <service>.<tool>({ ... })`.",
             );
         }
         if (chain.length === 2) {
@@ -3496,7 +3496,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             "parser",
             `Invalid call target \`${chain.join(".")}\`.`,
             "error",
-            "Write `await <service>.<tool>({ ... });`.",
+            "Write `await <service>.<tool>({ ... })`.",
         );
     };
 
@@ -3545,7 +3545,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                         "parser",
                         `Code Mode syntax error: ${msg}`,
                         "error",
-                        "Write valid Code Mode calls such as `await plurnk.read({ path: \"file.txt\" });`.",
+                        "Write valid Code Mode calls such as `await plurnk.read({ path: \"file.txt\" })`.",
                     ),
                     attempt,
                 });
@@ -3569,7 +3569,7 @@ export const lowerToolCall = (
     const dispatcher = createCallDispatcher(options);
     const position: Position = { line: 1, column: 0 };
     const callArgs = args === undefined ? [] : [args];
-    const callText = `await ${service}${propAccess(tool)}(${args === undefined ? "" : JSON.stringify(args)});`;
+    const callText = `await ${service}${propAccess(tool)}(${args === undefined ? "" : JSON.stringify(args)})`;
     const attempt: ParseAttempt = {
         verb: attemptVerbOf(callText),
         text: callText,

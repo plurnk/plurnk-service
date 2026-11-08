@@ -91,11 +91,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
         // representation and after whatever it prepares.
         const prepared = await this.#facet?.prepareFind?.(statement, await this.#facetContext(ctx, statement.target));
         if (prepared !== undefined && prepared.status >= 300) return prepared;
-        const core = this.coreContext(ctx);
-        const visible = await core.referenceVisibility?.();
-        return EntryFind.findWorkspaceEntries(statement, core, this.manifestAt(statement.target), {
-            ...(visible === undefined ? {} : { visible }),
-        });
+        return EntryFind.findWorkspaceEntries(statement, this.coreContext(ctx), this.manifestAt(statement.target), { });
     }
 
     #isDocumentResource(target: ParsedPath | null): boolean {

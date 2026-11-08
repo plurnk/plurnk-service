@@ -55,7 +55,7 @@ export default class SessionControlHandler {
         if (prompt.trim() === "") {
             return this.#failure("spawn-prompt-empty", 422, `${statement.op} has no prompt text.`, {}, {
                 operation: statement.op,
-                recovery: `Provide a non-empty prompt in \`await plurnk.${statement.op.toLowerCase()}({ prompt: "..." });\`.`,
+                recovery: `Provide a non-empty prompt in \`await plurnk.${statement.op.toLowerCase()}({ prompt: "..." })\`.`,
                 retryable: false,
             });
         }
@@ -88,7 +88,7 @@ export default class SessionControlHandler {
                 {
                     operation: statement.op,
                     session: error.sessionName,
-                    recovery: `await plurnk.work({ target: "session://${error.sessionName}", prompt: "..." }); or await plurnk.send({ target: "session://${error.sessionName}", text: "..." }); delivers a message to the live session; fork with a name no session holds.`,
+                    recovery: `await plurnk.work({ target: "session://${error.sessionName}", prompt: "..." }) or await plurnk.send({ target: "session://${error.sessionName}", text: "..." }) delivers a message to the live session; fork with a name no session holds.`,
                     retryable: false,
                 },
             );

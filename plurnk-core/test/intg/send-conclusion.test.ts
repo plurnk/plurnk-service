@@ -808,7 +808,7 @@ for (const verb of ["send", "done", "fail"] as const) {
         const f = await setup(); t.after(() => f.db.close());
         await f.add("second");
         const body = verb === "send" ? "Sign-in is required." : "The request is settled.";
-        const rendered = `await plurnk.${verb.toLowerCase()}(${JSON.stringify({ text: body })});`;
+        const rendered = `await plurnk.${verb.toLowerCase()}(${JSON.stringify({ text: body })})`;
         const result = await f.turn(rendered);
         assert.equal(result.outcomes.find(({ op }) => op === verb)?.status, 200, "delivery still reports success");
         assert.equal(await f.remaining(), verb === "send" ? 2 : 1);

@@ -6,17 +6,17 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 
 test("{§turn-source-resources} the frozen projection keeps every statement and body whole, and adds no nested operations", () => {
     const lines = [
-        'await plurnk.read({"path":"workspace:///notes.md","range":"1,-1","pattern":"/needle/"}); // inspect',
-        'await plurnk.edit({"path":"workspace:///notes.md","range":"@abcde","text":<<<EOF\nA literal example:\n```KILL (workspace:///not-an-operation)\n```\nReplacement text.\nEOF}); // replace',
-        'await plurnk.copy({"from":{"path":"workspace:///a.md","range":"2,4"},"to":{"path":"workspace:///b.md","range":"0"}});',
-        'await plurnk.move({"from":{"path":"workspace:///b.md","range":"1,2"},"to":{"path":"workspace:///c.md","range":"-1"}});',
-        'await plurnk.sh({"cwd":"src","text":"printf \'%s\\\\n\' verification"}); // verify',
-        'await gitea.list_issues({"repository":"example"});',
-        'await plurnk.work({"target":"session://helper","text":"Investigate the project."});',
-        'await plurnk.send({"target":"session://helper","text":"Coordinate the investigation."});',
-        'await plurnk.note({"text":"Remember the conclusion."});',
-        'await plurnk.done({"text":"The complete final answer."});',
-        'await plurnk.fail({"text":"The failure explanation."});',
+        'await plurnk.read({"path":"workspace:///notes.md","range":"1,-1","pattern":"/needle/"}) // inspect',
+        'await plurnk.edit({"path":"workspace:///notes.md","range":"@abcde","text":<<<EOF\nA literal example:\n```KILL (workspace:///not-an-operation)\n```\nReplacement text.\nEOF}) // replace',
+        'await plurnk.copy({"from":{"path":"workspace:///a.md","range":"2,4"},"to":{"path":"workspace:///b.md","range":"0"}})',
+        'await plurnk.move({"from":{"path":"workspace:///b.md","range":"1,2"},"to":{"path":"workspace:///c.md","range":"-1"}})',
+        'await plurnk.sh({"cwd":"src","text":"printf \'%s\\\\n\' verification"}) // verify',
+        'await gitea.list_issues({"repository":"example"})',
+        'await plurnk.work({"target":"session://helper","text":"Investigate the project."})',
+        'await plurnk.send({"target":"session://helper","text":"Coordinate the investigation."})',
+        'await plurnk.note({"text":"Remember the conclusion."})',
+        'await plurnk.done({"text":"The complete final answer."})',
+        'await plurnk.fail({"text":"The failure explanation."})',
     ];
     const source = lines.join("\n\n");
     const parsed = PlurnkParser.parse(source, { executors: ["sh", "gitea"] });
@@ -35,16 +35,16 @@ for (const [name, content] of [
 ] as const) {
     test(`{§turn-source-resources} EDIT: an ${name} body renders as the session wrote it`, () => {
         const expected = content === undefined || content === ""
-            ? 'await plurnk.edit({"path":"workspace:///notes.md"});'
-            : `await plurnk.edit(${JSON.stringify({ path: "workspace:///notes.md", text: content })});`;
+            ? 'await plurnk.edit({"path":"workspace:///notes.md"})'
+            : `await plurnk.edit(${JSON.stringify({ path: "workspace:///notes.md", text: content })})`;
         const statements = TurnOps.parseInternal(expected);
         assert.equal(statements.length, 1);
         assert.equal(TurnOps.renderEmission(statements), expected);
     });
     test(`{§turn-source-resources} SEND: an ${name} body renders as the session wrote it`, () => {
         const expected = content === undefined || content === ""
-            ? 'await plurnk.send({"target":"session://helper"});'
-            : `await plurnk.send(${JSON.stringify({ target: "session://helper", text: content })});`;
+            ? 'await plurnk.send({"target":"session://helper"})'
+            : `await plurnk.send(${JSON.stringify({ target: "session://helper", text: content })})`;
         const statements = TurnOps.parseInternal(expected);
         assert.equal(statements.length, 1);
         assert.equal(TurnOps.renderEmission(statements), expected);
@@ -53,7 +53,7 @@ for (const [name, content] of [
 
 test("{§turn-source-resources} a long body is frozen whole", () => {
     const content = Array.from({ length: 120 }, (_line, index) => `line ${index + 1}`).join("\n");
-    const expected = `await plurnk.edit({"path":"workspace:///notes.md","text":<<<EOF\n${content}\nEOF});`;
+    const expected = `await plurnk.edit({"path":"workspace:///notes.md","text":<<<EOF\n${content}\nEOF})`;
     const statements = TurnOps.parseInternal(expected);
     assert.equal(TurnOps.renderEmission(statements), expected);
 });
@@ -75,7 +75,7 @@ test("{§outside-text} prose lines outside Code Mode statements are retained as 
 });
 
 test("{§op-methods-op-dispatch} internal programs may omit a disposition without inventing one", () => {
-    const source = 'await plurnk.read({"path":"workspace:///notes.md"});';
+    const source = 'await plurnk.read({"path":"workspace:///notes.md"})';
     const parsed = TurnOps.parseInternal(source);
     assert.deepEqual(parsed.map(({ op }) => op), ["read"]);
     assert.equal(TurnOps.renderInternal(parsed), source);
@@ -95,9 +95,9 @@ test("{§turn-record} TurnOps: internal source round-trips through the public pa
     ];
     const source = TurnOps.renderInternal(statements);
     assert.equal(source, [
-        'await plurnk.find({"path":"*","range":"1,-1","headers":{"X-Trace":"one"}}); // workspace files',
+        'await plurnk.find({"path":"*","range":"1,-1","headers":{"X-Trace":"one"}}) // workspace files',
         "",
-        'await plurnk.wait({}); // Observe the results.',
+        'await plurnk.wait({}) // Observe the results.',
     ].join("\n"));
     const parsed = TurnOps.parseInternal(source);
     assert.deepEqual(parsed.map(({ op }) => op), ["find", "wait"]);

@@ -19,11 +19,11 @@ Maintain persistent, bidirectional WebSocket connections as addressable entries 
 | `open` | `open` observed and socket is open | Proposes one whole text frame, sent on acceptance |
 | `settling` | Terminal transition owns cleanup | `409`; wait for cleanup before another `read` |
 
-await plurnk.read({ path: "wss://api.example.com/feed" });
+await plurnk.read({ path: "wss://api.example.com/feed" })
 
-await plurnk.edit({ path: "wss://api.example.com/feed", text: "{\"type\":\"subscribe\",\"channel\":\"updates\"}" });
+await plurnk.edit({ path: "wss://api.example.com/feed", text: "{\"type\":\"subscribe\",\"channel\":\"updates\"}" })
 
-await plurnk.send({ target: "wss://api.example.com/feed", text: "{\"type\":\"ping\"}" });
+await plurnk.send({ target: "wss://api.example.com/feed", text: "{\"type\":\"ping\"}" })
 
 - Close before `open` returns `502`; after `open`, close, cancellation, or error settles the subscription without rewriting the initial `read`.
 - Connection identity is `(workspace, protocol, host, port, path, query)`; `messages` is the only channel, text frames only (`415` on binary frames), no automatic reconnection (`read` again after settlement), and no custom request headers.

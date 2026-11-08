@@ -307,7 +307,7 @@ test("{§mcp-host-composition} tool-reported errors retain bounded text explanat
             if (specimen.result.isError) {
                 assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/tool-reported-error", specimen.name);
                 assert.equal(result.problem?.retryable, false, specimen.name);
-                assert.equal(result.problem?.recovery, "await fixture.inspect({}); // Schema: mcp:///fixture/inspect.json", specimen.name);
+                assert.equal(result.problem?.recovery, "await fixture.inspect({}) // Schema: mcp:///fixture/inspect.json", specimen.name);
             }
         }
     } finally {
@@ -594,7 +594,7 @@ test("{§mcp-model-projection} invalid tool arguments carry the one-object recov
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/invalid-tool-arguments");
             assert.equal(
                 result.problem?.recovery,
-                "One JSON object per MCP tool call.\nawait echo.echo({\"message\": \"\"}); // Schema: mcp:///echo/echo.json",
+                "One JSON object per MCP tool call.\nawait echo.echo({\"message\": \"\"}) // Schema: mcp:///echo/echo.json",
             ); // {§mcp-model-projection}
         }
     } finally {

@@ -340,7 +340,7 @@ test("{§log-wire-format} a seeing route receives the picture as a native part b
     const second = requests[1];
     assert.ok(second !== undefined && second.length >= 2, "the request after READ reached the provider");
     assert.deepEqual(second.map(({ role }) => role), ["system", "user", "assistant", "user", "assistant", "user"]);
-    assert.equal(second[4].content, "await plurnk.read({\"path\":\"logo.png\"});\n\nawait plurnk.note({\"text\":\"looking\"});", "the READ replays with its turn, before the native result");
+    assert.equal(second[4].content, "await plurnk.read({\"path\":\"logo.png\"})\n\nawait plurnk.note({\"text\":\"looking\"})", "the READ replays with its turn, before the native result");
     const user = second[5];
     assert.ok(user !== undefined && Array.isArray(user.content), `the user slot carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
     const text = userText(second);
@@ -565,7 +565,7 @@ ${next}`),
     assert.ok(requests[2].every((message) => typeof message.content === "string"));
     const content = userText(requests[2]);
     assert.match(content, /### log:\/\/\/1\/2\/3\/read \(logo\.png#bytes\) · \d+\n/, "the trimmed READ's receipt stays, naming its operand");
-    assert.ok(requests[2].some((message) => message.role === "assistant" && message.content === "await plurnk.read({\"path\":\"logo.png#bytes\",\"range\":\"1,16\"});\n\nawait plurnk.note({\"text\":\"Inspect bytes.\"});"), "trimming the result leaves the READ's replay whole");
+    assert.ok(requests[2].some((message) => message.role === "assistant" && message.content === "await plurnk.read({\"path\":\"logo.png#bytes\",\"range\":\"1,16\"})\n\nawait plurnk.note({\"text\":\"Inspect bytes.\"})"), "trimming the result leaves the READ's replay whole");
     assert.doesNotMatch(content, /\n\s*1:89\n/u);
     assert.match(content, /\n\s*2:50\n/u);
 });
@@ -645,7 +645,7 @@ test("{§log-wire-format} a document route receives the PDF as a native file par
     assert.doesNotMatch(userText(second), /1:looking/u, "the NOTE body appears only in assistant replay");
     assert.deepEqual(second[4], {
         role: "assistant",
-        content: `await plurnk.read({"path":"contract.pdf"});\n\nawait plurnk.note({"text":"looking"});`,
+        content: `await plurnk.read({"path":"contract.pdf"})\n\nawait plurnk.note({"text":"looking"})`,
     }, "the READ's turn precedes its native result");
     const system = second.find((message) => message.role === "system");
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
@@ -798,7 +798,7 @@ ${step("note")}`),
 
 describe("mcp-prompt-composition", () => {
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
-const step = (op = "note") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "note" ? "Inspect the result." : "Media inspected." })});`;
+const step = (op = "note") => `await plurnk.${op.toLowerCase()}(${JSON.stringify({ text: op === "note" ? "Inspect the result." : "Media inspected." })})`;
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 
 class PromptReader extends Mock {
@@ -866,10 +866,10 @@ ${step("note")}`),
             assert.match(texts[1], /"role": "assistant"/u, "the supplied role remains visible as prompt data");
             // {§emission-history}: only admitted operations have assistant authorship.
             const initProgram = chatMessageText(provider.received[0][2]);
-            assert.match(initProgram, /await plurnk\.todo\(\{"items":\[<<<EOF\nResolve all Open Work\.\nEOF\]\}\); \/\/ <<<EOF \.\.\. EOF multiline string$/u, "turn 1/1 replays the initialization survey as an assistant emission");
+            assert.match(initProgram, /await plurnk\.todo\(\{"items":\[<<<EOF\nResolve all Open Work\.\nEOF\]\}\) \/\/ <<<EOF \.\.\. EOF multiline string$/u, "turn 1/1 replays the initialization survey as an assistant emission");
             const noted = step("note");
-            const promptRead = "await plurnk.read({\"path\":\"fixture:///prompts/inspect\",\"range\":\"1,-1\"});";
-            const mediaRead = `await plurnk.read({"path":"${provider.resource}#bytes","range":"1,3"});`;
+            const promptRead = "await plurnk.read({\"path\":\"fixture:///prompts/inspect\",\"range\":\"1,-1\"})";
+            const mediaRead = `await plurnk.read({"path":"${provider.resource}#bytes","range":"1,3"})`;
             const previousPrograms = [
                 [initProgram],
                 [initProgram, `${promptRead}\n\n${noted}`],

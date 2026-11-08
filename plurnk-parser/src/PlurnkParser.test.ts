@@ -41,26 +41,26 @@ describe("PlurnkParser Code Mode", () => {
 
     test("{§operation-fences} {§fence-pairing}: canonical Code Mode statements parse and round-trip idempotently through stringify", () => {
         const canonical = [
-            'await plurnk.find({"path":"src/**/*.ts","range":"1,20","pattern":"/export/","headers":{"Accept":"text/plain"}}); // find exports',
-            'await plurnk.read({"path":"README.md","range":"1,50","pattern":"/Plurnk/i","headers":{"Accept":"text/markdown"}}); // read readme',
-            'await plurnk.edit({"path":"src/index.ts","range":"@abcde,@fghij","pattern":"/old/","headers":{"Content-Type":"text/plain"},"text":<<<EOF\nexport const x = 1;\n\nEOF}); // update export',
-            'await plurnk.copy({"from":"a.txt","to":"b.txt"}); // copy file',
-            'await plurnk.move({"from":{"path":"src/old.ts","range":"1,10","pattern":"/foo/","headers":{"Accept":"text/plain"}},"to":{"path":"src/new.ts","range":"5,15","pattern":"/bar/","headers":{"Content-Type":"text/plain"}}}); // move slice',
-            'await plurnk.kill({"path":"log:///1/1/1/read","range":"1,5","pattern":"/secret/","remote":true,"headers":{"Authorization":"Bearer x"},"note":"distilled summary"}); // prune log',
-            'await plurnk.note({"text":"Remember the invariant."}); // working note',
-            'await plurnk.todo({"items":["Step 1","Step 2"]}); // update todo',
-            'await plurnk.work({"target":"session://worker_1","text":"Audit the module."}); // delegate work',
-            'await plurnk.fork({"target":"session://branch_a","text":"Try alternative."});',
-            'await plurnk.bare({"text":"Summarize concisely."});',
-            'await plurnk.send({"target":"session://peer","headers":{"X-Trace":"1"},"attachments":["report.pdf"],"text":"Status update."}); // notify peer',
-            'await plurnk.done({"target":"message://main/12345678","attachments":["a.png"],"text":"Completed all tasks."}); // finish',
-            'await plurnk.fail({"text":"Blocked by upstream outage."});',
-            'await plurnk.wait({"seconds":30}); // wait on build',
-            'await plurnk.sh({"cwd":"packages/core","range":"1,2","text":"npm test"}); // run tests',
-            'await plurnk.js({"text":"return 2 + 2;"});',
-            'await plurnk.python3({"text":"print(42)"});',
-            'await plurnk.env({"action":"list"}); // list env',
-            'await gitea.issue_read({"owner":"plurnk","repo":"plurnk-service","index":1}); // read issue',
+            'await plurnk.find({"path":"src/**/*.ts","range":"1,20","pattern":"/export/","headers":{"Accept":"text/plain"}}) // find exports',
+            'await plurnk.read({"path":"README.md","range":"1,50","pattern":"/Plurnk/i","headers":{"Accept":"text/markdown"}}) // read readme',
+            'await plurnk.edit({"path":"src/index.ts","range":"@abcde,@fghij","pattern":"/old/","headers":{"Content-Type":"text/plain"},"text":<<<EOF\nexport const x = 1;\n\nEOF}) // update export',
+            'await plurnk.copy({"from":"a.txt","to":"b.txt"}) // copy file',
+            'await plurnk.move({"from":{"path":"src/old.ts","range":"1,10","pattern":"/foo/","headers":{"Accept":"text/plain"}},"to":{"path":"src/new.ts","range":"5,15","pattern":"/bar/","headers":{"Content-Type":"text/plain"}}}) // move slice',
+            'await plurnk.kill({"path":"log:///1/1/1/read","range":"1,5","pattern":"/secret/","remote":true,"headers":{"Authorization":"Bearer x"},"note":"distilled summary"}) // prune log',
+            'await plurnk.note({"text":"Remember the invariant."}) // working note',
+            'await plurnk.todo({"items":["Step 1","Step 2"]}) // update todo',
+            'await plurnk.work({"target":"session://worker_1","text":"Audit the module."}) // delegate work',
+            'await plurnk.fork({"target":"session://branch_a","text":"Try alternative."})',
+            'await plurnk.bare({"text":"Summarize concisely."})',
+            'await plurnk.send({"target":"session://peer","headers":{"X-Trace":"1"},"attachments":["report.pdf"],"text":"Status update."}) // notify peer',
+            'await plurnk.done({"target":"message://main/12345678","attachments":["a.png"],"text":"Completed all tasks."}) // finish',
+            'await plurnk.fail({"text":"Blocked by upstream outage."})',
+            'await plurnk.wait({"seconds":30}) // wait on build',
+            'await plurnk.sh({"cwd":"packages/core","range":"1,2","text":"npm test"}) // run tests',
+            'await plurnk.js({"text":"return 2 + 2;"})',
+            'await plurnk.python3({"text":"print(42)"})',
+            'await plurnk.env({"action":"list"}) // list env',
+            'await gitea.issue_read({"owner":"plurnk","repo":"plurnk-service","index":1}) // read issue',
         ].join("\n\n");
 
         const parsed = statementsOf(canonical, ["sh", "js", "python3", "plurnk", "gitea"]);
@@ -171,7 +171,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[21] as DispositionStatement).aside, "Waiting for child.");
         assert.equal((ops[22] as DispositionStatement).target, null);
         assert.equal((ops[22] as DispositionStatement).aside, "Polling.");
-        assert.equal(PlurnkParser.stringify([ops[22]]), 'await plurnk.wait({"seconds":10}); // Polling.');
+        assert.equal(PlurnkParser.stringify([ops[22]]), 'await plurnk.wait({"seconds":10}) // Polling.');
     });
 
     test("{§op-shapes}: standalone executors, plurnk Functionality tools, and MCP tools compile to ExecStatement", () => {
@@ -205,9 +205,9 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[6] as ExecStatement).body, '{"key":"val"}');
         assert.equal((ops[8] as ExecStatement).runtime, "gitea");
         assert.equal((ops[8] as ExecStatement).target?.raw, "issue_read");
-        assert.equal(PlurnkParser.stringify([ops[8]]), 'await gitea.issue_read({"owner":"plurnk","repo":"service"}, {"range":"1,10"});');
-        assert.equal(PlurnkParser.stringify([ops[9]]), 'await plurnk.members({"path":["src/a.ts"]});');
-        assert.equal(PlurnkParser.stringify([ops[10]]), 'await plurnk.question({"text":"Which?","options":["a","b"],"multi":true});');
+        assert.equal(PlurnkParser.stringify([ops[8]]), 'await gitea.issue_read({"owner":"plurnk","repo":"service"}, {"range":"1,10"})');
+        assert.equal(PlurnkParser.stringify([ops[9]]), 'await plurnk.members({"path":["src/a.ts"]})');
+        assert.equal(PlurnkParser.stringify([ops[10]]), 'await plurnk.question({"text":"Which?","options":["a","b"],"multi":true})');
     });
 
     test("{§slot-order}: comma, pipe, and URI lists in read, find, and kill expand in member order", () => {
@@ -316,21 +316,21 @@ describe("PlurnkParser Code Mode", () => {
             parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []),
         );
         assert.equal(rendered, [
-            'await plurnk.read({"path":"mcp:///plurnk/sh.json"});',
-            'await plurnk.read({"path":"src/a.ts","range":"1,20"});',
-            'await plurnk.edit({"path":"src/a.ts","pattern":"old","text":"new"});',
-            'await gitea.issue_read({"owner":"plurnk","number":"1414"});',
-            'await plurnk.done({"text":"Finished."});',
-            'await plurnk.find({"path":"astropy/modeling/**"});',
-            'await plurnk.read({"path":"django/db/migrations/serializer.py","range":"1,120"});',
-            'await plurnk.find({"path":"astropy/io/fits/**","pattern":"/Header|Card|_split/"});',
-            'await plurnk.find({"path":"pylint/**","pattern":"/notes/","headers":{"Accept":"text/x-python"}});',
-            'await plurnk.note({"text":"Task: Preserve mathematical expressions."});',
-            'await plurnk.sh({"text":"grep -n \\"__radd__\\" django/utils/functional.py"});',
-            'await plurnk.find({"path":"sympy/physics/mechanics/**","range":"1,-1"});',
-            'await plurnk.find({"path":"src/**"});',
-            'await plurnk.read({"path":"README.md","range":"1,10"});',
-            'await plurnk.todo({"items":["- [ ] Check parser"]});',
+            'await plurnk.read({"path":"mcp:///plurnk/sh.json"})',
+            'await plurnk.read({"path":"src/a.ts","range":"1,20"})',
+            'await plurnk.edit({"path":"src/a.ts","pattern":"old","text":"new"})',
+            'await gitea.issue_read({"owner":"plurnk","number":"1414"})',
+            'await plurnk.done({"text":"Finished."})',
+            'await plurnk.find({"path":"astropy/modeling/**"})',
+            'await plurnk.read({"path":"django/db/migrations/serializer.py","range":"1,120"})',
+            'await plurnk.find({"path":"astropy/io/fits/**","pattern":"/Header|Card|_split/"})',
+            'await plurnk.find({"path":"pylint/**","pattern":"/notes/","headers":{"Accept":"text/x-python"}})',
+            'await plurnk.note({"text":"Task: Preserve mathematical expressions."})',
+            'await plurnk.sh({"text":"grep -n \\"__radd__\\" django/utils/functional.py"})',
+            'await plurnk.find({"path":"sympy/physics/mechanics/**","range":"1,-1"})',
+            'await plurnk.find({"path":"src/**"})',
+            'await plurnk.read({"path":"README.md","range":"1,10"})',
+            'await plurnk.todo({"items":["- [ ] Check parser"]})',
         ].join("\n\n"));
 
         const foreign = '<tool_call>\n{"name": "read_file", "arguments": {"path": "workspace:///notes.md"}}\n</tool_call>';
@@ -457,8 +457,8 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal(
             PlurnkParser.stringify(inline1),
             [
-                'await plurnk.note({"text":<<<EOF\nline 1\nline 2\nEOF}); // aside 1',
-                'await plurnk.edit({"path":"a.py","text":<<<EOF\ndef f():\n    return 1\nEOF});',
+                'await plurnk.note({"text":<<<EOF\nline 1\nline 2\nEOF}) // aside 1',
+                'await plurnk.edit({"path":"a.py","text":<<<EOF\ndef f():\n    return 1\nEOF})',
             ].join("\n\n"),
         );
 
@@ -474,7 +474,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((trailing[0] as NoteStatement).aside, "trailing aside");
         assert.equal(
             PlurnkParser.stringify(trailing),
-            'await plurnk.note({"text":<<<EOF\nalpha\nbeta\nEOF}); // trailing aside',
+            'await plurnk.note({"text":<<<EOF\nalpha\nbeta\nEOF}) // trailing aside',
         );
 
         // 3. Quoted tags (<<<'EOF', <<<"EOF") and custom tags (<<<END_SCRIPT, <<<PY-1)
@@ -493,8 +493,8 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal(
             PlurnkParser.stringify(customTags),
             [
-                'await plurnk.sh({"text":"echo \\"hello $USER\\" && printf \'%s\\\\n\' \'a\'"});',
-                'await plurnk.python3({"text":<<<EOF\nx = 1\ny = 2\nEOF});',
+                'await plurnk.sh({"text":"echo \\"hello $USER\\" && printf \'%s\\\\n\' \'a\'"})',
+                'await plurnk.python3({"text":<<<EOF\nx = 1\ny = 2\nEOF})',
             ].join("\n\n"),
         );
 
@@ -502,12 +502,12 @@ describe("PlurnkParser Code Mode", () => {
         const withEof = statementsOf('await plurnk.sh({"text":"cat <<EOF\\nhi\\nEOF"});', ["sh"]);
         assert.equal(
             PlurnkParser.stringify(withEof),
-            'await plurnk.sh({"text":<<<EOF1\ncat <<EOF\nhi\nEOF\nEOF1});',
+            'await plurnk.sh({"text":<<<EOF1\ncat <<EOF\nhi\nEOF\nEOF1})',
         );
         const withEof1 = statementsOf('await plurnk.sh({"text":"EOF\\nEOF1"});', ["sh"]);
         assert.equal(
             PlurnkParser.stringify(withEof1),
-            'await plurnk.sh({"text":<<<EOF2\nEOF\nEOF1\nEOF2});',
+            'await plurnk.sh({"text":<<<EOF2\nEOF\nEOF1\nEOF2})',
         );
         assert.equal(
             (statementsOf(PlurnkParser.stringify(withEof1), ["sh"])[0] as ExecStatement).body,
@@ -548,14 +548,14 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((templateParsed[0] as ExecStatement).body, "const x = ${1 + 1};\nconsole.log(x);");
         assert.equal(
             PlurnkParser.stringify(templateParsed),
-            "await plurnk.js({\"text\":<<<EOF\nconst x = ${1 + 1};\nconsole.log(x);\nEOF});",
+            "await plurnk.js({\"text\":<<<EOF\nconst x = ${1 + 1};\nconsole.log(x);\nEOF})",
         );
 
         // 8. Turn 0 todo ("Resolve all Open Work.") stringifies with <<<EOF
         const turn0Todo = statementsOf('await plurnk.todo({"items":["Resolve all Open Work."]});');
         assert.equal(
             PlurnkParser.stringify(turn0Todo),
-            "await plurnk.todo({\"items\":[<<<EOF\nResolve all Open Work.\nEOF]});",
+            "await plurnk.todo({\"items\":[<<<EOF\nResolve all Open Work.\nEOF]})",
         );
         const turn0Reparsed = statementsOf(PlurnkParser.stringify(turn0Todo));
         assert.equal((turn0Reparsed[0] as TodoStatement).body, "Resolve all Open Work.");
@@ -599,7 +599,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal(emptyDone.items[0]?.kind, "error");
         if (emptyDone.items[0]?.kind === "error") {
             assert.equal(emptyDone.items[0].error.message, "done requires a text argument.");
-            assert.equal(emptyDone.items[0].error.recovery, 'await plurnk.done({ text: "..." });');
+            assert.equal(emptyDone.items[0].error.recovery, 'await plurnk.done({ text: "..." })');
         }
     });
 

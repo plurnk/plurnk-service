@@ -37,7 +37,7 @@ export default class EntrySend {
             {},
             {
                 // {§send}
-                recovery: "To reply, send to an Open Message address or omit the target. await plurnk.send({ target: \"session://<name>\", text: \"...\" }); sends a new message.",
+                recovery: "To reply, send to an Open Message address or omit the target. await plurnk.send({ target: \"session://<name>\", text: \"...\" }) sends a new message.",
                 retryable: false,
             },
         ); // {§op-methods-op-dispatch}

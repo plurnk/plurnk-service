@@ -149,8 +149,7 @@ export default class Plurnk extends CoreSchemeAdapterBase {
                 retryable: false,
             });
         }
-        const visible = await core.referenceVisibility?.();
-        return EntryFind.findWorkspaceEntries(statement, core, this.#manifest, { authority: "", ...(visible === undefined ? {} : { visible }) });
+        return EntryFind.findWorkspaceEntries(statement, core, this.#manifest, { authority: "" });
     }
 
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {

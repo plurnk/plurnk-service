@@ -57,7 +57,7 @@ const comparePosition = (
 // or the output was refused, SHOULD where a near-miss was accepted.
 export const DIRECTIVE = Object.freeze({
     note: "YOU MUST persist all new decisions, hypotheses, and facts as `plurnk.note` tool calls.",
-    emission: "YOU MUST ONLY emit unwrapped Code Mode statements (`await plurnk.<op>(...);` and `await <server>.<tool>(...);`), with a terse `// aside` comment.",
+    emission: "YOU MUST ONLY emit unwrapped Code Mode statements (`await plurnk.<op>(...)` and `await <server>.<tool>(...)`), with a terse `// aside` comment.",
     advisory: "YOU SHOULD write the canonical form.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
 });

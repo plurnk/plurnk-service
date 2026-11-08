@@ -32,10 +32,10 @@ Read and modify web resources through addressable HTTP(S) entries.
 
 ## Request headers
 
-await plurnk.read({ path: "https://api.example.com/v1/me", headers: { "Accept": "application/json" } });
+await plurnk.read({ path: "https://api.example.com/v1/me", headers: { "Accept": "application/json" } })
 
-await plurnk.edit({ path: "https://api.example.com/v1/thing/42", headers: { "Content-Type": "application/json" }, text: "{\"done\":true}" });
+await plurnk.edit({ path: "https://api.example.com/v1/thing/42", headers: { "Content-Type": "application/json" }, text: "{\"done\":true}" })
 
-await plurnk.send({ target: "https://api.example.com/v1/search", headers: { "Content-Type": "application/json" }, text: "{\"query\":\"plurnk\"}" });
+await plurnk.send({ target: "https://api.example.com/v1/search", headers: { "Content-Type": "application/json" }, text: "{\"query\":\"plurnk\"}" })
 
 Requests with explicit `headers` bypass cache reuse and HTML materializers (using the local HTML reader instead). For persistent bidirectional connections, see `skill://plurnk/wss.md`.

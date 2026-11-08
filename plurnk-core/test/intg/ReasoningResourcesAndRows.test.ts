@@ -72,7 +72,7 @@ for (const mode of ["fits", "receipt"] as const) test(`{§turn-source-resources}
         const record = logEntries(packet).find(({ logPath }) => /^log:\/\/\/1\/2\/\d+\/read$/u.test(logPath))!;
         assert.ok(record);
         assert.equal(record.aside, undefined);
-        assert.ok(packetSection(packet, "emission-history").includes("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"}); // retain reasoning"),
+        assert.ok(packetSection(packet, "emission-history").includes("await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"1,-1\"}) // retain reasoning"),
             "the paired operation retains the requested source, scope and aside");
         if (mode === "fits") {
             assert.match(String(record.body), /120:Finding 120:/);
@@ -163,7 +163,7 @@ test("{§turn-source-resources}: a model READ of its own reasoning settles in th
         const loopId = await insertLoop(db, sessionId, 1, "Inspect the fact.");
         const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const read = "await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"2,2\"}); // retain this determination";
+        const read = "await plurnk.read({\"path\":\"reasoning://alice/1/2\",\"range\":\"2,2\"}) // retain this determination";
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: `${read}\n\n${next}`, reasoning: "first\nselected reasoning\nlast" } },
             { assistant: { content: next, reasoning: "Not requested." } },
@@ -237,7 +237,7 @@ for (const tagged of [false, true]) test(`{§turn-source-resources} {§op-shapes
     const db = await openMigrated();
     const firstReasoning = "await plurnk.read({\"path\":\"workspace:///fact.txt\",\"range\":\"1,-1\"});\n\nMore deliberation.\n";
     const laterReasoning = "await plurnk.note({\"text\":\"Retain the later thought.\"});\n\nawait plurnk.find({\"path\":\"workspace:///fact.txt\"});";
-    const content = `await plurnk.read({"path":"workspace:///fact.txt","range":"1,-1"});\n\nawait plurnk.note({"text":"Content also survives."});`;
+    const content = `await plurnk.read({"path":"workspace:///fact.txt","range":"1,-1"})\n\nawait plurnk.note({"text":"Content also survives."})`;
     const charge = { kind: "charged", amount: { amount: "0.0123", currency: "USD" }, source: "fixture settlement" } as const;
     const requests: Array<{ messages: Array<{ role: string; content: unknown }> }> = [];
     const observed = Promise.withResolvers<void>();
@@ -627,7 +627,7 @@ const story = async (contextWindow: number, reasoning: string) => {
     const loopId = await insertLoop(db, sessionId, 1, "Inspect the evidence and report the result.");
     await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "An observed fact." });
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    const program = `await plurnk.read({"path":"workspace:///fact.txt"});\n\nawait plurnk.note({"text":"Bearing one."});`;
+    const program = `await plurnk.read({"path":"workspace:///fact.txt"})\n\nawait plurnk.note({"text":"Bearing one."})`;
     const provider = new Mock({ contextWindow, responses: [
         { assistant: { content: program, reasoning } },
         { assistant: { content: "await plurnk.done({\"text\":\"Done.\"});", reasoning: null } },
@@ -661,7 +661,7 @@ test("{§turn-source-resources} {§emission-history}: reasoning and NOTE stay in
             const previous = chatMessageText(envelope[2]);
             assert.match(before, /reasoning:\/\/alice\/1\/2/u);
             assert.match(before, /converter raises before the view is named/u, "reasoning remains in its log row");
-            assert.equal(previous, `await plurnk.read({"path":"workspace:///fact.txt"});\n\nawait plurnk.note({"text":"Bearing one."});`, "the turn's operations immediately precede their results");
+            assert.equal(previous, `await plurnk.read({"path":"workspace:///fact.txt"})\n\nawait plurnk.note({"text":"Bearing one."})`, "the turn's operations immediately precede their results");
             assert.match(before, /### log:\/\/\/1\/2\/\d+\/emission[^\n]*$/u, "the source announcement precedes the operations");
             assert.doesNotMatch(before, /Bearing one\./u, "the content NOTE's text does not precede its program");
             assert.doesNotMatch(log, /Bearing one\./u, "the NOTE body appears only in assistant replay");

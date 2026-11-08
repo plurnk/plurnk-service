@@ -74,7 +74,7 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
             target: { role: "MCP tool", required: true, kind: "literal" },
             inputSchema: fillForm,
         }, { exactTarget: "browser_fill_form", aside: "-> Fill form --", schemaPath: "mcp:///browser/browser_fill_form.json" }),
-        'await browser.browser_fill_form({"fields": []}); // Description: -> Fill form — (fields: {target: string, name: string, type: "textbox"|"checkbox"|"radio"|"combobox"|"slider", value: string, element?: string}[]) Schema: mcp:///browser/browser_fill_form.json',
+        'await browser.browser_fill_form({"fields": []}) // Description: -> Fill form — (fields: {target: string, name: string, type: "textbox"|"checkbox"|"radio"|"combobox"|"slider", value: string, element?: string}[]) Schema: mcp:///browser/browser_fill_form.json',
     );
 
     const manyOptionalProps = Object.fromEntries(Array.from({ length: 18 }, (_, i) => [`opt${i}`, { type: "string" }]));
