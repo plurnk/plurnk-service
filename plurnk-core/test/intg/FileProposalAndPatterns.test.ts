@@ -951,6 +951,60 @@ test("{§edit-pattern} a regex pattern replaces its exact region across a line b
     } finally { await db.close(); }
 });
 
+test("{§edit-pattern} {§parse-recovery} multiline <<<EOF patterns and non-heredoc code patterns replace exact source blocks without manual escaping", async () => {
+    const initial = [
+        "class Processor:",
+        "    def compute(self, *args, **kwargs):",
+        "        return self.items[0] + (1 * 2)",
+        "    def keep(self):",
+        "        return True",
+    ].join("\n");
+    const { db, dispatch, body } = await setup(initial);
+    try {
+        const parsedHeredoc = PlurnkParser.parseStatements([
+            "await plurnk.edit({",
+            '  path: "workspace:///notes.md",',
+            "  pattern: <<<EOF",
+            "    def compute(self, *args, **kwargs):",
+            "        return self.items[0] + (1 * 2)",
+            "EOF,",
+            "  text: <<<EOF",
+            "    def compute(self, *args, **kwargs):",
+            "        return self.items[0] + 2",
+            "EOF",
+            "});",
+        ].join("\n"));
+        const stmt1 = parsedHeredoc.items.find((i) => i.kind === "statement")?.statement as EditStatement;
+        assert.ok(stmt1);
+        const r1 = await dispatch(stmt1);
+        assert.equal(r1.status, 200, JSON.stringify(r1));
+        assert.equal(r1.matched, 1);
+        assert.equal(await body(), [
+            "class Processor:",
+            "    def compute(self, *args, **kwargs):",
+            "        return self.items[0] + 2",
+            "    def keep(self):",
+            "        return True",
+        ].join("\n"));
+
+        const parsedNonHeredoc = PlurnkParser.parseStatements(
+            'await plurnk.edit({ path: "workspace:///notes.md", pattern: "/return self.items[0] + 2/", text: "return self.items[0]" });',
+        );
+        const stmt2 = parsedNonHeredoc.items.find((i) => i.kind === "statement")?.statement as EditStatement;
+        assert.ok(stmt2);
+        const r2 = await dispatch(stmt2);
+        assert.equal(r2.status, 200, JSON.stringify(r2));
+        assert.equal(r2.matched, 1);
+        assert.equal(await body(), [
+            "class Processor:",
+            "    def compute(self, *args, **kwargs):",
+            "        return self.items[0]",
+            "    def keep(self):",
+            "        return True",
+        ].join("\n"));
+    } finally { await db.close(); }
+});
+
 test("{§edit-pattern} a node-selecting pattern replaces each node's whole region, across lines", async () => {
     const xml = "<books>\n  <book>\n    <title>A</title>\n    <price>40</price>\n  </book>\n  <book>\n    <title>B</title>\n    <price>10</price>\n  </book>\n</books>";
     const { db, dispatch, body } = await setup(xml, "/books.xml");

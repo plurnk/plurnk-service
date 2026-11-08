@@ -725,6 +725,7 @@ test("{§find-result-projection}: a word with inner punctuation searches its tok
             ["inherited-members AND option", ["autodoc.rst"]],
             ["c++", ["cpp.rst"]],
             ["x.y OR a/b", ["cpp.rst"]],
+            ["x.y|a/b", ["cpp.rst"]],
             ["^parsers-for*", ["cpp.rst"]],
         ] as const) {
             const result = await session.find(find("*", query), ctx);

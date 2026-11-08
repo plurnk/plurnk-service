@@ -137,7 +137,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             properties: {
                 path: { type: "string", minLength: 1, description: "Target file or entry path, or glob/extglob for bulk edits (percent-encode `(` as `%28` and `)` as `%29`)." },
                 range: { type: "string", description: "@hash, line, or column range (e.g. \"@start,@end\"; see ## range in description)." },
-                pattern: { type: "string", description: "Pattern whose matches are replaced by text (//a/@id selects `old` inside `id=\"old\"`; $.a selects `\"old\"` including quotes; see skill://plurnk/pattern.md)." },
+                pattern: { type: "string", description: "Pattern whose matches are replaced by text (//a/@id selects `old` inside `id=\"old\"`, //a/text() selects inner text, //a selects the element; $.a selects `\"old\"` including quotes; see skill://plurnk/pattern.md)." },
                 text: { type: "string", description: "Literal replacement source text or file content (replaces the entire match verbatim without adding quotes; empty string deletes)." },
                 headers: HEADERS_SCHEMA,
             },

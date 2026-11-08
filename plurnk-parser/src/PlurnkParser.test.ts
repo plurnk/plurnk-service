@@ -41,12 +41,12 @@ describe("PlurnkParser Code Mode", () => {
 
     test("{§operation-fences} {§fence-pairing}: canonical Code Mode statements parse and round-trip idempotently through stringify", () => {
         const canonical = [
-            'await plurnk.find({"path":"src/**/*.ts","range":"1,20","pattern":"/export/","headers":{"Accept":"text/plain"}}) // find exports',
-            'await plurnk.read({"path":"README.md","range":"1,50","pattern":"/Plurnk/i","headers":{"Accept":"text/markdown"}}) // read readme',
-            'await plurnk.edit({"path":"src/index.ts","range":"@abcde,@fghij","pattern":"/old/","headers":{"Content-Type":"text/plain"},"text":<<<EOF\nexport const x = 1;\n\nEOF}) // update export',
+            'await plurnk.find({"path":"src/**/*.ts","range":"1,20","pattern":<<<EOF\n/export/\nEOF,"headers":{"Accept":"text/plain"}}) // find exports',
+            'await plurnk.read({"path":"README.md","range":"1,50","pattern":<<<EOF\n/Plurnk/i\nEOF,"headers":{"Accept":"text/markdown"}}) // read readme',
+            'await plurnk.edit({"path":"src/index.ts","range":"@abcde,@fghij","pattern":<<<EOF\n/old/\nEOF,"headers":{"Content-Type":"text/plain"},"text":<<<EOF\nexport const x = 1;\n\nEOF}) // update export',
             'await plurnk.copy({"from":"a.txt","to":"b.txt"}) // copy file',
-            'await plurnk.move({"from":{"path":"src/old.ts","range":"1,10","pattern":"/foo/","headers":{"Accept":"text/plain"}},"to":{"path":"src/new.ts","range":"5,15","pattern":"/bar/","headers":{"Content-Type":"text/plain"}}}) // move slice',
-            'await plurnk.kill({"path":"log:///1/1/1/read","range":"1,5","pattern":"/secret/","remote":true,"headers":{"Authorization":"Bearer x"},"note":"distilled summary"}) // prune log',
+            'await plurnk.move({"from":{"path":"src/old.ts","range":"1,10","pattern":<<<EOF\n/foo/\nEOF,"headers":{"Accept":"text/plain"}},"to":{"path":"src/new.ts","range":"5,15","pattern":<<<EOF\n/bar/\nEOF,"headers":{"Content-Type":"text/plain"}}}) // move slice',
+            'await plurnk.kill({"path":"log:///1/1/1/read","range":"1,5","pattern":<<<EOF\n/secret/\nEOF,"remote":true,"headers":{"Authorization":"Bearer x"},"note":"distilled summary"}) // prune log',
             'await plurnk.note({"text":"Remember the invariant."}) // working note',
             'await plurnk.todo({"items":["Step 1","Step 2"]}) // update todo',
             'await plurnk.work({"target":"session://worker_1","text":"Audit the module."}) // delegate work',
@@ -103,7 +103,8 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[1] as EditStatement).matcher?.dialect, "glob");
         assert.equal((ops[1] as EditStatement).matcher?.raw, "const old = 1;");
         assert.equal((ops[1] as EditStatement).body, "const next = 2;");
-        assert.equal((ops[2] as EditStatement).matcher?.dialect, "regex");
+        assert.equal((ops[2] as EditStatement).matcher?.dialect, "glob");
+        assert.equal((ops[2] as EditStatement).matcher?.raw, "line1\nline2");
         assert.equal((ops[3] as EditStatement).body, "hunk1");
         assert.equal((ops[4] as EditStatement).body, null);
     });
@@ -318,13 +319,13 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal(rendered, [
             'await plurnk.read({"path":"mcp:///plurnk/sh.json"})',
             'await plurnk.read({"path":"src/a.ts","range":"1,20"})',
-            'await plurnk.edit({"path":"src/a.ts","pattern":"old","text":"new"})',
+            'await plurnk.edit({"path":"src/a.ts","pattern":<<<EOF\nold\nEOF,"text":"new"})',
             'await gitea.issue_read({"owner":"plurnk","number":"1414"})',
             'await plurnk.done({"text":"Finished."})',
             'await plurnk.find({"path":"astropy/modeling/**"})',
             'await plurnk.read({"path":"django/db/migrations/serializer.py","range":"1,120"})',
-            'await plurnk.find({"path":"astropy/io/fits/**","pattern":"/Header|Card|_split/"})',
-            'await plurnk.find({"path":"pylint/**","pattern":"/notes/","headers":{"Accept":"text/x-python"}})',
+            'await plurnk.find({"path":"astropy/io/fits/**","pattern":<<<EOF\n/Header|Card|_split/\nEOF})',
+            'await plurnk.find({"path":"pylint/**","pattern":<<<EOF\n/notes/\nEOF,"headers":{"Accept":"text/x-python"}})',
             'await plurnk.note({"text":"Task: Preserve mathematical expressions."})',
             'await plurnk.sh({"text":"grep -n \\"__radd__\\" django/utils/functional.py"})',
             'await plurnk.find({"path":"sympy/physics/mechanics/**","range":"1,-1"})',
@@ -691,5 +692,104 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[18] as DoneStatement).body?.raw, "The codename is AURORA.");
         assert.equal((ops[19] as ExecStatement).runtime, "verification-service");
         assert.equal((ops[19] as ExecStatement).target?.raw, "verification_code");
+    });
+
+    test("{§matcher-prefix-claims} {§parse-recovery} {§op-shapes}: multiline heredoc patterns, unbalanced regex delimiters, anchor-offset ranges, and DSML hybrid comments recover cleanly", () => {
+        const turn = [
+            // 1. Multiline <<<EOF pattern in edit, read, and find
+            [
+                "await plurnk.edit({",
+                '  path: "src/app.py",',
+                "  pattern: <<<EOF",
+                "def compute(items):",
+                "    return items[0] + (1 * 2)",
+                "EOF,",
+                "  text: <<<EOF",
+                "def compute(items):",
+                "    return items[0] + 2",
+                "EOF",
+                "});",
+            ].join("\n"),
+            // 2. Single-line <<<EOF pattern starting with // or $ treated as literal pattern
+            [
+                "await plurnk.edit({",
+                '  path: "src/app.php",',
+                "  pattern: <<<EOF",
+                "$this->count = $items[0];",
+                "EOF,",
+                '  text: "$this->count = 0;"',
+                "});",
+            ].join("\n"),
+            // 3. Non-heredoc /.../ regex with unbalanced unescaped `(`, `)`, or `[`
+            'await plurnk.edit({ path: "src/app.py", pattern: "/def _parse(self, items[0:/", text: "def _parse(self, item):" });',
+            'await plurnk.find({ path: "src/**", pattern: "/elif isinstance(item, str)):/" });',
+            // 4. Mixed `/~.../` prefix in regex
+            'await plurnk.find({ path: "src/**", pattern: "/~_ check_label/i" });',
+            // 5. Non-heredoc edit pattern starting with `$` or `//` that is not valid JSONPath/XPath
+            'await plurnk.edit({ path: "src/app.ts", pattern: "// TODO(fix): remove [0]", text: "// fixed" });',
+            // 6. Anchor-offset ranges (`@hash,-1`, `@hash,-1,-1,1`, `@hash,1`, `<@hash1>,<@hash2>`) and `timeout` option key
+            'await plurnk.read({ path: "src/app.py", range: "@2Q3oO,-1", timeout: 30 });',
+            'await plurnk.edit({ path: "src/app.py", range: "@PVnjH,-1,-1,1", text: "pass" });',
+            'await plurnk.edit({ path: "src/app.py", range: "@6cbdh,1", text: "single line" });',
+            'await plurnk.read({ path: "src/app.py", range: "<@KG4Q3>,<@GctZJ>" });',
+            // 7. DSML inline invoke with trailing `// comment` before `</｜｜DSML｜｜ parameter>`
+            '<｜｜DSML｜｜ function_calls>\n<｜｜DSML｜｜ invoke name="plurnk.read({"path":"tests/test_media.py","range":"563,590"}) // view tail</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ function_calls>',
+            // 8. Near-miss XPath attribute step `//item@id` and quoted `<<<EOF` string
+            'await plurnk.edit({ path: "catalog.xml", pattern: "//item@id", text: "new" });',
+            'await plurnk.edit({ path: "catalog.xml", pattern: "<<<EOF\\n<root>C</root>\\nEOF", text: "<<<EOF\\n<root>D</root>\\nEOF" });',
+        ].join("\n\n");
+
+        const ops = statementsOf(turn, ["sh"]);
+        assert.equal(ops.length, 13);
+
+        const edit0 = ops[0] as EditStatement;
+        assert.equal(edit0.matcher?.dialect, "glob");
+        assert.equal(edit0.matcher?.raw, "def compute(items):\n    return items[0] + (1 * 2)");
+        assert.equal(
+            PlurnkParser.stringify([edit0]),
+            'await plurnk.edit({"path":"src/app.py","pattern":<<<EOF\ndef compute(items):\n    return items[0] + (1 * 2)\nEOF,"text":<<<EOF\ndef compute(items):\n    return items[0] + 2\nEOF})',
+        );
+
+        const edit1 = ops[1] as EditStatement;
+        assert.equal(edit1.matcher?.dialect, "regex");
+
+        const edit2 = ops[2] as EditStatement;
+        assert.equal(edit2.matcher?.dialect, "regex");
+        if (edit2.matcher?.dialect === "regex") {
+            assert.equal(edit2.matcher.pattern, "def _parse\\(self, items\\[0:");
+        }
+
+        const find3 = ops[3] as FindStatement;
+        assert.equal(find3.matcher?.dialect, "regex");
+        if (find3.matcher?.dialect === "regex") {
+            assert.equal(find3.matcher.pattern, "elif isinstance(item, str)\\):");
+        }
+
+        const find4 = ops[4] as FindStatement;
+        assert.equal(find4.matcher?.dialect, "regex");
+        if (find4.matcher?.dialect === "regex") {
+            assert.equal(find4.matcher.pattern, "_ check_label");
+            assert.equal(find4.matcher.flags, "i");
+        }
+
+        const edit5 = ops[5] as EditStatement;
+        assert.equal(edit5.matcher?.dialect, "regex");
+
+        assert.deepEqual((ops[6] as ReadStatement).lineMarker, { marks: ["@2Q3oO", -1] });
+        assert.deepEqual((ops[7] as EditStatement).lineMarker, { marks: ["@PVnjH", -1, -1, 1] });
+        assert.deepEqual((ops[8] as EditStatement).lineMarker, { marks: ["@6cbdh"] });
+        assert.deepEqual((ops[9] as ReadStatement).lineMarker, { marks: ["@KG4Q3", "@GctZJ"] });
+
+        const read10 = ops[10] as ReadStatement;
+        assert.equal(read10.target?.raw, "tests/test_media.py");
+        assert.deepEqual(read10.lineMarker, { marks: [563, 590] });
+        assert.equal(read10.aside, "view tail");
+
+        const edit11 = ops[11] as EditStatement;
+        assert.deepEqual(edit11.matcher, { dialect: "xpath", raw: "//item/@id" });
+
+        const edit12 = ops[12] as EditStatement;
+        assert.deepEqual(edit12.matcher, { dialect: "glob", raw: "<root>C</root>" });
+        assert.equal(edit12.body, "<root>D</root>");
     });
 });

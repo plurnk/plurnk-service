@@ -499,14 +499,13 @@ test("{§functionality-model-projection} {§tools-resource-materialization} rend
         assert.ok(schemaDoc, `mcp:///plurnk/${tool.target}.json is materialized`);
         const parsedSchema = JSON.parse(schemaDoc.content) as { title: string; description: string };
         assert.equal(parsedSchema.title, `plurnk: ${tool.target}`);
-        const examples = (tool.details ?? "").split("\n").filter((line) => line.startsWith("await plurnk."));
-        assert.ok(examples.length > 0, `${tool.target} carries at least one Code Mode example`);
-        for (const example of examples) {
-            const parsed = PlurnkParser.parseStatements(example);
-            assert.equal(parsed.unparsedTail, undefined, `${tool.target}: ${example}`);
-            const errors = parsed.items.filter((item) => item.kind === "error");
-            assert.deepEqual(errors, [], `${tool.target} example parses cleanly: ${example}`);
-        }
+        const examplesSection = (tool.details ?? "").split("## Examples\n\n")[1] ?? "";
+        const parsed = PlurnkParser.parseStatements(examplesSection);
+        assert.equal(parsed.unparsedTail, undefined, `${tool.target}: ${examplesSection}`);
+        const errors = parsed.items.filter((item) => item.kind === "error");
+        assert.deepEqual(errors, [], `${tool.target} example parses cleanly: ${examplesSection}`);
+        const statements = parsed.items.filter((item) => item.kind === "statement");
+        assert.ok(statements.length > 0, `${tool.target} carries at least one Code Mode example`);
     }
 });
 });

@@ -17,6 +17,20 @@ export interface ParsedBodyMatcher {
 //
 // Order matters: `//` must be tested before `/` because both start with `/`.
 export function parseBodyMatcher(expr: string): ParsedBodyMatcher {
+    if (/[\r\n]/u.test(expr)) {
+        if (expr.startsWith("/") && !expr.startsWith("//") && /(?<!\\)\/[dgimsuvy]*$/u.test(expr)) {
+            const close = expr.lastIndexOf("/");
+            const pattern = expr.slice(1, close);
+            const flags = expr.slice(close + 1);
+            try {
+                new RegExp(pattern, flags);
+                return { dialect: "regex", pattern, flags: flags || undefined };
+            } catch {
+                // Fall through to multiline literal glob
+            }
+        }
+        return { dialect: "glob", pattern: expr };
+    }
     if (expr.startsWith("//")) {
         return { dialect: "xpath", pattern: expr };
     }
