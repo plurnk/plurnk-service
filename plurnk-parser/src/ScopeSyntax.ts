@@ -11,12 +11,19 @@ const OFFSET_RECOVERY = 'Write `range: "start,end"` or `range: "@start,@end"`.';
 const atLeastOne = <T>(values: T[]): values is [T, ...T[]] => values.length > 0;
 const isDigit = (c: string | undefined): boolean => c !== undefined && c >= "0" && c <= "9";
 
+const stripBoundaryCommas = (s: string): string =>
+    s.replace(/^,+|,+$/gu, "").trim();
+
 const wrapScope = (raw: string): string => {
     const trimmed = raw.trim();
-    if ((trimmed.startsWith("<") && trimmed.endsWith(">")) || /^[1-9][0-9]*<[\s\S]*>$/u.test(trimmed)) {
-        return trimmed;
+    if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
+        return `<${stripBoundaryCommas(trimmed.slice(1, -1))}>`;
     }
-    return `<${trimmed}>`;
+    const prefixed = /^([1-9][0-9]*)<([\s\S]*)>$/u.exec(trimmed);
+    if (prefixed !== null) {
+        return `${prefixed[1]}<${stripBoundaryCommas(prefixed[2])}>`;
+    }
+    return `<${stripBoundaryCommas(trimmed)}>`;
 };
 
 const unwrapScope = (text: string): string =>
@@ -86,8 +93,8 @@ export const parseRangeMarker = (raw: string, position: Position = { line: 0, co
 
 export const parseTextLineMarker = (raw: string, position: Position = { line: 0, column: 0 }, advise?: Advise): TextLineMarker => {
     let marker = wrapScope(raw);
-    if (!VALID_TEXT_SCOPE.test(marker) && /<@[0-9A-Za-z]{5}(?:[+-][0-9]+)?>/u.test(raw)) {
-        const stripped = raw.trim().replace(/(?:[1-9][0-9]*)?<(@[0-9A-Za-z]{5}(?:[+-][0-9]+)?)>/gu, "$1");
+    if (!VALID_TEXT_SCOPE.test(marker) && /(?:<@[0-9A-Za-z]{5}(?:[+-][0-9]+)?>?|@[0-9A-Za-z]{5}(?:[+-][0-9]+)?>)/u.test(raw)) {
+        const stripped = raw.trim().replace(/(?:[1-9][0-9]*)?<?(@[0-9A-Za-z]{5}(?:[+-][0-9]+)?)>?/gu, "$1");
         marker = wrapScope(stripped);
         if (VALID_TEXT_SCOPE.test(marker)) {
             advise?.(position, `\`${raw.trim()}\` was read as the range ${JSON.stringify(unwrapScope(marker))}; a range takes the anchor without \`<...>\` brackets.`);
@@ -146,6 +153,27 @@ export const parseTextLineMarker = (raw: string, position: Position = { line: 0,
     if (marks.length === 2 && typeof marks[0] === "string" && marks[0].startsWith("@") && marks[1] === 1) {
         advise?.(position, `Range "${marks[0]},1" was read as "${marks[0]}".`);
         return { marks: [marks[0]] };
+    }
+    if (
+        marks.length === 3
+        && typeof marks[0] === "string" && marks[0].startsWith("@")
+        && typeof marks[1] === "string" && marks[1].startsWith("@")
+        && typeof marks[2] === "number"
+    ) {
+        const reordered: [string, number, string] = [marks[0], marks[2], marks[1]];
+        advise?.(position, `Range "${marks.join(",")}" was read as "${reordered.join(",")}"; a column-scoped range places the start column before the end line.`);
+        return { marks: reordered };
+    }
+    if (
+        marks.length === 4
+        && typeof marks[0] === "string" && marks[0].startsWith("@")
+        && typeof marks[1] === "string" && marks[1].startsWith("@")
+        && typeof marks[2] === "number"
+        && typeof marks[3] === "number"
+    ) {
+        const reordered: [string, number, string, number] = [marks[0], marks[2], marks[1], marks[3]];
+        advise?.(position, `Range "${marks.join(",")}" was read as "${reordered.join(",")}"; a column-scoped range is "SL,SC,EL,EC".`);
+        return { marks: reordered };
     }
     if (!atLeastOne(marks)) throw new Error("an anchor marker names at least one mark");
     return { marks };
