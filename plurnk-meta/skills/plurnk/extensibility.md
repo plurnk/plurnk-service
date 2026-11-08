@@ -4,100 +4,62 @@
 
 Extend Plurnk with Agent Skills, plugins, hooks, MCP servers, scheme/mimetype/exec/provider packages, and ACP clients.
 
-An integration points one way or both. Plurnk uses X when X's knowledge, tools,
-agents or models reach the model. X uses Plurnk when X drives Plurnk as a
-client or receives its lifecycle events. Each surface below states what it
-reaches and where its code runs: nowhere, in an external process, or in the
-daemon.
-
 ## Choosing a surface
 
-The surfaces run from least to most code and trust, and each is for what the ones
-before it cannot do:
+Surfaces run from least to most code and trust:
 
-- **Configuration** when what the integration needs already exists: a setting in
-  the cascade, or a definition in `mcp.json`, a skill root, or a persona root.
-- **Operating policy** (`AGENTS.md` / `AGENTS.local.md`) when standing instructions
-  apply to every turn in a user environment, project, or session (`session://<session>/AGENTS.md`).
-- **A persona** (`persona://<name>/PERSONA.md`, managed via `plurnk.personas` or `plurnk.edit`)
-  when a reusable operating identity, optional model/effort route, and instruction body
-  can be selected per session or copied to `session://<session>/AGENTS.md`.
-- **A skill** when the model needs knowledge, or a script it runs with its existing
-  runtimes (`sh`, `js`).
-- **An MCP server** when X has an API the model calls as tools. A server X already
-  publishes needs only its definition.
-- **A plugin** when skills, personas, and MCP servers install together, or travel to other agents.
-- **A client** when X drives Plurnk from outside through ACP.
-- **A hook** when X hears about Plurnk's lifecycle events and answers nothing.
-- **An extension** only when the model needs something new inside the daemon that
-  none of the above can add: a runtime, an address scheme, a media-type reader, a
-  model provider or a page materializer. The operator installs and trusts it, and
-  it loads when the daemon starts.
-- **A module** only when the daemon itself serves or manages something: a family
-  behind the shared management verbs, a standard listener endpoint (ACP v2 at `/acp`, OAuth 2.1 at `/.well-known/*` and `/oauth/*`), or an observer of its events.
+- **Configuration**: a setting in the cascade, or a definition in `mcp.json`, a skill root, or a persona root.
+- **Operating policy** (`AGENTS.md` / `AGENTS.local.md`): standing instructions in a user environment, project, or session (`session://<session>/AGENTS.md`).
+- **A persona** (`persona://<name>/PERSONA.md`, managed via `plurnk.personas` or `plurnk.edit`): a reusable operating identity, optional model/effort route, and instruction body selected per session or copied to `session://<session>/AGENTS.md`.
+- **A skill**: knowledge or scripts run with existing runtimes (`sh`, `js`).
+- **An MCP server**: an external API the model calls as tools.
+- **A plugin**: skills, personas, and MCP servers installed or shared together.
+- **A client**: an external application driving Plurnk through ACP.
+- **A hook**: an external command receiving lifecycle events on stdin.
+- **An extension**: trusted code loaded at daemon startup (a runtime, address scheme, media-type reader, model provider, or page materializer).
+- **A module**: daemon-managed functionality (a family behind the management verbs, a listener endpoint such as `/acp` or `/oauth/*`, or an event observer).
 
 ## Plurnk uses X
 
 | Surface | Shape | The model sees | Code in the daemon |
 | --- | --- | --- | --- |
-| Persona | `<name>.md` or `<name>/PERSONA.md` (or inline definition) | `persona://<name>/PERSONA.md` | none |
-| Skill | a directory holding `SKILL.md` | `skill://<name>/` | none |
-| MCP server | one MCP definition | a runtime named for the server, its tools as invocation targets, and its resources as an address scheme | none: a process or a URL |
-| Plugin | a directory holding `plugin.json`, `skills/`, `personas/`, and `mcp.json` | its skills, personas, and MCP servers | none, unless it declares an extension |
-| Extension | a package declaring one kind | a runtime, an address scheme, a media-type reader, a model provider, a page materializer, or what a module contributes | trusted, in the daemon |
+| Persona | `<name>.md`, `<name>/PERSONA.md`, or inline definition | `persona://<name>/PERSONA.md` | none |
+| Skill | directory holding `SKILL.md` | `skill://<name>/` | none |
+| MCP server | one MCP definition | runtime `<server>.<tool>` and scheme `<server>://` | none: a process or URL |
+| Plugin | directory holding `plugin.json`, `skills/`, `personas/`, `mcp.json` | its skills, personas, and MCP servers | none, unless it declares an extension |
+| Extension | npm package declaring one kind | runtime, scheme, media-type reader, model provider, page materializer, or module | trusted, in the daemon |
 
-Personas, skills, and MCP servers are definitions. The `plurnk` runtime
-(`personas`, `skills`, and `mcp` tools; personas also accept `plurnk.edit` and `plurnk.kill` on `persona://`) manages them in the current workspace,
-and `mcp:///plurnk.md` and `mcp:///plurnk/<tool>.json` show each
-definition's form. A definition needs no restart; an extension loads only when
-the daemon starts.
+Manage personas, skills, and MCP definitions live in the current workspace via `plurnk.personas`, `plurnk.skills`, and `plurnk.mcp` (`mcp:///plurnk/<tool>.json`). Extensions load at daemon startup.
 
 ## X uses Plurnk
 
 | Surface | Shape | Code in the daemon | Contract |
 | --- | --- | --- | --- |
-| Application | an ACP v2 client: WebSocket or Streamable HTTP JSON-RPC 2.0 at `/acp` on the daemon's listener (`PLURNK_PORT`), authenticated via OAuth 2.1 (`/.well-known/*`, `/oauth/*`) when `PLURNK_AUTH=1` | none | `skill://plurnk/packages/@plurnk/plurnk-acp/SPEC.md`, `skill://plurnk/packages/@plurnk/plurnk-auth/SPEC.md` |
-| Command | the executable in `PLURNK_HOOKS_COMMAND`, run once per event named in `PLURNK_HOOKS_EVENTS` with one JSON line on stdin; its output and exit status change nothing | none | `skill://plurnk/packages/@plurnk/plurnk-hooks/SPEC.md` |
+| Application | ACP v2 client: WebSocket or Streamable HTTP JSON-RPC 2.0 at `/acp` (`PLURNK_PORT`), authenticated via OAuth 2.1 (`/.well-known/*`, `/oauth/*`) when `PLURNK_AUTH=1` | none | `skill://plurnk/packages/@plurnk/plurnk-acp/SPEC.md`, `skill://plurnk/packages/@plurnk/plurnk-auth/SPEC.md` |
+| Command | executable in `PLURNK_HOOKS_COMMAND`, run once per event in `PLURNK_HOOKS_EVENTS` with one JSON line on stdin | none | `skill://plurnk/packages/@plurnk/plurnk-hooks/SPEC.md` |
 
 ## Extensions
 
-An extension is one package of one kind, declared once: under `plurnk` in its
-`package.json`, or under `extensions.ai.plurnk` in a plugin's `plugin.json`.
+Declare an extension under `plurnk` in `package.json`, or under `extensions.ai.plurnk` in a plugin's `plugin.json`.
 
 | Kind | Adds | Kind-owned field | Contract |
 | --- | --- | --- | --- |
-| `exec` | runtimes the model invokes as tool calls | `runtimes` | `skill://plurnk/packages/@plurnk/plurnk-execs/SPEC.md` |
+| `exec` | runtimes invoked as tool calls | `runtimes` | `skill://plurnk/packages/@plurnk/plurnk-execs/SPEC.md` |
 | `scheme` | address schemes | `schemes`, or `name` for one | `skill://plurnk/packages/@plurnk/plurnk-schemes/SPEC.md` |
 | `mimetype` | readers for media types | `handlers` | `skill://plurnk/packages/@plurnk/plurnk-mimetypes/SPEC.md` |
 | `provider` | a model provider | `name` | `skill://plurnk/packages/@plurnk/plurnk-providers/SPEC.md` |
 | `http-materializer` | page rendering for web reads | `materializers` | `skill://plurnk/packages/@plurnk/plurnk-schemes-http/SPEC.md` |
-| `module` | lifecycle membership: a definition family behind the shared management verbs, a standard listener mount (`/acp`, `/.well-known/*`, `/oauth/*`), or an event observer | `module` | `skill://plurnk/packages/@plurnk/plurnk-modules/SPEC.md` |
+| `module` | lifecycle membership (management family, listener mount, or event observer) | `module` | `skill://plurnk/packages/@plurnk/plurnk-modules/SPEC.md` |
 
-- An extension loads when the daemon starts, from the service's installed npm
-  packages. A module also loads from a plugin in `$XDG_CONFIG_HOME/plurnk/plugins/`,
-  `$XDG_CONFIG_HOME/agents/plugins/`, or `~/.agents/plugins/`. A plugin in a project's `.agents/plugins/` contributes
-  its skills and MCP servers, never code, and a package written into the project
-  loads nothing until it is installed among the service's npm packages.
-- `PLURNK_EXTENSIONS_TRUSTED_ONLY` gates loading: `@plurnk/*` packages always
-  load, a third-party package loads only when the setting lists its package
-  name, and `0` turns the gate off.
-- A module exports one lifecycle object or a factory returning one. The daemon
-  runs every module's `setup` before any module's `start`, then `stop` and
-  `close` at shutdown; each member is optional.
-
-A module exposing read-only resource folders can use `registerResourceTreeScheme`
-from `@plurnk/plurnk-schemes`: it supplies names and original bytes; the host owns
-MIME handling, entry projections and ordinary selection (`skill://plurnk/packages/@plurnk/plurnk-schemes/SPEC.md`). `@plurnk/plurnk-skills` is the built-in example; its
-contract is `skill://plurnk/packages/@plurnk/plurnk-skills/SPEC.md`.
+- Extensions load at daemon startup from installed npm packages; modules also load from user plugins (`$XDG_CONFIG_HOME/plurnk/plugins/`, `$XDG_CONFIG_HOME/agents/plugins/`, `~/.agents/plugins/`). Project plugins (`.agents/plugins/`) contribute only skills, personas, and MCP servers, never code.
+- `PLURNK_EXTENSIONS_TRUSTED_ONLY` gates loading: `@plurnk/*` always loads, third-party packages load when listed, and `0` disables the gate.
+- A module exports `{ setup?, start?, stop?, close? }` or a factory returning one; read-only resource folders can use `registerResourceTreeScheme` from `@plurnk/plurnk-schemes`.
 
 ## Examples
 
-The [Tavily plugin](https://github.com/plurnk/plurnk-tavily-plugin) is a working,
-separately installed example: a standard `plugin.json`, one HTTP materializer
-extension, its own configuration floor, and public-interface installation tests.
-It is not bundled with the service.
+See the [Tavily plugin](https://github.com/plurnk/plurnk-tavily-plugin) for a standalone HTTP materializer plugin.
 
-A plugin directory, under a plugin root or packaged for npm:
+A plugin directory:
 
 ```text
 acme-tools/
@@ -106,7 +68,7 @@ acme-tools/
 └── skills/notes-format/SKILL.md
 ```
 
-Its `plugin.json`:
+`plugin.json`:
 
 ```json
 {
@@ -116,9 +78,7 @@ Its `plugin.json`:
 }
 ```
 
-Its `mcp.json`, where `$schema` and each server's `type` are required: without `$schema` the
-plugin carries no MCP servers, and an entry without `type` is skipped. A stdio server starts in the
-plugin's directory:
+`mcp.json` (`$schema` and each server's `type` are required; stdio servers start in the plugin directory):
 
 ```json
 {
@@ -129,7 +89,7 @@ plugin's directory:
 }
 ```
 
-A scheme extension's `package.json`; its default export is the scheme handler:
+Scheme extension `package.json` (default export is the scheme handler):
 
 ```json
 {
@@ -140,7 +100,7 @@ A scheme extension's `package.json`; its default export is the scheme handler:
 }
 ```
 
-A module's `package.json` and its `./module` export:
+Module `package.json` and `./module` export:
 
 ```json
 {
@@ -160,8 +120,4 @@ export default () => ({
 
 ## Contracts
 
-`skill://plurnk/packages/` holds the `SPEC.md` of every installed package that
-ships one, at `skill://plurnk/packages/<package name>/SPEC.md`, and beside it the
-package's type declarations under `dist/`: `dist/index.d.ts` is the package root's,
-and a relative import names a sibling file. `plurnk.find` searches them by tag or term; each
-contract's examples, tables and declarations are authoritative.
+`skill://plurnk/packages/<package name>/SPEC.md` and sibling `dist/*.d.ts` declarations hold each installed package's contract; search them with `plurnk.find`.

@@ -6,13 +6,7 @@
 
 ## Delegation
 
-`plurnk.work` starts a fresh log with the task prompt; `plurnk.fork` copies your
-history and named scratch into the new name, then diverges. Embedded addresses
-are preserved verbatim. Both share the workspace. An omitted address allocates
-a short session name, reported in the receipt; an explicit name cannot replace
-an existing session, even after it finishes. Names match
-`[A-Za-z0-9][A-Za-z0-9_-]{0,62}` and are case-sensitive. `plurnk.send` to an existing
-session gives it a follow-up task.
+`plurnk.work` starts a fresh log with the task prompt; `plurnk.fork` copies your history and named scratch into the new session, then diverges. `plurnk.send` to an existing session (`session://<name>`) delivers a follow-up task. Session names match `[A-Za-z0-9][A-Za-z0-9_-]{0,62}` (case-sensitive, authority-only `session://<name>` with no path or query; omit `target` on `work`/`fork` to auto-mint a name).
 
 await plurnk.work({ target: "session://child", text: "The child's complete task goes here." }); // fresh log
 
@@ -20,71 +14,34 @@ await plurnk.fork({ target: "session://exampleSessionName", text: "The child's t
 
 await plurnk.send({ target: "session://child", text: "The follow-up task or additional information goes here." }); // follow-up to the existing session
 
-Write `session://child/AGENTS.md` (with `plurnk.edit` or `await plurnk.copy({ from: "persona://examplePersona/PERSONA.md", to: "session://child/AGENTS.md" });`) before `work` to give a
-fresh child session role instructions that its first turn reads automatically;
-`fork` copies `session://<parent>/AGENTS.md` into `session://<child>/AGENTS.md`
-with the rest of your named scratch, and updating `session://<name>/AGENTS.md`
-later causes that session's next turn to read the updated instructions.
-
-Parents observe a direct child's mutations, messages, executor invocations, and
-session launches, including failed actions, as rows in their own log.
-Exploration and context curation (`note`, `todo`, `read`, `find`, `bare`, `wait`, and log `kill`)
-stay with the child, including `read` calls on executor output. These observations
-never wake the parent; replies and child conclusions retain their ordinary
-delivery and wake behavior.
+- **Role instructions (`AGENTS.md`)**: write `session://child/AGENTS.md` (via `plurnk.edit` or `await plurnk.copy({ from: "persona://examplePersona/PERSONA.md", to: "session://child/AGENTS.md" });`) before `work` (or between turns) so the child's next turn reads it automatically.
+- **Parent visibility**: parents observe a direct child's mutations, messages, executor calls, and spawns in their own log without waking; child exploration and curation (`note`, `todo`, `read`, `find`, `bare`, `wait`, log `kill`) stay local to the child.
 
 ## Lifecycle
 
-Ordinary operations keep the loop working while children run; `plurnk.wait` joins their
-activity. With live work (a child or an open stream) the loop parks and wakes
-when that work settles, when a message arrives, or when the wait duration expires;
-without live work it does not park. `await plurnk.wait({ seconds: 600 });` waits at most ten minutes;
-`await plurnk.wait({});` uses the configured default. Expiry resumes inspection without
-cancelling work. Zero continues immediately. Invalid durations are ignored with
-a warning. Several `wait` calls are one park with the earliest bound.
+| Operation | Behavior |
+| --- | --- |
+| `await plurnk.wait({});` | Park while live work (a running child or open stream) is active, waking when work settles, a message arrives, or `seconds` expires (expiry resumes inspection without cancelling work). |
+| `_plurnk` `read` of `ops://child/1` | Delivered once when a child loop concludes, waking a waiting parent with the child's terminal reply or Problem (`plurnk.read` with `range` inspects further slices). |
+| `await plurnk.read({ path: "session://child" });` | Collect the child's latest loop outcome (`425` while the child is still running). |
+| `await plurnk.kill({ path: "session://child" });` | Cancel the child session and its descendants (history remains readable; a later `send` starts a new loop). |
 
 await plurnk.wait({}); // waiting for child session
 
-A wake ends the suspension, not its held work; a further `wait` waits again.
-Waking retains the loop's messages, turn allowance, and remaining execution
-time; parked time does not consume execution time. Once all Open Messages have
-completion replies, the loop settles after results are observed and held work
-finishes. Replies are delivered immediately. `note`, `todo`, and successful curation do
-not require another observation turn; other results may warrant more work or a
-corrected reply. No additional operation is needed just to conclude.
-
-Each child task's conclusion wakes its waiting parent and arrives once, as an
-`_plurnk` `read` of `ops://exampleSessionName/1` carrying what the child said: the
-execution outcome, not another message, and not delivered again as a reply. A
-failure retains its status and Problem. `plurnk.read` that address with a `range` to
-inspect more of the exact result, even after the child starts another task.
-Bare `await plurnk.read({ path: "session://exampleSessionName" });` collects the current result instead, naming its
-exact source in `resource`; while the child is running it returns `425`. A
-result does not imply that every task in that session has finished.
-
-`await plurnk.kill({ path: "session://<name>" });` cancels that session and its descendants, including
-queued work and unread messages. History remains readable; a later `send` can
-start new work.
-
 await plurnk.kill({ path: "session://child" }); // cancel this session's activity
+
+`note`, `todo`, and successful curation do not require another observation turn before concluding.
 
 ## Messages
 
-`Open Work`'s `messages` list names unresolved requests; an arrival receipt's `resource` links
-to the same source. `done`, `fail`, or `send` to that address replies to that message. Without a `target`,
-`done`, `fail`, and `send` select the oldest Open Message; `send` leaves it open, while `done` and `fail` advance
-to the next. With none open, `send` names a recipient explicitly, including for corrections.
-`done` marks a completed request; `fail` marks a cancelled
-request, without cancelling its session or running work. A `send` is progress,
-leaving the request open. An empty `done` or `fail` still resolves
-its message while retaining earlier speech. `send` to a session
-control address gives it new work instead. Curation of a message's log
-occurrences never deletes the source or changes whether it was answered.
-Another session may answer it; the assigned session and original sender receive
-that reply without a new request.
+`## Open Work` lists unresolved `messages` (`message://<session>/<id>`):
+
+| Operation | Effect on Open Message |
+| --- | --- |
+| `await plurnk.done({ target?, text, attachments? });` | Complete and resolve the target (or oldest open) message. |
+| `await plurnk.fail({ target?, text, attachments? });` | Decline/cancel the target (or oldest open) message without cancelling the session. |
+| `await plurnk.send({ target?, text, attachments? });` | Send a progress update while leaving the Open Message unresolved (or send a new task when `target` is `session://<name>`). |
 
 await plurnk.done({ target: "message://exampleSessionName/ab3d5678", text: "The completed answer to this request goes here." });
 
-`send`, `done`, and `fail` accept `attachments: ["report.pdf", "workspace:///example.md"]`:
-send-time copies delivered through ordinary resource links, not native media
-parts. Each is materialized as `message://<recipient>/<id>/<index>-<basename>`.
+`attachments` (`["report.pdf", "workspace:///example.md"]`) are materialized for the recipient as `message://<recipient>/<id>/<index>-<basename>`.

@@ -71,10 +71,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     readonly discovery: FunctionalityDiscovery = {
         inputs: ["query", "source"],
         emptyListsAll: true,
-        details: "`discover` lists the configuration variables installed packages declare, with the "
-            + "declaring package as provenance and its comment as the summary; `PLURNK_*` names "
-            + "never appear. `query` matches a name or comment, `source` selects one owning package, "
-            + "and `{}` returns the full catalog.",
+        details: "`{\"discover\": true}` lists settable variables declared by installed packages (`PLURNK_*` excluded); `{\"discover\": \"<query>\"}` or `{\"discover\": {\"query\": \"...\", \"source\": \"...\"}}` filters by name/comment or declaring package.",
     };
 
     readonly #defaults: () => Promise<readonly EnvDefaultsFile[]>;

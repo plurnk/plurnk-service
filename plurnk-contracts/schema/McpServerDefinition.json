@@ -14,7 +14,7 @@
     "$defs": {
         "name": {
             "title": "McpServerName",
-            "description": "The server's alias: the runtime tag whose fence invokes it and its resource scheme.",
+            "description": "The server's alias: its runtime name (`<alias>.<tool>`) and resource scheme (`<alias>://`).",
             "type": "string",
             "pattern": "^[a-z][a-z0-9_-]*$"
         },

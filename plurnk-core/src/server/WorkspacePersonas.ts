@@ -422,7 +422,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
     readonly discovery: FunctionalityDiscovery = {
         inputs: ["query", "source"],
         emptyListsAll: true,
-        details: "List personas discovered from active configuration roots and plugins (`{}` or `{\"query\":\"...\"}`), or inspect a persona file or directory (`{\"source\":\"...\"}`). Returns candidates with addable definitions.",
+        details: "`{\"discover\": true}` or `{\"discover\": \"<query>\"}` lists personas discovered from active configuration roots and plugins; `{\"discover\": {\"source\": \"...\"}}` inspects a persona file or directory. Returns candidates with addable definitions.",
     };
 
     readonly #db: Db;

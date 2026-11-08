@@ -424,10 +424,11 @@ export default class FunctionalityManager extends BaseExecutor {
     static familyDetails(entry: FunctionalityFamilyEntry): string {
         const verbs = FunctionalityManager.#verbsFor(entry);
         const sections: string[] = [];
+        const docBody = entry.documentBody === undefined ? "" : stripLeadingHeading(entry.documentBody);
         if (entry.configurationFailure !== null && entry.configurationFailure !== undefined) {
             sections.push(`> [!WARNING]\n> ${entry.configurationFailure.error.message}`);
         }
-        if (verbs.includes("discover") && entry.discovery?.details !== undefined) {
+        if (verbs.includes("discover") && entry.discovery?.details !== undefined && docBody.length === 0) {
             sections.push(entry.discovery.details);
         }
         if (verbs.includes("add") && entry.example !== undefined) {
@@ -443,7 +444,6 @@ export default class FunctionalityManager extends BaseExecutor {
             }
             sections.push(`await plurnk.${entry.family}(${JSON.stringify(exampleObj)});`);
         }
-        const docBody = entry.documentBody === undefined ? "" : stripLeadingHeading(entry.documentBody);
         if (docBody.length > 0) {
             sections.push(docBody);
         }

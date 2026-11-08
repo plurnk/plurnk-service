@@ -1,27 +1,19 @@
 # skills
 
-An Agent Skill is a directory holding a `SKILL.md` (standard `name` and
-`description` frontmatter, then instructions) and optionally references,
-scripts, and assets beside it. Enabled skills appear in the turn-0 catalog as
-`skill://<name>/SKILL.md`; nothing is injected until it is READ.
+An Agent Skill is a directory holding `SKILL.md` (`name` and `description` frontmatter, then instructions) and optional sibling references, scripts, and assets. Enabled skills appear at turn 0 as `skill://<name>/SKILL.md`; nothing is injected until read.
 
 ## Where skills come from
 
-| Source | Root | Who put it there |
+| Source | Root |Precedence |
 | --- | --- | --- |
-| `project` | `<project root>/.agents/skills/<name>/` | the repository (often committed) |
-| `plurnk` | `$XDG_CONFIG_HOME/plurnk/skills/<name>/` | the user, for plurnk alone |
-| `xdg-global` | `$XDG_CONFIG_HOME/agents/skills/<name>/` | the user, for XDG-aware agents and projects |
-| `global` | `~/.agents/skills/<name>/` | the user, for every agent and project |
-| plugin | `skills/<name>/` inside an installed Agent Plugin | a project, user or npm installation |
-| `service` | a tree the service itself provides | plurnk (for example the `plurnk` skill: its own configuration and model reference) |
+| `project` | `<project root>/.agents/skills/<name>/` | 1 (highest standalone) |
+| `plurnk` | `$XDG_CONFIG_HOME/plurnk/skills/<name>/` | 2 |
+| `xdg-global` | `$XDG_CONFIG_HOME/agents/skills/<name>/` | 3 |
+| `global` | `~/.agents/skills/<name>/` | 4 |
+| `service` | Built-in service tree (`skill://plurnk/`) | 5 |
+| plugin | `skills/<name>/` inside an installed Agent Plugin | Joins its installation scope after standalone skills |
 
-A `project` skill shadows a `plurnk` one of the same name, which shadows an
-`xdg-global` one, which shadows a `global` one, which shadows a `service` one. Plugin skills join their installation's
-scope after standalone skills; npm bundles follow global roots. These are read-only inputs.
-The cascading environment can replace a whole definition above them;
-`plurnk.skills` creates a workspace override above that. Declared skills are
-enabled by default. A disabled skill remains listed but has no resource tree.
+Environment definitions (`PLURNK_SKILLS_<alias>`) override filesystem roots, and `plurnk.skills` creates a workspace override above that:
 
 ```sh
 PLURNK_SKILLS_code_review='{"source":"/srv/skills/code-review"}'
@@ -29,62 +21,24 @@ PLURNK_SKILLS_ENABLED=1
 PLURNK_SKILLS_code_review_ENABLED=0
 ```
 
-The environment key preserves the standard skill name, replacing hyphens with
-underscores. Digit-leading and Unicode names are supported; use a `.env` file
-for keys outside shell assignment syntax. Behavior controls override
-independently of the definition; an empty definition is invalid.
+## Reading and authoring a skill
 
-## Reading a skill
+- Read instructions with `await plurnk.read({ path: "skill://<name>/SKILL.md" });` and list companion files with `await plurnk.find({ path: "skill://<name>/**" });`.
+- Run skill scripts with their executor (e.g. `await plurnk.js({ script: "skill://<name>/scripts/program.js", args: ["..."] });`). `skill://` is read-only.
+- Author or edit project skills in the filesystem with `plurnk.edit` (and remove with `plurnk.kill`); standard roots are rescanned before every turn and hot-loaded into `skill://<name>/`:
 
-The instructions are the skill: `await plurnk.read({ path: "skill://<name>/SKILL.md" });` for the
-procedure and `await plurnk.find({ path: "skill://<name>/**" });` for its files. Scripts run with their
-registered executor, for example `await plurnk.js({ script: "skill://<name>/scripts/program.js", args: ["..."] });`,
-subject to ordinary operation approval. Skill
-resources are read-only through `skill://`.
-
-## Authoring a skill
-
-Author or revise a project skill directly in the filesystem with `plurnk.edit` (and
-retire it with `plurnk.kill`), never `sh`:
-
-await plurnk.edit({ path: ".agents/skills/code-review/SKILL.md", content: "---\nname: code-review\ndescription: Check diffs for contract, test, and migration regressions.\n---\n\nInspect changed files against the owning `SPEC.md` before approving." });
-
-Companion scripts, references, and assets live beside `SKILL.md` under
-`.agents/skills/<name>/` and accept normal `@hash` regional `plurnk.edit` calls. To author
-a user-wide skill under `~/.config/plurnk/skills/<name>/SKILL.md` (or
-`~/.agents/skills/<name>/SKILL.md`), admit the directory with
-`plurnk.members` first. The service rescans standard skill roots before
-every turn and hot-loads created, edited, or removed skills into
-`skill://<name>/` automatically without `plurnk.skills`.
-
-## discover
-
-`discover` lists the skills one source carries: `{"discover": "..."}` returns one
-candidate per skill with the exact definition to add. A source is a git remote
-as a full https or ssh URL, an MCP server (`<server>:///`, `<server>:///skills`,
-or `<server>:///skills/<name>`), a folder, a lone `SKILL.md`, or a zip or tar
-archive. Discovery never installs anything.
+await plurnk.edit({ path: ".agents/skills/code-review/SKILL.md", text: "---\nname: code-review\ndescription: Check diffs for contract, test, and migration regressions.\n---\n\nInspect changed files against the owning `SPEC.md` before approving." });
 
 ## Adding
 
-Passing `{ name, source, ref? }` binds one skill from its source to this workspace and enables it:
+| Call | Effect |
+| --- | --- |
+| `await plurnk.skills({});` | List skills with status, provenance, and any Problem. |
+| `await plurnk.skills({ discover: "<source>" });` | Inspect a source (git `https`/`ssh` URL, `<server>:///skills`, folder, `SKILL.md`, or `.zip`/`.tar` archive) and return addable candidates without installing. |
+| `await plurnk.skills({ name, source, ref? });` | Bind and enable skill `name` from `source` (optional git branch/tag `ref`). |
+| `await plurnk.skills({ name, enabled: false });` | Disable (`false`) or re-enable (`true`) a skill without removing its definition. |
+| `await plurnk.skills({ name, remove: true });` | Remove a workspace override and restore any inherited definition. |
 
 `await plurnk.skills({ name: "sql-formatter", source: "https://git.example/acme/skills.git" }); // from a discover candidate`
 
-`name` must equal the skill's standard `name`, which selects it from a source
-carrying several. Local folders and their `SKILL.md` files stay live references:
-edits remain visible, with supporting files in place. Relative sources resolve
-from the project root; absolute sources also work in headless workspaces.
-Git, MCP, and archive sources are materialized into workspace-owned storage, never a
-project or global configuration root. They remain stable across enable and
-restart until their source definition changes. A git addition may name a branch or tag
-as `ref`; the service records its commit (or an MCP skill's manifest digest) and refuses to refetch a moved source
-silently. An addition is reviewed by the session's owner unless
-`PLURNK_SERVICE_PROPOSALS` accepts or rejects it.
-
-An unavailable skill retains its exact Problem in `list`; other skills remain
-usable. `disable` suppresses a skill without forgetting its definition. `remove`
-forgets a workspace override and restores any inherited definition and enabled
-state. It never deletes a local source; fetched copies remain workspace state,
-but confer no availability without a definition. Inherited skills can be enabled
-or disabled here; their definitions cannot be removed from this workspace.
+- Local folders and `SKILL.md` paths stay live references; git, MCP, and archive sources materialize into workspace storage pinned to their commit or manifest digest.

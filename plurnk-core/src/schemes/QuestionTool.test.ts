@@ -23,7 +23,7 @@ test("{§question-tool}: the registered tool declaration shapes the auto-generat
     assert.equal(questionRegisteredTool.target, "question");
     assert.match(questionRegisteredTool.summary, /Ask the user/);
     assert.ok(questionRegisteredTool.invocation.inputSchema !== undefined, "the invocation carries its input schema");
-    assert.match(questionRegisteredTool.details ?? "", /message|requestedSchema/, "the doc teaches the standard field vocabulary");
+    assert.match(questionRegisteredTool.details ?? "", /text|options|schema/, "the doc teaches the standard field vocabulary");
     assert.deepEqual(questionRegisteredTool.traits, ["interaction"]);
 });
 

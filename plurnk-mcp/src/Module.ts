@@ -187,7 +187,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             ...(registry === null ? {} : {
                 discovery: {
                     inputs: ["query"],
-                    details: "`query` searches the MCP Registry by server name; each candidate carries the exact definition to add.",
+                    details: "`{\"discover\": \"<query>\"}` searches the MCP Registry by server name; each candidate carries the exact definition to add.",
                 },
                 discover: (query) => this.#discover(query, registry),
             }),

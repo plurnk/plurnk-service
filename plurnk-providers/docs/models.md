@@ -4,20 +4,10 @@
 
 Configure model aliases, provider routes, credentials, reasoning effort, context/output budgets, and caching.
 
-A route is `provider/model`; an alias names a route with its own tuning. The
-session owns its model and reasoning selection: an explicit selection persists
-on the session, a loop snapshots the resolved route, and a change to the
-daemon's default does not retarget an existing session. A child session runs on
-its parent's durable spawn selection, else the parent's own model.
-
-Effort and budget are independent. The effort names available come from the
-selected route, and an unsupported request is refused rather than downgraded.
-Output accepts a token count or a percentage of context, capped by the model's
-known limits; a reasoning budget, when set, is smaller than the total output,
-and leaving it unset does not disable reasoning. Context is derived from the
-endpoint or the catalog; an operator cap can only shrink it.
-
-Cost is an estimate from known usage and catalog rates unless the provider
-reports a settled charge. A timeout is a failure, never a fabricated response;
-an interrupted call is reissued within the loop's recovery window, after which
-the loop parks for a prompt or a wake.
+| Aspect | Contract |
+| --- | --- |
+| Route & alias | A route is `provider/model`; `PLURNK_MODEL_<alias>` binds a route and its per-alias tuning knobs. |
+| Session selection | Explicit model and effort selections persist on the session; a loop snapshots the resolved route; child sessions inherit the parent's spawn model (`PLURNK_MODEL_CHILD`) or the parent's own model. |
+| Effort & output budget | Effort levels come from the selected route (unsupported levels are refused, never downgraded). Output budget accepts tokens or a context percentage; reasoning budget, when set, must be smaller than total output. |
+| Context window | Derived from the endpoint or catalog; an operator cap (`PLURNK_PROVIDERS_CONTEXT_WINDOW`) can only shrink it. |
+| Cost & recovery | Cost uses settled provider charges when reported, else catalog rates. Timeouts fail honestly; interrupted calls retry within the recovery window before parking for a prompt or wake. |

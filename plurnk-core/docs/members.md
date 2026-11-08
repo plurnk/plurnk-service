@@ -1,105 +1,51 @@
 # members
 
-Membership is the only door to the project's files. A project file is exactly
-one of three things to this workspace: **tracked by git**, **added** by a
-definition, or **invisible**. What you can `EDIT` is `(tracked ∪ include ∪ created)
-− exclude`, and the catalog at turn 0 shows exactly that set. Your `READ` and
-`FIND` reach one step further when the operator leaves `PLURNK_MEMBERS_AUTO_ADD=1`
-(the default): an untracked file the repository does not ignore, inside the
-project root and not excluded, is listed by `FIND` as `untracked`, and the
-moment you `READ` it, or a `FIND` pattern matches inside it, its admission as
-your own definition of that exact path is proposed — accepted by policy where
-nobody reviews, by the person otherwise — a `member_added` notice says so when it
-is admitted, and the read or find then runs. A rejected admission settles the
-operation as `rejected` and admits nothing. Listing admits nothing; `~` full-text
-and `&` graph patterns search members only.
+Membership is the only door to the project's files. What you can `EDIT` is `(tracked ∪ include ∪ created) − exclude`. When `PLURNK_MEMBERS_AUTO_ADD=1` (default), `FIND` lists unignored, unexcluded untracked files inside the project root as `untracked`, and reading or matching inside one proposes its admission as a member (`member_added` notice on acceptance).
 
 ## What makes a file visible
 
 | A file is a member because | How it got there |
 | --- | --- |
-| git tracks it | it was committed or staged (`git ls-files`), refreshed every turn |
-| a definition includes it | an enabled `members` definition — a shell-path glob such as `docs/**` |
-| plurnk created it | a file your accepted `EDIT`, `COPY`, or `MOVE` wrote gets an exact creation record; it is a member at once |
-
-An exclusion (`!glob`) wins over every inclusion. A model definition never
-includes a path git ignores.
+| git tracks it | Committed or staged (`git ls-files`), refreshed every turn |
+| a definition includes it | An enabled `members` glob definition (e.g. `docs/**`); `!glob` exclusions win over all inclusions |
+| plurnk created it | An accepted `EDIT`, `COPY`, or `MOVE` created it (`PLURNK_SERVICE_FILE_CREATE_SCOPE`); `KILL` retires the creation record |
 
 ## What you may change here
 
-Your `add` is admitted against the operator's ceiling
-`PLURNK_SERVICE_MEMBERS_MODEL_SCOPE`, narrowed by the workspace:
+Model additions are bounded by `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (narrowed by workspace policy):
 
 | Scope | A model definition may include |
 | --- | --- |
-| `none` | nothing — every `add` from the model is refused `403 model-scope` |
-| `root` | paths inside the project root |
-| `namespace` | those plus paths beyond the root, which are spelled absolute |
+| `none` | Nothing (`403 model-scope`) |
+| `root` | Unignored paths inside the project root |
+| `namespace` | Unignored paths inside or beyond the project root (spelled absolute, e.g. `/srv/shared/notes.md`) |
 
-The scope refuses an `add` you author from a turn; a client's `/members add`
-and the operator's `PLURNK_MEMBERS_<alias>=<glob>` definitions are not bound
-by it. `discover` always works: a path answers why it is or is not visible; a
-glob previews what `add` would resolve to.
+Client `/members add` and `PLURNK_MEMBERS_<alias>=<glob>` definitions are not bound by the model scope or `.gitignore`.
 
 ## When a file you need is not a member
 
-`await plurnk.members({ discover: "build/report.json" });` answers with one
-candidate: its `provenance.kind` is the verdict and its `summary` the reason.
+`await plurnk.members({ discover: "build/report.json" });` inspects why a path is or is not visible (or previews what a glob would include/exclude) without adding anything:
 
-| kind | summary |
+| `provenance.kind` | `summary` |
 | --- | --- |
-| `member` | `` member — tracked by git ``, `` member — included by `docs/**` `` or `` member — a creation record: plurnk wrote it `` |
+| `member` | `` member — tracked by git ``, `` member — included by `docs/**` ``, or `` member — a creation record: plurnk wrote it `` |
 | `candidate` | `` not a member — untracked; add this definition to include it `` |
 | `excluded` | `` not a member — excluded by `!glob`; only the user can lift it `` |
-| `ignored` | `` not a member — git ignores it (`.gitignore` line 4); a client or operator definition can include it, a model definition cannot ``, naming the rule's file and line |
+| `ignored` | `` not a member — git ignores it (`.gitignore` line 4); a client or operator definition can include it, a model definition cannot `` |
 | `absent` | `` absent — no such file under the project root `` |
 
-- **Untracked, scope `root` or `namespace`**: `READ` it; with auto-add on the read
-  proposes its admission and, accepted, admits and reads it in one operation. With
-  auto-add off, an accepted `plurnk.members` call makes it a member before the next operation.
+| Call | Effect |
+| --- | --- |
+| `await plurnk.members({});` | List definitions with origin (`service` or `workspace`), enabledness, and matched file count. |
+| `await plurnk.members({ discover: "<path-or-glob>" });` | Explain a path's membership status or preview a glob. |
+| `await plurnk.members({ path: "build/*.json" });` | Admit one glob or an array of globs within `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE`. |
+| `await plurnk.members({ path: "build/*.json", enabled: false });` | Disable (`false`) or re-enable (`true`) a definition. |
+| `await plurnk.members({ path: "build/*.json", remove: true });` | Remove a workspace definition and restore inheritance. |
 
-  await plurnk.members({ path: "build/*.json" }); // include the generated reports; a string or array of globs
-
-- **Beyond your scope**: untracked under scope `none` (an operator narrowed it),
-  ignored by git, or excluded by a `!glob`. Neither auto-add nor your `add`
-  admits it, and the scope is fixed for the turn, so a refused `add` is refused
-  again. Admitting it is the user's to give: a client or operator definition
-  includes an untracked or ignored file, and only lifting its exclusion admits
-  an excluded one. Ask them.
-
-- **Beyond the project root** (an absolute path such as `/srv/shared/notes.md`,
-  which is how such a path is spelled; `../notes.md` names the same place): a
-  model definition can admit it under `namespace` scope, but not `root` or
-  `none`; client and operator definitions are not bound by the model's scope. Ignore rules and exclusions still apply as described above.
-  File operands beginning with `~/`
-  resolve from the daemon user's home; `./~/` names a literal project
-  directory. Members globs remain project-relative, not home shorthand.
-  A command runs on the host from the project root, and its output is a stream
-  the session reads.
-
-## Files you create
-
-An `EDIT` to a path that does not exist creates it when the file-creation
-scope admits it (`PLURNK_SERVICE_FILE_CREATE_SCOPE`). The new file is a member immediately through its
-creation record, with no other step. Deleting
-it (`KILL`) retires the record.
-
-## Changes while you work
-
-File mutations check their selected revision again at acceptance. If the file
-changed, `409 edit-collision` preserves it: inspect the current file and rebuild
-the operation. A MOVE may already have written its destination before source
-cleanup conflicts; its receipt identifies that completed effect.
-
-## Definitions belong to the workspace
-
-A definition is its glob: `await plurnk.members({});` shows every definition with its origin (`service` from the
-operator's environment, `workspace` from an addition) and whether it is enabled. `enabled: true` and
-`enabled: false` flip one definition, and `remove: true` forgets a workspace definition and restores
-inheritance, each named by `path` as `plurnk.members({})` shows it:
+await plurnk.members({ path: "build/*.json" }); // include the generated reports; a string or array of globs
 
 await plurnk.members({ path: "build/*.json", enabled: false });
 
-Inherited definitions cannot be removed here. Changes apply to every session. Each enabled
-definition is projected as `plurnk:///members/<glob>.md`, the glob percent-encoded,
-showing what it resolved to.
+## Concurrent edits
+
+File mutations verify their selected revision at acceptance and return `409 edit-collision` if the file changed on disk.
