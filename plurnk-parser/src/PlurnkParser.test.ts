@@ -944,10 +944,11 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.read({"path":"workspace:///notes.md","range":"7 lines"})',
             'await plurnk.note({"properties":{"text":"Noted"},"range":"1,-1"})',
             'await plurnk.edit({"path":"workspace:///notes.md","pattern":"a$","text":"A"})',
+            'await plurnk.done({"text":"Done. `workspace:///notes.md` now has 5 lines"} , "target":"message://main/1a9c4eca"})',
         ].join("\n\n"));
         assert.equal(mimoorAndBonsaiRecoveries.items.every((i) => i.kind === "statement"), true);
         const mbOps = mimoorAndBonsaiRecoveries.items.filter((i) => i.kind === "statement").map((i) => i.statement);
-        assert.equal(mbOps.length, 6);
+        assert.equal(mbOps.length, 7);
         assert.equal((mbOps[0] as ReadStatement).target?.raw, "workspace:///catalog.xml");
         assert.equal((mbOps[1] as EditStatement).target?.raw, "workspace:///france/capital");
         assert.equal((mbOps[1] as EditStatement).body, "Paris");
@@ -955,5 +956,7 @@ describe("PlurnkParser Code Mode", () => {
         assert.deepEqual((mbOps[3] as ReadStatement).lineMarker, { marks: [1, 7] });
         assert.equal((mbOps[4] as NoteStatement).body, "Noted");
         assert.deepEqual((mbOps[5] as EditStatement).matcher, { dialect: "regex", raw: "a$", pattern: "a$", flags: "" });
+        assert.equal((mbOps[6] as DoneStatement).body?.raw, "Done. `workspace:///notes.md` now has 5 lines");
+        assert.equal((mbOps[6] as DoneStatement).target?.raw, "message://main/1a9c4eca");
     });
 });
