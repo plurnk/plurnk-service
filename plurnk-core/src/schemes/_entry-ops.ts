@@ -281,6 +281,21 @@ export default class EntryOps {
             };  // {§edit} — teaching rides the receipt, not the hot path (#342)
         }
 
+        const formatError = await new DbProjectionCaps(ctx).validateContent(
+            newContent,
+            effectiveMimetype,
+            channelExists ? originalContent : null,
+        );
+        if (formatError !== null) {
+            return failure(
+                "edit-format-invalid",
+                422,
+                `The edit produces invalid ${effectiveMimetype}: ${formatError}`,
+                { entryId: existingEntryId, channel: targetChannel },
+                { mimetype: effectiveMimetype, retryable: false },
+            );
+        }
+
         let entryId: number;
         let createdNow: boolean;
         if (existing === undefined) {

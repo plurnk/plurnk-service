@@ -2856,6 +2856,16 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.equal(infoUpdate?.title, "alpha-renamed#user");
                 const pushedSessions = overviewPushes.at(-1)?.sessions as Array<{ title?: string }> | undefined;
                 assert.equal(pushedSessions?.[0]?.title, "alpha-renamed#user");
+
+                const translator = new SessionTranslator({ acpSessionId: "1#user", workspaceId: 1, sessionId: 1 });
+                const configNotice = {
+                    source: "engine:configuration",
+                    kind: "plugin_configuration",
+                    level: "info" as const,
+                    message: "plugin plurnk-web is shadowed",
+                };
+                assert.equal(translator.notice(configNotice).length, 1);
+                assert.equal(translator.notice(configNotice).length, 0);
             });
         } finally {
             await h.close();

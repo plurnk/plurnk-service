@@ -30,7 +30,7 @@ export default class HtmlSource {
                 for (const attr of node.attrs) {
                     const name = attr.prefix ? `${attr.prefix}:${attr.name}` : attr.name;
                     element.setAttributeNS(attr.namespace ?? null, name, attr.value);
-                    mark(element.getAttributeNode(name)!, node.sourceCodeLocation?.attrs?.[name]);
+                    mark(element.getAttributeNode(name)!, attributeValueLocation(content, node.sourceCodeLocation?.attrs?.[name]));
                 }
                 for (const child of node.childNodes) element.appendChild(copy(child));
                 result = element;
@@ -52,4 +52,23 @@ export default class HtmlSource {
     region(node: DomNode): TextRegion | undefined {
         return this.#regions.get(node);
     }
+}
+
+function attributeValueLocation(
+    content: string,
+    location: { startOffset: number; endOffset: number } | null | undefined,
+): { startOffset: number; endOffset: number } | undefined {
+    if (location === undefined || location === null) return undefined;
+    const raw = content.slice(location.startOffset, location.endOffset);
+    const eq = raw.indexOf("=");
+    if (eq === -1) return location;
+    let startOffset = location.startOffset + eq + 1;
+    while (startOffset < location.endOffset && /[\t\n\f\r ]/.test(content[startOffset])) {
+        startOffset += 1;
+    }
+    const quote = content[startOffset];
+    if ((quote === "\"" || quote === "'") && location.endOffset - startOffset >= 2 && content[location.endOffset - 1] === quote) {
+        return { startOffset: startOffset + 1, endOffset: location.endOffset - 1 };
+    }
+    return { startOffset, endOffset: location.endOffset };
 }

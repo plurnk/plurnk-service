@@ -259,7 +259,7 @@ describe("{§xml-shape} structural match regions", () => {
 for (const { source, pattern, selected } of [
     { source: '<root><item>A</item><other>B</other></root>', pattern: '//item', selected: ['<item>A</item>'] },
     { source: '<root><item>A<b>B</b>C</item></root>', pattern: '//item/text()', selected: ['A', 'C'] },
-    { source: '<root><item id = \'old\'>A</item></root>', pattern: '//item/@id', selected: ["id = 'old'"] },
+    { source: '<root><item id = \'old\'>A</item></root>', pattern: '//item/@id', selected: ['old'] },
     { source: '<root><item>A &amp; B</item></root>', pattern: '//item/text()', selected: ['A &amp; B'] },
     { source: '<root><item>A&#10;B</item><item /></root>', pattern: '//item', selected: ['<item>A&#10;B</item>', '<item />'] },
     { source: '<root>😀\r\n  <item>😀&#x1F600;</item>\r</root>', pattern: '//item/text()', selected: ['😀&#x1F600;'] },

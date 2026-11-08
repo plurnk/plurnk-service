@@ -18,6 +18,7 @@ import RuntimeSession from "./RuntimeSession.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
 import { TextCoordinates, type Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { isRecord } from "@plurnk/plurnk-contracts";
 import PacketWire, { type StoredLogRow } from "./packet-wire.ts";
 import { reserved, resultSize, unfitResult, type ContextFit } from "./ContextFit.ts";
 
@@ -85,13 +86,15 @@ export default class TurnMaterialization {
             if (terminal !== null && terminal.status !== r.status_rx) {
                 throw new Error(`ambient loop-termination event ${r.event_id} status ${r.status_rx} does not match its terminal result status ${terminal.status}`);
             }
-            let attrs = r.attrs ?? "{}";
+            const parsedAttrs = JSON.parse(r.attrs ?? "{}") as unknown;
+            if (!isRecord(parsedAttrs)) {
+                throw new TypeError(`ambient event ${r.event_id} attrs must be an object`);
+            }
+            // {§emission-history}: a producer's content ordinal belongs to the producer's emission, never the observer's turn.
+            const { emissionIndex: _producerEmissionIndex, ...inherited } = parsedAttrs;
+            let attrs = JSON.stringify(inherited);
             let rx = r.rx;
             if (terminal !== null) {
-                const inherited = JSON.parse(attrs) as unknown;
-                if (inherited === null || typeof inherited !== "object" || Array.isArray(inherited)) {
-                    throw new TypeError(`ambient loop-termination event ${r.event_id} attrs must be an object`);
-                }
                 attrs = JSON.stringify({
                     ...inherited,
                     kind: "loop_termination",

@@ -38,7 +38,7 @@ source/destination pairs for multiple transfers.
 | `~` | full-text (SQLite FTS5) | `~retry` | FTS5 token occurrences; the query determines which resources match |
 | `//` | xpath (1.0) | `//item` | Item elements |
 | `//` | xpath (1.0) | `//item/text()` | Their direct text nodes |
-| `//` | xpath (1.0) | `//item/@id` | The complete source attribute (`id="old"`), not only its value |
+| `//` | xpath (1.0) | `//item/@id` | The attribute's lexical value (`old` inside `id="old"`) |
 | `$` | jsonpath (RFC 9535) | `$.host`, `$.items[?(@.price>500)]` | The JSON member's serialized value, including string quotes |
 | `&` | graph (treesitter symbols) | `&connect` | Definitions of `connect` |
 | `&` | graph (treesitter symbols) | `&<connect` | References to `connect` |
@@ -84,8 +84,8 @@ An empty `text` removes the selected source text. In mixed content
 `<item>A<b>B</b>C</item>`, `//item/text()` selects `A` and `C`, not the nested
 `B`; replacement `text` `"X"` produces `<item>X<b>B</b>X</item>`.
 
-For `<item id="old"/>`, `//item/@id` selects `id="old"`. `edit` `text`
-`"id=\"new\""` replaces that attribute; `kill` removes it. Entity spellings and
+For `<item id="old"/>`, `//item/@id` selects `old` inside `id="old"`. `edit` `text`
+`"new"` produces `<item id="new"/>`; `kill` empties the attribute value (`<item id=""/>`). Entity spellings and
 quotes are preserved by `copy`: text `A &amp; B` copies as `A &amp; B`.
 
 ## JSON values

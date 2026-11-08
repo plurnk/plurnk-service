@@ -84,9 +84,14 @@ export default class XmlSource {
             if (syntax.parent === null) return undefined;
             syntax = syntax.parent;
         }
-        const from = syntax.from;
+        let from = syntax.from;
         let to = syntax.to;
-        if (node.nodeType === 3) {
+        if (node.nodeType === 2) {
+            const value = syntax.getChild("AttributeValue");
+            if (value === null || value.to - value.from < 2) return undefined;
+            from = value.from + 1;
+            to = value.to - 1;
+        } else if (node.nodeType === 3) {
             while (syntax.nextSibling !== null && syntax.nextSibling.from === to && text(syntax.nextSibling.name)) {
                 syntax = syntax.nextSibling;
                 to = syntax.to;

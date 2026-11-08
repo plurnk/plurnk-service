@@ -541,6 +541,20 @@ export default class File extends CoreSchemeAdapterBase {
             ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
         };  // {§edit} — teaching rides the receipt, not the hot path (#342)
 
+        const formatError = await new DbProjectionCaps(core).validateContent(
+            patched,
+            mimetype,
+            fileExists ? original : null,
+        );
+        if (formatError !== null) {
+            return failure(
+                "edit-format-invalid",
+                422,
+                `The edit produces invalid ${mimetype}: ${formatError}`,
+                { mimetype, retryable: false },
+            );
+        }
+
         const patch = createPatch(rel, original, patched, "current", "proposed");
         const receiptEdits = fileExists
             ? (appliedEdits ?? statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" })))

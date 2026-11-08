@@ -493,6 +493,7 @@ await plurnk.edit({ path: "<target>", range: "<scope>", pattern: "<pattern>", te
 | `<0>` / `<-1>` | Prepends before line 1 (`<0>`) or appends after the last line (`<-1>`). |
 | `<L1,C1,L2,C2>` | Splices exact half-open character span `[C1, C2)` across `L1..L2` ({§text-region}). `<L,1,L,1>` inserts before line `L` using the resource's line separator. |
 | Consecutive same-target `EDIT`s in one turn | Validated and applied as one atomic batch against the pre-batch snapshot; overlapping regions fail `409`, and any failure rejects the whole batch. |
+| Format validation | When a new or valid resource's mimetype handler rejects the edited content in `validate()` ({§mimetype-handler-contract}), fails `422` (`edit-format-invalid`) without writing or proposing. |
 
 ### §edit-pattern Pattern EDIT
 
@@ -1242,6 +1243,7 @@ sequenceDiagram
 | `line-anchor-collision` | 409 | read coordinates collided with current content at *target*. |
 | `invalid-file-url` | 400 | The native file-URL diagnostic, or `File URL path must not include NUL characters.` ({§scheme-address}). |
 | `edit-empty` | 400 | edit requires at least one statement. Recovery: Provide an edit statement. |
+| `edit-format-invalid` | 422 | The edit produces invalid *mimetype*: *cause* ({§edit}). |
 | `edit-batch-mismatch` | 400 | The edit batch spans multiple resources. Recovery: Submit a separate edit batch for each resource. |
 | `line-marker-required` | 400 | edit of an existing file requires a line marker ({§edit}). Recovery: Name the lines to replace with `range: "@hash"` or `range: "@start,@end"` from a read of the file; `range: "L,1,L,1"` inserts before line L, and `range: "1,-1"` replaces the whole file. |
 | `creation-batch-conflict` | 409 | Multiple edit operations attempted to create the same file. Recovery: Create the file with one edit before applying additional edits. |

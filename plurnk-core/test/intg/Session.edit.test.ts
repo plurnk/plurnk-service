@@ -390,7 +390,7 @@ test("{§zero-width-column-one-insert} Session.edit: line shorthand has the same
     } finally { await db.close(); }
 });
 
-test("{§zero-width-column-one-insert} Session.edit: textual JSON edits do not introduce a hidden parse gate", async () => {
+test("{§edit} Session.edit: format-breaking JSON edits are rejected without mutating the entry", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -401,9 +401,10 @@ test("{§zero-width-column-one-insert} Session.edit: textual JSON edits do not i
             editStatement({ target: urlPath("workspace", "/users.json"), body: "{not valid json", lineMarker: { marks: [-1] } }),
             makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }),
         );
-        assert.equal(r.status, 200);
+        assert.equal(r.status, 422);
+        assert.match(String(r.problem?.type), /\/edit-format-invalid$/);
         const read = await readThroughScheme("workspace", null, readStatement({ target: urlPath("workspace", "/users.json") }), makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }));
-        assert.equal(read.content, '[1,2,3]\n{not valid json');
+        assert.equal(read.content, '[1,2,3]');
     } finally { await db.close(); }
 });
 
