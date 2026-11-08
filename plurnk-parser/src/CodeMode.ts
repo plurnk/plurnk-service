@@ -473,6 +473,20 @@ const CALLER_TARGET_ALIASES: ReadonlySet<string> = new Set([
 const isCallerTargetAlias = (raw: string): boolean =>
     CALLER_TARGET_ALIASES.has(raw.trim().toLowerCase());
 
+const isConclusionCallerAlias = (raw: string): boolean =>
+    isCallerTargetAlias(raw) || /^session:\/\/[^/]+\/?$/iu.test(raw.trim());
+
+const isBareScriptFilename = (runtime: string, value: unknown): value is string => {
+    if (typeof value !== "string") return false;
+    if (runtime === "js") {
+        return /^(?:\.{0,2}\/)?[A-Za-z0-9_./-]+\.(?:m?js|cjs|m?ts|cts)$/u.test(value);
+    }
+    if (runtime === "python3") {
+        return /^(?:\.{0,2}\/)?[A-Za-z0-9_./-]+\.py$/u.test(value);
+    }
+    return false;
+};
+
 const WAIT_KEYS: ReadonlySet<string> = new Set([
     "target", "for", "path", "uri", "session", "seconds", "duration",
     "text", "body", "content", "message", "reason", "aside",
@@ -3095,7 +3109,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             return emitStatement({ op, aside: activeDefaultAside, target: null, lineMarker: null, attachments: null, body: null, position: pos });
         }
         if (typeof args[0] === "string" && typeof args[1] === "string") {
-            const target = isCallerTargetAlias(args[0]) ? null : parsePath(args[0], pos);
+            const target = isConclusionCallerAlias(args[0]) ? null : parsePath(args[0], pos);
             return emitStatement({ op, aside: activeDefaultAside, target, lineMarker: null, attachments: null, body: args[1].length === 0 ? null : toSendBody(args[1]), position: pos });
         }
         if (typeof args[0] === "string") {
@@ -3105,7 +3119,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             const first = args[0];
             assertAllowedKeys(first, CONCLUSION_KEYS, `plurnk.${op}`, recovery, pos);
             const rawTarget = first.target ?? first.to ?? first.recipient ?? first.path ?? first.uri;
-            const target = typeof rawTarget === "string" && rawTarget.length > 0 && !isCallerTargetAlias(rawTarget)
+            const target = typeof rawTarget === "string" && rawTarget.length > 0 && !isConclusionCallerAlias(rawTarget)
                 ? parsePath(rawTarget, pos)
                 : null;
             const attachments = toAttachments(first.attachments, pos);
@@ -3285,7 +3299,10 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                     position: pos,
                 });
             }
-            const rawScript = first.script ?? first.target ?? first.path ?? first.file;
+            const explicitScript = first.script ?? first.target ?? first.path ?? first.file;
+            const initialBody = first.text ?? first.code ?? first.command ?? first.cmd ?? first.body ?? first.source ?? first.prompt;
+            const promoteBodyToScript = explicitScript === undefined && isBareScriptFilename(runtime, initialBody);
+            const rawScript = promoteBodyToScript ? initialBody : explicitScript;
             const rawCwd = first.cwd;
             const hasBothCwdAndScript = typeof rawCwd === "string" && rawCwd.length > 0
                 && typeof rawScript === "string" && rawScript.length > 0;
@@ -3294,7 +3311,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
             const cwd = hasBothCwdAndScript ? rawCwd : undefined;
             const lineMarker = toLineMarker(first.range ?? first.lines ?? first.scope, pos);
             let body: string | null = null;
-            const rawBody = first.text ?? first.code ?? first.command ?? first.cmd ?? first.body ?? first.source ?? first.prompt;
+            const rawBody = promoteBodyToScript ? undefined : initialBody;
             if (rawBody !== undefined && rawBody !== null && rawBody !== "") {
                 body = typeof rawBody === "string" ? rawBody : JSON.stringify(rawBody);
             } else if (Array.isArray(first.args) && first.args.length > 0) {
@@ -3345,7 +3362,7 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
         const first = args[0];
         const second = isRecord(args[1]) ? args[1] : null;
         if (second !== null) {
-            assertAllowedKeys(second, CALL_OPTIONS_KEYS, `${runtime}${propAccess(rawTool)}`, `await ${runtime}${propAccess(rawTool)}({ ... });`, pos);
+            assertAllowedKeys(second, CALL_OPTIONS_KEYS, `${runtime}${propAccess(rawTool)}`, `await ${runtime}${propAccess(rawTool)}({ ... })`, pos);
         }
         let body: string | null = null;
         if (first !== undefined && first !== null && first !== "") {
@@ -3487,6 +3504,11 @@ const createCallDispatcher = (options: CodeModeOptions = {}) => {
                 dispatchPlurnkTool(tool, args);
                 return;
             }
+            buildMcpCall(service, tool, args);
+            return;
+        }
+        if (chain.length === 3 && chain[0]?.toLowerCase() === "plurnk") {
+            const [, service = "", tool = ""] = chain;
             buildMcpCall(service, tool, args);
             return;
         }

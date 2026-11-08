@@ -432,3 +432,48 @@ test("{§proposal-projection} {§proposal-disposition}: capability allow pre-app
         access: "execute",
     }]);
 });
+
+test("{§proposal-projection} tool_call subject omits locations when canonicalized target pathname is empty", async () => {
+    const db = {
+        proposal_get_pending: {
+            get: async () => ({
+                logEntryId: 201,
+                workspaceId: 11,
+                sessionId: 12,
+                session: "main",
+                loopId: 13,
+                turnId: 14,
+                loopSeq: 1,
+                turnSeq: 1,
+                sequence: 1,
+                op: "js",
+                signal: null,
+                scheme: null,
+                hostname: null,
+                port: null,
+                pathname: "",
+                query: null,
+                rx: JSON.stringify({ status: 202, body: "[js] report.mjs" }),
+                attrs: JSON.stringify({ runtime: "js", body: "report.mjs", effect: "host" }),
+                owner: "test://primary",
+                owner_tools: "[]",
+                owner_interactive: 0,
+                turn_kind: "model",
+                turn_producer: "model",
+                project_root: "/work",
+                workspace_settings: "{}",
+            }),
+        },
+    } as unknown as Db;
+    const lifecycle = lifecycleWithDb(db);
+    const waiting = lifecycle.awaitResolution(201);
+    const pending = await lifecycle.pending(201);
+    assert.ok(pending);
+    assert.deepEqual(pending.subject, {
+        type: "tool_call",
+        kind: "execute",
+        title: "js",
+    });
+    lifecycle.resolve(201, { decision: "reject" });
+    await waiting;
+});
