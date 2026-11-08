@@ -887,5 +887,16 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((parenOps[0] as EditStatement).target?.raw, "workspace:///catalog.xml");
         assert.equal((parenOps[1] as EditStatement).target?.raw, "workspace:///config.json");
         assert.equal(parenTexts.length, 1);
+
+        const inlineScriptExec = PlurnkParser.parse([
+            'await plurnk.python3({"script":"import zlib,struct\\nprint(1)"});',
+            'await plurnk.sh({"script":"python3 analyze.py","cwd":"."});',
+        ].join("\n"), { executors: ["sh", "python3"] });
+        const execOps = inlineScriptExec.items.filter((i) => i.kind === "statement").map((i) => i.statement as ExecStatement);
+        assert.equal(execOps.length, 2);
+        assert.equal(execOps[0].target, null);
+        assert.equal(execOps[0].body, "import zlib,struct\nprint(1)");
+        assert.equal(execOps[1].target?.raw, ".");
+        assert.equal(execOps[1].body, "python3 analyze.py");
     });
 });

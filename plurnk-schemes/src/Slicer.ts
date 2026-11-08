@@ -315,7 +315,9 @@ export default class Slicer {
         }
         const inserted = body.length > 0 && last.separator.length > 0 && !/[\r\n]$/.test(body)
             ? `${body}${last.separator}`
-            : body;
+            : content.length > 0 && last.separator.length === 0
+                ? body.replace(/(?:\r\n|\r|\n)$/, "")
+                : body;
         return {
             start: first.start,
             end: last.end,

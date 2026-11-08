@@ -830,8 +830,14 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                     position: pos,
                 });
             }
-            const explicitScript = first.script ?? first.target ?? first.path ?? first.file;
-            const initialBody = first.text ?? first.code ?? first.command ?? first.cmd ?? first.body ?? first.source ?? first.prompt;
+            const explicitBody = first.text ?? first.code ?? first.command ?? first.cmd ?? first.body ?? first.source ?? first.prompt;
+            const inlineScriptBody = explicitBody === undefined
+                && typeof first.script === "string"
+                && /[\s;()"'|&<>]/u.test(first.script.trim())
+                ? first.script
+                : undefined;
+            const explicitScript = (inlineScriptBody === undefined ? first.script : undefined) ?? first.target ?? first.path ?? first.file;
+            const initialBody = explicitBody ?? inlineScriptBody;
             const promoteBodyToScript = explicitScript === undefined && isBareScriptFilename(runtime, initialBody);
             const rawScript = promoteBodyToScript ? initialBody : explicitScript;
             const rawCwd = first.cwd;
