@@ -651,7 +651,7 @@ export const unwrapCodeModeFences = (
 export const translateToolCallsOutsideFences = (input: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string => {
     const { masked, bodies } = maskHeredocBodies(input);
     const strippedSeedThink = masked.replace(
-        /<seed:think>[\s\S]*?<\/seed:think>/giu,
+        /<(?:seed|mm|minimax):think>[\s\S]*?<\/(?:seed|mm|minimax):think>|^[ \t]*[^\r\n]*?<\/(?:seed|mm|minimax):think>[ \t]*(?=(?:await\s+)?[A-Za-z_$(])/gimu,
         (fullMatch) => padNewlines("", fullMatch),
     );
     const preTranslated = strippedSeedThink.replace(

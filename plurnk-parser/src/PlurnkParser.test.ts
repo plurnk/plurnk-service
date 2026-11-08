@@ -898,5 +898,15 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal(execOps[0].body, "import zlib,struct\nprint(1)");
         assert.equal(execOps[1].target?.raw, ".");
         assert.equal(execOps[1].body, "python3 analyze.py");
+
+        const minimaxThinkAndLogHeader = PlurnkParser.parse([
+            ']<]minimax[>[<tool_call> pool: 5, host: db.internal.</mm:think>await plurnk.done({"text":"db.internal"})',
+            'await plurnk.kill({"path":"log:///1/2/2/read (sample.png)"})',
+        ].join("\n"));
+        const mmOps = minimaxThinkAndLogHeader.items.filter((i) => i.kind === "statement").map((i) => i.statement);
+        assert.equal(mmOps.length, 2);
+        assert.equal((mmOps[0] as DoneStatement).body?.raw, "db.internal");
+        assert.equal((mmOps[1] as KillStatement).target?.raw, "log:///1/2/2/read");
+        assert.equal(((mmOps[1] as KillStatement).target as { pathname?: string }).pathname, "/1/2/2/read");
     });
 });
