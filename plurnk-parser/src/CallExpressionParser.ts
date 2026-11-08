@@ -80,6 +80,7 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
 
     let inObjectPropertyValue = false;
     let lastValueWasHeredoc = false;
+    let objectDepth = 0;
 
     const isLikelyObjectValueStringClose = (quotePos: number, quoteChar: string): boolean => {
         if (!inObjectPropertyValue) return true;
@@ -250,10 +251,18 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
         const heredocKeys = new Set<string>();
         const prevInObjectPropertyValue = inObjectPropertyValue;
         inObjectPropertyValue = false;
+        objectDepth += 1;
         try {
             while (idx < code.length) {
                 skipTrivia();
                 if (code[idx] === "}") {
+                    const prematureClose = objectDepth === 1
+                        ? /^\}[ \t\r\n]*[,;][ \t\r\n]*(?=(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)[ \t\r\n]*\??[ \t\r\n]*:)/u.exec(code.slice(idx))
+                        : null;
+                    if (prematureClose !== null) {
+                        idx += prematureClose[0].length;
+                        continue;
+                    }
                     idx += 1;
                     if (heredocKeys.size > 0) HEREDOC_OBJECT_KEYS.set(obj, heredocKeys);
                     return obj;
@@ -296,6 +305,13 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
                     continue;
                 }
                 if (code[idx] === "}") {
+                    const prematureClose = objectDepth === 1
+                        ? /^\}[ \t\r\n]*[,;][ \t\r\n]*(?=(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)[ \t\r\n]*\??[ \t\r\n]*:)/u.exec(code.slice(idx))
+                        : null;
+                    if (prematureClose !== null) {
+                        idx += prematureClose[0].length;
+                        continue;
+                    }
                     idx += 1;
                     if (heredocKeys.size > 0) HEREDOC_OBJECT_KEYS.set(obj, heredocKeys);
                     return obj;
@@ -321,6 +337,7 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
                 fail(idx, `Expected \`,\` or \`}\` in object literal after \`${key}\`.`);
             }
         } finally {
+            objectDepth -= 1;
             inObjectPropertyValue = prevInObjectPropertyValue;
         }
         fail(start, "Unterminated object literal.");

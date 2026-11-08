@@ -297,8 +297,12 @@ export const scanChunks = (
                 continue;
             }
             if (ch === "}") {
-                if (braceDepth > 0) braceDepth -= 1;
-                else if (openedCall && parenDepth === 1 && bracketDepth === 0 && /^;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(source.slice(i + 1))) parenDepth = 0;
+                const prematureObjectClose = braceDepth === 1 && parenDepth === 1 && bracketDepth === 0
+                    && /^\}[ \t\r\n]*[,;][ \t\r\n]*(?=(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)[ \t\r\n]*\??[ \t\r\n]*:)/u.test(source.slice(i));
+                if (!prematureObjectClose) {
+                    if (braceDepth > 0) braceDepth -= 1;
+                    else if (openedCall && parenDepth === 1 && bracketDepth === 0 && /^;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(source.slice(i + 1))) parenDepth = 0;
+                }
                 prevSigChar = ch;
                 i += 1;
                 if (braceDepth === 0 && parenDepth === 0 && bracketDepth === 0) {
