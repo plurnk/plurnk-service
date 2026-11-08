@@ -6,7 +6,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 
 test("{§turn-source-resources} the frozen projection keeps every statement and body whole, and adds no nested operations", () => {
     const lines = [
-        'await plurnk.read({"path":"workspace:///notes.md","range":"1,-1","pattern":"/needle/"}) // inspect',
+        'await plurnk.read({"path":"workspace:///notes.md","range":"1,-1","pattern":<<<EOF\n/needle/\nEOF}) // inspect',
         'await plurnk.edit({"path":"workspace:///notes.md","range":"@abcde","text":<<<EOF\nA literal example:\n```KILL (workspace:///not-an-operation)\n```\nReplacement text.\nEOF}) // replace',
         'await plurnk.copy({"from":{"path":"workspace:///a.md","range":"2,4"},"to":{"path":"workspace:///b.md","range":"0"}})',
         'await plurnk.move({"from":{"path":"workspace:///b.md","range":"1,2"},"to":{"path":"workspace:///c.md","range":"-1"}})',

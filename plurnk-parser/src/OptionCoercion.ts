@@ -95,11 +95,13 @@ export const assertAllowedKeys = (
     recovery: string,
     pos: Position,
 ): void => {
-    if (!allowed.has("text") && isRecord(obj.text)) {
-        const nested = obj.text;
-        delete obj.text;
-        for (const [nk, nv] of Object.entries(nested)) {
-            if (!(nk in obj)) obj[nk] = nv;
+    for (const wrapperKey of ["text", "params", "parameters", "arguments", "args", "input", "options", "properties"]) {
+        if (!allowed.has(wrapperKey) && isRecord(obj[wrapperKey])) {
+            const nested = obj[wrapperKey];
+            delete obj[wrapperKey];
+            for (const [nk, nv] of Object.entries(nested)) {
+                if (!(nk in obj)) obj[nk] = nv;
+            }
         }
     }
     for (const [key, value] of Object.entries(obj)) {
@@ -168,7 +170,7 @@ export const KILL_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 export const NOTE_KEYS: ReadonlySet<string> = new Set([
-    "text", "content", "body", "note", "message", "path", "target", "uri", "resource", "aside",
+    "text", "content", "body", "note", "message", "path", "target", "uri", "resource", "range", "lines", "scope", "aside",
 ]);
 
 export const TODO_KEYS: ReadonlySet<string> = new Set([

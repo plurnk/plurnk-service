@@ -260,7 +260,7 @@ export const scanChunks = (
                 i += 1;
                 if (openedCall && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
                     while (i < source.length && (source[i] === " " || source[i] === "\t" || source[i] === "\r" || source[i] === "}" || source[i] === ")")) i += 1;
-                    if (source[i] === ";") {
+                    if (source[i] === ";" || (source[i] === "." && /^[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(source.slice(i + 1)))) {
                         i += 1;
                         while (i < source.length && (source[i] === " " || source[i] === "\t" || source[i] === "\r")) i += 1;
                     }
@@ -298,12 +298,13 @@ export const scanChunks = (
             }
             if (ch === "}") {
                 if (braceDepth > 0) braceDepth -= 1;
+                else if (openedCall && parenDepth === 1 && bracketDepth === 0 && /^;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(source.slice(i + 1))) parenDepth = 0;
                 prevSigChar = ch;
                 i += 1;
                 if (braceDepth === 0 && parenDepth === 0 && bracketDepth === 0) {
                     if (openedCall) {
                         while (i < source.length && (source[i] === " " || source[i] === "\t" || source[i] === "\r" || source[i] === "}" || source[i] === ")")) i += 1;
-                        if (source[i] === ";") {
+                        if (source[i] === ";" || (source[i] === "." && /^[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(source.slice(i + 1)))) {
                             i += 1;
                             while (i < source.length && (source[i] === " " || source[i] === "\t" || source[i] === "\r")) i += 1;
                         }
