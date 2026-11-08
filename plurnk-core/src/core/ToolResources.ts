@@ -201,6 +201,51 @@ export default class ToolResources {
         return ToolInputSchema.targetSegment(target);
     }
 
+    static async filterSummaryForVisibleTools(
+        pathname: string,
+        aside: string | undefined,
+        visible: (pathname: string) => boolean | Promise<boolean>,
+    ): Promise<string | undefined> {
+        if (aside === undefined || !pathname.endsWith(".md") || pathname.slice(1).includes("/")) return aside;
+        const match = /^(await\s+[A-Za-z0-9_$-]+)\["([^"]+)"\](\([\s\S]*?\);\s*\/\/\s*)([\s\S]*)$/u.exec(aside);
+        if (match === null) return aside;
+        const [, prefix, rawTools, callAndComment, description] = match;
+        const root = pathname.slice(0, -".md".length);
+        const tools = rawTools.split("|");
+        const checks = await Promise.all(tools.map(async (tool) => ({
+            tool,
+            isVisible: await visible(`${root}/${ToolResources.targetSegment(tool)}.json`),
+        })));
+        if (checks.every(({ isVisible }) => isVisible)) return aside;
+        const kept = checks.filter(({ isVisible }) => isVisible).map(({ tool }) => tool);
+        if (kept.length === 0) return aside;
+        const nextDescription = checks.some(({ tool, isVisible }) => tool === "question" && !isVisible)
+            ? description.replace(
+                ", workspace configuration (env, mcp, members, personas, schedule, skills), and user questions.",
+                ", and workspace configuration (env, mcp, members, personas, schedule, skills).",
+            )
+            : description;
+        return `${prefix}[${JSON.stringify(kept.join("|"))}]${callAndComment}${nextDescription}`;
+    }
+
+    static async filterDocumentForVisibleTools(
+        pathname: string,
+        content: string,
+        visible: (pathname: string) => boolean | Promise<boolean>,
+    ): Promise<string> {
+        if (!pathname.endsWith(".md") || pathname.slice(1).includes("/")) return content;
+        if (pathname === "/plurnk.md" && !(await visible("/plurnk/question.json"))) {
+            return content
+                .replace("|question\"]", "\"]")
+                .replace(
+                    ", workspace configuration (env, mcp, members, personas, schedule, skills), and user questions.",
+                    ", and workspace configuration (env, mcp, members, personas, schedule, skills).",
+                )
+                .replace(/\n\nawait plurnk\.question\([^\n]*\n\/\/ schema: [^\n]*\/plurnk\/question\.json/u, "");
+        }
+        return content;
+    }
+
     static render(source: ToolSource): ToolResource[] {
         const scheme = ToolResources.schemeOf(source.resourcesPath);
         const pathname = ToolResources.documentPath(source.runtime, source.resourcesPath);

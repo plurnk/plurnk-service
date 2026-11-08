@@ -612,7 +612,7 @@ SEND AST: `{ op: "send", target: ParsedPath | null, body: SendBody | null, heade
 
 | Aspect | Rule |
 | --- | --- |
-| Targetless SEND / DONE / FAIL | Selects the oldest published Open Message at dispatch time; `SEND` leaves it open, `DONE`/`FAIL` resolves it. With none open, delivers speech to the loop's latest published message without changing outcomes (refused only when the loop has no published message). Never broadcasts or answers unpublished arrivals. |
+| Targetless SEND / DONE / FAIL | Selects the oldest published Open Message at dispatch time; `SEND` leaves it open, `DONE`/`FAIL` resolves it. With none open, delivers speech to the loop's latest published message without changing outcomes (except when `DONE` supersedes an earlier `499` cancellation on that message in the still-running loop), refused only when the loop has no published message. Never broadcasts or answers unpublished arrivals. |
 | Empty & sequential replies | Empty completion replies (`DONE` / `FAIL`) resolve selected messages without inventing speech or erasing an earlier answer. Replies execute and deliver in authored order; the latest explicit completion reply determines each message's outcome. |
 | Receipt & history | A successful reply records `repliedTo` (immutable `message://<session>/<key>` addresses answered) and remains recoverable in `message_history`. Actor-addressed SEND, WAIT, NOTE, asides, and ambient observations are not replies. |
 | Latest finished reply | The session's newest model-authored delivered reply (`DONE`, `FAIL`, or `SEND` completed via `WAIT`, not copied history, {§machine-processes}) recording `completion` `200` or `499`; daemon abandonment `499` replies never count. |

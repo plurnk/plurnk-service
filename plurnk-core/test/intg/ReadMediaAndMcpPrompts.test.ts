@@ -866,7 +866,7 @@ ${step("note")}`),
             assert.match(texts[1], /"role": "assistant"/u, "the supplied role remains visible as prompt data");
             // {§emission-history}: only admitted operations have assistant authorship.
             const initProgram = chatMessageText(provider.received[0][2]);
-            assert.match(initProgram, /await plurnk\.todo\(\{"items":\[<<<EOF\nResolve all Open Work\.\nEOF\]\}\);$/u, "turn 1/1 replays the initialization survey as an assistant emission");
+            assert.match(initProgram, /await plurnk\.todo\(\{"items":\[<<<EOF\nResolve all Open Work\.\nEOF\]\}\); \/\/ <<<EOF \.\.\. EOF multiline string$/u, "turn 1/1 replays the initialization survey as an assistant emission");
             const noted = step("note");
             const promptRead = "await plurnk.read({\"path\":\"fixture:///prompts/inspect\",\"range\":\"1,-1\"});";
             const mediaRead = `await plurnk.read({"path":"${provider.resource}#bytes","range":"1,3"});`;

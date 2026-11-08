@@ -366,6 +366,12 @@ const toRemote = (value: unknown, pos: Position): boolean | null => {
     return value;
 };
 
+const IGNORED_OPTION_KEYS: ReadonlySet<string> = new Set([
+    "id",
+    "call_id",
+    "tool_call_id",
+]);
+
 const assertAllowedKeys = (
     obj: Record<string, unknown>,
     allowed: ReadonlySet<string>,
@@ -374,7 +380,7 @@ const assertAllowedKeys = (
     pos: Position,
 ): void => {
     for (const [key, value] of Object.entries(obj)) {
-        if (value !== undefined && !allowed.has(key)) {
+        if (value !== undefined && !allowed.has(key) && !IGNORED_OPTION_KEYS.has(key)) {
             throw new PlurnkParseError(
                 pos.line,
                 pos.column,
@@ -591,7 +597,7 @@ type Chunk =
     | { readonly kind: "text"; readonly text: string; readonly position: Position }
     | { readonly kind: "advisory"; readonly message: string; readonly position: Position };
 
-const HEREDOC_OPEN_RE = /^<<<(?:'([A-Za-z][A-Za-z0-9_-]{0,16})'|"([A-Za-z][A-Za-z0-9_-]{0,16})"|([A-Za-z][A-Za-z0-9_-]{0,16}))/u;
+const HEREDOC_OPEN_RE = /^<<<?-?(?:'([A-Za-z][A-Za-z0-9_-]{0,16})'|"([A-Za-z][A-Za-z0-9_-]{0,16})"|([A-Za-z][A-Za-z0-9_-]{0,16}))/u;
 
 interface HeredocOpenerMatch {
     readonly tag: string;
@@ -601,13 +607,23 @@ interface HeredocOpenerMatch {
 }
 
 const matchHeredocOpener = (text: string, offset: number): HeredocOpenerMatch | null => {
-    if (text[offset] !== "<" || text[offset + 1] !== "<" || text[offset + 2] !== "<") {
+    if (text[offset] !== "<" || text[offset + 1] !== "<") {
         return null;
+    }
+    if (text[offset + 2] !== "<") {
+        let p = offset - 1;
+        while (p >= 0 && (text[p] === " " || text[p] === "\t" || text[p] === "\r" || text[p] === "\n")) p -= 1;
+        if (p >= 0 && !":([,+=".includes(text[p])) {
+            return null;
+        }
     }
     const m = HEREDOC_OPEN_RE.exec(text.slice(offset));
     if (m === null) return null;
     const tag = m[1] ?? m[2] ?? m[3] ?? "";
     const afterOpener = offset + m[0].length;
+    if (!/^[ \t]*(?:[,})\];]|\/\/|\r?\n|$)/u.test(text.slice(afterOpener))) {
+        return null;
+    }
     const inlineNl = /^[ \t]*(?:\/\/[^\r\n]*)?\r?\n/u.exec(text.slice(afterOpener));
     if (inlineNl !== null) {
         return {
@@ -704,12 +720,11 @@ const unwrapCodeModeFences = (input: string): { readonly source: string; readonl
                 continue;
             }
             if (ch === "/" && line[k + 1] === "/") break;
-            if (ch === "<" && line[k + 1] === "<" && line[k + 2] === "<") {
-                const m = HEREDOC_OPEN_RE.exec(line.slice(k));
-                if (m !== null) {
-                    const tag = m[1] ?? m[2] ?? m[3] ?? "";
-                    pendingHeredocs.push(tag);
-                    k += m[0].length - 1;
+            if (ch === "<" && line[k + 1] === "<") {
+                const opener = matchHeredocOpener(line, k);
+                if (opener !== null) {
+                    pendingHeredocs.push(opener.tag);
+                    k = opener.afterOpener - 1;
                     continue;
                 }
             }
@@ -803,8 +818,11 @@ const WRAPPER_VERBS: ReadonlySet<string> = new Set([
     "tool_calls",
     "tool-call",
     "tool-calls",
+    "tool call",
+    "tool calls",
     "tool_use",
     "tool-use",
+    "tool use",
     "tool_code",
     "function",
     "functions",
@@ -812,6 +830,8 @@ const WRAPPER_VERBS: ReadonlySet<string> = new Set([
     "function_calls",
     "function-call",
     "function-calls",
+    "function call",
+    "function calls",
     "emission",
     "result",
     "unfenced",
@@ -919,7 +939,7 @@ const resolveToolCallTarget = (
         const service = prefixMatch[1].toLowerCase();
         const tool = prefixMatch[2].trim();
         if (tool.length === 0 || WRAPPER_VERBS.has(tool.toLowerCase())) return null;
-        if (service === "plurnk") {
+        if (service === "plurnk" || WRAPPER_VERBS.has(service)) {
             const known = resolveKnownPlurnkMember(tool);
             if (known === null) return null;
             return `await plurnk${propAccess(known)}`;
@@ -1006,6 +1026,15 @@ const parseXmlAttributes = (attrText: string): Record<string, unknown> => {
                         ? unescapeXmlAttrValue(m[5], "'")
                         : (m[6] ?? "");
         attrs[key] = coerceToolParamValue(rawVal);
+    }
+    const trailingPayloadMatch = /\b(text|content|newText|new_string|new_text|body|command)\s*=\s*"([\s\S]*)"\s*$/u.exec(attrText);
+    if (trailingPayloadMatch !== null) {
+        const key = trailingPayloadMatch[1];
+        const rawPayload = trailingPayloadMatch[2];
+        const existing = attrs[key];
+        if (typeof existing !== "string" || existing.length < rawPayload.length) {
+            attrs[key] = unescapeXmlAttrValue(rawPayload, null);
+        }
     }
     return attrs;
 };
@@ -1106,9 +1135,9 @@ const replaceXmlInvocations = (
         },
     );
 
-    // 2. Standard <function=name>...</function> and paired/self-closing <([service._:-]|antml:|DSML)?(invoke|function|tool_call|function_call|tool|call|tool_use|result) name="...">
+    // 2. Standard <function=name>...</function> and paired/self-closing <([service._:-]|antml:|DSML)?(invoke|function|tool_call|function_call|tool|call|tool_use|result) (name|call|tool|op)="...">
     out = out.replace(
-        /<function=([A-Za-z0-9_.:-]+)>([\s\S]*?)<\/function>|<(?:([A-Za-z_$][A-Za-z0-9$]*)[._:-]|antml:|(?:[|｜]+)?DSML[|｜]+\s*)?(invoke|function|tool_call|function_call|tool-call|tool|call|tool_use|tool-use|result)\b([^>]*?\bname\s*=\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|“[^”]*”|‘[^’]*’|[^\s"'=<>`/]+)(?:[^/>]|\/(?!>))*)(?:\/>|>([\s\S]*?)<\/(?:[A-Za-z_$][A-Za-z0-9$]*[._:-]|antml:|(?:[|｜]+)?DSML[|｜]+\s*)?\4>)/giu,
+        /<function=([A-Za-z0-9_.:-]+)>([\s\S]*?)<\/function>|<(?:([A-Za-z_$][A-Za-z0-9$]*)[._:-]|antml:|(?:[|｜]+)?DSML[|｜]+\s*)?(invoke|function|tool_call|function_call|tool-call|tool|call|tool_use|tool-use|result)\b([^>]*?\b(?:name|call|tool|op)\s*=\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|“[^”]*”|‘[^’]*’|[^\s"'=<>`/]+)(?:[^/>]|\/(?!>))*)(?:\/>|>([\s\S]*?)<\/(?:[A-Za-z_$][A-Za-z0-9$]*[._:-]|antml:|(?:[|｜]+)?DSML[|｜]+\s*)?\4>)/giu,
         (
             fullMatch,
             fnName: string | undefined,
@@ -1125,8 +1154,9 @@ const replaceXmlInvocations = (
                 return padNewlines(formatTranslatedCall(target, parseXmlToolCallBody(fnBody ?? "")), fullMatch);
             }
             const attrs = parseXmlAttributes(attrText ?? "");
-            const rawName = typeof attrs.name === "string" ? attrs.name : "";
-            delete attrs.name;
+            const nameKey = (["name", "call", "tool", "op"] as const).find((k) => typeof attrs[k] === "string");
+            const rawName = nameKey !== undefined && typeof attrs[nameKey] === "string" ? attrs[nameKey] : "";
+            if (nameKey !== undefined) delete attrs[nameKey];
             const prefixLower = tagPrefix?.toLowerCase();
             const effectiveDefault = prefixLower !== undefined && prefixLower !== "antml" && prefixLower !== "dsml"
                 ? prefixLower
@@ -1160,9 +1190,9 @@ const replaceXmlInvocations = (
         },
     );
 
-    // 4. Direct XML element tool calls (<plurnk.find path="..." />, <plurnk:read .../>, <plurnk_edit>...</plurnk_edit>, <gitea_issue_read .../>)
+    // 4. Direct XML element tool calls (<plurnk.find path="..." />, <plurnk:read .../>, <plurnk_edit>...</plurnk_edit>, <await plurnk.read>...</await>, <gitea_issue_read .../>)
     out = out.replace(
-        /<([A-Za-z_$][A-Za-z0-9_$-]*[._:-][A-Za-z_$][A-Za-z0-9_$-]*|mcp__[A-Za-z0-9_$-]+)((?:\s+[A-Za-z_][A-Za-z0-9_.:-]*\s*=\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|“[^”]*”|‘[^’]*’|[^\s"'=<>`/]+))*)\s*(?:\/>(?:\s*<\/\1>)?|>([\s\S]*?)<\/\1>)/giu,
+        /<(?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*[._:-][A-Za-z_$][A-Za-z0-9_$-]*|mcp__[A-Za-z0-9_$-]+)((?:\s+[A-Za-z_][A-Za-z0-9_.:-]*\s*=\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|“[^”]*”|‘[^’]*’|[^\s"'=<>`/]+))*)\s*(?:\/>(?:\s*<\/(?:await|\1)>)?|>([\s\S]*?)<\/(?:await|\1)>)/giu,
         (fullMatch, tagName: string, attrText: string | undefined, innerBody: string | undefined) => {
             const target = resolveToolCallTarget(tagName, executorSpellings, true, defaultService);
             if (target === null) return fullMatch;
@@ -1183,6 +1213,28 @@ const replaceXmlInvocations = (
         },
     );
 
+    // 4b. Self-closing <plurnk.<op> ... /> with multiline or unescaped-quote payload attributes, plus bare no-arg <plurnk.<op>> on its own line
+    out = out.replace(
+        /<(?:await\s+)?(plurnk[._:-][A-Za-z_$][A-Za-z0-9_$-]*|[A-Za-z_$][A-Za-z0-9_$-]*_[A-Za-z_$][A-Za-z0-9_$-]*)(\s+[A-Za-z_][\s\S]*?)\/>(?:\s*<\/\1>)?/giu,
+        (fullMatch, tagName: string, attrText: string) => {
+            const target = resolveToolCallTarget(tagName, executorSpellings, true, defaultService);
+            if (target === null) return fullMatch;
+            const attrs = parseXmlAttributes(attrText);
+            if (Object.keys(attrs).length === 0) return fullMatch;
+            translated = true;
+            return padNewlines(formatTranslatedCall(target, attrs), fullMatch);
+        },
+    );
+    out = out.replace(
+        /^[ \t]*<(?:await\s+)?(plurnk[._:-][A-Za-z_$][A-Za-z0-9_$-]*)\s*\/?>[ \t]*$/gimu,
+        (fullMatch, tagName: string) => {
+            const target = resolveToolCallTarget(tagName, executorSpellings, true, defaultService);
+            if (target === null) return fullMatch;
+            translated = true;
+            return `${target}();`;
+        },
+    );
+
     // 5. <unfenced_code_edit_*> tag triplets
     out = out.replace(
         /<unfenced_code_edit_path>([\s\S]*?)<\/unfenced_code_edit_path>\s*(?:<unfenced_code_edit_range>([\s\S]*?)<\/unfenced_code_edit_range>\s*)?(?:<unfenced_code_edit_pattern>([\s\S]*?)<\/unfenced_code_edit_pattern>\s*)?<unfenced_code_edit_content>([\s\S]*?)<\/unfenced_code_edit_content>/giu,
@@ -1196,7 +1248,7 @@ const replaceXmlInvocations = (
         },
     );
 
-    // 6. Angle-bracketed Code Mode hybrid calls (<await plurnk.edit({...})/>, <plurnk.read({...}/>, <plurnk.note({...})>, <plurnk:await plurnk.find({...});>)
+    // 6. Angle-bracketed Code Mode hybrid calls (<await plurnk.edit({...})/>, <await plurnk.sh({...});, <plurnk.note({...}/>)}, <await plurnk.edit({...}); // fix</await>)
     out = out.replace(
         /^[ \t]*<(?:[A-Za-z_$][A-Za-z0-9_$-]*:)?(?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*\.[A-Za-z_$][A-Za-z0-9_$-]*)\s*\(\s*(\{[\s\S]*?\})\s*\)?\s*;?\s*\/?>(?:<\/(?:await|[A-Za-z_$][A-Za-z0-9_$.:-]*)>)?[ \t]*$/gmu,
         (fullMatch, rawTarget: string, jsonObj: string) => {
@@ -1206,6 +1258,21 @@ const replaceXmlInvocations = (
             return padNewlines(`${target}(${jsonObj});`, fullMatch);
         },
     );
+    out = out.replace(
+        /^([ \t]*)<(?:[A-Za-z_$][A-Za-z0-9_$-]*:)?(?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*\.[A-Za-z_$][A-Za-z0-9_$-]*)\s*\(/gmu,
+        (fullMatch, indent: string, rawTarget: string) => {
+            const target = resolveToolCallTarget(rawTarget, executorSpellings, true);
+            if (target === null) return fullMatch;
+            translated = true;
+            return `${indent}${target}(`;
+        },
+    );
+    if (translated) {
+        out = out
+            .replace(/(\})\s*\/?>\s*(\)\s*\}?\s*;?[ \t]*(?:\/\/[^\r\n]*)?)$/gmu, "$1$2")
+            .replace(/(\)\s*;?)[ \t]*\/?>(?:<\/(?:await|[A-Za-z_$][A-Za-z0-9_$.:-]*)>)?([ \t]*(?:\/\/[^\r\n]*)?)$/gmu, "$1$2")
+            .replace(/<\/(?:await|plurnk(?:[._:-][A-Za-z_$][A-Za-z0-9_$-]*)?)>[ \t]*$/gimu, "");
+    }
 
     return { text: out, translated };
 };
@@ -1240,10 +1307,31 @@ const extractToolCallDescriptors = (val: unknown): Array<{ readonly name: string
     const explicitArgs = val.arguments ?? val.parameters ?? val.input ?? val.args;
     const rawName = val.name ?? val.tool ?? val.tool_name ?? (explicitArgs !== undefined ? val.command : undefined);
     if (typeof rawName === "string") {
+        if (explicitArgs !== undefined) {
+            return [{ name: rawName, args: explicitArgs }];
+        }
+        const restArgs: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(val)) {
+            if (k !== "name" && k !== "tool" && k !== "tool_name" && k !== "type" && !IGNORED_OPTION_KEYS.has(k)) {
+                restArgs[k] = v;
+            }
+        }
         return [{
             name: rawName,
-            args: explicitArgs ?? {},
+            args: Object.keys(restArgs).length > 0 ? restArgs : {},
         }];
+    }
+    const keys = Object.keys(val).filter((k) => !IGNORED_OPTION_KEYS.has(k));
+    const hasPathKey = keys.some((k) => k === "path" || k === "target" || k === "uri" || k === "file_path" || k === "filepath" || k === "file");
+    const hasEditPayloadKey = keys.some((k) => k === "text" || k === "content" || k === "body" || k === "newText" || k === "new_string" || k === "new_text" || k === "replacement" || k === "edits");
+    if (hasPathKey && hasEditPayloadKey && keys.every((k) => EDIT_KEYS.has(k))) {
+        return [{ name: "plurnk.edit", args: val }];
+    }
+    if (!hasPathKey && (typeof val.text === "string" || typeof val.note === "string") && keys.every((k) => NOTE_KEYS.has(k))) {
+        return [{ name: "plurnk.note", args: val }];
+    }
+    if (!hasPathKey && (val.items !== undefined || val.todos !== undefined) && keys.every((k) => TODO_KEYS.has(k))) {
+        return [{ name: "plurnk.todo", args: val }];
     }
     return null;
 };
@@ -1308,7 +1396,7 @@ const unwrapWrapperInnerCalls = (
 
 const translateSegmentToolCalls = (segment: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string => {
     let out = segment.replace(
-        /<((?:[|｜]+)?DSML[|｜]+\s*(?:function_calls?|tool_calls?|calls)|(?:[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:invoke|call|calls|tool|tools|tool_call|tool_calls|tool-call|tool-calls|tool_use|tool-use|tool_code|function|functions|function_call|function_calls|function-call|function-calls|emission|result|unfenced)|system)\b(?![^>]*\bname\s*=)[^>]*>([\s\S]*?)<\/\1>|<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>([\s\S]*?)<[|｜]tool[▁_]calls(?:_section)?[▁_]end[|｜]>|<\|tool_call[^>]*>([\s\S]*?)<\|\/tool_call\|>|\[TOOL_CALLS\]([\s\S]*?)\[\/TOOL_CALLS\]/giu,
+        /<((?:[|｜]+)?DSML[|｜]+\s*(?:function_calls?|tool_calls?|calls)|(?:[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:invoke|call|calls|tool|tools|tool_call|tool_calls|tool-call|tool-calls|tool calls?|tool_use|tool-use|tool use|tool_code|function|functions|function_call|function_calls|function-call|function-calls|function calls?|emission|result|unfenced)|system)\b(?![^>]*\b(?:name|call|tool|op)\s*=)[^>]*>([\s\S]*?)<\/\1>|<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>([\s\S]*?)<[|｜]tool[▁_]calls(?:_section)?[▁_]end[|｜]>|<\|tool_call[^>]*>([\s\S]*?)<\|\/tool_call\|>|\[TOOL_CALLS\]([\s\S]*?)\[\/TOOL_CALLS\]/giu,
         (
             fullMatch,
             rawTag: string | undefined,
@@ -1336,10 +1424,29 @@ const translateSegmentToolCalls = (segment: string, executorSpellings: ReadonlyM
     out = xmlReplaced.text;
     if (xmlReplaced.translated) {
         out = out.replace(
-            /^[ \t]*<\/?(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|[A-Za-z_$][A-Za-z0-9_$]*[._:-])?(?:tool_calls?|function_calls?|tool-calls?|function-calls?|(?:function_)?calls|unfenced|result)\b[^>]*>[ \t]*$/gimu,
+            /^[ \t]*<\/?(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|[A-Za-z_$][A-Za-z0-9_$]*[._:-])?(?:tool[ _-]calls?|function[ _-]calls?|(?:function_)?calls|unfenced|result)\b[^>]*>[ \t]*$/gimu,
+            "",
+        );
+    } else if (CONTAINS_CALL.test(out)) {
+        out = out.replace(
+            /^[ \t]*<\/?(?:antml:|(?:[|｜]+)?DSML[|｜]+\s*|[A-Za-z_$][A-Za-z0-9_$]*[._:-])?(?:tool[ _-]calls?|function[ _-]calls?)\b[^>]*>[ \t]*$/gimu,
             "",
         );
     }
+
+    // Unwrap standalone single-backticked Code Mode call lines (`await plurnk.<op>(...)`).
+    out = out.replace(
+        /^[ \t]*`((?:await\s+)?[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\([^\r\n`]*?\)\s*;?)`([ \t]*(?:\/\/[^\r\n]*)?)$/gmu,
+        (fullMatch, callExpr: string, trailingComment: string) => {
+            const headMatch = /^(?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*\s*\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|plurnk\b)/u.exec(callExpr.trim());
+            if (headMatch === null) return fullMatch;
+            const rawTarget = headMatch[1].replace(/\s+/gu, "");
+            if (rawTarget !== "plurnk" && resolveToolCallTarget(rawTarget, executorSpellings, true) === null) {
+                return fullMatch;
+            }
+            return `${callExpr}${trailingComment}`;
+        },
+    );
 
     // GLM-4 style: <|tool_call|>name\n{...}
     out = out.replace(
@@ -1371,17 +1478,17 @@ const translateSegmentToolCalls = (segment: string, executorSpellings: ReadonlyM
 };
 
 const maskHeredocBodies = (input: string): { readonly masked: string; readonly bodies: readonly string[] } => {
-    if (!input.includes("<<<")) return { masked: input, bodies: [] };
+    if (!input.includes("<<")) return { masked: input, bodies: [] };
     const bodies: string[] = [];
     let out = "";
     let lastIdx = 0;
     let cursor = 0;
     while (cursor < input.length) {
-        const nextIdx = input.indexOf("<<<", cursor);
+        const nextIdx = input.indexOf("<<", cursor);
         if (nextIdx === -1) break;
         const opener = matchHeredocOpener(input, nextIdx);
         if (opener === null) {
-            cursor = nextIdx + 3;
+            cursor = nextIdx + 2;
             continue;
         }
         if (opener.isInline) {
@@ -1428,7 +1535,7 @@ const unmaskHeredocBodies = (masked: string, bodies: readonly string[]): string 
 const translateToolCallsOutsideFences = (input: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string => {
     const { masked, bodies } = maskHeredocBodies(input);
     const preTranslated = masked.replace(
-        /<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]calls(?:_section)?[▁_]end[|｜]>|<[|｜]tool[▁_]call[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]call[▁_]end[|｜]>|<((?:[|｜]+)?DSML[|｜]+\s*(?:function_calls?|tool_calls?|calls|invoke)|(?:antml:|[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:invoke|function|tool_call|tool_calls|function_call|function_calls|tool-call|tool-calls|tool|call|calls|tool_use|result))\b[^>]*>[\s\S]*?<\/\1>/giu,
+        /<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]calls(?:_section)?[▁_]end[|｜]>|<[|｜]tool[▁_]call[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]call[▁_]end[|｜]>|<((?:[|｜]+)?DSML[|｜]+\s*(?:function_calls?|tool_calls?|calls|invoke)|(?:antml:|[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:invoke|function|tool_call|tool_calls|function_call|function_calls|tool-call|tool-calls|tool calls?|function calls?|tool|call|calls|tool_use|tool use|result))\b[^>]*>[\s\S]*?<\/\1>/giu,
         (fullMatch) => translateSegmentToolCalls(fullMatch, executorSpellings),
     );
     const lines = preTranslated.split("\n");
@@ -1658,7 +1765,7 @@ const scanChunks = (
                 continue;
             }
 
-            if (ch === "<" && next === "<" && source[i + 2] === "<") {
+            if (ch === "<" && next === "<") {
                 const opener = matchHeredocOpener(source, i);
                 if (opener !== null) {
                     if (opener.isInline) {
@@ -1704,8 +1811,8 @@ const scanChunks = (
                 prevSigChar = ch;
                 i += 1;
                 if (openedCall && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
-                    // Consume optional `.join(...)` or whitespace, `;`, and trailing `// aside` on the same line.
-                    while (i < source.length && (source[i] === " " || source[i] === "\t" || source[i] === "\r")) i += 1;
+                    // Consume optional stray closing braces/parens, whitespace, `;`, and trailing `// aside` on the same line.
+                    while (i < source.length && (source[i] === " " || source[i] === "\t" || source[i] === "\r" || source[i] === "}" || source[i] === ")")) i += 1;
                     if (source[i] === ";") {
                         i += 1;
                         while (i < source.length && (source[i] === " " || source[i] === "\t" || source[i] === "\r")) i += 1;
@@ -2227,7 +2334,7 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
         skipTrivia();
         if (idx >= code.length) fail(idx, "Unexpected end of input while reading argument value.");
         const ch = code[idx];
-        if (ch === "<" && code[idx + 1] === "<" && code[idx + 2] === "<") {
+        if (ch === "<" && code[idx + 1] === "<" && (code[idx + 2] === "<" || matchHeredocOpener(code, idx) !== null)) {
             return readHeredocLiteral();
         }
         if (ch === '"' || ch === "'" || ch === "`") {
@@ -2298,6 +2405,14 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
             }
             args.push(readValueExpr());
             skipTrivia();
+            while (
+                (code[idx] === "}" && /^\}+\s*(?:\/?>\s*)?\)/u.test(code.slice(idx)))
+                || ((code[idx] === "/" || code[idx] === ">") && /^\/?>\s*\)/u.test(code.slice(idx)))
+            ) {
+                if (code[idx] === "/" && code[idx + 1] === ">") idx += 2;
+                else idx += 1;
+                skipTrivia();
+            }
             if (code[idx] === ",") {
                 idx += 1;
                 continue;
@@ -2390,7 +2505,7 @@ const parseCallStatements = (code: string, basePos: Position): readonly ParsedCa
             trailingHeredocCursor = null;
         } else {
             skipTrivia();
-            while (code[idx] === ";") {
+            while (code[idx] === ";" || code[idx] === "}" || code[idx] === ")") {
                 idx += 1;
                 skipTrivia();
             }

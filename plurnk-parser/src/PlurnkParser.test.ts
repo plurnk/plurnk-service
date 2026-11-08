@@ -602,4 +602,82 @@ describe("PlurnkParser Code Mode", () => {
             assert.equal(emptyDone.items[0].error.recovery, 'await plurnk.done({ text: "..." });');
         }
     });
+
+    test("{§fence-pairing} {§parse-recovery}: deterministic toleration recovers shell heredocs, extra braces, angle-bracket hybrids, space-separated wrappers, XML attribute near-misses, and tool call ids", () => {
+        const turn = [
+            // 1. Shell-style heredocs (<<'EOF', <<"EOF", <<EOF, <<-'EOF', <<-EOF) and extra closing `}` (`EOF}});`)
+            [
+                "await plurnk.sh({",
+                '  text: <<\'EOF\'',
+                'python -c "print(1)"',
+                "EOF",
+                "}});",
+            ].join("\n"),
+            [
+                "await plurnk.edit({",
+                '  path: "src/a.py",',
+                '  range: "10,12",',
+                '  text: <<-"EOF"',
+                "def f():",
+                "    return True",
+                "EOF",
+                "});",
+            ].join("\n"),
+            // 2. Leading `<` / angle-bracket hybrids around Code Mode statements (including multiline heredoc + trailing comment + </await>)
+            '<await plurnk.sh({ text: "pytest astropy/nddata/tests/test_nddata.py" });',
+            [
+                "<await plurnk.edit({",
+                '  path: "src/b.py",',
+                '  range: "1,3",',
+                "  text: <<<EOF",
+                "x = 1",
+                "EOF",
+                "}); // apply fix</await>",
+            ].join("\n"),
+            '<plurnk.edit({ path: "src/c.py", range: "1,1", text: "y = 2" }) // update y</plurnk.edit>',
+            '<plurnk.note({ text: "Orientation note" }/>)}',
+            '<await plurnk.read>\n{"path": "src/d.py", "range": "1,20"}\n</await>',
+            "<plurnk.wait>",
+            // 3. Space-separated `<tool calls>` / `<tool call>` / `<tool calls pending>` wrappers and single-backticked call lines
+            '<tool calls>\nawait plurnk.read({ path: "src/e.py" });\n</tool calls>',
+            '<tool calls pending>\nawait plurnk.find({ path: "src/**" });\n</tool calls>',
+            '`await plurnk.read({ path: "src/f.py", range: "1,10" });`',
+            // 4. XML tool-call attribute & tag near-misses (<plurnk.tool call="read" .../>, <tool_edit .../>, unescaped quotes in text="...", flat/nameless JSON tool_call)
+            '<plurnk.tool call="read" path="src/g.py" range="5,15" />',
+            '<tool_edit path="src/h.py" range="1,2" text="z = 3" />',
+            '<plurnk.edit path="src/i.py" range="1,4" text="def g():\n    return "quoted"\n" />',
+            '<plurnk_tool_call>{"path": "src/j.py", "range": "2,4", "text": "w = 4"}</plurnk_tool_call>',
+            '<tool_call>{"name": "plurnk.note", "text": "Flat JSON tool call"}</tool_call>',
+            // 5. Hallucinated `id` / `call_id` / `tool_call_id` in Code Mode options objects
+            'await plurnk.read({ id: "call_1", call_id: "c2", tool_call_id: "tc3", path: "src/k.py" });',
+        ].join("\n\n");
+
+        const ops = statementsOf(turn, ["sh", "plurnk"]);
+        assert.equal(ops.length, 17);
+        assert.equal((ops[0] as ExecStatement).runtime, "sh");
+        assert.equal((ops[0] as ExecStatement).body, 'python -c "print(1)"');
+        assert.equal((ops[1] as EditStatement).target?.raw, "src/a.py");
+        assert.equal((ops[1] as EditStatement).body, "def f():\n    return True");
+        assert.equal((ops[2] as ExecStatement).body, "pytest astropy/nddata/tests/test_nddata.py");
+        assert.equal((ops[3] as EditStatement).target?.raw, "src/b.py");
+        assert.equal((ops[3] as EditStatement).body, "x = 1");
+        assert.equal((ops[3] as EditStatement).aside, "apply fix");
+        assert.equal((ops[4] as EditStatement).target?.raw, "src/c.py");
+        assert.equal((ops[4] as EditStatement).aside, "update y");
+        assert.equal((ops[5] as NoteStatement).body, "Orientation note");
+        assert.equal((ops[6] as ReadStatement).target?.raw, "src/d.py");
+        assert.equal((ops[7] as DispositionStatement).op, "wait");
+        assert.equal((ops[8] as ReadStatement).target?.raw, "src/e.py");
+        assert.equal((ops[9] as FindStatement).target?.raw, "src/**");
+        assert.equal((ops[10] as ReadStatement).target?.raw, "src/f.py");
+        assert.equal((ops[11] as ReadStatement).target?.raw, "src/g.py");
+        assert.equal((ops[12] as EditStatement).target?.raw, "src/h.py");
+        assert.equal((ops[12] as EditStatement).body, "z = 3");
+        assert.equal((ops[13] as EditStatement).target?.raw, "src/i.py");
+        assert.equal((ops[13] as EditStatement).body, 'def g():\n    return "quoted"\n');
+        assert.equal((ops[14] as EditStatement).target?.raw, "src/j.py");
+        assert.equal((ops[14] as EditStatement).body, "w = 4");
+        assert.equal((ops[15] as NoteStatement).body, "Flat JSON tool call");
+        assert.equal((ops[16] as ReadStatement).target?.raw, "src/k.py");
+    });
 });

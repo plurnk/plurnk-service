@@ -589,6 +589,22 @@ test("{§message-completion} a terminal response supersedes earlier delivered SE
     assert.deepEqual(messages.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["The codename is Bumblebee.", "The codename is phoenix."]);
 });
 
+test("{§message-completion} a later DONE in the same loop supersedes an earlier mid-loop FAIL", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, "response-fail-then-done");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "Fix the bug.");
+    const provider = new Mock({ contextWindow: 100000, responses: [
+        response(`await plurnk.find({"path":"workspace:///*"});\nawait plurnk.fail({"text":"Premature failure during burst."});`),
+        response(`await plurnk.done({"text":"Fixed cleanly after observing results."});`),
+    ] });
+    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
+    assert.equal(result.result.status, 200);
+    assert.equal(result.result.problem, undefined);
+    assert.equal(await lastReply(db, loopId), "Fixed cleanly after observing results.");
+});
+
 test("{§loop-completion} an observed cleanup failure does not invalidate completed work", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());

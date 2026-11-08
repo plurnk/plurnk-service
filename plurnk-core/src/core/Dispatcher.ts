@@ -930,6 +930,7 @@ export default class Dispatcher {
                 { workspaceId, sessionId, loopId, turnId },
                 signal,
             ),
+            referenceVisibility: () => this.#admission.referenceVisibility(context),
             executors: this.#executors(),
         };
         return context;
@@ -994,14 +995,17 @@ export default class Dispatcher {
         if (target === null) {
             const open = await this.#db.engine_open_messages.get<{ key_path: string }>({ loop_id: loopId });
             // {§message-completion} — with none open, the reply is speech to the loop's latest message:
-            // delivered to its originating client, its outcome unchanged.
-            const message = open ?? await this.#db.message_latest_published.get<{ key_path: string }>({ loop_id: loopId });
+            // delivered to its originating client, its outcome unchanged unless DONE supersedes an earlier FAIL.
+            const latest = open === undefined
+                ? await this.#db.message_latest_published.get<{ key_path: string; completion_status: number | null }>({ loop_id: loopId })
+                : undefined;
+            const message = open ?? latest;
             if (message === undefined) return Dispatcher.#failure(
                 "send-target-required", 400, `${statement.op} has no recipient and its loop has no published message.`, {},
                 { recovery: "Name a recipient address.", retryable: false },
             );
             repliedTo = [message.key_path];
-            speechOnly = open === undefined;
+            speechOnly = open === undefined && !(statement.op === "done" && latest?.completion_status === 499);
         } else {
             const message = await this.#db.message_source_by_address.get<{ key_path: string }>({
                 workspace_id: schemeCtx.workspaceId, path: target.raw,

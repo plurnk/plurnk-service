@@ -1163,7 +1163,7 @@ test("{§question-tool}: an interaction-denied workspace omits the question tool
         const { paths, content } = await catalog();
         assert.ok(paths.some((path) => path.endsWith("/plurnk/members.json")), "noninteractive plurnk tools remain discoverable");
         assert.ok(!paths.some((path) => path.endsWith("/plurnk/question.json")), "the question tool schema does not exist for the workspace");
-        assert.ok(!content.includes("plurnk (question)"), "the rendered catalog agrees with the location list");
+        assert.ok(!content.includes("question"), "the rendered catalog agrees with the location list");
     } finally {
         await db.close();
     }
@@ -1173,8 +1173,9 @@ test("{§question-tool}: a session whose interactive owner declares question see
     const { db, workspaceId, sessionId, catalog } = await boot();
     try {
         await ownSession(db, workspaceId, sessionId);
-        const { paths } = await catalog();
+        const { paths, content } = await catalog();
         assert.ok(paths.some((path) => path.endsWith("/plurnk/question.json")), "the interactive session sees the question tool");
+        assert.ok(content.includes("question"), "the interactive session sees question in the plurnk catalog summary");
     } finally {
         await db.close();
     }
@@ -1192,7 +1193,7 @@ for (const [label, owner] of [
         assert.ok(paths.some((path) => path.endsWith("/plurnk/sh.json")), "noninteractive tools remain discoverable");
         assert.ok(paths.some((path) => path.endsWith("/plurnk/members.json")), "noninteractive plurnk tools remain discoverable");
         assert.ok(!paths.some((path) => path.endsWith("/plurnk/question.json")), "the shared reference set hides the tool from this session");
-        assert.ok(!content.includes("plurnk (question)"), "the rendered catalog agrees with the location list");
+        assert.ok(!content.includes("question"), "the rendered catalog agrees with the location list");
         const result = await engine.dispatch({ ...dispatch, sequence: 2, statement: execStatement() });
         assert.equal(result.status, 403);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");

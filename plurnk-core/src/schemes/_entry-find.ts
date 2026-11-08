@@ -26,6 +26,7 @@ import EntryManifest, { type CatalogChannel, type CatalogDefaultChannel, type Ca
 import EntryFts from "./_entry-fts.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
 import FileAddress from "../core/FileAddress.ts";
+import ToolResources from "../core/ToolResources.ts";
 import { Slicer, type MatchEvidence } from "@plurnk/plurnk-schemes";
 import { resolveSearchCandidates, type SearchCandidateSet } from "./_search-candidate.ts";
 import { pathFolderSummaries, pathScope, pathScopeMatches, type PathScope, type PathFolderSummary } from "./_path-scope.ts";
@@ -486,7 +487,12 @@ export default class EntryFind {
         candidates = candidates.filter((candidate) => pathScopeMatches(authorityScope, candidate.authority));
         if (address.visible !== undefined) {
             candidates = (await Promise.all(candidates.map(async (candidate) => ({
-                candidate,
+                candidate: candidate.content !== undefined && candidate.pathname.endsWith(".md")
+                    ? {
+                        ...candidate,
+                        content: await ToolResources.filterDocumentForVisibleTools(candidate.pathname, candidate.content, address.visible!),
+                    }
+                    : candidate,
                 visible: await address.visible!(candidate.pathname),
             })))).filter(({ visible }) => visible).map(({ candidate }) => candidate);
         }
@@ -836,6 +842,13 @@ export default class EntryFind {
         for (const m of match.matches) {
             const row = byPath.get(addressOf(m.pathname));
             if (row !== undefined) {
+                if (address.visible !== undefined && m.pathname.endsWith(".md") && row[0].aside !== undefined) {
+                    const filteredAside = await ToolResources.filterSummaryForVisibleTools(m.pathname, row[0].aside, address.visible);
+                    if (filteredAside !== row[0].aside) {
+                        resources.push({ item: [{ ...row[0], aside: filteredAside }, ...row.slice(1)], match: m });
+                        continue;
+                    }
+                }
                 resources.push({ item: row, match: m });
                 continue;
             }

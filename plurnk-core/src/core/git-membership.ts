@@ -148,9 +148,10 @@ export default class GitMembership {
     }
 
     // Resolve a directory to the containing Git repository, or null when absent.
-    static async #repoToplevel(dir: string, signal: AbortSignal | undefined): Promise<string | null> {
+    static async #repoToplevel(dir: string, signal: AbortSignal | undefined, trustedRoot?: string): Promise<string | null> {
         try {
-            const { stdout } = await GitMembership.#execFileP("git", ["rev-parse", "--show-toplevel"], { cwd: dir, signal, env: hermeticGitEnv(dir) });
+            const trusted = trustedRoot !== undefined && trustedRoot !== dir ? [trustedRoot, dir] : dir;
+            const { stdout } = await GitMembership.#execFileP("git", ["rev-parse", "--show-toplevel"], { cwd: dir, signal, env: hermeticGitEnv(trusted) });
             return stdout.trim();
         } catch (cause) {
             // {§membership} — a repository git refuses as another account's is not "no repository":
@@ -170,8 +171,9 @@ export default class GitMembership {
     static async #automaticRepository(
         dir: string,
         signal: AbortSignal | undefined,
+        trustedRoot?: string,
     ): Promise<{ repository: string | null; refusedFilter: string | null }> {
-        const repository = await GitMembership.#repoToplevel(dir, signal);
+        const repository = await GitMembership.#repoToplevel(dir, signal, trustedRoot);
         if (repository === null) return { repository: null, refusedFilter: null };
         const refusedFilter = await declaredFilterProgram(repository, signal);
         return refusedFilter === null ? { repository, refusedFilter: null } : { repository: null, refusedFilter };
@@ -192,13 +194,14 @@ export default class GitMembership {
         workspaceId: number,
         root: string,
         signal?: AbortSignal,
+        trustedRoot?: string,
     ): Promise<string | null> {
         if (
             process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1"
             || process.env.PLURNK_SERVICE_GIT_AUTO !== "1"
             || (await WorkspaceSettings.read(db, workspaceId)).git === false
         ) return null;
-        return (await GitMembership.#automaticRepository(root, signal)).repository;
+        return (await GitMembership.#automaticRepository(root, signal, trustedRoot)).repository;
     }
 
     // {§membership} (#1400): resolve the deepest existing ancestor directory for `key` so paths inside
@@ -226,7 +229,7 @@ export default class GitMembership {
         signal?: AbortSignal,
     ): Promise<string | null> {
         const dir = await GitMembership.#governingDirectory(root, key);
-        return GitMembership.#activeAutomaticRepository(db, workspaceId, dir, signal);
+        return GitMembership.#activeAutomaticRepository(db, workspaceId, dir, signal, root);
     }
 
     static async #isIgnoredByRepository(
@@ -432,7 +435,7 @@ export default class GitMembership {
             const dir = await GitMembership.#governingDirectory(root, pathname);
             let cached = repos.get(dir);
             if (cached === undefined) {
-                cached = GitMembership.#automaticRepository(dir, signal).then((r) => r.repository);
+                cached = GitMembership.#automaticRepository(dir, signal, repository ?? root).then((r) => r.repository);
                 repos.set(dir, cached);
             }
             return cached;
@@ -589,7 +592,7 @@ export default class GitMembership {
         const absDirectory = directory === "" ? root : resolve(root, directory);
         const dirRepository = directory === "" || (await stat(absDirectory).catch(() => null))?.isDirectory() !== true
             ? repository
-            : await GitMembership.#activeAutomaticRepository(db, workspaceId, absDirectory, signal);
+            : await GitMembership.#activeAutomaticRepository(db, workspaceId, absDirectory, signal, repository ?? root);
         let files: string[];
         if (dirRepository !== null && dirRepository !== repository) {
             const subDir = relative(dirRepository, absDirectory);
@@ -717,7 +720,7 @@ export default class GitMembership {
             const dir = await GitMembership.#governingDirectory(root, key);
             let repository = repoByDir.get(dir);
             if (repository === undefined) {
-                repository = (await GitMembership.#automaticRepository(dir, signal)).repository;
+                repository = (await GitMembership.#automaticRepository(dir, signal, root)).repository;
                 repoByDir.set(dir, repository);
             }
             if (repository === null) continue;
@@ -789,7 +792,7 @@ export default class GitMembership {
                 if (dirKey.length > 0 && !PathSyntax.hasGlob(dirKey)) {
                     const absDir = resolve(root, dirKey);
                     if ((await stat(absDir).catch(() => null))?.isDirectory() === true) {
-                        const { repository } = await GitMembership.#automaticRepository(absDir, signal);
+                        const { repository } = await GitMembership.#automaticRepository(absDir, signal, root);
                         if (repository !== null) {
                             if (!pattern.startsWith("../") && rootRepository === undefined) {
                                 rootRepository = (await GitMembership.#automaticRepository(root, signal)).repository;
