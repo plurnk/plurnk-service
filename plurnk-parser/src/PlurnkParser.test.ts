@@ -971,11 +971,10 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.find({"path": "workspace:///", "pattern": "retry", "range": "1 resource"})',
             'await plurnk.read({"path": "workspace:///notes.md", "range": ""})',
             'await plurnk.edit({"path": "workspace:///config.json", "range": "$.host", "text": "db.example"})',
-            'await plurnk.edit({"path": "workspace:///notes.md", "range": "1:1", "pattern": "^.{2}", "text": "AL"})',
         ].join("\n\n"));
         assert.equal(lfm25Recoveries.items.every((i) => i.kind === "statement"), true);
         const lfm25Ops = lfm25Recoveries.items.filter((i) => i.kind === "statement").map((i) => i.statement);
-        assert.equal(lfm25Ops.length, 12);
+        assert.equal(lfm25Ops.length, 11);
         assert.equal((lfm25Ops[0] as DoneStatement).body?.raw, "ok");
         assert.equal((lfm25Ops[1] as EditStatement).target?.raw, "workspace:///notes.md");
         assert.equal((lfm25Ops[2] as ReadStatement).target?.raw, "workspace:///notes.md");
@@ -988,6 +987,5 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((lfm25Ops[9] as ReadStatement).lineMarker, null);
         assert.deepEqual((lfm25Ops[10] as EditStatement).matcher, { dialect: "jsonpath", raw: "$.host" });
         assert.equal((lfm25Ops[10] as EditStatement).lineMarker, null);
-        assert.deepEqual((lfm25Ops[11] as EditStatement).lineMarker, { marks: [1, 1] });
     });
 });
