@@ -61,7 +61,15 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
         JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
         WHERE ae.id = le.ambient_event_id AND ae.kind = 'reply'
           AND (sender.session_id = le.session_id OR le.inherited_history = 1)
-        LIMIT 1) AS answering
+        LIMIT 1) AS answering,
+       CASE
+           WHEN le.op IN ('send', 'done', 'fail') AND json_valid(le.rx) AND json_type(le.rx, '$.repliedTo') = 'array'
+           THEN (
+               SELECT json_group_array(COALESCE(ms.source, ms.path))
+               FROM json_each(le.rx, '$.repliedTo') reply
+               JOIN message_sources ms ON ms.key_path = reply.value AND ms.workspace_id = w.workspace_id
+           )
+       END AS replied_to_sources
 FROM log_entries le
 JOIN sessions w ON w.id = le.session_id
 JOIN loops l ON l.id = le.loop_id
@@ -127,7 +135,15 @@ SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_
         JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
         WHERE ae.id = le.ambient_event_id AND ae.kind = 'reply'
           AND (sender.session_id = le.session_id OR le.inherited_history = 1)
-        LIMIT 1) AS answering
+        LIMIT 1) AS answering,
+       CASE
+           WHEN le.op IN ('send', 'done', 'fail') AND json_valid(le.rx) AND json_type(le.rx, '$.repliedTo') = 'array'
+           THEN (
+               SELECT json_group_array(COALESCE(ms.source, ms.path))
+               FROM json_each(le.rx, '$.repliedTo') reply
+               JOIN message_sources ms ON ms.key_path = reply.value AND ms.workspace_id = w.workspace_id
+           )
+       END AS replied_to_sources
 FROM log_entries le
 JOIN sessions w ON w.id = le.session_id
 JOIN loops l ON l.id = le.loop_id

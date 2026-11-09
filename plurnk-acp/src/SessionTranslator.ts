@@ -28,6 +28,7 @@ import {
     cleanReceipt,
     extractMessageId,
     extractStartLine,
+    extractVoice,
     invocationCoordinate,
     isResponseMessage,
     parseJsonOrValue,
@@ -208,6 +209,33 @@ export default class SessionTranslator {
         // 1. Agent response message
         const isResponse = isResponseMessage(entry, parsedRx, attrs, text, this.#acpSessionId);
         const isBodiedWait = entry.origin === "model" && entry.op === "wait" && text.trim().length > 0;
+        const repliedToSources =
+            Array.isArray(entry.replied_to_sources) && entry.replied_to_sources.length > 0
+                ? entry.replied_to_sources.filter((s): s is string => typeof s === "string" && s.length > 0)
+                : undefined;
+        const repliedToMessageIds =
+            repliedToSources !== undefined
+                ? repliedToSources
+                      .map((src) => extractMessageId(src, this.#acpSessionId))
+                      .filter((id): id is string => id !== null)
+                : undefined;
+        const enrichedReceipt = isRecord(receipt)
+            ? {
+                  ...receipt,
+                  ...(repliedToMessageIds !== undefined && repliedToMessageIds.length > 0
+                      ? { repliedToMessageIds }
+                      : {}),
+                  ...(repliedToSources !== undefined && repliedToSources.length > 0
+                      ? { repliedToSources }
+                      : {}),
+              }
+            : receipt;
+        const replyVoice =
+            extractVoice(repliedToSources?.[0]) ??
+            (isRecord(receipt) && Array.isArray(receipt.repliedTo) && typeof receipt.repliedTo[0] === "string"
+                ? extractVoice(receipt.repliedTo[0])
+                : undefined) ??
+            extractVoice(address);
         const opMeta = {
             id: entry.id,
             sessionId: entry.session_id,
@@ -227,7 +255,7 @@ export default class SessionTranslator {
             ...(typeof entry.signal === "number" ? { signal: entry.signal } : {}),
             ...(address !== null ? { address, target: address } : {}),
             ...(Object.keys(attrs).length > 0 ? { attrs } : {}),
-            ...(isRecord(receipt) ? { receipt } : {}),
+            ...(isRecord(enrichedReceipt) ? { receipt: enrichedReceipt } : {}),
             ...(reasoningUrl !== undefined
                 ? { reasoning: { url: reasoningUrl, mimeType: "text/plain" } }
                 : {}),
@@ -255,7 +283,8 @@ export default class SessionTranslator {
                     _meta: {
                         plurnk: {
                             ...opMeta,
-                            ...(isBodiedWait && isRecord(receipt) ? { receipt } : {}),
+                            ...(replyVoice !== undefined ? { voice: replyVoice } : {}),
+                            ...(isBodiedWait && isRecord(enrichedReceipt) ? { receipt: enrichedReceipt } : {}),
                         },
                     },
                 },
@@ -302,6 +331,7 @@ export default class SessionTranslator {
             && (attrs.kind === "message" || typeof entry.answering === "string")
         ) {
             const messageId = extractMessageId(entry.source, this.#acpSessionId) ?? coordinate;
+            const userVoice = extractVoice(entry.source) ?? extractVoice(address);
             const useReference =
                 this.#origin !== undefined &&
                 this.#historyPageChars !== undefined &&
@@ -326,6 +356,7 @@ export default class SessionTranslator {
                             ...opMeta,
                             ...(typeof entry.answering === "string" ? { answering: entry.answering } : {}),
                             ...(typeof entry.source === "string" ? { source: entry.source } : {}),
+                            ...(userVoice !== undefined ? { voice: userVoice } : {}),
                         },
                     },
                 },

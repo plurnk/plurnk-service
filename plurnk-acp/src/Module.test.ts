@@ -152,10 +152,14 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.equal(init.response.capabilities?.session?.prompt?.audio, undefined);
             });
 
-            const scoutStream = createHttpStream(h.baseUrl, {
+            const scoutStream = createWebSocketStream(h.wsUrl, {
+                WebSocket: WsConstructor,
                 headers: { authorization: "Bearer scoutproxy-token" },
             });
-            const scoutApp = createAcpClient();
+            const scoutUpdates: SessionUpdate[] = [];
+            const scoutApp = createAcpClient().onNotification(methods.client.session.update, ({ params }) => {
+                scoutUpdates.push(params.update);
+            });
             let capturedScoutRunLoop: Parameters<typeof h.port.runLoop>[0] | undefined;
             const origRunLoop = h.port.runLoop.bind(h.port);
             h.port.runLoop = async (args) => {
@@ -175,14 +179,27 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         _meta: { plurnk: { messageId: "msg-scout-1" } },
                     });
                     assert.equal(promptRes.messageId, "msg-scout-1");
-                    assert.equal(
-                        capturedScoutRunLoop?.source,
-                        `acp://scoutproxy/sessions/${encodeURIComponent(created.sessionId)}/messages/msg-scout-1`,
-                    );
-                    assert.equal(
-                        capturedScoutRunLoop?.messageAddress,
-                        `acp://scoutproxy/sessions/${encodeURIComponent(created.sessionId)}/messages/msg-scout-1`,
-                    );
+                    const promptPlurnkMeta = (promptRes._meta as { plurnk?: { resource?: string } } | undefined)?.plurnk;
+                    assert.equal(promptPlurnkMeta?.resource, "message://gookie/scoutproxy_00");
+                    const expectedScoutSource = `acp://scoutproxy/sessions/${encodeURIComponent(created.sessionId)}/messages/msg-scout-1`;
+                    assert.equal(capturedScoutRunLoop?.source, expectedScoutSource);
+                    assert.equal(capturedScoutRunLoop?.messageAddress, expectedScoutSource);
+                    await waitFor(() => scoutUpdates.some((u) => u.sessionUpdate === "agent_message_chunk"));
+                    const replyChunk = scoutUpdates.find((u) => u.sessionUpdate === "agent_message_chunk");
+                    const replyMeta = (replyChunk?._meta as {
+                        plurnk?: {
+                            voice?: string;
+                            receipt?: {
+                                repliedTo?: string[];
+                                repliedToMessageIds?: string[];
+                                repliedToSources?: string[];
+                            };
+                        };
+                    } | undefined)?.plurnk;
+                    assert.equal(replyMeta?.voice, "scoutproxy");
+                    assert.deepEqual(replyMeta?.receipt?.repliedTo, ["message://gookie/scoutproxy_00"]);
+                    assert.deepEqual(replyMeta?.receipt?.repliedToMessageIds, ["msg-scout-1"]);
+                    assert.deepEqual(replyMeta?.receipt?.repliedToSources, [expectedScoutSource]);
                 });
             } finally {
                 h.port.runLoop = origRunLoop;

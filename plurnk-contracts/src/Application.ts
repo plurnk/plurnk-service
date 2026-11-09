@@ -237,6 +237,8 @@ export type LogEntryWire = LogAddressColumns & {
     invocation?: string;
     // {§methods-invocation} On a reply to a message this session's operation sent, the log address of that operation.
     answering?: string;
+    // {§message-completion} On a reply (`send`, `done`, `fail`), the originating source/address URIs of `rx.repliedTo`.
+    replied_to_sources?: readonly string[];
 };
 /** {§methods} A prompt's admission: its acknowledgement, the loop it landed on and how it landed. */
 export type ApplicationLoopAdmission = OperationResult & {
