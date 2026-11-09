@@ -45,7 +45,7 @@ import { executeSlashCommand, handlePlurnkAction } from "./actions.ts";
 import type { ResolvedModuleOptions } from "./config.ts";
 import { applyWorkspaceRenamed } from "./events.ts";
 import type { GateTracker } from "./gates.ts";
-import { attrRecord, extractMessageId } from "./log-entry-projection.ts";
+import { attrRecord, extractMessageId, extractVoice } from "./log-entry-projection.ts";
 import SessionTranslator from "./SessionTranslator.ts";
 import {
     OWNER_ADDRESS,
@@ -477,33 +477,62 @@ export const createConnectionAgent = (
             const activeLoop = selectSessionLoop(loops);
             const lifecycle = activeLoop !== null ? lifecycleOfLoopStatus(activeLoop.status) : "idle";
             const hasPendingAction = sessionProposals.length > 0 || sessionInteractions.length > 0;
+            const isNamedPrincipal =
+                peer.subject !== null &&
+                peer.subject !== undefined &&
+                peer.subject !== "operator" &&
+                peer.subject !== "anonymous";
+            const principalHasOpenMessage =
+                isNamedPrincipal &&
+                inbox.some(
+                    (msg) =>
+                        (msg.lifecycle === "running" ||
+                            msg.lifecycle === "queued" ||
+                            msg.lifecycle === "parked") &&
+                        extractVoice(msg.source) === peer.subject,
+                );
+            if (isNamedPrincipal) {
+                bound.principalRunning = principalHasOpenMessage;
+            }
 
-            const currentState: SessionUpdate = hasPendingAction
-                ? { sessionUpdate: "state_update", state: "requires_action" }
-                : lifecycle === "running" || lifecycle === "queued"
+            const currentState: SessionUpdate = isNamedPrincipal
+                ? principalHasOpenMessage
+                    ? {
+                          sessionUpdate: "state_update",
+                          state: "running",
+                          _meta: { plurnk: { voice: peer.subject } },
+                      }
+                    : {
+                          sessionUpdate: "state_update",
+                          state: "idle",
+                          _meta: { plurnk: { voice: peer.subject } },
+                      }
+                : hasPendingAction
+                  ? { sessionUpdate: "state_update", state: "requires_action" }
+                  : lifecycle === "running" || lifecycle === "queued"
                     ? { sessionUpdate: "state_update", state: "running" }
                     : lifecycle === "parked" && activeLoop !== null
-                        ? {
-                              sessionUpdate: "notice",
-                              severity: "info",
-                              title: "engine:lifecycle:loop_status",
-                              _meta: {
-                                  plurnk: {
-                                      notice: {
-                                          source: "engine:lifecycle",
-                                          kind: "loop_status",
-                                          level: "info",
-                                          status: 202,
-                                          loopId: activeLoop.id,
-                                          loopSeq: activeLoop.sequence,
-                                          packetCount: activeLoop.packetCount,
-                                          ...(activeLoop.waitUntil !== null ? { waitUntil: activeLoop.waitUntil } : {}),
-                                          ...(activeLoop.claimedAt !== null ? { claimedAt: toEpochMs(activeLoop.claimedAt) } : {}),
-                                      },
-                                  },
-                              },
-                          }
-                        : { sessionUpdate: "state_update", state: "idle", stopReason: "end_turn" };
+                      ? {
+                            sessionUpdate: "notice",
+                            severity: "info",
+                            title: "engine:lifecycle:loop_status",
+                            _meta: {
+                                plurnk: {
+                                    notice: {
+                                        source: "engine:lifecycle",
+                                        kind: "loop_status",
+                                        level: "info",
+                                        status: 202,
+                                        loopId: activeLoop.id,
+                                        loopSeq: activeLoop.sequence,
+                                        packetCount: activeLoop.packetCount,
+                                        ...(activeLoop.waitUntil !== null ? { waitUntil: activeLoop.waitUntil } : {}),
+                                        ...(activeLoop.claimedAt !== null ? { claimedAt: toEpochMs(activeLoop.claimedAt) } : {}),
+                                    },
+                                },
+                            },
+                        }
+                      : { sessionUpdate: "state_update", state: "idle" };
 
             notifyPeerSession(peer, bound.acpSessionId, currentState);
 
@@ -799,6 +828,28 @@ export const createConnectionAgent = (
                     i.sessionId === target.session.id ||
                     isDescendantSession(workspaceSessions, i.sessionId, target.session.id),
             );
+            const isNamedPrincipal =
+                peer.subject !== null &&
+                peer.subject !== undefined &&
+                peer.subject !== "operator" &&
+                peer.subject !== "anonymous";
+            if (isNamedPrincipal) {
+                const inbox = await seam.readInbox({
+                    workspaceId: target.workspaceId,
+                    sessionId: target.session.id,
+                });
+                const principalOpen = inbox.some(
+                    (msg) =>
+                        (msg.lifecycle === "running" ||
+                            msg.lifecycle === "queued" ||
+                            msg.lifecycle === "parked") &&
+                        extractVoice(msg.source) === peer.subject,
+                );
+                return {
+                    status: "open",
+                    state: principalOpen ? { state: "running" } : { state: "idle" },
+                };
+            }
             const activeLoop = selectSessionLoop(loops);
             const lifecycle = activeLoop !== null ? lifecycleOfLoopStatus(activeLoop.status) : "idle";
             const state: StateUpdate =
@@ -806,7 +857,7 @@ export const createConnectionAgent = (
                     ? { state: "requires_action" }
                     : lifecycle === "running" || lifecycle === "queued"
                       ? { state: "running" }
-                      : { state: "idle", stopReason: "end_turn" };
+                      : { state: "idle" };
             return {
                 status: "open",
                 state,
@@ -1372,6 +1423,11 @@ export const createConnectionAgent = (
                     update: {
                         sessionUpdate: "state_update",
                         state: "running",
+                        _meta: {
+                            plurnk: {
+                                voice: principal,
+                            },
+                        },
                     },
                 },
             ]);
@@ -1387,6 +1443,7 @@ export const createConnectionAgent = (
                             stopReason: "refusal",
                             _meta: {
                                 plurnk: {
+                                    voice: principal,
                                     terminal: {
                                         status: problem.status ?? 500,
                                         turnCount: 0,

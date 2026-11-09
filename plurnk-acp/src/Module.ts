@@ -396,19 +396,70 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
     #notifyPeerSession = (peer: AcpPeer, sessionId: string, update: SessionUpdate): void => {
         if (peer.client === null) return;
         const isNamedPrincipalPeer =
-            peer.subject !== null && peer.subject !== "operator" && peer.subject !== "anonymous";
-        if (
-            isNamedPrincipalPeer &&
-            (update.sessionUpdate === "user_message_chunk" ||
+            peer.subject !== null &&
+            peer.subject !== undefined &&
+            peer.subject !== "operator" &&
+            peer.subject !== "anonymous";
+        if (isNamedPrincipalPeer) {
+            const plurnkMeta =
+                isRecord(update._meta) && isRecord(update._meta.plurnk)
+                    ? update._meta.plurnk
+                    : undefined;
+            const updateVoice = plurnkMeta?.voice;
+            const updateVoices = Array.isArray(plurnkMeta?.voices) ? plurnkMeta.voices : undefined;
+            if (
+                update.sessionUpdate === "user_message_chunk" ||
                 update.sessionUpdate === "agent_message_chunk" ||
                 update.sessionUpdate === "user_message" ||
-                update.sessionUpdate === "agent_message")
-        ) {
-            const updateVoice =
-                isRecord(update._meta) && isRecord(update._meta.plurnk)
-                    ? update._meta.plurnk.voice
-                    : undefined;
-            if (updateVoice !== peer.subject) {
+                update.sessionUpdate === "agent_message"
+            ) {
+                if (updateVoice !== peer.subject && !updateVoices?.includes(peer.subject)) {
+                    return;
+                }
+            } else if (update.sessionUpdate === "state_update") {
+                const boundSession = peer.sessions.get(sessionId);
+                if (update.state === "running") {
+                    if (updateVoice !== peer.subject) {
+                        return;
+                    }
+                    if (boundSession !== undefined) {
+                        boundSession.principalRunning = true;
+                    }
+                } else if (update.state === "idle") {
+                    if (updateVoice !== undefined) {
+                        if (updateVoice !== peer.subject) {
+                            return;
+                        }
+                        if (boundSession !== undefined) {
+                            boundSession.principalRunning = false;
+                        }
+                    } else if (plurnkMeta?.terminal !== undefined) {
+                        if (boundSession?.principalRunning !== true) {
+                            return;
+                        }
+                        const statusRec = isRecord(plurnkMeta.status) ? plurnkMeta.status : null;
+                        const inboxArr = Array.isArray(statusRec?.inbox) ? statusRec.inbox : [];
+                        const stillOpenForPeer = inboxArr.some(
+                            (item) =>
+                                isRecord(item) &&
+                                (item.lifecycle === "running" ||
+                                    item.lifecycle === "queued" ||
+                                    item.lifecycle === "parked") &&
+                                item.voice === peer.subject,
+                        );
+                        if (stillOpenForPeer) {
+                            return;
+                        }
+                        boundSession.principalRunning = false;
+                    }
+                } else {
+                    return;
+                }
+            } else if (
+                update.sessionUpdate !== "session_info_update" &&
+                update.sessionUpdate !== "config_option_update" &&
+                update.sessionUpdate !== "available_commands_update"
+            ) {
                 return;
             }
         }

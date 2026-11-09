@@ -974,7 +974,11 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 );
 
                 assert.ok(updates.some((u) => u.sessionUpdate === "agent_thought_chunk"));
-                assert.ok(updates.some((u) => u.sessionUpdate === "agent_message_chunk"));
+                assert.ok(
+                    updates.some(
+                        (u) => u.sessionUpdate === "agent_thought_chunk" && u.messageId === "outside-1/1/0",
+                    ),
+                );
                 assert.ok(
                     updates.some(
                         (u) =>
@@ -2979,6 +2983,16 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 scoutUpdates.some((u) => u.sessionUpdate === "state_update") &&
                                 hazoolUpdates.some((u) => u.sessionUpdate === "state_update"),
                         );
+                        const initialScoutIdle = scoutUpdates.find(
+                            (u): u is Extract<SessionUpdate, { sessionUpdate: "state_update" }> =>
+                                u.sessionUpdate === "state_update",
+                        );
+                        assert.equal(initialScoutIdle?.state, "idle");
+                        assert.equal(
+                            (initialScoutIdle as { stopReason?: unknown } | undefined)?.stopReason,
+                            undefined,
+                            "baseline idle state_update on session/resume must omit stopReason",
+                        );
 
                         operatorUpdates.length = 0;
                         scoutUpdates.length = 0;
@@ -2997,13 +3011,21 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             return { status: 200, action: "enqueued_new_loop" as const, sessionId: 1, loopId: 1, resource: path };
                         };
 
-                        // 1. Prompt from scoutproxy and prompt from hazool17 do NOT emit pre-publication user_message_chunk
+                        // 1. Prompt from scoutproxy transitions scoutproxy (and operator) to running, NOT hazool17
                         const scoutPromptRes = await scoutConn.request(methods.agent.session.prompt, {
                             sessionId: "1#user",
                             prompt: [{ type: "text", text: "Hello from scoutproxy with a long text above fifty chars!" }],
                             _meta: { plurnk: { messageId: "msg-scout-1" } },
                         });
                         assert.equal(scoutPromptRes.messageId, "msg-scout-1");
+                        await waitFor(() =>
+                            scoutUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "running"),
+                        );
+                        assert.equal(
+                            hazoolUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "running"),
+                            false,
+                            "hazool17 must not transition to running when scoutproxy submits a prompt",
+                        );
 
                         const hazoolPromptRes = await hazoolConn.request(methods.agent.session.prompt, {
                             sessionId: "1#user",
@@ -3011,6 +3033,9 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             _meta: { plurnk: { messageId: "msg-hazool-1" } },
                         });
                         assert.equal(hazoolPromptRes.messageId, "msg-hazool-1");
+                        await waitFor(() =>
+                            hazoolUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "running"),
+                        );
 
                         // Pre-publication: zero user_message_chunk emitted yet
                         assert.equal(
@@ -3043,12 +3068,46 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             }),
                         });
 
-                        // Outside narration emitted during the turn
+                        // Outside narration emitted during the turn projects as agent_thought_chunk (not agent_message_chunk)
                         h.port.emitEvent(1, "outside/event", {
                             sessionId: 1,
                             coordinate: "1/1/1",
                             text: "Internal model narration outside fences",
                             tokens: 7,
+                        });
+                        // Internal _plurnk ops:// emission read, entry_materialized edit, distilled note, and completed todo
+                        // are suppressed from the ACP stream
+                        h.port.emitEvent(1, "log/entry", {
+                            entry: makeLogEntry({
+                                id: 1021,
+                                session_id: 1,
+                                sequence: 21,
+                                origin: "_plurnk",
+                                op: "read",
+                                pathname: "ops://user/1/1/1",
+                                attrs: { kind: "emission" },
+                            }),
+                        });
+                        h.port.emitEvent(1, "log/entry", {
+                            entry: makeLogEntry({
+                                id: 1022,
+                                session_id: 1,
+                                sequence: 22,
+                                origin: "_plurnk",
+                                op: "edit",
+                                pathname: "/workspace/file.ts",
+                                attrs: { kind: "entry_materialized" },
+                            }),
+                        });
+                        h.port.emitEvent(1, "log/entry", {
+                            entry: makeLogEntry({
+                                id: 1023,
+                                session_id: 1,
+                                sequence: 23,
+                                origin: "model",
+                                op: "note",
+                                attrs: { distilled: "log:///1/1/1" },
+                            }),
                         });
 
                         // 3. Model resolves scoutproxy's message first with done (while hazool17's message stays running in inbox)
@@ -3127,16 +3186,130 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             0,
                         );
                         assert.equal(
+                            hazoolUpdates.filter((u) => u.sessionUpdate === "agent_thought_chunk").length,
+                            0,
+                        );
+                        assert.equal(
                             hazoolUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "idle"),
                             false,
                         );
 
-                        // Verify operator received both user messages, outside text, and scoutproxy's reply
+                        // Verify operator received both user messages, outside text as agent_thought_chunk, and scoutproxy's reply,
+                        // and zero tool_call_update for internal emission/entry_materialized/distilled rows
                         await waitFor(
                             () =>
                                 operatorUpdates.filter((u) => u.sessionUpdate === "user_message_chunk").length === 2 &&
-                                operatorUpdates.filter((u) => u.sessionUpdate === "agent_message_chunk").length === 2,
+                                operatorUpdates.filter(
+                                    (u) =>
+                                        u.sessionUpdate === "agent_thought_chunk" &&
+                                        u.messageId === "outside-1/1/1",
+                                ).length === 1 &&
+                                operatorUpdates.filter((u) => u.sessionUpdate === "agent_message_chunk").length === 1,
                         );
+                        assert.equal(
+                            operatorUpdates.some((u) => u.sessionUpdate === "tool_call_update"),
+                            false,
+                            "internal _plurnk emission reads, entry_materialized edits, and distilled notes must not emit tool_call_update",
+                        );
+
+                        // 4. Loop 1 terminates while hazool17's message is still queued for the next loop; hazool17 must stay running
+                        h.port.inbox[0] = {
+                            path: "message://user/2",
+                            source: "acp://hazool17/sessions/1%23user/messages/msg-hazool-1",
+                            loopId: 2,
+                            lifecycle: "queued",
+                            body: "Hello from hazool17!",
+                        };
+                        h.port.emitEvent(1, "loop/terminated", {
+                            sessionId: 1,
+                            loopId: 1,
+                            loopSeq: 1,
+                            turnIds: [1],
+                            hitMaxTurns: false,
+                            result: { status: 200 },
+                            usage: {
+                                curationWeight: 100,
+                                curationBudget: 1000,
+                                contextTokens: 100,
+                                contextCapacity: 1000,
+                            },
+                        });
+                        await waitFor(() =>
+                            operatorUpdates.some(
+                                (u) => u.sessionUpdate === "state_update" && u.state === "idle",
+                            ),
+                        );
+                        assert.equal(
+                            hazoolUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "idle"),
+                            false,
+                            "hazool17 must not receive idle state_update when loop terminates with its message still queued",
+                        );
+
+                        // 5. Model replies to hazool17 via send, then resolves message://user/2 with a speech-less done
+                        const hazoolSendReply = "Dedicated reply to hazool17 delivered via send before speech-less done.";
+                        h.port.emitEvent(1, "log/entry", {
+                            entry: {
+                                ...makeLogEntry({
+                                    id: 104,
+                                    session_id: 1,
+                                    loop_id: 2,
+                                    loop_seq: 2,
+                                    sequence: 4,
+                                    origin: "model",
+                                    op: "send",
+                                    pathname: "message://user/2",
+                                    tx: JSON.stringify({ op: "send", target: "message://user/2", body: hazoolSendReply }),
+                                    rx: {
+                                        status: 200,
+                                        content: hazoolSendReply,
+                                        mimetype: "text/markdown",
+                                        receipt: {
+                                            delivered: true,
+                                            repliedTo: ["message://user/2"],
+                                        },
+                                    },
+                                }),
+                                replied_to_sources: ["acp://hazool17/sessions/1%23user/messages/msg-hazool-1"],
+                            },
+                        });
+                        h.port.inbox.length = 0;
+                        h.port.emitEvent(1, "log/entry", {
+                            entry: {
+                                ...makeLogEntry({
+                                    id: 105,
+                                    session_id: 1,
+                                    loop_id: 2,
+                                    loop_seq: 2,
+                                    sequence: 5,
+                                    origin: "model",
+                                    op: "done",
+                                    pathname: "message://user/2",
+                                    tx: "",
+                                    rx: {
+                                        status: 200,
+                                        receipt: {
+                                            delivered: true,
+                                            repliedTo: ["message://user/2"],
+                                            completion: 200,
+                                        },
+                                    },
+                                }),
+                                replied_to_sources: ["acp://hazool17/sessions/1%23user/messages/msg-hazool-1"],
+                            },
+                        });
+                        await waitFor(() =>
+                            hazoolUpdates.some(
+                                (u) => u.sessionUpdate === "state_update" && u.state === "idle",
+                            ),
+                        );
+                        const hazoolAgentChunks = hazoolUpdates.filter(
+                            (u): u is Extract<SessionUpdate, { sessionUpdate: "agent_message_chunk" }> =>
+                                u.sessionUpdate === "agent_message_chunk",
+                        );
+                        assert.equal(hazoolAgentChunks.length, 1);
+                        if (hazoolAgentChunks[0]?.content.type === "text") {
+                            assert.equal(hazoolAgentChunks[0].content.text, hazoolSendReply);
+                        }
                     });
                 });
             });

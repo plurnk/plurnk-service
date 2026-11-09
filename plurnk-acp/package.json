@@ -74,7 +74,7 @@
         "access": "public"
     },
     "dependencies": {
-        "@agentclientprotocol/sdk": "^2.4.0",
+        "@agentclientprotocol/sdk": "^2.5.0",
         "@plurnk/plurnk-contracts": "^7.3.0",
         "@plurnk/plurnk-parser": "^4.4.0",
         "ws": "^8.22.2"

@@ -98,6 +98,7 @@ export interface BoundSession {
     readonly sessionId: number;
     readonly sessionName: string;
     readonly translator: SessionTranslator;
+    principalRunning?: boolean;
 }
 
 export interface OverviewRequestOptions {

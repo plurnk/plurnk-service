@@ -424,8 +424,8 @@ const translatePrefixEnvelopeCalls = (
         },
     );
 
-    // 3. Unclosed GLM-4 `<|tool_call|>name\n{...}` with balanced JSON object scanning
-    const glmPrefixRe = /^(?:[ \t]*(?:<\|tool_call[^>]*>|<tool_call\b[^>]*>))+[ \t]*([A-Za-z0-9_.:-]+)[ \t]*(\r?\n)/gimu;
+    // 3. Unclosed GLM-4 / Qwen `<|tool_call|>name\n{...}` or `<tool_call> name{...}` with balanced JSON object scanning
+    const glmPrefixRe = /^(?:[ \t]*(?:<\|tool_call[^>]*>|<tool_call\b[^>]*>))+[ \t]*([A-Za-z0-9_.:-]+)[ \t]*(\r?\n)?(?=\{)/gimu;
     let glmCursor = 0;
     let glmRebuilt = "";
     while ((m = glmPrefixRe.exec(out)) !== null) {
@@ -434,7 +434,7 @@ const translatePrefixEnvelopeCalls = (
         const balanced = extractBalancedJsonPrefix(out, m.index + m[0].length);
         if (target === null || balanced === null || !balanced.json.startsWith("{")) continue;
         const originalSpan = out.slice(m.index, balanced.endOffset);
-        const nl = m[2] ?? "\n";
+        const nl = m[2] ?? "";
         const replacement = padNewlines(`${nl}${formatTranslatedCall(target, parseXmlToolCallBody(balanced.json))}`, originalSpan);
         glmRebuilt += out.slice(glmCursor, m.index) + replacement;
         glmCursor = balanced.endOffset;
@@ -472,7 +472,7 @@ const translatePrefixEnvelopeCalls = (
 
     // 5. Fallback for unclosed `<|python_tag|>` / `<|tool_call|>` followed by Pythonic or Code Mode call on the same paragraph
     out = out.replace(
-        /^(?:[ \t]*(?:<tool_call\b[^>]*>|<TOOLCALL\b[^>]*>|<\|python_tag\|>|<\|tool_call[^>]*>|\[TOOL_CALLS\]))+[ \t]*(\r?\n)?([ \t]*(?:\[[ \t]*(?:await\s+)?[A-Za-z_$][\s\S]*?|(?:await\s+)?[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])?\s*\([\s\S]*?))(?=\r?\n\r?\n|$)/gmu,
+        /^(?:[ \t]*(?:<tool_call\b[^>]*>|<TOOLCALL\b[^>]*>|<\|python_tag\|>|<\|tool_call[^>]*>|\[TOOL_CALLS\]))+[ \t]*(\r?\n)?([ \t]*(?:\[[ \t]*(?:await\s+)?[A-Za-z_$][\s\S]*?|(?:await\s+)?[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])?\s*\([\s\S]*?))(?=\r?\n[ \t]*(?:<tool_call\b[^>]*>|<TOOLCALL\b[^>]*>|<\|python_tag\|>|<\|tool_call[^>]*>|\[TOOL_CALLS\])|\r?\n\r?\n|$)/gmu,
         (fullMatch, nl: string | undefined, payload: string) => {
             const prefixNewline = nl ?? "";
             let cleanedPayload = payload.replace(/(?:[ \t]*(?:<\/?tool_call\b[^>]*>|<\/?TOOLCALL\b[^>]*>|<\|\/?tool_call[^>]*>|\[\/?TOOL_CALLS\]))+[ \t]*$/iu, "");
@@ -567,6 +567,24 @@ const normalizeMalformedHeredocs = (input: string): string =>
             "$2}",
         )
         .replace(
+            /(<<<?-?(['"]?)([A-Za-z][A-Za-z0-9_-]{0,16})\2[ \t]*\r?\n(?:(?!<<<?-?['"]?[A-Za-z])[\s\S])*?\r?\n[ \t]*\3\d*[ \t]*[}\]]+)[ \t]*(?=<\/(?:tool_call|TOOLCALL|function_call)>[ \t]*(?:\r?\n|$))/giu,
+            "$1)",
+        )
+        .replace(
+            /(<<<?-?(['"]?)([A-Za-z][A-Za-z0-9_-]{0,15}?[A-Za-z_-])\2[ \t]*\r?\n(?:(?!<<<?-?['"]?[A-Za-z])[\s\S])*?\r?\n[ \t]*\3)\d+(>*(?=[ \t]*[,}\]);+]+[ \t]*;?[ \t]*(?:\/\/[^\r\n]*)?(?:\r?\n|$)))/gu,
+            (match, prefix: string, _quote: string, tag: string, chevrons: string, offset: number, fullStr: string) => {
+                const nl = fullStr.indexOf("\n", offset);
+                if (nl !== -1) {
+                    const nextOpener = fullStr.indexOf("<<", nl + 1);
+                    const region = nextOpener === -1 ? fullStr : fullStr.slice(0, nextOpener);
+                    if (findHeredocCloser(region, nl + 1, tag, "inline") !== null) {
+                        return match;
+                    }
+                }
+                return `${prefix}${chevrons}`;
+            },
+        )
+        .replace(
             /(<<<?-?(['"]?)([A-Za-z][A-Za-z0-9_-]{0,16})\2)(?=[ \t]*[}\])])/gu,
             (match, _full: string, _quote: string, tag: string, offset: number, fullStr: string) => {
                 const eol = fullStr.indexOf("\n", offset);
@@ -581,7 +599,7 @@ const normalizeMalformedHeredocs = (input: string): string =>
             },
         )
         .replace(
-            /(<<<?-?(['"]?)([A-Za-z][A-Za-z0-9_-]{0,16})\2[ \t]*\r?\n[^\r\n]+?)[ \t]+\3(>*(?=[ \t]*[,}\]);+]+[ \t]*;?[ \t]*(?:\/\/[^\r\n]*)?(?:\r?\n|$)))/gu,
+            /(<<<?-?(['"]?)([A-Za-z][A-Za-z0-9_-]{0,16})\2[ \t]*\r?\n(?:(?!<<<?-?['"]?[A-Za-z])[\s\S])+?)(?:[ \t]*<\/?(?:tool_call|TOOLCALL|function_call|TOOL_CALL|FUNCTION_CALL)\b[^>]*>[ \t]*|[ \t]+)\3(>*(?=[ \t]*[,}\]);+]+[ \t]*;?[ \t]*(?:\/\/[^\r\n]*)?(?:\r?\n|$)))/gu,
             (match, prefix: string, _quote: string, tag: string, chevrons: string, offset: number, fullStr: string) => {
                 const nl = fullStr.indexOf("\n", offset);
                 if (nl !== -1) {
@@ -682,6 +700,16 @@ export const unwrapCodeModeFences = (
             }
         }
         if (closeIdx === -1) {
+            if (
+                executorSpellings !== undefined
+                && openMatch[3].trim() === ""
+                && lines.slice(i + 1).every((l) => l.trim() === "")
+            ) {
+                const preceding = lines.slice(0, i).join("\n");
+                if (CONTAINS_CALL.test(preceding) || /<(?:tool_call|TOOLCALL|function_calls?|\|tool_call)\b/iu.test(preceding)) {
+                    lines[i] = "";
+                }
+            }
             i += 1;
             continue;
         }
@@ -716,7 +744,8 @@ export const unwrapCodeModeFences = (
 };
 
 const isInsideCodeString = (prefix: string): boolean => {
-    if (!CODE_LINE_START.test(prefix)) return false;
+    const stripped = prefix.replace(/^[ \t]*(?:<(?:tool_call|TOOLCALL|function_calls?|\|tool_call)\b[^>]*>[ \t]*)+/iu, "");
+    if (!CODE_LINE_START.test(stripped)) return false;
     let inStr: '"' | "'" | "`" | null = null;
     for (let i = 0; i < prefix.length; i += 1) {
         const ch = prefix[i];
@@ -758,7 +787,7 @@ export const translateToolCallsOutsideFences = (input: string, executorSpellings
             /^([^\r\n]+?)([ \t]*)(?=(?:<tool_call\b[^>]*>|<\|tool_call[^>]*>|<TOOLCALL\b[^>]*>|<function_calls?\b[^>]*>|<\|python_tag\|>|\[TOOL_CALLS\]|<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>))/gimu,
             (fullMatch, prefix: string) => {
                 if (prefix.trim().length === 0 || isInsideCodeString(prefix)) return fullMatch;
-                if (/<(?:tool_call|TOOLCALL|function_calls?|(?:\|tool_call))\b/iu.test(prefix)) return fullMatch;
+                if (/^(?:[ \t]*<(?:tool_call|TOOLCALL|function_calls?|\|tool_call)\b[^>]*>)+$/iu.test(prefix)) return fullMatch;
                 return `${prefix}\n`;
             },
         );
