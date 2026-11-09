@@ -24,8 +24,8 @@ The module is the OAuth 2.1 authorization server of the daemon's credential auth
 
 | Client kind | Secret & auth | Scopes | Grants, subject & session behavior |
 |---|---|---|---|
-| `operator` (confidential) | Shared `PLURNK_SECRET` or boot-minted secret file beside DB (absent if none) | Every scope | `client_credentials` for terminal client, scripts, and bench. |
-| Declared `PLURNK_AUTH_CLIENT_<id>` (confidential) | Declared `secret` (`operator` id reserved; cannot take a module client id) | Declared `scopes` | `client_credentials`; subject is `<id>`; removing the env entry and restarting revokes its tokens. |
+| `operator` (confidential) | Shared `PLURNK_SECRET` or boot-minted secret file beside DB (absent if none) | Every scope | `client_credentials` (optional `requested_subject` matching `[A-Za-z0-9._-]+`, defaulting to `operator`) for terminal client, scripts, bench, and relying-party gateways. |
+| Declared `PLURNK_AUTH_CLIENT_<id>` (confidential) | Declared `secret` (`operator` id reserved; cannot take a module client id) | Declared `scopes` | `client_credentials`; subject is `requested_subject` (`[A-Za-z0-9._-]+`) when supplied, else `<id>`; removing the env entry and restarting revokes its tokens. |
 | Registered public client | None (`none`) | Registered scopes | Code + PKCE + refresh only (`client_credentials` $\to$ `unauthorized_client`); subject is operator; shown consent page (`consent=allow` \| `consent=deny` $\to$ `access_denied`). |
 | Module client ({§credential-authority}, confidential per RFC 10017 §6.2.3.1) | Authority-minted secret (`client_secret_basic` / `client_secret_post`) | Registered scopes (unissued scope is a server error) | Code + PKCE + refresh only (`client_credentials` $\to$ `unauthorized_client`); authorized silently by the operator's browser session and shares its grant family. |
 

@@ -85,6 +85,12 @@ test("{§auth-oauth-clients} the operator's secret is a client secret: client_cr
         assert.equal((await json(unsupported)).error, "unsupported_grant_type", "RFC 9700: no password grant");
         const scope = await fetch(`${mod.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret", scope: "root" }));
         assert.equal((await json(scope)).error, "invalid_scope");
+        const delegated = await json<{ access_token: string }>(await fetch(`${mod.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret", requested_subject: "scoutproxy" })));
+        assert.equal(mod.credentials.verify(delegated.access_token)?.subject, "scoutproxy", "confidential client_credentials may mint a delegated subject token");
+        assert.equal(mod.credentials.verify(delegated.access_token)?.clientId, "operator");
+        const badSubject = await fetch(`${mod.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret", requested_subject: "bad/sub" }));
+        assert.equal(badSubject.status, 400);
+        assert.equal((await json(badSubject)).error, "invalid_request");
     } finally { await mod.close(); }
 });
 
