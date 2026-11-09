@@ -1088,4 +1088,52 @@ describe("PlurnkParser Code Mode", () => {
         });
         assert.equal((mellumOps[5] as FindStatement).target?.raw, "workspace:///*/n8cJi");
     });
+
+    test("{§fence-pairing} {§slot-order} {§parse-recovery}: splits glued transcript headings off trailing asides and keeps unfenced general JS in outside text", () => {
+        const gluedAndJs = PlurnkParser.parse([
+            'await plurnk.note({"text":"Checking Express 5 route syntax."}) // record investigation**roblox_family_planner: save_chat_media**',
+            '- text: `import express from "express";',
+            'const app = express();',
+            'app.get("/chat/media/{*path}", (req, res) => {',
+            '  res.json({ path: req.params.path });',
+            '});',
+            'const server = http.createServer(app);',
+            'server.listen(0, "127.0.0.1", async () => {',
+            '  const res = await fetch("http://127.0.0.1/test");',
+            '  const data = await res.json();',
+            '  console.log("Response:", data);',
+            '  server.close();',
+            '});',
+            '`',
+            '- Result:',
+            '```',
+            'ok',
+            '```',
+            'await plurnk.read({"path":"AGENTS.md","range":"45,58"}) // inspect range in AGENTS.md### log:///5/3/1/sh · 49',
+            '{"stream":"sh:///34529ca6"}',
+        ].join("\n"));
+
+        assert.deepEqual(gluedAndJs.items.filter((i) => i.kind === "error"), []);
+        const statements = gluedAndJs.items.filter((i) => i.kind === "statement").map((i) => i.statement);
+        assert.equal(statements.length, 2);
+        assert.equal(statements[0].aside, "record investigation");
+        assert.equal(statements[1].aside, "inspect range in AGENTS.md");
+
+        const texts = gluedAndJs.items.filter((i) => i.kind === "text");
+        assert.equal(texts.length, 2);
+        assert.ok(texts[0].content.startsWith("**roblox_family_planner: save_chat_media**\n"));
+        assert.equal(texts[0].position.line, 1);
+        assert.ok(texts[1].content.startsWith("### log:///5/3/1/sh · 49\n"));
+        assert.equal(texts[1].position.line, 19);
+
+        const refusedConst = PlurnkParser.parse([
+            'await plurnk.note({ text: "ok" });',
+            'const out = await plurnk.read({ path: "a.ts" });',
+            'const issues = await gitea.list_issues({ owner: "o" });',
+        ].join("\n"));
+        const errors = refusedConst.items.filter((i) => i.kind === "error");
+        assert.equal(errors.length, 2);
+        assert.match(errors[0].error.message, /Unexpected `const`/u);
+        assert.match(errors[1].error.message, /Unexpected `const`/u);
+    });
 });

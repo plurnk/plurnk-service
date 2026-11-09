@@ -45,7 +45,12 @@ import { executeSlashCommand, handlePlurnkAction } from "./actions.ts";
 import type { ResolvedModuleOptions } from "./config.ts";
 import { applyWorkspaceRenamed } from "./events.ts";
 import type { GateTracker } from "./gates.ts";
-import { attrRecord, extractMessageId, extractVoice } from "./log-entry-projection.ts";
+import {
+    attrRecord,
+    extractMessageId,
+    principalHasOpenWork,
+    readAllLogEntries,
+} from "./log-entry-projection.ts";
 import SessionTranslator from "./SessionTranslator.ts";
 import {
     OWNER_ADDRESS,
@@ -420,7 +425,7 @@ export const createConnectionAgent = (
 
             const providerCatalog = tryListProviders(seam);
             const [entries, inbox, loops, proposals, interactions, workspaceSessions, configOptions, availableCommands, modelInfo, spend, streams, budget] = await Promise.all([
-                seam.readLog({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
+                readAllLogEntries(seam, { workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.readInbox({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.listSessionLoops({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 seam.pendingProposals(bound.workspaceId),
@@ -495,13 +500,8 @@ export const createConnectionAgent = (
                 peer.subject !== "anonymous";
             const principalHasOpenMessage =
                 isNamedPrincipal &&
-                inbox.some(
-                    (msg) =>
-                        (msg.lifecycle === "running" ||
-                            msg.lifecycle === "queued" ||
-                            msg.lifecycle === "parked") &&
-                        extractVoice(msg.source) === peer.subject,
-                );
+                typeof peer.subject === "string" &&
+                principalHasOpenWork(peer.subject, inbox, activeLoop, entries);
             if (isNamedPrincipal) {
                 bound.principalRunning = principalHasOpenMessage;
             }
@@ -845,29 +845,34 @@ export const createConnectionAgent = (
                     i.sessionId === target.session.id ||
                     isDescendantSession(workspaceSessions, i.sessionId, target.session.id),
             );
+            const activeLoop = selectSessionLoop(loops);
             const isNamedPrincipal =
                 peer.subject !== null &&
                 peer.subject !== undefined &&
                 peer.subject !== "operator" &&
                 peer.subject !== "anonymous";
             if (isNamedPrincipal) {
-                const inbox = await seam.readInbox({
-                    workspaceId: target.workspaceId,
-                    sessionId: target.session.id,
-                });
-                const principalOpen = inbox.some(
-                    (msg) =>
-                        (msg.lifecycle === "running" ||
-                            msg.lifecycle === "queued" ||
-                            msg.lifecycle === "parked") &&
-                        extractVoice(msg.source) === peer.subject,
-                );
+                const [inbox, loopEntries] = await Promise.all([
+                    seam.readInbox({
+                        workspaceId: target.workspaceId,
+                        sessionId: target.session.id,
+                    }),
+                    activeLoop !== null
+                        ? readAllLogEntries(seam, {
+                              workspaceId: target.workspaceId,
+                              sessionId: target.session.id,
+                              loopId: activeLoop.id,
+                          })
+                        : Promise.resolve([]),
+                ]);
+                const principalOpen =
+                    typeof peer.subject === "string" &&
+                    principalHasOpenWork(peer.subject, inbox, activeLoop, loopEntries);
                 return {
                     status: "open",
                     state: principalOpen ? { state: "running" } : { state: "idle" },
                 };
             }
-            const activeLoop = selectSessionLoop(loops);
             const lifecycle = activeLoop !== null ? lifecycleOfLoopStatus(activeLoop.status) : "idle";
             const state: StateUpdate =
                 hasPendingProposal || hasPendingInteraction
@@ -1027,7 +1032,7 @@ export const createConnectionAgent = (
                 return {};
             }
 
-            const logRows = await seam.readLog({
+            const logRows = await readAllLogEntries(seam, {
                 workspaceId: target.workspaceId,
                 sessionId: target.session.id,
             });

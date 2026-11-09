@@ -1,18 +1,65 @@
 import { BaseHandler } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent } from "@plurnk/plurnk-mimetypes";
+import * as ExifReader from "exifreader";
 
 // image/* handler: PNG, JPEG, GIF, WebP. Binary mimetypes — the framework hands the bytes in
 // as a Uint8Array. Nothing is decoded: the format's header alone yields the facts a reader
-// needs (format, pixel dimensions, byte size), which is the model-facing body. The picture
-// itself reaches a model that can see it as a native image part of the packet, built by the
-// service from the source bytes ({§mimetype-binary-input} in the framework SPEC).
+// needs (format, pixel dimensions, byte size, and EXIF metadata), which is the model-facing body.
+// The picture itself reaches a model that can see it as a native image part of the packet, built
+// by the service from the source bytes ({§mimetype-binary-input} in the framework SPEC).
+
+export type ImageExifFacts = Readonly<Record<string, string>>;
 
 export interface ImageFacts {
     readonly format: "png" | "jpeg" | "gif" | "webp";
     readonly width: number | null;
     readonly height: number | null;
     readonly bytes: number;
+    readonly exif?: ImageExifFacts;
 }
+
+const SKIPPED_EXIF_TAGS: ReadonlySet<string> = new Set([
+    "ApplicationNotes",
+    "ExifOffset",
+    "GPSInfoIFDPointer",
+    "InteroperabilityIFDPointer",
+    "MakerNote",
+]);
+
+const readExif = (bytes: Uint8Array): ImageExifFacts | undefined => {
+    try {
+        const tags = ExifReader.default.load(bytes, { expanded: true });
+        const entries: Record<string, string> = {};
+        if (tags.exif !== undefined) {
+            for (const [key, tag] of Object.entries(tags.exif)) {
+                if (SKIPPED_EXIF_TAGS.has(key) || tag === undefined || typeof tag !== "object" || !("description" in tag)) {
+                    continue;
+                }
+                const desc = typeof tag.description === "string"
+                    ? tag.description.replaceAll("\0", "").trim()
+                    : "";
+                if (desc.length === 0 || desc.startsWith("[Raw ") || desc.startsWith("[unable to ")) {
+                    continue;
+                }
+                entries[key] = desc;
+            }
+        }
+        if (tags.gps !== undefined) {
+            if (typeof tags.gps.Latitude === "number" && Number.isFinite(tags.gps.Latitude)) {
+                entries.GPSLatitude ??= String(tags.gps.Latitude);
+            }
+            if (typeof tags.gps.Longitude === "number" && Number.isFinite(tags.gps.Longitude)) {
+                entries.GPSLongitude ??= String(tags.gps.Longitude);
+            }
+            if (typeof tags.gps.Altitude === "number" && Number.isFinite(tags.gps.Altitude)) {
+                entries.GPSAltitude ??= String(tags.gps.Altitude);
+            }
+        }
+        return Object.keys(entries).length > 0 ? entries : undefined;
+    } catch {
+        return undefined;
+    }
+};
 
 const FORMAT_BY_MIMETYPE: Record<string, ImageFacts["format"]> = {
     "image/png": "png",
@@ -99,21 +146,43 @@ export default class Image extends BaseHandler {
     override facts(content: HandlerContent): ImageFacts {
         const bytes = Image.bytesOf(content);
         const size = dimensions(this.format, bytes);
-        return { format: this.format, width: size?.width ?? null, height: size?.height ?? null, bytes: bytes.length };
+        const exif = readExif(bytes);
+        return {
+            format: this.format,
+            width: size?.width ?? null,
+            height: size?.height ?? null,
+            bytes: bytes.length,
+            ...(exif === undefined ? {} : { exif }),
+        };
+    }
+
+    static #headerLine(facts: ImageFacts): string {
+        const size = facts.width === null || facts.height === null ? "" : `, ${facts.width}×${facts.height} px`;
+        const rawDesc = facts.exif?.ImageDescription?.replaceAll(/\s+/gu, " ").trim() ?? "";
+        const desc = rawDesc.length > 0 ? ` — ${rawDesc}` : "";
+        return `${LABEL[facts.format]} image${size}, ${facts.bytes} bytes${desc}`;
     }
 
     // The model-facing body: what the header says, nothing decoded.
     override content(content: HandlerContent): string {
         const facts = this.facts(content);
-        const size = facts.width === null || facts.height === null ? "" : `, ${facts.width}×${facts.height} px`;
-        return `${LABEL[facts.format]} image${size}, ${facts.bytes} bytes`;
+        const header = Image.#headerLine(facts);
+        if (facts.exif === undefined) return header;
+        const exifLines = Object.entries(facts.exif)
+            .filter(([key]) => key !== "ImageDescription")
+            .map(([key, value]) => `${key}: ${value.replaceAll(/\r?\n/gu, " ").trim()}`);
+        return exifLines.length === 0 ? header : [header, ...exifLines].join("\n");
     }
 
     override summary(content: HandlerContent): string {
-        return this.content(content);
+        return Image.#headerLine(this.facts(content));
     }
 
     override deepJson(content: HandlerContent): ImageFacts {
         return this.facts(content);
+    }
+
+    protected override toText(content: HandlerContent): string {
+        return this.content(content);
     }
 }

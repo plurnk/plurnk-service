@@ -98,7 +98,7 @@ await <service>.<tool>({ ... })
 
 - **Declarative top-level tool calls**: Every canonical Heredoc Code Mode statement is an unwrapped TypeScript/JavaScript `await <service>.<tool>(args)` call (with `await` and trailing `;` optional). `plurnk` is the built-in runtime service (`plurnk.read`, `plurnk.find`, `plurnk.edit`, `plurnk.copy`, `plurnk.move`, `plurnk.kill`, `plurnk.note`, `plurnk.todo`, `plurnk.work`, `plurnk.fork`, `plurnk.bare`, `plurnk.send`, `plurnk.done`, `plurnk.fail`, `plurnk.wait`, REPL tools `plurnk.sh`, `plurnk.js`, `plurnk.python3`, and Functionality tools `plurnk.env`, `plurnk.mcp`, `plurnk.members`, `plurnk.personas`, `plurnk.schedule`, `plurnk.skills`, `plurnk.question`). External MCP servers are peer top-level namespaces (`await <service>.<tool>(args)`).
 - **Bracket property access**: Non-identifier tool names use bracket notation (`await gitea["issue-read"]({ ... })`).
-- **No free JavaScript execution in the parser**: Top-level statements are parsed as declarative calls with literal arguments (`{ ... }`, `[ ... ]`, strings/backticks, `<<<EOF ... EOF` heredocs, numbers, booleans, `null`); variable declarations and control-flow constructs (`const`, `let`, `var`, `if`, `for`, `while`, `function`, `try`) are refused with a parser diagnostic directing JavaScript logic to `await plurnk.js({ text: "..." })`.
+- **No free JavaScript execution in the parser**: Top-level statements are parsed as declarative calls with literal arguments (`{ ... }`, `[ ... ]`, strings/backticks, `<<<EOF ... EOF` heredocs, numbers, booleans, `null`); variable declarations and control-flow constructs (`const`, `let`, `var`, `if`, `for`, `while`, `function`, `try`) invoking `plurnk` or tool calls are refused with a parser diagnostic directing JavaScript logic to `await plurnk.js({ text: "..." })`, while unfenced general JavaScript snippets in model prose that do not invoke `plurnk`, a registered executor, or a literal-object tool call remain outside text.
 
 ### §fence-pairing Statement boundaries, RENO admission tolerances, and reflective rendering
 
@@ -118,7 +118,7 @@ await <service>.<tool>({ ... })
 | Target groups and multi-target lists | `plurnk.read`, `plurnk.find`, and `plurnk.kill` accept `path` or `paths` as a string or array of strings; comma/pipe/whitespace-separated `scheme://` URI lists and comma/pipe-separated local path/glob lists outside brackets/braces expand into one statement per target in authored order. |
 | `note` annotation on retrievals | Providing `note` on `plurnk.read` or `plurnk.find` emits a preceding `note` statement before the retrieval(s). |
 | Endpoint and message options | `headers` (`Record<string, string>`) passes HTTP(S) request headers on `plurnk.read`, `plurnk.find`, `plurnk.edit`, `plurnk.send`, `plurnk.kill`, and `plurnk.copy`/`plurnk.move` (`fromHeaders`/`toHeaders`); `remote` (`boolean`) confirms remote HTTP `DELETE` on `plurnk.kill`; `attachments` (`string[]`) attaches resources to `plurnk.send`, `plurnk.done`, and `plurnk.fail`. Unknown option keys on `plurnk.<op>({ ... })` are refused with a parser diagnostic. |
-| Operation aside | A trailing `// aside` comment after `;` or `)` on the closing line of a statement is captured into `aside` (`string` or `null`) as descriptive commentary. |
+| Operation aside | A trailing `// aside` comment after `;` or `)` on the closing line of a statement is captured into `aside` (`string` or `null`) as descriptive commentary, splitting before any glued transcript heading (`### log:///` or `**<service>: <tool>**`). |
 
 ---
 

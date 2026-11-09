@@ -5,6 +5,7 @@ import type { Duplex } from "node:stream";
 import { Problems, type CredentialAuthority, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { ResolvedModuleOptions } from "./config.ts";
+import { readAllLogEntries } from "./log-entry-projection.ts";
 import SessionTranslator from "./SessionTranslator.ts";
 
 export const HEADER_CONNECTION_ID = "Acp-Connection-Id";
@@ -224,7 +225,7 @@ export const handleMessagesRoute = async (
     const afterParam = url.searchParams.get("after");
     const loopParam = url.searchParams.get("loop");
     const [allEntries, inbox, streams] = await Promise.all([
-        seam.readLog({ workspaceId, sessionId }),
+        readAllLogEntries(seam, { workspaceId, sessionId }),
         seam.readInbox({ workspaceId, sessionId }),
         seam.readStreams({ workspaceId, sessionId }),
     ]);

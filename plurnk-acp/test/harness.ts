@@ -548,8 +548,19 @@ export const createHarness = async (options?: {
         },
         cancelLoop: async () => true,
         executorTags: () => ["sh", "js"],
-        readLog: async ({ sessionId, loopSeq }) =>
-            logs.filter((l) => l.session_id === sessionId && (loopSeq === undefined || l.loop_seq === loopSeq)),
+        readLog: async ({ sessionId, loopSeq, loopId, beforeId, limit }) => {
+            const matched = logs
+                .filter(
+                    (l) =>
+                        l.session_id === sessionId &&
+                        (loopSeq === undefined || l.loop_seq === loopSeq) &&
+                        (loopId === undefined || l.loop_id === loopId) &&
+                        (beforeId === undefined || l.id < beforeId),
+                )
+                .toSorted((a, b) => b.id - a.id);
+            const pageSize = Math.min(limit ?? 100, 100);
+            return matched.slice(0, pageSize);
+        },
         listProviders: () => ({
             aliases: [
                 {

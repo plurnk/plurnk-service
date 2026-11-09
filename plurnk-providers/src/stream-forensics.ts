@@ -97,6 +97,43 @@ export const RETRYABLE_MALFORMED_FINISH_REASONS: ReadonlySet<string> = new Set([
 
 const LEADING_THINK_ENVELOPE = /^(?:\s*<think>[\s\S]*?<\/think>\s*)+/;
 const CALL_HEAD = /^(?:await\s+)?[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\(/u;
+const HEREDOC_OPEN = /^<<<?-?(['"]?)([A-Za-z][A-Za-z0-9_-]{0,16})\1/u;
+const HEREDOC_INLINE_NL = /^[ \t]*(?:\/\/[^\r\n]*)?\r?\n/u;
+
+const findHeredocClose = (
+    text: string,
+    bodyStart: number,
+    tag: string,
+    mode: "inline" | "trailing",
+): number | null => {
+    let lineStart = bodyStart;
+    while (lineStart <= text.length) {
+        const nextNl = text.indexOf("\n", lineStart);
+        const lineEnd = nextNl === -1
+            ? text.length
+            : (nextNl > lineStart && text[nextNl - 1] === "\r" ? nextNl - 1 : nextNl);
+        const line = text.slice(lineStart, lineEnd);
+        let wsLen = 0;
+        while (wsLen < line.length && (line[wsLen] === " " || line[wsLen] === "\t")) wsLen += 1;
+        if (line.startsWith(tag, wsLen)) {
+            const afterTagRaw = line.slice(wsLen + tag.length);
+            const chevronMatch = mode === "inline" ? /^>+/u.exec(afterTagRaw) : null;
+            const chevronLen = chevronMatch !== null ? chevronMatch[0].length : 0;
+            const afterTagInLine = afterTagRaw.slice(chevronLen);
+            const validAfter = mode === "inline"
+                ? /^[ \t]*(?:[,}\]);+]|\/\/|\/\*|$)/u.test(afterTagInLine)
+                : /^[ \t]*;?[ \t]*(?:\/\/.*)?$/u.test(afterTagInLine);
+            if (validAfter) {
+                return mode === "inline"
+                    ? lineStart + wsLen + tag.length + chevronLen
+                    : lineEnd;
+            }
+        }
+        if (nextNl === -1) break;
+        lineStart = nextNl + 1;
+    }
+    return null;
+};
 
 // {§provider-failure-normalization} A response whose visible content consists entirely of one or more
 // balanced, closed Code Mode statements (with no unclosed statement and no trailing prose) has already
@@ -140,6 +177,7 @@ const hasCompleteCodeModeContent = (rawContent: string): boolean => {
         let braceDepth = 0;
         let bracketDepth = 0;
         let inString: '"' | "'" | "`" | null = null;
+        const pendingTrailingHeredocs: string[] = [];
         while (i < content.length && parenDepth > 0) {
             const ch = content[i];
             const next = content[i + 1];
@@ -169,6 +207,23 @@ const hasCompleteCodeModeContent = (rawContent: string): boolean => {
                 i += 1;
                 continue;
             }
+            if (ch === "<" && next === "<") {
+                const heredoc = HEREDOC_OPEN.exec(content.slice(i));
+                if (heredoc === null) return false;
+                const tag = heredoc[2];
+                const afterOpener = i + heredoc[0].length;
+                const inlineNl = HEREDOC_INLINE_NL.exec(content.slice(afterOpener));
+                if (inlineNl !== null) {
+                    const closePos = findHeredocClose(content, afterOpener + inlineNl[0].length, tag, "inline");
+                    if (closePos === null) return false;
+                    i = closePos;
+                    continue;
+                }
+                if (!/^[ \t]*(?:[,})\];]|\/\/)/u.test(content.slice(afterOpener))) return false;
+                pendingTrailingHeredocs.push(tag);
+                i = afterOpener;
+                continue;
+            }
             if (ch === "(") parenDepth += 1;
             else if (ch === ")") parenDepth -= 1;
             else if (ch === "{") braceDepth += 1;
@@ -180,6 +235,18 @@ const hasCompleteCodeModeContent = (rawContent: string): boolean => {
         }
         if (inString !== null || parenDepth !== 0 || braceDepth !== 0 || bracketDepth !== 0) {
             return false;
+        }
+        if (pendingTrailingHeredocs.length > 0) {
+            const callTail = /^[ \t]*;?[ \t]*(?:\/\/[^\r\n]*)?\r?\n/u.exec(content.slice(i));
+            if (callTail === null) return false;
+            i += callTail[0].length;
+            for (const tag of pendingTrailingHeredocs) {
+                const closeEnd = findHeredocClose(content, i, tag, "trailing");
+                if (closeEnd === null) return false;
+                i = closeEnd;
+                if (content[i] === "\r") i += 1;
+                if (content[i] === "\n") i += 1;
+            }
         }
         if (!skipWsAndComments()) return false;
         if (content[i] === ";") i += 1;

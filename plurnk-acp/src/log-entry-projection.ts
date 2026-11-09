@@ -1,23 +1,158 @@
 // {§acp-plurnk-metadata} Pure log-entry field extraction and response classification for ACP v2 translation.
 
 import type { ToolCallContent } from "@agentclientprotocol/sdk/experimental/v2/unstable";
-import { isRecord, isSafeInteger, type LogEntryWire } from "@plurnk/plurnk-contracts";
+import {
+    isRecord,
+    isSafeInteger,
+    lifecycleOfLoopStatus,
+    type ApplicationInboxMessage,
+    type LogEntryWire,
+} from "@plurnk/plurnk-contracts";
 
 const MODEL_FACTS: ReadonlySet<string> = new Set(["lineAnchors", "lineAnchorIdentity", "lineNumberWidth"]);
 
-export const extractMessageId = (source: string | null, sessionId: string): string | null => {
+export const extractMessageId = (source: string | null | undefined, sessionId: string): string | null => {
     if (typeof source !== "string" || source.length === 0) return null;
     try {
         const url = new URL(source);
         if (url.protocol !== "acp:") return null;
         const segments = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
         if (segments.length === 4 && segments[0] === "sessions" && segments[2] === "messages") {
-            return segments[1] === sessionId ? segments[3] ?? null : null;
+            const sourceSession = segments[1] ?? "";
+            const sourceUnqualified = sourceSession.includes("#")
+                ? sourceSession.slice(sourceSession.indexOf("#") + 1)
+                : sourceSession;
+            const targetUnqualified = sessionId.includes("#")
+                ? sessionId.slice(sessionId.indexOf("#") + 1)
+                : sessionId;
+            return sourceSession === sessionId || sourceUnqualified === targetUnqualified
+                ? (segments[3] ?? null)
+                : null;
         }
         return null;
     } catch {
         return null;
     }
+};
+
+export const readAllLogEntries = async (
+    seam: {
+        readonly readLog: (args: {
+            readonly workspaceId: number;
+            readonly sessionId: number;
+            readonly loopId?: number;
+            readonly loopSeq?: number;
+            readonly beforeId?: number;
+            readonly limit?: number;
+        }) => Promise<LogEntryWire[]>;
+    },
+    args: {
+        readonly workspaceId: number;
+        readonly sessionId: number;
+        readonly loopId?: number;
+        readonly loopSeq?: number;
+    },
+): Promise<LogEntryWire[]> => {
+    const all: LogEntryWire[] = [];
+    const seenIds = new Set<number>();
+    let beforeId: number | undefined;
+    for (;;) {
+        const page = await seam.readLog({
+            workspaceId: args.workspaceId,
+            sessionId: args.sessionId,
+            ...(args.loopId !== undefined ? { loopId: args.loopId } : {}),
+            ...(args.loopSeq !== undefined ? { loopSeq: args.loopSeq } : {}),
+            ...(beforeId !== undefined ? { beforeId } : {}),
+        });
+        if (page.length === 0) break;
+        let added = 0;
+        let minId = Infinity;
+        for (const row of page) {
+            if (row.id < minId) minId = row.id;
+            if (!seenIds.has(row.id)) {
+                seenIds.add(row.id);
+                all.push(row);
+                added += 1;
+            }
+        }
+        if (added === 0 || !Number.isFinite(minId) || minId <= 1) break;
+        if (beforeId !== undefined && minId >= beforeId) break;
+        beforeId = minId;
+    }
+    return all;
+};
+
+export const principalHasOpenWork = (
+    voice: string,
+    inbox: readonly ApplicationInboxMessage[],
+    activeLoop: { readonly id: number; readonly status: number } | null,
+    entries: readonly LogEntryWire[],
+): boolean => {
+    if (
+        inbox.some(
+            (msg) =>
+                (msg.lifecycle === "running" || msg.lifecycle === "queued" || msg.lifecycle === "parked") &&
+                extractVoice(msg.source ?? msg.path) === voice,
+        )
+    ) {
+        return true;
+    }
+    if (activeLoop === null) return false;
+    const lifecycle = lifecycleOfLoopStatus(activeLoop.status);
+    if (lifecycle !== "running" && lifecycle !== "queued" && lifecycle !== "parked") {
+        return false;
+    }
+    const loopEntries = entries.filter((row) => row.loop_id === activeLoop.id);
+    if (loopEntries.length === 0) return false;
+    const waitTurnIds = new Set(
+        loopEntries
+            .filter((row) => row.origin === "model" && row.op === "wait" && row.state === "resolved")
+            .map((row) => row.turn_id),
+    );
+    const publishedMessages = loopEntries.filter(
+        (row) => row.origin === "_plurnk" && row.op === "send" && extractVoice(row.source) === voice,
+    );
+    if (publishedMessages.length === 0) return false;
+
+    const completionRows = loopEntries.filter((row) => {
+        if (row.origin !== "model" || row.state !== "resolved") return false;
+        if (row.op !== "send" && row.op !== "done" && row.op !== "fail") return false;
+        const st = statusOf(row);
+        if (st < 200 || st >= 300) return false;
+        const rx = parseJsonOrValue(row.rx);
+        const rxRec = isRecord(rx) ? rx : null;
+        const receiptRec = rxRec !== null && isRecord(rxRec.receipt) ? rxRec.receipt : rxRec;
+        const completion = receiptRec?.completion;
+        if (completion !== 200 && completion !== 499 && !(row.op === "send" && waitTurnIds.has(row.turn_id))) {
+            return false;
+        }
+        const repliedToSourcesRaw = parseJsonOrValue(row.replied_to_sources);
+        const repliedToSources = Array.isArray(repliedToSourcesRaw)
+            ? repliedToSourcesRaw.filter((x): x is string => typeof x === "string")
+            : [];
+        const repliedTo = Array.isArray(receiptRec?.repliedTo)
+            ? receiptRec.repliedTo.filter((x): x is string => typeof x === "string")
+            : [];
+        return (
+            repliedToSources.some((src) => extractVoice(src) === voice) ||
+            repliedTo.some((src) => extractVoice(src) === voice) ||
+            (typeof row.pathname === "string" && extractVoice(row.pathname) === voice)
+        );
+    });
+
+    return publishedMessages.some((msgRow) => {
+        return !completionRows.some((compRow) => {
+            if (compRow.id <= msgRow.id) return false;
+            const repliedToSourcesRaw = parseJsonOrValue(compRow.replied_to_sources);
+            const repliedToSources = Array.isArray(repliedToSourcesRaw)
+                ? repliedToSourcesRaw.filter((x): x is string => typeof x === "string")
+                : [];
+            if (typeof msgRow.source === "string" && repliedToSources.length > 0) {
+                return repliedToSources.includes(msgRow.source);
+            }
+            return true;
+        });
+    });
 };
 
 export const extractVoice = (sourceOrAddress: string | null | undefined): string | undefined => {
