@@ -94,8 +94,9 @@ const pairedReceipts = (messages) => messages.flatMap((message, index) => {
         assert.notEqual(at, -1, `the replayed ${op} is followed by its receipt`);
         let parsedArgs = null;
         try { parsedArgs = JSON.parse(request); } catch { /* ignore */ }
+        const rawPath = parsedArgs?.path ?? parsedArgs?.target ?? /"(?:path|target)":"([^"]+)"/u.exec(request)?.[1];
         const matched = receipts.splice(at, 1)[0];
-        return { ...matched, op, request, path: parsedArgs?.path ?? parsedArgs?.target ?? matched.path };
+        return { ...matched, op, request, path: rawPath ?? matched.path };
     });
 });
 
@@ -187,7 +188,7 @@ export const startClientJourneyModel = async () => {
                 const patternRead = reads.findLast((row) => row.path === "skill://plurnk/pattern.md");
                 assert.ok(patternRead, "the installed runtime exposes the pattern reference");
                 assert.equal(patternRead.status ?? 200, 200);
-                assert.match(patternRead.request, /"pattern":"~quotes"/u, "the pattern rides the replayed READ");
+                assert.match(patternRead.request, /"pattern":(?:"~quotes"|<<<EOF\n~quotes\nEOF)/u, "the pattern rides the replayed READ");
                 assert.match(String(patternRead.body ?? ""), /quotes and escapes, not the property name or colon\./u,
                     "full-text READ returns the selected source line from the installed reference");
                 assert.ok(Array.isArray(patternRead.matches) && patternRead.matches.length > 0);
