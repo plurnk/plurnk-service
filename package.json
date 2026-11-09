@@ -107,6 +107,7 @@
     "allowScripts": {
         "@google/genai@2.21.0": false,
         "esbuild@0.28.2": true,
+        "exifreader@4.54.0": false,
         "protobufjs@7.6.6": false
     },
     "overrides": {

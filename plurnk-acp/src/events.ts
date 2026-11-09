@@ -15,7 +15,15 @@ import {
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { GateTracker } from "./gates.ts";
-import { attrRecord, extractMessageId, extractVoice, parseJsonOrValue, txBody } from "./log-entry-projection.ts";
+import {
+    attrRecord,
+    extractMessageId,
+    extractVoice,
+    parseJsonOrValue,
+    principalHasOpenWork,
+    readAllLogEntries,
+    txBody,
+} from "./log-entry-projection.ts";
 import type SessionTranslator from "./SessionTranslator.ts";
 import {
     buildAvailableCommands,
@@ -283,13 +291,28 @@ export const dispatchDaemonEvent = (
                                     v !== "anonymous",
                             );
                             if (completion === 200 || completion === 499) {
+                                const loopEntries =
+                                    typeof entryRec.loop_id === "number"
+                                        ? await readAllLogEntries(seam, {
+                                              workspaceId,
+                                              sessionId,
+                                              loopId: entryRec.loop_id,
+                                          })
+                                        : [];
+                                const activeLoopSummary =
+                                    typeof entryRec.loop_id === "number"
+                                        ? {
+                                              id: entryRec.loop_id,
+                                              sequence: typeof entryRec.loop_seq === "number" ? entryRec.loop_seq : 1,
+                                              status: 102,
+                                          }
+                                        : null;
                                 for (const completedVoice of completedVoices) {
-                                    const hasRemainingOpenForVoice = rawInbox.some(
-                                        (msg) =>
-                                            (msg.lifecycle === "running" ||
-                                                msg.lifecycle === "queued" ||
-                                                msg.lifecycle === "parked") &&
-                                            extractVoice(msg.source ?? msg.path) === completedVoice,
+                                    const hasRemainingOpenForVoice = principalHasOpenWork(
+                                        completedVoice,
+                                        rawInbox,
+                                        activeLoopSummary,
+                                        loopEntries,
                                     );
                                     if (!hasRemainingOpenForVoice) {
                                         const idleMeta = {

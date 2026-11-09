@@ -3568,6 +3568,143 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                             sessionId: "gookie#gookie",
                         });
                         assert.equal(statusByNamedQualified.status, "open");
+
+                        // 9. History pagination (>100 log rows), qualified/unqualified messageId extraction,
+                        // and running state for published-but-unanswered messages when inbox is empty (#1438, #1436)
+                        h.port.inbox.length = 0;
+                        const prevListLoops = h.port.listSessionLoops;
+                        h.port.listSessionLoops = async ({ sessionId }) =>
+                            sessionId === 82
+                                ? [
+                                      {
+                                          id: 9,
+                                          sessionId: 82,
+                                          sequence: 2,
+                                          status: 102,
+                                          prompt: "Active scout prompt",
+                                          promptSource: "acp://scoutproxy/sessions/gookie/messages/msg-gookie-active",
+                                          claimedAt: "2026-10-25T00:01:00.000Z",
+                                          terminatedAt: null,
+                                          terminalResult: null,
+                                          packetCount: 1,
+                                          waitUntil: null,
+                                          invocation: null,
+                                      },
+                                  ]
+                                : prevListLoops({ workspaceId: 1, sessionId });
+                        h.port.logs.push(
+                            makeLogEntry({
+                                id: 500,
+                                session_id: 82,
+                                session_name: "gookie",
+                                loop_id: 8,
+                                loop_seq: 1,
+                                sequence: 1,
+                                origin: "_plurnk",
+                                op: "send",
+                                source: "acp://scoutproxy/sessions/13%23gookie/messages/msg-gookie-early",
+                                tx: "Early scoutproxy message before 110 tool calls",
+                                attrs: { kind: "message" },
+                            }),
+                            {
+                                ...makeLogEntry({
+                                    id: 501,
+                                    session_id: 82,
+                                    session_name: "gookie",
+                                    loop_id: 8,
+                                    loop_seq: 1,
+                                    sequence: 2,
+                                    origin: "model",
+                                    op: "done",
+                                    pathname: "message://gookie/scoutproxy_00",
+                                    tx: JSON.stringify({
+                                        op: "done",
+                                        target: "message://gookie/scoutproxy_00",
+                                        body: "Early scoutproxy reply",
+                                    }),
+                                    rx: {
+                                        status: 200,
+                                        content: "Early scoutproxy reply",
+                                        mimetype: "text/markdown",
+                                        receipt: {
+                                            delivered: true,
+                                            repliedTo: ["message://gookie/scoutproxy_00"],
+                                            completion: 200,
+                                        },
+                                    },
+                                }),
+                                replied_to_sources: ["acp://scoutproxy/sessions/13%23gookie/messages/msg-gookie-early"],
+                            },
+                        );
+                        for (let i = 0; i < 110; i += 1) {
+                            h.port.logs.push(
+                                makeLogEntry({
+                                    id: 502 + i,
+                                    session_id: 82,
+                                    session_name: "gookie",
+                                    loop_id: 8,
+                                    loop_seq: 1,
+                                    sequence: 3 + i,
+                                    origin: "model",
+                                    op: "read",
+                                    pathname: `/workspace/file-${i}.txt`,
+                                    tx: JSON.stringify({ op: "read", path: `/workspace/file-${i}.txt` }),
+                                    rx: { status: 200, content: `content ${i}`, lines: 1 },
+                                }),
+                            );
+                        }
+                        h.port.logs.push(
+                            makeLogEntry({
+                                id: 700,
+                                session_id: 82,
+                                session_name: "gookie",
+                                loop_id: 9,
+                                loop_seq: 2,
+                                sequence: 1,
+                                origin: "_plurnk",
+                                op: "send",
+                                source: "acp://scoutproxy/sessions/gookie/messages/msg-gookie-active",
+                                tx: "Published scoutproxy message awaiting model reply",
+                                attrs: { kind: "message" },
+                            }),
+                        );
+                        scoutUpdates.length = 0;
+                        const scoutGookieResumed = await scoutConn.request(methods.agent.session.resume, {
+                            sessionId: "gookie",
+                            cwd: "/home/hyzen/ptl/roblox-family-planner/gookie",
+                            replayFrom: { type: "start" },
+                        });
+                        const scoutGookieStatusMeta = (
+                            scoutGookieResumed._meta as { plurnk?: { status?: Record<string, unknown> } } | undefined
+                        )?.plurnk?.status;
+                        assert.equal(scoutGookieStatusMeta?.lifecycle, "running");
+                        await waitFor(
+                            () =>
+                                scoutUpdates.filter((u) => u.sessionUpdate === "user_message_chunk").length === 2 &&
+                                scoutUpdates.filter((u) => u.sessionUpdate === "agent_message_chunk").length === 1 &&
+                                scoutUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "running"),
+                        );
+                        const gookieUserChunks = scoutUpdates.filter(
+                            (u): u is Extract<SessionUpdate, { sessionUpdate: "user_message_chunk" }> =>
+                                u.sessionUpdate === "user_message_chunk",
+                        );
+                        assert.deepEqual(
+                            gookieUserChunks.map((u) => u.messageId),
+                            ["msg-gookie-early", "msg-gookie-active"],
+                        );
+                        const gookieAgentChunk = scoutUpdates.find(
+                            (u): u is Extract<SessionUpdate, { sessionUpdate: "agent_message_chunk" }> =>
+                                u.sessionUpdate === "agent_message_chunk",
+                        );
+                        assert.equal(
+                            (gookieAgentChunk?._meta as { plurnk?: { inReplyTo?: string } } | undefined)?.plurnk
+                                ?.inReplyTo,
+                            "msg-gookie-early",
+                        );
+                        const scoutStatusWhilePublished = await scoutConn.request(methods.agent.session.status, {
+                            sessionId: "gookie#gookie",
+                        });
+                        assert.deepEqual(scoutStatusWhilePublished.state, { state: "running" });
                     });
                 });
             });

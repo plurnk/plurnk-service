@@ -12,6 +12,7 @@ import {
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import SessionTranslator from "./SessionTranslator.ts";
+import { readAllLogEntries } from "./log-entry-projection.ts";
 import {
     OWNER_ADDRESS,
     buildAvailableCommands,
@@ -754,7 +755,7 @@ export const handlePlurnkAction = async (
         const items = await seam.listSessionLoops({ workspaceId: target.workspaceId, sessionId: target.sessionId });
         if (typeof params.loopSeq === "number" && isSafeInteger(params.loopSeq) && params.loopSeq > 0) {
             const [entries, streams] = await Promise.all([
-                seam.readLog({
+                readAllLogEntries(seam, {
                     workspaceId: target.workspaceId,
                     sessionId: target.sessionId,
                     loopSeq: params.loopSeq,
@@ -764,6 +765,7 @@ export const handlePlurnkAction = async (
                     sessionId: target.sessionId,
                 }),
             ]);
+            const sorted = entries.toSorted((a, b) => a.id - b.id);
             const translator = new SessionTranslator({
                 acpSessionId: formatSessionId(target.workspaceId, target.sessionName),
                 workspaceId: target.workspaceId,
@@ -771,7 +773,7 @@ export const handlePlurnkAction = async (
                 sessionName: target.sessionName,
                 origin,
             });
-            const replayed = SessionTranslator.replay(translator, entries, [], {
+            const replayed = SessionTranslator.replay(translator, sorted, [], {
                 exactLoopSeq: params.loopSeq,
                 openStreamTargets: new Set(streams.map((s) => s.target)),
             });

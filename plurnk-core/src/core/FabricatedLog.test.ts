@@ -25,3 +25,28 @@ test("{§emission-admission} {§turn-source-resources} an echoed emission headin
     assert.equal(FabricatedLog.echoes("### log:///1/4/2/emission · 88\ntext\n### log:///1/5/1/emission · 9\n### log:///1/5/2/read · 3"), 2);
     assert.equal(FabricatedLog.echoes("no headings here"), 0);
 });
+
+test("{§emission-admission} finds fabricated Markdown tool-result transcripts and ignores ordinary bold lists", () => {
+    const fabricated = [
+        "**roblox_family_planner: save_chat_media**",
+        "- alt: `Gookie Rainbow Bridge Test Badge`",
+        "- filename: `gookie-badge.svg`",
+        "- svg: `<svg>\n  <text>🐹</text>\n</svg>`",
+        "- Result:",
+        "```json",
+        "{\"ok\":true}",
+        "```",
+    ].join("\n");
+    assert.deepEqual(FabricatedLog.find(fabricated), {
+        heading: "**roblox_family_planner: save_chat_media**",
+        line: 0,
+    });
+    assert.deepEqual(
+        FabricatedLog.find("Intro.\n- Stream: `brave:///c3c7ae49`"),
+        { heading: "- Stream: `brave:///c3c7ae49`", line: 1 },
+    );
+    assert.equal(
+        FabricatedLog.find("**Summary: Options**\n- First item\n- Second item"),
+        null,
+    );
+});

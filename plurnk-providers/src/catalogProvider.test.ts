@@ -587,7 +587,19 @@ test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudg
                         role: "model",
                         parts: [
                             { text: "planning", thought: true },
-                            { text: "await plurnk.note({\"text\":\"Plan ready.\"});\n\nawait plurnk.done({\"text\":\"Completed.\"});" },
+                            {
+                                text: [
+                                    "await plurnk.note({\"text\":<<<EOF",
+                                    "Don't call func(xy, origin) when sky == 'output' (unbalanced ( and ' inside heredoc).",
+                                    "EOF})",
+                                    "",
+                                    "await plurnk.python3({\"text\":<<EOF})",
+                                    "print(\"don't fail on ( or ' in trailing heredoc\")",
+                                    "EOF",
+                                    "",
+                                    "await plurnk.done({\"text\":\"Completed.\"});",
+                                ].join("\n"),
+                            },
                         ],
                     },
                     finishReason: "MALFORMED_RESPONSE",
@@ -602,19 +614,22 @@ test("{§provider-effort} {§provider-failure-normalization} Google thinkingBudg
         }
         if (callIndex === 2) {
             return new Response(`data: ${JSON.stringify({
-                responseId: "resp-malformed-empty",
+                responseId: "resp-malformed-unclosed-heredoc",
                 candidates: [{
                     content: {
                         role: "model",
-                        parts: [{ text: "thinking only", thought: true }],
+                        parts: [
+                            { text: "thinking", thought: true },
+                            { text: "await plurnk.note({\"text\":<<<EOF\nunclosed heredoc )" },
+                        ],
                     },
                     finishReason: "MALFORMED_FUNCTION_CALL",
                 }],
                 usageMetadata: {
                     promptTokenCount: 10,
-                    candidatesTokenCount: 0,
+                    candidatesTokenCount: 4,
                     thoughtsTokenCount: 8,
-                    totalTokenCount: 18,
+                    totalTokenCount: 22,
                 },
             })}\n\n`, { headers: { "content-type": "text/event-stream" } });
         }

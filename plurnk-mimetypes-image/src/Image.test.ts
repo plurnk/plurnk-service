@@ -61,4 +61,66 @@ describe("{§mimetype-binary-input} the body and deepJson are the header's facts
         assert.equal(gif.summary(GIF), gif.content(GIF));
         assert.deepEqual(gif.deepJson(GIF), gif.facts(GIF));
     });
+    it("{§mimetype-binary-input} extracts EXIF header tags across JPEG, PNG, and WebP without decoding pixels", async () => {
+        const desc = Buffer.from("Eagle Palms Emblem (p. 282)\0", "utf8");
+        const docName = Buffer.from("awards/eagle-palms.md#eagle-palms\0", "utf8");
+        const comment = Buffer.concat([
+            Buffer.from("ASCII\0\0\0", "ascii"),
+            Buffer.from('{"kind":"award-emblem","slug":"eagle-palms"}', "utf8"),
+        ]);
+        const tiff = Buffer.alloc(50 + desc.length + docName.length + comment.length);
+        tiff.write("II", 0, "ascii");
+        tiff.writeUInt16LE(0x002a, 2);
+        tiff.writeUInt32LE(8, 4);
+        tiff.writeUInt16LE(3, 8);
+        // 0x010d DocumentName
+        tiff.writeUInt16LE(0x010d, 10);
+        tiff.writeUInt16LE(2, 12);
+        tiff.writeUInt32LE(docName.length, 14);
+        tiff.writeUInt32LE(50, 18);
+        // 0x010e ImageDescription
+        tiff.writeUInt16LE(0x010e, 22);
+        tiff.writeUInt16LE(2, 24);
+        tiff.writeUInt32LE(desc.length, 26);
+        tiff.writeUInt32LE(50 + docName.length, 30);
+        // 0x9286 UserComment
+        tiff.writeUInt16LE(0x9286, 34);
+        tiff.writeUInt16LE(7, 36);
+        tiff.writeUInt32LE(comment.length, 38);
+        tiff.writeUInt32LE(50 + docName.length + desc.length, 42);
+        tiff.writeUInt32LE(0, 46);
+        docName.copy(tiff, 50);
+        desc.copy(tiff, 50 + docName.length);
+        comment.copy(tiff, 50 + docName.length + desc.length);
+
+        const paddedLen = tiff.length + (tiff.length % 2);
+        const exifChunk = Buffer.alloc(8 + paddedLen);
+        exifChunk.write("EXIF", 0, "ascii");
+        exifChunk.writeUInt32LE(tiff.length, 4);
+        tiff.copy(exifChunk, 8);
+        const webpWithExif = Buffer.concat([Buffer.from(WEBP_VP8X), exifChunk]);
+        webpWithExif.writeUInt32LE(webpWithExif.length - 8, 4);
+
+        const facts = webp.facts(webpWithExif);
+        assert.deepEqual(facts.exif, {
+            DocumentName: "awards/eagle-palms.md#eagle-palms",
+            ImageDescription: "Eagle Palms Emblem (p. 282)",
+            UserComment: '{"kind":"award-emblem","slug":"eagle-palms"}',
+        });
+        assert.equal(
+            webp.summary(webpWithExif),
+            `WebP image, 1024×640 px, ${webpWithExif.length} bytes — Eagle Palms Emblem (p. 282)`,
+        );
+        assert.equal(
+            webp.content(webpWithExif),
+            [
+                `WebP image, 1024×640 px, ${webpWithExif.length} bytes — Eagle Palms Emblem (p. 282)`,
+                "DocumentName: awards/eagle-palms.md#eagle-palms",
+                'UserComment: {"kind":"award-emblem","slug":"eagle-palms"}',
+            ].join("\n"),
+        );
+        const matches = await webp.query(webpWithExif, "regex", "award-emblem");
+        assert.equal(matches.length, 1);
+        assert.equal(matches[0]?.regions?.[0]?.startLine, 3);
+    });
 });

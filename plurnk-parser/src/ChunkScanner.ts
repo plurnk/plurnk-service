@@ -1,4 +1,5 @@
-import type { Position, RuntimeTag } from "@plurnk/plurnk-contracts";
+import { isRecord, type Position, type RuntimeTag } from "@plurnk/plurnk-contracts";
+import { parseCallStatements } from "./CallExpressionParser.ts";
 import { findHeredocCloser, matchHeredocOpener } from "./HeredocSyntax.ts";
 import {
     CODE_CONTINUATION_START,
@@ -7,7 +8,79 @@ import {
     translateToolCallsOutsideFences,
     unwrapCodeModeFences,
 } from "./NativeEnvelopes.ts";
+import { CORE_OP_MAP } from "./OptionCoercion.ts";
 import { buildExecutorSpellings } from "./StatementLowering.ts";
+
+const GLUED_TRANSCRIPT_HEADING = /### log:\/\/\/\d+\/\d+\/\d+\/\S*|\*\*[A-Za-z0-9_$-]+:\s*[A-Za-z0-9_$-]+\*\*/u;
+
+const readTrailingAside = (
+    source: string,
+    commentBodyStart: number,
+): { readonly aside: string; readonly endOffset: number } => {
+    const eol = source.indexOf("\n", commentBodyStart);
+    const lineEnd = eol === -1 ? source.length : eol;
+    const rawComment = source.slice(commentBodyStart, lineEnd);
+    const glued = GLUED_TRANSCRIPT_HEADING.exec(rawComment);
+    if (glued !== null) {
+        return {
+            aside: rawComment.slice(0, glued.index).replace(/\r$/u, "").trim(),
+            endOffset: commentBodyStart + glued.index,
+        };
+    }
+    return {
+        aside: rawComment.replace(/\r$/u, "").trim(),
+        endOffset: lineEnd,
+    };
+};
+
+const isModelCodeChunk = (
+    chunkText: string,
+    startPos: Position,
+    executorSpellings: ReadonlyMap<string, RuntimeTag>,
+): boolean => {
+    const trimmedChunk = chunkText.trim();
+    if (/^(?:\(+\s*)?(?:await\s+[A-Za-z_$(]|plurnk\b)/iu.test(trimmedChunk)) {
+        return true;
+    }
+    const headMatch = /^(?:\(+\s*)?([A-Za-z_$][A-Za-z0-9_$-]*)\s*(?:\.|\[|\()/u.exec(trimmedChunk);
+    if (headMatch !== null) {
+        const headLower = headMatch[1].toLowerCase();
+        if (
+            headLower === "plurnk"
+            || executorSpellings.has(headMatch[1])
+            || executorSpellings.has(headLower)
+            || Object.hasOwn(CORE_OP_MAP, headLower)
+        ) {
+            return true;
+        }
+    }
+    if (/^(?:const|let|var|for|while|if|switch|try|function)\b/u.test(trimmedChunk)) {
+        if (/\bplurnk\b/iu.test(trimmedChunk)) return true;
+        for (const m of trimmedChunk.matchAll(/\bawait\s+([A-Za-z_$][A-Za-z0-9_$-]*)\s*(\.|\[|\()/gu)) {
+            const target = m[1];
+            const targetLower = target.toLowerCase();
+            if (
+                targetLower === "plurnk"
+                || executorSpellings.has(target)
+                || executorSpellings.has(targetLower)
+                || Object.hasOwn(CORE_OP_MAP, targetLower)
+            ) {
+                return true;
+            }
+            const afterTarget = trimmedChunk.slice(m.index + m[0].length - 1);
+            if (/^(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'`][^"'`]+["'`]\s*\])\s*\(\s*\{/u.test(afterTarget)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    try {
+        const calls = parseCallStatements(chunkText, startPos);
+        return calls.length > 0 && calls.every((c) => c.args.length > 0 && c.args.every((a) => isRecord(a)));
+    } catch {
+        return false;
+    }
+};
 
 export type Chunk =
     | { readonly kind: "code"; readonly text: string; readonly position: Position; readonly defaultAside: string | null }
@@ -51,7 +124,7 @@ export const scanChunks = (
         return { line: lineIndex + 1, column: Array.from(slice).length };
     };
 
-    let textLines: Array<{ readonly text: string; readonly lineIndex: number }> = [];
+    let textLines: Array<{ readonly text: string; readonly lineIndex: number; readonly trimLeadingPadding?: boolean }> = [];
     const flushText = (): void => {
         if (textLines.length === 0) return;
         let start = 0;
@@ -61,7 +134,9 @@ export const scanChunks = (
         if (start <= end) {
             const firstLine = textLines[start];
             const firstTrimmed = firstLine.text.search(/\S/u);
-            const content = textLines.slice(start, end + 1).map((l) => l.text.replace(/\r$/u, "")).join("\n");
+            const content = textLines.slice(start, end + 1).map((l) => (
+                (l.trimLeadingPadding === true ? l.text.trimStart() : l.text).replace(/\r$/u, "")
+            )).join("\n");
             chunks.push({
                 kind: "text",
                 text: content,
@@ -117,7 +192,7 @@ export const scanChunks = (
         }
 
         if (!(isContinuation ? CODE_CONTINUATION_START : CODE_LINE_START).test(line)) {
-            textLines.push({ text: line, lineIndex: lineIdx });
+            textLines.push({ text: line, lineIndex: lineIdx, trimLeadingPadding: isContinuation });
             lineIdx += 1;
             continue;
         }
@@ -191,13 +266,13 @@ export const scanChunks = (
             }
 
             if (ch === "/" && next === "/") {
-                const eol = source.indexOf("\n", i + 2);
-                const commentText = (eol === -1 ? source.slice(i + 2) : source.slice(i + 2, eol)).replace(/\r$/u, "").trim();
                 if (openedCall && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
-                    trailingAside = commentText;
-                    i = eol === -1 ? source.length : eol;
+                    const { aside, endOffset } = readTrailingAside(source, i + 2);
+                    trailingAside = aside;
+                    i = endOffset;
                     break;
                 }
+                const eol = source.indexOf("\n", i + 2);
                 i = eol === -1 ? source.length : eol + 1;
                 continue;
             }
@@ -280,9 +355,9 @@ export const scanChunks = (
                         while (i < source.length && (source[i] === " " || source[i] === "\t" || source[i] === "\r")) i += 1;
                     }
                     if (source[i] === "/" && source[i + 1] === "/") {
-                        const eol = source.indexOf("\n", i + 2);
-                        trailingAside = (eol === -1 ? source.slice(i + 2) : source.slice(i + 2, eol)).replace(/\r$/u, "").trim();
-                        i = eol === -1 ? source.length : eol;
+                        const { aside, endOffset } = readTrailingAside(source, i + 2);
+                        trailingAside = aside;
+                        i = endOffset;
                     } else if (pendingTrailingHeredocs.length === 0 && source[i] === "<" && source[i + 1] === "<") {
                         const attachedOpener = matchHeredocOpener(source, i);
                         if (attachedOpener !== null) {
@@ -341,9 +416,9 @@ export const scanChunks = (
                             while (i < source.length && (source[i] === " " || source[i] === "\t" || source[i] === "\r")) i += 1;
                         }
                         if (source[i] === "/" && source[i + 1] === "/") {
-                            const eol = source.indexOf("\n", i + 2);
-                            trailingAside = (eol === -1 ? source.slice(i + 2) : source.slice(i + 2, eol)).replace(/\r$/u, "").trim();
-                            i = eol === -1 ? source.length : eol;
+                            const { aside, endOffset } = readTrailingAside(source, i + 2);
+                            trailingAside = aside;
+                            i = endOffset;
                         }
                     }
                     break;
@@ -366,9 +441,9 @@ export const scanChunks = (
                 i += 1;
                 while (i < source.length && (source[i] === " " || source[i] === "\t" || source[i] === "\r")) i += 1;
                 if (source[i] === "/" && source[i + 1] === "/") {
-                    const eol = source.indexOf("\n", i + 2);
-                    trailingAside = (eol === -1 ? source.slice(i + 2) : source.slice(i + 2, eol)).replace(/\r$/u, "").trim();
-                    i = eol === -1 ? source.length : eol;
+                    const { aside, endOffset } = readTrailingAside(source, i + 2);
+                    trailingAside = aside;
+                    i = endOffset;
                 }
                 break;
             }
@@ -429,9 +504,15 @@ export const scanChunks = (
             };
         }
 
-        if (!CONTAINS_CALL.test(chunkText) && !/^(?:await\s+)?plurnk\b/u.test(chunkText.trim())) {
-            textLines.push({ text: line, lineIndex: lineIdx });
-            lineIdx += 1;
+        const rejectAsText = (!CONTAINS_CALL.test(chunkText) && !/^(?:await\s+)?plurnk\b/u.test(chunkText.trim()))
+            || (tier === "model" && !isModelCodeChunk(chunkText, startPos, executorSpellings));
+        if (rejectAsText) {
+            const endOffset = Math.max(startOffset, (codeEndOffset ?? i) - 1);
+            const endLineIdx = positionAt(endOffset).line - 1;
+            for (let l = lineIdx; l <= endLineIdx; l += 1) {
+                textLines.push({ text: lines[l], lineIndex: l, trimLeadingPadding: l === lineIdx && isContinuation });
+            }
+            lineIdx = endLineIdx + 1;
             continue;
         }
 

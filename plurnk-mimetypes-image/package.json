@@ -34,7 +34,7 @@
         "handlers": [
             {
                 "name": "image/png",
-                "revision": "1",
+                "revision": "2",
                 "glyph": "🖼️",
                 "extensions": [
                     ".png"
@@ -42,7 +42,7 @@
             },
             {
                 "name": "image/jpeg",
-                "revision": "1",
+                "revision": "2",
                 "glyph": "🖼️",
                 "extensions": [
                     ".jpg",
@@ -51,7 +51,7 @@
             },
             {
                 "name": "image/gif",
-                "revision": "1",
+                "revision": "2",
                 "glyph": "🖼️",
                 "extensions": [
                     ".gif"
@@ -59,7 +59,7 @@
             },
             {
                 "name": "image/webp",
-                "revision": "1",
+                "revision": "2",
                 "glyph": "🖼️",
                 "extensions": [
                     ".webp"
@@ -88,5 +88,8 @@
         "type": "git",
         "url": "git+https://github.com/plurnk/plurnk-service.git",
         "directory": "plurnk-mimetypes-image"
+    },
+    "dependencies": {
+        "exifreader": "^4.54.0"
     }
 }
