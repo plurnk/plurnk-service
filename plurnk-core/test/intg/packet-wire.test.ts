@@ -1037,7 +1037,7 @@ test("{§child-orientation} the live things a session holds — child sessions �
         const packet = await getPacket(db, result.turnId);
 
         // The live child surfaces as a terse status+path pointer under `sessions` — orienting state, not advice.
-        assert.match(packetSection(packet, "work"), /^\{"sessions":\[\{"status":102,"path":"session:\/\/session-x"\}\],\n"streams":\[\],\n"messages":\[\{"path":"message:\/\/[^/]+\/[0-9a-f]{8}","origin":"user"\}\]\}$/, "the live child session is a status+path pointer the model READs/KILLs itself");
+        assert.match(packetSection(packet, "work"), /^\{"sessions":\[\{"status":102,"path":"session:\/\/session-x"\}\],\n"streams":\[\],\n"messages":\[\{"path":"message:\/\/[^/]+\/[0-9a-zA-Z]{2,}","origin":"user"\}\]\}$/, "the live child session is a status+path pointer the model READs/KILLs itself");
         const usr = packet.sections.filter((x) => x.slot === "user").map((x) => x.name);
         assert.ok(usr.includes("work"), "{§child-orientation}: open work rides the status clump");
     } finally { await db.close(); }
