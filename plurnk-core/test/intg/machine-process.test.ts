@@ -1050,6 +1050,33 @@ test(`{§db-migrations}: a ${V5_2_0.label} database upgrades uppercase operation
     } finally { after.close(); }
 });
 
+test(`{§db-migrations} {§message-arrival}: a ${V5_3_0.label} database scopes message_key uniqueness to the receiving session`, async (t) => {
+    const path = await baseline(t, V5_3_0);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name) VALUES (1, 'sessionKeys');
+            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+            INSERT INTO sessions (id, workspace_id, name, origin) VALUES (1, 1, 'root', 'model'), (2, 1, 'child', 'model');
+            INSERT INTO loops (id, session_id, sequence, prompt, max_turns) VALUES (1, 1, 1, 'Root', -1), (2, 2, 1, 'Child', -1);
+        `);
+    } finally { before.close(); }
+    const upgraded = await openMigrated(path);
+    await upgraded.close();
+    const after = new DatabaseSync(path);
+    try {
+        after.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO loop_messages (loop_id, ordinal, message_key, body) VALUES (1, 1, '00', 'Root msg'), (2, 1, '00', 'Child msg');
+        `);
+        assert.throws(
+            () => after.exec("INSERT INTO loop_messages (loop_id, ordinal, message_key, body) VALUES (1, 2, '00', 'Duplicate in root');"),
+            /message_key already accepted in this session/,
+        );
+    } finally { after.close(); }
+});
+
 test("{§db-migrations}: a database from before the 5.0.0 support floor or from a newer release is refused naming both versions read", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-pre-floor-"));
     t.after(() => rm(root, { recursive: true, force: true }));
@@ -1070,14 +1097,14 @@ test("{§db-migrations}: a database from before the 5.0.0 support floor or from 
     finally { raw.close(); }
     await assert.rejects(
         () => openMigrated(newerPath),
-        /database schema \(version 99\) is newer than this build \(schema version 14\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
+        /database schema \(version 99\) is newer than this build \(schema version 15\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
     );
 });
 
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.equal(versions.length, 14, "all migration versions are present");
+    assert.equal(versions.length, 15, "all migration versions are present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});

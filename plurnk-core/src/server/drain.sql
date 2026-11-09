@@ -82,8 +82,34 @@ SELECT workspace_id FROM sessions WHERE id = $session_id;
 -- loop's initial message; a later arrival takes the next ordinal. {§loop-completion}: a session's own
 -- operation names itself as the message's opener, by the row it writes.
 WITH RECURSIVE
+    principal(prefix) AS (
+        SELECT CASE
+            WHEN $address LIKE 'acp://%/%'
+             AND substr($address, 7, instr(substr($address, 7), '/') - 1) NOT IN ('', 'operator', 'anonymous')
+            THEN substr($address, 7, instr(substr($address, 7), '/') - 1) || '_'
+            ELSE ''
+        END
+    ),
+    window_suffixes(rest, val) AS (
+        SELECT substr(m.message_key, length(p.prefix) + 1), 0
+        FROM loop_messages m
+        JOIN loops l ON l.id = m.loop_id
+        CROSS JOIN principal p
+        WHERE l.session_id = (SELECT session_id FROM loops WHERE id = $loop_id)
+          AND CASE
+              WHEN p.prefix != '' THEN substr(m.message_key, 1, length(p.prefix)) = p.prefix
+              ELSE instr(m.message_key, '_') = 0
+          END
+          AND length(substr(m.message_key, length(p.prefix) + 1)) BETWEEN 2 AND 5
+          AND substr(m.message_key, length(p.prefix) + 1) NOT GLOB '*[^0-9a-zA-Z]*'
+        UNION ALL
+        SELECT substr(rest, 2),
+               val * 62 + instr('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', substr(rest, 1, 1)) - 1
+        FROM window_suffixes
+        WHERE rest != ''
+    ),
     seq(q, s) AS (
-        SELECT CAST(COALESCE((SELECT MAX(id) FROM loop_messages), 0) AS INTEGER), ''
+        SELECT CAST(COALESCE((SELECT MAX(val) + 1 FROM window_suffixes WHERE rest = ''), 0) AS INTEGER), ''
         UNION ALL
         SELECT CAST(q / 62 AS INTEGER),
                substr('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', (q % 62) + 1, 1) || s
@@ -98,21 +124,11 @@ WITH RECURSIVE
         END
         FROM seq
         WHERE q = 0
-    ),
-    principal(name) AS (
-        SELECT CASE
-            WHEN $address LIKE 'acp://%/%'
-            THEN substr($address, 7, instr(substr($address, 7), '/') - 1)
-            ELSE ''
-        END
     )
 INSERT INTO loop_messages (loop_id, ordinal, message_key, source, body, open_paths, evidence, address, opened_turn_id, opened_sequence)
 SELECT $loop_id,
        (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM loop_messages WHERE loop_id = $loop_id),
-       (SELECT CASE
-            WHEN name != '' AND name NOT IN ('operator', 'anonymous') THEN name || '_' || suffix
-            ELSE suffix
-        END FROM encoded, principal),
+       (SELECT prefix || suffix FROM principal, encoded),
        $source, $body, $open_paths, $evidence, $address, $opened_turn_id, $opened_sequence
 WHERE EXISTS (SELECT 1 FROM loops WHERE id = $loop_id AND status IN (100, 102, 202))
 RETURNING id, ordinal, message_key;

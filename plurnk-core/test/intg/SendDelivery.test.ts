@@ -347,7 +347,7 @@ test("{§message-completion}: a delivered reply names the open messages it answe
                 opened_turn_id: null,
                 opened_sequence: null,
             });
-            assert.equal(scoutEnqueue?.message_key, "scoutproxy_02");
+            assert.equal(scoutEnqueue?.message_key, "scoutproxy_00");
 
             const wikiEnqueue = await db.drain_enqueue_message.get<{ id: number; message_key: string }>({
                 loop_id: nextLoopId,
@@ -359,7 +359,19 @@ test("{§message-completion}: a delivered reply names the open messages it answe
                 opened_turn_id: null,
                 opened_sequence: null,
             });
-            assert.equal(wikiEnqueue?.message_key, "wikitopian_03");
+            assert.equal(wikiEnqueue?.message_key, "wikitopian_00");
+
+            const scoutEnqueue2 = await db.drain_enqueue_message.get<{ id: number; message_key: string }>({
+                loop_id: nextLoopId,
+                source: "acp://scoutproxy/sessions/1%23user/messages/m-scout-2",
+                body: "Scout follow-up",
+                open_paths: "[]",
+                evidence: "{}",
+                address: "acp://scoutproxy/sessions/1%23user/messages/m-scout-2",
+                opened_turn_id: null,
+                opened_sequence: null,
+            });
+            assert.equal(scoutEnqueue2?.message_key, "scoutproxy_01");
         } finally { ws.close(); }
     });
 });
