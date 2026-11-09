@@ -101,7 +101,7 @@ export const txBody = (tx: unknown, attrs?: Readonly<Record<string, unknown>>, p
 export const cleanReceipt = (
     rx: unknown,
     bodyUrl?: string,
-    targetName?: string,
+    _targetName?: string,
 ): {
     readonly receipt: unknown;
     readonly contentBlocks: ToolCallContent[];
@@ -122,23 +122,7 @@ export const cleanReceipt = (
     );
     const receipt = Object.fromEntries(kept);
     const contentBlocks: ToolCallContent[] = [];
-    if (useReference) {
-        const mimeType =
-            typeof parsed.mimetype === "string" && parsed.mimetype.length > 0 ? parsed.mimetype : "text/plain";
-        contentBlocks.push({
-            type: "content",
-            content: { type: "text", text: JSON.stringify(receipt) },
-        });
-        contentBlocks.push({
-            type: "content",
-            content: {
-                type: "resource_link",
-                uri: bodyUrl,
-                name: targetName ?? bodyUrl,
-                mimeType,
-            },
-        });
-    } else if (rawContent !== null) {
+    if (rawContent !== null) {
         contentBlocks.push({
             type: "content",
             content: { type: "text", text: rawContent },

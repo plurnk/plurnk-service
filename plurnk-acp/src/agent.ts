@@ -434,10 +434,21 @@ export const createConnectionAgent = (
                 seam.sessionGauge({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
             ]);
 
+            const resumeMeta = extractPlurnkMeta(ctx.params._meta);
+            const useWindow =
+                !shouldReplay ||
+                resumeMeta.window === true ||
+                resumeMeta.historyLoops !== undefined ||
+                resumeMeta.historyPageChars !== undefined;
             const replayed = SessionTranslator.replay(bound.translator, entries, inbox, {
-                historyLoops: opts.historyLoops,
-                historyPageChars: opts.historyPageChars,
+                ...(useWindow
+                    ? {
+                          historyLoops: resumeMeta.historyLoops ?? opts.historyLoops,
+                          historyPageChars: resumeMeta.historyPageChars ?? opts.historyPageChars,
+                      }
+                    : {}),
                 openStreamTargets: new Set(streams.map((s) => s.target)),
+                subject: peer.subject,
             });
 
             if (shouldReplay) {
@@ -513,11 +524,17 @@ export const createConnectionAgent = (
                     ? { sessionUpdate: "state_update", state: "running" }
                     : lifecycle === "parked" && activeLoop !== null
                       ? {
-                            sessionUpdate: "notice",
-                            severity: "info",
-                            title: "engine:lifecycle:loop_status",
+                            sessionUpdate: "state_update",
+                            state: "running",
                             _meta: {
                                 plurnk: {
+                                    status: {
+                                        lifecycle: "parked",
+                                        loopId: activeLoop.id,
+                                        loopSeq: activeLoop.sequence,
+                                        packetCount: activeLoop.packetCount,
+                                        waitUntil: activeLoop.waitUntil ?? null,
+                                    },
                                     notice: {
                                         source: "engine:lifecycle",
                                         kind: "loop_status",
@@ -712,7 +729,7 @@ export const createConnectionAgent = (
                 origin,
                 query,
             );
-            if (query.subscribe !== false) {
+            if (query.subscribe === true) {
                 peer.overviewSubscription = {
                     ...query,
                     origin,
@@ -1401,9 +1418,7 @@ export const createConnectionAgent = (
             }
 
             notifyPeerSession(peer, bound.acpSessionId, {
-                sessionUpdate: "notice",
-                severity: "info",
-                title: "workspace:state",
+                sessionUpdate: "session_info_update",
                 _meta: {
                     plurnk: {
                         workspace: {
@@ -1502,9 +1517,7 @@ export const createConnectionAgent = (
                     {
                         sessionId: s.acpSessionId,
                         update: {
-                            sessionUpdate: "notice",
-                            severity: "info",
-                            title: "workspace:state",
+                            sessionUpdate: "session_info_update",
                             _meta: {
                                 plurnk: {
                                     status: {
