@@ -247,6 +247,16 @@ export const createHarness = async (options?: {
                     expiresAt: Date.now() + 60_000,
                 };
             }
+            if (token === "hazool17-token") {
+                return {
+                    kind: "access",
+                    subject: "hazool17",
+                    clientId: "hazool17",
+                    scopes: ["acp"],
+                    family: "fam-3",
+                    expiresAt: Date.now() + 60_000,
+                };
+            }
             if (token === "no-scope-token") {
                 return {
                     kind: "access",

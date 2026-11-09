@@ -394,6 +394,23 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
 
     #notifyPeerSession = (peer: AcpPeer, sessionId: string, update: SessionUpdate): void => {
         if (peer.client === null) return;
+        const isNamedPrincipalPeer =
+            peer.subject !== null && peer.subject !== "operator" && peer.subject !== "anonymous";
+        if (
+            isNamedPrincipalPeer &&
+            (update.sessionUpdate === "user_message_chunk" ||
+                update.sessionUpdate === "agent_message_chunk" ||
+                update.sessionUpdate === "user_message" ||
+                update.sessionUpdate === "agent_message")
+        ) {
+            const updateVoice =
+                isRecord(update._meta) && isRecord(update._meta.plurnk)
+                    ? update._meta.plurnk.voice
+                    : undefined;
+            if (updateVoice !== peer.subject) {
+                return;
+            }
+        }
         void peer.client
             .notify(methods.client.session.update, {
                 sessionId,

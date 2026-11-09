@@ -6,7 +6,7 @@ import {
     type ApplicationInboxMessage,
     type LogEntryWire,
 } from "@plurnk/plurnk-contracts";
-import { attrRecord, extractMessageId, statusOf } from "./log-entry-projection.ts";
+import { attrRecord, extractMessageId, extractVoice, statusOf } from "./log-entry-projection.ts";
 import type SessionTranslator from "./SessionTranslator.ts";
 import type { AcpSessionUpdate } from "./SessionTranslator.ts";
 
@@ -166,29 +166,20 @@ export const replaySessionHistory = (
                 translator.origin !== undefined && translator.origin.length > 0
                     ? `${translator.origin}/acp/${translator.workspaceId}/${translator.sessionId}/entry?target=${encodeURIComponent(msg.path)}`
                     : undefined;
-            const useReference =
-                inboxUrl !== undefined &&
-                options.historyPageChars !== undefined &&
-                options.historyPageChars > 0 &&
-                msg.body.length > options.historyPageChars;
+            const inboxVoice = extractVoice(msg.source);
             updates.push({
                 sessionId: translator.acpSessionId,
                 update: {
                     sessionUpdate: "user_message_chunk",
                     messageId,
-                    content: useReference
-                        ? {
-                              type: "resource_link",
-                              uri: inboxUrl,
-                              name: msg.path,
-                              mimeType: "text/plain",
-                          }
-                        : { type: "text", text: msg.body },
+                    content: { type: "text", text: msg.body },
                     _meta: {
                         plurnk: {
                             loopId: msg.loopId,
                             lifecycle: msg.lifecycle,
                             published: false,
+                            ...(typeof msg.source === "string" ? { source: msg.source } : {}),
+                            ...(inboxVoice !== undefined ? { voice: inboxVoice } : {}),
                             ...(inboxUrl !== undefined
                                 ? { body: { url: inboxUrl, mimeType: "text/plain" } }
                                 : {}),
