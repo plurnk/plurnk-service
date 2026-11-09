@@ -401,12 +401,6 @@ export const toMatcherBody = (value: unknown, op: string, pos: Position, advise?
                 )
             )
         ) {
-            if (!effectiveHeredoc) {
-                advise?.(
-                    pos,
-                    `Pattern \`${raw}\` is not a valid ${raw.startsWith("//") ? "xpath" : raw.startsWith("$") ? "jsonpath" : "graph"} selector and was read literally; prefer \`pattern: <<<EOF\\n...\\nEOF\` for literal code.`,
-                );
-            }
             return oldTextToMatcher(raw, pos);
         }
         return parsed;

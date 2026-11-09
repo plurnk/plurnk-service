@@ -164,8 +164,8 @@ await <service>.<tool>({ ... })
 
 | Prefix | Dialect | Validation & tolerance |
 | --- | --- | --- |
-| `//` | `xpath` | Validated with XPath 1.0 parser before regex classification (also recovers single-slash absolute XPath location paths such as `/root/item[@id='old']/@id` or `/root/item/text()` and strips vacuous `/text()` after `@attr` steps) |
-| `/` or `^` | `regex` | ECMAScript `RegExp`; tolerates `\|` alternation, trailing `-flags`, `/~.../` mixed prefix, unbalanced unescaped `(`, `)`, or `[`, and glob-shaped `/*text*/` with advisories |
+| `//` | `xpath` | Validated with XPath 1.0 parser before regex classification (also silently normalizes single-slash absolute XPath location paths such as `/root/item[@id='old']/@id` or `/root/item/text()`, regex-wrapped or trailing-slash XPath selectors such as `///item[@id='old']/`, `//item[@id='old']/`, or `/\/\/item[@id='old']/`, and vacuous `/text()` after `@attr` steps) |
+| `/` or `^` | `regex` | ECMAScript `RegExp`; tolerates `\|` alternation, trailing `-flags`, `/~.../` mixed prefix, unbalanced unescaped `(`, `)`, or `[`, and glob-shaped `/*text*/` |
 | `$` | `jsonpath` | Validated with RFC 9535 `json-p3` |
 | `~` | `fulltext` | Single-line FTS5 query string |
 | `&` | `graph` | `&symbol`, `&<symbol`, or `&>symbol` relation query |
@@ -173,7 +173,7 @@ await <service>.<tool>({ ... })
 
 - **Soft matcher refusal**: An invalid matcher expression is admitted as `matcher.dialect = "unreadable"` with its diagnostic and working-form `recovery` so only that operation fails `400 grammar/matcher/unreadable-pattern` while sibling statements in the turn still execute.
 - **Statement recovery and argument tolerances**: Statement errors recover at the next top-level call; an inline `<L,M>` range written inside `path<L,M>` is lifted with a warning; extra positional arguments beyond the operation's arity fail only that statement.
-- **Line anchors and range recovery**: `TextLineMarker` accepts `@<5 Base62 chars>` line anchors (with optional `[+-]K` offsets or surrounding `<...>`) in line positions; reversed or zero-based two-number ranges (`"0,N"`, `"M,N"` with `M > N`, `"N,+K"`, `"@hash,1"`) normalize with a warning advisory.
+- **Line anchors and range recovery**: `TextLineMarker` accepts `@<5 Base62 chars>` line anchors (with optional `[+-]K` offsets or surrounding `<...>`) in line positions; reversed or count two-number ranges (`"M,N"` with `M > N`, `"N,+K"`) normalize with a warning advisory, while unambiguous anchor forms (`"@hash,1"` as `"@hash"`, `"@hash,0"` as `"@hash,1,@hash,1"`, and `"@start,@end,SC[,EC]"` as `"@start,SC,@end[,EC]"`) normalize silently.
 
 ---
 

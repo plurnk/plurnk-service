@@ -991,5 +991,19 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((lfm25Ops[9] as ReadStatement).lineMarker, null);
         assert.deepEqual((lfm25Ops[10] as EditStatement).matcher, { dialect: "jsonpath", raw: "$.host" });
         assert.equal((lfm25Ops[10] as EditStatement).lineMarker, null);
+
+        const cloverXPathAndRangeRecoveries = PlurnkParser.parse([
+            'await plurnk.edit({"path":"workspace:///catalog.xml","pattern":"/\\/\\/item[@id=\'old\']/","text":"<item id=\\"new\\">C</item>"})',
+            'await plurnk.edit({"path":"workspace:///catalog.xml","pattern":<<<EOF\n//item[@id=\'old\']/\nEOF,"text":"<item id=\\"new\\">C</item>"})',
+            'await plurnk.edit({"path":"workspace:///catalog.xml","pattern":<<<EOF\n/\\/\\/\\/item\\[@id=\'old\'\\]\\//\nEOF,"text":"<item id=\\"new\\">C</item>"})',
+            'await plurnk.edit({"path":"workspace:///notes.md","range":"@LB1ll,0","text":"title\\n"})',
+        ].join("\n\n"));
+        assert.equal(cloverXPathAndRangeRecoveries.items.every((i) => i.kind === "statement"), true);
+        const cloverOps = cloverXPathAndRangeRecoveries.items.filter((i) => i.kind === "statement").map((i) => i.statement as EditStatement);
+        assert.equal(cloverOps.length, 4);
+        assert.deepEqual(cloverOps[0].matcher, { dialect: "xpath", raw: "//item[@id='old']" });
+        assert.deepEqual(cloverOps[1].matcher, { dialect: "xpath", raw: "//item[@id='old']" });
+        assert.deepEqual(cloverOps[2].matcher, { dialect: "xpath", raw: "//item[@id='old']" });
+        assert.deepEqual(cloverOps[3].lineMarker, { marks: ["@LB1ll", 1, "@LB1ll", 1] });
     });
 });
