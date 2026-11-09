@@ -81,8 +81,7 @@ UPDATE sessions
 SET model_route_id = $model_route_id,
     spawn_model_route_id = $spawn_model_route_id,
     effort = $effort,
-    effort_source = $effort_source,
-    version = version + 1
+    effort_source = $effort_source
 WHERE id = $id
   AND (
       model_route_id IS NULL

@@ -212,8 +212,7 @@ CREATE TRIGGER entry_channel_rows_settle_publications
 AFTER DELETE ON entry_channel_rows
 BEGIN
     UPDATE subscription_publications
-    SET terminal_published = 1,
-        version = version + 1
+    SET terminal_published = 1
     WHERE terminal_published = 0
       AND channel = OLD.name
       AND subscription_id IN (SELECT id FROM subscriptions WHERE entry_id = OLD.entry_id);
@@ -239,8 +238,7 @@ BEGIN
 
     UPDATE subscription_publications
     SET published_end = json_extract(NEW.attrs, '$.streamEnd'),
-        terminal_published = json_extract(NEW.rx, '$.terminal'),
-        version = version + 1
+        terminal_published = json_extract(NEW.rx, '$.terminal')
     WHERE id = NEW.subscription_publication_id
       AND terminal_published = 0
       AND (

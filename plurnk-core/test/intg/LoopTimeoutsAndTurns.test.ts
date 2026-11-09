@@ -428,12 +428,11 @@ test("{§packet} turns: insert with required fields — defaults populate", asyn
     try {
         await db.test_turns_insert.run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET });
         const row = await db.test_turns_get_full.get<{
-            id: number; version: number; loop_id: number; sequence: number; timestamp: string;
+            id: number; loop_id: number; sequence: number; timestamp: string;
             producer: string; kind: string; status: number; completed_at: string | null;
             usage_curation_budget: number | null; packet: string;
         }>({ loop_id: loopId });
         assert.ok((row?.id ?? 0) >= 1);
-        assert.equal(row?.version, 0);
         assert.equal(row?.sequence, 1);
         assert.equal(row?.producer, "model");
         assert.equal(row?.kind, "inference");
@@ -727,16 +726,6 @@ test("{§packet} turns: curation budget is a positive optional gauge denominator
             usage_curation_budget: number;
         }>({ loop_id: loopId });
         assert.equal(row?.usage_curation_budget, 200_000);
-    } finally { await db.close(); }
-});
-
-test("{§packet} turns: negative version rejected", async () => {
-    const { db, loopId } = await setup();
-    try {
-        await assert.rejects(
-            () => db.test_turns_insert_with_version.run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET, version: -1 }),
-            /CHECK constraint failed/,
-        );
     } finally { await db.close(); }
 });
 

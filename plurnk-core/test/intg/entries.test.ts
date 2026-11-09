@@ -741,7 +741,7 @@ test("{§db-migrations}: opening a database newer than the build names both vers
         new SqlRiteSync({ path: dbPath, dir: newer }).close();
     });
     assert.equal(result.code, 1, `the launcher fails closed (stderr: ${result.stderr})`);
-    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 15\)/, "both schema versions read are named");
+    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 16\)/, "both schema versions read are named");
 });
 
 test("{§db-migrations}: opening a pre-floor database names both versions read and non-destructive remediation", async () => {
@@ -1080,6 +1080,37 @@ test("{§db-migrations}: every explicit index is used by a registry plan, backs 
         }
     } finally { await close(); }
     assert.deepEqual(unowned, [], `indexes without an owner:\n${unowned.join("\n")}`);
+});
+
+// {§db-migrations} — every table column is referenced by at least one runtime SQL block, view, or trigger.
+test("{§db-migrations}: every table column is referenced by a registry statement, view, or trigger", async () => {
+    const { raw, close } = await planRegistry();
+    const strip = (sql: string): string => sql.replace(/--.*$/gm, "").replace(/'[^']*'/g, "''");
+    const unowned: string[] = [];
+    try {
+        const blocks: string[] = [];
+        for (const file of SqlRiteCore.getFiles(resolve(PROJECT_ROOT, "src"))) {
+            const text = await readFile(file, "utf8");
+            for (const block of text.split(/^--\s*(?:PREP|INIT|TX|EXEC):\s*/m).slice(1)) blocks.push(strip(block));
+        }
+        const views = (raw.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'view' AND sql IS NOT NULL").all() as Array<{ name: string; sql: string }>)
+            .map((v) => ({ ...v, sql: strip(v.sql) }));
+        const triggers = (raw.prepare("SELECT name, tbl_name, sql FROM sqlite_master WHERE type = 'trigger' AND sql IS NOT NULL").all() as Array<{ name: string; tbl_name: string; sql: string }>)
+            .map((t) => ({ ...t, sql: strip(t.sql) }));
+        const tables = raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'derivation_fts%' ORDER BY name").all() as Array<{ name: string }>;
+        for (const { name: table } of tables) {
+            const reTable = new RegExp(`\\b${table}\\b`, "u");
+            const columns = raw.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+            for (const { name: column } of columns) {
+                const reCol = new RegExp(`\\b${column}\\b`, "u");
+                const used = blocks.some((b) => reTable.test(b) && reCol.test(b))
+                    || views.some((v) => reTable.test(v.sql) && reCol.test(v.sql))
+                    || triggers.some((t) => (t.tbl_name === table || reTable.test(t.sql)) && reCol.test(t.sql));
+                if (!used) unowned.push(`${table}.${column}`);
+            }
+        }
+    } finally { await close(); }
+    assert.deepEqual(unowned, [], `unreferenced table columns:\n${unowned.join("\n")}`);
 });
 });
 

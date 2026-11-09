@@ -38,8 +38,7 @@ ORDER BY s.id, ec.name;
 -- publication is still marked terminal here so the stream's termination counts as delivered.
 UPDATE subscription_publications
 SET published_end = $published_end,
-    terminal_published = 1,
-    version = version + 1
+    terminal_published = 1
 WHERE id = $publication_id
   AND terminal_published = 0;
 

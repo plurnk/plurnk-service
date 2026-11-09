@@ -7,13 +7,6 @@ SELECT sql FROM sqlite_master WHERE name = 'workspaces';
 -- PREP: test_workspaces_insert_name_only
 INSERT INTO workspaces (name) VALUES ($name);
 
--- PREP: test_workspaces_get_by_name
-SELECT id, version, name, created_at
-FROM workspaces WHERE name = $name;
-
--- PREP: test_workspaces_insert_with_version
-INSERT INTO workspaces (name, version) VALUES ($name, $version);
-
 -- PREP: test_workspaces_index_exists
 SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'workspaces_created_at';
 

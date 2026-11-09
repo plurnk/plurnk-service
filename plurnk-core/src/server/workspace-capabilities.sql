@@ -10,8 +10,7 @@ WHERE workspace_id = $workspace_id
 INSERT INTO workspace_module_state (workspace_id, namespace_owner, state)
 VALUES ($workspace_id, $namespace_owner, $state)
 ON CONFLICT (workspace_id, namespace_owner) DO UPDATE SET
-    state = excluded.state,
-    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now');
+    state = excluded.state;
 
 -- PREP: workspace_module_state_delete
 DELETE FROM workspace_module_state
@@ -32,8 +31,7 @@ WHERE session_id = $session_id
 INSERT INTO session_module_state (session_id, namespace_owner, state)
 VALUES ($session_id, $namespace_owner, $state)
 ON CONFLICT (session_id, namespace_owner) DO UPDATE SET
-    state = excluded.state,
-    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now');
+    state = excluded.state;
 
 -- PREP: session_module_state_delete
 DELETE FROM session_module_state

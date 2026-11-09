@@ -1113,16 +1113,6 @@ test("{§execution-output-identity} workspaces: empty name rejected by CHECK (le
     } finally { await db.close(); }
 });
 
-test("{§db-migrations} workspaces: negative version rejected by CHECK", async () => {
-    const db = await openMigrated();
-    try {
-        await assert.rejects(
-            () => db.test_workspaces_insert_with_version.run({ name: "workspace-c", version: -1 }),
-            /CHECK constraint failed/,
-        );
-    } finally { await db.close(); }
-});
-
 test("{§execution-output-identity} workspaces: NOT NULL enforced on name", async () => {
     const db = await openMigrated();
     try {
