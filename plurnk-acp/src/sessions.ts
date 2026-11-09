@@ -128,15 +128,28 @@ export interface AcpPeer {
 
 export const formatSessionId = (workspaceId: number, sessionName: string): string => `${workspaceId}#${sessionName}`;
 
-export const parseSessionId = (raw: string): { readonly workspaceId: number; readonly sessionName: string } | null => {
+export const parseSessionId = (
+    raw: string,
+): { readonly workspaceId?: number; readonly workspaceName?: string; readonly sessionName: string } | null => {
     const idx = raw.indexOf("#");
     if (idx <= 0 || idx === raw.length - 1) return null;
     const prefix = raw.slice(0, idx);
-    if (!/^[1-9]\d*$/.test(prefix)) return null;
-    const wsId = Number(prefix);
     const sessionName = raw.slice(idx + 1);
-    if (!isSafeInteger(wsId) || wsId <= 0 || sessionName.length === 0) return null;
-    return { workspaceId: wsId, sessionName };
+    if (sessionName.length === 0) return null;
+    if (/^\d+$/u.test(prefix)) {
+        if (!/^[1-9]\d*$/u.test(prefix)) return null;
+        const wsId = Number(prefix);
+        if (!isSafeInteger(wsId) || wsId <= 0) return null;
+        return { workspaceId: wsId, sessionName };
+    }
+    if (
+        prefix.trim() !== prefix ||
+        !prefix.isWellFormed() ||
+        prefix.split("/").some((segment) => segment === "." || segment === "..")
+    ) {
+        return null;
+    }
+    return { workspaceName: prefix, sessionName };
 };
 
 export const isDescendantSession = (
@@ -720,7 +733,11 @@ export const lookupSessionTarget = async (
             );
         }
         try {
-            const attached = await seam.attachWorkspace({ workspaceId: parsed.workspaceId });
+            const attached = await seam.attachWorkspace(
+                parsed.workspaceId !== undefined
+                    ? { workspaceId: parsed.workspaceId }
+                    : { name: parsed.workspaceName! },
+            );
             workspaceId = attached.workspaceId;
             workspaceName = attached.workspaceName;
             projectRoot = attached.projectRoot ?? null;
@@ -831,7 +848,11 @@ export const resolveSessionBinding = async (
             );
         }
         try {
-            const attached = await seam.attachWorkspace({ workspaceId: parsed.workspaceId });
+            const attached = await seam.attachWorkspace(
+                parsed.workspaceId !== undefined
+                    ? { workspaceId: parsed.workspaceId }
+                    : { name: parsed.workspaceName! },
+            );
             workspaceId = attached.workspaceId;
             workspaceName = attached.workspaceName;
             projectRoot = attached.projectRoot ?? null;

@@ -140,6 +140,9 @@ export const applyWorkspaceRenamed = (
             notifyPeerSession(peer, session.acpSessionId, {
                 sessionUpdate: "session_info_update",
                 title: `${nextName}#${session.sessionName}`,
+            });
+            notifyPeerSession(peer, session.acpSessionId, {
+                sessionUpdate: "_plurnk_telemetry",
                 _meta: {
                     plurnk: {
                         workspaceId,
@@ -204,7 +207,7 @@ export const dispatchDaemonEvent = (
                             {
                                 sessionId: s.acpSessionId,
                                 update: {
-                                    sessionUpdate: "session_info_update",
+                                    sessionUpdate: "_plurnk_telemetry",
                                     _meta: {
                                         plurnk: {
                                             status: {
@@ -599,7 +602,7 @@ export const dispatchDaemonEvent = (
                         ])
                             .then(([spend, proposals, interactions]) => {
                                 notifyPeerSession(peer, session.acpSessionId, {
-                                    sessionUpdate: "session_info_update",
+                                    sessionUpdate: "_plurnk_telemetry",
                                     _meta: {
                                         plurnk: {
                                             status: {
@@ -800,7 +803,7 @@ export const dispatchDaemonEvent = (
                             ])
                                 .then(([spend, proposals, interactions]) => {
                                     notifyPeerSession(peer, session.acpSessionId, {
-                                        sessionUpdate: "session_info_update",
+                                        sessionUpdate: "_plurnk_telemetry",
                                         _meta: {
                                             plurnk: {
                                                 status: {
@@ -835,7 +838,7 @@ export const dispatchDaemonEvent = (
                     visited.add(session);
                     if (session.workspaceId !== workspaceId) continue;
                     notifyPeerSession(peer, session.acpSessionId, {
-                        sessionUpdate: "session_info_update",
+                        sessionUpdate: "_plurnk_telemetry",
                         _meta: {
                             plurnk: {
                                 workspaceId,

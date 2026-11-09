@@ -1418,7 +1418,7 @@ export const createConnectionAgent = (
             }
 
             notifyPeerSession(peer, bound.acpSessionId, {
-                sessionUpdate: "session_info_update",
+                sessionUpdate: "_plurnk_telemetry",
                 _meta: {
                     plurnk: {
                         workspace: {
@@ -1517,7 +1517,7 @@ export const createConnectionAgent = (
                     {
                         sessionId: s.acpSessionId,
                         update: {
-                            sessionUpdate: "session_info_update",
+                            sessionUpdate: "_plurnk_telemetry",
                             _meta: {
                                 plurnk: {
                                     status: {
