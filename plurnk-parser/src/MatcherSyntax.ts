@@ -297,6 +297,18 @@ export const parseMatcher = (body: string, op = "read", pos: Position = { line: 
         if (regex.reason === "invalid") {
             const glob = readGlobRegex(regex.pattern, regex.flags, raw, pos, advise);
             if (glob !== null) return { dialect: "regex", raw, pattern: glob.pattern, flags: glob.flags };
+            if (
+                regex.detail.includes("Invalid flags supplied")
+                && !/(?<!\\)\/[dgimsuvy]*$/u.test(raw)
+                && /^\/[A-Za-z_*]/u.test(raw)
+                && /\/(?:@[A-Za-z_*]|[A-Za-z_*][\w.-]*\[|(?:text|node|comment|processing-instruction)\(\)|[A-Za-z_*][\w.-]*\/[A-Za-z_*@])/u.test(raw)
+            ) {
+                try {
+                    xpath.parse(raw);
+                    advise?.(pos, `\`${raw}\` was read as an XPath selector; start XPath selectors with \`//\`, such as \`/${raw}\`.`);
+                    return { dialect: "xpath", raw };
+                } catch { /* fall through */ }
+            }
         }
         const slashRecovery = regex.reason === "invalid"
             && regex.detail.includes("Invalid flags supplied")

@@ -164,7 +164,7 @@ await <service>.<tool>({ ... })
 
 | Prefix | Dialect | Validation & tolerance |
 | --- | --- | --- |
-| `//` | `xpath` | Validated with XPath 1.0 parser before regex classification |
+| `//` | `xpath` | Validated with XPath 1.0 parser before regex classification (also recovers single-slash absolute XPath location paths such as `/root/item[@id='old']/@id` or `/root/item/text()` with an advisory) |
 | `/` or `^` | `regex` | ECMAScript `RegExp`; tolerates `\|` alternation, trailing `-flags`, `/~.../` mixed prefix, unbalanced unescaped `(`, `)`, or `[`, and glob-shaped `/*text*/` with advisories |
 | `$` | `jsonpath` | Validated with RFC 9535 `json-p3` |
 | `~` | `fulltext` | Single-line FTS5 query string |
