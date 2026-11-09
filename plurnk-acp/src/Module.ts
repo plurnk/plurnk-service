@@ -12,6 +12,7 @@ import { WebSocketServer } from "ws";
 import { AcpServer } from "@agentclientprotocol/sdk/experimental/server";
 import { createNodeHttpHandler } from "@agentclientprotocol/sdk/experimental/node";
 import { methods, type SessionUpdate } from "@agentclientprotocol/sdk/experimental/v2/unstable";
+import { isRecord } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { MessageScheme, type SchemeRegistrationSeam } from "@plurnk/plurnk-schemes";
 import type { DaemonModule } from "@plurnk/plurnk-modules";
