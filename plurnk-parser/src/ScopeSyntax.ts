@@ -100,21 +100,15 @@ export const parseTextLineMarker = (raw: string, position: Position = { line: 0,
     if (!VALID_TEXT_SCOPE.test(marker) && /(?:<@[0-9A-Za-z]{5}(?:[+-][0-9]+)?>?|@[0-9A-Za-z]{5}(?:[+-][0-9]+)?>)/u.test(raw)) {
         const stripped = raw.trim().replace(/(?:[1-9][0-9]*)?<?(@[0-9A-Za-z]{5}(?:[+-][0-9]+)?)>?/gu, "$1");
         marker = wrapScope(stripped);
-        if (VALID_TEXT_SCOPE.test(marker)) {
-            advise?.(position, `\`${raw.trim()}\` was read as the range ${JSON.stringify(unwrapScope(marker))}; a range takes the anchor without \`<...>\` brackets.`);
-        }
     }
     if (!VALID_TEXT_SCOPE.test(marker)) {
         throw new PlurnkParseError(position.line, position.column, "visitor",
             `invalid range ${JSON.stringify(raw)}; use numeric coordinates or \`@hash\` line anchors`, "error", OFFSET_RECOVERY);
     }
     // {§parse-recovery} — `42<@abcde>` is the displayed row prefix copied whole: the
-    // range is the anchor, the digits are dropped, and one advisory names the anchor-only form.
+    // range is the anchor and the digits are dropped.
     const prefixed = /^([1-9][0-9]*)(<[\s\S]*)$/u.exec(marker);
     const text = prefixed === null ? marker : prefixed[2];
-    if (prefixed !== null) {
-        advise?.(position, `\`${marker}\` was read as the range ${JSON.stringify(unwrapScope(text))}; a range takes the anchor without its displayed line number.`);
-    }
     if (!text.includes("@")) {
         return parseRangeMarker(unwrapScope(text), position, advise);
     }
@@ -138,7 +132,6 @@ export const parseTextLineMarker = (raw: string, position: Position = { line: 0,
     const marks = components.map((component) => {
         // {§fence-pairing} — `@210` is the line number 210 with the anchor's sigil, not a hash.
         if (/^@[0-9]{1,4}$/u.test(component)) {
-            advise?.(position, `\`${component}\` was read as line ${component.slice(1)}; an anchor is five characters (\`@abcde\`).`);
             return Number.parseInt(component.slice(1), 10);
         }
         return component.startsWith("@") ? component : Number.parseFloat(component);
@@ -154,8 +147,10 @@ export const parseTextLineMarker = (raw: string, position: Position = { line: 0,
         const offset = Number(base[2] ?? 0) + Number(component.slice(1));
         marks[index] = offset === 0 ? base[1] : `${base[1]}${offset > 0 ? "+" : ""}${offset}`;
     }
+    if (marks.length === 2 && typeof marks[0] === "string" && marks[0].startsWith("@") && marks[1] === 0) {
+        return { marks: [marks[0], 1, marks[0], 1] };
+    }
     if (marks.length === 2 && typeof marks[0] === "string" && marks[0].startsWith("@") && marks[1] === 1) {
-        advise?.(position, `Range "${marks[0]},1" was read as "${marks[0]}".`);
         return { marks: [marks[0]] };
     }
     if (
@@ -165,7 +160,6 @@ export const parseTextLineMarker = (raw: string, position: Position = { line: 0,
         && typeof marks[2] === "number"
     ) {
         const reordered: [string, number, string] = [marks[0], marks[2], marks[1]];
-        advise?.(position, `Range "${marks.join(",")}" was read as "${reordered.join(",")}"; a column-scoped range places the start column before the end line.`);
         return { marks: reordered };
     }
     if (
@@ -176,7 +170,6 @@ export const parseTextLineMarker = (raw: string, position: Position = { line: 0,
         && typeof marks[3] === "number"
     ) {
         const reordered: [string, number, string, number] = [marks[0], marks[2], marks[1], marks[3]];
-        advise?.(position, `Range "${marks.join(",")}" was read as "${reordered.join(",")}"; a column-scoped range is "SL,SC,EL,EC".`);
         return { marks: reordered };
     }
     if (!atLeastOne(marks)) throw new Error("an anchor marker names at least one mark");

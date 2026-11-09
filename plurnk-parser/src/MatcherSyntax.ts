@@ -71,10 +71,33 @@ const liftInlineFlags = (pattern: string, flags: string, pos: Position, advise?:
     return { pattern: pattern.slice(inline[0].length), flags: lifted };
 };
 
-const stripLeadingTilde = (pattern: string, pos: Position, advise?: Advise): string => {
+const stripLeadingTilde = (pattern: string): string => {
     if (!/^~(?=[A-Za-z0-9_"'])/u.test(pattern)) return pattern;
-    advise?.(pos, `\`/~${pattern.slice(1)}\` combines \`/\` (regex) and \`~\` (full-text); read as the regex \`/${pattern.slice(1)}/\`.`);
     return pattern.slice(1);
+};
+
+const normalizeXPathCandidate = (candidate: string): string =>
+    candidate
+        .replace(/^\/{3,}/u, "//")
+        .replace(/\/+$/u, "")
+        .replace(/(?<=\/@[A-Za-z_*][\w.:-]*)\/text\(\)/gu, "");
+
+const tryParseEscapedSlashXPath = (raw: string): string | null => {
+    if (!/^\/(?:\\\/)+[A-Za-z_*].*\/$/u.test(raw)) return null;
+    if (!/(?:\\?\[@[A-Za-z_*][\w.:-]*\s*=|\\\/@[A-Za-z_*]|\\\/(?:text|node|comment|processing-instruction)\\?\(\\?\))/u.test(raw)) {
+        return null;
+    }
+    const unescaped = raw
+        .slice(1, -1)
+        .replace(/\\\//gu, "/")
+        .replace(/\\([[\]()])/gu, "$1");
+    const normalized = normalizeXPathCandidate(unescaped.startsWith("//") ? unescaped : `//${unescaped.replace(/^\/+/u, "")}`);
+    try {
+        xpath.parse(normalized);
+        return normalized;
+    } catch {
+        return null;
+    }
 };
 
 const repairUnbalancedRegexDelimiters = (pattern: string): string | null => {
@@ -171,7 +194,7 @@ const tryParseSlashRegex = (raw: string, pos: Position, advise?: Advise):
     }
     if (i >= raw.length) {
         if (raw.length === 1) return { ok: false, reason: "empty" };
-        const inline = liftInlineFlags(stripLeadingTilde(readAlternation(raw.slice(1), pos, stage), pos, stage), "", pos, stage);
+        const inline = liftInlineFlags(stripLeadingTilde(readAlternation(raw.slice(1), pos, stage)), "", pos, stage);
         try { new RegExp(inline.pattern, inline.flags); }
         catch (e) { return { ok: false, reason: "invalid", detail: detail(e), flags: inline.flags, pattern: inline.pattern }; }
         const excerpt = raw.length > 80 ? `${raw.slice(0, 80)}…` : raw;
@@ -186,7 +209,7 @@ const tryParseSlashRegex = (raw: string, pos: Position, advise?: Advise):
         stage(pos, `\`-${shell[1]}\` after the pattern was read as the flags \`${shell[1]}\`; flags go right after the closing \`/\`.`);
     }
     const trailing = shell === null ? /^([A-Za-z]*)[\t ]/u.exec(authored) : null;
-    const inline = liftInlineFlags(stripLeadingTilde(readAlternation(raw.slice(1, i), pos, stage), pos, stage), shell?.[1] ?? trailing?.[1] ?? authored, pos, stage);
+    const inline = liftInlineFlags(stripLeadingTilde(readAlternation(raw.slice(1, i), pos, stage)), shell?.[1] ?? trailing?.[1] ?? authored, pos, stage);
     let { pattern } = inline;
     const { flags } = inline;
     try { new RegExp(pattern, flags); }
@@ -196,7 +219,6 @@ const tryParseSlashRegex = (raw: string, pos: Position, advise?: Advise):
         try { new RegExp(repaired, flags); }
         catch { return { ok: false, reason: "invalid", detail: detail(e), flags, pattern }; }
         pattern = repaired;
-        stage(pos, `Unescaped delimiter in \`${raw}\` was read literally as \`/${repaired}/${flags}\`; prefer \`pattern: <<<EOF\\n...\\nEOF\` for literal code.`);
     }
     if (trailing !== null) return { ok: false, reason: "trailing" };
     for (const [p, m] of staged) advise?.(p, m);
@@ -247,21 +269,22 @@ export const parseMatcher = (body: string, op = "read", pos: Position = { line: 
         return { dialect: "glob", raw };
     }
     if (raw.startsWith("//")) {
-        const normalized = raw.replace(/(?<=\/@[A-Za-z_*][\w.:-]*)\/text\(\)/gu, "");
-        try { xpath.parse(normalized); }
+        const candidate = (!raw.startsWith("///") || /^\/{3,}[^/\s].*\/$/u.test(raw))
+            ? normalizeXPathCandidate(raw)
+            : raw;
+        try { xpath.parse(candidate); }
         catch (e) {
-            const repaired = normalized.replace(/(?<=[A-Za-z0-9_*\]])@(?=[A-Za-z_*])/gu, "/@");
+            const repaired = candidate.replace(/(?<=[A-Za-z0-9_*\]])@(?=[A-Za-z_*])/gu, "/@");
             if (repaired !== raw) {
                 try {
                     xpath.parse(repaired);
-                    advise?.(pos, `\`${raw}\` was read as the XPath \`${repaired}\`; separate an attribute step with \`/@\`.`);
                     return { dialect: "xpath", raw: repaired };
                 } catch { /* fall through */ }
             }
             return unreadable(raw, `pattern leads with \`//\` but is not a valid xpath selector - ${detail(e)}`,
                 "Write an XPath 1.0 selector after `//`, such as `//dependencies/*`.");
         }
-        return { dialect: "xpath", raw: normalized };
+        return { dialect: "xpath", raw: candidate };
     }
     // {§parse-recovery} — a matcher opening with `^` or closing with `$` is a regex written without slashes or flags.
     if (raw.startsWith("^") || (raw.length > 1 && !/^[/$~&]/u.test(raw) && /(?<!\\)\$$/u.test(raw))) {
@@ -283,6 +306,8 @@ export const parseMatcher = (body: string, op = "read", pos: Position = { line: 
         return { dialect: "regex", raw, pattern, flags: inline.flags };
     }
     if (raw.startsWith("/")) {
+        const escapedXPath = tryParseEscapedSlashXPath(raw);
+        if (escapedXPath !== null) return { dialect: "xpath", raw: escapedXPath };
         const regex = tryParseSlashRegex(raw, pos, advise);
         if (regex.ok) return { dialect: "regex", raw, pattern: regex.pattern, flags: regex.flags };
         if (op === "find" || op === "read") {
@@ -304,7 +329,7 @@ export const parseMatcher = (body: string, op = "read", pos: Position = { line: 
                 && /^\/[A-Za-z_*]/u.test(raw)
                 && /\/(?:@[A-Za-z_*]|[A-Za-z_*][\w.-]*\[|(?:text|node|comment|processing-instruction)\(\)|[A-Za-z_*][\w.-]*\/[A-Za-z_*@])/u.test(raw)
             ) {
-                const normalized = raw.replace(/(?<=\/@[A-Za-z_*][\w.:-]*)\/text\(\)/gu, "");
+                const normalized = normalizeXPathCandidate(raw);
                 try {
                     xpath.parse(normalized);
                     return { dialect: "xpath", raw: normalized };
