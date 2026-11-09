@@ -23,6 +23,7 @@ const SESSION_COOKIE = "plurnk_session";
 const BROWSER = "browser";
 const PKCE_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/u;
 const SCOPE_TOKEN = /^[\x21\x23-\x5B\x5D-\x7E]+$/u;
+const SUBJECT_TOKEN = /^[A-Za-z0-9._-]+$/u;
 
 interface Client {
     readonly id: string;
@@ -496,7 +497,12 @@ export default class OAuthServer {
             if (client.kind === "module") throw new OAuthError("unauthorized_client", "A module's client obtains tokens through the operator's authorization.");
             const scopes = this.#scopes(form.get("scope"), client);
             if (scopes === null) throw new OAuthError("invalid_scope", `The scope must be from ${SCOPES.join(" ")} and within the client's.`);
-            issued = { claims: { subject: client.id === OPERATOR_CLIENT ? OPERATOR_SUBJECT : client.id, clientId: client.id, scopes, family: randomUUID() }, refresh: false };
+            const requestedSubject = form.get("requested_subject");
+            if (requestedSubject !== null && !SUBJECT_TOKEN.test(requestedSubject)) {
+                throw new OAuthError("invalid_request", "requested_subject must match [A-Za-z0-9._-]+.");
+            }
+            const subject = requestedSubject ?? (client.id === OPERATOR_CLIENT ? OPERATOR_SUBJECT : client.id);
+            issued = { claims: { subject, clientId: client.id, scopes, family: randomUUID() }, refresh: false };
         } else {
             throw new OAuthError("unsupported_grant_type", "The grant type is not authorization_code, refresh_token or client_credentials.");
         }
