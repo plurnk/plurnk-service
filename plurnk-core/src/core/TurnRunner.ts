@@ -804,10 +804,7 @@ export default class TurnRunner {
     // Turn row.
     async #recordAdmittedEmission({ provider, workspaceId, sessionId, loopId }: TurnArgs, request: TurnRequest, emission: ProviderEmission): Promise<void> {
         const { split, response } = emission;
-        const { packetAssistant, callMetadata, parseNotices } = split; // raw assistant content is opaque — split, never interpreted — {§provider-surface}
-        for (const notice of parseNotices) {
-            this.#notices.push(workspaceId, sessionId, loopId, notice);
-        }
+        const { packetAssistant, callMetadata } = split; // raw assistant content is opaque — split, never interpreted — {§provider-surface}
         const cut = outputCut(emission, provider);
         // {§outside-text} — a response cut at the output allowance with nothing admitted names the
         // cut, so the model reads the ceiling, never a parser symptom (#478).

@@ -11,8 +11,7 @@ import { buildExecutorSpellings } from "./StatementLowering.ts";
 
 export type Chunk =
     | { readonly kind: "code"; readonly text: string; readonly position: Position; readonly defaultAside: string | null }
-    | { readonly kind: "text"; readonly text: string; readonly position: Position }
-    | { readonly kind: "advisory"; readonly message: string; readonly position: Position };
+    | { readonly kind: "text"; readonly text: string; readonly position: Position };
 
 // Split input into top-level Code Mode statement chunks, outside text paragraphs, and any truncated EOF tail.
 export const scanChunks = (
@@ -23,7 +22,7 @@ export const scanChunks = (
     readonly chunks: readonly Chunk[];
     readonly unparsedTail?: { readonly from: Position; readonly reason: string };
 } => {
-    const { source: unwrappedSource, advisories } = unwrapCodeModeFences(
+    const { source: unwrappedSource } = unwrapCodeModeFences(
         rawInput,
         tier === "model" ? executorSpellings : undefined,
     );
@@ -105,9 +104,6 @@ export const scanChunks = (
             }
             if (!closed) {
                 flushText();
-                for (const adv of advisories) {
-                    chunks.push({ kind: "advisory", message: adv.message, position: adv.position });
-                }
                 return {
                     chunks,
                     unparsedTail: {
@@ -145,6 +141,7 @@ export const scanChunks = (
         let inRegex = false;
         let inRegexClass = false;
         let unclosedHeredoc = false;
+        let onInlineHeredocCloserLine = false;
         const pendingTrailingHeredocs: string[] = [];
         let prevSigChar = "";
         let trailingAside: string | null = null;
@@ -222,6 +219,7 @@ export const scanChunks = (
                             break;
                         }
                         i = closer.afterTagOffset;
+                        onInlineHeredocCloserLine = true;
                         prevSigChar = '"';
                         continue;
                     }
@@ -317,8 +315,21 @@ export const scanChunks = (
                 const prematureObjectClose = braceDepth === 1 && parenDepth === 1 && bracketDepth === 0
                     && /^\}[ \t\r\n]*[,;][ \t\r\n]*(?=(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)[ \t\r\n]*\??[ \t\r\n]*:)/u.test(source.slice(i));
                 if (!prematureObjectClose) {
-                    if (braceDepth > 0) braceDepth -= 1;
-                    else if (openedCall && parenDepth === 1 && bracketDepth === 0 && /^;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(source.slice(i + 1))) parenDepth = 0;
+                    if (braceDepth > 0) {
+                        braceDepth -= 1;
+                        if (
+                            onInlineHeredocCloserLine
+                            && braceDepth === 0
+                            && openedCall
+                            && parenDepth === 1
+                            && bracketDepth === 0
+                            && /^;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(source.slice(i + 1))
+                        ) {
+                            parenDepth = 0;
+                        }
+                    } else if (openedCall && parenDepth === 1 && bracketDepth === 0 && /^;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(source.slice(i + 1))) {
+                        parenDepth = 0;
+                    }
                 }
                 prevSigChar = ch;
                 i += 1;
@@ -361,8 +372,9 @@ export const scanChunks = (
                 }
                 break;
             }
-            if (ch === "\n" && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
-                if (openedCall || prevSigChar !== ".") {
+            if (ch === "\n") {
+                onInlineHeredocCloserLine = false;
+                if (parenDepth === 0 && braceDepth === 0 && bracketDepth === 0 && (openedCall || prevSigChar !== ".")) {
                     break;
                 }
             }
@@ -408,9 +420,6 @@ export const scanChunks = (
 
         if (unclosed && i >= source.length) {
             flushText();
-            for (const adv of advisories) {
-                chunks.push({ kind: "advisory", message: adv.message, position: adv.position });
-            }
             return {
                 chunks,
                 unparsedTail: {
@@ -452,8 +461,5 @@ export const scanChunks = (
     }
 
     flushText();
-    for (const adv of advisories) {
-        chunks.push({ kind: "advisory", message: adv.message, position: adv.position });
-    }
     return { chunks };
 };

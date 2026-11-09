@@ -1,7 +1,6 @@
 import xpath from "xpath";
 import { JSONPathEnvironment } from "json-p3";
 import type { MatcherBody, Position } from "@plurnk/plurnk-contracts";
-import type { Advise } from "./ScopeSyntax.ts";
 
 const JSONPATH = new JSONPathEnvironment();
 
@@ -34,40 +33,34 @@ const unreadable = (raw: string, message: string, recovery: string): MatcherBody
 const detail = (e: unknown): string => e instanceof Error ? e.message : String(e);
 
 // {§matcher-prefix-claims} — grep's `\|` is alternation in this dialect's terms; a literal pipe is `[|]`.
-const readAlternation = (pattern: string, pos: Position, advise?: Advise): string => {
-    let out = ""; let read = false;
+const readAlternation = (pattern: string): string => {
+    let out = "";
     for (let i = 0; i < pattern.length; i += 1) {
         const ch = pattern[i];
         if (ch === "\\" && i + 1 < pattern.length) {
-            if (pattern[i + 1] === "|") { out += "|"; read = true; i += 1; continue; }
+            if (pattern[i + 1] === "|") { out += "|"; i += 1; continue; }
             out += ch + pattern[i + 1]; i += 1; continue;
         }
         out += ch;
-    }
-    if (read) {
-        advise?.(pos, "`\\|` was read as alternation, `|`; a literal pipe is `[|]`.");
     }
     return out;
 };
 
 // {§matcher-prefix-claims} — a `/pattern/` that fails to compile on a leading or doubled `*` or `?` and
 // is otherwise glob-shaped is read as that glob over each line: `*` is `.*`, `?` is `.`.
-const readGlobRegex = (inner: string, flags: string, raw: string, pos: Position, advise?: Advise): { pattern: string; flags: string } | null => {
+const readGlobRegex = (inner: string, flags: string): { pattern: string; flags: string } | null => {
     if (!/^[\w*?./ -]+$/u.test(inner) || !/[*?]/u.test(inner)) return null;
     const pattern = inner.replace(/[.]/gu, "\\.").replace(/\*+/gu, ".*").replace(/\?/gu, ".");
     try { new RegExp(pattern, flags); } catch { return null; }
-    advise?.(pos, `\`${raw}\` was read as the glob \`${inner}\` over each line, the regex \`/${pattern}/${flags}\`; a pattern is a regex, and \`*\` repeats what precedes it.`);
     return { pattern, flags };
 };
 
 // {§parse-recovery} — a leading PCRE inline modifier such as `(?i)` is the pretrained
-// spelling of a flag; ECMAScript refuses the group, so it is lifted into the flags with one
-// advisory rather than refused.
-const liftInlineFlags = (pattern: string, flags: string, pos: Position, advise?: Advise): { pattern: string; flags: string } => {
+// spelling of a flag; ECMAScript refuses the group, so it is lifted into the flags silently.
+const liftInlineFlags = (pattern: string, flags: string): { pattern: string; flags: string } => {
     const inline = /^\(\?([ims]+)\)/u.exec(pattern);
     if (inline === null) return { pattern, flags };
     const lifted = Array.from(new Set(flags + inline[1])).join("");
-    advise?.(pos, `\`${inline[0]}\` was read as the \`${inline[1]}\` flag; an ECMAScript regex takes its flags after the closing \`/\`.`);
     return { pattern: pattern.slice(inline[0].length), flags: lifted };
 };
 
@@ -161,13 +154,11 @@ const repairUnbalancedRegexDelimiters = (pattern: string): string | null => {
 const isSedRange = (raw: string): boolean =>
     /^\/(?:\\.|[^\\/])+\/[a-z]*(?:\s*,\s*(?:\/(?:\\.|[^\\/])+\/[a-z]*|[+-]?\d+)?)+$/iu.test(raw);
 
-const tryParseSlashRegex = (raw: string, pos: Position, advise?: Advise):
+const tryParseSlashRegex = (raw: string):
     { ok: true; pattern: string; flags: string }
     | { ok: false; reason: "empty" }
     | { ok: false; reason: "trailing" }
     | { ok: false; reason: "invalid"; detail: string; flags: string; pattern: string } => {
-    const staged: [Position | undefined, string][] = [];
-    const stage: Advise = (p, m) => { staged.push([p, m]); };
     let i = 1;
     let inClass = false;
     while (i < raw.length) {
@@ -194,22 +185,16 @@ const tryParseSlashRegex = (raw: string, pos: Position, advise?: Advise):
     }
     if (i >= raw.length) {
         if (raw.length === 1) return { ok: false, reason: "empty" };
-        const inline = liftInlineFlags(stripLeadingTilde(readAlternation(raw.slice(1), pos, stage)), "", pos, stage);
+        const inline = liftInlineFlags(stripLeadingTilde(readAlternation(raw.slice(1))), "");
         try { new RegExp(inline.pattern, inline.flags); }
         catch (e) { return { ok: false, reason: "invalid", detail: detail(e), flags: inline.flags, pattern: inline.pattern }; }
-        const excerpt = raw.length > 80 ? `${raw.slice(0, 80)}…` : raw;
-        for (const [p, m] of staged) advise?.(p, m);
-        advise?.(pos, `\`${excerpt}\` has no closing \`/\`; it was read as the whole pattern with no flags. A regex closes with \`/\` and takes its flags after it.`);
         return { ok: true, pattern: inline.pattern, flags: inline.flags };
     }
     const authored = raw.slice(i + 1);
     // {§matcher-prefix-claims} — `-i` after the closing slash is the flag `i`, as a shell would take it.
     const shell = /^[\t ]*-([A-Za-z]+)[\t ]*$/u.exec(authored);
-    if (shell !== null) {
-        stage(pos, `\`-${shell[1]}\` after the pattern was read as the flags \`${shell[1]}\`; flags go right after the closing \`/\`.`);
-    }
     const trailing = shell === null ? /^([A-Za-z]*)[\t ]/u.exec(authored) : null;
-    const inline = liftInlineFlags(stripLeadingTilde(readAlternation(raw.slice(1, i), pos, stage)), shell?.[1] ?? trailing?.[1] ?? authored, pos, stage);
+    const inline = liftInlineFlags(stripLeadingTilde(readAlternation(raw.slice(1, i))), shell?.[1] ?? trailing?.[1] ?? authored);
     let { pattern } = inline;
     const { flags } = inline;
     try { new RegExp(pattern, flags); }
@@ -221,12 +206,11 @@ const tryParseSlashRegex = (raw: string, pos: Position, advise?: Advise):
         pattern = repaired;
     }
     if (trailing !== null) return { ok: false, reason: "trailing" };
-    for (const [p, m] of staged) advise?.(p, m);
     return { ok: true, pattern, flags };
 };
 
 // {§parse-recovery} — on `find` and `read`, comma-separated `/pattern/flags` literals fold into alternation.
-const readRegexList = (raw: string, pos: Position, advise?: Advise): { pattern: string; flags: string } | null => {
+const readRegexList = (raw: string): { pattern: string; flags: string } | null => {
     const items: string[] = [];
     let rest = raw;
     while (rest.length > 0) {
@@ -243,27 +227,24 @@ const readRegexList = (raw: string, pos: Position, advise?: Advise): { pattern: 
         rest = tail.slice(sep[0].length);
     }
     if (items.length < 2) return null;
-    const staged: [Position | undefined, string][] = [];
     const parsed: { pattern: string; flags: string }[] = [];
     for (const item of items) {
-        const result = tryParseSlashRegex(item, pos, (p, m) => { staged.push([p, m]); });
+        const result = tryParseSlashRegex(item);
         if (!result.ok) return null;
         parsed.push({ pattern: result.pattern, flags: result.flags });
     }
     const pattern = parsed.map((item) => `(?:${item.pattern})`).join("|");
     const flags = Array.from(new Set(parsed.map((item) => item.flags).join(""))).join("");
     try { new RegExp(pattern, flags); } catch { return null; }
-    for (const [p, m] of staged) advise?.(p, m);
-    advise?.(pos, `\`${raw}\` was read as the alternation \`/${pattern}/${flags}\`; a regex matcher is one \`/pattern/flags\` and selects matching lines, not the span between them.`);
     return { pattern, flags };
 };
 
 // {§matcher-prefix-claims}
-export const parseMatcher = (body: string, op = "read", pos: Position = { line: 0, column: 0 }, advise?: Advise): MatcherBody => {
+export const parseMatcher = (body: string, op = "read", _pos: Position = { line: 0, column: 0 }): MatcherBody => {
     const raw = body.replace(/(?:\r\n|\r|\n)$/u, "");
     if (/[\r\n]/u.test(raw)) {
         if (raw.startsWith("/") && !raw.startsWith("//") && /(?<!\\)\/[dgimsuvy]*$/u.test(raw)) {
-            const regex = tryParseSlashRegex(raw, pos, advise);
+            const regex = tryParseSlashRegex(raw);
             if (regex.ok) return { dialect: "regex", raw, pattern: regex.pattern, flags: regex.flags };
         }
         return { dialect: "glob", raw };
@@ -288,7 +269,7 @@ export const parseMatcher = (body: string, op = "read", pos: Position = { line: 
     }
     // {§parse-recovery} — a matcher opening with `^` or closing with `$` is a regex written without slashes or flags.
     if (raw.startsWith("^") || (raw.length > 1 && !/^[/$~&]/u.test(raw) && /(?<!\\)\$$/u.test(raw))) {
-        const inline = liftInlineFlags(readAlternation(raw.startsWith("^") ? raw.slice(1) : raw, pos, advise), "", pos, advise);
+        const inline = liftInlineFlags(readAlternation(raw.startsWith("^") ? raw.slice(1) : raw), "");
         const pattern = raw.startsWith("^") ? `^${inline.pattern}` : inline.pattern;
         try { new RegExp(pattern, inline.flags); }
         catch (e) {
@@ -308,10 +289,10 @@ export const parseMatcher = (body: string, op = "read", pos: Position = { line: 
     if (raw.startsWith("/")) {
         const escapedXPath = tryParseEscapedSlashXPath(raw);
         if (escapedXPath !== null) return { dialect: "xpath", raw: escapedXPath };
-        const regex = tryParseSlashRegex(raw, pos, advise);
+        const regex = tryParseSlashRegex(raw);
         if (regex.ok) return { dialect: "regex", raw, pattern: regex.pattern, flags: regex.flags };
         if (op === "find" || op === "read") {
-            const list = readRegexList(raw, pos, advise);
+            const list = readRegexList(raw);
             if (list !== null) return { dialect: "regex", raw, pattern: list.pattern, flags: list.flags };
         }
         if (isSedRange(raw)) return unreadable(raw,
@@ -321,7 +302,7 @@ export const parseMatcher = (body: string, op = "read", pos: Position = { line: 
                 "Write only `/pattern/flags` in the matcher; flags are optional.");
         }
         if (regex.reason === "invalid") {
-            const glob = readGlobRegex(regex.pattern, regex.flags, raw, pos, advise);
+            const glob = readGlobRegex(regex.pattern, regex.flags);
             if (glob !== null) return { dialect: "regex", raw, pattern: glob.pattern, flags: glob.flags };
             if (
                 regex.detail.includes("Invalid flags supplied")

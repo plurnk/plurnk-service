@@ -1,12 +1,39 @@
 import {
     isExecution,
     isRecord,
+    type MatcherBody,
     type PlurnkStatement,
     type ResourceSelection,
 } from "@plurnk/plurnk-contracts";
 import { pickHeredocTag } from "./HeredocSyntax.ts";
 
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/u;
+
+const escapeRegexSlashes = (pattern: string): string => {
+    let out = "";
+    let inClass = false;
+    for (let i = 0; i < pattern.length; i += 1) {
+        const ch = pattern[i];
+        if (ch === "\\") {
+            out += ch + (pattern[i + 1] ?? "");
+            i += 1;
+            continue;
+        }
+        if (ch === "[" && !inClass) inClass = true;
+        else if (ch === "]" && inClass) inClass = false;
+        else if (ch === "/" && !inClass) {
+            out += "\\/";
+            continue;
+        }
+        out += ch;
+    }
+    return out;
+};
+
+const formatMatcher = (matcher: MatcherBody): string =>
+    matcher.dialect === "regex"
+        ? `/${escapeRegexSlashes(matcher.pattern)}/${matcher.flags}`
+        : matcher.raw;
 
 export const BUILTIN_STANDALONE_EXECUTORS: ReadonlySet<string> = new Set([
     "sh",
@@ -120,7 +147,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.path = spelledTarget(statement.target);
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
-            if (statement.matcher !== null) args.pattern = statement.matcher.raw;
+            if (statement.matcher !== null) args.pattern = formatMatcher(statement.matcher);
             if (statement.headers !== null) args.headers = statement.headers;
             return `await plurnk.${method}(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
         }
@@ -128,7 +155,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.path = spelledTarget(statement.target);
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
-            if (statement.matcher !== null) args.pattern = statement.matcher.raw;
+            if (statement.matcher !== null) args.pattern = formatMatcher(statement.matcher);
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.body !== null && statement.body.length > 0) args.text = statement.body;
             return `await plurnk.edit(${stringifyCodeModeValue(args)})${formatAside(statement.aside)}`;
@@ -142,7 +169,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
                 }
                 const obj: Record<string, unknown> = { path: spelledTarget(sel.target) };
                 if (sel.lineMarker !== null) obj.range = formatRange(sel.lineMarker);
-                if (sel.matcher !== null) obj.pattern = sel.matcher.raw;
+                if (sel.matcher !== null) obj.pattern = formatMatcher(sel.matcher);
                 if (sel.headers !== null) obj.headers = sel.headers;
                 return obj;
             };
@@ -153,7 +180,7 @@ export const stringifyStatement = (statement: PlurnkStatement): string => {
             const args: Record<string, unknown> = {};
             if (statement.target !== null) args.path = spelledTarget(statement.target);
             if (statement.lineMarker !== null) args.range = formatRange(statement.lineMarker);
-            if (statement.matcher !== null) args.pattern = statement.matcher.raw;
+            if (statement.matcher !== null) args.pattern = formatMatcher(statement.matcher);
             if (statement.remote !== null) args.remote = statement.remote;
             if (statement.headers !== null) args.headers = statement.headers;
             if (statement.body !== null && statement.body.length > 0) args.note = statement.body;

@@ -15,7 +15,7 @@ import {
 import { BUILTIN_STANDALONE_EXECUTORS } from "./CodeSerializer.ts";
 import { hasHeredocKey, toStringValue, unwrapQuotedHeredoc } from "./HeredocSyntax.ts";
 import { parseMatcher } from "./MatcherSyntax.ts";
-import { parseLineMarker, parseRangeMarker, parseTextLineMarker, type Advise } from "./ScopeSyntax.ts";
+import { parseLineMarker, parseRangeMarker, parseTextLineMarker } from "./ScopeSyntax.ts";
 import { parsePath } from "./TargetSyntax.ts";
 
 export interface CodeModeOptions {
@@ -139,13 +139,13 @@ export const assertAllowedKeys = (
 };
 
 export const READ_FIND_KEYS: ReadonlySet<string> = new Set([
-    "path", "paths", "target", "targets", "uri", "resource", "resources", "file_path", "filepath", "file",
+    "path", "paths", "target", "targets", "uri", "resource", "resources", "file_path", "filePath", "filepath", "file",
     "range", "lines", "scope", "limit", "pattern", "matcher", "query",
     "headers", "note", "aside",
 ]);
 
 export const EDIT_KEYS: ReadonlySet<string> = new Set([
-    "path", "target", "uri", "resource", "file_path", "filepath", "file",
+    "path", "target", "uri", "resource", "file_path", "filePath", "filepath", "file",
     "range", "lines", "scope", "pattern", "matcher",
     "oldText", "old_string", "old_text",
     "newText", "new_string", "new_text", "replacement", "content", "body", "text",
@@ -174,14 +174,16 @@ export const SELECTION_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 export const KILL_KEYS: ReadonlySet<string> = new Set([
-    "path", "paths", "target", "targets", "uri", "resource", "resources", "file_path", "filepath", "file",
+    "path", "paths", "target", "targets", "uri", "resource", "resources", "file_path", "filePath", "filepath", "file",
     "range", "lines", "scope", "pattern", "matcher",
     "note", "distillation", "body", "content", "text",
     "remote", "headers", "aside",
 ]);
 
 export const NOTE_KEYS: ReadonlySet<string> = new Set([
-    "text", "content", "body", "note", "message", "path", "target", "uri", "resource", "range", "lines", "scope", "aside",
+    "text", "content", "body", "note", "message",
+    "title", "fact", "facts", "decision", "decisions", "hypothesis", "hypotheses", "observation", "observations", "finding", "findings", "summary",
+    "path", "target", "uri", "resource", "range", "lines", "scope", "aside",
 ]);
 
 export const TODO_KEYS: ReadonlySet<string> = new Set([
@@ -332,16 +334,16 @@ export const toRangeString = (value: unknown, pos: Position): string | null => {
         'Write `range: "1,50"` or `range: "@start,@end"`.');
 };
 
-export const toLineMarker = (value: unknown, pos: Position, rangeMode = false, advise?: Advise): LineMarker | null => {
+export const toLineMarker = (value: unknown, pos: Position, rangeMode = false): LineMarker | null => {
     const raw = toRangeString(value, pos);
     if (raw === null) return null;
-    return rangeMode ? parseRangeMarker(raw, pos, advise) : parseLineMarker(raw, pos);
+    return rangeMode ? parseRangeMarker(raw, pos) : parseLineMarker(raw, pos);
 };
 
-export const toTextLineMarker = (value: unknown, pos: Position, advise?: Advise): TextLineMarker | null => {
+export const toTextLineMarker = (value: unknown, pos: Position): TextLineMarker | null => {
     const raw = toRangeString(value, pos);
     if (raw === null) return null;
-    return parseTextLineMarker(raw, pos, advise);
+    return parseTextLineMarker(raw, pos);
 };
 
 const escapeRegexLiteral = (literal: string): string =>
@@ -363,7 +365,7 @@ export const oldTextToMatcher = (oldText: string, pos: Position): MatcherBody =>
     return { dialect: "regex", raw: `/${pattern}/`, pattern, flags: "" };
 };
 
-export const toMatcherBody = (value: unknown, op: string, pos: Position, advise?: Advise, isHeredoc = false): MatcherBody | null => {
+export const toMatcherBody = (value: unknown, op: string, pos: Position, isHeredoc = false): MatcherBody | null => {
     if (value === undefined || value === null) return null;
     if (value instanceof RegExp) {
         return {
@@ -381,6 +383,10 @@ export const toMatcherBody = (value: unknown, op: string, pos: Position, advise?
             ? (unwrappedHeredoc ?? value).replace(/(?:\r\n|\r|\n)$/u, "")
             : value;
         if (raw.length === 0) return null;
+        const parsed = parseMatcher(raw, op, pos);
+        if (parsed.dialect === "xpath") {
+            return parsed;
+        }
         if (
             effectiveHeredoc
             && !/[\r\n]/u.test(raw)
@@ -390,7 +396,6 @@ export const toMatcherBody = (value: unknown, op: string, pos: Position, advise?
         ) {
             return oldTextToMatcher(raw, pos);
         }
-        const parsed = parseMatcher(raw, op, pos, advise);
         if (
             parsed.dialect === "unreadable"
             && (
@@ -406,7 +411,7 @@ export const toMatcherBody = (value: unknown, op: string, pos: Position, advise?
         return parsed;
     }
     if (isRecord(value) && typeof value.dialect === "string" && typeof value.raw === "string") {
-        return parseMatcher(value.raw, op, pos, advise);
+        return parseMatcher(value.raw, op, pos);
     }
     throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid pattern ${JSON.stringify(value)}`, "error",
         'Write a pattern such as `<<<EOF\\n...\\nEOF`, `"/needle/i"`, `"$..items"`, or `"*.ts"`.');
@@ -417,7 +422,6 @@ export const parseSelectionInput = (
     op: "copy" | "move",
     role: "from" | "to",
     pos: Position,
-    advise?: Advise,
 ): ResourceSelection => {
     if (typeof input === "string") {
         const target = parsePath(input, pos);
@@ -438,8 +442,8 @@ export const parseSelectionInput = (
         if (target === null) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", `${op} requires a non-empty '${role}' target.`, "error");
         }
-        const lineMarker = toTextLineMarker(input.range ?? input.lines ?? input.scope, pos, advise);
-        const matcher = toMatcherBody(input.pattern ?? input.matcher ?? input.query, op, pos, advise, hasHeredocKey(input, "pattern", "matcher", "query"));
+        const lineMarker = toTextLineMarker(input.range ?? input.lines ?? input.scope, pos);
+        const matcher = toMatcherBody(input.pattern ?? input.matcher ?? input.query, op, pos, hasHeredocKey(input, "pattern", "matcher", "query"));
         const headers = toHeaders(input.headers, pos);
         return { target, lineMarker, matcher, headers };
     }

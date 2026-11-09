@@ -86,7 +86,7 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
         if (!inObjectPropertyValue) return true;
         if (code.indexOf(quoteChar, quotePos + 1) === -1) return true;
         const rest = code.slice(quotePos + 1);
-        if (/^\s*(?:\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*(?:\}\s*(?:[),;}\]]|$)|\+\s*(?:["'`]|<<<)|\.\s*join\s*\(|[,;]\s*(?:\}|(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)\s*\??\s*:))/u.test(rest)) {
+        if (/^\s*(?:\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*(?:\}\s*['"]*\s*(?:[),;}\]]|$)|\+\s*(?:["'`]|<<<)|\.\s*join\s*\(|[,;]\s*(?:\}|(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)\s*\??\s*:))/u.test(rest)) {
             return true;
         }
         return false;
@@ -247,6 +247,27 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
     const readObjectLiteral = (): Record<string, unknown> => {
         const start = idx;
         idx += 1; // consume `{`
+        let extraBraces = 0;
+        while (idx < code.length) {
+            skipTrivia();
+            if (code[idx] === "{") {
+                extraBraces += 1;
+                idx += 1;
+            } else {
+                break;
+            }
+        }
+        const consumeExtraClosingBraces = (): void => {
+            while (extraBraces > 0) {
+                skipTrivia();
+                if (code[idx] === "}") {
+                    idx += 1;
+                    extraBraces -= 1;
+                } else {
+                    break;
+                }
+            }
+        };
         const obj: Record<string, unknown> = {};
         const heredocKeys = new Set<string>();
         const prevInObjectPropertyValue = inObjectPropertyValue;
@@ -264,6 +285,7 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
                         continue;
                     }
                     idx += 1;
+                    consumeExtraClosingBraces();
                     if (heredocKeys.size > 0) HEREDOC_OBJECT_KEYS.set(obj, heredocKeys);
                     return obj;
                 }
@@ -278,6 +300,9 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
                     }
                     key = keyMatch[0];
                     idx += key.length;
+                    if ((code[idx] === '"' || code[idx] === "'") && /^[ \t]*\??[ \t]*:/u.test(code.slice(idx + 1))) {
+                        idx += 1;
+                    }
                 }
                 skipTrivia();
                 if (code[idx] === "?") {
@@ -313,6 +338,10 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
                         continue;
                     }
                     idx += 1;
+                    consumeExtraClosingBraces();
+                    if (propWasHeredoc && objectDepth === 1 && /^[ \t]*;?[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx))) {
+                        transposedCallClose = true;
+                    }
                     if (heredocKeys.size > 0) HEREDOC_OBJECT_KEYS.set(obj, heredocKeys);
                     return obj;
                 }

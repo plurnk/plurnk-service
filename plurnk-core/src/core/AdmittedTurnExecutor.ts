@@ -318,15 +318,6 @@ export default class AdmittedTurnExecutor {
             if (failOnOperationError && result.status >= 400 && !isContextReceipt(result)) {
                 throw new OperationFailureError(result);
             }
-            for (const normalization of result.scopeNormalizations ?? []) {
-                this.#notices.push(workspaceId, sessionId, loopId, {
-                    source: "engine:slicer",
-                    kind: "scope_normalized",
-                    level: "warn",
-                    directive: "YOU SHOULD write the normalized range.",
-                    message: `Range "${normalization.requested.join(",")}" was normalized to "${normalization.canonical.join(",")}".`,
-                });
-            }
             // {§op-methods-op-dispatch} — every applied resolution is also a notice, so the row's
             // `merged` fact is never the only place it is said.
             for (const rule of mergedRules(result)) {

@@ -38,8 +38,6 @@ describe("contract-notices", () => {
 const UNACCOUNTED = "> [!WARNING]\n> 5000 output tokens billed; 1 visible across content and reasoning @ 2:3 [output_unaccounted]";
 // {§operation-results} — the turns under test continue without a `note`, `kill`, or `todo`, and the next packet says so.
 const CONTINUED = "> [!WARNING]\n> YOU MUST persist all new decisions, hypotheses, and facts as `plurnk.note` tool calls. The turn continued without a `plurnk.note`. [continued_without_note]";
-const scope = (requested: string, canonical: string): string =>
-    `> [!WARNING]\n> YOU SHOULD write the normalized range. Range "${requested}" was normalized to "${canonical}". [scope_normalized]`;
 
 // Response from raw content WITHOUT ops - forces the engine to run the real
 // PlurnkParser rather than Mock's trusted pre-parsed seam.
@@ -171,19 +169,26 @@ for (const fail of [false, true]) {
         const pushed = t.mock.method(NoticeChannel.prototype, "push");
         const cause = new Error("notice delivery fixture failed");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_workspaceId, { notice }) => {
-            if (fail && notice.kind === "parse_advisory") throw cause;
+            if (fail && notice.kind === "output_unaccounted") throw cause;
         } });
-        const provider = new Mock({ contextWindow: 100_000, responses: [contentResponse("await plurnk.NOTE({\"text\":\"remember\"});\n\nawait plurnk.done({\"text\":\"done\"});")] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [{
+            assistant: { content: "await plurnk.done({\"text\":\"done\"});", reasoning: null },
+        }] });
+        const real = provider.generate.bind(provider);
+        provider.generate = async (req) => ({
+            ...(await real(req)),
+            notices: [{ source: "provider:mock", kind: "output_unaccounted", level: "warn", message: "5000 output tokens billed; 1 visible across content and reasoning", position: 0 }],
+        });
         const running = engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [] });
         if (fail) await assert.rejects(running, (error) => error === cause);
         else assert.equal((await running).result.status, 200);
-        const warning = pushed.mock.calls.find(({ arguments: args }) => args[2] === loopId && args[3].kind === "parse_advisory");
+        const warning = pushed.mock.calls.find(({ arguments: args }) => args[2] === loopId && args[3].kind === "output_unaccounted");
         assert.ok(warning, "the last emission produced a pending warning");
         assert.deepEqual((warning.this as NoticeChannel).drain(loopId), [], "no future model packet exists to consume the buffer");
     });
 }
 
-test("a tolerated three-coordinate scope reports its exact canonical region on the next packet ({§zero-width-column-one-insert})", async () => {
+test("a tolerated three-coordinate scope lowers silently to its canonical region ({§zero-width-column-one-insert})", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     await seedEntryWithChannel(db, {
         workspaceId,
@@ -215,14 +220,11 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
         const read = logEntries(packet).find(({ logPath, body }) =>
             typeof logPath === "string" && logPath.endsWith("/read") && /2<@[0-9A-Za-z]{5}>beta/.test(String(body)));
         assert.match(String(read?.body), /^2<@[0-9A-Za-z]{5}>beta\n3<@[0-9A-Za-z]{5}>gamma\n$/);
-        assert.equal(
-            packetSection(packet, "notices"),
-            scope("2,1,3", "2,1,3,6"),
-        );
+        assert.equal(packetSection(packet, "notices"), "");
     } finally { await db.close(); }
 });
 
-test("{§slicer-text-algebra}: a zero-start READ delivers its body and one warning without a failed operation", async () => {
+test("{§slicer-text-algebra}: a zero-start READ delivers its body silently without a failed operation", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         await seedEntryWithChannel(db, { workspaceId, pathname: "/zero-start", content: "alpha\nbeta\ngamma", mimetype: "text/plain" });
@@ -237,15 +239,14 @@ test("{§slicer-text-algebra}: a zero-start READ delivers its body and one warni
         const packet = await getPacket(db, second.turnId);
         const read = logEntries(packet).find(({ logPath, body }) => logPath.endsWith("/read") && /1<@[0-9A-Za-z]{5}>alpha/.test(String(body)));
         assert.match(String(read?.body), /1<@[0-9A-Za-z]{5}>alpha\n2<@[0-9A-Za-z]{5}>beta\n3<@[0-9A-Za-z]{5}>gamma/);
-        assert.equal(packetSection(packet, "notices"),
-            `${scope("0,120", "1,120")}\n\n${CONTINUED}`);
+        assert.equal(packetSection(packet, "notices"), CONTINUED);
         const receipts = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: first.turnId });
         assert.deepEqual(receipts.filter(({ op }) => op === "read").map(({ status_rx }) => status_rx), [200]);
         assert.doesNotMatch(packetSection(packet, "notices"), /strike|failed/i);
     } finally { await db.close(); }
 });
 
-test("an EDIT batch reports each tolerated scope once in authored order ({§zero-width-column-one-insert})", async () => {
+test("an EDIT batch normalizes each tolerated three-coordinate scope silently ({§zero-width-column-one-insert})", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     const target = urlPath("workspace", "/x");
     await seedEntryWithChannel(db, {
@@ -276,10 +277,7 @@ test("an EDIT batch reports each tolerated scope once in authored order ({§zero
         await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const second = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
 
-        assert.equal(
-            packetSection(await getPacket(db, second.turnId), "notices"),
-            [scope("1,2,1", "1,2,1,6"), scope("3,2,3", "3,2,3,6")].join("\n\n"),
-        );
+        assert.equal(packetSection(await getPacket(db, second.turnId), "notices"), "");
     } finally { await db.close(); }
 });
 
@@ -413,12 +411,12 @@ test("{§operation-results} engine brackets generate() with turn_awaiting_model 
     } finally { await db.close(); }
 });
 
-test("{§operation-results} a parser warning remains advisory while the independently invalid mutation stays durable", async () => {
+test("{§operation-results} an uppercase verb lowers silently while the independently invalid mutation stays durable", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1, "finish despite a recoverable grammar advisory");
+        const loopId = await insertLoop(db, sessionId, 1, "finish despite a recoverable grammar near-miss");
         const broadcasts: Array<{ payload: { loopId: number; notice: Record<string, unknown> } }> = [];
         const engine = new Engine({
             db,
@@ -438,20 +436,13 @@ test("{§operation-results} a parser warning remains advisory while the independ
         const turn = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
 
         assert.equal(turn.status, 102, "the invalid mutation prevents premature terminal completion");
-        assert.equal(turn.emissionAttempts, 1, "the advisory does not reject and reroll the trustworthy frame");
+        assert.equal(turn.emissionAttempts, 1, "the near-miss does not reject and reroll the trustworthy frame");
         assert.ok(
             turn.outcomes.some(({ op, status }) => op === "edit" && status === 400),
             "the targetless mutation fails through ordinary operation execution",
         );
-        const advisories = broadcasts.filter(({ payload }) => payload.notice.kind === "parse_advisory");
-        assert.equal(advisories.length, 1, "the recoverable parser diagnosis is emitted once");
-        assert.equal(advisories[0].payload.notice.level, "warn");
-        assert.match(String(advisories[0].payload.notice.message), /`plurnk\.EDIT` was read as `plurnk\.edit`\./);
-        assert.deepEqual(
-            advisories[0].payload.notice.position,
-            { type: "content-offset", line: 2, column: 1 },
-            "the Notice retains the parser's typed source position",
-        );
+        const warnings = broadcasts.filter(({ payload }) => payload.notice.level === "warn" && payload.notice.kind !== "continued_without_note");
+        assert.deepEqual(warnings, [], "uppercase verb lowers silently without a parser warning");
         const [failedEdit] = await db.test_log_entries_by_session_op_full.all<{
             status_rx: number;
         }>({ session_id: sessionId, op: "edit" });
@@ -459,7 +450,7 @@ test("{§operation-results} a parser warning remains advisory while the independ
         assert.deepEqual(
             await db.test_error_rows_for_session.all({ session_id: sessionId }),
             [],
-            "the advisory and operation failure mint no substitute error row",
+            "the operation failure mints no substitute error row",
         );
     } finally { await db.close(); }
 });
@@ -517,7 +508,7 @@ test("{§operation-fences}: literal programs inside a longer fence produce no sp
         const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
         const notice = packetSection(p2, "notices");
-        assert.doesNotMatch(notice, /parse_advisory|parse_error/, "literal examples are not probable mistakes");
+        assert.doesNotMatch(notice, /parse_error/, "literal examples are not probable mistakes");
     } finally { await db.close(); }
 });
 });
