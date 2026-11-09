@@ -281,14 +281,14 @@ for (const staged of ["loop", "messages"] as const) {
         const db = await openMigrated();
         const firstProvider = new Mock({
             contextWindow: 16384,
-            responses: [makeMockResponse("await plurnk.done({\"text\":\"First orphan recovered.\"});\n\nawait plurnk.done({\"text\":\"Second orphan recovered.\"});")],
+            responses: [makeMockResponse("await plurnk.done({\"target\":\"message://orphan-host/01\",\"text\":\"First orphan recovered.\"});\n\nawait plurnk.done({\"target\":\"message://orphan-host/02\",\"text\":\"Second orphan recovered.\"});")],
         });
         ProviderInstantiate.registerInstance(firstProvider, providerSpec);
         const firstDaemon = new Daemon({ db, provider: firstProvider });
         let secondDaemon: Daemon | undefined;
         try {
             const workspaceId = await insertWorkspace(db, `recovery-orphans-${crypto.randomUUID()}`);
-            const sessionId = await insertSession(db, workspaceId, null, undefined, "model");
+            const sessionId = await insertSession(db, workspaceId, null, "orphan-host", "model");
             const sourceLoopId = await enqueueLoop(db, sessionId, "concluded source");
             for (const [index, content] of ["first orphan", "second orphan"].entries()) {
                 const message = await db.drain_enqueue_message.get({ loop_id: sourceLoopId, source: `session://sender-${index + 1}`, body: content, open_paths: "[]", evidence: "{}", address: null, opened_turn_id: null, opened_sequence: null });

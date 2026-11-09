@@ -497,7 +497,7 @@ test("{§tokenomics}: a jumbo message lands folded with its size; Open Work poin
             assert.ok(workSection, "the work section exists");
             assert.equal(workSection.slot, "user", "the open-work pointers close the user-slot status clump");
             assert.equal(workSection.header, "Open Work");
-            assert.match(JSON.stringify(JSON.parse(workSection.content).messages), /^\[\{"path":"message:\/\/[^/]+\/[0-9a-f]{8}","origin":"user"\}\]$/, "an immutable message address, named as the operator's own request");
+            assert.match(JSON.stringify(JSON.parse(workSection.content).messages), /^\[\{"path":"message:\/\/[^/]+\/[0-9a-zA-Z]{2,}","origin":"user"\}\]$/, "an immutable message address, named as the operator's own request");
             assert.doesNotMatch(workSection.content, /prompt line 5/, "no bodies in the section");
         } finally { ws.close(); }
     });

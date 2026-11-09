@@ -94,6 +94,7 @@ const tryParseEscapedSlashXPath = (raw: string): string | null => {
 };
 
 const repairUnbalancedRegexDelimiters = (pattern: string): string | null => {
+    if (!/[A-Za-z0-9_]/u.test(pattern)) return null;
     const toEscape = new Set<number>();
     let classOpen: number | null = null;
     for (let i = 0; i < pattern.length; i += 1) {

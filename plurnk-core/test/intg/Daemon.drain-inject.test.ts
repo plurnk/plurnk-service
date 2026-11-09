@@ -262,7 +262,7 @@ test("{§methods-workspace-create}: an active-loop prompt carries its paths into
         contextWindow: 16384,
         responses: [
             sendOnly("await plurnk.sh({\"command\":\"true\"});\n\nawait plurnk.note({\"text\":\"continue after review\"});"), // proposal pauses before the required disposition
-            sendOnly("await plurnk.done({\"text\":\"Original request done.\"});\n\nawait plurnk.done({\"text\":\"Follow-up done.\"});"),
+            sendOnly("await plurnk.done({\"target\":\"message://main/00\",\"text\":\"Original request done.\"});\n\nawait plurnk.done({\"target\":\"message://main/01\",\"text\":\"Follow-up done.\"});"),
         ],
     });
 
@@ -484,7 +484,7 @@ test("{§message-arrival}: every orphaned message is recovered in order", async 
             // ({§message-arrival}); loop 1 ends turn 1 at its turn ceiling instead
             // (maxTurns 1 → 429), which no barrier gates: the orphan premise holds.
             sendOnly("await plurnk.sh({\"command\":\"true\"});\n\nawait plurnk.send({\"text\":\"loop 1 reaches its turn ceiling\"});"),
-            sendOnly("await plurnk.done({\"text\":\"First recovered request done.\"});\n\nawait plurnk.done({\"text\":\"Second recovered request done.\"});"),
+            sendOnly("await plurnk.done({\"target\":\"message://main/01\",\"text\":\"First recovered request done.\"});\n\nawait plurnk.done({\"target\":\"message://main/02\",\"text\":\"Second recovered request done.\"});"),
         ],
     });
 
@@ -696,8 +696,8 @@ for (const silent of [false, true]) {
             contextWindow: 16384,
             responses: [
                 sendOnly(silent ? "await plurnk.done({});" : "await plurnk.done({\"text\":\"first answer, before the follow-ups\"});"),
-                sendOnly(silent ? "await plurnk.done({});\n\nawait plurnk.done({});"
-                    : "await plurnk.done({\"text\":\"Answered the first follow-up.\"});\n\nawait plurnk.done({\"text\":\"Answered the second follow-up.\"});"),
+                sendOnly(silent ? "await plurnk.done({\"target\":\"message://main/01\"});\n\nawait plurnk.done({\"target\":\"message://main/02\"});"
+                    : "await plurnk.done({\"target\":\"message://main/01\",\"text\":\"Answered the first follow-up.\"});\n\nawait plurnk.done({\"target\":\"message://main/02\",\"text\":\"Answered the second follow-up.\"});"),
             ],
         });
         await withDaemon(mock, async (db, _daemon, addr) => {

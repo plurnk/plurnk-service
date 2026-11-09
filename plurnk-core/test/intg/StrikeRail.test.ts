@@ -602,7 +602,7 @@ test("{§session-loop-lifecycle} the daemon wakes a collecting parent on actual 
     const provider = new Mock({ contextWindow: 100000, responses: [
         response("await plurnk.wait({\"text\":\"Await instructions.\"});"),
         response(collect),
-        response("await plurnk.done({\"text\":\"Child answer: 42.\"});\n\nawait plurnk.done({\"text\":\"Follow-up acknowledged.\"});"),
+        response("await plurnk.done({\"target\":\"message://child/00\",\"text\":\"Child answer: 42.\"});\n\nawait plurnk.done({\"target\":\"message://child/01\",\"text\":\"Follow-up acknowledged.\"});"),
         response("await plurnk.done({\"text\":\"Child answer received: 42.\"});"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
@@ -1153,12 +1153,14 @@ class Flaky extends Mock {
     calls = 0;
     readonly requests: string[] = [];
     readonly at: number[] = [];
-    constructor(failures: number, signals: readonly number[]) {
+    constructor(failures: number, signals: readonly number[], targets?: readonly (string | undefined)[]) {
         super({
             contextWindow: viableWindow() * 4,
-            responses: signals.map((signal) => makeMockResponse(signal === 102
+            responses: signals.map((signal, index) => makeMockResponse(signal === 102
                 ? "await plurnk.find({\"path\":\"workspace:///**\"});\n\nawait plurnk.note({\"text\":\"continue\"});"
-                : "await plurnk.done({\"text\":\"done\"});", 20)),
+                : targets?.[index] !== undefined
+                    ? `await plurnk.done({"target":${JSON.stringify(targets[index])},"text":"done"});`
+                    : "await plurnk.done({\"text\":\"done\"});", 20)),
         });
         this.failures = failures;
     }
@@ -1325,7 +1327,7 @@ test("{§engine-rails} a spent recovery budget parks the loop as 202; the next p
         const workspaceId = await insertWorkspace(db, `recovery-park-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId, null, "primary", "model");
         await ownSession(db, workspaceId, sessionId);
-        const provider = new Flaky(99, [200, 200]);
+        const provider = new Flaky(99, [200, 200], ["message://primary/00", "message://primary/01"]);
         const daemon = new Daemon({ db, provider });
         await daemon.start();
         const terminated: Terminated[] = [];

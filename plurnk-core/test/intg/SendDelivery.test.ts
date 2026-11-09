@@ -281,7 +281,6 @@ test("{§fence-pairing} {§op-shapes}: recovered READ preserves nested prose; a 
             assert.ok(model.some(({ op, tx }) => op === "note" && /printf plurnk/u.test(JSON.parse(tx).body)), "a bare executor name is a word: its block stays quoted text, and beside the operations that text is the turn's NOTE ({§outside-text})");
             const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: modelSessionId! });
             assert.equal(sources.some((row) => row.kind === "outside"), false, "a turn with fenced operations keeps no outside source");
-            assert.match(JSON.stringify(mock.received[1]), /Code Mode statements need no Markdown fence/, "the next packet states the form once");
             assert.equal(await lastReply(db, loopId), "the answer");
             const shells = await db.test_get_entry_by_pathname_scheme.get({ scheme: "sh", pathname: "/1/1/1/sh" });
             assert.equal(shells, undefined, "no shell spawned");

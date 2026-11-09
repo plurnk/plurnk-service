@@ -922,7 +922,7 @@ test("{§find-result-projection} {§diagnostic-observation} a full-text query FT
     const { engine, ids, dispatch } = await runtime(t);
     assert.equal((await dispatch("await plurnk.edit({\"path\":\"workspace:///notes.md\",\"content\":\"if all(flags):\"});")).status, 201);
     await engine.warmWorkspaceDerivations(ids.workspaceId);
-    const refused = await dispatch("await plurnk.find({\"path\":\"workspace:///notes.md\",\"pattern\":\"~all(\"});");
+    const refused = await dispatch("await plurnk.find({\"path\":\"workspace:///notes.md\",\"pattern\":\"~(all\"});");
     assert.equal(refused.status, 400);
     assert.equal(refused.problem.recovery, "An FTS5 query is barewords, \"quoted phrases\", and AND, OR, NOT and NEAR between them.");
 });
