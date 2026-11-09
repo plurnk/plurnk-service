@@ -247,10 +247,10 @@ describe("PlurnkParser Code Mode", () => {
         assert.ok(proseOnly.items.some((item) => item.kind === "error" && item.error.message === PlurnkParser.NO_VALID_OPERATION));
     });
 
-    test("{§fence-pairing} {§parse-recovery}: Markdown-fenced Code Mode unwraps with a warning advisory; uppercase method/runtime names recover with advisories", () => {
+    test("{§fence-pairing} {§parse-recovery}: Markdown-fenced Code Mode, uppercase method/runtime names, and count/flag/alternation recoveries normalize silently without advisories", () => {
         const fenced = [
             "```ts",
-            'await plurnk.READ({ path: "README.md", range: "10,5" });',
+            'await plurnk.READ({ path: "README.md", range: "10,5", pattern: "/(?i)foo\\\\|bar/ -g" });',
             'await Gitea.issue_read({ "owner"?: string });',
             "```",
         ].join("\n");
@@ -258,7 +258,13 @@ describe("PlurnkParser Code Mode", () => {
         const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [writtenOp(item.statement)] : []);
         assert.deepEqual(statements, ["read", "gitea"]);
         const warnings = parsed.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
-        assert.equal(warnings.length, 4);
+        assert.deepEqual(warnings, []);
+        const readStmt = (parsed.items[0] as { kind: "statement"; statement: ReadStatement }).statement;
+        assert.deepEqual(readStmt.lineMarker, { marks: [10, 14] });
+        assert.equal(
+            PlurnkParser.stringify([readStmt]),
+            'await plurnk.read({"path":"README.md","range":"10,14","pattern":<<<EOF\n/foo|bar/gi\nEOF})',
+        );
     });
 
     test("{§matcher-prefix-claims}: matcher dialects and soft unreadability work in Code Mode", () => {
@@ -1005,5 +1011,46 @@ describe("PlurnkParser Code Mode", () => {
         assert.deepEqual(cloverOps[1].matcher, { dialect: "xpath", raw: "//item[@id='old']" });
         assert.deepEqual(cloverOps[2].matcher, { dialect: "xpath", raw: "//item[@id='old']" });
         assert.deepEqual(cloverOps[3].lineMarker, { marks: ["@LB1ll", 1, "@LB1ll", 1] });
+
+        const xing4Recoveries = PlurnkParser.parse([
+            'Now I\'ll perform the edit:<tool_call> await plurnk.edit({"path":"workspace:///notes.md","range":"@g7591","text":"middle\\n"})',
+            '</think><tool_call> plurnk.edit({"path":"workspace:///notes.md","range":"@g7591","text":"beta prime"})',
+            '<tool_call><tool_call> await plurnk.kill({"path":"workspace:///notes.md"})',
+            'await plurnk.read({"path":"workspace:///notes.md","range":"@98hD8,-1"})<tool_call> await plurnk.todo({"items":["Replace lines 2..3"]})',
+            '<tool_call> read<param_key>filePath</param_key><param_value>/workspace/doc.md</param_value>',
+            '<tool_call> await plurnk.edit({"path":"workspace:///notes.md","range":"@2,@3","text":<<<EOF\nmiddle\nEOF}</tool_call>',
+            'await plurnk.edit({"path":"workspace:///notes.md","range":"1,-1","text":[[{<<<EOF\nalpha\nbeta prime\ngamma\nEOF}])',
+            'await plurnk.edit({"path":"workspace:///notes.md","range":"@1,1,@1,1","text":<<<EOF1\ngamma\nEOF1>>});',
+            'await plurnk.todo({{"items": []}})',
+            'plurnk.read({\\"path\\":\\"workspace:///notes.md\\"}")',
+            'await plurnk.note({"text":"Replaced line 2","decision":"Done","hypothesis":"Verified"})',
+            'await plurnk.note({"title":"Search result","fact":"Found 3 matches"})',
+            '</think><tool_call> plurnk.todo({items":[<<<EOF\nResolve all Open Work.\nEOF]})',
+            'await plurnk.todo({"items":[<<<EOF]})',
+            'await plurnk.done({"text":<<<EOF\nReplaced every `a` at end-of-line with `A`. 19 lines modified. EOF})',
+            'await plurnk.kill({"pattern":"log:///1/**/read"})',
+        ].join("\n\n"));
+        const xing4Errors = xing4Recoveries.items.filter((i) => i.kind === "error");
+        assert.deepEqual(xing4Errors, []);
+        const xing4Ops = xing4Recoveries.items.filter((i) => i.kind === "statement").map((i) => i.statement);
+        assert.equal(xing4Ops.length, 17);
+        assert.equal((xing4Ops[0] as EditStatement).body, "middle\n");
+        assert.equal((xing4Ops[1] as EditStatement).body, "beta prime");
+        assert.equal((xing4Ops[2] as KillStatement).target?.raw, "workspace:///notes.md");
+        assert.equal((xing4Ops[3] as ReadStatement).target?.raw, "workspace:///notes.md");
+        assert.equal((xing4Ops[4] as TodoStatement).body, "Replace lines 2..3");
+        assert.equal((xing4Ops[5] as ReadStatement).target?.raw, "/workspace/doc.md");
+        assert.equal((xing4Ops[6] as EditStatement).body, "middle");
+        assert.equal((xing4Ops[7] as EditStatement).body, "alpha\nbeta prime\ngamma");
+        assert.equal((xing4Ops[8] as EditStatement).body, "gamma");
+        assert.equal((xing4Ops[9] as TodoStatement).body, null);
+        assert.equal((xing4Ops[10] as ReadStatement).target?.raw, "workspace:///notes.md");
+        assert.equal((xing4Ops[11] as NoteStatement).body, "Replaced line 2");
+        assert.equal((xing4Ops[12] as NoteStatement).body, "Search result\nFound 3 matches");
+        assert.equal((xing4Ops[13] as TodoStatement).body, "Resolve all Open Work.");
+        assert.equal((xing4Ops[14] as TodoStatement).body, null);
+        assert.equal((xing4Ops[15] as DoneStatement).body?.raw, "Replaced every `a` at end-of-line with `A`. 19 lines modified.");
+        assert.equal((xing4Ops[16] as KillStatement).target?.raw, "log:///1/**/read");
+        assert.equal((xing4Ops[16] as KillStatement).matcher, null);
     });
 });

@@ -1,9 +1,8 @@
 import {
     isRecord,
-    type Position,
     type RuntimeTag,
 } from "@plurnk/plurnk-contracts";
-import { maskHeredocBodies, matchHeredocOpener, unmaskHeredocBodies } from "./HeredocSyntax.ts";
+import { findHeredocCloser, maskHeredocBodies, matchHeredocOpener, unmaskHeredocBodies } from "./HeredocSyntax.ts";
 import {
     EDIT_KEYS,
     IGNORED_OPTION_KEYS,
@@ -69,7 +68,17 @@ const extractToolCallDescriptors = (val: unknown): Array<{ readonly name: string
     if (hasPathKey && hasEditPayloadKey && keys.every((k) => EDIT_KEYS.has(k))) {
         return [{ name: "plurnk.edit", args: val }];
     }
-    if (!hasPathKey && (typeof val.text === "string" || typeof val.note === "string") && keys.every((k) => NOTE_KEYS.has(k))) {
+    if (
+        !hasPathKey
+        && (
+            typeof val.text === "string"
+            || typeof val.note === "string"
+            || typeof val.fact === "string"
+            || typeof val.decision === "string"
+            || typeof val.hypothesis === "string"
+        )
+        && keys.every((k) => NOTE_KEYS.has(k))
+    ) {
         return [{ name: "plurnk.note", args: val }];
     }
     if (!hasPathKey && (val.items !== undefined || val.todos !== undefined) && keys.every((k) => TODO_KEYS.has(k))) {
@@ -405,18 +414,18 @@ const translatePrefixEnvelopeCalls = (
         out = mistralRebuilt + out.slice(mistralCursor);
     }
 
-    // 2. Unclosed GLM-4.5 `<|tool_call|>name\n<arg_key>...</arg_key><arg_value>...</arg_value>`
+    // 2. Unclosed GLM-4.5 / Xing4 `<|tool_call|>` or `<tool_call>` with `<arg_key>` / `<param_key>`
     out = out.replace(
-        /^[ \t]*<\|tool_call\|>[ \t]*([A-Za-z0-9_.:-]+)[ \t]*(\r?\n)((?:[ \t]*<arg_key\b[^>]*>[\s\S]*?<\/arg_key>[ \t]*\r?\n?[ \t]*<arg_value\b[^>]*>[\s\S]*?<\/arg_value>[ \t]*\r?\n?)+)/gimu,
-        (fullMatch, rawName: string, nl: string, xmlArgs: string) => {
+        /^(?:[ \t]*(?:<\|tool_call[^>]*>|<tool_call\b[^>]*>))+[ \t]*([A-Za-z0-9_.:-]+)[ \t]*(\r?\n)?((?:[ \t]*<(?:arg|param|parameter)_key\b[^>]*>[\s\S]*?<\/(?:arg|param|parameter)_key>[ \t]*\r?\n?[ \t]*<(?:arg|param|parameter)_value\b[^>]*>[\s\S]*?<\/(?:arg|param|parameter)_value>[ \t]*\r?\n?)+)(?:[ \t]*<\/tool_call>)?/gimu,
+        (fullMatch, rawName: string, nl: string | undefined, xmlArgs: string) => {
             const target = resolveToolCallTarget(rawName, executorSpellings);
             if (target === null) return fullMatch;
-            return padNewlines(`${nl}${formatTranslatedCall(target, parseXmlToolCallBody(xmlArgs))}`, fullMatch);
+            return padNewlines(`${nl ?? ""}${formatTranslatedCall(target, parseXmlToolCallBody(xmlArgs))}`, fullMatch);
         },
     );
 
     // 3. Unclosed GLM-4 `<|tool_call|>name\n{...}` with balanced JSON object scanning
-    const glmPrefixRe = /^[ \t]*<\|tool_call\|>[ \t]*([A-Za-z0-9_.:-]+)[ \t]*(\r?\n)/gimu;
+    const glmPrefixRe = /^(?:[ \t]*(?:<\|tool_call[^>]*>|<tool_call\b[^>]*>))+[ \t]*([A-Za-z0-9_.:-]+)[ \t]*(\r?\n)/gimu;
     let glmCursor = 0;
     let glmRebuilt = "";
     while ((m = glmPrefixRe.exec(out)) !== null) {
@@ -436,7 +445,7 @@ const translatePrefixEnvelopeCalls = (
     }
 
     // 4. Unclosed `<|tool_call|>`, `<tool_call>`, `<TOOLCALL>`, `<|python_tag|>`, `[TOOL_CALLS]` followed by balanced JSON `{...}` / `[...]`
-    const jsonPrefixRe = /^[ \t]*(?:<tool_call\b[^>]*>|<TOOLCALL\b[^>]*>|<\|python_tag\|>|<\|tool_call[^>]*>|\[TOOL_CALLS\])[ \t]*(\r?\n)?/gimu;
+    const jsonPrefixRe = /^(?:[ \t]*(?:<tool_call\b[^>]*>|<TOOLCALL\b[^>]*>|<\|python_tag\|>|<\|tool_call[^>]*>|\[TOOL_CALLS\]))+[ \t]*(\r?\n)?/gimu;
     let jsonCursor = 0;
     let jsonRebuilt = "";
     while ((m = jsonPrefixRe.exec(out)) !== null) {
@@ -445,7 +454,7 @@ const translatePrefixEnvelopeCalls = (
         const balanced = extractBalancedJsonPrefix(out, afterPrefix);
         if (balanced === null) continue;
         let endOffset = balanced.endOffset;
-        const trailingClose = /^[ \t]*(?:<\/tool_call>|<\/TOOLCALL>|<\|\/tool_call\|>|\[\/TOOL_CALLS\])/iu.exec(out.slice(endOffset));
+        const trailingClose = /^(?:[ \t]*(?:<\/tool_call>|<\/TOOLCALL>|<\|\/tool_call\|>|\[\/TOOL_CALLS\]))+/iu.exec(out.slice(endOffset));
         if (trailingClose !== null) {
             endOffset += trailingClose[0].length;
         }
@@ -463,10 +472,10 @@ const translatePrefixEnvelopeCalls = (
 
     // 5. Fallback for unclosed `<|python_tag|>` / `<|tool_call|>` followed by Pythonic or Code Mode call on the same paragraph
     out = out.replace(
-        /^[ \t]*(?:<tool_call\b[^>]*>|<TOOLCALL\b[^>]*>|<\|python_tag\|>|<\|tool_call[^>]*>|\[TOOL_CALLS\])[ \t]*(\r?\n)?([ \t]*(?:\[[ \t]*(?:await\s+)?[A-Za-z_$][\s\S]*?|(?:await\s+)?[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])?\s*\([\s\S]*?))(?=\r?\n\r?\n|$)/gmu,
+        /^(?:[ \t]*(?:<tool_call\b[^>]*>|<TOOLCALL\b[^>]*>|<\|python_tag\|>|<\|tool_call[^>]*>|\[TOOL_CALLS\]))+[ \t]*(\r?\n)?([ \t]*(?:\[[ \t]*(?:await\s+)?[A-Za-z_$][\s\S]*?|(?:await\s+)?[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])?\s*\([\s\S]*?))(?=\r?\n\r?\n|$)/gmu,
         (fullMatch, nl: string | undefined, payload: string) => {
             const prefixNewline = nl ?? "";
-            let cleanedPayload = payload.replace(/[ \t]*(?:<\/tool_call>|<\/TOOLCALL>|<\|\/tool_call\|>|\[\/TOOL_CALLS\])[ \t]*$/iu, "");
+            let cleanedPayload = payload.replace(/(?:[ \t]*(?:<\/?tool_call\b[^>]*>|<\/?TOOLCALL\b[^>]*>|<\|\/?tool_call[^>]*>|\[\/?TOOL_CALLS\]))+[ \t]*$/iu, "");
             const pythonicTranslated = translatePythonicToolCalls(cleanedPayload, executorSpellings);
             if (pythonicTranslated !== null) {
                 return padNewlines(`${prefixNewline}${pythonicTranslated}`, fullMatch);
@@ -488,7 +497,7 @@ const translatePrefixEnvelopeCalls = (
 
 export const translateSegmentToolCalls = (segment: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string => {
     let out = segment.replace(
-        /<((?:[|｜]+)?DSML[|｜]+\s*(?:function_calls?|tool_calls?|calls)|(?:[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:invoke|call|calls|tool|tools|toolcall|toolcalls|tool_call|tool_calls|tool-call|tool-calls|tool calls?|tool_use|tool-use|tool use|tool_code|function|functions|functioncall|functioncalls|function_call|function_calls|function-call|function-calls|function calls?|emission|result|unfenced)|system)\b(?![^>]*\b(?:name|call|tool|op)\s*=)[^>]*>([\s\S]*?)<\/\1>|<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>([\s\S]*?)<[|｜]tool[▁_]calls(?:_section)?[▁_]end[|｜]>|<\|tool_call[_:]start\|>([\s\S]*?)<\|tool_call[_:]end\|>|<\|tool_call[^>]*>([\s\S]*?)<\|\/tool_call\|>|\[TOOL_CALLS\]([\s\S]*?)\[\/TOOL_CALLS\]/giu,
+        /<((?:[|｜]+)?DSML[|｜]+\s*(?:function_calls?|tool_calls?|calls)|(?:[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:invoke|call|calls|tool|tools|toolcall|toolcalls|tool_call|tool_calls|tool-call|tool-calls|tool calls?|tool_use|tool-use|tool use|tool_code|function|functions|functioncall|functioncalls|function_call|function_calls|function-call|function-calls|function calls?|emission|result|unfenced)|system)\b(?![^>]*\b(?:name|call|tool|op)\s*=)[^>]*>((?:(?!<\1\b)[\s\S])*?)<\/\1>|<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>([\s\S]*?)<[|｜]tool[▁_]calls(?:_section)?[▁_]end[|｜]>|<\|tool_call[_:]start\|>([\s\S]*?)<\|tool_call[_:]end\|>|<\|tool_call[^>]*>([\s\S]*?)<\|\/tool_call\|>|\[TOOL_CALLS\]([\s\S]*?)\[\/TOOL_CALLS\]/giu,
         (
             fullMatch,
             rawTag: string | undefined,
@@ -541,20 +550,61 @@ export const translateSegmentToolCalls = (segment: string, executorSpellings: Re
         },
     );
 
-    return translatePrefixEnvelopeCalls(out, executorSpellings);
+    out = translatePrefixEnvelopeCalls(out, executorSpellings);
+    if (CONTAINS_CALL.test(out)) {
+        out = out.replace(
+            /(?:[ \t]*<\/(?:tool_call|tool_calls|function_call|function_calls|TOOLCALL)>)+[ \t]*$/gimu,
+            "",
+        );
+    }
+    return out;
 };
 
-// Pre-scan Markdown fences that wrap Code Mode statements so fenced Code Mode unwraps with a warning,
+const normalizeMalformedHeredocs = (input: string): string =>
+    input
+        .replace(
+            /([{[]*\{[{[]*)[ \t]*(<<<?-?(['"]?)([A-Za-z][A-Za-z0-9_-]{0,16})\3[ \t]*\r?\n[\s\S]*?\r?\n[ \t]*\4)[ \t]*[}\]]+(?=[ \t]*\))/gu,
+            "$2}",
+        )
+        .replace(
+            /(<<<?-?(['"]?)([A-Za-z][A-Za-z0-9_-]{0,16})\2)(?=[ \t]*[}\])])/gu,
+            (match, _full: string, _quote: string, tag: string, offset: number, fullStr: string) => {
+                const eol = fullStr.indexOf("\n", offset);
+                if (eol !== -1) {
+                    const nextOpener = fullStr.indexOf("<<", eol + 1);
+                    const region = nextOpener === -1 ? fullStr : fullStr.slice(0, nextOpener);
+                    if (findHeredocCloser(region, eol + 1, tag, "trailing") !== null) {
+                        return match;
+                    }
+                }
+                return '""';
+            },
+        )
+        .replace(
+            /(<<<?-?(['"]?)([A-Za-z][A-Za-z0-9_-]{0,16})\2[ \t]*\r?\n[^\r\n]+?)[ \t]+\3(>*(?=[ \t]*[,}\]);+]+[ \t]*;?[ \t]*(?:\/\/[^\r\n]*)?(?:\r?\n|$)))/gu,
+            (match, prefix: string, _quote: string, tag: string, chevrons: string, offset: number, fullStr: string) => {
+                const nl = fullStr.indexOf("\n", offset);
+                if (nl !== -1) {
+                    const nextOpener = fullStr.indexOf("<<", nl + 1);
+                    const region = nextOpener === -1 ? fullStr : fullStr.slice(0, nextOpener);
+                    if (findHeredocCloser(region, nl + 1, tag, "inline") !== null) {
+                        return match;
+                    }
+                }
+                return `${prefix}\n${tag}${chevrons}`;
+            },
+        );
+
+// Pre-scan Markdown fences that wrap Code Mode statements so fenced Code Mode unwraps silently,
 // while non-Code-Mode fenced blocks in outside prose (or inside multiline string literals or heredocs) remain untouched.
 export const unwrapCodeModeFences = (
-    input: string,
+    rawInput: string,
     executorSpellings?: ReadonlyMap<string, RuntimeTag>,
 ): {
     readonly source: string;
-    readonly advisories: ReadonlyArray<{ readonly position: Position; readonly message: string }>;
 } => {
+    const input = executorSpellings !== undefined ? normalizeMalformedHeredocs(rawInput) : rawInput;
     const lines = input.split("\n");
-    const advisories: Array<{ readonly position: Position; readonly message: string }> = [];
     let inString: '"' | "'" | "`" | null = null;
     let parenDepth = 0;
     const pendingHeredocs: string[] = [];
@@ -579,6 +629,9 @@ export const unwrapCodeModeFences = (
                 }
             }
             if (ch === '"' || ch === "'" || ch === "`") {
+                if (k > 0 && /[{,][ \t]*[A-Za-z_][A-Za-z0-9_$-]*$/u.test(line.slice(0, k)) && /^[ \t]*:/u.test(line.slice(k + 1))) {
+                    continue;
+                }
                 inString = ch;
             } else if (ch === "(") {
                 parenDepth += 1;
@@ -594,9 +647,9 @@ export const unwrapCodeModeFences = (
             const cleanLine = lines[i].replace(/\r$/u, "");
             let wsLen = 0;
             while (wsLen < cleanLine.length && (cleanLine[wsLen] === " " || cleanLine[wsLen] === "\t")) wsLen += 1;
-            if (cleanLine.startsWith(tag, wsLen) && /^[ \t]*(?:[,}\]);+]|\/\/|\/\*|$)/u.test(cleanLine.slice(wsLen + tag.length))) {
+            if (cleanLine.startsWith(tag, wsLen) && /^>*[ \t]*(?:[,}\]);+]|\/\/|\/\*|$)/u.test(cleanLine.slice(wsLen + tag.length))) {
                 pendingHeredocs.shift();
-                advanceLineState(cleanLine.slice(wsLen + tag.length));
+                advanceLineState(cleanLine.slice(wsLen + tag.length).replace(/^>+/u, ""));
             }
             i += 1;
             continue;
@@ -652,10 +705,6 @@ export const unwrapCodeModeFences = (
         const isCodeModeLang = lang === "" || lang === "ts" || lang === "tsx" || lang === "js" || lang === "jsx" || lang === "typescript" || lang === "javascript" || lang === "plurnk";
         const hasNestedFence = /^ {0,3}(?:`{3,}|~{3,})/mu.test(inner);
         if (isCodeModeLang && !hasNestedFence && /(?:^|[;\s])(?:(?:await\s+)?plurnk\s*(?:\.|\[|\()|await\s+[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\()/mu.test(inner)) {
-            advisories.push({
-                position: { line: i + 1, column: openMatch[1].length },
-                message: "Code Mode statements need no Markdown fence; write `await plurnk.<op>(...)` directly.",
-            });
             lines[i] = "";
             lines[closeIdx] = "";
             i = closeIdx + 1;
@@ -663,18 +712,59 @@ export const unwrapCodeModeFences = (
         }
         i = closeIdx + 1;
     }
-    return { source: lines.join("\n"), advisories };
+    return { source: lines.join("\n") };
+};
+
+const isInsideCodeString = (prefix: string): boolean => {
+    if (!CODE_LINE_START.test(prefix)) return false;
+    let inStr: '"' | "'" | "`" | null = null;
+    for (let i = 0; i < prefix.length; i += 1) {
+        const ch = prefix[i];
+        if (inStr !== null) {
+            if (ch === "\\") {
+                i += 1;
+                continue;
+            }
+            if (ch === inStr) inStr = null;
+            continue;
+        }
+        if (ch === "/" && prefix[i + 1] === "/") return true;
+        if (ch === '"' || ch === "'" || ch === "`") {
+            inStr = ch;
+        }
+    }
+    return inStr !== null;
 };
 
 export const translateToolCallsOutsideFences = (input: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string => {
-    const { masked, bodies } = maskHeredocBodies(input);
-    const strippedSeedThink = masked.replace(
-        /<(?:seed|mm|minimax):think>[\s\S]*?<\/(?:seed|mm|minimax):think>|^[ \t]*[^\r\n]*?<\/(?:seed|mm|minimax):think>[ \t]*(?=(?:await\s+)?[A-Za-z_$(])|^[ \t]*[^\r\n]+?(?=<\|tool_call[_:]start\|>)|(?:<\/?\|(?:begin|end|im_end|eot_id|end_of_text)\|>|<\|(?:start|channel)\|>[^\r\n]*)+/gimu,
-        (fullMatch) => padNewlines("", fullMatch),
-    );
+    const normalizedHeredocs = normalizeMalformedHeredocs(input);
+    const { masked, bodies } = maskHeredocBodies(normalizedHeredocs);
+    const strippedSeedThink = masked
+        .replace(
+            /<(?:seed|mm|minimax):think>[\s\S]*?<\/(?:seed|mm|minimax):think>|^[ \t]*[^\r\n]*?<\/(?:seed|mm|minimax):think>[ \t]*(?=(?:await\s+)?[A-Za-z_$(])|^[ \t]*[^\r\n]+?(?=<\|tool_call[_:]start\|>)|(?:<\/?\|(?:begin|end|im_end|eot_id|end_of_text)\|>|<\|(?:start|channel)\|>[^\r\n]*|<\/?(?:think|(?:seed|mm|minimax):think)>)+/gimu,
+            (fullMatch) => padNewlines("", fullMatch),
+        )
+        .replace(
+            /^([ \t]*(?:<\|tool_call[^>]*>|<tool_call\b[^>]*>)*[ \t]*(?:await\s+)?[A-Za-z_$][A-Za-z0-9_$.:-]*(?:\[\s*["'][^"']+["']\s*\])?\s*)(\(\s*\{\s*\\"(?:[^"\\]|\\.)*\\"\s*:[^{}\r\n]*\})/gmu,
+            (fullMatch, prefix: string, objPart: string) => objPart.includes('"') && !objPart.replaceAll('\\"', "").includes('"')
+                ? `${prefix}${objPart.replaceAll('\\"', '"')}`
+                : fullMatch,
+        )
+        .replace(
+            /^([ \t]*(?:<\|tool_call[^>]*>|<tool_call\b[^>]*>)*[ \t]*(?:await\s+)?[A-Za-z_$][A-Za-z0-9_$.:-]*(?:\[\s*["'][^"']+["']\s*\])?\s*\(\s*\{[ \t]*)([A-Za-z_][A-Za-z0-9_$-]*)(["'])(?=[ \t]*:)/gmu,
+            "$1$3$2$3",
+        )
+        .replace(
+            /^([^\r\n]+?)([ \t]*)(?=(?:<tool_call\b[^>]*>|<\|tool_call[^>]*>|<TOOLCALL\b[^>]*>|<function_calls?\b[^>]*>|<\|python_tag\|>|\[TOOL_CALLS\]|<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>))/gimu,
+            (fullMatch, prefix: string) => {
+                if (prefix.trim().length === 0 || isInsideCodeString(prefix)) return fullMatch;
+                if (/<(?:tool_call|TOOLCALL|function_calls?|(?:\|tool_call))\b/iu.test(prefix)) return fullMatch;
+                return `${prefix}\n`;
+            },
+        );
     const preTranslated = strippedSeedThink
         .replace(
-            /<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]calls(?:_section)?[▁_]end[|｜]>|<[|｜]tool[▁_]call[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]call[▁_]end[|｜]>|<\|tool_call[_:]start\|>[\s\S]*?<\|tool_call[_:]end\|>|<((?:[|｜]+)?DSML[|｜]+\s*(?:function_calls?|tool_calls?|calls|invoke)|(?:antml:|[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:invoke|function|toolcall|toolcalls|tool_call|tool_calls|functioncall|functioncalls|function_call|function_calls|tool-call|tool-calls|tool calls?|function calls?|tool|call|calls|tool_use|tool use|result))\b[^>]*>[\s\S]*?<\/\1>/giu,
+            /<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]calls(?:_section)?[▁_]end[|｜]>|<[|｜]tool[▁_]call[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]call[▁_]end[|｜]>|<\|tool_call[_:]start\|>[\s\S]*?<\|tool_call[_:]end\|>|<((?:[|｜]+)?DSML[|｜]+\s*(?:function_calls?|tool_calls?|calls|invoke)|(?:antml:|[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:invoke|function|toolcall|toolcalls|tool_call|tool_calls|functioncall|functioncalls|function_call|function_calls|tool-call|tool-calls|tool calls?|function calls?|tool|call|calls|tool_use|tool use|result))\b[^>]*>(?:(?!<\1\b)[\s\S])*?<\/\1>/giu,
             (fullMatch) => translateSegmentToolCalls(fullMatch, executorSpellings),
         )
         .replace(

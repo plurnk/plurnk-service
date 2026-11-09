@@ -1,7 +1,5 @@
 import { PlurnkParseError, type LineMarker, type Position, type TextLineMarker } from "@plurnk/plurnk-contracts";
 
-export type Advise = (position: Position | undefined, message: string) => void;
-
 const VALID_NUMERIC_SCOPE = /^<-?[0-9]+(?:\.[0-9]+)?(?:(?:,\s?|-)-?[0-9]+(?:\.[0-9]+)?)*>$/u;
 const VALID_RELATIVE_SCOPE = /^<([0-9]+), ?\+([0-9]+)>$/u;
 const VALID_TEXT_SCOPE = /^(?:[1-9][0-9]*)?<(?:-?[0-9]+(?:\.[0-9]+)?|@[0-9A-Za-z]{5}(?:[+-][0-9]+)?|@[0-9]{1,4})(?:(?:,\s?|-)(?:-?[0-9]+(?:\.[0-9]+)?|\+[0-9]+|@[0-9A-Za-z]{5}(?:[+-][0-9]+)?|@[0-9]{1,4}))*>$/u;
@@ -69,7 +67,7 @@ export const parseLineMarker = (raw: string, position: Position = { line: 0, col
 };
 
 // {§matcher-prefix-claims}: normalize authored numeric ranges before anchors resolve.
-export const parseRangeMarker = (raw: string, position: Position = { line: 0, column: 0 }, advise?: Advise): LineMarker => {
+export const parseRangeMarker = (raw: string, position: Position = { line: 0, column: 0 }): LineMarker => {
     const text = wrapScope(raw);
     const inner = unwrapScope(text);
     const relative = VALID_RELATIVE_SCOPE.exec(text);
@@ -91,11 +89,10 @@ export const parseRangeMarker = (raw: string, position: Position = { line: 0, co
     if (!Number.isSafeInteger(last)) {
         throw new PlurnkParseError(position.line, position.column, "visitor", `Range ${JSON.stringify(inner)} exceeds safe integer coordinates.`);
     }
-    advise?.(position, `Range ${JSON.stringify(inner)} was read as "${start},${last}".`);
     return { marks: [start, last] };
 };
 
-export const parseTextLineMarker = (raw: string, position: Position = { line: 0, column: 0 }, advise?: Advise): TextLineMarker => {
+export const parseTextLineMarker = (raw: string, position: Position = { line: 0, column: 0 }): TextLineMarker => {
     let marker = wrapScope(raw);
     if (!VALID_TEXT_SCOPE.test(marker) && /(?:<@[0-9A-Za-z]{5}(?:[+-][0-9]+)?>?|@[0-9A-Za-z]{5}(?:[+-][0-9]+)?>)/u.test(raw)) {
         const stripped = raw.trim().replace(/(?:[1-9][0-9]*)?<?(@[0-9A-Za-z]{5}(?:[+-][0-9]+)?)>?/gu, "$1");
@@ -110,7 +107,7 @@ export const parseTextLineMarker = (raw: string, position: Position = { line: 0,
     const prefixed = /^([1-9][0-9]*)(<[\s\S]*)$/u.exec(marker);
     const text = prefixed === null ? marker : prefixed[2];
     if (!text.includes("@")) {
-        return parseRangeMarker(unwrapScope(text), position, advise);
+        return parseRangeMarker(unwrapScope(text), position);
     }
     const inner = text.slice(1, -1);
     const components: string[] = [];

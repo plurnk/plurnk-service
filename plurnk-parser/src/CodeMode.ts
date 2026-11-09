@@ -1,5 +1,4 @@
 import {
-    PlurnkParseError,
     isPlurnkOp,
     type ParseAttempt,
     type ParseItem,
@@ -50,13 +49,6 @@ export const parseCodeMode = (
     const items: ParseItem[] = [];
 
     for (const chunk of chunks) {
-        if (chunk.kind === "advisory") {
-            items.push({
-                kind: "error",
-                error: new PlurnkParseError(chunk.position.line, chunk.position.column, "parser", chunk.message, "warning"),
-            });
-            continue;
-        }
         if (chunk.kind === "text") {
             if (tier === "model") {
                 const isQuotedBlock = /^ {0,3}(?:`{3,}|~{3,})/u.test(chunk.text);

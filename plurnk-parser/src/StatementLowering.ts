@@ -34,7 +34,6 @@ import {
     DELEGATION_KEYS,
     EDIT_ITEM_KEYS,
     EDIT_KEYS,
-    JS_ALIAS_SPELLINGS,
     KILL_KEYS,
     NOTE_KEYS,
     PLURNK_RUNTIME_TOOLS,
@@ -61,7 +60,6 @@ import {
     type CodeModeOptions,
     type ParsedCall,
 } from "./OptionCoercion.ts";
-import { type Advise } from "./ScopeSyntax.ts";
 import { parsePath, targetMembers } from "./TargetSyntax.ts";
 
 export { attemptVerbOf, buildExecutorSpellings, type CodeModeOptions, type ParsedCall };
@@ -83,12 +81,6 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
     let activePosition: Position = { line: 1, column: 0 };
     let activeDefaultAside: string | null = null;
     let activeChunkStatements: PlurnkStatement[] = [];
-    let activeChunkAdvisories: PlurnkParseError[] = [];
-
-    const advise: Advise = (pos, message) => {
-        const at = pos === undefined || (pos.line === 0 && pos.column === 0) ? activePosition : pos;
-        activeChunkAdvisories.push(new PlurnkParseError(at.line, at.column, "parser", message, "warning"));
-    };
 
     const emitStatement = <T extends PlurnkStatement>(statement: T): T => {
         const withAside: T = statement.aside === null && activeDefaultAside !== null
@@ -152,13 +144,13 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                 emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: second.note, position: pos });
             }
             const aside = resolveAside(second);
-            const matcher = toMatcherBody(second?.pattern ?? second?.matcher ?? second?.query, op, pos, advise, hasHeredocKey(second, "pattern", "matcher", "query"));
+            const matcher = toMatcherBody(second?.pattern ?? second?.matcher ?? second?.query, op, pos, hasHeredocKey(second, "pattern", "matcher", "query"));
             const headers = toHeaders(second?.headers, pos);
             return targets.map((target) => emitStatement(op === "read" ? {
                 op: "read",
                 aside,
                 target,
-                lineMarker: toTextLineMarker(second?.range ?? second?.lines ?? second?.scope, pos, advise),
+                lineMarker: toTextLineMarker(second?.range ?? second?.lines ?? second?.scope, pos),
                 matcher,
                 headers,
                 body: null,
@@ -167,7 +159,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                 op: "find",
                 aside,
                 target,
-                lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.scope ?? second?.limit, pos, true, advise),
+                lineMarker: toLineMarker(second?.range ?? second?.lines ?? second?.scope ?? second?.limit, pos, true),
                 matcher,
                 headers,
                 body: null,
@@ -180,9 +172,15 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                 emitStatement({ op: "note", aside: null, target: null, lineMarker: null, body: first.note, position: pos });
             }
             const aside = resolveAside(first);
-            const matcher = toMatcherBody(first.pattern ?? first.matcher ?? first.query, op, pos, advise, hasHeredocKey(first, "pattern", "matcher", "query"));
             const headers = toHeaders(first.headers, pos);
-            const rawPaths = first.paths ?? first.targets ?? first.resources ?? first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filepath ?? first.file;
+            const baseRawPaths = first.paths ?? first.targets ?? first.resources ?? first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file;
+            const patternCandidate = first.pattern ?? first.matcher ?? first.query;
+            const patternAsPath = baseRawPaths === undefined
+                && typeof patternCandidate === "string"
+                && !hasHeredocKey(first, "pattern", "matcher", "query")
+                && /^(?:workspace|file|log|session|skill|mcp|ops|reasoning|message):\/\//u.test(patternCandidate.trim());
+            const rawPaths = patternAsPath ? patternCandidate.trim() : baseRawPaths;
+            const matcher = patternAsPath ? null : toMatcherBody(patternCandidate, op, pos, hasHeredocKey(first, "pattern", "matcher", "query"));
             if (Array.isArray(rawPaths)) {
                 if (rawPaths.length === 0 && op === "read") {
                     throw new PlurnkParseError(pos.line, pos.column, "parser", "read requires a target.", "error", recovery);
@@ -197,7 +195,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                                 op: "read",
                                 aside,
                                 target,
-                                lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.scope, pos, advise),
+                                lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.scope, pos),
                                 matcher,
                                 headers,
                                 body: null,
@@ -206,7 +204,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                                 op: "find",
                                 aside,
                                 target,
-                                lineMarker: toLineMarker(first.range ?? first.lines ?? first.scope ?? first.limit, pos, true, advise),
+                                lineMarker: toLineMarker(first.range ?? first.lines ?? first.scope ?? first.limit, pos, true),
                                 matcher,
                                 headers,
                                 body: null,
@@ -233,7 +231,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                 op: "read",
                 aside,
                 target,
-                lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.scope, pos, advise),
+                lineMarker: toTextLineMarker(first.range ?? first.lines ?? first.scope, pos),
                 matcher,
                 headers,
                 body: null,
@@ -242,7 +240,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                 op: "find",
                 aside,
                 target,
-                lineMarker: toLineMarker(first.range ?? first.lines ?? first.scope ?? first.limit, pos, true, advise),
+                lineMarker: toLineMarker(first.range ?? first.lines ?? first.scope ?? first.limit, pos, true),
                 matcher,
                 headers,
                 body: null,
@@ -277,7 +275,7 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires an options object with `path`.", "error", recovery);
         }
         assertAllowedKeys(first, EDIT_KEYS, "plurnk.edit", recovery, pos);
-        const rawPath = first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filepath ?? first.file;
+        const rawPath = first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file;
         if (typeof rawPath !== "string" || rawPath.length === 0) {
             throw new PlurnkParseError(pos.line, pos.column, "parser", "edit requires a target.", "error", recovery);
         }
@@ -300,11 +298,11 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                         throw new PlurnkParseError(pos.line, pos.column, "visitor", "Each entry in `edits` must be an object.", "error");
                     }
                     assertAllowedKeys(item, EDIT_ITEM_KEYS, "plurnk.edit.edits", recovery, pos);
-                    const itemLineMarker = toTextLineMarker(item.range ?? item.lines ?? item.scope ?? first.range ?? first.lines ?? first.scope, pos, advise);
+                    const itemLineMarker = toTextLineMarker(item.range ?? item.lines ?? item.scope ?? first.range ?? first.lines ?? first.scope, pos);
                     const rawItemOld = item.oldText ?? item.old_string ?? item.old_text;
                     const itemMatcher = typeof rawItemOld === "string"
                         ? oldTextToMatcher(rawItemOld, pos)
-                        : toMatcherBody(item.pattern ?? item.matcher, "edit", pos, advise, hasHeredocKey(item, "pattern", "matcher"));
+                        : toMatcherBody(item.pattern ?? item.matcher, "edit", pos, hasHeredocKey(item, "pattern", "matcher"));
                     const rawContent = item.text ?? item.newText ?? item.new_string ?? item.new_text ?? item.replacement ?? item.content ?? item.body;
                     const body = rawContent === undefined || rawContent === null || rawContent === "" ? null : toStringValue(rawContent);
                     statements.push(emitStatement({
@@ -322,11 +320,11 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             return statements;
         }
 
-        const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.scope, pos, advise);
+        const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.scope, pos);
         const rawOld = first.oldText ?? first.old_string ?? first.old_text;
         const matcher = typeof rawOld === "string"
             ? oldTextToMatcher(rawOld, pos)
-            : toMatcherBody(first.pattern ?? first.matcher, "edit", pos, advise, hasHeredocKey(first, "pattern", "matcher"));
+            : toMatcherBody(first.pattern ?? first.matcher, "edit", pos, hasHeredocKey(first, "pattern", "matcher"));
         const rawBody = first.text ?? first.newText ?? first.new_string ?? first.new_text ?? first.replacement ?? first.content ?? first.body;
         const body = rawBody === undefined || rawBody === null || rawBody === "" ? null : toStringValue(rawBody);
         return targets.map((target) => emitStatement({
@@ -345,8 +343,8 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         const pos = activePosition;
         const recovery = `await plurnk.${op}({ from: "source", to: "destination" })`;
         if (typeof args[0] === "string" && typeof args[1] === "string") {
-            const source = parseSelectionInput(args[0], op, "from", pos, advise);
-            const destination = parseSelectionInput(args[1], op, "to", pos, advise);
+            const source = parseSelectionInput(args[0], op, "from", pos);
+            const destination = parseSelectionInput(args[1], op, "to", pos);
             return emitStatement({ op, aside: activeDefaultAside, source, destination, position: pos });
         }
         const first = args[0];
@@ -356,18 +354,18 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         assertAllowedKeys(first, TRANSFER_KEYS, `plurnk.${op}`, recovery, pos);
         const rawFrom = first.from ?? first.source ?? first.src;
         const rawTo = first.to ?? first.destination ?? first.dest;
-        const sourceBase = parseSelectionInput(rawFrom, op, "from", pos, advise);
-        const destBase = parseSelectionInput(rawTo, op, "to", pos, advise);
+        const sourceBase = parseSelectionInput(rawFrom, op, "from", pos);
+        const destBase = parseSelectionInput(rawTo, op, "to", pos);
         const source: ResourceSelection = {
             target: sourceBase.target,
-            lineMarker: sourceBase.lineMarker ?? toTextLineMarker(first.range ?? first.lines ?? first.scope ?? first.sourceRange ?? first.fromRange, pos, advise),
-            matcher: sourceBase.matcher ?? toMatcherBody(first.pattern ?? first.matcher ?? first.sourcePattern ?? first.fromPattern, op, pos, advise, hasHeredocKey(first, "pattern", "matcher", "sourcePattern", "fromPattern")),
+            lineMarker: sourceBase.lineMarker ?? toTextLineMarker(first.range ?? first.lines ?? first.scope ?? first.sourceRange ?? first.fromRange, pos),
+            matcher: sourceBase.matcher ?? toMatcherBody(first.pattern ?? first.matcher ?? first.sourcePattern ?? first.fromPattern, op, pos, hasHeredocKey(first, "pattern", "matcher", "sourcePattern", "fromPattern")),
             headers: sourceBase.headers ?? toHeaders(first.headers ?? first.sourceHeaders ?? first.fromHeaders, pos),
         };
         const destination: ResourceSelection = {
             target: destBase.target,
-            lineMarker: destBase.lineMarker ?? toTextLineMarker(first.toRange ?? first.destinationRange ?? first.destRange, pos, advise),
-            matcher: destBase.matcher ?? toMatcherBody(first.toPattern ?? first.destinationPattern, op, pos, advise, hasHeredocKey(first, "toPattern", "destinationPattern")),
+            lineMarker: destBase.lineMarker ?? toTextLineMarker(first.toRange ?? first.destinationRange ?? first.destRange, pos),
+            matcher: destBase.matcher ?? toMatcherBody(first.toPattern ?? first.destinationPattern, op, pos, hasHeredocKey(first, "toPattern", "destinationPattern")),
             headers: destBase.headers ?? toHeaders(first.toHeaders ?? first.destinationHeaders, pos),
         };
         return emitStatement({
@@ -406,8 +404,8 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             }
             const rawNote = typeof args[1] === "string" ? args[1] : (second?.note ?? second?.distillation ?? second?.body ?? second?.content ?? second?.text);
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
-            const lineMarker = toTextLineMarker(second?.range ?? second?.lines ?? second?.scope, pos, advise);
-            const matcher = toMatcherBody(second?.pattern ?? second?.matcher, "kill", pos, advise, hasHeredocKey(second, "pattern", "matcher"));
+            const lineMarker = toTextLineMarker(second?.range ?? second?.lines ?? second?.scope, pos);
+            const matcher = toMatcherBody(second?.pattern ?? second?.matcher, "kill", pos, hasHeredocKey(second, "pattern", "matcher"));
             const remote = toRemote(second?.remote, pos);
             const headers = toHeaders(second?.headers, pos);
             const aside = resolveAside(second);
@@ -425,12 +423,18 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         }
         if (isRecord(first)) {
             assertAllowedKeys(first, KILL_KEYS, "plurnk.kill", recovery, pos);
-            const rawPaths = first.paths ?? first.targets ?? first.resources ?? first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filepath ?? first.file;
+            const baseRawPaths = first.paths ?? first.targets ?? first.resources ?? first.path ?? first.target ?? first.uri ?? first.resource ?? first.file_path ?? first.filePath ?? first.filepath ?? first.file;
+            const patternCandidate = first.pattern ?? first.matcher;
+            const patternAsPath = baseRawPaths === undefined
+                && typeof patternCandidate === "string"
+                && !hasHeredocKey(first, "pattern", "matcher")
+                && /^(?:workspace|file|log|session|skill|mcp|ops|reasoning|message):\/\//u.test(patternCandidate.trim());
+            const rawPaths = patternAsPath ? patternCandidate.trim() : baseRawPaths;
             const aside = resolveAside(first);
             const rawNote = first.note ?? first.distillation ?? first.body ?? first.content ?? first.text;
             const note = typeof rawNote === "string" && rawNote.trim().length > 0 ? rawNote : null;
-            const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.scope, pos, advise);
-            const matcher = toMatcherBody(first.pattern ?? first.matcher, "kill", pos, advise, hasHeredocKey(first, "pattern", "matcher"));
+            const lineMarker = toTextLineMarker(first.range ?? first.lines ?? first.scope, pos);
+            const matcher = patternAsPath ? null : toMatcherBody(patternCandidate, "kill", pos, hasHeredocKey(first, "pattern", "matcher"));
             const remote = toRemote(first.remote, pos);
             const headers = toHeaders(first.headers, pos);
 
@@ -499,8 +503,31 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         }
         if (isRecord(first)) {
             assertAllowedKeys(first, NOTE_KEYS, "plurnk.note", 'await plurnk.note({ text: "..." })', pos);
-            const rawText = first.text ?? first.content ?? first.body ?? first.note ?? first.message;
-            const body = rawText === undefined || rawText === null || rawText === "" ? null : toStringValue(rawText);
+            const rawPrimary = first.text ?? first.content ?? first.body ?? first.note ?? first.message;
+            let body: string | null = null;
+            if (rawPrimary !== undefined && rawPrimary !== null && rawPrimary !== "") {
+                body = toStringValue(rawPrimary);
+            } else {
+                const extraParts = [
+                    first.title,
+                    first.fact,
+                    first.facts,
+                    first.decision,
+                    first.decisions,
+                    first.hypothesis,
+                    first.hypotheses,
+                    first.observation,
+                    first.observations,
+                    first.finding,
+                    first.findings,
+                    first.summary,
+                ]
+                    .filter((v) => v !== undefined && v !== null && v !== "")
+                    .map((v) => toStringValue(v));
+                if (extraParts.length > 0) {
+                    body = extraParts.join("\n");
+                }
+            }
             return emitStatement({ op: "note", aside: resolveAside(first), target: null, lineMarker: null, body, position: pos });
         }
         return emitStatement({ op: "note", aside: activeDefaultAside, target: null, lineMarker: null, body: toStringValue(first), position: pos });
@@ -540,7 +567,10 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             assertAllowedKeys(first, TODO_KEYS, "plurnk.todo", 'await plurnk.todo({ items: ["..."] })', pos);
             const rawItems = Array.isArray(first.items) ? first.items : (Array.isArray(first.todos) ? first.todos : null);
             if (rawItems !== null) {
-                const body = rawItems.length === 0 ? null : rawItems.map(formatTodoItem).join("\n");
+                const formatted = rawItems
+                    .map(formatTodoItem)
+                    .filter((item) => item.trim().length > 0 && !/^- \[[ x~]\]$/u.test(item.trim()));
+                const body = formatted.length === 0 ? null : formatted.join("\n");
                 return emitStatement({ op: "todo", aside: resolveAside(first), target: null, lineMarker: null, body, position: pos });
             }
             const rawText = first.text ?? first.content ?? first.body;
@@ -690,8 +720,6 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
                     : Number.NaN;
             if (Number.isFinite(parsedSeconds) && parsedSeconds >= 0) {
                 seconds = parsedSeconds;
-            } else if (rawSeconds !== undefined && rawSeconds !== null) {
-                advise(pos, `Ignored wait duration ${JSON.stringify(rawSeconds)}.`);
             }
             const rawText = first.text ?? first.body ?? first.content ?? first.message ?? first.reason;
             const textAside = rawText === undefined || rawText === null || rawText === "" ? null : toStringValue(rawText);
@@ -886,13 +914,9 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             throw new PlurnkParseError(pos.line, pos.column, "parser",
                 `Invalid MCP runtime name ${JSON.stringify(rawServer)}.`, "error");
         }
-        if (rawServer !== lowerServer) {
-            if (executorSpellings.has(lowerServer)) {
-                advise(pos, `Runtime \`${rawServer}\` was read as \`${lowerServer}\`.`);
-            } else {
-                throw new PlurnkParseError(pos.line, pos.column, "parser",
-                    `Unknown runtime ${JSON.stringify(rawServer)}; runtime names are lowercase.`, "error");
-            }
+        if (rawServer !== lowerServer && !executorSpellings.has(lowerServer)) {
+            throw new PlurnkParseError(pos.line, pos.column, "parser",
+                `Unknown runtime ${JSON.stringify(rawServer)}; runtime names are lowercase.`, "error");
         }
         const runtime = lowerServer;
         const target = parsePath(rawTool, pos);
@@ -920,9 +944,6 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         const explicitSingleExecutor = options.executors?.length === 1 && options.executors[0]?.toLowerCase() === lower;
         const coreOp = explicitSingleExecutor ? undefined : CORE_OP_MAP.get(lower);
         if (coreOp !== undefined) {
-            if (prop !== lower) {
-                advise(activePosition, `\`plurnk.${prop}\` was read as \`plurnk.${lower}\`.`);
-            }
             switch (coreOp) {
                 case "read":
                 case "find":
@@ -962,9 +983,6 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             }
         }
         if (PLURNK_RUNTIME_TOOLS.has(lower) || (lower.includes("|") && lower.split("|").every((part) => PLURNK_RUNTIME_TOOLS.has(part)))) {
-            if (prop !== lower) {
-                advise(activePosition, `\`plurnk.${prop}\` was read as \`plurnk.${lower}\`.`);
-            }
             buildPlurnkTool(lower, args);
             return;
         }
@@ -988,9 +1006,6 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         }
         const knownRuntime = executorSpellings.get(lower);
         if (knownRuntime !== undefined) {
-            if (prop !== knownRuntime && !JS_ALIAS_SPELLINGS.has(lower)) {
-                advise(activePosition, `\`plurnk.${prop}\` was read as \`plurnk.${knownRuntime}\`.`);
-            }
             buildStandaloneExec(knownRuntime, args);
             return;
         }
@@ -1078,7 +1093,6 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
         activePosition = chunkPosition;
         activeDefaultAside = defaultAside;
         activeChunkStatements = [];
-        activeChunkAdvisories = [];
         const items: ParseItem[] = [];
         try {
             const calls = produceCalls();
@@ -1087,9 +1101,6 @@ export const createCallDispatcher = (options: CodeModeOptions = {}): CallDispatc
             }
             for (const stmt of activeChunkStatements) {
                 items.push({ kind: "statement", statement: stmt });
-            }
-            for (const adv of activeChunkAdvisories) {
-                items.push({ kind: "error", error: adv });
             }
         } catch (err) {
             if (err instanceof PlurnkParseError) {

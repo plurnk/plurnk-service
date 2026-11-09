@@ -1,5 +1,5 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { PlurnkParseError, Validator, isRecord, type Notice, type ParseAttempt, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { PlurnkParseError, Validator, isRecord, type ParseAttempt, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { ProviderAttempt, ProviderAttemptFinishReason } from "@plurnk/plurnk-providers";
 import FabricatedLog from "./FabricatedLog.ts";
 import type { PacketAssistant } from "./StoredPacket.ts";
@@ -23,7 +23,6 @@ export type SplitProviderResponse = {
     callMetadata: TurnCallMetadata;
     parseErrors: ParseErrorInfo[];
     recoverableParseErrors: ParseErrorInfo[];
-    parseNotices: Notice[];
     emissionValid: boolean;
     emptyTurn: boolean;
     // {§loop-completion}: an incomplete or malformed emission cannot conclude.
@@ -40,7 +39,6 @@ type ParsedContent = {
     ops: PlurnkStatement[];
     contentStatementCount: number;
     parseErrors: ParseErrorInfo[];
-    parseNotices: Notice[];
     fabrications: ParseErrorInfo[];
     outside: string[];
     hasUnparsedTail: boolean;
@@ -58,7 +56,6 @@ const comparePosition = (
 export const DIRECTIVE = Object.freeze({
     note: "YOU MUST persist all new decisions, hypotheses, and facts as `plurnk.note` tool calls.",
     emission: "YOU MUST ONLY emit unwrapped Code Mode statements (`await plurnk.<op>(...)` and `await <server>.<tool>(...)`), with a terse `// aside` comment.",
-    advisory: "YOU SHOULD write the canonical form.",
     output: "YOU SHOULD emit fewer or shorter operations per turn.",
 });
 
@@ -114,10 +111,10 @@ export default class EmissionSplit {
         const wireMarkup = EmissionSplit.#extractWireToolCallMarkup(response.assistantRaw);
         // A scripted provider's pre-parsed statements, each proven against the statement schema.
         const preParsedOps = "ops" in assistant && Array.isArray(assistant.ops) ? assistant.ops.map((op) => Validator.assertPlurnkStatement(op)) : undefined;
-        const { ops, contentStatementCount, parseErrors, parseNotices, fabrications, outside, hasUnparsedTail, operationOmitted } = preParsedOps === undefined
+        const { ops, contentStatementCount, parseErrors, fabrications, outside, hasUnparsedTail, operationOmitted } = preParsedOps === undefined
             ? EmissionSplit.#parseContent(assistant.content, executors, wireMarkup)
             : {
-                ops: [...preParsedOps], contentStatementCount: preParsedOps.length, parseErrors: [], parseNotices: [], fabrications: [],
+                ops: [...preParsedOps], contentStatementCount: preParsedOps.length, parseErrors: [], fabrications: [],
                 outside: [], hasUnparsedTail: false, operationOmitted: false,
             };
         const reasoning = assistant.reasoning ?? null;
@@ -144,7 +141,6 @@ export default class EmissionSplit {
             recoverableParseErrors: emissionValid ? recoverableParseErrors : [],
             emptyTurn,
             completionAllowed,
-            parseNotices,
             emissionValid,
             outside: outside.length === 0 ? null : outside.join("\n\n"),
             emissionStatements,
@@ -153,14 +149,13 @@ export default class EmissionSplit {
 
     // {§outside-text} {§emission-admission} {§parse-recovery} An emission's content parsed into its
     // statements and what sat beside them: outside text as NOTEs or the empty turn's source, a fabricated log
-    // heading as the rejection it is, each parse error by its severity, and the lexer's one boundary fact.
+    // heading as the rejection it is, each parse error, and the lexer's one boundary fact.
     static #parseContent(content: string, executors: readonly string[], wireMarkup = ""): ParsedContent {
         const ops: PlurnkStatement[] = [];
         const parseErrors: ParseErrorInfo[] = [];
         let contentStatementCount = 0;
         let hasUnparsedTail = false;
         let operationOmitted = false;
-        const parseNotices: Notice[] = [];
         const fabrications: ParseErrorInfo[] = [];
         const outside: string[] = [];
         const wireParsed = wireMarkup.length > 0 ? PlurnkParser.parse(wireMarkup, { executors }) : null;
@@ -210,7 +205,7 @@ export default class EmissionSplit {
                 span.body.push(body);
             }
             else if (item.kind === "error") {
-                operationOmitted ||= EmissionSplit.#admitParseError(item, parseErrors, parseNotices);
+                operationOmitted ||= EmissionSplit.#admitParseError(item, parseErrors);
             }
         }
         flushSpan();
@@ -220,7 +215,7 @@ export default class EmissionSplit {
                     ops.push(item.statement);
                     contentStatementCount += 1;
                 } else if (item.kind === "error") {
-                    operationOmitted ||= EmissionSplit.#admitParseError(item, parseErrors, parseNotices);
+                    operationOmitted ||= EmissionSplit.#admitParseError(item, parseErrors);
                 } else if (item.kind === "text") {
                     operationOmitted = true;
                 }
@@ -235,29 +230,13 @@ export default class EmissionSplit {
             hasUnparsedTail = true;
             parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
         }
-        return { ops, contentStatementCount, parseErrors, parseNotices, fabrications, outside, hasUnparsedTail, operationOmitted };
+        return { ops, contentStatementCount, parseErrors, fabrications, outside, hasUnparsedTail, operationOmitted };
     }
 
-    // One parse error by its severity: an advisory is a grammar Notice beside the turn; an error is a diagnostic
-    // the model sees, with its recovery and the attempt it came from. Returns whether an operation was omitted.
-    static #admitParseError(item: ParsedErrorItem, parseErrors: ParseErrorInfo[], parseNotices: Notice[]): boolean {
+    static #admitParseError(item: ParsedErrorItem, parseErrors: ParseErrorInfo[]): boolean {
         const err = (item as { error?: PlurnkParseError }).error;
         if (err instanceof PlurnkParseError) {
-            if (err.severity === "warning") {
-                parseNotices.push({
-                    source: "grammar",
-                    kind: "parse_advisory",
-                    level: "warn",
-                    directive: DIRECTIVE.advisory,
-                    message: err.message,
-                    position: {
-                        type: "content-offset",
-                        line: err.line,
-                        column: err.column,
-                    },
-                    parserSource: err.source,
-                });
-            } else {
+            if (err.severity !== "warning") {
                 parseErrors.push({
                     message: err.message, line: err.line, column: err.column, source: err.source,
                     ...(err.recovery === undefined ? {} : { recovery: err.recovery }),

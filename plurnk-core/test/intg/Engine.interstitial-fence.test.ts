@@ -69,7 +69,7 @@ test("{§fence-pairing}: a SEND quoting an operation never runs the quoted call,
     } finally { await db.close(); }
 });
 
-test("{§whitespace-contract}: a Markdown-fenced Code Mode operation unwraps with an advisory and still runs", async () => {
+test("{§whitespace-contract}: a Markdown-fenced Code Mode operation unwraps silently and runs", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fenced-codemode-${crypto.randomUUID()}`);
@@ -96,9 +96,7 @@ test("{§whitespace-contract}: a Markdown-fenced Code Mode operation unwraps wit
         const reads = rows.filter(({ op, origin }) => op === "read" && origin === "model");
         assert.deepEqual(reads.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).content]), [[200, body]], "the fenced Code Mode READ unwrapped and ran");
         assert.deepEqual(rows.filter(({ op }) => op === "error"), [], "a valid operation prevents a no-operation strike");
-        assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory").map(({ message }) => message), [
-            "Code Mode statements need no Markdown fence; write `await plurnk.<op>(...)` directly.",
-        ]);
+        assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory"), []);
         const next = JSON.stringify(provider.received[1]);
         assert.ok(next.includes(body), "the next request contains the successful result");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });

@@ -256,8 +256,8 @@ export const parseXmlToolCallBody = (body: string): unknown => {
         .trim()
         .replace(/^<(?:[A-Za-z_$][A-Za-z0-9_$]*[._:-])?(?:parameters|params|arguments|args|input)\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_$][A-Za-z0-9_$]*[._:-])?(?:parameters|params|arguments|args|input)>$/iu, "$1");
 
-    // Z.AI GLM-4.5 / GLM-4.7 / GLM-5 `<arg_key>k</arg_key><arg_value>v</arg_value>` pairs
-    const glmArgRe = /<arg_key\b[^>]*>([\s\S]*?)<\/arg_key>\s*<arg_value\b[^>]*>([\s\S]*?)<\/arg_value>/giu;
+    // Z.AI GLM-4.5 / GLM-4.7 / GLM-5 / Xing4 `<arg_key>k</arg_key><arg_value>v</arg_value>` or `<param_key>k</param_key><param_value>v</param_value>` pairs
+    const glmArgRe = /<(?:arg|param|parameter)_key\b[^>]*>([\s\S]*?)<\/(?:arg|param|parameter)_key>\s*<(?:arg|param|parameter)_value\b[^>]*>([\s\S]*?)<\/(?:arg|param|parameter)_value>/giu;
     const glmParams: Record<string, unknown> = {};
     let matchedGlm = false;
     let m: RegExpExecArray | null;
@@ -325,8 +325,8 @@ export const tryTranslateChildTagCall = (
     defaultService?: string,
     isResultWrapper = false,
 ): string | null => {
-    // Z.AI GLM-4.5 / GLM-4.7 / GLM-5 `<tool_call>func_name\n<arg_key>k</arg_key><arg_value>v</arg_value></tool_call>`
-    const glmHeadMatch = /^\s*([A-Za-z0-9_.:-]+)\s*(?=<arg_key\b)/iu.exec(inner);
+    // Z.AI GLM-4.5 / GLM-4.7 / GLM-5 / Xing4 `<tool_call>func_name\n<arg_key>k</arg_key><arg_value>v</arg_value></tool_call>`
+    const glmHeadMatch = /^\s*([A-Za-z0-9_.:-]+)\s*(?=<(?:arg|param|parameter)_key\b)/iu.exec(inner);
     if (glmHeadMatch !== null) {
         const target = resolveToolCallTarget(glmHeadMatch[1], executorSpellings, false, defaultService);
         if (target !== null) {

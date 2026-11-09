@@ -98,7 +98,10 @@ export const findHeredocCloser = (
         let wsLen = 0;
         while (wsLen < line.length && (line[wsLen] === " " || line[wsLen] === "\t")) wsLen += 1;
         if (line.startsWith(tag, wsLen)) {
-            const afterTagInLine = line.slice(wsLen + tag.length);
+            const afterTagRaw = line.slice(wsLen + tag.length);
+            const chevronMatch = mode === "inline" ? /^>+/u.exec(afterTagRaw) : null;
+            const chevronLen = chevronMatch !== null ? chevronMatch[0].length : 0;
+            const afterTagInLine = afterTagRaw.slice(chevronLen);
             const validAfter = mode === "inline"
                 ? /^[ \t]*(?:[,}\]);+]|\/\/|\/\*|$)/u.test(afterTagInLine)
                 : /^[ \t]*;?[ \t]*(?:\/\/.*)?$/u.test(afterTagInLine);
@@ -119,7 +122,7 @@ export const findHeredocCloser = (
                 return {
                     body,
                     lineStart,
-                    afterTagOffset: lineStart + wsLen + tag.length,
+                    afterTagOffset: lineStart + wsLen + tag.length + chevronLen,
                     lineEndOffset: nextNl === -1 ? text.length : nextNl,
                     nextLineStart: nextNl === -1 ? text.length : nextNl + 1,
                     trailingComment,

@@ -1635,8 +1635,8 @@ test("{§tokenomics} log render: EDIT@200 with no tx → meta line only (defensi
 
 test("{§operation-results} a notice is one callout: the level picks it, the directive leads, the kind closes", () => {
     const out = PacketWire.renderNotices([
-        { source: "engine:slicer", kind: "scope_normalized", level: "warn",
-            directive: "YOU SHOULD write the normalized scope.", message: "Scope <0,120> was normalized to <1,120>." },
+        { source: "engine:slicer", kind: "edit_merged", level: "warn",
+            directive: "YOU SHOULD verify the merged edit before building on it.", message: "edit resolution applied: adjacent; the row's merged fact has the coordinates." },
         { source: "engine:grammar", kind: "invalid_emission", level: "error",
             directive: "YOU MUST ONLY emit fenced operation batches; with the parameters, pattern, and terse aside on the fenced operation line.",
             message: "Response rejected before dispatch;\n no operations were performed.", position: { type: "content-offset", line: 2, column: 4 } },
@@ -1644,7 +1644,7 @@ test("{§operation-results} a notice is one callout: the level picks it, the dir
             message: "5000 output tokens billed; 1 visible across content and reasoning.", position: { type: "content-offset", line: 1, column: 0 } },
     ]);
     assert.equal(out, [
-        "> [!WARNING]\n> YOU SHOULD write the normalized scope. Scope <0,120> was normalized to <1,120>. [scope_normalized]",
+        "> [!WARNING]\n> YOU SHOULD verify the merged edit before building on it. edit resolution applied: adjacent; the row's merged fact has the coordinates. [edit_merged]",
         "> [!CAUTION]\n> YOU MUST ONLY emit fenced operation batches; with the parameters, pattern, and terse aside on the fenced operation line. Response rejected before dispatch; no operations were performed. @ 2:4 [invalid_emission]",
         "> [!WARNING]\n> 5000 output tokens billed; 1 visible across content and reasoning. @ 1:0 [output_unaccounted]",
     ].join("\n\n"), "an environment notice carries no directive; whitespace is normalized; a blank line separates callouts");

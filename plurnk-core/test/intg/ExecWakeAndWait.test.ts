@@ -1000,8 +1000,8 @@ test("{§operation-results} cancelling a parked loop releases its undelivered fe
             const { loopId } = response.result as { loopId: number };
             await waitFor(() => notices() as Array<{ loopId: number; notice: { kind: string; status?: number } }>,
                 (items) => items.some((item) => item.loopId === loopId && item.notice.kind === "loop_status" && item.notice.status === 202));
-            const warning = pushed.mock.calls.find(({ arguments: args }) => args[2] === loopId && args[3].kind === "parse_advisory");
-            assert.ok(warning, "the real parser generated feedback for the parked loop");
+            const warning = pushed.mock.calls.find(({ arguments: args }) => args[2] === loopId && args[3].kind === "continued_without_note");
+            assert.ok(warning, "the turn generated feedback for the parked loop");
             const channel = warning.this as NoticeChannel;
             assert.equal(deleted.mock.calls.some((call) => call.this === channel && call.arguments[0] === loopId), false,
                 "parking is not terminal cleanup");
