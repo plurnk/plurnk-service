@@ -42,6 +42,6 @@ await plurnk.kill({ path: "session://child" }) // cancel this session's activity
 | `await plurnk.fail({ target?, text, attachments? })` | Decline/cancel the target (or oldest open) message without cancelling the session. |
 | `await plurnk.send({ target?, text, attachments? })` | Send a progress update while leaving the Open Message unresolved (or send a new task when `target` is `session://<name>`). |
 
-await plurnk.done({ target: "message://exampleSessionName/ab3d5678", text: "The completed answer to this request goes here." })
+await plurnk.done({ target: "message://exampleSessionName/00", text: "The completed answer to this request goes here." })
 
 `attachments` (`["report.pdf", "workspace:///example.md"]`) are materialized for the recipient as `message://<recipient>/<id>/<index>-<basename>`.

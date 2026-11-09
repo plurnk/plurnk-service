@@ -1152,7 +1152,7 @@ sequenceDiagram
 
 | Invariant | Contract |
 | --- | --- |
-| Dual identity (`path` vs `key_path`) | Every message keeps its exterior protocol UUID as durable `path` (`409` on address conflict) and receives a short session-local `key_path` (`message://<session>/<key>`) for packet display and model replies. |
+| Dual identity (`path` vs `key_path`) | Every message keeps its exterior protocol UUID as durable `path` (`409` on address conflict) and receives a short session-local `key_path` (`message://<session>/<key>`, where `<key>` is a sequential zero-padded base-62 ordinal `00`..`ZZ` rolling over to `100`, prefixed with `<principal>_` when the `acp://` sender authority is a named principal other than `operator` or `anonymous`) for packet display and model replies. |
 | Arrival log row | Publishing an inbox message appends an inbound `SEND` row to the recipient's log (`origin: "_plurnk"` with `attrs.kind: "message"` and `source: "session://<sender>"` or `acp://...`, or `origin: "user"` when operator-authored). |
 | Single reply delivery | `await plurnk.send({ target: "message://<session>/<key>", ... })` delivers the reply once to the assigned session, original native sender, or ACP v2 client stream (`acp://...`); when a child session replies to a parent-delegated `WORK` prompt, conclusion delivery occurs through the parent's `ops://<child>/<loop>` termination `READ`. |
 | Loop containment and completion barrier | Final loop completion (`200`) atomically requires all arrived inbox messages to be published into the session log and the loop's observed wake revision to equal the session revision; any arrival that lands after the last turn's snapshot withholds `200` and continues or opens a source-keyed recovery loop. |

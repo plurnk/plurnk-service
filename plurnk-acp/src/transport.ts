@@ -66,12 +66,12 @@ export const admitRequest = (
     req: IncomingMessage,
     allowQueryToken = false,
 ):
-    | { readonly ok: true; readonly family: string | null }
+    | { readonly ok: true; readonly family: string | null; readonly subject: string | null }
     | { readonly ok: false; readonly problem: ProblemDetails; readonly challenge: string } => {
     const face = credentials.face();
     const issuer = face?.issuer(req);
     if (face === null || issuer === undefined) {
-        return { ok: true, family: null };
+        return { ok: true, family: null, subject: null };
     }
 
     const header = req.headers.authorization;
@@ -126,7 +126,7 @@ export const admitRequest = (
             ),
         };
     }
-    return { ok: true, family: claims.family };
+    return { ok: true, family: claims.family, subject: claims.subject };
 };
 
 export const handleEntryRoute = async (

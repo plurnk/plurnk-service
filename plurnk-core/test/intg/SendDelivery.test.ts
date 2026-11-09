@@ -175,7 +175,7 @@ for (const transport of ["text", "wire"] as const) {
                 assert.deepEqual(rows.filter(({ op }) => op === "edit").map(({ status_rx }) => status_rx), [200]);
                 assert.deepEqual(rows.filter(({ op }) => op === "error"), []);
                 const emissionRow = rows.find(({ op }) => op === "read");
-                assert.match(JSON.parse(emissionRow?.rx ?? "{}").content ?? "", /await plurnk\.edit\(\{"path":"workspace:\/\/\/fact\.txt","pattern":"Original fact\.","text":"Translated change\."\}\)/u);
+                assert.match(JSON.parse(emissionRow?.rx ?? "{}").content ?? "", /await plurnk\.edit\(\{"path":"workspace:\/\/\/fact\.txt","pattern":<<<EOF\nOriginal fact\.\nEOF,"text":"Translated change\."\}\)/u);
                 const fact = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/fact.txt", scheme: "workspace", name: "body" });
                 assert.equal(fact?.content, "Translated change.");
                 assert.equal(notices.filter(({ message }) =>
@@ -331,9 +331,35 @@ test("{§message-completion}: a delivered reply names the open messages it answe
             const arrivals = rows.filter((r) => r.origin === "_plurnk" && r.op === "send");
             assert.equal(arrivals.length, 1, "one message in the loop");
             assert.equal(repliedTo.length, 1, "the receipt names the one open message");
-            assert.match(repliedTo[0], /^message:\/\/[^/]+\/[0-9a-f]{8}$/, "the receipt names the short message:// key_path");
-            const source = await db.message_source_by_address.get<{ body: string }>({ workspace_id: (await db.drain_get_session_workspace.get<{ workspace_id: number }>({ session_id: modelSessionId }))!.workspace_id, path: repliedTo[0] });
+            assert.match(repliedTo[0], /^message:\/\/[^/]+\/00$/, "the receipt names the short message:// key_path");
+            const workspaceId = (await db.drain_get_session_workspace.get<{ workspace_id: number }>({ session_id: modelSessionId }))!.workspace_id;
+            const source = await db.message_source_by_address.get<{ body: string }>({ workspace_id: workspaceId, path: repliedTo[0] });
             assert.equal(source?.body, "answer me", "the receipt names the durable message source");
+
+            const nextLoopId = await insertLoop(db, modelSessionId, 2, "Next loop");
+            const scoutEnqueue = await db.drain_enqueue_message.get<{ id: number; message_key: string }>({
+                loop_id: nextLoopId,
+                source: "acp://scoutproxy/sessions/1%23user/messages/m-scout",
+                body: "Scout question",
+                open_paths: "[]",
+                evidence: "{}",
+                address: "acp://scoutproxy/sessions/1%23user/messages/m-scout",
+                opened_turn_id: null,
+                opened_sequence: null,
+            });
+            assert.equal(scoutEnqueue?.message_key, "scoutproxy_02");
+
+            const wikiEnqueue = await db.drain_enqueue_message.get<{ id: number; message_key: string }>({
+                loop_id: nextLoopId,
+                source: "acp://wikitopian/sessions/1%23user/messages/m-wiki",
+                body: "Wiki question",
+                open_paths: "[]",
+                evidence: "{}",
+                address: "acp://wikitopian/sessions/1%23user/messages/m-wiki",
+                opened_turn_id: null,
+                opened_sequence: null,
+            });
+            assert.equal(wikiEnqueue?.message_key, "wikitopian_03");
         } finally { ws.close(); }
     });
 });
