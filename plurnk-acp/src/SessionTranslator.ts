@@ -228,12 +228,16 @@ export default class SessionTranslator {
                       : {}),
               }
             : receipt;
-        const replyVoice =
-            extractVoice(repliedToSources?.[0]) ??
-            (isRecord(receipt) && Array.isArray(receipt.repliedTo) && typeof receipt.repliedTo[0] === "string"
-                ? extractVoice(receipt.repliedTo[0])
-                : undefined) ??
-            extractVoice(address);
+        const replyVoices = [
+            ...new Set([
+                ...(repliedToSources ?? []).map((src) => extractVoice(src)),
+                ...(isRecord(receipt) && Array.isArray(receipt.repliedTo)
+                    ? receipt.repliedTo.map((src) => (typeof src === "string" ? extractVoice(src) : undefined))
+                    : []),
+                extractVoice(address),
+            ]),
+        ].filter((v): v is string => typeof v === "string" && v.length > 0);
+        const replyVoice = replyVoices[0];
         const opMeta = {
             id: entry.id,
             sessionId: entry.session_id,
@@ -252,6 +256,8 @@ export default class SessionTranslator {
             ...(typeof entry.source === "string" ? { source: entry.source } : {}),
             ...(typeof entry.signal === "number" ? { signal: entry.signal } : {}),
             ...(address !== null ? { address, target: address } : {}),
+            ...(replyVoice !== undefined ? { voice: replyVoice } : {}),
+            ...(replyVoices.length > 0 ? { voices: replyVoices } : {}),
             ...(Object.keys(attrs).length > 0 ? { attrs } : {}),
             ...(isRecord(enrichedReceipt) ? { receipt: enrichedReceipt } : {}),
             ...(reasoningUrl !== undefined
@@ -279,7 +285,6 @@ export default class SessionTranslator {
                                       },
                                   }
                                 : {}),
-                            ...(replyVoice !== undefined ? { voice: replyVoice } : {}),
                             ...(repliedToMessageIds !== undefined && repliedToMessageIds.length > 0
                                 ? {
                                       inReplyTo: repliedToMessageIds[0],
@@ -414,7 +419,28 @@ export default class SessionTranslator {
             return updates;
         }
 
-        // 5. Standard tool call
+        // 5. Standard tool call (omitting internal daemon bookkeeping and completed todo rows)
+        if (
+            entry.origin === "_plurnk" &&
+            entry.op === "read" &&
+            (attrs.kind === "emission" || (address !== null && address.startsWith("ops://")))
+        ) {
+            return updates;
+        }
+        if (
+            entry.origin === "_plurnk" &&
+            entry.op === "edit" &&
+            attrs.kind === "entry_materialized"
+        ) {
+            return updates;
+        }
+        if (
+            entry.op === "note" &&
+            typeof attrs.distilled === "string" &&
+            attrs.distilled.trim().length > 0
+        ) {
+            return updates;
+        }
         if (entry.op !== null && entry.op !== "error") {
             this.#toolCallIdByEntryId.set(entry.id, coordinate);
             if (typeof attrs.stream === "string" && attrs.stream.length > 0) {
@@ -525,42 +551,44 @@ export default class SessionTranslator {
                     attrs.session.length > 0);
             const settledStream = typeof attrs.stream === "string" && status !== "in_progress";
 
-            updates.push({
-                sessionId: this.#acpSessionId,
-                update: {
-                    sessionUpdate: "tool_call_update",
-                    toolCallId: coordinate,
-                    name: entry.op,
-                    title,
-                    kind,
-                    status,
-                    ...(cancellable
-                        ? { capabilities: { cancel: {} } }
-                        : settledStream
-                          ? { capabilities: { cancel: null } }
-                          : {}),
-                    ...(address === null
-                        ? {}
-                        : {
-                              locations: [
-                                  {
-                                      path: address,
-                                      ...(startLine !== undefined ? { line: startLine } : {}),
-                                  },
-                              ],
-                          }),
-                    rawInput,
-                    rawOutput: receipt,
-                    ...(content.length === 0 ? {} : { content }),
-                    _meta: {
-                        plurnk: {
-                            ...opMeta,
-                            status: effectiveStatusRx,
-                            ...(bodyUrl !== undefined ? { body: { url: bodyUrl } } : {}),
+            if (!(entry.op === "todo" && status === "completed")) {
+                updates.push({
+                    sessionId: this.#acpSessionId,
+                    update: {
+                        sessionUpdate: "tool_call_update",
+                        toolCallId: coordinate,
+                        name: entry.op,
+                        title,
+                        kind,
+                        status,
+                        ...(cancellable
+                            ? { capabilities: { cancel: {} } }
+                            : settledStream
+                              ? { capabilities: { cancel: null } }
+                              : {}),
+                        ...(address === null
+                            ? {}
+                            : {
+                                  locations: [
+                                      {
+                                          path: address,
+                                          ...(startLine !== undefined ? { line: startLine } : {}),
+                                      },
+                                  ],
+                              }),
+                        rawInput,
+                        rawOutput: receipt,
+                        ...(content.length === 0 ? {} : { content }),
+                        _meta: {
+                            plurnk: {
+                                ...opMeta,
+                                status: effectiveStatusRx,
+                                ...(bodyUrl !== undefined ? { body: { url: bodyUrl } } : {}),
+                            },
                         },
                     },
-                },
-            });
+                });
+            }
 
             if (typeof attrs.stream === "string") {
                 const terminalId = terminalIdForEntry(entry.id);
@@ -803,7 +831,7 @@ export default class SessionTranslator {
         return [{
             sessionId: this.#acpSessionId,
             update: {
-                sessionUpdate: "agent_message_chunk",
+                sessionUpdate: "agent_thought_chunk",
                 messageId: `outside-${event.coordinate}`,
                 content: { type: "text", text: event.text },
                 _meta: {
@@ -825,12 +853,24 @@ export default class SessionTranslator {
         const curationBudget = event.gauge.curationBudget ?? 0;
         const contextTokens = event.gauge.contextTokens ?? null;
         const contextCapacity = event.gauge.contextCapacity ?? null;
+        const spendRec = isRecord(spend) ? spend : null;
+        const costUsd =
+            typeof spendRec?.costUsd === "string"
+                ? spendRec.costUsd
+                : typeof spendRec?.knownCostUsd === "string"
+                  ? spendRec.knownCostUsd
+                  : null;
+        const cost =
+            costUsd !== null && Number.isFinite(Number(costUsd))
+                ? { amount: Number(costUsd), currency: "USD" }
+                : undefined;
         return [{
             sessionId: this.#acpSessionId,
             update: {
                 sessionUpdate: "usage_update",
                 used: contextTokens ?? curationWeight,
                 size: contextCapacity ?? curationBudget,
+                ...(cost !== undefined ? { cost } : {}),
                 _meta: {
                     plurnk: {
                         budget: {

@@ -228,6 +228,7 @@ export const dispatchDaemonEvent = (
                                                 inbox: rawInbox.map((msg) => ({
                                                     path: msg.path,
                                                     id: extractMessageId(msg.source ?? msg.path, s.acpSessionId),
+                                                    voice: extractVoice(msg.source ?? msg.path),
                                                     loopId: msg.loopId,
                                                     lifecycle: msg.lifecycle,
                                                     ...(s.translator.origin !== undefined &&
@@ -247,29 +248,62 @@ export const dispatchDaemonEvent = (
                             },
                         ]);
                         if (entryRec.origin === "model" && (entryRec.op === "done" || entryRec.op === "fail")) {
+                            const parsedEntryRx = parseJsonOrValue(entryRec.rx);
+                            const rxRec = isRecord(parsedEntryRx) ? parsedEntryRx : null;
+                            const receiptRec = isRecord(rxRec?.receipt) ? rxRec.receipt : rxRec;
+                            const nestedReceiptRec =
+                                receiptRec !== null && isRecord(receiptRec.receipt) ? receiptRec.receipt : null;
+                            const completion =
+                                receiptRec?.completion ??
+                                nestedReceiptRec?.completion ??
+                                (entryRec.signal === 200 || entryRec.signal === 499 ? entryRec.signal : undefined);
+                            const repliedToSources = Array.isArray(entryRec.replied_to_sources)
+                                ? entryRec.replied_to_sources.filter((x): x is string => typeof x === "string")
+                                : [];
+                            const receiptRepliedTo = Array.isArray(receiptRec?.repliedTo)
+                                ? receiptRec.repliedTo.filter((x): x is string => typeof x === "string")
+                                : Array.isArray(nestedReceiptRec?.repliedTo)
+                                  ? nestedReceiptRec.repliedTo.filter((x): x is string => typeof x === "string")
+                                  : [];
+                            const updateVoices: string[] = [];
                             for (const { update } of builtUpdates) {
-                                if (update.sessionUpdate !== "agent_message_chunk") continue;
                                 const p =
                                     isRecord(update._meta) && isRecord(update._meta.plurnk)
                                         ? update._meta.plurnk
                                         : null;
-                                const completedVoice = typeof p?.voice === "string" ? p.voice : null;
-                                const receiptRec = isRecord(p?.receipt) ? p.receipt : null;
-                                const nestedReceiptRec =
-                                    receiptRec !== null && isRecord(receiptRec.receipt) ? receiptRec.receipt : null;
-                                const completion = receiptRec?.completion ?? nestedReceiptRec?.completion;
-                                if (
-                                    completedVoice !== null &&
-                                    completedVoice !== "operator" &&
-                                    completedVoice !== "anonymous" &&
-                                    (completion === 200 || completion === 499)
-                                ) {
+                                if (typeof p?.voice === "string") {
+                                    updateVoices.push(p.voice);
+                                }
+                                if (Array.isArray(p?.voices)) {
+                                    for (const v of p.voices) {
+                                        if (typeof v === "string") updateVoices.push(v);
+                                    }
+                                }
+                            }
+                            const completedVoices = [
+                                ...new Set([
+                                    ...repliedToSources.map((src) => extractVoice(src)),
+                                    ...receiptRepliedTo.map((src) => extractVoice(src)),
+                                    ...updateVoices,
+                                    typeof entryRec.pathname === "string"
+                                        ? extractVoice(entryRec.pathname)
+                                        : undefined,
+                                ]),
+                            ].filter(
+                                (v): v is string =>
+                                    typeof v === "string" &&
+                                    v.length > 0 &&
+                                    v !== "operator" &&
+                                    v !== "anonymous",
+                            );
+                            if (completion === 200 || completion === 499) {
+                                for (const completedVoice of completedVoices) {
                                     const hasRemainingOpenForVoice = rawInbox.some(
                                         (msg) =>
                                             (msg.lifecycle === "running" ||
                                                 msg.lifecycle === "queued" ||
                                                 msg.lifecycle === "parked") &&
-                                            extractVoice(msg.source) === completedVoice,
+                                            extractVoice(msg.source ?? msg.path) === completedVoice,
                                     );
                                     if (!hasRemainingOpenForVoice) {
                                         const idleMeta = {
@@ -521,6 +555,7 @@ export const dispatchDaemonEvent = (
                         rawInbox.map((msg) => ({
                             path: msg.path,
                             id: extractMessageId(msg.source ?? msg.path, s.acpSessionId),
+                            voice: extractVoice(msg.source ?? msg.path),
                             loopId: msg.loopId,
                             lifecycle: msg.lifecycle,
                             ...(s.translator.origin !== undefined && s.translator.origin.length > 0
