@@ -44,6 +44,7 @@ export interface LogEntryRow {
     readonly reasoning_request_sequence: number | null;
     readonly invocation: string | null;
     readonly answering: string | null;
+    readonly replied_to_sources?: string | null;
 }
 
 export default class LogEntry {
@@ -101,6 +102,13 @@ export default class LogEntry {
             }),
             ...(row.invocation === null ? {} : { invocation: row.invocation }),
             ...(row.answering === null ? {} : { answering: row.answering }),
+            ...(() => {
+                const parsed = LogEntry.#parseJsonOrNull(row.replied_to_sources ?? null);
+                const sources = Array.isArray(parsed)
+                    ? parsed.filter((item): item is string => typeof item === "string" && item.length > 0)
+                    : [];
+                return sources.length > 0 ? { replied_to_sources: sources } : {};
+            })(),
         };
     }
 }

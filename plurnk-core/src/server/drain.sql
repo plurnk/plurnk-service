@@ -133,8 +133,8 @@ SELECT $loop_id,
 WHERE EXISTS (SELECT 1 FROM loops WHERE id = $loop_id AND status IN (100, 102, 202))
 RETURNING id, ordinal, message_key;
 -- PREP: drain_message_path
--- {§loop-completion}: an admitted message's durable address, the one Open Work names.
-SELECT path FROM message_sources WHERE id = $id;
+-- {§loop-completion}: an admitted message's durable address, the one Open Work names, and its short model key_path.
+SELECT path, key_path FROM message_sources WHERE id = $id;
 
 -- PREP: drain_unpublished_messages_for_loop
 -- {§message-arrival}: the messages the loop contains but has not yet published, oldest

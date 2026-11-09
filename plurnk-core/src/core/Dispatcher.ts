@@ -993,12 +993,40 @@ export default class Dispatcher {
         let repliedTo: string[];
         let speechOnly = false;
         if (target === null) {
-            const open = await this.#db.engine_open_messages.get<{ key_path: string }>({ loop_id: loopId });
-            // {§message-completion} — with none open, the reply is speech to the loop's latest message:
+            const openRows = await this.#db.engine_open_messages.all<{ key_path: string }>({ loop_id: loopId });
+            if (openRows.length > 1) {
+                const addresses = openRows.map((row) => row.key_path);
+                return Dispatcher.#failure(
+                    "send-target-required",
+                    400,
+                    `${statement.op} has no target and ${addresses.length} messages are open (${addresses.join(", ")}).`,
+                    {},
+                    {
+                        recovery: `Name the target message: await plurnk.${statement.op}({ target: "${addresses[0]}", text: "..." }).`,
+                        retryable: true,
+                    },
+                );
+            }
+            const open = openRows[0];
+            // {§message-completion} — with none open, the reply is speech to the loop's single published message:
             // delivered to its originating client, its outcome unchanged unless DONE supersedes an earlier FAIL.
-            const latest = open === undefined
-                ? await this.#db.message_latest_published.get<{ key_path: string; completion_status: number | null }>({ loop_id: loopId })
-                : undefined;
+            const publishedRows = open === undefined
+                ? await this.#db.message_latest_published.all<{ key_path: string; completion_status: number | null }>({ loop_id: loopId })
+                : [];
+            if (open === undefined && publishedRows.length > 1) {
+                const addresses = publishedRows.map((row) => row.key_path);
+                return Dispatcher.#failure(
+                    "send-target-required",
+                    400,
+                    `${statement.op} has no target and its loop has ${addresses.length} published messages (${addresses.join(", ")}).`,
+                    {},
+                    {
+                        recovery: `Name the target message: await plurnk.${statement.op}({ target: "${addresses[0]}", text: "..." }).`,
+                        retryable: true,
+                    },
+                );
+            }
+            const latest = publishedRows[0];
             const message = open ?? latest;
             if (message === undefined) return Dispatcher.#failure(
                 "send-target-required", 400, `${statement.op} has no recipient and its loop has no published message.`, {},

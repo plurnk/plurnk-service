@@ -20,6 +20,40 @@ export const extractMessageId = (source: string | null, sessionId: string): stri
     }
 };
 
+export const extractVoice = (sourceOrAddress: string | null | undefined): string | undefined => {
+    if (typeof sourceOrAddress !== "string" || sourceOrAddress.length === 0) return undefined;
+    const acpMatch = /^acp:\/\/([^/?#]+)/u.exec(sourceOrAddress);
+    if (acpMatch !== null) {
+        try {
+            const principal = decodeURIComponent(acpMatch[1] ?? "");
+            if (principal.length > 0 && principal !== "operator" && principal !== "anonymous") {
+                return principal;
+            }
+        } catch {
+            // fall through
+        }
+        return undefined;
+    }
+    const sessionMatch = /^session:\/\/([^/?#]+)/u.exec(sourceOrAddress);
+    if (sessionMatch !== null) {
+        try {
+            const worker = decodeURIComponent(sessionMatch[1] ?? "");
+            if (worker.length > 0) return worker;
+        } catch {
+            // fall through
+        }
+        return undefined;
+    }
+    const messageMatch = /^message:\/\/[^/?#]+\/([^/?#]+)_([0-9a-zA-Z]{2,5})$/u.exec(sourceOrAddress);
+    if (messageMatch !== null) {
+        const principal = messageMatch[1] ?? "";
+        if (principal.length > 0 && principal !== "operator" && principal !== "anonymous") {
+            return principal;
+        }
+    }
+    return undefined;
+};
+
 export const invocationCoordinate = (ref: string | undefined): string | null => {
     if (typeof ref !== "string" || ref.length === 0) return null;
     const match = /^log:\/\/\/(\d+\/\d+\/\d+)(?:\/|$)/u.exec(ref);

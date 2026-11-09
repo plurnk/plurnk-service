@@ -456,7 +456,7 @@ test("{§message-completion}: a provider output cutoff cannot certify a final re
 test("{§loop-completion}: WAIT on a turn with a reply SEND or non-final DONE concludes when no work or unobserved result remains", async () => {
     for (const [label, extraMessage, emission, withRead, expected] of [
         ["SEND + WAIT concludes single message", false, `${send("Four.")}\n\nawait plurnk.wait({"seconds":60,"text":"Waiting for reply."});`, false, 200],
-        ["non-final DONE + WAIT concludes remaining message", true, `${conclude("Four.")}\n\nawait plurnk.wait({});`, false, 200],
+        ["non-final DONE + WAIT concludes remaining message", true, `${correct("Four.")}\n\nawait plurnk.wait({});`, false, 200],
         ["SEND + READ + WAIT continues to observe READ result", false, `${send("Checking.")}\n\nawait plurnk.read({"path":"workspace:///input.txt"});\n\nawait plurnk.wait({});`, true, 102],
     ] as const) {
         const { db, engine, turn, answer, ids, leadLoop } = await setup([said(emission)]);
@@ -808,7 +808,7 @@ for (const verb of ["send", "done", "fail"] as const) {
         const f = await setup(); t.after(() => f.db.close());
         await f.add("second");
         const body = verb === "send" ? "Sign-in is required." : "The request is settled.";
-        const rendered = `await plurnk.${verb.toLowerCase()}(${JSON.stringify({ text: body })})`;
+        const rendered = `await plurnk.${verb.toLowerCase()}(${JSON.stringify({ target: f.message("first"), text: body })})`;
         const result = await f.turn(rendered);
         assert.equal(result.outcomes.find(({ op }) => op === verb)?.status, 200, "delivery still reports success");
         assert.equal(await f.remaining(), verb === "send" ? 2 : 1);
@@ -858,6 +858,13 @@ for (const count of [0, 1, 2]) {
             const before = await f.replies();
             const result = await f.turn(`await plurnk.${verb.toLowerCase()}({"text":"Implicit reply."});`);
             const delivery = result.outcomes.find(({ op }) => op === verb);
+            if (count === 2) {
+                assert.equal(delivery?.status, 400, "targetless reply with multiple Open Messages is refused");
+                assert.equal(delivery?.problemType, "https://problems.plurnk.xyz/engine/dispatcher/send-target-required");
+                assert.equal(await f.remaining(), 2);
+                assert.deepEqual(await f.replies(), before);
+                return;
+            }
             assert.equal(delivery?.status, 200);
             assert.equal(await f.remaining(), count > 0 && verb !== "send" ? count - 1 : count);
             assert.deepEqual(await f.replies(), [...before, "Implicit reply."]);
@@ -886,12 +893,12 @@ test("{§message-completion}: a targetless SEND in a loop with no published mess
     assert.equal(delivery?.problemType, "https://problems.plurnk.xyz/engine/dispatcher/send-target-required");
 });
 
-test("{§message-completion}: progress and consecutive completions consume the queue in authored order", async (t) => {
+test("{§message-completion}: progress and consecutive completions consume the queue when one Open Message remains", async (t) => {
     const f = await setup(); t.after(() => f.db.close());
     await f.add("second");
     const result = await f.turn([
-        "await plurnk.send({\"text\":\"First progress.\"});",
-        "await plurnk.done({\"text\":\"First answer.\"});",
+        `await plurnk.send({"target":"${f.message("first")}","text":"First progress."});`,
+        `await plurnk.done({"target":"${f.message("first")}","text":"First answer."});`,
         "await plurnk.send({\"text\":\"Second progress.\"});",
         "await plurnk.fail({\"text\":\"Second cancelled.\"});",
     ].join("\n\n"));

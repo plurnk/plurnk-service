@@ -80,7 +80,7 @@ export default class MessageDelivery {
         const turnCeiling: TurnCeilingSelection = {
             effective: maxTurns,
             source: requestedMaxTurns === undefined ? "implicit" : "explicit" };
-        const { action, loopId, turnSeq } = await ContentUse.read(this.#db, async () => {
+        const { action, loopId, messageId, turnSeq } = await ContentUse.read(this.#db, async () => {
             const delivered = await this.#prepareMessage(workspaceId, sessionId, body, attachments, args.envelope);
             return this.#inject({
                 workspaceId,
@@ -98,7 +98,14 @@ export default class MessageDelivery {
                 childProviderSpec: childSelection,
                 systemPrompt });
         });
-        return { status: 100, action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
+        const message = await this.#db.drain_message_path.get<{ path: string; key_path: string }>({ id: messageId });
+        return {
+            status: 100,
+            action,
+            loopId,
+            ...(message !== undefined ? { resource: message.key_path } : {}),
+            ...(turnSeq !== undefined ? { turnSeq } : {}),
+        };
     }
 
     // session:// loop-start primitive — spawn/fork/irc deliver through the drain's inject (active sister → fold; idle →

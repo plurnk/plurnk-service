@@ -210,7 +210,7 @@ for (const scope of ["", " <1,-1>"]) test(`{§message-arrival} curation${scope} 
         });
         const first = messages.find(({ body }) => body === "First assignment.")!.path;
         const second = messages.find(({ body }) => body === "Second assignment.")!.path;
-        assert.match(first, /^message:\/\/alice\/[a-f0-9]{8}$/);
+        assert.match(first, /^message:\/\/alice\/[0-9a-zA-Z]{2,}$/);
         const provider = new Mock({ contextWindow: 100000, responses: [
             makeRawMockResponse([
                 `await plurnk.kill({"path":"log:///**/send"${scope ? ',"range":"1,-1"' : ""}});`,
@@ -465,8 +465,8 @@ test("{§op-shapes}: a range on SEND is refused at parse time and admits no task
 });
 
 describe("wait-projection", () => {
-for (const [header, warning] of [
-    ['await plurnk.wait({"seconds":"10s"});', 'Ignored wait duration "10s".'],
+for (const [header] of [
+    ['await plurnk.wait({"seconds":"10s"});'],
 ] as const) {
     test(`{§operation-results} ${header} feedback survives parking, reaches only its loop, and drains once`, async (t) => {
         const db = await openMigrated();
@@ -477,7 +477,7 @@ for (const [header, warning] of [
         const childLoopId = await holdChild(db, workspaceId, sessionId);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const lifecycle = new LoopLifecycle(db);
-        const provider = new Mock({ contextWindow: 100_000, responses: [header, 'await plurnk.wait({"seconds":0.25});', "await plurnk.wait({});", "await plurnk.done({});"].map((line) => ({
+        const provider = new Mock({ contextWindow: 100_000, responses: [header, 'await plurnk.note({"text":"still waiting"});\n\nawait plurnk.wait({"seconds":0.25});', "await plurnk.wait({});", "await plurnk.done({});"].map((line) => ({
             assistant: { content: line, reasoning: null },
         })) });
         const run = () => engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [] });
@@ -502,14 +502,13 @@ for (const [header, warning] of [
         assert.equal(resumed.result.status, 202);
         const resumedPacket = await packet(resumed.turnIds.at(-1)!);
         const notices = packetSection(resumedPacket, "notices");
-        assert.ok(notices.includes(`> YOU SHOULD write the canonical form. ${warning}`), notices);
-        assert.equal(notices.match(/\[parse_advisory\]/gu)?.length, 1);
+        assert.equal(notices.match(/\[continued_without_note\]/gu)?.length, 1);
         const wait = logEntries(resumedPacket).find(({ logPath }) => logPath.endsWith("/wait"));
         assert.equal(wait?.waitSeconds, 300, "a duration was not supplied; the configured bound applies");
 
         const next = await resume();
         assert.equal(next.result.status, 202);
-        assert.doesNotMatch(packetSection(await packet(next.turnIds.at(-1)!), "notices"), /\[parse_advisory\]/u,
+        assert.doesNotMatch(packetSection(await packet(next.turnIds.at(-1)!), "notices"), /\[continued_without_note\]/u,
             "the warning drains on the first resumed packet only");
         await lifecycle.finish(childLoopId, { status: 200 });
         assert.equal((await resume()).result.status, 200);

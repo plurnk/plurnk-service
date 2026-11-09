@@ -456,17 +456,29 @@ export const createHarness = async (options?: {
             throw err;
         },
         ensureRuntimeSession: async () => 999,
-        runLoop: async ({ workspaceId, sessionId, prompt }) => {
+        runLoop: async ({ workspaceId, sessionId, prompt, messageAddress }) => {
+            const sessionName = sessions.find((w) => w.id === sessionId)?.name ?? "user";
+            const principalMatch = typeof messageAddress === "string"
+                ? /^acp:\/\/([^/?#]+)\//u.exec(messageAddress)
+                : null;
+            const principal = principalMatch?.[1] ?? "";
+            const keyPrefix = principal !== "" && principal !== "operator" && principal !== "anonymous"
+                ? `${principal}_`
+                : "";
+            const resource = `message://${sessionName}/${keyPrefix}00`;
             setImmediate(() => {
                 port.emitEvent(workspaceId, "log/entry", {
                     entry: makeLogEntry({
                         id: logs.length + 1,
                         session_id: sessionId,
-                        session_name: sessions.find((w) => w.id === sessionId)?.name ?? "user",
+                        session_name: sessionName,
                         op: "done",
                         attrs: { kind: "message", to: "acp://operator", body: `Echo: ${prompt}` },
-                        rx: { status: 200, completion: 200, content: `Echo: ${prompt}`, mimetype: "text/markdown" },
+                        rx: { status: 200, completion: 200, repliedTo: [resource], content: `Echo: ${prompt}`, mimetype: "text/markdown" },
                         mimetype_rx: "text/markdown",
+                        ...(typeof messageAddress === "string" && messageAddress.length > 0
+                            ? { replied_to_sources: [messageAddress] }
+                            : {}),
                     }),
                 });
                 port.emitEvent(
@@ -479,6 +491,7 @@ export const createHarness = async (options?: {
                 status: 102,
                 action: "enqueued_new_loop",
                 loopId: 1,
+                resource,
             };
         },
         cancelDrain: () => true,

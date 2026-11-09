@@ -43,12 +43,12 @@ WHERE s.workspace_id = $workspace_id AND s.session_id = $session_id AND s.log_en
 ORDER BY s.loop_id, s.ordinal;
 
 -- PREP: message_latest_published
--- {§message-completion}: with none open, a targetless send speaks to the loop's latest published message.
+-- {§message-completion}: with none open, a targetless send speaks to the loop's single published message.
 SELECT s.key_path, c.status AS completion_status
 FROM message_sources s
 LEFT JOIN message_completions c ON c.message_id = s.id
 WHERE s.loop_id = $loop_id AND s.log_entry_id IS NOT NULL
-ORDER BY s.ordinal DESC LIMIT 1;
+ORDER BY s.ordinal ASC;
 
 -- PREP: message_unanswered_count
 SELECT count(*) AS count FROM unanswered_messages WHERE loop_id = $loop_id;

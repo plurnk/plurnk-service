@@ -1440,6 +1440,8 @@ export const createConnectionAgent = (
                 },
             }));
             const queuedMsg = mappedInbox.find((item) => item.id === messageId);
+            const promptVoice =
+                principal !== "operator" && principal !== "anonymous" ? principal : undefined;
             if (queuedMsg !== undefined) {
                 broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
                     {
@@ -1454,6 +1456,8 @@ export const createConnectionAgent = (
                                     lifecycle: queuedMsg.lifecycle,
                                     published: false,
                                     body: queuedMsg.body,
+                                    source: messageAddress,
+                                    ...(promptVoice !== undefined ? { voice: promptVoice } : {}),
                                 },
                             },
                         },
@@ -1482,6 +1486,8 @@ export const createConnectionAgent = (
                     plurnk: {
                         workspaceId: bound.workspaceId,
                         sessionId: bound.sessionId,
+                        loopId: ack.loopId,
+                        ...(typeof ack.resource === "string" ? { resource: ack.resource } : {}),
                         workspace: {
                             id: bound.workspaceId,
                             name: bound.workspaceName,
