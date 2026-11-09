@@ -39,6 +39,7 @@ export type AcpSetupSeam = SchemeRegistrationSeam & Pick<ApplicationPort, "httpA
 
 interface RequestConnectionContext {
     readonly family: string | null;
+    readonly subject: string | null;
     readonly origin: string;
 }
 
@@ -86,7 +87,10 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         this.#acpServer = new AcpServer({
             createAgent: () => {
                 const ctx = this.#requestContext.getStore();
-                return createConnectionAgent(this.#agentContext(ctx?.origin), { family: ctx?.family ?? null });
+                return createConnectionAgent(this.#agentContext(ctx?.origin), {
+                    family: ctx?.family ?? null,
+                    subject: ctx?.subject ?? null,
+                });
             },
         });
         this.#nodeHttpHandler = createNodeHttpHandler(this.#acpServer);
@@ -153,6 +157,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             peers: this.#peers,
             gates: this.#gates,
             httpOrigin: () => this.#requestContext.getStore()?.origin ?? defaultOrigin ?? this.#httpOrigin(),
+            requestSubject: () => this.#requestContext.getStore()?.subject ?? null,
             notifyPeerSession: this.#notifyPeerSession,
             broadcastSessionUpdate: this.#broadcastSessionUpdate,
             scheduleOverviewRefresh: this.#scheduleOverviewRefresh,
@@ -295,9 +300,12 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     }
                 });
             }
-            this.#requestContext.run({ family: admission.family, origin: this.#httpOrigin(req) }, () => {
-                this.#nodeHttpHandler(req, res);
-            });
+            this.#requestContext.run(
+                { family: admission.family, subject: admission.subject, origin: this.#httpOrigin(req) },
+                () => {
+                    this.#nodeHttpHandler(req, res);
+                },
+            );
             return;
         }
 
@@ -336,6 +344,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         let closeWs: (() => void) | undefined;
         const app = createConnectionAgent(this.#agentContext(this.#httpOrigin(req)), {
             family: admission.family,
+            subject: admission.subject,
             closeTransport: () => closeWs?.(),
         });
         const upgrade = this.#acpServer.prepareWebSocketUpgrade({ agent: app });

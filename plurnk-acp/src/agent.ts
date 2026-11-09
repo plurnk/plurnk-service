@@ -89,6 +89,7 @@ export interface ConnectionAgentContext {
     readonly peers: Set<AcpPeer>;
     readonly gates: GateTracker;
     readonly httpOrigin: () => string;
+    readonly requestSubject?: () => string | null;
     readonly notifyPeerSession: (peer: AcpPeer, sessionId: string, update: SessionUpdate) => void;
     readonly broadcastSessionUpdate: (
         workspaceId: number,
@@ -100,7 +101,7 @@ export interface ConnectionAgentContext {
 
 export const createConnectionAgent = (
     host: ConnectionAgentContext,
-    connInfo: { readonly family: string | null; readonly closeTransport?: () => void },
+    connInfo: { readonly family: string | null; readonly subject?: string | null; readonly closeTransport?: () => void },
 ): AgentApp => {
     const {
         seam,
@@ -108,6 +109,7 @@ export const createConnectionAgent = (
         peers,
         gates,
         httpOrigin,
+        requestSubject,
         notifyPeerSession,
         broadcastSessionUpdate,
         scheduleOverviewRefresh,
@@ -131,6 +133,7 @@ export const createConnectionAgent = (
 
     const peer: AcpPeer = {
         family: connInfo.family,
+        subject: connInfo.subject ?? null,
         sessions: new Map(),
         client: null,
         closeTransport: connInfo.closeTransport,
@@ -1293,7 +1296,9 @@ export const createConnectionAgent = (
                       ? mergedOpenPaths.map((p) => `<${p}>`).join("\n")
                       : "";
             const messageId = plurnkMeta.messageId ?? crypto.randomUUID();
-            const messageAddress = `acp://operator/sessions/${encodeURIComponent(bound.acpSessionId)}/messages/${encodeURIComponent(messageId)}`;
+            const rawPrincipal = (requestSubject?.() ?? peer.subject ?? "operator").replace(/^acp:\/\//u, "");
+            const principal = rawPrincipal.length > 0 ? rawPrincipal : "operator";
+            const messageAddress = `acp://${encodeURIComponent(principal)}/sessions/${encodeURIComponent(bound.acpSessionId)}/messages/${encodeURIComponent(messageId)}`;
             const admissionBody =
                 text.length > 0 ? text : attachments.map((a) => `<${a.name}>`).join("\n");
 

@@ -152,6 +152,42 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.equal(init.response.capabilities?.session?.prompt?.audio, undefined);
             });
 
+            const scoutStream = createHttpStream(h.baseUrl, {
+                headers: { authorization: "Bearer scoutproxy-token" },
+            });
+            const scoutApp = createAcpClient();
+            let capturedScoutRunLoop: Parameters<typeof h.port.runLoop>[0] | undefined;
+            const origRunLoop = h.port.runLoop.bind(h.port);
+            h.port.runLoop = async (args) => {
+                capturedScoutRunLoop = args;
+                return origRunLoop(args);
+            };
+            try {
+                await scoutApp.connectWith(scoutStream, async (ctx) => {
+                    await ctx.initialized;
+                    const created = await ctx.request(methods.agent.session.new, {
+                        cwd: "/workspace/family",
+                        _meta: { plurnk: { name: "gookie" } },
+                    });
+                    const promptRes = await ctx.request(methods.agent.session.prompt, {
+                        sessionId: created.sessionId,
+                        prompt: [{ type: "text", text: "What is on the schedule?" }],
+                        _meta: { plurnk: { messageId: "msg-scout-1" } },
+                    });
+                    assert.equal(promptRes.messageId, "msg-scout-1");
+                    assert.equal(
+                        capturedScoutRunLoop?.source,
+                        `acp://scoutproxy/sessions/${encodeURIComponent(created.sessionId)}/messages/msg-scout-1`,
+                    );
+                    assert.equal(
+                        capturedScoutRunLoop?.messageAddress,
+                        `acp://scoutproxy/sessions/${encodeURIComponent(created.sessionId)}/messages/msg-scout-1`,
+                    );
+                });
+            } finally {
+                h.port.runLoop = origRunLoop;
+            }
+
             const wsStream = createWebSocketStream(h.wsUrl, {
                 WebSocket: WsConstructor,
                 headers: { authorization: "Bearer valid-token" },

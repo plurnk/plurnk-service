@@ -81,8 +81,38 @@ SELECT workspace_id FROM sessions WHERE id = $session_id;
 -- {§message-arrival}: append one message to the loop's inbox in arrival order. Ordinal 1 is the
 -- loop's initial message; a later arrival takes the next ordinal. {§loop-completion}: a session's own
 -- operation names itself as the message's opener, by the row it writes.
-INSERT INTO loop_messages (loop_id, ordinal, source, body, open_paths, evidence, address, opened_turn_id, opened_sequence)
-SELECT $loop_id, (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM loop_messages WHERE loop_id = $loop_id),
+WITH RECURSIVE
+    seq(q, s) AS (
+        SELECT CAST(COALESCE((SELECT MAX(id) FROM loop_messages), 0) AS INTEGER), ''
+        UNION ALL
+        SELECT CAST(q / 62 AS INTEGER),
+               substr('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', (q % 62) + 1, 1) || s
+        FROM seq
+        WHERE q > 0
+    ),
+    encoded(suffix) AS (
+        SELECT CASE
+            WHEN length(s) = 0 THEN '00'
+            WHEN length(s) = 1 THEN '0' || s
+            ELSE s
+        END
+        FROM seq
+        WHERE q = 0
+    ),
+    principal(name) AS (
+        SELECT CASE
+            WHEN $address LIKE 'acp://%/%'
+            THEN substr($address, 7, instr(substr($address, 7), '/') - 1)
+            ELSE ''
+        END
+    )
+INSERT INTO loop_messages (loop_id, ordinal, message_key, source, body, open_paths, evidence, address, opened_turn_id, opened_sequence)
+SELECT $loop_id,
+       (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM loop_messages WHERE loop_id = $loop_id),
+       (SELECT CASE
+            WHEN name != '' AND name NOT IN ('operator', 'anonymous') THEN name || '_' || suffix
+            ELSE suffix
+        END FROM encoded, principal),
        $source, $body, $open_paths, $evidence, $address, $opened_turn_id, $opened_sequence
 WHERE EXISTS (SELECT 1 FROM loops WHERE id = $loop_id AND status IN (100, 102, 202))
 RETURNING id, ordinal, message_key;

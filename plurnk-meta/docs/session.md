@@ -7,7 +7,7 @@ Coordinate sessions (`work`, `fork`), request isolated `bare` inference, and man
 | Address | Meaning | Model access |
 | --- | --- | --- |
 | `session://exampleSessionName` | Named session (authority-only: no path, query, or fragment) | `work`/`fork` create; `send` messages; `read` collects; `kill` terminates. |
-| `message://exampleSessionName/ab3d5678` | Retained message | `read`/`find`/`copy` inspect; `send`/`done`/`fail` reply. Source is immutable. |
+| `message://exampleSessionName/00` | Retained message | `read`/`find`/`copy` inspect; `send`/`done`/`fail` reply. Source is immutable. |
 | `ops://exampleSessionName/1` | Loop conclusion (`<session>/<loop>`) | `read`/`find`/`copy` inspect; source is immutable. |
 | `session://exampleSessionName/example.md` | Named session scratch entry | Read and write from any session in the workspace (`kill` deletes the entry, not the session). |
 | `session://exampleSessionName/AGENTS.md` | Session instruction sheet | Read automatically by `exampleSessionName` when created or updated. |

@@ -230,10 +230,20 @@ export const createHarness = async (options?: {
             if (token === "valid-token") {
                 return {
                     kind: "access",
-                    subject: "acp://operator",
-                    clientId: "test-client",
+                    subject: "operator",
+                    clientId: "operator",
                     scopes: ["acp"],
                     family: "fam-1",
+                    expiresAt: Date.now() + 60_000,
+                };
+            }
+            if (token === "scoutproxy-token") {
+                return {
+                    kind: "access",
+                    subject: "scoutproxy",
+                    clientId: "scoutproxy",
+                    scopes: ["acp"],
+                    family: "fam-2",
                     expiresAt: Date.now() + 60_000,
                 };
             }
