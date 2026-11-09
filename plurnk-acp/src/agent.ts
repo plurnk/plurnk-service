@@ -1440,28 +1440,8 @@ export const createConnectionAgent = (
                 },
             }));
             const queuedMsg = mappedInbox.find((item) => item.id === messageId);
-            const promptVoice =
-                principal !== "operator" && principal !== "anonymous" ? principal : undefined;
             if (queuedMsg !== undefined) {
                 broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
-                    {
-                        sessionId: s.acpSessionId,
-                        update: {
-                            sessionUpdate: "user_message_chunk",
-                            messageId,
-                            content: { type: "text", text },
-                            _meta: {
-                                plurnk: {
-                                    loopId: queuedMsg.loopId,
-                                    lifecycle: queuedMsg.lifecycle,
-                                    published: false,
-                                    body: queuedMsg.body,
-                                    source: messageAddress,
-                                    ...(promptVoice !== undefined ? { voice: promptVoice } : {}),
-                                },
-                            },
-                        },
-                    },
                     {
                         sessionId: s.acpSessionId,
                         update: {

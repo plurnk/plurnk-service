@@ -166,17 +166,31 @@ export const isResponseMessage = (
     if (text.trim().length === 0) return false;
     const deliveredReply = attrs.kind === "reply";
     if (entry.origin !== "model" && !deliveredReply) return false;
+    const repliedToList = isRecord(parsedRx)
+        ? Array.isArray(parsedRx.repliedTo)
+            ? parsedRx.repliedTo
+            : isRecord(parsedRx.receipt) && Array.isArray(parsedRx.receipt.repliedTo)
+              ? parsedRx.receipt.repliedTo
+              : null
+        : null;
     if (deliveredReply) {
         const sessionName = sessionId.slice(sessionId.indexOf("#") + 1);
-        return isRecord(parsedRx)
-            && Array.isArray(parsedRx.repliedTo)
-            && parsedRx.repliedTo.some((addr) => typeof addr === "string" && addr.startsWith(`message://${sessionName}/`));
+        return repliedToList !== null
+            && repliedToList.some((addr) => typeof addr === "string" && addr.startsWith(`message://${sessionName}/`));
     }
     if (entry.scheme === "session" || entry.scheme === "workspace") return false;
     if (typeof attrs.to === "string" && (attrs.to.startsWith("session://") || attrs.to.startsWith("workspace://"))) return false;
-    if (isRecord(parsedRx) && Array.isArray(parsedRx.repliedTo)) return true;
+    if (repliedToList !== null) return true;
     if (attrs.kind === "response" || attrs.kind === "message") return true;
-    if ((entry.op === "send" || entry.op === "done" || entry.op === "fail") && (entry.scheme === null || entry.scheme === undefined || entry.scheme === "acp") && !entry.pathname) return true;
+    if (
+        (entry.op === "send" || entry.op === "done" || entry.op === "fail") &&
+        (entry.scheme === null ||
+            entry.scheme === undefined ||
+            entry.scheme === "acp" ||
+            entry.scheme === "message")
+    ) {
+        return true;
+    }
     return false;
 };
 

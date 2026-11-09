@@ -2924,4 +2924,224 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             await h.close();
         }
     });
+
+    test("{§acp-body-reference} {§acp-plurnk-metadata} {§acp-http-authorization}: inline message text above historyPageChars, single user_message_chunk per prompt, and multi-principal stream scoping with per-principal idle state_update (#1436)", async () => {
+        const h = await createHarness({
+            authMode: "oauth",
+            env: { PLURNK_ACP_HISTORY_PAGE_CHARS: "50" },
+        });
+        try {
+            const operatorUpdates: SessionUpdate[] = [];
+            const scoutUpdates: SessionUpdate[] = [];
+            const hazoolUpdates: SessionUpdate[] = [];
+
+            const operatorClient = createAcpClient().onNotification(methods.client.session.update, ({ params }) => {
+                operatorUpdates.push(params.update);
+            });
+            const scoutClient = createAcpClient().onNotification(methods.client.session.update, ({ params }) => {
+                scoutUpdates.push(params.update);
+            });
+            const hazoolClient = createAcpClient().onNotification(methods.client.session.update, ({ params }) => {
+                hazoolUpdates.push(params.update);
+            });
+
+            const operatorStream = createWebSocketStream(h.wsUrl, {
+                WebSocket: WsConstructor,
+                headers: { authorization: "Bearer valid-token" },
+            });
+            const scoutStream = createWebSocketStream(h.wsUrl, {
+                WebSocket: WsConstructor,
+                headers: { authorization: "Bearer scoutproxy-token" },
+            });
+            const hazoolStream = createWebSocketStream(h.wsUrl, {
+                WebSocket: WsConstructor,
+                headers: { authorization: "Bearer hazool17-token" },
+            });
+
+            await operatorClient.connectWith(operatorStream, async (opConn) => {
+                await scoutClient.connectWith(scoutStream, async (scoutConn) => {
+                    await hazoolClient.connectWith(hazoolStream, async (hazoolConn) => {
+                        await opConn.request(methods.agent.session.resume, {
+                            sessionId: "1#user",
+                            cwd: "/workspace/alpha",
+                        });
+                        await scoutConn.request(methods.agent.session.resume, {
+                            sessionId: "1#user",
+                            cwd: "/workspace/alpha",
+                        });
+                        await hazoolConn.request(methods.agent.session.resume, {
+                            sessionId: "1#user",
+                            cwd: "/workspace/alpha",
+                        });
+                        await waitFor(
+                            () =>
+                                operatorUpdates.some((u) => u.sessionUpdate === "state_update") &&
+                                scoutUpdates.some((u) => u.sessionUpdate === "state_update") &&
+                                hazoolUpdates.some((u) => u.sessionUpdate === "state_update"),
+                        );
+
+                        operatorUpdates.length = 0;
+                        scoutUpdates.length = 0;
+                        hazoolUpdates.length = 0;
+
+                        h.port.runLoop = async ({ messageAddress }) => {
+                            const isScout = typeof messageAddress === "string" && messageAddress.includes("scoutproxy");
+                            const path = isScout ? "message://user/scoutproxy_00" : "message://user/hazool17_01";
+                            h.port.inbox.push({
+                                path,
+                                source: messageAddress ?? null,
+                                loopId: 1,
+                                lifecycle: "running",
+                                body: "prompt",
+                            });
+                            return { status: 200, action: "enqueued_new_loop" as const, sessionId: 1, loopId: 1, resource: path };
+                        };
+
+                        // 1. Prompt from scoutproxy and prompt from hazool17 do NOT emit pre-publication user_message_chunk
+                        const scoutPromptRes = await scoutConn.request(methods.agent.session.prompt, {
+                            sessionId: "1#user",
+                            prompt: [{ type: "text", text: "Hello from scoutproxy with a long text above fifty chars!" }],
+                            _meta: { plurnk: { messageId: "msg-scout-1" } },
+                        });
+                        assert.equal(scoutPromptRes.messageId, "msg-scout-1");
+
+                        const hazoolPromptRes = await hazoolConn.request(methods.agent.session.prompt, {
+                            sessionId: "1#user",
+                            prompt: [{ type: "text", text: "Hello from hazool17!" }],
+                            _meta: { plurnk: { messageId: "msg-hazool-1" } },
+                        });
+                        assert.equal(hazoolPromptRes.messageId, "msg-hazool-1");
+
+                        // Pre-publication: zero user_message_chunk emitted yet
+                        assert.equal(
+                            scoutUpdates.filter((u) => u.sessionUpdate === "user_message_chunk").length,
+                            0,
+                        );
+
+                        // 2. Publish both user messages into the log (exceeding PLURNK_ACP_HISTORY_PAGE_CHARS=50)
+                        h.port.emitEvent(1, "log/entry", {
+                            entry: makeLogEntry({
+                                id: 101,
+                                session_id: 1,
+                                origin: "_plurnk",
+                                op: "send",
+                                source: "acp://scoutproxy/sessions/1%23user/messages/msg-scout-1",
+                                tx: "Hello from scoutproxy with a long text above fifty chars!",
+                                attrs: { kind: "message" },
+                            }),
+                        });
+                        h.port.emitEvent(1, "log/entry", {
+                            entry: makeLogEntry({
+                                id: 102,
+                                session_id: 1,
+                                sequence: 2,
+                                origin: "_plurnk",
+                                op: "send",
+                                source: "acp://hazool17/sessions/1%23user/messages/msg-hazool-1",
+                                tx: "Hello from hazool17!",
+                                attrs: { kind: "message" },
+                            }),
+                        });
+
+                        // Outside narration emitted during the turn
+                        h.port.emitEvent(1, "outside/event", {
+                            sessionId: 1,
+                            coordinate: "1/1/1",
+                            text: "Internal model narration outside fences",
+                            tokens: 7,
+                        });
+
+                        // 3. Model resolves scoutproxy's message first with done (while hazool17's message stays running in inbox)
+                        h.port.inbox.length = 0;
+                        h.port.inbox.push({
+                            path: "message://user/2",
+                            source: "acp://hazool17/sessions/1%23user/messages/msg-hazool-1",
+                            loopId: 1,
+                            lifecycle: "running",
+                            body: "Hello from hazool17!",
+                        });
+                        const longScoutReply =
+                            "Dedicated reply to scoutproxy that is also well over the fifty-character page limit!";
+                        h.port.emitEvent(1, "log/entry", {
+                            entry: {
+                                ...makeLogEntry({
+                                    id: 103,
+                                    session_id: 1,
+                                    sequence: 3,
+                                    origin: "model",
+                                    op: "done",
+                                    pathname: "message://user/1",
+                                    tx: JSON.stringify({ op: "done", target: "message://user/1", body: longScoutReply }),
+                                    rx: {
+                                        status: 200,
+                                        content: longScoutReply,
+                                        mimetype: "text/markdown",
+                                        receipt: {
+                                            delivered: true,
+                                            repliedTo: ["message://user/1"],
+                                            completion: 200,
+                                        },
+                                    },
+                                }),
+                                replied_to_sources: ["acp://scoutproxy/sessions/1%23user/messages/msg-scout-1"],
+                            },
+                        });
+
+                        await waitFor(() =>
+                            scoutUpdates.some(
+                                (u) => u.sessionUpdate === "state_update" && u.state === "idle",
+                            ),
+                        );
+
+                        // Verify scoutproxy received ONLY its own user_message_chunk and its own agent_message_chunk (inline text, not resource_link)
+                        const scoutUserChunks = scoutUpdates.filter(
+                            (u): u is Extract<SessionUpdate, { sessionUpdate: "user_message_chunk" }> =>
+                                u.sessionUpdate === "user_message_chunk",
+                        );
+                        assert.equal(scoutUserChunks.length, 1);
+                        assert.equal(scoutUserChunks[0]?.messageId, "msg-scout-1");
+                        assert.equal(scoutUserChunks[0]?.content.type, "text");
+
+                        const scoutAgentChunks = scoutUpdates.filter(
+                            (u): u is Extract<SessionUpdate, { sessionUpdate: "agent_message_chunk" }> =>
+                                u.sessionUpdate === "agent_message_chunk",
+                        );
+                        assert.equal(scoutAgentChunks.length, 1);
+                        assert.equal(scoutAgentChunks[0]?.content.type, "text");
+                        if (scoutAgentChunks[0]?.content.type === "text") {
+                            assert.equal(scoutAgentChunks[0].content.text, longScoutReply);
+                        }
+                        const scoutReplyMeta = (
+                            scoutAgentChunks[0]?._meta as { plurnk?: Record<string, unknown> } | undefined
+                        )?.plurnk;
+                        assert.equal(scoutReplyMeta?.voice, "scoutproxy");
+                        assert.equal(scoutReplyMeta?.inReplyTo, "msg-scout-1");
+                        assert.deepEqual(scoutReplyMeta?.repliedToMessageIds, ["msg-scout-1"]);
+                        assert.ok(
+                            typeof (scoutReplyMeta?.body as { url?: unknown } | undefined)?.url === "string",
+                        );
+
+                        // Verify hazool17 has NOT received scoutproxy's reply, outside text, or idle state_update yet
+                        assert.equal(
+                            hazoolUpdates.filter((u) => u.sessionUpdate === "agent_message_chunk").length,
+                            0,
+                        );
+                        assert.equal(
+                            hazoolUpdates.some((u) => u.sessionUpdate === "state_update" && u.state === "idle"),
+                            false,
+                        );
+
+                        // Verify operator received both user messages, outside text, and scoutproxy's reply
+                        await waitFor(
+                            () =>
+                                operatorUpdates.filter((u) => u.sessionUpdate === "user_message_chunk").length === 2 &&
+                                operatorUpdates.filter((u) => u.sessionUpdate === "agent_message_chunk").length === 2,
+                        );
+                    });
+                });
+            });
+        } finally {
+            await h.close();
+        }
+    });
 });

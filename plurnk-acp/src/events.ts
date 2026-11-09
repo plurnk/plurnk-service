@@ -15,7 +15,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { GateTracker } from "./gates.ts";
-import { attrRecord, extractMessageId, parseJsonOrValue, txBody } from "./log-entry-projection.ts";
+import { attrRecord, extractMessageId, extractVoice, parseJsonOrValue, txBody } from "./log-entry-projection.ts";
 import type SessionTranslator from "./SessionTranslator.ts";
 import {
     buildAvailableCommands,
@@ -202,8 +202,18 @@ export const dispatchDaemonEvent = (
             }
             if (isLogEntryPayload(params)) {
                 enqueueOrRunSessionEvent(ctx, workspaceId, sessionId, async () => {
-                    broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.logEntry(params));
-                    if (entryRec.origin === "_plurnk" && entryRec.op === "send") {
+                    const builtUpdates: { readonly sessionId: string; readonly update: SessionUpdate }[] = [];
+                    broadcastSessionUpdate(workspaceId, sessionId, (s) => {
+                        const updates = s.translator.logEntry(params);
+                        if (builtUpdates.length === 0 && updates.length > 0) {
+                            builtUpdates.push(...updates);
+                        }
+                        return updates;
+                    });
+                    if (
+                        (entryRec.origin === "_plurnk" && entryRec.op === "send") ||
+                        (entryRec.origin === "model" && (entryRec.op === "done" || entryRec.op === "fail"))
+                    ) {
                         const rawInbox = await seam.readInbox({ workspaceId, sessionId });
                         broadcastSessionUpdate(workspaceId, sessionId, (s) => [
                             {
@@ -236,6 +246,74 @@ export const dispatchDaemonEvent = (
                                 },
                             },
                         ]);
+                        if (entryRec.origin === "model" && (entryRec.op === "done" || entryRec.op === "fail")) {
+                            for (const { update } of builtUpdates) {
+                                if (update.sessionUpdate !== "agent_message_chunk") continue;
+                                const p =
+                                    isRecord(update._meta) && isRecord(update._meta.plurnk)
+                                        ? update._meta.plurnk
+                                        : null;
+                                const completedVoice = typeof p?.voice === "string" ? p.voice : null;
+                                const receiptRec = isRecord(p?.receipt) ? p.receipt : null;
+                                const nestedReceiptRec =
+                                    receiptRec !== null && isRecord(receiptRec.receipt) ? receiptRec.receipt : null;
+                                const completion = receiptRec?.completion ?? nestedReceiptRec?.completion;
+                                if (
+                                    completedVoice !== null &&
+                                    completedVoice !== "operator" &&
+                                    completedVoice !== "anonymous" &&
+                                    (completion === 200 || completion === 499)
+                                ) {
+                                    const hasRemainingOpenForVoice = rawInbox.some(
+                                        (msg) =>
+                                            (msg.lifecycle === "running" ||
+                                                msg.lifecycle === "queued" ||
+                                                msg.lifecycle === "parked") &&
+                                            extractVoice(msg.source) === completedVoice,
+                                    );
+                                    if (!hasRemainingOpenForVoice) {
+                                        const idleMeta = {
+                                            plurnk: {
+                                                loopId: entryRec.loop_id,
+                                                loopSeq: entryRec.loop_seq,
+                                                voice: completedVoice,
+                                                status: {
+                                                    lifecycle: "idle",
+                                                    loopId: entryRec.loop_id,
+                                                    loopSeq: entryRec.loop_seq,
+                                                },
+                                            },
+                                        };
+                                        const voiceIdleUpdate: SessionUpdate =
+                                            completion === 499
+                                                ? {
+                                                      sessionUpdate: "state_update",
+                                                      state: "idle",
+                                                      stopReason: "refusal",
+                                                      _meta: idleMeta,
+                                                  }
+                                                : {
+                                                      sessionUpdate: "state_update",
+                                                      state: "idle",
+                                                      stopReason: "end_turn",
+                                                      _meta: idleMeta,
+                                                  };
+                                        for (const peer of peers) {
+                                            if (peer.subject !== completedVoice) continue;
+                                            const visited = new Set<BoundSession>();
+                                            for (const session of peer.sessions.values()) {
+                                                if (visited.has(session)) continue;
+                                                visited.add(session);
+                                                if (session.workspaceId !== workspaceId || session.sessionId !== sessionId) {
+                                                    continue;
+                                                }
+                                                notifyPeerSession(peer, session.acpSessionId, voiceIdleUpdate);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 });
             }

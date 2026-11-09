@@ -50,7 +50,6 @@ export default class SessionTranslator {
     readonly #sessionId: number;
     readonly #sessionName: string;
     readonly #origin: string | undefined;
-    readonly #historyPageChars: number | undefined;
     readonly #streamedReasoningTurns = new Set<string>();
     readonly #toolCallIdByEntryId = new Map<number, string>();
     readonly #toolCallIdByStreamTarget = new Map<string, string>();
@@ -79,7 +78,6 @@ export default class SessionTranslator {
                 ? args.acpSessionId.slice(hashIdx + 1)
                 : args.acpSessionId);
         this.#origin = args.origin;
-        this.#historyPageChars = args.historyPageChars;
     }
 
     get acpSessionId(): string {
@@ -261,29 +259,33 @@ export default class SessionTranslator {
                 : {}),
         };
         if (isResponse || isBodiedWait) {
-            const useReference =
-                this.#origin !== undefined &&
-                this.#historyPageChars !== undefined &&
-                this.#historyPageChars > 0 &&
-                text.length > this.#historyPageChars &&
-                bodyUrl !== undefined;
             updates.push({
                 sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "agent_message_chunk",
                     messageId: coordinate,
-                    content: useReference
-                        ? {
-                              type: "resource_link",
-                              uri: bodyUrl,
-                              name: `log:///${coordinate}/${entry.op}`,
-                              mimeType: typeof entry.mimetype_rx === "string" ? entry.mimetype_rx : "text/markdown",
-                          }
-                        : { type: "text", text },
+                    content: { type: "text", text },
                     _meta: {
                         plurnk: {
                             ...opMeta,
+                            ...(bodyUrl !== undefined
+                                ? {
+                                      body: {
+                                          url: bodyUrl,
+                                          mimeType:
+                                              typeof entry.mimetype_rx === "string"
+                                                  ? entry.mimetype_rx
+                                                  : "text/markdown",
+                                      },
+                                  }
+                                : {}),
                             ...(replyVoice !== undefined ? { voice: replyVoice } : {}),
+                            ...(repliedToMessageIds !== undefined && repliedToMessageIds.length > 0
+                                ? {
+                                      inReplyTo: repliedToMessageIds[0],
+                                      repliedToMessageIds,
+                                  }
+                                : {}),
                             ...(isBodiedWait && isRecord(enrichedReceipt) ? { receipt: enrichedReceipt } : {}),
                         },
                     },
@@ -332,28 +334,26 @@ export default class SessionTranslator {
         ) {
             const messageId = extractMessageId(entry.source, this.#acpSessionId) ?? coordinate;
             const userVoice = extractVoice(entry.source) ?? extractVoice(address);
-            const useReference =
-                this.#origin !== undefined &&
-                this.#historyPageChars !== undefined &&
-                this.#historyPageChars > 0 &&
-                text.length > this.#historyPageChars &&
-                bodyUrl !== undefined;
             updates.push({
                 sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "user_message_chunk",
                     messageId,
-                    content: useReference
-                        ? {
-                              type: "resource_link",
-                              uri: bodyUrl,
-                              name: `log:///${coordinate}/${entry.op}`,
-                              mimeType: typeof entry.mimetype_tx === "string" ? entry.mimetype_tx : "text/plain",
-                          }
-                        : { type: "text", text },
+                    content: { type: "text", text },
                     _meta: {
                         plurnk: {
                             ...opMeta,
+                            ...(bodyUrl !== undefined
+                                ? {
+                                      body: {
+                                          url: bodyUrl,
+                                          mimeType:
+                                              typeof entry.mimetype_tx === "string"
+                                                  ? entry.mimetype_tx
+                                                  : "text/plain",
+                                      },
+                                  }
+                                : {}),
                             ...(typeof entry.answering === "string" ? { answering: entry.answering } : {}),
                             ...(typeof entry.source === "string" ? { source: entry.source } : {}),
                             ...(userVoice !== undefined ? { voice: userVoice } : {}),
