@@ -9,12 +9,8 @@ VALUES ($session_id, $sequence, $prompt, -1);
 INSERT INTO loops (session_id, sequence, status, prompt, terminal_result, max_turns)
 VALUES ($session_id, $sequence, $status, $prompt, $terminal_result, -1);
 
--- PREP: test_loops_insert_with_version
-INSERT INTO loops (session_id, sequence, version, prompt, max_turns)
-VALUES ($session_id, $sequence, $version, $prompt, -1);
-
 -- PREP: test_loops_get_by_session
-SELECT id, version, session_id, sequence, status, prompt FROM loops WHERE session_id = $session_id LIMIT 1;
+SELECT id, session_id, sequence, status, prompt FROM loops WHERE session_id = $session_id LIMIT 1;
 
 -- PREP: test_loops_statuses_by_session
 SELECT status FROM loops WHERE session_id = $session_id ORDER BY sequence;

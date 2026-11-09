@@ -796,17 +796,6 @@ test("{§db-migrations} loops: CASCADE chain via workspace→sessions→loops", 
         assert.equal(remaining, 0);
     } finally { await db.close(); }
 });
-
-test("{§db-migrations} loops: negative version rejected by CHECK", async () => {
-    const db = await openMigrated();
-    try {
-        const sessionId = await seedSession(db, "ws-loops-negver");
-        await assert.rejects(
-            () => db.test_loops_insert_with_version.run({ session_id: sessionId, sequence: 1, version: -1, prompt: "x" }),
-            /CHECK constraint failed/,
-        );
-    } finally { await db.close(); }
-});
 });
 
 describe("schema-baseline", () => {
@@ -882,8 +871,9 @@ test(`{§db-migrations} {§machine-processes}: a ${V5_0_0_CHAPTER_8.label} datab
         INSERT INTO sessions (id, workspace_id, name, origin) VALUES (1, 1, 'root', 'model');
         INSERT INTO sessions (id, workspace_id, name, parent_session_id, origin) VALUES (2, 1, 'child', 1, 'model');
     `);
-    const workspace = { ...before.prepare("SELECT * FROM workspaces WHERE id = 1").get() };
-    const sessions = before.prepare("SELECT * FROM sessions ORDER BY id").all().map((row) => ({ ...row }));
+    const { version: _wv, ...workspace } = before.prepare("SELECT * FROM workspaces WHERE id = 1").get() as Record<string, unknown>;
+    const sessions = (before.prepare("SELECT * FROM sessions ORDER BY id").all() as Array<Record<string, unknown>>)
+        .map(({ version: _sv, default_session: _ds, ...row }) => row);
     before.close();
     const upgraded = await openMigrated(path);
     await upgraded.close();
@@ -1097,14 +1087,14 @@ test("{§db-migrations}: a database from before the 5.0.0 support floor or from 
     finally { raw.close(); }
     await assert.rejects(
         () => openMigrated(newerPath),
-        /database schema \(version 99\) is newer than this build \(schema version 15\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
+        /database schema \(version 99\) is newer than this build \(schema version 16\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
     );
 });
 
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.equal(versions.length, 15, "all migration versions are present");
+    assert.equal(versions.length, 16, "all migration versions are present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});
@@ -1383,17 +1373,6 @@ test("{§db-migrations} sessions: ON DELETE CASCADE via parent_session_id — de
         await db.test_sessions_delete.run({ id: trunkId });
         const after = await db.test_sessions_count.get<{ n: number }>();
         assert.equal(after?.n, 0);
-    } finally { await db.close(); }
-});
-
-test("{§db-migrations} sessions: negative version rejected by CHECK", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, "ws-negversion");
-        await assert.rejects(
-            () => db.test_sessions_insert_version.run({ workspace_id: workspaceId, name: n("negversion"), version: -1 }),
-            /CHECK constraint failed/,
-        );
     } finally { await db.close(); }
 });
 

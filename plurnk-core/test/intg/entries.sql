@@ -15,10 +15,6 @@ FROM workspaces
 WHERE id = $workspace_id
 RETURNING id;
 
--- PREP: test_entries_get_first
-SELECT e.id, e.version, e.workspace_id, e.scheme, e.authority, e.pathname, e.attributes
-FROM entries e LIMIT 1;
-
 -- PREP: test_entries_get_first_identity
 SELECT e.workspace_id
 FROM entries e LIMIT 1;

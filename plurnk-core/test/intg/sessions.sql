@@ -13,13 +13,6 @@ INSERT INTO sessions (workspace_id, name, parent_session_id) VALUES ($workspace_
 -- PREP: test_sessions_insert_returning
 INSERT INTO sessions (workspace_id, name) VALUES ($workspace_id, $name) RETURNING id;
 
--- PREP: test_sessions_insert_version
-INSERT INTO sessions (workspace_id, name, version) VALUES ($workspace_id, $name, $version);
-
--- PREP: test_sessions_get_by_workspace
-SELECT id, version, workspace_id, name, created_at, parent_session_id, provider_identity
-FROM sessions WHERE workspace_id = $workspace_id AND origin != '_plurnk' LIMIT 1;
-
 -- PREP: test_sessions_get_provider_identity
 SELECT provider_identity FROM sessions WHERE id = $id;
 

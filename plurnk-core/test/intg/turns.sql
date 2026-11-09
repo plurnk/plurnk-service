@@ -5,10 +5,6 @@ SELECT sql FROM sqlite_master WHERE name = 'turns';
 INSERT INTO turns (loop_id, sequence, producer, kind, status, packet)
 VALUES ($loop_id, $sequence, 'model', 'inference', $status, $packet);
 
--- PREP: test_turns_insert_with_version
-INSERT INTO turns (loop_id, sequence, producer, kind, status, packet, version)
-VALUES ($loop_id, $sequence, 'model', 'inference', $status, $packet, $version);
-
 -- PREP: test_turns_insert_with_curation_budget
 -- The turn retains only the latest-packet gauge denominator; provider usage is
 -- normalized under provider_requests. {§tokenomics}
