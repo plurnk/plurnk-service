@@ -217,6 +217,7 @@ export const handleMessagesRoute = async (
     workspaceId: number,
     sessionId: number,
     url: URL,
+    subject?: string | null,
 ): Promise<void> => {
     const acpSessionId = url.searchParams.get("session") ?? `${workspaceId}#user`;
     const beforeParam = url.searchParams.get("before");
@@ -241,6 +242,7 @@ export const handleMessagesRoute = async (
         historyLoops: opts.historyLoops,
         historyPageChars: opts.historyPageChars,
         openStreamTargets: new Set(streams.map((s) => s.target)),
+        subject,
         ...(targetLoop !== undefined ? { exactLoopSeq: targetLoop } : {}),
         ...(beforeLoop !== undefined ? { beforeLoopSeq: beforeLoop } : {}),
         ...(afterLoop !== undefined ? { afterLoopSeq: afterLoop } : {}),

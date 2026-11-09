@@ -153,21 +153,6 @@ export const applyWorkspaceRenamed = (
                     },
                 },
             });
-            notifyPeerSession(peer, session.acpSessionId, {
-                sessionUpdate: "notice",
-                severity: "info",
-                title: "workspace:state",
-                _meta: {
-                    plurnk: {
-                        workspace: {
-                            id: workspaceId,
-                            name: nextName,
-                            projectRoot: session.projectRoot,
-                            projectLabel: session.projectLabel,
-                        },
-                    },
-                },
-            });
         }
     }
     scheduleOverviewRefresh?.();
@@ -219,9 +204,7 @@ export const dispatchDaemonEvent = (
                             {
                                 sessionId: s.acpSessionId,
                                 update: {
-                                    sessionUpdate: "notice",
-                                    severity: "info",
-                                    title: "workspace:state",
+                                    sessionUpdate: "session_info_update",
                                     _meta: {
                                         plurnk: {
                                             status: {
@@ -616,9 +599,7 @@ export const dispatchDaemonEvent = (
                         ])
                             .then(([spend, proposals, interactions]) => {
                                 notifyPeerSession(peer, session.acpSessionId, {
-                                    sessionUpdate: "notice",
-                                    severity: "info",
-                                    title: "workspace:state",
+                                    sessionUpdate: "session_info_update",
                                     _meta: {
                                         plurnk: {
                                             status: {
@@ -819,9 +800,7 @@ export const dispatchDaemonEvent = (
                             ])
                                 .then(([spend, proposals, interactions]) => {
                                     notifyPeerSession(peer, session.acpSessionId, {
-                                        sessionUpdate: "notice",
-                                        severity: "info",
-                                        title: "workspace:state",
+                                        sessionUpdate: "session_info_update",
                                         _meta: {
                                             plurnk: {
                                                 status: {
@@ -856,10 +835,7 @@ export const dispatchDaemonEvent = (
                     visited.add(session);
                     if (session.workspaceId !== workspaceId) continue;
                     notifyPeerSession(peer, session.acpSessionId, {
-                        sessionUpdate: "notice",
-                        severity: "info",
-                        title: "workspace:preparation",
-                        description: JSON.stringify(preparation),
+                        sessionUpdate: "session_info_update",
                         _meta: {
                             plurnk: {
                                 workspaceId,

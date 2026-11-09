@@ -612,7 +612,10 @@ for (const stage of ["MRTR", "Task"] as const) {
                 followUpElicitations: 2,
                 resume: [{ interruptId: first.id, action: "accept", content: { proceed: true } }],
             }), 2);
-            const wsUpdate = updatesOf(events).find((u) => u.sessionUpdate === "notice" && u.title === "workspace:state") as {
+            const wsUpdate = updatesOf(events).find((u) => {
+                const ws = (u._meta as { plurnk?: { workspace?: { id?: unknown } } } | undefined)?.plurnk?.workspace;
+                return u.sessionUpdate === "session_info_update" && typeof ws?.id === "number";
+            }) as {
                 _meta?: { plurnk?: { workspace?: { id: number } } };
             } | undefined;
             assert.ok(wsUpdate?._meta?.plurnk?.workspace);
@@ -702,7 +705,10 @@ for (const source of ["MRTR", "Task", "resource", "prompt"] as const) {
             followUpElicitations: 2,
             resume: [{ interruptId: first.id, action: "accept", content: { proceed: true } }],
         }), 2);
-        const wsUpdate = updatesOf(events).find((u) => u.sessionUpdate === "notice" && u.title === "workspace:state") as {
+        const wsUpdate = updatesOf(events).find((u) => {
+            const ws = (u._meta as { plurnk?: { workspace?: { id?: unknown } } } | undefined)?.plurnk?.workspace;
+            return u.sessionUpdate === "session_info_update" && typeof ws?.id === "number";
+        }) as {
             _meta?: { plurnk?: { workspace?: { id: number } } };
         } | undefined;
         assert.ok(wsUpdate?._meta?.plurnk?.workspace);

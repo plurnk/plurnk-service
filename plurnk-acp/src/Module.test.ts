@@ -960,8 +960,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         updates.some((u) => u.sessionUpdate === "usage_update") &&
                         updates.some(
                             (u) =>
-                                u.sessionUpdate === "notice" &&
-                                u.title === "workspace:state" &&
+                                u.sessionUpdate === "session_info_update" &&
                                 (u._meta as { plurnk?: { status?: { spend?: unknown } } } | undefined)?.plurnk?.status
                                     ?.spend !== undefined,
                         ) &&
@@ -1141,7 +1140,14 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     assert.equal(parkedStatus?.waitUntil, 1700000010000);
                     await waitFor(() =>
                         updates.slice(beforeParkedResume).some(
-                            (u) => u.sessionUpdate === "notice" && u.title === "engine:lifecycle:loop_status",
+                            (u) =>
+                                u.sessionUpdate === "state_update" &&
+                                u.state === "running" &&
+                                (
+                                    u._meta as
+                                        | { plurnk?: { status?: { lifecycle?: unknown }; notice?: { kind?: unknown; status?: unknown } } }
+                                        | undefined
+                                )?.plurnk?.status?.lifecycle === "parked",
                         ),
                     );
                     assert.equal(
@@ -1638,16 +1644,35 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     /Unsupported or malformed replayFrom cursor/,
                 );
 
+                // Standard ACPv2 replayFrom: { type: "start" } replays all retained conversation history
+                replayed.length = 0;
+                const fullResumed = await ctx.request(methods.agent.session.resume, {
+                    sessionId: "1#user",
+                    cwd: "/workspace/alpha",
+                    replayFrom: { type: "start" },
+                });
+                const fullHistoryMeta = (
+                    fullResumed._meta as { plurnk?: { history?: { older?: string } } } | undefined
+                )?.plurnk?.history;
+                assert.equal(fullHistoryMeta?.older, undefined, "unwindowed start replay replays all loops");
+                await waitFor(
+                    () =>
+                        replayed.filter((u) => u.sessionUpdate === "user_message_chunk").length === 2 &&
+                        replayed.filter((u) => u.sessionUpdate === "agent_message_chunk").length === 2,
+                );
+
+                // Opt-in _meta.plurnk.window: true replays the windowed tail and exposes older pagination link
                 replayed.length = 0;
                 const resumed = await ctx.request(methods.agent.session.resume, {
                     sessionId: "1#user",
                     cwd: "/workspace/alpha",
                     replayFrom: { type: "start" },
+                    _meta: { plurnk: { window: true } },
                 });
                 const historyMeta = (
                     resumed._meta as { plurnk?: { history?: { older?: string } } } | undefined
                 )?.plurnk?.history;
-                assert.ok(historyMeta?.older, "older history link is present");
+                assert.ok(historyMeta?.older, "older history link is present when window: true is requested");
                 await waitFor(
                     () =>
                         replayed.some((u) => u.sessionUpdate === "user_message_chunk") &&
@@ -2857,7 +2882,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
 
                 // Scoped session/list returns workspace sessions + top-level workspaces + cross-workspace recent feed
                 const scopedList = await ctx.request(methods.agent.session.list, {
-                    _meta: { plurnk: { workspaceId: 1 } },
+                    _meta: { plurnk: { workspaceId: 1, subscribe: true } },
                 });
                 assert.equal(scopedList.sessions.length, 1);
                 const s0Meta = (scopedList.sessions[0]?._meta as { plurnk?: Record<string, unknown> } | undefined)
@@ -3310,6 +3335,157 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         if (hazoolAgentChunks[0]?.content.type === "text") {
                             assert.equal(hazoolAgentChunks[0].content.text, hazoolSendReply);
                         }
+
+                        // 6. Replay and GET /messages scope history to the caller's principal across later other-principal loops,
+                        // and tool_call_update delivers inline text content instead of JSON receipt metadata or resource_link
+                        h.port.logs.push(
+                            makeLogEntry({
+                                id: 101,
+                                session_id: 1,
+                                loop_id: 1,
+                                loop_seq: 1,
+                                sequence: 1,
+                                origin: "_plurnk",
+                                op: "send",
+                                source: "acp://scoutproxy/sessions/1%23user/messages/msg-scout-1",
+                                pathname: "message://user/1",
+                                attrs: { kind: "message", body: "Hello from scoutproxy with a long text above fifty chars!" },
+                                rx: { status: 200, content: "Hello from scoutproxy with a long text above fifty chars!", mimetype: "text/plain" },
+                            }),
+                            {
+                                ...makeLogEntry({
+                                    id: 103,
+                                    session_id: 1,
+                                    loop_id: 1,
+                                    loop_seq: 1,
+                                    sequence: 3,
+                                    origin: "model",
+                                    op: "done",
+                                    pathname: "message://user/1",
+                                    tx: JSON.stringify({ op: "done", target: "message://user/1", body: longScoutReply }),
+                                    rx: {
+                                        status: 200,
+                                        content: longScoutReply,
+                                        mimetype: "text/markdown",
+                                        receipt: {
+                                            delivered: true,
+                                            repliedTo: ["message://user/1"],
+                                            completion: 200,
+                                        },
+                                    },
+                                }),
+                                replied_to_sources: ["acp://scoutproxy/sessions/1%23user/messages/msg-scout-1"],
+                            },
+                            makeLogEntry({
+                                id: 102,
+                                session_id: 1,
+                                loop_id: 2,
+                                loop_seq: 2,
+                                sequence: 1,
+                                origin: "_plurnk",
+                                op: "send",
+                                source: "acp://hazool17/sessions/1%23user/messages/msg-hazool-1",
+                                pathname: "message://user/2",
+                                attrs: { kind: "message", body: "Hello from hazool17!" },
+                                rx: { status: 200, content: "Hello from hazool17!", mimetype: "text/plain" },
+                            }),
+                            makeLogEntry({
+                                id: 106,
+                                session_id: 1,
+                                loop_id: 2,
+                                loop_seq: 2,
+                                sequence: 2,
+                                origin: "model",
+                                op: "read",
+                                pathname: "/workspace/secret.txt",
+                                tx: JSON.stringify({ op: "read", path: "/workspace/secret.txt" }),
+                                rx: { status: 200, content: "inline tool output content", lines: 1 },
+                            }),
+                            {
+                                ...makeLogEntry({
+                                    id: 104,
+                                    session_id: 1,
+                                    loop_id: 2,
+                                    loop_seq: 2,
+                                    sequence: 4,
+                                    origin: "model",
+                                    op: "send",
+                                    pathname: "message://user/2",
+                                    tx: JSON.stringify({ op: "send", target: "message://user/2", body: hazoolSendReply }),
+                                    rx: {
+                                        status: 200,
+                                        content: hazoolSendReply,
+                                        mimetype: "text/markdown",
+                                        receipt: {
+                                            delivered: true,
+                                            repliedTo: ["message://user/2"],
+                                        },
+                                    },
+                                }),
+                                replied_to_sources: ["acp://hazool17/sessions/1%23user/messages/msg-hazool-1"],
+                            },
+                            makeLogEntry({
+                                id: 107,
+                                session_id: 1,
+                                loop_id: 3,
+                                loop_seq: 3,
+                                sequence: 1,
+                                origin: "system",
+                                op: "send",
+                                source: "acp://operator/sessions/1%23user/messages/msg-op-3",
+                                attrs: { kind: "message", body: "Operator loop 3" },
+                                rx: { status: 200, content: "Operator loop 3", mimetype: "text/plain" },
+                            }),
+                        );
+
+                        scoutUpdates.length = 0;
+                        await scoutConn.request(methods.agent.session.resume, {
+                            sessionId: "1#user",
+                            cwd: "/workspace/alpha",
+                            replayFrom: { type: "start" },
+                        });
+                        await waitFor(
+                            () =>
+                                scoutUpdates.filter((u) => u.sessionUpdate === "user_message_chunk").length === 1 &&
+                                scoutUpdates.filter((u) => u.sessionUpdate === "agent_message_chunk").length === 1,
+                        );
+                        assert.equal(
+                            scoutUpdates.some((u) => u.sessionUpdate === "tool_call_update"),
+                            false,
+                            "named principal replay must never include tool_call_update or other principals' messages",
+                        );
+
+                        const scoutMessagesRes = await fetch(
+                            `${h.baseUrl}/1/1/messages?session=${encodeURIComponent("1#user")}`,
+                            { headers: { Authorization: "Bearer scoutproxy-token" } },
+                        );
+                        assert.equal(scoutMessagesRes.status, 200);
+                        const scoutMessagesPage = (await scoutMessagesRes.json()) as {
+                            updates: SessionUpdate[];
+                        };
+                        assert.equal(scoutMessagesPage.updates.length, 2);
+                        assert.equal(scoutMessagesPage.updates[0]?.sessionUpdate, "user_message_chunk");
+                        assert.equal(scoutMessagesPage.updates[1]?.sessionUpdate, "agent_message_chunk");
+
+                        const opMessagesRes = await fetch(
+                            `${h.baseUrl}/1/1/messages?session=${encodeURIComponent("1#user")}&loop=2`,
+                            { headers: { Authorization: "Bearer valid-token" } },
+                        );
+                        assert.equal(opMessagesRes.status, 200);
+                        const opMessagesPage = (await opMessagesRes.json()) as {
+                            updates: SessionUpdate[];
+                        };
+                        const readToolUpdate = opMessagesPage.updates.find(
+                            (u): u is Extract<SessionUpdate, { sessionUpdate: "tool_call_update" }> =>
+                                u.sessionUpdate === "tool_call_update" && u.name === "read",
+                        );
+                        assert.ok(readToolUpdate, "operator sees read tool_call_update");
+                        assert.deepEqual(readToolUpdate.content, [
+                            {
+                                type: "content",
+                                content: { type: "text", text: "inline tool output content" },
+                            },
+                        ]);
                     });
                 });
             });

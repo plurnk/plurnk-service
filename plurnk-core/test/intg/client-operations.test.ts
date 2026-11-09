@@ -722,7 +722,10 @@ test("{§functionality-inspection} a stalled MCP catalog is visible over ACP bef
     const during = await inspect();
     assert.equal(actionResult(during).ok, true, "inspection does not join the stalled activation");
     // {§acp-status-descendants} Preparation is the workspace's, so an action that binds no session carries it too.
-    const wsUpdate = sessionUpdates(during).find((u) => u.sessionUpdate === "notice" && u.title === "workspace:state") as {
+    const wsUpdate = sessionUpdates(during).find((u) => {
+        const ws = (u._meta as { plurnk?: { workspace?: { preparation?: unknown } } } | undefined)?.plurnk?.workspace;
+        return u.sessionUpdate === "session_info_update" && Array.isArray(ws?.preparation);
+    }) as {
         _meta?: { plurnk?: { workspace?: { preparation: { family: string; alias: string | null }[] } } };
     } | undefined;
     assert.ok(wsUpdate?._meta?.plurnk?.workspace?.preparation.some(({ family, alias }) => family === "mcp" && alias === "fixture"));
@@ -731,7 +734,7 @@ test("{§functionality-inspection} a stalled MCP catalog is visible over ACP bef
     assert.equal(provider.requests.length, 1);
     assert.ok(sessionUpdates(events).some((u) => {
         const prep = (u._meta as { plurnk?: { preparation?: unknown[] } } | undefined)?.plurnk?.preparation;
-        return u.sessionUpdate === "notice" && u.title === "workspace:preparation" && Array.isArray(prep) && prep.length === 0;
+        return u.sessionUpdate === "session_info_update" && Array.isArray(prep) && prep.length === 0;
     }));
     assert.equal(terminalMeta(events)?.stopReason, "end_turn");
     assert.doesNotMatch(packet(provider.requests, 0), /workspace\/preparation/);

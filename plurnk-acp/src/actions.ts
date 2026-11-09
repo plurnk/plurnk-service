@@ -867,9 +867,7 @@ export const handlePlurnkAction = async (
         const preparation = seam.workspacePreparationStatus?.(target.workspaceId) ?? [];
         const activity = seam.workspaceDerivationStatus?.(target.workspaceId) ?? null;
         notifyPeerSession(peer, sessionHint, {
-            sessionUpdate: "notice",
-            severity: "info",
-            title: "workspace:state",
+            sessionUpdate: "session_info_update",
             _meta: {
                 plurnk: {
                     workspace: {

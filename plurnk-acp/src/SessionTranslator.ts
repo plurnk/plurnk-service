@@ -800,10 +800,66 @@ export default class SessionTranslator {
     }
 
     notice(notice: Notice): AcpSessionUpdate[] {
+        if (notice.source === "engine:emission") {
+            return [];
+        }
+        if (
+            (notice.source === "engine:turn" &&
+                (notice.kind === "turn_awaiting_model" ||
+                    notice.kind === "turn_generated" ||
+                    notice.kind === "results_pending")) ||
+            (notice.source === "engine:lifecycle" && notice.kind === "loop_status")
+        ) {
+            return [{
+                sessionId: this.#acpSessionId,
+                update: {
+                    sessionUpdate: "state_update",
+                    state: "running",
+                    _meta: {
+                        plurnk: {
+                            notice,
+                            ...(notice.kind === "loop_status" && "status" in notice && notice.status === 202
+                                ? {
+                                      status: {
+                                          lifecycle: "parked",
+                                          loopId: notice.loopId,
+                                          loopSeq: notice.loopSeq,
+                                          packetCount: notice.packetCount,
+                                          waitUntil:
+                                              "waitUntil" in notice && typeof notice.waitUntil === "number"
+                                                  ? notice.waitUntil
+                                                  : null,
+                                      },
+                                  }
+                                : {}),
+                        },
+                    },
+                },
+            }];
+        }
+        if (
+            notice.kind === "search_progress" ||
+            (notice.source.startsWith("exec:") && "percent" in notice && typeof notice.percent === "number")
+        ) {
+            return [{
+                sessionId: this.#acpSessionId,
+                update: {
+                    sessionUpdate: "session_info_update",
+                    _meta: {
+                        plurnk: {
+                            notice,
+                        },
+                    },
+                },
+            }];
+        }
         if (notice.source === "engine:configuration") {
             const key = JSON.stringify(notice);
             if (this.#emittedConfigurationNotices.has(key)) return [];
             this.#emittedConfigurationNotices.add(key);
+        }
+        if (typeof notice.message !== "string" || notice.message.trim().length === 0) {
+            return [];
         }
         const severity = notice.level === "error"
             ? "error"
@@ -816,7 +872,7 @@ export default class SessionTranslator {
                 sessionUpdate: "notice",
                 severity,
                 title: `${notice.source}:${notice.kind}`,
-                ...(typeof notice.message === "string" ? { description: notice.message } : {}),
+                description: notice.message,
                 _meta: {
                     plurnk: {
                         notice,
@@ -997,8 +1053,10 @@ export default class SessionTranslator {
             readonly historyLoops?: number;
             readonly historyPageChars?: number;
             readonly beforeLoopSeq?: number;
+            readonly afterLoopSeq?: number;
             readonly exactLoopSeq?: number;
             readonly openStreamTargets?: ReadonlySet<string>;
+            readonly subject?: string | null;
         } = {},
     ): ReplayResult {
         return replaySessionHistory(translator, rows, inbox, options);

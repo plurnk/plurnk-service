@@ -18,6 +18,10 @@ const wrapScope = (raw: string): string => {
     if (linesCount !== null) {
         return `<1,${linesCount[1]}>`;
     }
+    const literalLInsert = /^<?L,?\s*([1-9][0-9]*),\s*L,?\s*\1>?$/iu.exec(trimmed);
+    if (literalLInsert !== null) {
+        return `<${literalLInsert[1]},1,${literalLInsert[1]},1>`;
+    }
     if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
         return `<${stripBoundaryCommas(trimmed.slice(1, -1))}>`;
     }
@@ -77,6 +81,26 @@ export const parseRangeMarker = (raw: string, position: Position = { line: 0, co
     }
     const marker = relative === null ? parseLineMarker(text, position)
         : { marks: [Number(relative[1]), Number(relative[2])] as [number, number] };
+    if (
+        relative === null
+        && marker.marks.length === 2
+        && Number.isSafeInteger(marker.marks[0])
+        && marker.marks[0] > 0
+        && marker.marks[1] === 0
+    ) {
+        return { marks: [marker.marks[0], 1, marker.marks[0], 1] };
+    }
+    if (
+        relative === null
+        && marker.marks.length === 4
+        && Number.isSafeInteger(marker.marks[0])
+        && marker.marks[0] > 0
+        && marker.marks[1] === 0
+        && marker.marks[2] === marker.marks[0]
+        && marker.marks[3] === 0
+    ) {
+        return { marks: [marker.marks[0], 1, marker.marks[0], 1] };
+    }
     const [start, end] = marker.marks;
     const count = marker.marks.length === 2 && Number.isInteger(start) && end !== undefined
         && Number.isInteger(end) && start > 0 && end > 0 && end < start;
@@ -145,6 +169,15 @@ export const parseTextLineMarker = (raw: string, position: Position = { line: 0,
         marks[index] = offset === 0 ? base[1] : `${base[1]}${offset > 0 ? "+" : ""}${offset}`;
     }
     if (marks.length === 2 && typeof marks[0] === "string" && marks[0].startsWith("@") && marks[1] === 0) {
+        return { marks: [marks[0], 1, marks[0], 1] };
+    }
+    if (
+        marks.length === 4
+        && typeof marks[0] === "string" && marks[0].startsWith("@")
+        && marks[1] === 0
+        && marks[2] === marks[0]
+        && marks[3] === 0
+    ) {
         return { marks: [marks[0], 1, marks[0], 1] };
     }
     if (marks.length === 2 && typeof marks[0] === "string" && marks[0].startsWith("@") && marks[1] === 1) {

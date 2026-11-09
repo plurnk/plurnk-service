@@ -496,6 +496,9 @@ export const extractPlurnkMeta = (meta: unknown): {
     readonly activate?: boolean;
     readonly control?: boolean;
     readonly archived?: boolean;
+    readonly window?: boolean;
+    readonly historyLoops?: number;
+    readonly historyPageChars?: number;
     readonly messageId?: string;
     readonly projectRoot?: string | null;
     readonly settings?: Record<string, unknown>;
@@ -525,6 +528,13 @@ export const extractPlurnkMeta = (meta: unknown): {
     const activate = typeof p.activate === "boolean" ? p.activate : undefined;
     const control = typeof p.control === "boolean" ? p.control : undefined;
     const archived = typeof p.archived === "boolean" ? p.archived : undefined;
+    const window = typeof p.window === "boolean" ? p.window : undefined;
+    const historyLoops = typeof p.historyLoops === "number" && Number.isInteger(p.historyLoops) && p.historyLoops > 0
+        ? p.historyLoops
+        : undefined;
+    const historyPageChars = typeof p.historyPageChars === "number" && Number.isInteger(p.historyPageChars) && p.historyPageChars > 0
+        ? p.historyPageChars
+        : undefined;
     const messageId = typeof p.messageId === "string" && p.messageId.trim().length > 0
         ? p.messageId.trim()
         : undefined;
@@ -548,6 +558,9 @@ export const extractPlurnkMeta = (meta: unknown): {
         ...(activate !== undefined ? { activate } : {}),
         ...(control !== undefined ? { control } : {}),
         ...(archived !== undefined ? { archived } : {}),
+        ...(window !== undefined ? { window } : {}),
+        ...(historyLoops !== undefined ? { historyLoops } : {}),
+        ...(historyPageChars !== undefined ? { historyPageChars } : {}),
         ...(messageId !== undefined ? { messageId } : {}),
         ...(projectRoot !== undefined ? { projectRoot } : {}),
         ...(settings !== undefined ? { settings } : {}),

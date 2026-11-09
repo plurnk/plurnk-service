@@ -47,9 +47,12 @@ const queryFrom = (url: URL): string | null => {
 export const parsePath = (raw: string, pos: Position = { line: 0, column: 0 }): ParsedPath | null => {
     if (raw.length === 0) return null;
     const unescaped = PathSyntax.unescapeTarget(raw);
-    const target = /^log:\/\/\/[^\s()]+(?:\s+\([^()]+\))?(?:\s*·\s*\d+)?\s*$/iu.test(unescaped)
-        ? unescaped.replace(/\s+\([^()]+\)(?:\s*·\s*\d+)?\s*$|\s*·\s*\d+\s*$/u, "")
+    const normalizedScheme = /^(workspace|mcp|plurnk|log):\/\/(?=\*)/iu.test(unescaped)
+        ? unescaped.replace(/^(workspace|mcp|plurnk|log):\/\//iu, "$1:///")
         : unescaped;
+    const target = /^log:\/\/\/[^\s()]+(?:\s+\([^()]+\))?(?:\s*·\s*\d+)?\s*$/iu.test(normalizedScheme)
+        ? normalizedScheme.replace(/\s+\([^()]+\)(?:\s*·\s*\d+)?\s*$|\s*·\s*\d+\s*$/u, "")
+        : normalizedScheme;
     if (!EXPLICIT_URI.test(target)) {
         // {§op-shapes} — `#channel` after a bare path is the channel, exactly as on a
         // URL; a spelling that opens with `#` names no path, so it stays whole.
