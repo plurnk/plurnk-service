@@ -1029,11 +1029,16 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.todo({"items":[<<<EOF]})',
             'await plurnk.done({"text":<<<EOF\nReplaced every `a` at end-of-line with `A`. 19 lines modified. EOF})',
             'await plurnk.kill({"pattern":"log:///1/**/read"})',
+            '<tool_call> plurnk.read({"path":"workspace:///lines.md","range":"@2,2"})<tool_call> plurnk.todo({"items":[<<<EOF\nResolve all Open Work.\nEOF]})',
+            '<tool_call> await plurnk.done({"text":<<<EOF\nworkspace:///target.md lines 1,2 match workspace:///source.md lines 1,2.\n\nFirst line: Alpha line.\nSecond line: Beta line.<tool_call> EOF})',
+            '<tool_call> plurnk.note({"text":<<<EOF\nThe middle line from workspace:///lines.md is "2: beta".\nEOF1})',
+            '<tool_call> read{"path":"workspace:///notes.md","range":"1,-1"} // Read workspace notes\n</think><tool_call> read{"path":"skill://plurnk/SKILL.md","range":"1,-1"} // Read the main skill file\n```',
         ].join("\n\n"));
+        assert.equal(xing4Recoveries.unparsedTail, undefined);
         const xing4Errors = xing4Recoveries.items.filter((i) => i.kind === "error");
         assert.deepEqual(xing4Errors, []);
         const xing4Ops = xing4Recoveries.items.filter((i) => i.kind === "statement").map((i) => i.statement);
-        assert.equal(xing4Ops.length, 17);
+        assert.equal(xing4Ops.length, 23);
         assert.equal((xing4Ops[0] as EditStatement).body, "middle\n");
         assert.equal((xing4Ops[1] as EditStatement).body, "beta prime");
         assert.equal((xing4Ops[2] as KillStatement).target?.raw, "workspace:///notes.md");
@@ -1052,5 +1057,11 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((xing4Ops[15] as DoneStatement).body?.raw, "Replaced every `a` at end-of-line with `A`. 19 lines modified.");
         assert.equal((xing4Ops[16] as KillStatement).target?.raw, "log:///1/**/read");
         assert.equal((xing4Ops[16] as KillStatement).matcher, null);
+        assert.equal((xing4Ops[17] as ReadStatement).target?.raw, "workspace:///lines.md");
+        assert.equal((xing4Ops[18] as TodoStatement).body, "Resolve all Open Work.");
+        assert.equal((xing4Ops[19] as DoneStatement).body?.raw, "workspace:///target.md lines 1,2 match workspace:///source.md lines 1,2.\n\nFirst line: Alpha line.\nSecond line: Beta line.");
+        assert.equal((xing4Ops[20] as NoteStatement).body, 'The middle line from workspace:///lines.md is "2: beta".');
+        assert.equal((xing4Ops[21] as ReadStatement).target?.raw, "workspace:///notes.md");
+        assert.equal((xing4Ops[22] as ReadStatement).target?.raw, "skill://plurnk/SKILL.md");
     });
 });
