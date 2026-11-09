@@ -12,6 +12,8 @@ DROP TABLE _support_floor_probe;
 
 DROP VIEW IF EXISTS active_log_entries;
 DROP VIEW IF EXISTS turn_packets;
+DROP TRIGGER IF EXISTS entry_channel_rows_settle_publications;
+DROP TRIGGER IF EXISTS log_entries_advance_subscription_publication;
 
 ALTER TABLE workspaces DROP COLUMN version;
 ALTER TABLE loops DROP COLUMN version;

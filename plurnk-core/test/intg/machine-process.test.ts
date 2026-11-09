@@ -1046,6 +1046,26 @@ test(`{§db-migrations} {§message-arrival}: a ${V5_3_0.label} database scopes m
     try {
         before.exec(`
             PRAGMA foreign_keys = ON;
+            CREATE TRIGGER entry_channel_rows_settle_publications
+            AFTER DELETE ON entry_channel_rows
+            BEGIN
+                UPDATE subscription_publications
+                SET terminal_published = 1,
+                    version = version + 1
+                WHERE terminal_published = 0
+                  AND channel = OLD.name
+                  AND subscription_id IN (SELECT id FROM subscriptions WHERE entry_id = OLD.entry_id);
+            END;
+            CREATE TRIGGER log_entries_advance_subscription_publication
+            AFTER INSERT ON log_entries
+            WHEN NEW.subscription_publication_id IS NOT NULL
+            BEGIN
+                UPDATE subscription_publications
+                SET published_end = json_extract(NEW.attrs, '$.streamEnd'),
+                    terminal_published = json_extract(NEW.rx, '$.terminal'),
+                    version = version + 1
+                WHERE id = NEW.subscription_publication_id;
+            END;
             INSERT INTO workspaces (id, name) VALUES (1, 'sessionKeys');
             INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
             INSERT INTO sessions (id, workspace_id, name, origin) VALUES (1, 1, 'root', 'model'), (2, 1, 'child', 'model');
