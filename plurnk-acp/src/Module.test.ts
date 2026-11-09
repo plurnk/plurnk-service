@@ -960,7 +960,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         updates.some((u) => u.sessionUpdate === "usage_update") &&
                         updates.some(
                             (u) =>
-                                u.sessionUpdate === "session_info_update" &&
+                                u.sessionUpdate === "_plurnk_telemetry" &&
                                 (u._meta as { plurnk?: { status?: { spend?: unknown } } } | undefined)?.plurnk?.status
                                     ?.spend !== undefined,
                         ) &&
@@ -3486,6 +3486,88 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                                 content: { type: "text", text: "inline tool output content" },
                             },
                         ]);
+
+                        // 7. Internal telemetry uses _plurnk_telemetry (never bodiless session_info_update or redundant state_update)
+                        // and never leaks to named principals
+                        operatorUpdates.length = 0;
+                        scoutUpdates.length = 0;
+                        h.port.emitEvent(1, "notice/event", {
+                            sessionId: 1,
+                            notice: {
+                                source: "engine:turn",
+                                kind: "turn_awaiting_model",
+                                level: "info",
+                                message: "",
+                            },
+                        });
+                        h.port.emitEvent(1, "notice/event", {
+                            sessionId: 1,
+                            notice: {
+                                source: "exec:search",
+                                kind: "search_progress",
+                                level: "info",
+                                message: "",
+                                percent: 50,
+                            },
+                        });
+                        h.port.emitEvent(1, "workspace/preparation", {
+                            preparation: [{ family: "mcp", alias: "demo", phase: "connecting", since: 1000 }],
+                        });
+                        await waitFor(
+                            () =>
+                                operatorUpdates.filter((u) => u.sessionUpdate === "_plurnk_telemetry").length >= 3,
+                        );
+                        assert.equal(
+                            operatorUpdates.some((u) => u.sessionUpdate === "session_info_update"),
+                            false,
+                            "internal telemetry must not emit bodiless session_info_update",
+                        );
+                        assert.equal(
+                            operatorUpdates.some((u) => u.sessionUpdate === "state_update"),
+                            false,
+                            "engine:turn:* telemetry must not emit redundant state_update",
+                        );
+                        assert.equal(
+                            scoutUpdates.length,
+                            0,
+                            "internal _plurnk_telemetry must never leak to named principals",
+                        );
+
+                        // 8. Resuming by bare session name or <workspaceName>#<sessionName> resolves a renamed workspace
+                        h.port.workspaces.push({
+                            id: 13,
+                            name: "gookie",
+                            project_root: "/home/hyzen/ptl/roblox-family-planner/gookie",
+                            project_label: "~/ptl/roblox-family-planner/gookie",
+                            created_at: "2026-10-25T00:00:00.000Z",
+                            archived_at: null,
+                        });
+                        h.port.sessions.push({
+                            id: 82,
+                            workspaceId: 13,
+                            name: "gookie",
+                            created_at: "2026-10-25T00:00:00.000Z",
+                            origin: "model",
+                            owner: "acp://operator",
+                            parentSessionId: null,
+                            kind: "root",
+                            lifecycle: "idle",
+                            archived_at: null,
+                        });
+                        const resumedByBare = await opConn.request(methods.agent.session.resume, {
+                            sessionId: "gookie",
+                            cwd: "/home/hyzen/ptl/roblox-family-planner/gookie",
+                        });
+                        assert.ok(Array.isArray(resumedByBare.configOptions));
+                        const resumedByNamedQualified = await opConn.request(methods.agent.session.resume, {
+                            sessionId: "gookie#gookie",
+                            cwd: "/home/hyzen/ptl/roblox-family-planner/gookie",
+                        });
+                        assert.ok(Array.isArray(resumedByNamedQualified.configOptions));
+                        const statusByNamedQualified = await opConn.request(methods.agent.session.status, {
+                            sessionId: "gookie#gookie",
+                        });
+                        assert.equal(statusByNamedQualified.status, "open");
                     });
                 });
             });

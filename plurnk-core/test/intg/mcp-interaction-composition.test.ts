@@ -614,7 +614,7 @@ for (const stage of ["MRTR", "Task"] as const) {
             }), 2);
             const wsUpdate = updatesOf(events).find((u) => {
                 const ws = (u._meta as { plurnk?: { workspace?: { id?: unknown } } } | undefined)?.plurnk?.workspace;
-                return u.sessionUpdate === "session_info_update" && typeof ws?.id === "number";
+                return u.sessionUpdate === "_plurnk_telemetry" && typeof ws?.id === "number";
             }) as {
                 _meta?: { plurnk?: { workspace?: { id: number } } };
             } | undefined;
@@ -707,7 +707,7 @@ for (const source of ["MRTR", "Task", "resource", "prompt"] as const) {
         }), 2);
         const wsUpdate = updatesOf(events).find((u) => {
             const ws = (u._meta as { plurnk?: { workspace?: { id?: unknown } } } | undefined)?.plurnk?.workspace;
-            return u.sessionUpdate === "session_info_update" && typeof ws?.id === "number";
+            return u.sessionUpdate === "_plurnk_telemetry" && typeof ws?.id === "number";
         }) as {
             _meta?: { plurnk?: { workspace?: { id: number } } };
         } | undefined;

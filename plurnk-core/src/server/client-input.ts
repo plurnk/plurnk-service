@@ -1,7 +1,7 @@
 // Client-input validation at the seam. Malformed external input becomes one
 // exact public operation failure for every module riding the daemon surface.
 // Internal invariant violations still throw ordinary implementation errors.
-import { isAbsolute } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { parsePath } from "@plurnk/plurnk-parser";
 import Results, { OperationFailureError } from "../core/results.ts";
 import FileCreationPolicy, { FILE_CREATE_SCOPES, type FileCreateScope } from "../core/file-creation-policy.ts";
@@ -81,7 +81,7 @@ export default class ClientInput {
                 { field: "projectRoot", value: root, recovery: "Provide an absolute project path." },
             );
         }
-        return root;
+        return resolve(root);
     }
 
     static assertOptionalName(context: string, field: string, value: unknown): string | undefined {

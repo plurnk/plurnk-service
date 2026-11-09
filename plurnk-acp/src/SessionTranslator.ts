@@ -813,8 +813,7 @@ export default class SessionTranslator {
             return [{
                 sessionId: this.#acpSessionId,
                 update: {
-                    sessionUpdate: "state_update",
-                    state: "running",
+                    sessionUpdate: "_plurnk_telemetry",
                     _meta: {
                         plurnk: {
                             notice,
@@ -844,7 +843,7 @@ export default class SessionTranslator {
             return [{
                 sessionId: this.#acpSessionId,
                 update: {
-                    sessionUpdate: "session_info_update",
+                    sessionUpdate: "_plurnk_telemetry",
                     _meta: {
                         plurnk: {
                             notice,

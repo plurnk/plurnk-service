@@ -492,7 +492,7 @@ const resolveActionTarget = async (
         ? rawParams.workspace
         : typeof params.workspace === "string"
           ? params.workspace
-          : undefined;
+          : parsedSession?.workspaceName;
     const cwdHint = typeof rawParams.cwd === "string"
         ? rawParams.cwd
         : typeof params.cwd === "string"
@@ -867,7 +867,7 @@ export const handlePlurnkAction = async (
         const preparation = seam.workspacePreparationStatus?.(target.workspaceId) ?? [];
         const activity = seam.workspaceDerivationStatus?.(target.workspaceId) ?? null;
         notifyPeerSession(peer, sessionHint, {
-            sessionUpdate: "session_info_update",
+            sessionUpdate: "_plurnk_telemetry",
             _meta: {
                 plurnk: {
                     workspace: {

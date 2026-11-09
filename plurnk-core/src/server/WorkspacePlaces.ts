@@ -270,13 +270,15 @@ export default class WorkspacePlaces {
         const explicit = ClientInput.assertOptionalWorkspaceName("workspace.create", "name", args.name);
         const projectRoot = ClientInput.assertProjectRoot("workspace.create", args.projectRoot);
         const settings = ClientInput.parseSettings(args.settings);
-        // {§execution-output-identity} — with a project root and no name, the workspace is named after the root with
-        // the daemon's home abbreviated to `~`, and that name selects the existing workspace when one exists:
-        // a default is a convention shared by every client, never a second workspace.
+        // {§execution-output-identity} — with a project root and no name, project_root selects an existing
+        // workspace for that folder when one exists; otherwise the new workspace defaults its name to the
+        // root with the daemon's home abbreviated to `~`.
         const derived = explicit === undefined && projectRoot !== null ? this.#hostPaths.abbreviateUserPath(projectRoot) : undefined;
         const selected = async (): Promise<ClientEnvelope | undefined> => {
-            if (derived === undefined) return undefined;
-            const existing = await this.#db.envelope_get_workspace_by_name.get<{ id: number; archived_at: string | null }>({ name: derived });
+            if (explicit !== undefined || projectRoot === null) return undefined;
+            const existing =
+                (await this.#db.envelope_get_workspace_by_project_root.get<{ id: number; archived_at: string | null }>({ project_root: projectRoot })) ??
+                (derived !== undefined ? await this.#db.envelope_get_workspace_by_name.get<{ id: number; archived_at: string | null }>({ name: derived }) : undefined);
             if (existing === undefined) return undefined;
             // {§machine-processes} Creating by the folder selects an archived workspace and unarchives it.
             if (existing.archived_at !== null) await this.setWorkspaceArchived({ workspaceId: existing.id, archived: false });
@@ -308,7 +310,7 @@ export default class WorkspacePlaces {
         );
     }
 
-    // {§methods-workspace-create} Selection is passive and never searches by the stored project folder.
+    // {§methods-workspace-create} Selection resolves by exactly one selector: workspaceId, name, or projectRoot.
     async attachWorkspace(args: Parameters<ApplicationPort["attachWorkspace"]>[0]): Promise<ClientEnvelope> {
         const selectors = (["workspaceId", "name", "projectRoot"] as const).filter((key) => Object.hasOwn(args, key));
         if (selectors.length !== 1 || args[selectors[0]] == null) {
@@ -319,9 +321,16 @@ export default class WorkspacePlaces {
             const workspaceId = ClientInput.assertId("workspace.attach", "workspaceId", args.workspaceId);
             return this.#labelled(await Envelope.attachToWorkspace(this.#db, workspaceId));
         }
-        const name = Object.hasOwn(args, "name")
-            ? ClientInput.assertOptionalName("workspace.attach", "name", args.name)!
-            : this.#hostPaths.abbreviateUserPath(ClientInput.assertProjectRoot("workspace.attach", args.projectRoot)!);
+        if (Object.hasOwn(args, "projectRoot")) {
+            const projectRoot = ClientInput.assertProjectRoot("workspace.attach", args.projectRoot)!;
+            const existing = await this.#db.envelope_get_workspace_by_project_root.get<{ id: number }>({ project_root: projectRoot });
+            if (existing === undefined) {
+                throw daemonFailure("daemon:workspace", "workspace-not-found", 404,
+                    `Workspace for project root ${JSON.stringify(projectRoot)} does not exist.`, { projectRoot });
+            }
+            return this.#labelled(await Envelope.attachToWorkspace(this.#db, existing.id));
+        }
+        const name = ClientInput.assertOptionalName("workspace.attach", "name", args.name)!;
         const existing = await this.#db.envelope_get_workspace_by_name.get<{ id: number }>({ name });
         if (existing === undefined) {
             throw daemonFailure("daemon:workspace", "workspace-not-found", 404,

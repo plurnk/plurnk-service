@@ -88,11 +88,11 @@ test("{§execution-output-identity} workspace.create with a project root and no 
             assert.equal(far.name, outside, "outside the home the name is the absolute path");
             await assert.rejects(daemon.createWorkspace({ name: first.name, projectRoot: inside }), (error: unknown) =>
                 error instanceof OperationFailureError && (error.result.problem?.type ?? "").endsWith("name-conflict"), "an explicit name that exists is a conflict, never a selection");
-            // The default is a convention, not a mapping: a renamed workspace is not re-selected by its old default.
+            // Default creation selects by projectRoot even after the workspace is renamed; the default name is only the initial name.
             await daemon.renameWorkspace(first.id, "renamed-workspace");
-            const fresh = (await rpcCall(ws, 4, "workspace.create", { projectRoot: inside })).result as { id: number; name: string };
-            assert.notEqual(fresh.id, first.id);
-            assert.equal(fresh.name, first.name);
+            const afterRename = (await rpcCall(ws, 4, "workspace.create", { projectRoot: inside })).result as { id: number; name: string };
+            assert.equal(afterRename.id, first.id);
+            assert.equal(afterRename.name, "renamed-workspace");
         } finally {
             ws.close();
             await rm(inside, { recursive: true, force: true });
@@ -101,7 +101,7 @@ test("{§execution-output-identity} workspace.create with a project root and no 
     });
 });
 
-test("{§methods-workspace-create} read-only selection uses exactly the ID, literal name or folder-derived default and creates nothing", async () => {
+test("{§methods-workspace-create} read-only selection uses the ID, literal name, or stored projectRoot and creates nothing", async () => {
     await withDaemon(null, async (_db, daemon) => {
         const projectRoot = join(new HostPaths().home, "read-only-selection");
         const folder = await daemon.createWorkspace({ projectRoot });
@@ -124,10 +124,12 @@ test("{§methods-workspace-create} read-only selection uses exactly the ID, lite
             assert.deepEqual(await daemon.listSessions(literal.workspaceId), []);
             assert.deepEqual(events, [], "selection emits no creation or activation events");
             await daemon.renameWorkspace(folder.workspaceId, "renamed-selection");
-            await assert.rejects(daemon.attachWorkspace({ projectRoot }), (error: unknown) =>
-                error instanceof OperationFailureError && error.result.status === 404 && (error.result.problem?.type ?? "").endsWith("workspace-not-found"),
-                "a stored project folder does not become a second lookup identity after rename");
+            assert.equal((await daemon.attachWorkspace({ projectRoot })).workspaceId, folder.workspaceId,
+                "projectRoot selection resolves the workspace by its project_root after rename");
             assert.equal((await daemon.attachWorkspace({ name: "renamed-selection" })).workspaceId, folder.workspaceId);
+            await assert.rejects(daemon.attachWorkspace({ name: folder.workspaceName }), (error: unknown) =>
+                error instanceof OperationFailureError && error.result.status === 404 && (error.result.problem?.type ?? "").endsWith("workspace-not-found"),
+                "the old name is no longer held after rename");
         } finally { unsubscribe(); }
     });
 });

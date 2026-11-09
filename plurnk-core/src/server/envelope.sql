@@ -14,6 +14,10 @@ SELECT id, name, project_root FROM workspaces WHERE id = $id;
 -- workspace.rename collision check — workspaces.name is UNIQUE. {§machine-processes} an archived one still holds its name.
 SELECT id, archived_at FROM workspaces WHERE name = $name;
 
+-- PREP: envelope_get_workspace_by_project_root
+-- {§methods-workspace-create} projectRoot selection matches the stored project_root.
+SELECT id, archived_at FROM workspaces WHERE project_root = $project_root ORDER BY archived_at IS NOT NULL ASC, id ASC LIMIT 1;
+
 -- PREP: envelope_set_workspace_name
 -- Used by workspace.rename. The workspace name is a MUTABLE handle (vs a session's
 -- immutable name, {§machine-processes}). Returns the updated row to refresh the
