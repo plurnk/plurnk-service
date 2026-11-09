@@ -233,6 +233,10 @@ export const scanChunks = (
             }
 
             if (ch === '"' || ch === "'" || ch === "`") {
+                if (openedCall && parenDepth === 1 && braceDepth === 0 && bracketDepth === 0 && prevSigChar === "}" && /^[ \t]*\)/u.test(source.slice(i + 1))) {
+                    i += 1;
+                    continue;
+                }
                 inString = ch;
                 i += 1;
                 continue;
@@ -259,7 +263,20 @@ export const scanChunks = (
                 prevSigChar = ch;
                 i += 1;
                 if (openedCall && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
-                    while (i < source.length && (source[i] === " " || source[i] === "\t" || source[i] === "\r" || source[i] === "}" || source[i] === ")")) i += 1;
+                    while (
+                        i < source.length
+                        && (
+                            source[i] === " "
+                            || source[i] === "\t"
+                            || source[i] === "\r"
+                            || source[i] === "}"
+                            || source[i] === ")"
+                            || source[i] === "]"
+                            || ((source[i] === "'" || source[i] === '"') && /^[)\]; \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(source.slice(i + 1)))
+                        )
+                    ) {
+                        i += 1;
+                    }
                     if (source[i] === ";" || (source[i] === "." && /^[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(source.slice(i + 1)))) {
                         i += 1;
                         while (i < source.length && (source[i] === " " || source[i] === "\t" || source[i] === "\r")) i += 1;

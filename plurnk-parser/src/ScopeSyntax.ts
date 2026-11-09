@@ -20,6 +20,10 @@ const wrapScope = (raw: string): string => {
     if (linesCount !== null) {
         return `<1,${linesCount[1]}>`;
     }
+    const colonLines = /^([1-9][0-9]*):([1-9][0-9]*)$/u.exec(trimmed);
+    if (colonLines !== null && Number(colonLines[1]) <= Number(colonLines[2])) {
+        return `<${colonLines[1]},${colonLines[2]}>`;
+    }
     if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
         return `<${stripBoundaryCommas(trimmed.slice(1, -1))}>`;
     }

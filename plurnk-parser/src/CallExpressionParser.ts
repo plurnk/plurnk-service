@@ -1,4 +1,4 @@
-import { PlurnkParseError, type Position } from "@plurnk/plurnk-contracts";
+import { PlurnkParseError, isRecord, type Position } from "@plurnk/plurnk-contracts";
 import {
     HEREDOC_OBJECT_KEYS,
     findHeredocCloser,
@@ -451,9 +451,9 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
             const id = idMatch[0];
             const idStart = idx;
             idx += id.length;
-            if (id === "true") return true;
-            if (id === "false") return false;
-            if (id === "null") return null;
+            if (id === "true" || id === "True") return true;
+            if (id === "false" || id === "False") return false;
+            if (id === "null" || id === "None") return null;
             if (id === "undefined") return undefined;
             if (id === "NaN") return Number.NaN;
             if (id === "Infinity") return Number.POSITIVE_INFINITY;
@@ -498,7 +498,35 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
                 idx += 1;
                 return args;
             }
-            args.push(readValueExpr());
+            const kwMatch = /^([A-Za-z_$][A-Za-z0-9_$-]*)[ \t\r\n]*=(?![=>])/u.exec(code.slice(idx));
+            if (kwMatch !== null) {
+                const key = kwMatch[1];
+                idx += kwMatch[0].length;
+                inObjectPropertyValue = true;
+                let kwVal: unknown;
+                let propWasHeredoc = false;
+                try {
+                    kwVal = readValueExpr();
+                    propWasHeredoc = lastValueWasHeredoc;
+                } finally {
+                    inObjectPropertyValue = false;
+                }
+                const lastArg = args.length > 0 ? args[args.length - 1] : undefined;
+                if (isRecord(lastArg)) {
+                    lastArg[key] = kwVal;
+                    if (propWasHeredoc) {
+                        HEREDOC_OBJECT_KEYS.set(lastArg, new Set([...(HEREDOC_OBJECT_KEYS.get(lastArg) ?? []), key]));
+                    }
+                } else {
+                    const kwObj: Record<string, unknown> = { [key]: kwVal };
+                    if (propWasHeredoc) {
+                        HEREDOC_OBJECT_KEYS.set(kwObj, new Set([key]));
+                    }
+                    args.push(kwObj);
+                }
+            } else {
+                args.push(readValueExpr());
+            }
             skipTrivia();
             if (transposedCallClose) {
                 transposedCallClose = false;
@@ -506,6 +534,8 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
             }
             while (
                 (code[idx] === "}" && /^\}+\s*(?:\/?>\s*)?\)/u.test(code.slice(idx)))
+                || (code[idx] === "]" && /^\]+\s*\)/u.test(code.slice(idx)))
+                || ((code[idx] === "'" || code[idx] === '"') && /^['"]+\s*\)/u.test(code.slice(idx)))
                 || ((code[idx] === "/" || code[idx] === ">") && /^\/?>\s*\)/u.test(code.slice(idx)))
             ) {
                 if (code[idx] === "/" && code[idx + 1] === ">") idx += 2;
@@ -618,6 +648,8 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
                 code[idx] === ";"
                 || code[idx] === "}"
                 || code[idx] === ")"
+                || code[idx] === "]"
+                || ((code[idx] === "'" || code[idx] === '"') && /^[)\]; \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx + 1)))
                 || (code[idx] === "." && /^[ \t\r]*(?:\/\/[^\n]*)?(?:\n|$)/u.test(code.slice(idx + 1)))
             ) {
                 idx += 1;

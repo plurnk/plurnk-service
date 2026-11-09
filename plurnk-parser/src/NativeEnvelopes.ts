@@ -274,8 +274,8 @@ const translatePythonicToolCalls = (
 ): string | null => {
     let trimmed = rawText.trim();
     if (trimmed.length === 0) return null;
-    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-        const inside = trimmed.slice(1, -1).trim();
+    if (trimmed.startsWith("[") && /\][ \t)'"]*$/u.test(trimmed)) {
+        const inside = trimmed.slice(1).replace(/(?:'[ \t]*)?\][ \t)\]]*$/u, "").trim();
         if (!/^(?:await\s+)?[A-Za-z_$]/u.test(inside)) return null;
         trimmed = inside;
     }
@@ -303,10 +303,18 @@ const translatePythonicToolCalls = (
         const kwargsObj: Record<string, unknown> = {};
         for (const item of argItems) {
             const kwMatch = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([\s\S]+)$/u.exec(item);
-            if (kwMatch === null) return null;
-            const parsedVal = parsePythonLiteralValue(kwMatch[2]);
-            if (!parsedVal.ok) return null;
-            kwargsObj[kwMatch[1]] = parsedVal.value;
+            if (kwMatch !== null) {
+                const parsedVal = parsePythonLiteralValue(kwMatch[2]);
+                if (!parsedVal.ok) return null;
+                kwargsObj[kwMatch[1]] = parsedVal.value;
+                continue;
+            }
+            const parsedPositional = parsePythonLiteralValue(item);
+            if (parsedPositional.ok && isRecord(parsedPositional.value)) {
+                Object.assign(kwargsObj, parsedPositional.value);
+                continue;
+            }
+            return null;
         }
         translatedCalls.push(formatTranslatedCall(target, kwargsObj));
     }
@@ -336,7 +344,12 @@ const unwrapWrapperInnerCalls = (
     if (pythonicTranslated !== null) {
         return padNewlines(pythonicTranslated, fullMatch);
     }
-    const unbackticked = inner.replace(/^[ \t]*`((?:await\s+)?[A-Za-z_$][\s\S]*?)`[ \t]*$/gmu, "$1");
+    let unbackticked = inner.replace(/^[ \t]*`((?:await\s+)?[A-Za-z_$][\s\S]*?)`[ \t]*$/gmu, "$1");
+    if (/^[ \t]*\[[ \t]*(?:await\s+)?[A-Za-z_$]/u.test(unbackticked)) {
+        unbackticked = unbackticked
+            .replace(/^([ \t]*)\[[ \t]*/u, "$1")
+            .replace(/(?:'[ \t]*)?\][ \t)\]]*$/u, "");
+    }
     if (CONTAINS_CALL.test(unbackticked)) {
         return padNewlines(unbackticked.replace(/^\r?\n/u, "\n"), fullMatch);
     }
@@ -450,13 +463,18 @@ const translatePrefixEnvelopeCalls = (
 
     // 5. Fallback for unclosed `<|python_tag|>` / `<|tool_call|>` followed by Pythonic or Code Mode call on the same paragraph
     out = out.replace(
-        /^[ \t]*(?:<tool_call\b[^>]*>|<TOOLCALL\b[^>]*>|<\|python_tag\|>|<\|tool_call[^>]*>|\[TOOL_CALLS\])[ \t]*(\r?\n)?([ \t]*(?:\[[A-Za-z_$][\s\S]*?\]|(?:await\s+)?[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])?\s*\([\s\S]*?))(?=\r?\n\r?\n|$)/gmu,
+        /^[ \t]*(?:<tool_call\b[^>]*>|<TOOLCALL\b[^>]*>|<\|python_tag\|>|<\|tool_call[^>]*>|\[TOOL_CALLS\])[ \t]*(\r?\n)?([ \t]*(?:\[[ \t]*(?:await\s+)?[A-Za-z_$][\s\S]*?|(?:await\s+)?[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])?\s*\([\s\S]*?))(?=\r?\n\r?\n|$)/gmu,
         (fullMatch, nl: string | undefined, payload: string) => {
             const prefixNewline = nl ?? "";
-            const cleanedPayload = payload.replace(/[ \t]*(?:<\/tool_call>|<\/TOOLCALL>|<\|\/tool_call\|>|\[\/TOOL_CALLS\])[ \t]*$/iu, "");
+            let cleanedPayload = payload.replace(/[ \t]*(?:<\/tool_call>|<\/TOOLCALL>|<\|\/tool_call\|>|\[\/TOOL_CALLS\])[ \t]*$/iu, "");
             const pythonicTranslated = translatePythonicToolCalls(cleanedPayload, executorSpellings);
             if (pythonicTranslated !== null) {
                 return padNewlines(`${prefixNewline}${pythonicTranslated}`, fullMatch);
+            }
+            if (/^[ \t]*\[[ \t]*(?:await\s+)?[A-Za-z_$]/u.test(cleanedPayload)) {
+                cleanedPayload = cleanedPayload
+                    .replace(/^([ \t]*)\[[ \t]*/u, "$1")
+                    .replace(/(?:'[ \t]*)?\][ \t)\]]*$/u, "");
             }
             if (CONTAINS_CALL.test(cleanedPayload)) {
                 return padNewlines(`${prefixNewline}${cleanedPayload}`, fullMatch);
@@ -651,13 +669,18 @@ export const unwrapCodeModeFences = (
 export const translateToolCallsOutsideFences = (input: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string => {
     const { masked, bodies } = maskHeredocBodies(input);
     const strippedSeedThink = masked.replace(
-        /<(?:seed|mm|minimax):think>[\s\S]*?<\/(?:seed|mm|minimax):think>|^[ \t]*[^\r\n]*?<\/(?:seed|mm|minimax):think>[ \t]*(?=(?:await\s+)?[A-Za-z_$(])|^[ \t]*[^\r\n]*?<\|tool_call[_:]start\|>[ \t]*(?=(?:await\s+)?[A-Za-z_$][A-Za-z0-9_$.-]*\s*\()/gimu,
+        /<(?:seed|mm|minimax):think>[\s\S]*?<\/(?:seed|mm|minimax):think>|^[ \t]*[^\r\n]*?<\/(?:seed|mm|minimax):think>[ \t]*(?=(?:await\s+)?[A-Za-z_$(])|^[ \t]*[^\r\n]+?(?=<\|tool_call[_:]start\|>)|(?:<\/?\|(?:begin|end|im_end|eot_id|end_of_text)\|>|<\|(?:start|channel)\|>[^\r\n]*)+/gimu,
         (fullMatch) => padNewlines("", fullMatch),
     );
-    const preTranslated = strippedSeedThink.replace(
-        /<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]calls(?:_section)?[▁_]end[|｜]>|<[|｜]tool[▁_]call[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]call[▁_]end[|｜]>|<\|tool_call[_:]start\|>[\s\S]*?<\|tool_call[_:]end\|>|<((?:[|｜]+)?DSML[|｜]+\s*(?:function_calls?|tool_calls?|calls|invoke)|(?:antml:|[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:invoke|function|toolcall|toolcalls|tool_call|tool_calls|functioncall|functioncalls|function_call|function_calls|tool-call|tool-calls|tool calls?|function calls?|tool|call|calls|tool_use|tool use|result))\b[^>]*>[\s\S]*?<\/\1>/giu,
-        (fullMatch) => translateSegmentToolCalls(fullMatch, executorSpellings),
-    );
+    const preTranslated = strippedSeedThink
+        .replace(
+            /<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]calls(?:_section)?[▁_]end[|｜]>|<[|｜]tool[▁_]call[▁_]begin[|｜]>[\s\S]*?<[|｜]tool[▁_]call[▁_]end[|｜]>|<\|tool_call[_:]start\|>[\s\S]*?<\|tool_call[_:]end\|>|<((?:[|｜]+)?DSML[|｜]+\s*(?:function_calls?|tool_calls?|calls|invoke)|(?:antml:|[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:invoke|function|toolcall|toolcalls|tool_call|tool_calls|functioncall|functioncalls|function_call|function_calls|tool-call|tool-calls|tool calls?|function calls?|tool|call|calls|tool_use|tool use|result))\b[^>]*>[\s\S]*?<\/\1>/giu,
+            (fullMatch) => translateSegmentToolCalls(fullMatch, executorSpellings),
+        )
+        .replace(
+            /^[ \t]*[^\r\n]*?<\|tool_call[_:]start\|>[ \t]*\[?[ \t]*(?=\r?\n?[ \t]*(?:await\s+)?[A-Za-z_$(])/gimu,
+            (fullMatch) => padNewlines("", fullMatch),
+        );
     const lines = preTranslated.split("\n");
     const out: string[] = [];
     let nonFenceStart = 0;
