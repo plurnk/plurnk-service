@@ -104,6 +104,17 @@ export const assertAllowedKeys = (
             }
         }
     }
+    if (
+        allowed.has("pattern")
+        && obj.pattern === undefined
+        && obj.matcher === undefined
+        && obj.query === undefined
+        && typeof obj.range === "string"
+        && /^(?:\$(?:\.|\[|\.\.)|\/|~|&)/u.test(obj.range.trim())
+    ) {
+        obj.pattern = obj.range;
+        delete obj.range;
+    }
     for (const [key, value] of Object.entries(obj)) {
         if (
             key === "text" &&
@@ -298,7 +309,11 @@ export const toRemote = (value: unknown, pos: Position): boolean | null => {
 
 export const toRangeString = (value: unknown, pos: Position): string | null => {
     if (value === undefined || value === null) return null;
-    if (typeof value === "string") return value;
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed === "" || /^\d+\s+resources?$/iu.test(trimmed)) return null;
+        return value;
+    }
     if (typeof value === "number") return String(value);
     if (Array.isArray(value)) {
         if (value.length === 0) {

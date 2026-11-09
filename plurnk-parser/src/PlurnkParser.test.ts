@@ -958,5 +958,36 @@ describe("PlurnkParser Code Mode", () => {
         assert.deepEqual((mbOps[5] as EditStatement).matcher, { dialect: "regex", raw: "a$", pattern: "a$", flags: "" });
         assert.equal((mbOps[6] as DoneStatement).body?.raw, "Done. `workspace:///notes.md` now has 5 lines");
         assert.equal((mbOps[6] as DoneStatement).target?.raw, "message://main/1a9c4eca");
+
+        const lfm25Recoveries = PlurnkParser.parse([
+            '<|tool_call_start|>[await plurnk.done({"text": "ok"})',
+            '<|tool_call_start|>[await plurnk.edit({"path":"workspace:///notes.md","range":"@g7591","text":"delta\\nbeta"})</|begin|>',
+            '<|tool_call_start|>[await plurnk.read({"path":"workspace:///notes.md"})</|end|><|start|>assistant<|channel|>',
+            '<|tool_call_start|>[plurnk.note({"text": "Workspace file: src/retry.ts"})\' )]<|tool_call_end|>',
+            '<|tool_call_start|>[await plurnk.done({"text": "line 2"})])<|tool_call_end|>',
+            '<|tool_call_start|>[plurnk.note({"text": "noted"})])]<|tool_call_end|>',
+            'plurnk.todo(items=[])',
+            'await plurnk.note({"text": "hybrid"}, path="workspace:///notes.md")',
+            'await plurnk.find({"path": "workspace:///", "pattern": "retry", "range": "1 resource"})',
+            'await plurnk.read({"path": "workspace:///notes.md", "range": ""})',
+            'await plurnk.edit({"path": "workspace:///config.json", "range": "$.host", "text": "db.example"})',
+            'await plurnk.edit({"path": "workspace:///notes.md", "range": "1:1", "pattern": "^.{2}", "text": "AL"})',
+        ].join("\n\n"));
+        assert.equal(lfm25Recoveries.items.every((i) => i.kind === "statement"), true);
+        const lfm25Ops = lfm25Recoveries.items.filter((i) => i.kind === "statement").map((i) => i.statement);
+        assert.equal(lfm25Ops.length, 12);
+        assert.equal((lfm25Ops[0] as DoneStatement).body?.raw, "ok");
+        assert.equal((lfm25Ops[1] as EditStatement).target?.raw, "workspace:///notes.md");
+        assert.equal((lfm25Ops[2] as ReadStatement).target?.raw, "workspace:///notes.md");
+        assert.equal((lfm25Ops[3] as NoteStatement).body, "Workspace file: src/retry.ts");
+        assert.equal((lfm25Ops[4] as DoneStatement).body?.raw, "line 2");
+        assert.equal((lfm25Ops[5] as NoteStatement).body, "noted");
+        assert.equal((lfm25Ops[6] as TodoStatement).body, null);
+        assert.equal((lfm25Ops[7] as NoteStatement).body, "hybrid");
+        assert.equal((lfm25Ops[8] as FindStatement).lineMarker, null);
+        assert.equal((lfm25Ops[9] as ReadStatement).lineMarker, null);
+        assert.deepEqual((lfm25Ops[10] as EditStatement).matcher, { dialect: "jsonpath", raw: "$.host" });
+        assert.equal((lfm25Ops[10] as EditStatement).lineMarker, null);
+        assert.deepEqual((lfm25Ops[11] as EditStatement).lineMarker, { marks: [1, 1] });
     });
 });
