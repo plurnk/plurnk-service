@@ -269,7 +269,7 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.find({ path: "a.ts", pattern: "&>MySymbol" });',
             'await plurnk.find({ path: "a.ts", pattern: "/render\\\\|parse/" });',
             'await plurnk.find({ path: "a.ts", pattern: "/Enum/{5,40}" });',
-            'await plurnk.edit({ path: "catalog.xml", pattern: "/root/item[@id=\'old\']/@id", text: "new" });',
+            'await plurnk.edit({ path: "catalog.xml", pattern: "/root/item[@id=\'old\']/@id/text()", text: "new" });',
             'await plurnk.edit({ path: "catalog.xml", pattern: "/root/item[@id=\'old\']/text()", text: "C" });',
         ].join("\n"));
         assert.equal((ops[0] as FindStatement).matcher?.dialect, "xpath");

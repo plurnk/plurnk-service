@@ -247,9 +247,10 @@ export const parseMatcher = (body: string, op = "read", pos: Position = { line: 
         return { dialect: "glob", raw };
     }
     if (raw.startsWith("//")) {
-        try { xpath.parse(raw); }
+        const normalized = raw.replace(/(?<=\/@[A-Za-z_*][\w.:-]*)\/text\(\)/gu, "");
+        try { xpath.parse(normalized); }
         catch (e) {
-            const repaired = raw.replace(/(?<=[A-Za-z0-9_*\]])@(?=[A-Za-z_*])/gu, "/@");
+            const repaired = normalized.replace(/(?<=[A-Za-z0-9_*\]])@(?=[A-Za-z_*])/gu, "/@");
             if (repaired !== raw) {
                 try {
                     xpath.parse(repaired);
@@ -260,7 +261,7 @@ export const parseMatcher = (body: string, op = "read", pos: Position = { line: 
             return unreadable(raw, `pattern leads with \`//\` but is not a valid xpath selector - ${detail(e)}`,
                 "Write an XPath 1.0 selector after `//`, such as `//dependencies/*`.");
         }
-        return { dialect: "xpath", raw };
+        return { dialect: "xpath", raw: normalized };
     }
     // {§parse-recovery} — a matcher opening with `^` or closing with `$` is a regex written without slashes or flags.
     if (raw.startsWith("^") || (raw.length > 1 && !/^[/$~&]/u.test(raw) && /(?<!\\)\$$/u.test(raw))) {
@@ -303,10 +304,10 @@ export const parseMatcher = (body: string, op = "read", pos: Position = { line: 
                 && /^\/[A-Za-z_*]/u.test(raw)
                 && /\/(?:@[A-Za-z_*]|[A-Za-z_*][\w.-]*\[|(?:text|node|comment|processing-instruction)\(\)|[A-Za-z_*][\w.-]*\/[A-Za-z_*@])/u.test(raw)
             ) {
+                const normalized = raw.replace(/(?<=\/@[A-Za-z_*][\w.:-]*)\/text\(\)/gu, "");
                 try {
-                    xpath.parse(raw);
-                    advise?.(pos, `\`${raw}\` was read as an XPath selector; start XPath selectors with \`//\`, such as \`/${raw}\`.`);
-                    return { dialect: "xpath", raw };
+                    xpath.parse(normalized);
+                    return { dialect: "xpath", raw: normalized };
                 } catch { /* fall through */ }
             }
         }
