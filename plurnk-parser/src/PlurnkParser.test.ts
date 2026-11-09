@@ -269,6 +269,8 @@ describe("PlurnkParser Code Mode", () => {
             'await plurnk.find({ path: "a.ts", pattern: "&>MySymbol" });',
             'await plurnk.find({ path: "a.ts", pattern: "/render\\\\|parse/" });',
             'await plurnk.find({ path: "a.ts", pattern: "/Enum/{5,40}" });',
+            'await plurnk.edit({ path: "catalog.xml", pattern: "/root/item[@id=\'old\']/@id", text: "new" });',
+            'await plurnk.edit({ path: "catalog.xml", pattern: "/root/item[@id=\'old\']/text()", text: "C" });',
         ].join("\n"));
         assert.equal((ops[0] as FindStatement).matcher?.dialect, "xpath");
         assert.equal((ops[1] as FindStatement).matcher?.dialect, "jsonpath");
@@ -276,6 +278,8 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((ops[3] as FindStatement).matcher?.dialect, "graph");
         assert.equal((ops[4] as FindStatement).matcher?.dialect, "regex");
         assert.equal((ops[5] as FindStatement).matcher?.dialect, "unreadable");
+        assert.deepEqual((ops[6] as EditStatement).matcher, { dialect: "xpath", raw: "/root/item[@id='old']/@id" });
+        assert.deepEqual((ops[7] as EditStatement).matcher, { dialect: "xpath", raw: "/root/item[@id='old']/text()" });
     });
 
     test("{§parse-recovery}: unclosed statements report unparsedTail and invalid calls record ParseAttempt", () => {
