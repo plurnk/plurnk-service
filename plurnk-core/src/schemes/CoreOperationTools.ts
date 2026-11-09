@@ -307,7 +307,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["text"],
             properties: {
-                target: { type: "string", description: "Optional recipient URI (e.g. \"session://child\" or \"message:///...\"); omit to send a continuing progress update." },
+                target: { type: "string", description: "Optional recipient URI (e.g. \"session://child\" or \"message://<session>/<id>\"); omit when only one Open Message is open; required when multiple Open Messages are open." },
                 text: { type: "string", description: "Message text to deliver." },
                 attachments: ATTACHMENTS_SCHEMA,
                 headers: HEADERS_SCHEMA,
@@ -328,7 +328,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["text"],
             properties: {
-                target: { type: "string", description: "Optional message URI (\"message:///...\") to resolve; omit to resolve the oldest Open Message." },
+                target: { type: "string", description: "Optional message URI (\"message://<session>/<id>\") to resolve; omit when only one Open Message is open; required when multiple Open Messages are open." },
                 text: { type: "string", description: "Final deliverable response." },
                 attachments: ATTACHMENTS_SCHEMA,
             },
@@ -348,7 +348,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["text"],
             properties: {
-                target: { type: "string", description: "Optional message URI (\"message:///...\") to fail; omit to fail the oldest Open Message." },
+                target: { type: "string", description: "Optional message URI (\"message://<session>/<id>\") to fail; omit when only one Open Message is open; required when multiple Open Messages are open." },
                 text: { type: "string", description: "Explanation of why the Open Message cannot be fulfilled." },
                 attachments: ATTACHMENTS_SCHEMA,
             },
