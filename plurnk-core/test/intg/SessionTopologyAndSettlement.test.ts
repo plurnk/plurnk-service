@@ -704,7 +704,7 @@ test("{§session-causal-admission}: one completed child task wakes its parent wh
         makeMockResponse("await plurnk.wait({\"text\":\"First task waits.\"});"),
         makeMockResponse("await plurnk.wait({\"text\":\"Second task waits.\"});"),
         makeMockResponse("await plurnk.wait({\"text\":\"Parent awaits results.\"});"),
-        makeMockResponse("await plurnk.done({\"text\":\"First task result: 42.\"});\n\nawait plurnk.done({\"text\":\"First task result: 42.\"});"),
+        makeMockResponse("await plurnk.done({\"target\":\"message://child/00\",\"text\":\"First task result: 42.\"});\n\nawait plurnk.done({\"target\":\"message://child/02\",\"text\":\"First task result: 42.\"});"),
         makeMockResponse("await plurnk.wait({\"text\":\"First result observed; second task remains.\"});"),
     ] });
     try {
