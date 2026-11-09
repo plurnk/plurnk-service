@@ -33,15 +33,23 @@ const unreadable = (raw: string, message: string, recovery: string): MatcherBody
 const detail = (e: unknown): string => e instanceof Error ? e.message : String(e);
 
 // {§matcher-prefix-claims} — grep's `\|` is alternation in this dialect's terms; a literal pipe is `[|]`.
+// PCRE `\A` and `\z`/`\Z` anchors normalize to `^` and `$`.
 const readAlternation = (pattern: string): string => {
     let out = "";
+    let convertedEndAnchor = false;
     for (let i = 0; i < pattern.length; i += 1) {
         const ch = pattern[i];
         if (ch === "\\" && i + 1 < pattern.length) {
-            if (pattern[i + 1] === "|") { out += "|"; i += 1; continue; }
-            out += ch + pattern[i + 1]; i += 1; continue;
+            const next = pattern[i + 1];
+            if (next === "|") { out += "|"; i += 1; continue; }
+            if (next === "A") { out += "^"; i += 1; continue; }
+            if (next === "z" || next === "Z") { out += "$"; convertedEndAnchor = true; i += 1; continue; }
+            out += ch + next; i += 1; continue;
         }
         out += ch;
+    }
+    if (convertedEndAnchor) {
+        out = out.replace(/(?<!\\)\\b([A-Za-z0-9_])(?=\$)/gu, "$1");
     }
     return out;
 };

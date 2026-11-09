@@ -1063,5 +1063,29 @@ describe("PlurnkParser Code Mode", () => {
         assert.equal((xing4Ops[20] as NoteStatement).body, 'The middle line from workspace:///lines.md is "2: beta".');
         assert.equal((xing4Ops[21] as ReadStatement).target?.raw, "workspace:///notes.md");
         assert.equal((xing4Ops[22] as ReadStatement).target?.raw, "skill://plurnk/SKILL.md");
+
+        const mellum21Recoveries = PlurnkParser.parse([
+            'await plurnk.edit({"path":"workspace:///notes.md","range":"3,0","text":"middle\\n"})',
+            'await plurnk.edit({"path":"workspace:///notes.md","range":"3,0,3,0","text":"middle\\n"})',
+            'await plurnk.edit({"path":"workspace:///notes.md","range":"L,3,L,3","text":"middle\\n"})',
+            'await plurnk.edit({"path":"workspace:///notes.md","range":"@LB1ll,0,@LB1ll,0","text":"middle\\n"})',
+            'await plurnk.edit({"path":"workspace:///notes.md","pattern":"/\\\\ba\\\\z/","text":"A"})',
+            'await plurnk.find({"path":"workspace://*/n8cJi"})',
+        ].join("\n\n"));
+        assert.equal(mellum21Recoveries.unparsedTail, undefined);
+        assert.deepEqual(mellum21Recoveries.items.filter((i) => i.kind === "error"), []);
+        const mellumOps = mellum21Recoveries.items.filter((i) => i.kind === "statement").map((i) => i.statement);
+        assert.equal(mellumOps.length, 6);
+        assert.deepEqual((mellumOps[0] as EditStatement).lineMarker, { marks: [3, 1, 3, 1] });
+        assert.deepEqual((mellumOps[1] as EditStatement).lineMarker, { marks: [3, 1, 3, 1] });
+        assert.deepEqual((mellumOps[2] as EditStatement).lineMarker, { marks: [3, 1, 3, 1] });
+        assert.deepEqual((mellumOps[3] as EditStatement).lineMarker, { marks: ["@LB1ll", 1, "@LB1ll", 1] });
+        assert.deepEqual((mellumOps[4] as EditStatement).matcher, {
+            dialect: "regex",
+            raw: "/\\ba\\z/",
+            pattern: "a$",
+            flags: "",
+        });
+        assert.equal((mellumOps[5] as FindStatement).target?.raw, "workspace:///*/n8cJi");
     });
 });
