@@ -12,7 +12,7 @@ export default class ServiceHelp {
     }
 
     static format(flags: FlagDescriptor[]): string {
-        return `usage: plurnk-service [options] [start|stop|migrate|update]
+        return `usage: plurnk-service [options] [start|stop|reload|migrate|update]
        plurnk-service [options] config [show|edit|defaults|check] [--json]
        plurnk-service [options] share [<file.db>] [<folder>] [--workspace=<id>] [--requiem]
        plurnk-service [options] requiem <file.db> <folder>
@@ -25,6 +25,7 @@ ${EnvFlags.formatFlagsHelp(flags)}
   --json                       emit machine-readable JSON for config and config show
   start                        start the daemon (default when no subcommand is given)
   stop                         stop the service that holds the configured database, and wait for it to exit
+  reload                       validate configuration and reload operator .env files in the running daemon
   migrate                      apply pending database schema migrations, preserving existing data
   update                       update the cached model catalog and print package upgrade instructions (requires PLURNK_SERVICE_UPDATEABLE=1)
   config                       show daemon status, active sources, overrides, and template paths

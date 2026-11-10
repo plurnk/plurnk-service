@@ -25,9 +25,44 @@ export default class ConfigurationDiagnostics {
         }
     }
 
+    captureSync<T>(owner: string, prepare: () => T): T | null {
+        try {
+            return prepare();
+        } catch (cause) {
+            if (!(cause instanceof ConfigurationError)) throw cause;
+            this.record(owner, cause);
+            return null;
+        }
+    }
+
     record(owner: string, cause: ConfigurationError): void {
         const notice = ConfigurationDiagnostics.notice(owner, cause);
         this.#notices.set(JSON.stringify(notice), notice);
+    }
+
+    restartRequired(key: string, file: string, message?: string): void {
+        const notice: Notice = {
+            source: "engine:configuration",
+            kind: "configuration_restart_required",
+            level: "warn",
+            owner: "bind-time",
+            key,
+            message: message ?? `${key} changed in ${file}; restart the daemon to apply.`,
+        };
+        this.#notices.set(JSON.stringify(notice), notice);
+    }
+
+    clearReloadable(owners: ReadonlySet<string>): void {
+        for (const [id, notice] of this.#notices) {
+            const owner = typeof notice.owner === "string" ? notice.owner : undefined;
+            if (
+                notice.kind === "configuration_undeclared"
+                || notice.kind === "configuration_restart_required"
+                || (owner !== undefined && owners.has(owner))
+            ) {
+                this.#notices.delete(id);
+            }
+        }
     }
 
     // {§operator-config-precedence} — information about the operator's file: never a refusal, and

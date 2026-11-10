@@ -379,6 +379,17 @@ export default class Functionality {
         }
     }
 
+    // {§operator-config-precedence} — when operator `.env` layers reload, every family whose
+    // service definitions or configuration changed republishes on warm workspaces.
+    async refreshAllIfChanged(
+        identity: WorkspaceCapabilityIdentity,
+        options: { readonly gate?: WorkspaceCapabilityGate } = {},
+    ): Promise<void> {
+        for (const adapter of this.#adapters.values()) {
+            await this.refresh(adapter.family, identity, { ...options, ifChanged: true });
+        }
+    }
+
     configurationNotices(workspaceId: number): readonly Notice[] {
         return [...this.#adapters].flatMap(([family, adapter]) => {
             const cause = this.#families.get(this.#key(workspaceId, family))?.configurationFailure?.error;

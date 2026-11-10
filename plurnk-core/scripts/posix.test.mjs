@@ -24,7 +24,7 @@ test("{§operator-config-precedence} manual and completions derive their command
         assert.ok(artifacts.get("completions/_plurnk-service").includes(flagName), flagName);
         assert.ok(artifacts.get("completions/plurnk-service.fish").includes(`-l ${flagName.slice(2)}`), flagName);
     }
-    for (const command of ["start", "migrate", "config", "share", "requiem"]) {
+    for (const command of ["start", "stop", "reload", "migrate", "config", "share", "requiem"]) {
         for (const content of artifacts.values()) assert.ok(content.includes(command), command);
     }
     for (const flag of ["env-file", "env-file-if-exists", "config", "json", "workspace", "requiem", "version", "help"]) {

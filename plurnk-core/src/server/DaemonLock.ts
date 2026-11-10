@@ -5,11 +5,13 @@ import { randomUUID } from "node:crypto";
 export interface DaemonStatus {
     readonly pid: number;
     readonly startedAt?: number;
+    readonly reloadedAt?: number;
     readonly acpUrl?: string;
     readonly healthUrl?: string;
     readonly auth?: boolean;
     readonly route?: string;
     readonly overrides?: Readonly<Record<string, { readonly value: string; readonly source: string }>>;
+    readonly restartRequired?: readonly string[];
 }
 
 type LockRecord = DaemonStatus & {
@@ -116,15 +118,20 @@ export default class DaemonLock {
                         ),
                     )
                     : undefined;
+            const restartRequired: string[] | undefined = Array.isArray(parsed.restartRequired)
+                ? parsed.restartRequired.filter((item): item is string => typeof item === "string")
+                : undefined;
             return {
                 pid: parsed.pid,
                 token: parsed.token,
                 ...(isSafeInteger(parsed.startedAt) ? { startedAt: parsed.startedAt } : {}),
+                ...(isSafeInteger(parsed.reloadedAt) ? { reloadedAt: parsed.reloadedAt } : {}),
                 ...(typeof parsed.acpUrl === "string" ? { acpUrl: parsed.acpUrl } : {}),
                 ...(typeof parsed.healthUrl === "string" ? { healthUrl: parsed.healthUrl } : {}),
                 ...(typeof parsed.auth === "boolean" ? { auth: parsed.auth } : {}),
                 ...(typeof parsed.route === "string" ? { route: parsed.route } : {}),
                 ...(overrides !== undefined ? { overrides } : {}),
+                ...(restartRequired !== undefined ? { restartRequired } : {}),
             };
         } catch (cause) {
             if (DaemonLock.#hasCode(cause, "ENOENT")) return null;

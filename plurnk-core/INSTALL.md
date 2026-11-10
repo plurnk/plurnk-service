@@ -16,6 +16,7 @@ environment values or creates another configuration file.
 npm install -g --ignore-scripts @plurnk/plurnk-service
 plurnk-service migrate
 plurnk-service start
+plurnk-service reload   # from another terminal: validate and reload ~/.config/plurnk/.env in place
 plurnk-service stop     # from another terminal: stop the running service and wait for it to exit
 ```
 
@@ -36,7 +37,7 @@ installed template path and any installed user or system units are reported by
 | Why `loginctl enable-linger "$USER"` | Without linger, systemd stops the user manager and every user unit at logout. Enabling linger keeps the user unit running across logouts and reboots without moving the daemon to system scope. |
 | What **system** scope (`/etc/systemd/system/plurnk.service`) costs | A system unit is a child of PID 1 and never receives `~/.config/environment.d/*.conf`. It forces credentials into `EnvironmentFile=`, turning `~/.config/plurnk/.env` into a second credential store separate from your user environment. |
 | Settings vs. credentials split | Keep Plurnk settings (model aliases, budgets, knobs, and `PLURNK_CLIENT_AUTOSTART=0` under supervision) in `~/.config/plurnk/.env` or `.env.local` (`0600`), and keep provider credentials in `~/.config/environment.d/*.conf` (`0600`). Terminal-launched `plurnk` already inherits your login shell's ambient environment directly. `$XDG_CONFIG_HOME/plurnk/.env` is authoritative for Plurnk's own consumers, not a credential service for unrelated host tools; do not source it from `.bashrc`. |
-| Read-at-start & restart rule | Both `environment.d` and `EnvironmentFile=` are read **only when the service starts**. After editing `~/.config/environment.d/*.conf`, run `systemctl --user daemon-reload && systemctl --user restart plurnk`; after editing `~/.config/plurnk/.env` or `.env.local`, restart the service (`systemctl --user restart plurnk` or `plurnk-service stop` then `start`). |
+| Hot-reload vs. restart rule | `plurnk-service` hot-reloads `~/.config/plurnk/.env`, `.env.local`, and `--config` automatically at turn, model, capability, and `/health` boundaries (or immediately via `plurnk-service reload` / `systemctl --user reload plurnk`) without overriding shell/unit environment variables. Bind-time keys (`PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_SERVICE_DB_PATH`, `PLURNK_SERVICE_STATE_ROOT`, `PLURNK_SERVICE_SQLITE_*`, `PLURNK_AUTH`, `PLURNK_SECRET`) and `~/.config/environment.d/*.conf` require a daemon restart (`systemctl --user daemon-reload && systemctl --user restart plurnk`). |
 
 To migrate from an existing hand-rolled system unit to the shipped user unit (this restarts the daemon and ends any live sessions):
 

@@ -8,12 +8,13 @@
 # If Node/npm are outside systemd's PATH (for example, nvm or fnm), replace ExecStart
 # with the absolute paths printed by `command -v node plurnk-service`:
 # ExecStart=/absolute/path/to/node /absolute/path/to/plurnk-service start
-# systemd does not source your interactive shell, and reads environment.d and
-# EnvironmentFile= only when starting the service (restart after any edit).
+# systemd does not source your interactive shell, and reads environment.d only when
+# starting the service (`systemctl --user daemon-reload && systemctl --user restart plurnk`).
 # Put provider credentials in ~/.config/environment.d/*.conf (mode 0600), shared
-# across your user services (`systemctl --user daemon-reload && systemctl --user restart plurnk`).
-# Put Plurnk settings in ~/.config/plurnk/.env or ~/.config/plurnk/.env.local (mode 0600)
-# and set PLURNK_CLIENT_AUTOSTART=0 so `plurnk` never spawns an unsupervised daemon
+# across your user services.
+# Put Plurnk settings in ~/.config/plurnk/.env or ~/.config/plurnk/.env.local (mode 0600);
+# plurnk-service loads and hot-reloads those files directly (or run `systemctl --user reload plurnk`).
+# Set PLURNK_CLIENT_AUTOSTART=0 so `plurnk` never spawns an unsupervised daemon
 # when the unit is stopped.
 # Readiness probe: curl -fsS http://127.0.0.1:1066/health  (or /healthz; port is PLURNK_PORT — plurnk-service config show prints it)
 # Logs land in the user journal: journalctl --user -u plurnk -f
@@ -31,9 +32,8 @@ StartLimitBurst=5
 [Service]
 Type=simple
 SyslogIdentifier=plurnk-service
-EnvironmentFile=-%h/.config/plurnk/.env
-EnvironmentFile=-%h/.config/plurnk/.env.local
 ExecStart=/usr/bin/env plurnk-service start
+ExecReload=/usr/bin/env plurnk-service reload
 Restart=on-failure
 RestartSec=5s
 RestartSteps=4
