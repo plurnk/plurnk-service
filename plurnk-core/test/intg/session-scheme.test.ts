@@ -199,7 +199,7 @@ test("{§machine-processes} WORK(session://name):task spawns a same-workspace si
 
         assert.equal(calls.length, 1, "exactly one injectSession call");
         const spawnRest = calls[0];
-        assert.deepEqual(spawnRest, { workspaceId, sessionId: session.id, sourceLoopId: loopId, prompt: "investigate the bug", spawn: true, opener: { turnId, sequence: 1 } }, "the new session is started with its delegator's causal identity, the operation that sent it");
+        assert.deepEqual(spawnRest, { workspaceId, sessionId: session.id, sourceLoopId: loopId, prompt: "investigate the bug", created: true, spawn: true, opener: { turnId, sequence: 1 } }, "the new session is started with its delegator's causal identity, the operation that sent it");
     } finally { await db.close(); }
 });
 
@@ -876,7 +876,7 @@ test("{§machine-processes} FORK(session://name):task forks a NAMED branch — s
         if (branch === undefined) throw new Error("fork must create the branch session in the workspace");
         assert.notEqual(branch.id, sessionId, "the branch is a distinct session");
         const forkRest = calls.at(-1)!;
-        assert.deepEqual(forkRest, { workspaceId, sessionId: branch.id, sourceLoopId: loopId, prompt: "take the other branch", spawn: true, opener: { turnId, sequence: 1 } }, "the branch is continued with its delegator's causal identity, the operation that sent it");
+        assert.deepEqual(forkRest, { workspaceId, sessionId: branch.id, sourceLoopId: loopId, prompt: "take the other branch", created: true, spawn: true, opener: { turnId, sequence: 1 } }, "the branch is continued with its delegator's causal identity, the operation that sent it");
     } finally { await db.close(); }
 });
 

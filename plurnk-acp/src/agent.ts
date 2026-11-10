@@ -101,7 +101,6 @@ export interface ConnectionAgentContext {
         sessionId: number,
         buildUpdates: (session: BoundSession) => readonly { readonly sessionId: string; readonly update: SessionUpdate }[],
     ) => void;
-    readonly scheduleOverviewRefresh?: () => void;
 }
 
 export const createConnectionAgent = (
@@ -117,7 +116,6 @@ export const createConnectionAgent = (
         requestSubject,
         notifyPeerSession,
         broadcastSessionUpdate,
-        scheduleOverviewRefresh,
     } = host;
     const notifyAuthStatusChanged = (): void => {
         const status = buildAuthStatus(seam);
@@ -131,8 +129,7 @@ export const createConnectionAgent = (
 
     const actionCallbacks = {
         onWorkspaceRenamed: (workspaceId: number, name: string) =>
-            applyWorkspaceRenamed(peers, notifyPeerSession, workspaceId, name, scheduleOverviewRefresh),
-        scheduleOverviewRefresh,
+            applyWorkspaceRenamed(peers, notifyPeerSession, workspaceId, name),
         onAuthStatusChanged: notifyAuthStatusChanged,
     };
 
@@ -345,7 +342,6 @@ export const createConnectionAgent = (
                     },
                 });
             }
-            scheduleOverviewRefresh?.();
             return {
                 sessionId: bound.acpSessionId,
                 configOptions,
@@ -723,21 +719,12 @@ export const createConnectionAgent = (
         try {
             const origin = httpOrigin();
             const query = parseOverviewRequest(ctx.params.cwd, ctx.params._meta, ctx.params.archived);
-            const response = await listSessionsOverview(
+            return await listSessionsOverview(
                 seam,
                 opts,
                 origin,
                 query,
             );
-            if (query.subscribe === true) {
-                peer.overviewSubscription = {
-                    ...query,
-                    origin,
-                };
-            } else {
-                delete peer.overviewSubscription;
-            }
-            return response;
         } catch (err) {
             throw toRequestError(err);
         }
@@ -761,7 +748,6 @@ export const createConnectionAgent = (
                 sessionId: target.session.id,
                 archived: true,
             });
-            scheduleOverviewRefresh?.();
             return {};
         } catch (err) {
             throw toRequestError(err);
@@ -777,7 +763,6 @@ export const createConnectionAgent = (
                 sessionId: target.session.id,
                 archived: false,
             });
-            scheduleOverviewRefresh?.();
             return {};
         } catch (err) {
             throw toRequestError(err);
@@ -804,7 +789,6 @@ export const createConnectionAgent = (
                 subtreeIds.add(id);
             }
             removeBoundSubtree(target.workspaceId, subtreeIds, peers);
-            scheduleOverviewRefresh?.();
             return {};
         } catch (err) {
             throw toRequestError(err);
@@ -908,7 +892,6 @@ export const createConnectionAgent = (
                 sessionId: target.session.id,
                 title: rawTitle.trim(),
             });
-            scheduleOverviewRefresh?.();
             return { title: updated.title };
         } catch (err) {
             throw toRequestError(err);
@@ -1134,7 +1117,6 @@ export const createConnectionAgent = (
                 ctx.params.systemPrompt,
             );
             const configOptions = await buildConfigOptions(seam, parent.workspaceId, forked.sessionId);
-            scheduleOverviewRefresh?.();
             return {
                 sessionId: newSessionId,
                 configOptions,

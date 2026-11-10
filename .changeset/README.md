@@ -3,7 +3,7 @@
 Add a Changeset with each change that needs a package release:
 
 ```sh
-npm exec changeset -- --patch @plurnk/plurnk-hooks -m "Describe the correction."
+npm exec changeset -- --patch @plurnk/plurnk-otel -m "Describe the correction."
 ```
 
 Choose `--minor` for compatible functionality and `--major` for an incompatible

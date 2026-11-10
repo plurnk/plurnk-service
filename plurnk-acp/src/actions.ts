@@ -542,7 +542,6 @@ const resolveActionTarget = async (
 
 export interface PlurnkActionCallbacks {
     readonly onWorkspaceRenamed?: (workspaceId: number, name: string) => void;
-    readonly scheduleOverviewRefresh?: () => void;
     readonly onAuthStatusChanged?: () => void;
 }
 
@@ -598,7 +597,6 @@ export const handlePlurnkAction = async (
             ...(typeof params.projectRoot === "string" || params.projectRoot === null ? { projectRoot: params.projectRoot } : {}),
             ...(typeof params.settings === "string" || isRecord(params.settings) ? { settings: params.settings } : {}),
         });
-        callbacks?.scheduleOverviewRefresh?.();
         return {
             ...created,
             id: created.workspaceId,
@@ -692,7 +690,6 @@ export const handlePlurnkAction = async (
         const nextName = typeof params.name === "string" ? params.name : typeof params.to === "string" ? params.to : "";
         const renamed = await seam.renameWorkspace(target.workspaceId, nextName);
         callbacks?.onWorkspaceRenamed?.(renamed.id, renamed.name);
-        callbacks?.scheduleOverviewRefresh?.();
         return renamed;
     }
 
@@ -703,7 +700,6 @@ export const handlePlurnkAction = async (
             workspaceId: target.workspaceId,
             archived,
         });
-        callbacks?.scheduleOverviewRefresh?.();
         return result;
     }
 

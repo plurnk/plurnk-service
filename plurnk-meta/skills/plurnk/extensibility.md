@@ -2,7 +2,7 @@
 
 ## Summary
 
-Extend Plurnk with Agent Skills, plugins, hooks, MCP servers, scheme/mimetype/exec/provider packages, and ACP clients.
+Extend Plurnk with Agent Skills, plugins, notifications, MCP servers, scheme/mimetype/exec/provider packages, and ACP clients.
 
 ## Choosing a surface
 
@@ -15,7 +15,7 @@ Surfaces run from least to most code and trust:
 - **An MCP server**: an external API the model calls as tools.
 - **A plugin**: skills, personas, and MCP servers installed or shared together.
 - **A client**: an external application driving Plurnk through ACP.
-- **A hook**: an external command receiving lifecycle events on stdin.
+- **A notification consumer**: an external client subscribing to `GET /notifications` SSE for live `DaemonNotification` envelopes.
 - **An extension**: trusted code loaded at daemon startup (a runtime, address scheme, media-type reader, model provider, or page materializer).
 - **A module**: daemon-managed functionality (a family behind the management verbs, a listener endpoint such as `/acp` or `/oauth/*`, or an event observer).
 
@@ -36,7 +36,7 @@ Manage personas, skills, and MCP definitions live in the current workspace via `
 | Surface | Shape | Code in the daemon | Contract |
 | --- | --- | --- | --- |
 | Application | ACP v2 client: WebSocket or Streamable HTTP JSON-RPC 2.0 at `/acp` (`PLURNK_PORT`), authenticated via OAuth 2.1 (`/.well-known/*`, `/oauth/*`) when `PLURNK_AUTH=1` | none | `skill://plurnk/packages/@plurnk/plurnk-acp/SPEC.md`, `skill://plurnk/packages/@plurnk/plurnk-auth/SPEC.md` |
-| Command | executable in `PLURNK_HOOKS_COMMAND`, run once per event in `PLURNK_HOOKS_EVENTS` with one JSON line on stdin | none | `skill://plurnk/packages/@plurnk/plurnk-hooks/SPEC.md` |
+| Notification stream | Server-Sent Events consumer at `GET /notifications[?event=...&workspace=...&session=...]` (`PLURNK_PORT`), authenticated via OAuth 2.1 bearer token (`acp` or `notifications` scope) | none | `skill://plurnk/packages/@plurnk/plurnk-service/SPEC.md` ({§http-host}, {§notifications}), `skill://plurnk/packages/@plurnk/plurnk-contracts/SPEC.md` ({§application-session-observation}) |
 
 ## Extensions
 

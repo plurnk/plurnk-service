@@ -2797,7 +2797,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
         }
     });
 
-    test("{§acp-overview} {§acp-plurnk-metadata} {§acp-http-authorization}: scoped session/list overview metadata, live _plurnk/overview notifications, immediate SSE open flush, and workspace/renamed updates (#1393 #1394 #1395)", async () => {
+    test("{§acp-overview} {§acp-plurnk-metadata} {§acp-http-authorization}: scoped session/list overview metadata, immediate SSE open flush, and workspace/renamed updates (#1393 #1394 #1395)", async () => {
         const h = await createHarness({
             env: { PLURNK_ACP_HEARTBEAT_MS: "60000" },
         });
@@ -2832,21 +2832,13 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             sseAbort.abort();
             await reader.cancel().catch(() => undefined);
 
-            // 2. Full session/list overview contract, workspace scoping, validation, live _plurnk/overview, and workspace/renamed (#1394 #1395)
+            // 2. Full session/list overview contract, workspace scoping, validation, and workspace/renamed (#1394 #1395)
             const updates: SessionUpdate[] = [];
-            const overviewPushes: Array<Record<string, unknown>> = [];
             const stream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
             const app = createAcpClient()
                 .onNotification(methods.client.session.update, ({ params }) => {
                     updates.push(params.update);
-                })
-                .onNotification(
-                    "_plurnk/overview",
-                    (raw) => raw as Record<string, unknown>,
-                    ({ params }) => {
-                        overviewPushes.push(params);
-                    },
-                );
+                });
 
             await app.connectWith(stream, async (ctx) => {
                 // Create an empty second workspace to verify empty workspaces are included in overview _meta.plurnk.workspaces
@@ -2882,7 +2874,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
 
                 // Scoped session/list returns workspace sessions + top-level workspaces + cross-workspace recent feed
                 const scopedList = await ctx.request(methods.agent.session.list, {
-                    _meta: { plurnk: { workspaceId: 1, subscribe: true } },
+                    _meta: { plurnk: { workspaceId: 1 } },
                 });
                 assert.equal(scopedList.sessions.length, 1);
                 const s0Meta = (scopedList.sessions[0]?._meta as { plurnk?: Record<string, unknown> } | undefined)
@@ -2918,7 +2910,6 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     cwd: "/workspace/alpha",
                 });
                 updates.length = 0;
-                overviewPushes.length = 0;
 
                 await ctx.request("_plurnk/action", {
                     kind: "workspace.rename",
@@ -2926,18 +2917,12 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     params: { name: "alpha-renamed" },
                 });
 
-                await waitFor(
-                    () =>
-                        updates.some((u) => u.sessionUpdate === "session_info_update") &&
-                        overviewPushes.length >= 1,
-                );
+                await waitFor(() => updates.some((u) => u.sessionUpdate === "session_info_update"));
                 const infoUpdate = updates.find(
                     (u): u is Extract<SessionUpdate, { sessionUpdate: "session_info_update" }> =>
                         u.sessionUpdate === "session_info_update",
                 );
                 assert.equal(infoUpdate?.title, "alpha-renamed#user");
-                const pushedSessions = overviewPushes.at(-1)?.sessions as Array<{ title?: string }> | undefined;
-                assert.equal(pushedSessions?.[0]?.title, "alpha-renamed#user");
 
                 const translator = new SessionTranslator({ acpSessionId: "1#user", workspaceId: 1, sessionId: 1 });
                 const configNotice = {

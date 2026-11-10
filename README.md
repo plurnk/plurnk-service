@@ -33,21 +33,23 @@ flowchart LR
     subgraph Listener["plurnk-service (:1066)"]
         acp["/acp<br/>ACP v2 (Streamable HTTP + WebSocket)<br/>+ /entry & /messages"]
         mcp["/mcp[/&lt;workspace&gt;[/&lt;session&gt;]]<br/>MCP v2 Streamable HTTP Server"]
+        notifications["/notifications<br/>DaemonNotification SSE"]
         oauth["/.well-known/* · /oauth/*<br/>OAuth 2.1 Authorization Server<br/>(PKCE · RFC 7591 · requested_subject)"]
         web["/<br/>@plurnk/plurnk-web"]
         health["/health · /healthz<br/>application/health+json"]
         core["Core VM · Durable Session Graph · SQLite WAL + FTS5"]
-        acp & mcp & oauth & web & health --> core
+        acp & mcp & notifications & oauth & web & health --> core
     end
 
     subgraph Outbound["Providers, Tools & Workspace"]
         models["Local & hosted model providers"]
         extMcp["Outbound MCP servers (stdio · HTTP)"]
         workspace["Project files · Git · Agent Skills & Plugins"]
-        otel["OpenTelemetry (OTEL_*) · Lifecycle hooks"]
+        otel["OpenTelemetry (OTEL_*)"]
     end
 
     cli <--> acp
+    cli --> notifications
     mcpHosts <--> mcp
     authClients <--> oauth
     browser <--> web
@@ -62,6 +64,7 @@ flowchart LR
 |---|---|---|
 | `/acp` | `@plurnk/plurnk-acp` | Standard ACP v2 JSON-RPC 2.0 over Streamable HTTP (SSE) and WebSocket, plus `GET /acp/<workspaceId>/<sessionId>/entry` and `/messages`. |
 | `/mcp[/<workspace>[/<session>]]` | `@plurnk/plurnk-mcp` | MCP v2 Streamable HTTP server exposing the 15 VM operations, REPL executors (`sh`, `js`, `python3`), 6 Functionality families, and `skill://` SEP-2640 Skills. |
+| `/notifications` | `@plurnk/plurnk-service` | Authenticated `GET /notifications[?event=...&workspace=...&session=...]` Server-Sent Events stream of `DaemonNotification` envelopes. |
 | `/.well-known/*`, `/oauth/*` | `@plurnk/plurnk-auth` | OAuth 2.1 authorization server (`authorize` with PKCE `S256`, `token` with `requested_subject` session scoping, `revoke`, RFC 7591 `register`, browser `session`). |
 | `/` | `@plurnk/plurnk-web` | Browser web client mounted when `PLURNK_WEB_ENABLED=1`. |
 | `/health`, `/healthz` | `@plurnk/plurnk-service` | Unauthenticated `GET`/`HEAD` readiness probes (`200` `{"status":"pass"}` or `503 service-starting`). |
@@ -93,7 +96,6 @@ The Plurnk skill exposes the same guides and catalog to the model on demand.
 | External tools and web search | [MCP](plurnk-mcp/README.md) |
 | HTTP resources | [HTTP scheme](plurnk-schemes-http/README.md) |
 | Scheduled messages | [Schedule](plurnk-schedule/README.md) |
-| Local event handlers | [Lifecycle hooks](plurnk-hooks/README.md) |
 | Extending Plurnk: integrations, plugins, extensions | [Extensibility](ARCHITECTURE.md#extensibility) |
 | Writing a daemon module | [Module contract](plurnk-modules/README.md) |
 | Package map and extension boundaries | [Architecture](ARCHITECTURE.md#package-ownership) |

@@ -15,12 +15,12 @@ import { methods, type SessionUpdate } from "@agentclientprotocol/sdk/experiment
 import { isRecord } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { MessageScheme, type SchemeRegistrationSeam } from "@plurnk/plurnk-schemes";
-import type { DaemonModule } from "@plurnk/plurnk-modules";
+import type { DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import { createConnectionAgent } from "./agent.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 import { dispatchDaemonEvent } from "./events.ts";
 import { GateTracker } from "./gates.ts";
-import { listSessionsOverview, type AcpPeer, type BoundSession } from "./sessions.ts";
+import { type AcpPeer, type BoundSession } from "./sessions.ts";
 import {
     HEADER_CONNECTION_ID,
     admitRequest,
@@ -36,7 +36,7 @@ import {
 
 export type { ModuleOptions } from "./config.ts";
 
-export type AcpSetupSeam = SchemeRegistrationSeam & Pick<ApplicationPort, "httpAddress">;
+export type AcpSetupSeam = SchemeRegistrationSeam & Pick<ModuleSetupSeam, "httpAddress">;
 
 interface RequestConnectionContext {
     readonly family: string | null;
@@ -59,8 +59,6 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
     readonly #gates = new GateTracker();
     readonly #streamOffsets = new Map<string, number>();
     readonly #work = new Set<Promise<unknown>>();
-    #overviewDirty = false;
-    #overviewFlushScheduled = false;
     #activated = false;
     #stopped = false;
 
@@ -102,13 +100,10 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             streamOffsets: this.#streamOffsets,
             notifyPeerSession: this.#notifyPeerSession,
             broadcastSessionUpdate: this.#broadcastSessionUpdate,
-            scheduleOverviewRefresh: this.#scheduleOverviewRefresh,
         };
         this.#offEvents = seam.subscribeToEvents((workspaceId, method, params) => {
             if (workspaceId !== null) {
                 dispatchDaemonEvent(eventCtx, workspaceId, method, params);
-            } else if (method === "workspace/created") {
-                this.#scheduleOverviewRefresh();
             }
         });
         this.#offRevoked = seam.credentials.onRevoked((family) => {
@@ -161,7 +156,6 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             requestSubject: () => this.#requestContext.getStore()?.subject ?? null,
             notifyPeerSession: this.#notifyPeerSession,
             broadcastSessionUpdate: this.#broadcastSessionUpdate,
-            scheduleOverviewRefresh: this.#scheduleOverviewRefresh,
         };
     }
 
@@ -489,46 +483,4 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             }
         }
     };
-
-    #scheduleOverviewRefresh = (): void => {
-        if (this.#stopped) return;
-        const hasSubscribers = [...this.#peers].some(
-            (peer) => peer.overviewSubscription !== undefined && peer.client !== null,
-        );
-        if (!hasSubscribers) return;
-        this.#overviewDirty = true;
-        if (this.#overviewFlushScheduled) return;
-        this.#overviewFlushScheduled = true;
-        setImmediate(() => {
-            void this.#track(this.#flushOverviewSubscribers());
-        });
-    };
-
-    async #flushOverviewSubscribers(): Promise<void> {
-        try {
-            while (this.#overviewDirty && !this.#stopped) {
-                this.#overviewDirty = false;
-                const activePeers = [...this.#peers].filter(
-                    (peer) => peer.overviewSubscription !== undefined && peer.client !== null,
-                );
-                if (activePeers.length === 0) break;
-                await Promise.allSettled(
-                    activePeers.map(async (peer) => {
-                        const sub = peer.overviewSubscription;
-                        if (sub === undefined || peer.client === null || this.#stopped) return;
-                        const payload = await listSessionsOverview(
-                            this.#seam,
-                            this.#opts,
-                            sub.origin,
-                            sub,
-                        );
-                        if (peer.client === null || this.#stopped) return;
-                        await peer.client.notify("_plurnk/overview", payload);
-                    }),
-                );
-            }
-        } finally {
-            this.#overviewFlushScheduled = false;
-        }
-    }
 }

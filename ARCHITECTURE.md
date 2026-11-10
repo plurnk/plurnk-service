@@ -72,9 +72,9 @@ flowchart LR
     frameworks["Scheme / exec / mimetype frameworks"] --> core
     mcp["MCP host module<br/>tools · resources · prompts · tasks"] --> core
     schedule["Schedule family<br/>recurring session messages"] --> core
-    hooks["plurnk-hooks<br/>exact command events"] --> core
     core["plurnk-service<br/>composed daemon"]
     core --> acp["plurnk-acp<br/>client interface"]
+    core --> notifications["GET /notifications<br/>DaemonNotification SSE"]
     acp --> clients["Terminal client<br/>CLI · TUI"]
 ```
 
@@ -106,7 +106,6 @@ restate their teaching.
 | Daemon module contract | `@plurnk/plurnk-modules` | [`plurnk-modules/SPEC.md`](./plurnk-modules/SPEC.md) |
 | OAuth 2.1 authorization server | `@plurnk/plurnk-auth` | [`plurnk-auth/SPEC.md`](./plurnk-auth/SPEC.md) |
 | External WebSocket/HTTP ACP v2 client protocol | `@plurnk/plurnk-acp` | [`plurnk-acp/SPEC.md`](./plurnk-acp/SPEC.md) |
-| Exact-command lifecycle hooks                             | `@plurnk/plurnk-hooks`                                       | [`plurnk-hooks/SPEC.md`](./plurnk-hooks/SPEC.md)                                                               |
 | MCP host/client                                            | `@plurnk/plurnk-mcp`                                         | [`plurnk-mcp/SPEC.md`](./plurnk-mcp/SPEC.md)                                                                   |
 | Scheduled session messages                                | `@plurnk/plurnk-schedule`                                    | [`plurnk-schedule/SPEC.md`](./plurnk-schedule/SPEC.md)                                                         |
 | Forensic reports, snapshots and interviews | `@plurnk/plurnk-digest` | [`plurnk-digest/SPEC.md`](./plurnk-digest/SPEC.md); core supplies canonical evidence interpretation. |
@@ -179,7 +178,7 @@ links each kind's contract.
 ```mermaid
 flowchart TD
     Q{{"Which way does it point?"}}
-    Q -->|"X watches plurnk"| H["hook: the operator's command, one event on stdin"]
+    Q -->|"X watches plurnk"| H["notifications: GET /notifications SSE or observer module"]
     Q -->|"X drives plurnk"| F["client of a face: ACP for applications"]
     Q -->|"plurnk uses X"| U{{"data or code?"}}
     U -->|data| D["definition: skill, MCP server, member rule, env entry, schedule rule"]
@@ -191,7 +190,7 @@ flowchart TD
 | Configuration | cascade settings and definition files: `.env`, `mcp.json`, skill roots | none |
 | Definition | a skill, MCP server, member rule, env entry or schedule rule, managed through the shared management verbs | none; an MCP server runs elsewhere |
 | Plugin | an Agent Plugin carrying skills and MCP servers, from npm or a plugin root | none, unless it declares an extension |
-| Hook | the operator's command on lifecycle events (`plurnk-hooks`) | none |
+| Notifications | `GET /notifications` Server-Sent Events stream of `DaemonNotification` envelopes | none |
 | Client | an application or agent driving an existing face | none |
 | Extension | trusted native code of one kind: `exec`, `scheme`, `mimetype`, `provider`, `http-materializer` | in-process |
 | Module | the kind that joins the daemon lifecycle as a family, a face or an observer | in-process, in the lifecycle |
@@ -244,7 +243,6 @@ One word per concept, defined here.
 | family | Core's shared manager of one definition kind: skills, MCP, schedule, members, env | An extension kind or its framework; a runtime or its document |
 | definition | One managed datum of a family; components are the standard-portable definitions | |
 | face | A module role that serves a protocol: ACP | |
-| hook | The operator's exact command run on lifecycle events (`plurnk-hooks`), configured, no code | A module's lifecycle members, or any function a host calls |
 | organ | A subsystem that is not an extension point | |
 | capability | The admission policy's word, and what it admits | A package or framework |
 | runtime, tool | The fence the model invokes, taught by its runtime document; one invocation inside it | A family |

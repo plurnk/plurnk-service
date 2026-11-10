@@ -19,8 +19,10 @@ import {
 import {
     Problems,
     Validator,
+    admitBearerRequest,
     isExecution,
     isRecord,
+    type BearerAdmission,
     type CredentialAuthority,
     type JsonSchema,
     type ProblemDetails,
@@ -97,64 +99,13 @@ const writeHttpProblem = (
 const admitRequest = (
     credentials: CredentialAuthority,
     req: IncomingMessage,
-):
-    | { readonly ok: true; readonly family: string | null }
-    | { readonly ok: false; readonly problem: ProblemDetails; readonly challenge: string } => {
-    const face = credentials.face();
-    const issuer = face?.issuer(req);
-    if (face === null || issuer === undefined) {
-        return { ok: true, family: null };
-    }
-
-    const header = req.headers.authorization;
-    const challenge = (parameters: string): string =>
-        `Bearer realm="plurnk"${parameters}, resource_metadata="${issuer}/.well-known/oauth-protected-resource"`;
-    const presented = header === undefined ? null : /^Bearer(?:\s+(.*))?$/iu.exec(header);
-    if (presented === null) {
-        return {
-            ok: false,
-            challenge: challenge(""),
-            problem: mcpHttpProblem("bearer-token-required", 401, "The request did not provide a bearer token.", {
-                stage: "authorization",
-                recovery: "Present an access token issued by this daemon as `Authorization: Bearer <token>`.",
-                retryable: false,
-            }),
-        };
-    }
-    const token = (presented[1] ?? "").trim();
-    const claims = credentials.verify(token);
-    if (claims === null || claims.kind !== "access") {
-        return {
-            ok: false,
-            challenge: challenge(
-                ', error="invalid_token", error_description="The access token is unknown, expired or revoked."',
-            ),
-            problem: mcpHttpProblem("bearer-token-invalid", 401, "The access token is unknown, expired or revoked.", {
-                stage: "authorization",
-                recovery: "Obtain a new access token from this daemon's token endpoint.",
-                retryable: false,
-            }),
-        };
-    }
-    if (!claims.scopes.includes("mcp") && !claims.scopes.includes("acp")) {
-        return {
-            ok: false,
-            challenge: challenge(', error="insufficient_scope", scope="mcp"'),
-            problem: mcpHttpProblem(
-                "bearer-scope-insufficient",
-                403,
-                "The access token does not carry the scope mcp.",
-                {
-                    stage: "authorization",
-                    scope: "mcp",
-                    recovery: "Obtain an access token with the scope mcp.",
-                    retryable: false,
-                },
-            ),
-        };
-    }
-    return { ok: true, family: claims.family };
-};
+): BearerAdmission =>
+    admitBearerRequest(credentials, req, {
+        domain: "mcp:http",
+        codePrefix: "mcp/http",
+        requiredScope: "mcp",
+        acceptedScopes: ["mcp", "acp"],
+    });
 
 const plurnkJsonSchemaValidator: jsonSchemaValidator = {
     getValidator<T>(schema: JsonSchemaType): JsonSchemaValidator<T> {
@@ -276,7 +227,7 @@ export default class McpServerModule implements DaemonModule<never> {
                     waiter.resolve(result);
                 }
             }
-        });
+        }, { events: ["stream/concluded"] });
         this.#offRevoked = seam.credentials.onRevoked((family) => {
             for (const exchange of [...this.#activeExchanges]) {
                 if (exchange.family === family) {

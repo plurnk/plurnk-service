@@ -36,12 +36,13 @@ A module's setup seam is the intersection of the slices it uses; each framework 
 
 | Slice / Base Function | Owner | Contract |
 | --- | --- | --- |
-| `ModuleSetupSeam` | `@plurnk/plurnk-modules` | Workspace paths, environments, workspace state directory, and module actions. |
+| `ModuleSetupSeam` | `@plurnk/plurnk-modules` | Credential authority (`credentials`), listener address (`httpAddress()`), workspace paths, environments, workspace state directory, and module actions. |
 | `FunctionalitySeam<Runtime, SchemeFacet>` | `@plurnk/plurnk-modules` | `registerFunctionalityAdapter(adapter)` beneath the host's shared coordinator ({§functionality-coordinator}), returning its family handle. |
 | `SchemeRegistrationSeam`, `ResourceTreeRegistrationSeam`, `RuntimeSchemeFacet` | `@plurnk/plurnk-schemes` ({§resource-tree-scheme}) | Scheme and read-only tree registration, and the facet a runtime or family manager exposes. |
 | `Executor`, `RuntimeRegistration` | `@plurnk/plurnk-execs` ({§executor-role}) | Runtimes a resident family prepares. |
 | `WorkspacePluginsSeam`, `WorkspacePluginSet` | `@plurnk/plurnk-agent-plugins` ({§agent-plugins-expansion}) | `readWorkspacePlugins(workspaceId)`. |
 | `ProvidedSkillsSeam` | `@plurnk/plurnk-agent-skills` ({§provided-skills-module-slice}) | `readProvidedSkills()`. |
+| `credentials` / `httpAddress()` | `ModuleSetupSeam` | The daemon's `CredentialAuthority` ({§credential-authority}) for confidential OAuth 2.1 client registration (`registerClient`) or issuing-face publication (`publish`) at `setup()`, and the bound HTTP listener `{ host, port }` ({§http-host}). |
 | `workspacePaths(workspaceId)` | `ModuleSetupSeam` | Returns absolute `home`, bound `projectRoot` (`null` for folderless workspaces), optional `workspaceName`, and read-only `configurationRoots` (`{ directory, scope }`) in highest-precedence-first order ({§functionality-inspection}). Modules append their format's paths and interleave within the same scope without reconstructing root order. |
 | `operatorEnvironment()` | `ModuleSetupSeam` | Ambient launch base: operator environment without Plurnk configuration or provider credentials ({§execution-output-identity}). Explicit bindings belong to the consuming module ({§mcp-module}). |
 | `readWorkspaceEnvironment(workspaceId)` | `ModuleSetupSeam` | Captures the workspace env layer ({§execution-output-identity}) and returns its composer (using admitted host values when called with no argument, or a supplied reference-resolution context), applying captured values and masks without session overrides. |

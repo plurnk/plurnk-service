@@ -108,11 +108,6 @@ export interface OverviewRequestOptions {
     readonly workspaceName?: string;
     readonly limit?: number;
     readonly excerptChars?: number;
-    readonly subscribe?: boolean;
-}
-
-interface OverviewSubscription extends OverviewRequestOptions {
-    readonly origin: string;
 }
 
 export interface AcpPeer {
@@ -120,7 +115,6 @@ export interface AcpPeer {
     readonly subject?: string | null;
     readonly sessions: Map<string, BoundSession>;
     client: AgentContext | null;
-    overviewSubscription?: OverviewSubscription;
     lastAuthStatusJson?: string;
     closeTransport?: () => void;
     closeWithProblem(problem: ProblemDetails): Promise<void>;
@@ -1619,14 +1613,12 @@ export const parseOverviewRequest = (
         }
         excerptChars = rawPlurnk.excerptChars;
     }
-    const subscribe = typeof rawPlurnk.subscribe === "boolean" ? rawPlurnk.subscribe : undefined;
     return {
         ...baseOpts,
         ...(workspaceId !== undefined ? { workspaceId } : {}),
         ...(workspaceName !== undefined ? { workspaceName } : {}),
         ...(limit !== undefined ? { limit } : {}),
         ...(excerptChars !== undefined ? { excerptChars } : {}),
-        ...(subscribe !== undefined ? { subscribe } : {}),
     };
 };
 

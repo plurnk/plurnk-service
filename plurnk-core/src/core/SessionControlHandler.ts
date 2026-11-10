@@ -101,6 +101,7 @@ export default class SessionControlHandler {
             sessionId,
             sourceLoopId: ctx.loopId,
             prompt,
+            created: true,
             // {§session-model-selection} A model's child inherits its loop's model; a session a person starts runs its own.
             ...(ctx.client === undefined ? { spawn: true } as const : {}),
             ...(opener === undefined ? {} : { opener }),

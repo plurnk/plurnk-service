@@ -45,6 +45,7 @@ import type {
     ApplicationEventHandler,
     CredentialAuthority,
 } from "./Application.ts";
+import type { NotificationFilter } from "./ApplicationNotifications.ts";
 
 /** {§http-host} One request on the daemon's listener, handed to the adapter that mounted its prefix. */
 export type HttpRouteHandler = (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
@@ -79,7 +80,7 @@ export interface ApplicationPort extends HttpHost {
         params: Readonly<Record<string, unknown>>,
         context: ApplicationActionContext,
     ): Promise<unknown>;
-    subscribeToEvents(handler: ApplicationEventHandler): () => void;
+    subscribeToEvents(handler: ApplicationEventHandler, filter?: NotificationFilter): () => void;
     pendingProposals(workspaceId: number): Promise<ProposalProjection[]>;
     resolveProposal(logEntryId: number, resolution: ProposalResolution, owner: ApplicationOwnerIdentity): Promise<void>;
     pendingClientInteractions(workspaceId: number): Promise<ClientInteractionProjection[]>;

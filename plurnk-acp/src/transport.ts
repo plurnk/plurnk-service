@@ -2,7 +2,13 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
-import { Problems, type CredentialAuthority, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import {
+    Problems,
+    admitBearerRequest,
+    type BearerAdmission,
+    type CredentialAuthority,
+    type ProblemDetails,
+} from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { ResolvedModuleOptions } from "./config.ts";
 import { readAllLogEntries } from "./log-entry-projection.ts";
@@ -66,69 +72,13 @@ export const admitRequest = (
     credentials: CredentialAuthority,
     req: IncomingMessage,
     allowQueryToken = false,
-):
-    | { readonly ok: true; readonly family: string | null; readonly subject: string | null }
-    | { readonly ok: false; readonly problem: ProblemDetails; readonly challenge: string } => {
-    const face = credentials.face();
-    const issuer = face?.issuer(req);
-    if (face === null || issuer === undefined) {
-        return { ok: true, family: null, subject: null };
-    }
-
-    const header = req.headers.authorization;
-    const challenge = (parameters: string): string =>
-        `Bearer realm="plurnk"${parameters}, resource_metadata="${issuer}/.well-known/oauth-protected-resource"`;
-    let presented = header === undefined ? null : /^Bearer(?:\s+(.*))?$/iu.exec(header);
-    if (presented === null && allowQueryToken) {
-        const url = new URL(req.url ?? "/acp", "http://listener");
-        const queryToken = url.searchParams.get("access_token");
-        if (queryToken !== null) presented = /^Bearer(?:\s+(.*))?$/iu.exec(`Bearer ${queryToken}`);
-    }
-    if (presented === null) {
-        return {
-            ok: false,
-            challenge: challenge(""),
-            problem: httpProblem("bearer-token-required", 401, "The request did not provide a bearer token.", {
-                stage: "authorization",
-                recovery: "Present an access token issued by this daemon as `Authorization: Bearer <token>`.",
-                retryable: false,
-            }),
-        };
-    }
-    const token = (presented[1] ?? "").trim();
-    const claims = credentials.verify(token);
-    if (claims === null || claims.kind !== "access") {
-        return {
-            ok: false,
-            challenge: challenge(
-                ', error="invalid_token", error_description="The access token is unknown, expired or revoked."',
-            ),
-            problem: httpProblem("bearer-token-invalid", 401, "The access token is unknown, expired or revoked.", {
-                stage: "authorization",
-                recovery: "Obtain a new access token from this daemon's token endpoint.",
-                retryable: false,
-            }),
-        };
-    }
-    if (!claims.scopes.includes("acp")) {
-        return {
-            ok: false,
-            challenge: challenge(', error="insufficient_scope", scope="acp"'),
-            problem: httpProblem(
-                "bearer-scope-insufficient",
-                403,
-                "The access token does not carry the scope acp.",
-                {
-                    stage: "authorization",
-                    scope: "acp",
-                    recovery: "Obtain an access token with the scope acp.",
-                    retryable: false,
-                },
-            ),
-        };
-    }
-    return { ok: true, family: claims.family, subject: claims.subject };
-};
+): BearerAdmission =>
+    admitBearerRequest(credentials, req, {
+        domain: "acp:http",
+        codePrefix: "acp/http",
+        requiredScope: "acp",
+        allowQueryToken,
+    });
 
 export const handleEntryRoute = async (
     seam: ApplicationPort,

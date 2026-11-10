@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setImmediate as nextTick } from "node:timers/promises";
-import { MAX_TIMER_MS, type FunctionalityFamilyHandle } from "@plurnk/plurnk-contracts";
+import {
+    MAX_TIMER_MS,
+    toDaemonNotification,
+    type ApplicationEventHandler,
+    type FunctionalityFamilyHandle,
+} from "@plurnk/plurnk-contracts";
 import ScheduleFunctionality, { ScheduleFunctionalityError } from "./Functionality.ts";
 import Module from "./Module.ts";
 import type { ScheduleDefinition } from "./definition.ts";
@@ -532,7 +537,7 @@ test("{§schedule-delivery} a failed delivery holds the rule unavailable with it
 test("{§schedule-residency} {§schedule-delivery} archiving a workspace disarms its schedules until unarchived, and an archived session is not delivered to", async () => {
     const time = new FakeTime();
     const mod = Module.init({ clock: time.clock, timers: time.api, report: () => {} });
-    let listener: ((workspaceId: number | null, method: string, params: unknown) => void) | null = null;
+    let listener: ApplicationEventHandler | null = null;
     const handle: FunctionalityFamilyHandle = {
         refresh: async () => {},
         invoke: async () => ({
@@ -567,11 +572,23 @@ test("{§schedule-residency} {§schedule-delivery} archiving a workspace disarms
     assert.deepEqual(mod.functionality.scheduler.armed(1), ["beat"]);
     assert.deepEqual(mod.functionality.scheduler.armed(2), [], "archived workspace is not armed at start");
 
-    listener!(1, "workspace/archived", { workspaceId: 1, archived: true, archivedAt: "2026-09-16T12:00:00Z" });
+    const archivedPayload = { id: 1, archived: true, archived_at: "2026-09-16T12:00:00Z" };
+    listener!(
+        1,
+        "workspace/archived",
+        archivedPayload,
+        toDaemonNotification(1, 1, "workspace/archived", archivedPayload),
+    );
     await flush();
     assert.deepEqual(mod.functionality.scheduler.armed(1), [], "archiving disarms workspace timers");
 
-    listener!(1, "workspace/archived", { workspaceId: 1, archived: false, archivedAt: null });
+    const unarchivedPayload = { id: 1, archived: false, archived_at: null };
+    listener!(
+        1,
+        "workspace/archived",
+        unarchivedPayload,
+        toDaemonNotification(2, 1, "workspace/archived", unarchivedPayload),
+    );
     await flush();
     assert.deepEqual(mod.functionality.scheduler.armed(1), ["beat"], "unarchiving re-arms workspace timers");
 

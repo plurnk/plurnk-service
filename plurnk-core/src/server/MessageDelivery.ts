@@ -31,17 +31,20 @@ export default class MessageDelivery {
     readonly #mimetypes: Mimetypes;
     // The drain's unified inject: active sister → fold; idle → enqueue + drain ({§machine-processes}).
     readonly #inject: (args: DrainInjectionArgs) => Promise<DrainInjectionResult>;
+    readonly #sessionCreated: ((workspaceId: number, sessionId: number) => Promise<void>) | undefined;
 
-    constructor({ db, sessionModels, mimetypes, inject }: {
+    constructor({ db, sessionModels, mimetypes, inject, sessionCreated }: {
         db: Db;
         sessionModels: SessionModels;
         mimetypes: Mimetypes;
         inject: (args: DrainInjectionArgs) => Promise<DrainInjectionResult>;
+        sessionCreated?: (workspaceId: number, sessionId: number) => Promise<void>;
     }) {
         this.#db = db;
         this.#sessionModels = sessionModels;
         this.#mimetypes = mimetypes;
         this.#inject = inject;
+        this.#sessionCreated = sessionCreated;
     }
 
     // {§methods} — drive/steer a loop. The module supplies only workspace/session/prompt;
@@ -112,7 +115,7 @@ export default class MessageDelivery {
     // enqueue + drain). The daemon owns provider + the law-file system prompt; the session scheme handler carries
     // neither. Fire-and-forget: the returned drain runs independently (the sister is its own session).
     // {§machine-processes}
-    async injectSession({ workspaceId, sessionId, sourceLoopId, prompt, spawn, attachments, opener }: InjectSessionArgs): Promise<InjectSessionResult> {
+    async injectSession({ workspaceId, sessionId, sourceLoopId, prompt, spawn, created, attachments, opener }: InjectSessionArgs): Promise<InjectSessionResult> {
         await this.#sessionModels.assertModelSession(workspaceId, sessionId);
         const sender = await this.#db.drain_message_source.get<{ session_id: number; workspace_id: number }>({ loop_id: sourceLoopId });
         if (sender === undefined || sender.workspace_id !== workspaceId) {
@@ -149,6 +152,9 @@ export default class MessageDelivery {
                 spawn_model_route_id: null,
                 effort: effort,
                 effort_source: "default" }, { spawn: true });
+        }
+        if (created === true) {
+            await this.#sessionCreated?.(workspaceId, sessionId);
         }
         const { action, loopId, messageId } = await ContentUse.read(this.#db, async () => {
             const delivered = await this.#prepareMessage(workspaceId, sessionId, prompt, attachments);

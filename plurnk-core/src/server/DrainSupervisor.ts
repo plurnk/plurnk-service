@@ -1,6 +1,11 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
-import type { MessageEvidence, Effort } from "@plurnk/plurnk-contracts";
+import type {
+    DaemonNotificationEvent,
+    DaemonNotificationPayloadMap,
+    Effort,
+    MessageEvidence,
+} from "@plurnk/plurnk-contracts";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import { routeForSpec } from "./model-route.ts";
 import type { MessageOpener, WakeSessionPayload } from "../core/ChannelWrite.ts";
@@ -124,7 +129,11 @@ export type DrainEngine = Pick<
 type AssertInjectionCompatibility = (args: InjectionCompatibility) => Promise<void>;
 // {§loop-completion} — completes, 499, the messages other sessions sent that an ended loop left unanswered.
 type CompleteAbandonedMessages = (workspaceId: number, sessionId: number, loopId: number, status: number) => Promise<unknown>;
-type EmitEvent = (workspaceId: number, method: string, params: unknown) => void;
+type EmitEvent = <E extends DaemonNotificationEvent>(
+    workspaceId: number,
+    method: E,
+    params: DaemonNotificationPayloadMap[E],
+) => void;
 
 // Owns the session-local queue consumer and every process-local edge that may
 // wake, cancel, or retire it. Daemon retains provider/process policy and the
@@ -1058,8 +1067,12 @@ export default class DrainSupervisor {
     }
 
     // {§notifications} — the terminal carries the stamp a snapshot reads.
-    async #publishTermination(workspaceId: number, event: DrainLoopResult & { sessionId: number }): Promise<void> {
+    async #publishTermination(
+        workspaceId: number,
+        event: DrainLoopResult & { sessionId: number; usage: LoopUsage; attributions: string[] },
+    ): Promise<void> {
         const { loopSeq, terminatedAt } = await this.#lifecycle.observation(event.loopId);
+        if (terminatedAt === null) throw new Error(`loop ${event.loopId} has no terminatedAt at termination`);
         // A durable close releases the live handle before its announcement is delivered.
         await Promise.all([...this.#streamAnnouncements.values()]
             .filter(({ sessionId }) => sessionId === event.sessionId)

@@ -8,24 +8,27 @@ import {
     type ClientApp,
 } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import type { WebSocketConstructor } from "@agentclientprotocol/sdk/experimental/ws-client";
-import type {
-    ApplicationEventHandler,
-    ApplicationInboxMessage,
-    ApplicationLoopProjection,
-    ApplicationSessionProjection,
-    ApplicationStream,
-    CapabilityPolicy,
-    ClientInteractionProjection,
-    CredentialAuthority,
-    CredentialClaims,
-    CredentialFace,
-    Effort,
-    LogEntryWire,
-    ModelRoute,
-    ProblemDetails,
-    ProposalProjection,
-    ProposalResolution,
-    TerminatedNotification,
+import {
+    toDaemonNotification,
+    type ApplicationEventHandler,
+    type ApplicationInboxMessage,
+    type ApplicationLoopProjection,
+    type ApplicationSessionProjection,
+    type ApplicationStream,
+    type CapabilityPolicy,
+    type ClientInteractionProjection,
+    type CredentialAuthority,
+    type CredentialClaims,
+    type CredentialFace,
+    type DaemonNotificationEvent,
+    type DaemonNotificationPayloadMap,
+    type Effort,
+    type LogEntryWire,
+    type ModelRoute,
+    type ProblemDetails,
+    type ProposalProjection,
+    type ProposalResolution,
+    type TerminatedNotification,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import Module, { type AcpSetupSeam } from "../src/Module.ts";
@@ -296,7 +299,14 @@ export const createHarness = async (options?: {
         logs,
         entryContents,
         emitEvent(workspaceId, method, params) {
-            for (const handler of eventHandlers) handler(workspaceId, method, params);
+            const event = method as DaemonNotificationEvent;
+            const notification = toDaemonNotification(
+                1,
+                workspaceId,
+                event,
+                params as DaemonNotificationPayloadMap[DaemonNotificationEvent],
+            );
+            for (const handler of eventHandlers) handler(workspaceId, event, params, notification);
         },
         setAuthMode(mode) {
             authMode = mode;
