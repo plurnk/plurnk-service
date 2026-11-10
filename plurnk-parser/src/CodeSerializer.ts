@@ -60,7 +60,7 @@ const isObjectLiteralString = (raw: string): boolean => {
     return trimmed.startsWith("{") && trimmed.endsWith("}");
 };
 
-export const stringifyCodeModeValue = (value: unknown, key?: string): string => {
+const stringifyCodeModeValue = (value: unknown, key?: string): string => {
     if (typeof value === "string") {
         if ((key === "pattern" || value.includes("\n")) && !value.includes("\r")) {
             const tag = pickHeredocTag(value);

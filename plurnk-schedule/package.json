@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-schedule",
-    "version": "3.0.7",
+    "version": "3.0.8",
     "description": "Scheduled messages for Plurnk sessions, on RFC 5545 recurrence rules",
     "type": "module",
     "license": "MIT",
