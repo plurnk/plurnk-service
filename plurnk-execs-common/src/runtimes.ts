@@ -21,30 +21,36 @@ const SH: Omit<RuntimeDecl, "summary"> = {
     },
 };
 
-const FIXED: readonly RuntimeDecl[] = [
-    {
-        name: "js",
-        glyph: "⬢",
-        summary: "Run JavaScript code or scripts with Node.js.",
-        invocation: {
-            body: {
-                role: "JavaScript program; arguments when the target is a script",
-                required: false,
-            },
-            target: {
-                role: "script, or working directory for an inline program",
-                required: false,
-                kind: "script",
-            },
-            example: {
-                body: "console.log(42)",
-            },
+let python3Version: string | null | undefined;
+const currentPython3Version = (): string | null =>
+    python3Version === undefined ? (python3Version = Shell.version("python3")) : python3Version;
+
+const jsDecl = (): RuntimeDecl => ({
+    name: "js",
+    glyph: "⬢",
+    summary: `Run JavaScript code or scripts with node (${process.version}).`,
+    invocation: {
+        body: {
+            role: "JavaScript program; arguments when the target is a script",
+            required: false,
+        },
+        target: {
+            role: "script, or working directory for an inline program",
+            required: false,
+            kind: "script",
+        },
+        example: {
+            body: "console.log(42)",
         },
     },
-    {
+});
+
+const python3Decl = (): RuntimeDecl => {
+    const version = currentPython3Version();
+    return {
         name: "python3",
         glyph: "🐍",
-        summary: "Run Python 3 code or scripts.",
+        summary: `Run Python 3 code or scripts with python3${version === null ? "" : ` (v${version})`}.`,
         invocation: {
             body: {
                 role: "Python program; arguments when the target is a script",
@@ -59,7 +65,11 @@ const FIXED: readonly RuntimeDecl[] = [
                 body: "print(42)",
             },
         },
-    },
-];
+    };
+};
 
-export const runtimes = (): RuntimeDecl[] => [{ ...SH, summary: Shell.summary(Shell.current()) }, ...FIXED];
+export const runtimes = (): RuntimeDecl[] => [
+    { ...SH, summary: Shell.summary(Shell.current()) },
+    jsDecl(),
+    python3Decl(),
+];

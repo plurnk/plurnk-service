@@ -178,7 +178,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#handle = seam.registerFunctionalityAdapter<McpServerDefinition, Snapshot>({
             family: FAMILY,
             namespaceOwner: OWNER,
-            summary: "List ({}) or manage MCP servers",
+            summary: "List ({}) or manage MCP servers.",
             aliasPattern: SERVER_NAME,
             definitionSchema: MCP_DEFINITION,
             example: { alias: "example-server", type: "stdio", command: "npx", args: ["-y", "example-mcp-server@1.0.0"] },

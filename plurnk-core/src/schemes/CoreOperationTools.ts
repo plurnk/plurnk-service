@@ -45,7 +45,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "note",
         target: "note",
-        summary: "Persist a decision, hypothesis, or fact in working memory.",
+        summary: "Distill a working memory.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
@@ -203,7 +203,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "kill",
         target: "kill",
-        summary: "Delete an entry, stop a process or child session, or retire log items.",
+        summary: "Delete an entry, stop a process or child session, or curate log items.",
         inputSchema: {
             type: "object",
             additionalProperties: false,
@@ -342,7 +342,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
     {
         op: "fail",
         target: "fail",
-        summary: "Report an unrecoverable failure and resolve an Open Message as failed.",
+        summary: "Resolve an Open Message as failed.",
         inputSchema: {
             type: "object",
             additionalProperties: false,

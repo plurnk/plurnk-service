@@ -319,7 +319,7 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
     readonly scheme: RuntimeSchemeFacet | undefined;
     readonly family = MEMBERS_FAMILY;
     readonly namespaceOwner = MEMBERS_OWNER;
-    readonly summary = "List ({}), add (files), or toggle/remove (file) file membership";
+    readonly summary = "List ({}) or manage file membership.";
     readonly definitionSchema = DEFINITION;
     readonly aliasPattern = GLOB;
     readonly addressing: FunctionalityAddressing = {
