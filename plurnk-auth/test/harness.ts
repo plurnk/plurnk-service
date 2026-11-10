@@ -5,7 +5,7 @@ import Module, { type AuthPort, type ModuleOptions } from "../src/Module.ts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
 export const { default: Credentials } = await import("../../plurnk-core/src/server/Credentials.ts") as {
-    default: new (options?: { readonly operatorSecret?: string | null }) => ApplicationPort["credentials"];
+    default: new (options?: { readonly operatorSecret?: string | null; readonly storePath?: string | null; readonly now?: () => number }) => ApplicationPort["credentials"];
 };
 const { default: HttpListener } = await import("../../plurnk-core/src/server/HttpListener.ts") as {
     default: {
@@ -35,8 +35,9 @@ export interface Hosted {
 export const boot = async (
     env: Record<string, string> = {}, options: Omit<ModuleOptions, "env"> = {}, operatorSecret: string | null = "s3cret",
     setup: (credentials: Authority) => void = () => {},
+    storePath: string | null = null,
 ): Promise<Hosted> => {
-    const credentials = new Credentials({ operatorSecret });
+    const credentials = new Credentials({ operatorSecret, storePath });
     setup(credentials);
     const mod = Module.create({ env: { ...FLOOR, ...env }, ...options });
     const http = await HttpListener.bind({ host: "127.0.0.1", port: 0 });

@@ -703,14 +703,26 @@ export interface ModuleClient {
 }
 
 /**
+ * {§credential-authority} {§auth-oauth-clients} A dynamically registered RFC 7591 public OAuth 2.1
+ * client persisted alongside the authority's encrypted grants across daemon restarts.
+ */
+export interface PublicOAuthClient {
+    readonly id: string;
+    readonly scopes: readonly string[];
+    readonly redirectUris: readonly string[];
+    readonly name: string | null;
+}
+
+/**
  * {§credential-authority} The daemon's one authority over the credentials presented to its listener:
- * opaque tokens it issued, live until they expire, are consumed or their family is revoked. Every
- * exterior adapter verifies through it; the client protocol is its issuing face.
+ * opaque tokens it issued, live until they expire, are consumed, or their family or secret is revoked.
+ * Every exterior adapter verifies through it; the client protocol is its issuing face.
  */
 export interface CredentialAuthority {
     /**
-     * The operator's client secret, `PLURNK_SECRET` when set, else one minted for this boot; null
-     * when the daemon authenticates nothing (`PLURNK_AUTH=0`) and no credential exists.
+     * The operator's client secret, `PLURNK_SECRET` when set, else the durable host secret beside
+     * the database (or minted in memory when headless); null when the daemon authenticates nothing
+     * (`PLURNK_AUTH=0`) and no credential exists.
      */
     readonly operatorSecret: string | null;
     issue(credential: Omit<CredentialClaims, "expiresAt"> & { readonly ttlMs: number }): IssuedCredential;
@@ -734,6 +746,15 @@ export interface CredentialAuthority {
     client(id: string): ModuleClient | null;
     /** Whether `secret` is the one minted for the module client `id`, compared in constant time. */
     authenticateClient(id: string, secret: string): boolean;
+    /** {§auth-oauth-clients} Persists a dynamically registered RFC 7591 public client across restarts. */
+    registerPublicClient?(client: PublicOAuthClient): void;
+    /** {§auth-oauth-clients} Dynamically registered RFC 7591 public clients restored at boot. */
+    publicClients?(): readonly PublicOAuthClient[];
+    /**
+     * {§auth-oauth-clients} Retains persisted credentials only for `allowedClientIds` (plus registered
+     * module clients), revoking any family whose client was removed from configuration before restart.
+     */
+    retainClients?(allowedClientIds: ReadonlySet<string>): void;
     /** Publishes the one issuing face; a second publication is a configuration fault. */
     publish(face: CredentialFace): void;
     /** The published face, or null while nothing issues: the daemon authenticates nothing. */

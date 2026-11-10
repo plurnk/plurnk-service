@@ -1,28 +1,59 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import type { CredentialAuthority, CredentialClaims, CredentialFace, CredentialSession, IssuedCredential, ModuleClient } from "@plurnk/plurnk-contracts";
+import {
+    isRecord,
+    type CredentialAuthority,
+    type CredentialClaims,
+    type CredentialFace,
+    type CredentialSession,
+    type IssuedCredential,
+    type ModuleClient,
+    type PublicOAuthClient,
+} from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
+
+const ENVELOPE_MAGIC = Buffer.from("PLKCRED1", "ascii");
+const HKDF_INFO = Buffer.from("plurnk-auth/grants/v1", "utf8");
+const gcmIvLength = 12;
+const gcmTagLength = 16;
+const hkdfKeyLength = 32;
+
+interface StoredGrantsEnvelope {
+    readonly version: 1;
+    readonly live: readonly [string, CredentialClaims][];
+    readonly retired: readonly [string, { readonly family: string; readonly expiresAt: number }][];
+    readonly established: readonly [string, number][];
+    readonly publicClients: readonly PublicOAuthClient[];
+}
 
 /** {§credential-authority} The daemon's posture, read once at boot from the shared panel. */
 export interface CredentialPosture {
     /** `PLURNK_AUTH`: the daemon issues and requires credentials. */
     readonly authenticates: boolean;
-    /** The operator's client secret while authenticating: `PLURNK_SECRET`, else minted for this boot. */
+    /** The operator's client secret while authenticating: `PLURNK_SECRET`, else the durable host secret beside the database. */
     readonly secret: string | null;
-    /** The secret was minted here rather than configured, so the daemon writes it beside its database. */
+    /** The secret is host-managed rather than configured via `PLURNK_SECRET`, so the daemon maintains it beside its database. */
     readonly minted: boolean;
 }
 
 // {§credential-authority} — the daemon's one authority over the credentials presented to its
-// listener. Tokens are opaque random strings held in memory, so a restart revokes every one of
-// them; revocation is by family, so an access token and the refresh token that renews it fall
-// together. No HTTP lives here: the client protocol is the issuing face.
+// listener. Tokens are opaque random strings; non-module grants, retired refresh tokens and
+// registered public clients persist encrypted (`0600`, AES-256-GCM under HKDF of `operatorSecret`)
+// beside the database when `storePath` is supplied, so browser sessions and OAuth grants survive
+// restarts while rotating the secret fails closed cleanly. Revocation is by family, so an access
+// token and the refresh token that renews it fall together. No HTTP lives here: the client protocol
+// is the issuing face.
 export default class Credentials implements CredentialAuthority {
-    /** The file beside the database that holds a minted operator secret. */
+    /** The file beside the database that holds the host-managed operator secret. */
     static readonly SECRET_FILE = "secret";
+    /** The file beside the database that holds AES-256-GCM encrypted OAuth grants and sessions. */
+    static readonly GRANTS_FILE = "credentials";
 
     readonly operatorSecret: string | null;
+    readonly #storePath: string | null;
+    readonly #encryptionKey: Buffer | null;
     readonly #live = new Map<string, CredentialClaims>();
     // A refresh token retired by rotation stays known until it would have expired, so a second
     // presentation is recognized as reuse and ends its family ({§auth-oauth-tokens}).
@@ -33,23 +64,39 @@ export default class Credentials implements CredentialAuthority {
     // {§credential-authority} — the clients this daemon's own modules registered, each with the
     // secret minted for it at this boot.
     readonly #clients = new Map<string, { readonly client: ModuleClient; readonly secret: string }>();
+    readonly #publicClients = new Map<string, PublicOAuthClient>();
     readonly #now: () => number;
     #face: CredentialFace | null = null;
+    #writeSeq = 0;
 
-    constructor({ now = Date.now, operatorSecret = null }: { readonly now?: () => number; readonly operatorSecret?: string | null } = {}) {
+    constructor({
+        now = Date.now,
+        operatorSecret = null,
+        storePath = null,
+    }: {
+        readonly now?: () => number;
+        readonly operatorSecret?: string | null;
+        readonly storePath?: string | null;
+    } = {}) {
         this.#now = now;
         this.operatorSecret = operatorSecret;
+        this.#storePath = storePath !== null && operatorSecret !== null && operatorSecret.length > 0 ? storePath : null;
+        this.#encryptionKey = this.#storePath === null || operatorSecret === null
+            ? null
+            : Buffer.from(hkdfSync("sha256", Buffer.from(operatorSecret, "utf8"), Buffer.alloc(0), HKDF_INFO, hkdfKeyLength));
+        this.#load();
     }
 
     // {§credential-authority} — the posture is `PLURNK_AUTH`, never an inference from what else is
-    // set: on, the operator's secret is `PLURNK_SECRET` or one minted for this boot; off, no
-    // credential exists.
-    static posture(env: NodeJS.ProcessEnv = process.env): CredentialPosture {
+    // set: on, the operator's secret is `PLURNK_SECRET`, else an existing durable `secret` file beside
+    // the database, else freshly minted; off, no credential exists.
+    static posture(env: NodeJS.ProcessEnv = process.env, secretPath: string | null = null): CredentialPosture {
         const authenticates = Knob.flag("PLURNK_AUTH", env);
         if (!authenticates) return { authenticates, secret: null, minted: false };
         const configured = env.PLURNK_SECRET;
         if (configured !== undefined && configured.length > 0) return { authenticates, secret: configured, minted: false };
-        return { authenticates, secret: Credentials.mint(), minted: true };
+        const persisted = secretPath === null ? null : Credentials.readSecretSync(secretPath);
+        return { authenticates, secret: persisted ?? Credentials.mint(), minted: true };
     }
 
     static mint(): string {
@@ -60,7 +107,20 @@ export default class Credentials implements CredentialAuthority {
         return join(dirname(dbPath), Credentials.SECRET_FILE);
     }
 
-    /** Writes a minted secret where same-user clients read it: 0600, complete or absent, overwritten at every boot. */
+    static grantsPath(dbPath: string): string {
+        return join(dirname(dbPath), Credentials.GRANTS_FILE);
+    }
+
+    static readSecretSync(path: string): string | null {
+        try {
+            const trimmed = readFileSync(path, "utf8").trim();
+            return trimmed.length > 0 && !/\s/u.test(trimmed) ? trimmed : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /** Writes a minted secret where same-user clients read it: 0600, complete or absent. */
     static async writeSecret(path: string, secret: string): Promise<void> {
         await mkdir(dirname(path), { recursive: true, mode: 0o700 });
         const stage = join(dirname(path), `.${basename(path)}-${process.pid}`);
@@ -70,6 +130,11 @@ export default class Credentials implements CredentialAuthority {
 
     /** Removes the file a previous boot may have left: a configured secret or an open daemon leaves none. */
     static async removeSecret(path: string): Promise<void> {
+        await rm(path, { force: true });
+    }
+
+    /** Removes the encrypted grant file when authentication is turned off (`PLURNK_AUTH=0`). */
+    static async removeGrants(path: string): Promise<void> {
         await rm(path, { force: true });
     }
 
@@ -83,6 +148,7 @@ export default class Credentials implements CredentialAuthority {
         const expiresAt = this.#now() + ttlMs;
         if (!this.#established.has(claims.family)) this.#established.set(claims.family, this.#now());
         this.#live.set(token, { ...claims, scopes: Object.freeze([...claims.scopes]), expiresAt });
+        if (!this.#clients.has(claims.clientId)) this.#save();
         return { token, expiresAt };
     }
 
@@ -102,6 +168,7 @@ export default class Credentials implements CredentialAuthority {
             if (claims.kind !== "refresh") return { reusedFamily: null };
             this.#live.delete(token);
             this.#retired.set(token, { family: claims.family, expiresAt: claims.expiresAt });
+            if (!this.#clients.has(claims.clientId)) this.#save();
             return { claims };
         }
         const retired = this.#retired.get(token);
@@ -111,9 +178,21 @@ export default class Credentials implements CredentialAuthority {
     }
 
     revokeFamily(family: string): void {
-        for (const [token, claims] of this.#live) if (claims.family === family) this.#live.delete(token);
-        for (const [token, retired] of this.#retired) if (retired.family === family) this.#retired.delete(token);
-        this.#established.delete(family);
+        let mutated = false;
+        for (const [token, claims] of this.#live) {
+            if (claims.family === family) {
+                this.#live.delete(token);
+                if (!this.#clients.has(claims.clientId)) mutated = true;
+            }
+        }
+        for (const [token, retired] of this.#retired) {
+            if (retired.family === family) {
+                this.#retired.delete(token);
+                mutated = true;
+            }
+        }
+        if (this.#established.delete(family)) mutated = true;
+        if (mutated) this.#save();
         for (const listener of this.#listeners) listener(family);
     }
 
@@ -164,6 +243,17 @@ export default class Credentials implements CredentialAuthority {
             client: Object.freeze({ id, redirectPaths: Object.freeze([...redirectPaths]), scopes: Object.freeze([...new Set(scopes)]), ...(stylesheetPath === undefined ? {} : { stylesheetPath }) }),
             secret,
         });
+        let evicted = false;
+        for (const [token, claims] of this.#live) {
+            if (claims.clientId === id) {
+                this.#live.delete(token);
+                evicted = true;
+            }
+        }
+        if (evicted) {
+            this.#sweep();
+            this.#save();
+        }
         return { clientId: id, clientSecret: secret };
     }
 
@@ -177,6 +267,31 @@ export default class Credentials implements CredentialAuthority {
         if (held === undefined) return false;
         const digest = (value: string): Buffer => createHash("sha256").update(value).digest();
         return timingSafeEqual(digest(secret), digest(held.secret));
+    }
+
+    registerPublicClient(client: PublicOAuthClient): void {
+        const normalized: PublicOAuthClient = Object.freeze({
+            id: client.id,
+            scopes: Object.freeze([...client.scopes]),
+            redirectUris: Object.freeze([...client.redirectUris]),
+            name: client.name,
+        });
+        this.#publicClients.set(client.id, normalized);
+        this.#save();
+    }
+
+    publicClients(): readonly PublicOAuthClient[] {
+        return Object.freeze([...this.#publicClients.values()]);
+    }
+
+    retainClients(allowedClientIds: ReadonlySet<string>): void {
+        const revokedFamilies = new Set<string>();
+        for (const claims of this.#live.values()) {
+            if (!allowedClientIds.has(claims.clientId) && !this.#clients.has(claims.clientId)) {
+                revokedFamilies.add(claims.family);
+            }
+        }
+        for (const family of revokedFamilies) this.revokeFamily(family);
     }
 
     // {§credential-authority} — a pathname exactly as a URL carries it: one leading slash, nothing
@@ -204,5 +319,123 @@ export default class Credentials implements CredentialAuthority {
         for (const [token, retired] of this.#retired) if (retired.expiresAt <= now) this.#retired.delete(token);
         const held = new Set([...this.#live.values()].map(({ family }) => family));
         for (const family of this.#established.keys()) if (!held.has(family)) this.#established.delete(family);
+    }
+
+    #load(): void {
+        if (this.#storePath === null || this.#encryptionKey === null) return;
+        let raw: Buffer;
+        try {
+            raw = readFileSync(this.#storePath);
+        } catch {
+            return;
+        }
+        if (raw.length <= ENVELOPE_MAGIC.length + gcmIvLength + gcmTagLength) return;
+        if (!raw.subarray(0, ENVELOPE_MAGIC.length).equals(ENVELOPE_MAGIC)) return;
+        try {
+            const ivOffset = ENVELOPE_MAGIC.length;
+            const tagOffset = ivOffset + gcmIvLength;
+            const cipherOffset = tagOffset + gcmTagLength;
+            const decipher = createDecipheriv("aes-256-gcm", this.#encryptionKey, raw.subarray(ivOffset, tagOffset));
+            decipher.setAAD(HKDF_INFO);
+            decipher.setAuthTag(raw.subarray(tagOffset, cipherOffset));
+            const plaintext = Buffer.concat([decipher.update(raw.subarray(cipherOffset)), decipher.final()]).toString("utf8");
+            const parsed: unknown = JSON.parse(plaintext);
+            if (!isRecord(parsed) || parsed.version !== 1) return;
+            const now = this.#now();
+            if (Array.isArray(parsed.established)) {
+                for (const entry of parsed.established) {
+                    if (Array.isArray(entry) && typeof entry[0] === "string" && typeof entry[1] === "number" && Number.isFinite(entry[1])) {
+                        this.#established.set(entry[0], entry[1]);
+                    }
+                }
+            }
+            if (Array.isArray(parsed.live)) {
+                for (const entry of parsed.live) {
+                    if (!Array.isArray(entry) || typeof entry[0] !== "string" || !isRecord(entry[1])) continue;
+                    const [token, c] = entry;
+                    if (
+                        (c.kind === "access" || c.kind === "refresh" || c.kind === "session")
+                        && typeof c.subject === "string" && c.subject.length > 0
+                        && typeof c.clientId === "string" && c.clientId.length > 0
+                        && Array.isArray(c.scopes) && c.scopes.every((s): s is string => typeof s === "string")
+                        && typeof c.family === "string" && c.family.length > 0
+                        && typeof c.expiresAt === "number" && c.expiresAt > now
+                    ) {
+                        if (!this.#established.has(c.family)) this.#established.set(c.family, now);
+                        this.#live.set(token, {
+                            kind: c.kind,
+                            subject: c.subject,
+                            clientId: c.clientId,
+                            scopes: Object.freeze([...c.scopes]),
+                            family: c.family,
+                            expiresAt: c.expiresAt,
+                        });
+                    }
+                }
+            }
+            if (Array.isArray(parsed.retired)) {
+                for (const entry of parsed.retired) {
+                    if (!Array.isArray(entry) || typeof entry[0] !== "string" || !isRecord(entry[1])) continue;
+                    const [token, r] = entry;
+                    if (typeof r.family === "string" && typeof r.expiresAt === "number" && r.expiresAt > now) {
+                        this.#retired.set(token, { family: r.family, expiresAt: r.expiresAt });
+                    }
+                }
+            }
+            if (Array.isArray(parsed.publicClients)) {
+                for (const c of parsed.publicClients) {
+                    if (
+                        isRecord(c)
+                        && typeof c.id === "string" && c.id.length > 0
+                        && Array.isArray(c.scopes) && c.scopes.every((s): s is string => typeof s === "string")
+                        && Array.isArray(c.redirectUris) && c.redirectUris.every((u): u is string => typeof u === "string")
+                        && (c.name === null || typeof c.name === "string")
+                    ) {
+                        this.#publicClients.set(c.id, Object.freeze({
+                            id: c.id,
+                            scopes: Object.freeze([...c.scopes]),
+                            redirectUris: Object.freeze([...c.redirectUris]),
+                            name: c.name,
+                        }));
+                    }
+                }
+            }
+            this.#sweep();
+        } catch {
+            // Rotated secret or corrupted ciphertext fails closed to clean empty state.
+            this.#live.clear();
+            this.#retired.clear();
+            this.#established.clear();
+            this.#publicClients.clear();
+        }
+    }
+
+    #save(): void {
+        if (this.#storePath === null || this.#encryptionKey === null) return;
+        this.#sweep();
+        const live: [string, CredentialClaims][] = [];
+        const persistedFamilies = new Set<string>();
+        for (const [token, claims] of this.#live) {
+            if (this.#clients.has(claims.clientId)) continue;
+            live.push([token, claims]);
+            persistedFamilies.add(claims.family);
+        }
+        const envelope: StoredGrantsEnvelope = {
+            version: 1,
+            live,
+            retired: [...this.#retired.entries()],
+            established: [...this.#established.entries()].filter(([family]) => persistedFamilies.has(family)),
+            publicClients: [...this.#publicClients.values()],
+        };
+        const iv = randomBytes(gcmIvLength);
+        const cipher = createCipheriv("aes-256-gcm", this.#encryptionKey, iv);
+        cipher.setAAD(HKDF_INFO);
+        const ciphertext = Buffer.concat([cipher.update(JSON.stringify(envelope), "utf8"), cipher.final()]);
+        const tag = cipher.getAuthTag();
+        const bytes = Buffer.concat([ENVELOPE_MAGIC, iv, tag, ciphertext]);
+        mkdirSync(dirname(this.#storePath), { recursive: true, mode: 0o700 });
+        const stage = join(dirname(this.#storePath), `.${basename(this.#storePath)}-${process.pid}-${++this.#writeSeq}`);
+        writeFileSync(stage, bytes, { mode: 0o600, flag: "w" });
+        renameSync(stage, this.#storePath);
     }
 }

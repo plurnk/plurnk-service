@@ -30,6 +30,7 @@ export interface ContinuationHost {
     readonly challenged: Set<string>;
     readonly dirty: Map<string, symbol>;
     readonly grants: Map<string, McpBinding & { readonly grant: OAuthGrant }>;
+    recordGrant(workspaceId: number, entry: McpBinding & { readonly grant: OAuthGrant }): Promise<void>;
     pendingKey(workspaceId: number, name: string): string;
     retain(workspaceId: number): () => void;
     closeOwned(connections: readonly ServerConnection[]): Promise<void>;
@@ -190,7 +191,12 @@ export const completeOAuth = async (
         // {§oauth-continuation} The accepted sign-in is the alias's grant, replacing any before it.
         const grant = pending.connection.oauthGrant;
         if (grant !== undefined) {
-            host.grants.set(key, { alias: pending.alias, definition: pending.definition, ...(pending.context === undefined ? {} : { context: pending.context }), grant });
+            await host.recordGrant(identity.workspaceId, {
+                alias: pending.alias,
+                definition: pending.definition,
+                ...(pending.context === undefined ? {} : { context: pending.context }),
+                grant,
+            });
         }
         host.dirty.set(key, Symbol());
         host.refreshCatalog(identity.workspaceId, alias);

@@ -60,6 +60,7 @@ interface Adapter {
     refreshIfChanged(identity: { workspaceId: number }): Promise<void>;
     prepare(preparation: FunctionalityPreparation): Promise<Prepared>;
     teardown(snapshot: unknown, identity: { workspaceId: number }): Promise<void>;
+    forget?(source: { alias: string; definition: object }, identity: { workspaceId: number }): Promise<void>;
 }
 
 interface ActionRegistration {
@@ -69,7 +70,9 @@ interface ActionRegistration {
 
 interface ModuleHarness {
     readonly module: ReturnType<typeof Module.init>;
+    readonly stateRoot: string;
     readonly seam: {
+        credentials?: { readonly operatorSecret: string | null };
         readWorkspacePlugins: () => Promise<{ plugins: never[]; roots: Record<string, never> }>;
         workspacePaths: (workspaceId: number) => Promise<{ home: string; workspaceName: string; projectRoot: null; configurationRoots: never[] }>;
         workspaceStateDirectory: (workspaceId: number, owner: string) => Promise<string>;
@@ -103,12 +106,20 @@ interface ModuleHarness {
 // A harness that stands where the coordinator stands: it holds each workspace's
 // enabled set and committed snapshot and calls the adapter's two phases. It
 // decides nothing about lifecycle semantics — tests choose the enabled set.
-export const harness = (env: Record<string, string> = {}, beforeRefresh: () => Promise<void> = async () => {}): ModuleHarness => {
+export const harness = (
+    env: Record<string, string> = {},
+    beforeRefresh: () => Promise<void> = async () => {},
+    harnessOptions: { stateRoot?: string; operatorSecret?: string | null } = {},
+): ModuleHarness => {
     const environment: Record<string, string> = { ...floor, ...env };
     const module = Module.init({ env: environment });
-    const stateRoot = mkdtempSync(join(tmpdir(), "plurnk-mcp-state-"));
+    const ownsStateRoot = harnessOptions.stateRoot === undefined;
+    const stateRoot = harnessOptions.stateRoot ?? mkdtempSync(join(tmpdir(), "plurnk-mcp-state-"));
     const stateDirectory = (workspaceId: number, owner: string): string => join(stateRoot, String(workspaceId), encodeURIComponent(owner));
-    after(async () => { await module.stop(); await rm(stateRoot, { recursive: true, force: true }); });
+    after(async () => {
+        await module.stop();
+        if (ownsStateRoot) await rm(stateRoot, { recursive: true, force: true });
+    });
     let refreshes = 0;
     const refreshOptions: unknown[] = [];
     const pendingRefreshes: Promise<void>[] = [];
@@ -137,6 +148,7 @@ export const harness = (env: Record<string, string> = {}, beforeRefresh: () => P
         return prepared;
     };
     const seam = {
+        ...(harnessOptions.operatorSecret === undefined ? {} : { credentials: { operatorSecret: harnessOptions.operatorSecret } }),
         readWorkspacePlugins: async () => ({ plugins: [], roots: {} }),
         workspacePaths: async (workspaceId: number) => ({
             home: stateRoot,
@@ -183,6 +195,7 @@ export const harness = (env: Record<string, string> = {}, beforeRefresh: () => P
     };
     return {
         module,
+        stateRoot,
         seam,
         actions,
         snapshots,

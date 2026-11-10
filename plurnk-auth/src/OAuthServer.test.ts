@@ -430,3 +430,239 @@ test("{§auth-oauth-clients} a module client's registered stylesheet replaces th
     }
 });
 
+test("{§auth-oauth} {§auth-oauth-clients} {§auth-oauth-tokens} loopback /oauth/handoff mints single-use short-lived tickets for operator bearers even when PLURNK_PASS is empty, rejects non-operator or non-loopback callers, and never replays", async () => {
+    const { PassThrough } = await import("node:stream");
+    const { ServerResponse, IncomingMessage } = await import("node:http");
+    const { default: OAuthServer } = await import("./OAuthServer.ts");
+    const { resolveModuleOptions } = await import("./config.ts");
+
+    const mod = await boot(
+        {
+            PLURNK_PASS: "",
+            PLURNK_AUTH_CLIENT_agent: JSON.stringify({ secret: "agent-secret", scopes: ["acp"] }),
+        },
+        {},
+        "s3cret",
+        (credentials) => {
+            credentials.registerClient({ id: "plurnk-web", redirectPaths: ["/auth/callback"], scopes: ["acp"] });
+        },
+    );
+    try {
+        // Missing or invalid bearer token -> 401 with Bearer challenge.
+        const unauth = await fetch(`${mod.base}/oauth/handoff`, { method: "POST" });
+        assert.equal(unauth.status, 401);
+        assert.match(unauth.headers.get("www-authenticate") ?? "", /^Bearer\b/u);
+
+        // Non-operator client -> 403 unauthorized_client.
+        const agentToken = await json<{ access_token: string }>(await fetch(
+            `${mod.base}/oauth/token`,
+            form({ grant_type: "client_credentials", client_id: "agent", client_secret: "agent-secret", scope: "acp" }),
+        ));
+        const wrongClient = await fetch(`${mod.base}/oauth/handoff`, {
+            method: "POST",
+            headers: { authorization: `Bearer ${agentToken.access_token}` },
+        });
+        assert.equal(wrongClient.status, 403);
+        assert.equal((await json(wrongClient)).error, "unauthorized_client");
+
+        // Operator client delegated to another requested_subject -> 403 unauthorized_client.
+        const delegatedToken = await json<{ access_token: string }>(await fetch(
+            `${mod.base}/oauth/token`,
+            form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret", requested_subject: "delegate" }),
+        ));
+        const wrongSubject = await fetch(`${mod.base}/oauth/handoff`, {
+            method: "POST",
+            headers: { authorization: `Bearer ${delegatedToken.access_token}` },
+        });
+        assert.equal(wrongSubject.status, 403);
+
+        // Operator bearer -> valid handoff ticket; invalid return paths rejected at 400.
+        const opToken = await json<{ access_token: string }>(await fetch(
+            `${mod.base}/oauth/token`,
+            form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret" }),
+        ));
+        for (const badReturn of ["https://evil.example/", "//evil.example/", "/ok#frag", "relative", "/oauth/handoff"]) {
+            const bad = await fetch(`${mod.base}/oauth/handoff`, {
+                method: "POST",
+                headers: { authorization: `Bearer ${opToken.access_token}`, "content-type": "application/json" },
+                body: JSON.stringify({ return: badReturn }),
+            });
+            assert.equal(bad.status, 400, badReturn);
+        }
+
+        const mintedRes = await fetch(`${mod.base}/oauth/handoff`, {
+            method: "POST",
+            headers: { authorization: `Bearer ${opToken.access_token}`, "content-type": "application/json" },
+            body: JSON.stringify({ return: "/?view=sessions" }),
+        });
+        assert.equal(mintedRes.status, 200);
+        const handoff = await json<{ ticket: string; url: string; expires_in: number }>(mintedRes);
+        assert.equal(handoff.expires_in, 60);
+        assert.equal(handoff.url, `${mod.base}/oauth/handoff?ticket=${encodeURIComponent(handoff.ticket)}`);
+
+        // First GET consumes ticket, sets plurnk_session even with PLURNK_PASS="", and 303-redirects to return path.
+        const redeemed = await fetch(handoff.url, { redirect: "manual" });
+        assert.equal(redeemed.status, 303);
+        assert.equal(redeemed.headers.get("location"), `${mod.base}/?view=sessions`);
+        const cookie = sessionOf(redeemed);
+
+        // Silent module-client authorization succeeds immediately with that session even while PLURNK_PASS="".
+        const silentAuth = await fetch(`${mod.base}/oauth/authorize?${new URLSearchParams({
+            client_id: "plurnk-web",
+            redirect_uri: `${mod.base}/auth/callback`,
+            response_type: "code",
+            code_challenge: pkce().challenge,
+            code_challenge_method: "S256",
+            scope: "acp",
+        }).toString()}`, { redirect: "manual", headers: { cookie: `plurnk_session=${cookie}` } });
+        assert.equal(silentAuth.status, 302, "plurnk-web authorizes silently from handoff session without PLURNK_PASS");
+
+        // Replaying the same ticket fails 401 with no cookie.
+        const replay = await fetch(handoff.url, { redirect: "manual" });
+        assert.equal(replay.status, 401);
+        assert.equal(replay.headers.get("set-cookie"), null);
+        assert.match(await replay.text(), /Sign-in link expired/u);
+
+        // Expired ticket fails 401 and non-loopback socket fails 403.
+        let now = 10_000;
+        const unitAuth = new OAuthServer({
+            credentials: mod.credentials,
+            opts: resolveModuleOptions({ env: { ...FLOOR, PLURNK_PASS: "", PLURNK_AUTH_CODE_TTL_SEC: "5" } }),
+            issuer: () => "http://127.0.0.1:1066",
+            now: () => now,
+        });
+        const invokeDirect = async (method: string, url: string, remoteAddress: string, headers: Record<string, string> = {}): Promise<{ status: number; body: string }> => {
+            const socket = Object.assign(new PassThrough(), { remoteAddress });
+            const req = new IncomingMessage(socket as never);
+            req.method = method;
+            req.url = url;
+            req.headers = headers;
+            req.push(null);
+            const res = new ServerResponse(req);
+            const chunks: Buffer[] = [];
+            const origWrite = res.write.bind(res);
+            const origEnd = res.end.bind(res);
+            res.write = ((chunk: string | Buffer | Uint8Array) => {
+                chunks.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : Buffer.from(chunk));
+                return origWrite(chunk);
+            }) as typeof res.write;
+            res.end = ((chunk?: unknown) => {
+                if (typeof chunk === "string") chunks.push(Buffer.from(chunk, "utf8"));
+                else if (Buffer.isBuffer(chunk) || chunk instanceof Uint8Array) chunks.push(Buffer.from(chunk));
+                return origEnd();
+            }) as typeof res.end;
+            await unitAuth.handle(req, res);
+            return { status: res.statusCode, body: Buffer.concat(chunks).toString("utf8") };
+        };
+        const remoteAttempt = await invokeDirect("POST", "/oauth/handoff", "192.168.1.50", { authorization: `Bearer ${opToken.access_token}` });
+        assert.equal(remoteAttempt.status, 403);
+        const localMint = await invokeDirect("POST", "/oauth/handoff", "127.0.0.1", { authorization: `Bearer ${opToken.access_token}` });
+        assert.equal(localMint.status, 200);
+        const { ticket: expiringTicket } = JSON.parse(localMint.body) as { ticket: string };
+        now += 5_000;
+        const expiredRedeem = await invokeDirect("GET", `/oauth/handoff?ticket=${encodeURIComponent(expiringTicket)}`, "127.0.0.1");
+        assert.equal(expiredRedeem.status, 401);
+        assert.match(expiredRedeem.body, /Sign-in link expired/u);
+    } finally {
+        await mod.close();
+    }
+});
+
+test("{§auth-oauth-clients} {§auth-oauth-tokens} {§credential-authority} encrypted browser sessions and public-client refresh grants survive daemon restart and revoke when secret rotates or a declared client is removed", async () => {
+    const { mkdtemp, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-auth-restart-"));
+    const storePath = join(dir, "credentials");
+    try {
+        let cookie = "";
+        let clientId = "";
+        let refreshToken = "";
+        let declaredToken = "";
+
+        const first = await boot(
+            { PLURNK_AUTH_CLIENT_temp: JSON.stringify({ secret: "temp-secret", scopes: ["acp"] }) },
+            {},
+            "durable-secret",
+            (credentials) => { credentials.registerClient({ id: "plurnk-web", redirectPaths: ["/auth/callback"], scopes: ["acp"] }); },
+            storePath,
+        );
+        try {
+            const redirect = "http://127.0.0.1:4300/callback";
+            clientId = (await register(first.base, redirect)).client_id;
+            const { verifier, challenge } = pkce();
+            const signed = await signIn(first.base, {
+                client_id: clientId,
+                redirect_uri: redirect,
+                response_type: "code",
+                code_challenge: challenge,
+                code_challenge_method: "S256",
+            }, "lovelace");
+            cookie = sessionOf(signed);
+            const code = new URL(signed.headers.get("location")!).searchParams.get("code")!;
+            const exchanged = await json<{ access_token: string; refresh_token: string }>(await fetch(
+                `${first.base}/oauth/token`,
+                form({ grant_type: "authorization_code", client_id: clientId, code, redirect_uri: redirect, code_verifier: verifier }),
+            ));
+            refreshToken = exchanged.refresh_token;
+            declaredToken = (await json<{ access_token: string }>(await fetch(
+                `${first.base}/oauth/token`,
+                form({ grant_type: "client_credentials", client_id: "temp", client_secret: "temp-secret", scope: "acp" }),
+            ))).access_token;
+            admitted(first, declaredToken);
+        } finally {
+            await first.close();
+        }
+
+        // Restart with the same secret, PLURNK_PASS="", and PLURNK_AUTH_CLIENT_temp removed.
+        const second = await boot(
+            { PLURNK_PASS: "" },
+            {},
+            "durable-secret",
+            (credentials) => { credentials.registerClient({ id: "plurnk-web", redirectPaths: ["/auth/callback"], scopes: ["acp"] }); },
+            storePath,
+        );
+        try {
+            rejected(second, declaredToken);
+            // Browser session survives and silently re-authorizes plurnk-web without asking for a password.
+            const silent = await fetch(`${second.base}/oauth/authorize?${new URLSearchParams({
+                client_id: "plurnk-web",
+                redirect_uri: `${second.base}/auth/callback`,
+                response_type: "code",
+                code_challenge: pkce().challenge,
+                code_challenge_method: "S256",
+                scope: "acp",
+            }).toString()}`, { redirect: "manual", headers: { cookie: `plurnk_session=${cookie}` } });
+            assert.equal(silent.status, 302, "persisted browser session silently re-authorizes module client across restart");
+
+            // Registered public client and its refresh token survive restart and rotate cleanly.
+            const refreshed = await fetch(
+                `${second.base}/oauth/token`,
+                form({ grant_type: "refresh_token", client_id: clientId, refresh_token: refreshToken }),
+            );
+            assert.equal(refreshed.status, 200);
+            const nextTokens = await json<{ access_token: string; refresh_token: string }>(refreshed);
+            admitted(second, nextTokens.access_token);
+        } finally {
+            await second.close();
+        }
+
+        // Restart with a rotated secret: prior sessions and refresh tokens fail closed cleanly.
+        const rotated = await boot(
+            { PLURNK_PASS: "" },
+            {},
+            "rotated-secret",
+            (credentials) => { credentials.registerClient({ id: "plurnk-web", redirectPaths: ["/auth/callback"], scopes: ["acp"] }); },
+            storePath,
+        );
+        try {
+            const afterRotate = await fetch(`${rotated.base}/oauth/session`, { headers: { cookie: `plurnk_session=${cookie}` } });
+            assert.match(await afterRotate.text(), /Not signed in/u);
+        } finally {
+            await rotated.close();
+        }
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+

@@ -410,7 +410,7 @@ export default class Service {
                 ? "plurnk-service: authentication off (PLURNK_AUTH=0)\n"
                 : daemon.secretFile === null
                     ? "plurnk-service: authentication on; PLURNK_SECRET is the configured operator secret\n"
-                    : `plurnk-service: authentication on; the operator secret minted for this boot is in ${daemon.secretFile}\n`);
+                    : `plurnk-service: authentication on; the operator secret is in ${daemon.secretFile}\n`);
             const invalidModel = route === null && Boolean(process.env.PLURNK_MODEL);
             if (route === null && !invalidModel) {
                 process.stderr.write(

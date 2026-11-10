@@ -176,3 +176,90 @@ test("{§credential-authority} a module client's registration is refused when it
     assert.equal(authority.registerClient({ ...good, stylesheetPath: "/web/assets/authority.css" }).clientId, "web");
     assert.equal(authority.client("web")?.stylesheetPath, "/web/assets/authority.css");
 });
+
+test("{§credential-authority} posture reuses a durable host secret file when PLURNK_SECRET is unset and ignores whitespace or missing files", async () => {
+    const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-durable-secret-"));
+    try {
+        const secretPath = Credentials.secretPath(join(dir, "plurnk.db"));
+        const first = Credentials.posture({ PLURNK_AUTH: "1" }, secretPath);
+        assert.equal(first.minted, true);
+        await Credentials.writeSecret(secretPath, first.secret!);
+        const second = Credentials.posture({ PLURNK_AUTH: "1" }, secretPath);
+        assert.deepEqual(second, { authenticates: true, secret: first.secret, minted: true }, "reuses durable host secret across restarts");
+        assert.deepEqual(
+            Credentials.posture({ PLURNK_AUTH: "1", PLURNK_SECRET: "override" }, secretPath),
+            { authenticates: true, secret: "override", minted: false },
+            "explicit PLURNK_SECRET overrides the host secret file",
+        );
+        await writeFile(secretPath, "bad secret with spaces\n", { mode: 0o600 });
+        const replaced = Credentials.posture({ PLURNK_AUTH: "1" }, secretPath);
+        assert.equal(replaced.minted, true);
+        assert.notEqual(replaced.secret, "bad secret with spaces");
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("{§credential-authority} non-module sessions, grants, retired refresh tokens and public clients persist encrypted at 0600 and fail closed on secret rotation or tampering", async () => {
+    const { mkdtemp, readFile, rm, stat, writeFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-grants-"));
+    try {
+        const storePath = Credentials.grantsPath(join(dir, "plurnk.db"));
+        let now = 5_000;
+        const first = new Credentials({ now: () => now, operatorSecret: "secret-alpha", storePath });
+        first.registerClient({ id: "plurnk-web", redirectPaths: ["/auth/callback"], scopes: ["acp"] });
+        first.registerPublicClient({ id: "pub-1", scopes: ["acp"], redirectUris: ["http://127.0.0.1:4100/cb"], name: "CLI" });
+
+        const browserSession = first.issue({ kind: "session", subject: "operator", clientId: "browser", scopes: ["acp"], family: "fam-web", ttlMs: 60_000 });
+        const moduleToken = first.issue({ kind: "access", subject: "operator", clientId: "plurnk-web", scopes: ["acp"], family: "fam-web", ttlMs: 60_000 });
+        const pubRefresh = first.issue({ kind: "refresh", subject: "operator", clientId: "pub-1", scopes: ["acp"], family: "fam-pub", ttlMs: 60_000 });
+        const pubAccess = first.issue({ kind: "access", subject: "operator", clientId: "pub-1", scopes: ["acp"], family: "fam-pub", ttlMs: 60_000 });
+        const declaredAccess = first.issue({ kind: "access", subject: "bot", clientId: "declared-bot", scopes: ["acp"], family: "fam-bot", ttlMs: 60_000 });
+        assert.ok("claims" in first.consume(pubRefresh.token));
+        const pubRotated = first.issue({ kind: "refresh", subject: "operator", clientId: "pub-1", scopes: ["acp"], family: "fam-pub", ttlMs: 60_000 });
+
+        const raw = await readFile(storePath);
+        assert.equal((await stat(storePath)).mode & 0o777, 0o600, "encrypted grants file is 0600");
+        for (const sensitive of [browserSession.token, pubAccess.token, pubRotated.token, "operator", "pub-1"]) {
+            assert.equal(raw.includes(Buffer.from(sensitive, "utf8")), false, `ciphertext never exposes ${sensitive}`);
+        }
+
+        now = 6_000;
+        const restored = new Credentials({ now: () => now, operatorSecret: "secret-alpha", storePath });
+        assert.equal(restored.verify(browserSession.token)?.family, "fam-web", "browser session survives restart");
+        assert.equal(restored.verify(moduleToken.token), null, "module-client tokens stay per-boot in memory");
+        assert.equal(restored.verify(pubAccess.token)?.clientId, "pub-1", "public client access token survives restart");
+        assert.equal(restored.verify(declaredAccess.token)?.clientId, "declared-bot");
+        assert.deepEqual(restored.publicClients(), [{ id: "pub-1", scopes: ["acp"], redirectUris: ["http://127.0.0.1:4100/cb"], name: "CLI" }]);
+        assert.equal(restored.sessions("operator")[0]?.createdAt, 5_000, "established timestamp survives restart");
+
+        // Removing a declared client from configuration and calling retainClients revokes its persisted tokens.
+        restored.retainClients(new Set(["browser", "operator", "pub-1"]));
+        assert.equal(restored.verify(declaredAccess.token), null, "removed declared client's tokens are pruned at boot");
+        assert.notEqual(restored.verify(pubAccess.token), null, "retained client tokens stand");
+
+        // Replaying a pre-restart retired refresh token still revokes the family after restart.
+        assert.deepEqual(restored.consume(pubRefresh.token), { reusedFamily: "fam-pub" });
+        assert.equal(restored.verify(pubAccess.token), null);
+        assert.equal(restored.verify(pubRotated.token), null);
+
+        // Secret rotation fails closed to empty state without throwing.
+        const rotated = new Credentials({ now: () => now, operatorSecret: "secret-beta", storePath });
+        assert.equal(rotated.verify(browserSession.token), null);
+        assert.deepEqual(rotated.publicClients(), []);
+
+        // Tampered ciphertext fails closed cleanly.
+        const tampered = Buffer.from(await readFile(storePath));
+        tampered[tampered.length - 1] ^= 0xff;
+        await writeFile(storePath, tampered, { mode: 0o600 });
+        const afterTamper = new Credentials({ now: () => now, operatorSecret: "secret-alpha", storePath });
+        assert.equal(afterTamper.verify(browserSession.token), null);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});

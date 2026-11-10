@@ -98,11 +98,16 @@ export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOpti
         readClient(`ModuleOptions.clients.${id}`, JSON.stringify(client));
     }
     if (options.auth !== undefined && typeof options.auth !== "boolean") throw new Error(`ModuleOptions.auth must be a boolean; got ${JSON.stringify(options.auth)}.`);
+    const authenticates = options.auth === undefined ? Knob.flag("PLURNK_AUTH", env) : options.auth;
+    const issuer = floorString(options, env, "issuer", "PLURNK_AUTH_ISSUER");
+    floorString(options, env, "password", "PLURNK_PASS");
     return {
         // {§credential-authority} — the posture is the shared panel's PLURNK_AUTH, never an inference.
-        authenticates: options.auth === undefined ? Knob.flag("PLURNK_AUTH", env) : options.auth,
-        issuer: floorString(options, env, "issuer", "PLURNK_AUTH_ISSUER"),
-        password: floorString(options, env, "password", "PLURNK_PASS"),
+        authenticates,
+        issuer,
+        get password(): string {
+            return floorString(options, env, "password", "PLURNK_PASS");
+        },
         codeTtlSec: number("codeTtlSec", "PLURNK_AUTH_CODE_TTL_SEC", 1),
         accessTtlSec: number("accessTtlSec", "PLURNK_AUTH_ACCESS_TTL_SEC", 1),
         refreshTtlSec: number("refreshTtlSec", "PLURNK_AUTH_REFRESH_TTL_SEC", 1),

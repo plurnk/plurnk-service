@@ -15,6 +15,7 @@ authorization server on the daemon's listener ({§auth-oauth}):
 - `POST /oauth/revoke` (RFC 7009)
 - `POST /oauth/register` (RFC 7591 public client registration)
 - `GET` / `POST /oauth/session` (browser session inspection and sign-out)
+- `GET` / `POST /oauth/handoff` (single-use loopback browser sign-in handoff)
 
 When `PLURNK_AUTH=0`, the module claims no HTTP mounts and publishes no face.
 Every protocol face (`@plurnk/plurnk-acp`) verifies bearer

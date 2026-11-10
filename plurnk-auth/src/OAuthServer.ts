@@ -12,6 +12,7 @@ import { OPERATOR_CLIENT, SCOPES, type ResolvedModuleOptions } from "./config.ts
 
 // Mechanism, not choices ({§operator-config-precedence}); each is registered in the root's mechanism list.
 const MAX_BODY_BYTES = 65_536;
+const MAX_HANDOFF_TICKETS = 64;
 const MAX_REGISTERED_CLIENTS = 1_000;
 
 // {§auth-oauth-clients} — the one local operator, the subject of every grant made for them whatever password
@@ -47,6 +48,11 @@ interface Code {
     readonly challenge: string;
     readonly scopes: readonly string[];
     readonly family: string;
+    readonly expiresAt: number;
+}
+
+interface HandoffTicket {
+    readonly returnTo: string;
     readonly expiresAt: number;
 }
 
@@ -123,6 +129,7 @@ export default class OAuthServer {
     readonly #issuer: (req: Pick<IncomingMessage, "headers">) => string;
     readonly #clients = new Map<string, Client>();
     readonly #codes = new Map<string, Code>();
+    readonly #handoffs = new Map<string, HandoffTicket>();
     // {§auth-oauth-clients} — current clock for authorization code expiry and registration timestamps.
     readonly #now: () => number;
     #registered = 0;
@@ -138,7 +145,7 @@ export default class OAuthServer {
         this.#issuer = issuer;
         this.#now = now;
         // {§auth-oauth-clients} — the operator's own client holds the authority's operator secret,
-        // configured or minted for this boot ({§credential-authority}), and every scope; an authority
+        // configured or durable beside the database ({§credential-authority}), and every scope; an authority
         // without one has no such client, and the operator signs in or declares clients instead.
         const operatorSecret = credentials.operatorSecret;
         if (operatorSecret !== null) this.#clients.set(OPERATOR_CLIENT, { id: OPERATOR_CLIENT, kind: "declared", secret: operatorSecret, stylesheet: null, scopes: SCOPES, redirectUris: [], name: null });
@@ -146,11 +153,43 @@ export default class OAuthServer {
             if (credentials.client(id) !== null) throw new Error(`PLURNK_AUTH_CLIENT_${id}: '${id}' is the id of a module's own client; declare another id.`);
             this.#clients.set(id, { id, kind: "declared", secret: declared.secret, stylesheet: null, scopes: declared.scopes, redirectUris: [], name: null });
         }
+        const restoredPublicIds: string[] = [];
+        for (const pub of credentials.publicClients?.() ?? []) {
+            if (this.#clients.has(pub.id) || credentials.client(pub.id) !== null) continue;
+            const scopes = pub.scopes.filter((scope) => SCOPES.includes(scope));
+            if (scopes.length === 0) continue;
+            this.#clients.set(pub.id, {
+                id: pub.id,
+                kind: "public",
+                secret: null,
+                stylesheet: null,
+                scopes: Object.freeze(scopes),
+                redirectUris: Object.freeze([...pub.redirectUris]),
+                name: pub.name,
+            });
+            restoredPublicIds.push(pub.id);
+            this.#registered += 1;
+        }
+        // {§auth-oauth-clients} — removing a declared client from the environment and restarting revokes its tokens.
+        credentials.retainClients?.(new Set([
+            BROWSER,
+            ...(operatorSecret === null ? [] : [OPERATOR_CLIENT]),
+            ...Object.keys(opts.clients),
+            ...restoredPublicIds,
+        ]));
         // {§auth-oauth-clients} — a code not yet exchanged ends with the family it would issue into, so
         // a sign-in ended between authorization and exchange stays ended.
         credentials.onRevoked((family) => {
             for (const [code, pending] of this.#codes) if (pending.family === family) this.#codes.delete(code);
         });
+    }
+
+    verifyDeclaredClients(): void {
+        for (const id of Object.keys(this.#opts.clients)) {
+            if (this.#credentials.client(id) !== null) {
+                throw new Error(`PLURNK_AUTH_CLIENT_${id}: '${id}' is the id of a module's own client; declare another id.`);
+            }
+        }
     }
 
     // {§http-host} — every address this server advertises is answered for the request that asks.
@@ -215,6 +254,7 @@ export default class OAuthServer {
             "/oauth/revoke": (req, res) => this.#revoke(req, res),
             "/oauth/register": (req, res) => this.#register(req, res),
             "/oauth/session": (req, res) => this.#sessionPage(req, res),
+            "/oauth/handoff": (req, res) => this.#handoff(req, res),
         };
     }
 
@@ -569,7 +609,9 @@ export default class OAuthServer {
         if (this.#registered >= MAX_REGISTERED_CLIENTS) throw new OAuthError("invalid_client_metadata", "This daemon holds no more registrations.", 503);
         const id = mint();
         this.#registered += 1;
-        this.#clients.set(id, { id, kind: "public", secret: null, stylesheet: null, scopes, redirectUris: Object.freeze(redirectUris), name });
+        const frozenRedirects = Object.freeze([...redirectUris]);
+        this.#clients.set(id, { id, kind: "public", secret: null, stylesheet: null, scopes, redirectUris: frozenRedirects, name });
+        this.#credentials.registerPublicClient?.({ id, scopes, redirectUris: frozenRedirects, name });
         this.#json(res, 201, {
             client_id: id,
             client_id_issued_at: Math.floor(this.#now() / 1000),
@@ -580,5 +622,100 @@ export default class OAuthServer {
             scope: scopes.join(" "),
             ...(name === null ? {} : { client_name: name }),
         });
+    }
+
+    // ── loopback browser handoff ({§auth-oauth-clients}) ───────────────────────────────────────
+
+    #sweepHandoffs(): void {
+        const now = this.#now();
+        for (const [ticket, pending] of this.#handoffs) {
+            if (pending.expiresAt <= now) this.#handoffs.delete(ticket);
+        }
+    }
+
+    static #isLoopbackSocket(remoteAddress: string | undefined): boolean {
+        return remoteAddress === "127.0.0.1" || remoteAddress === "::1" || remoteAddress === "::ffff:127.0.0.1";
+    }
+
+    static #validHandoffReturn(value: unknown): string | null {
+        if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//") || value.includes("#")) return null;
+        try {
+            const parsed = new URL(value, "http://issuer");
+            if (parsed.host !== "issuer" || `${parsed.pathname}${parsed.search}` !== value) return null;
+            if (parsed.pathname === "/oauth/handoff") return null;
+            return value;
+        } catch {
+            return null;
+        }
+    }
+
+    async #handoff(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        this.#sweepHandoffs();
+        if (req.method === "POST") {
+            if (!OAuthServer.#isLoopbackSocket(req.socket.remoteAddress)) {
+                throw new OAuthError("access_denied", "Browser sign-in handoff requires a loopback connection.", 403);
+            }
+            const header = (req.headers.authorization ?? "").trim();
+            const bearerMatch = /^Bearer\s+(\S+)$/iu.exec(header);
+            const claims = bearerMatch === null ? null : this.#credentials.verify(bearerMatch[1]);
+            if (claims === null || claims.kind !== "access") {
+                this.#json(
+                    res,
+                    401,
+                    { error: "invalid_token", error_description: "A valid operator bearer token is required." },
+                    { "www-authenticate": 'Bearer realm="plurnk"' },
+                );
+                return;
+            }
+            if (claims.clientId !== OPERATOR_CLIENT || claims.subject !== OPERATOR_SUBJECT || !claims.scopes.includes("acp")) {
+                throw new OAuthError("unauthorized_client", "Only the operator client may mint a browser sign-in handoff.", 403);
+            }
+            const queryReturn = new URL(req.url ?? "/", "http://host").searchParams.get("return");
+            const rawBody = await readBody(req);
+            let requestedReturn: unknown = queryReturn ?? "/";
+            if (rawBody.length > 0) {
+                if (isJson(req)) {
+                    let parsed: unknown;
+                    try { parsed = JSON.parse(rawBody); } catch { throw new OAuthError("invalid_request", "The body is not valid JSON."); }
+                    if (!isRecord(parsed)) throw new OAuthError("invalid_request", "The body must be a JSON object.");
+                    if (parsed.return !== undefined) requestedReturn = parsed.return;
+                } else if (isForm(req)) {
+                    const formReturn = new URLSearchParams(rawBody).get("return");
+                    if (formReturn !== null) requestedReturn = formReturn;
+                } else {
+                    throw new OAuthError("invalid_request", "POST an application/json, application/x-www-form-urlencoded, or empty body.");
+                }
+            }
+            const returnTo = OAuthServer.#validHandoffReturn(requestedReturn);
+            if (returnTo === null) {
+                throw new OAuthError("invalid_request", "return must be a relative path on this daemon without a fragment.");
+            }
+            if (this.#handoffs.size >= MAX_HANDOFF_TICKETS) {
+                throw new OAuthError("temporarily_unavailable", "Too many pending browser sign-in handoffs.", 503);
+            }
+            const ticket = mint();
+            this.#handoffs.set(ticket, { returnTo, expiresAt: this.#now() + this.#opts.codeTtlSec * 1_000 });
+            const issuer = this.#issuer(req);
+            this.#json(res, 200, {
+                ticket,
+                url: `${issuer}/oauth/handoff?ticket=${encodeURIComponent(ticket)}`,
+                expires_in: this.#opts.codeTtlSec,
+            });
+            return;
+        }
+        if (req.method === "GET") {
+            const ticket = new URL(req.url ?? "/", "http://host").searchParams.get("ticket") ?? "";
+            const pending = ticket.length > 0 ? this.#handoffs.get(ticket) : undefined;
+            if (ticket.length > 0) this.#handoffs.delete(ticket);
+            if (pending === undefined || pending.expiresAt <= this.#now()) {
+                this.#html(res, 401, AuthorizationDocuments.handoffInvalid(), null);
+                return;
+            }
+            if (this.#session(req) === null) this.#establishSession(req, res);
+            res.writeHead(303, { location: `${this.#issuer(req)}${pending.returnTo}`, "cache-control": "no-store" });
+            res.end();
+            return;
+        }
+        throw new OAuthError("invalid_request", "Use POST to mint a handoff ticket or GET to redeem one.", 405);
     }
 }

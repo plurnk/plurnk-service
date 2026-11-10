@@ -1,6 +1,7 @@
 {
     "plurnk-auth/src/OAuthServer.ts:MAX_BODY_BYTES": "the bound on a token, revocation, registration or sign-in form, every one of which is a few hundred bytes by the protocol",
-    "plurnk-auth/src/OAuthServer.ts:MAX_REGISTERED_CLIENTS": "bounds the anonymous in-memory registry of RFC 7591 public clients; a daemon serves a handful",
+    "plurnk-auth/src/OAuthServer.ts:MAX_HANDOFF_TICKETS": "bounds unredeemed single-use loopback browser handoff tickets awaiting immediate browser navigation",
+    "plurnk-auth/src/OAuthServer.ts:MAX_REGISTERED_CLIENTS": "bounds dynamically registered RFC 7591 public clients; a daemon serves a handful",
     "plurnk-contracts/src/types.ts:MAX_TIMER_MS": "the platform's setTimeout ceiling (2^31-1 ms); the bound on any delay a knob may name, and a farther schedule occurrence arms in hops",
     "plurnk-core/src/core/BudgetReadout.ts:MAX_WIDTH_PASSES": "iteration bound of a fixed-point width computation",
     "plurnk-core/src/core/LoopDriver.ts:HOLD_POLL_MS": "how often a held turn re-checks its spawns; the hold's length is PLURNK_SERVICE_EXEC_HOLD_MS",

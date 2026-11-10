@@ -100,10 +100,10 @@ MCP servers are complete connection definitions ({§operation-results}, {§opera
   - When an alias awaits sign-in because a request was refused ({§mcp-host-composition}) and `oauth.begin`'s connection meets no catalog challenge, `begin` starts the SDK's authorization on that connection anyway.
   - `oauth.complete({ alias, callbackUrl })` validates `state`, `code`, and `iss` as one unit, exchanges the code once, records the grant, and triggers capability refresh (`202`).
 - **Configured issuer (`authorization.issuer` & `authorization.authorizationParams`):** Discovery reads RFC 8414 / OIDC metadata at `issuer` whether or not the MCP server publishes protected-resource metadata, binding registration, tokens, and refresh to `issuer`. Without `issuer` or server metadata, sign-in fails `502 oauth-metadata-unavailable` (recovery names `authorization.issuer`). `authorizationParams` (e.g., `access_type: "offline"`, `prompt: "consent"`) join the authorization URL.
-- **Process-memory lifetime & grants (`OAuthGrantSummary`):** Tokens and PKCE verifiers never touch SQLite. An accepted sign-in is held in memory per `(workspace, alias)` bound to the exact definition it was accepted for:
-  - Presented and refreshed via `refresh_token` across workspace cooling, explicit `enable`, and `disable`+`enable` with the same definition, and summarized in `detail.grant: { issuer, scope?, refreshable }`.
-  - Never presented to a changed definition or another workspace.
-  - Ends when rejected by the authorization server or on daemon stop; replaced when a new sign-in is accepted.
+- **Encrypted grant persistence (`OAuthGrantSummary`):** Pending PKCE verifiers stay in process memory only, and neither tokens nor verifiers ever touch SQLite. An accepted sign-in (client registration, access token, and refresh token) is persisted per `(workspace, alias)` in the workspace state directory ({§module-seam-slices}) as a `0600` AES-256-GCM envelope keyed via HKDF-SHA256 (`"plurnk-mcp/oauth/v1"`) from `seam.credentials.operatorSecret` ({§credential-authority}), bound to the exact definition it was accepted for:
+  - Presented and refreshed via `refresh_token` (persisting rotated refresh tokens) across workspace cooling, explicit `enable`, `disable`+`enable`, and daemon restarts with the same definition, and summarized in `detail.grant: { issuer, scope?, refreshable }`.
+  - Never presented to a changed definition or another workspace; a changed definition or `remove` (`forget`) deletes the stored grant file immediately, rejecting `forget` with `409 server-busy` while protocol requests are active.
+  - Fails closed to unauthenticated state when `operatorSecret` rotates or the ciphertext is unreadable; ends and deletes the stored file when rejected by the authorization server; replaced when a new sign-in is accepted.
 
 ## §oauth-client-credentials Client-credentials grant and EMA deferral
 

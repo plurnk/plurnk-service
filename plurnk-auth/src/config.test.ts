@@ -98,3 +98,11 @@ test("[{§auth-configuration}] missing and malformed configuration fails at the 
     }
     assert.throws(() => resolveModuleOptions({ password: 1 as unknown as string, env: floor }), /ModuleOptions.password must be a string/u);
 });
+
+test("[{§auth-configuration}] PLURNK_PASS reads live from the environment so hot-reloads take effect without restarting", () => {
+    const env: NodeJS.ProcessEnv = { ...floor, PLURNK_AUTH: "1", PLURNK_PASS: "" };
+    const resolved = resolveModuleOptions({ env });
+    assert.equal(resolved.password, "");
+    env.PLURNK_PASS = "lovelace";
+    assert.equal(resolved.password, "lovelace");
+});

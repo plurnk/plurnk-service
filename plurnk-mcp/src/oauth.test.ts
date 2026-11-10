@@ -1,6 +1,10 @@
 // {§oauth-continuation} {§mcp-host-composition} — OAuth continuation, grant residency, and challenge handling across the MCP workspace adapter.
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { access, readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
     McpServer,
@@ -824,13 +828,17 @@ test("{§oauth-continuation} withdrawing a server with a pending authorization c
     } finally { await h.module.stop(); }
 });
 
-for (const authorize of [false, true]) test(`{§oauth-continuation} a fresh module restores definitions but not ${authorize ? "accepted credentials" : "pending sign-in"}`, async (t) => {
+for (const authorize of [false, true]) test(`{§oauth-continuation} a fresh module ${authorize ? "restores encrypted accepted credentials across restarts, fails closed on secret rotation, and deletes them on forget" : "restores definitions but not pending sign-in"}`, async (t) => {
     const { origin, served } = await interactiveOAuthFixture(t);
     const definition = httpServer("oauth", served.url);
     const definitions = new Map([["oauth", definition]]);
-    const original = harness();
+    const stateRoot = mkdtempSync(join(tmpdir(), "plurnk-mcp-shared-state-"));
+    t.after(() => rm(stateRoot, { recursive: true, force: true }));
+    const secretV1 = "fixture-operator-secret-v1";
+    const original = harness({}, undefined, { stateRoot, operatorSecret: secretV1 });
     await original.setup();
     let callbackUrl: string;
+    const encPath = join(original.stateDirectory(1, "@plurnk/plurnk-mcp"), "oauth-oauth.enc");
     try {
         await original.lane(1, definitions);
         const started = await original.action(1, "workspace.mcp.oauth.begin", {
@@ -849,24 +857,140 @@ for (const authorize of [false, true]) test(`{§oauth-continuation} a fresh modu
             assert.equal(original.leases(), 1);
         }
         assert.deepEqual(original.snapshots.get(1)?.enabled.get("oauth"), definition, "neither a callback nor credentials enter the stored definition");
-    } finally { await original.module.stop(); }
+    } finally { await original.teardown(1).catch(() => undefined); await original.module.stop(); }
     assert.equal(original.leases(), 0);
 
-    const restored = harness();
+    if (!authorize) {
+        await assert.rejects(() => access(encPath), "pending PKCE sign-in writes no grant file");
+        const restored = harness({}, undefined, { stateRoot, operatorSecret: secretV1 });
+        await restored.setup();
+        try {
+            const prepared = await restored.lane(1, definitions);
+            assert.deepEqual(prepared.outcomes.get("oauth"), { state: "authorization-required", authorization: {} });
+            assert.deepEqual(restored.inService(1), []);
+            await rejectsManagementProblem(() => restored.action(1, "workspace.mcp.oauth.complete", {
+                alias: "oauth", callbackUrl,
+            }), "oauth-not-pending", 404);
+            const restarted = await restored.action(1, "workspace.mcp.oauth.begin", {
+                alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback",
+            }) as { status: number; authorization: { url: string } };
+            assert.equal(restarted.status, 202);
+            assert.notEqual(new URL(restarted.authorization.url).searchParams.get("state"), new URL(callbackUrl).searchParams.get("state"));
+        } finally { await restored.teardown(1).catch(() => undefined); await restored.module.stop(); }
+        return;
+    }
+
+    const fileInfo = await stat(encPath);
+    assert.equal(fileInfo.mode & 0o777, 0o600);
+    const raw = await readFile(encPath);
+    assert.equal(raw.subarray(0, 8).toString("ascii"), "PLKMCPG1");
+    const rawLatin1 = raw.toString("latin1");
+    assert.equal(rawLatin1.includes("registered-fixture"), false, "no plaintext client registration on disk");
+    assert.equal(rawLatin1.includes("mcp:read"), false, "no plaintext scope on disk");
+
+    const restored = harness({}, undefined, { stateRoot, operatorSecret: secretV1 });
     await restored.setup();
     try {
         const prepared = await restored.lane(1, definitions);
+        assert.equal(prepared.outcomes.get("oauth")?.state, "active");
+        assert.deepEqual(listedGrant(restored, "oauth", 1), { issuer: origin, scope: "mcp:read", refreshable: false });
+        assert.deepEqual(restored.inService(1), ["oauth"]);
+        assert.equal((await requestThrough(restored, "oauth", "tools/call")).status, 200);
+    } finally { await restored.teardown(1).catch(() => undefined); await restored.module.stop(); }
+
+    const rotated = harness({}, undefined, { stateRoot, operatorSecret: "fixture-operator-secret-v2" });
+    await rotated.setup();
+    try {
+        const prepared = await rotated.lane(1, definitions);
         assert.deepEqual(prepared.outcomes.get("oauth"), { state: "authorization-required", authorization: {} });
-        assert.deepEqual(restored.inService(1), []);
-        await rejectsManagementProblem(() => restored.action(1, "workspace.mcp.oauth.complete", {
-            alias: "oauth", callbackUrl,
-        }), "oauth-not-pending", 404);
-        const restarted = await restored.action(1, "workspace.mcp.oauth.begin", {
-            alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback",
-        }) as { status: number; authorization: { url: string } };
-        assert.equal(restarted.status, 202);
-        assert.notEqual(new URL(restarted.authorization.url).searchParams.get("state"), new URL(callbackUrl).searchParams.get("state"));
-    } finally { await restored.module.stop(); }
+        assert.deepEqual(rotated.inService(1), []);
+    } finally { await rotated.teardown(1).catch(() => undefined); await rotated.module.stop(); }
+
+    const removing = harness({}, undefined, { stateRoot, operatorSecret: secretV1 });
+    await removing.setup();
+    try {
+        await removing.lane(1, definitions);
+        assert.deepEqual(removing.inService(1), ["oauth"]);
+        await removing.adapter().forget!({ alias: "oauth", definition }, { workspaceId: 1 });
+        await assert.rejects(() => access(encPath), "forget removes the persisted encrypted grant file immediately");
+    } finally { await removing.teardown(1).catch(() => undefined); await removing.module.stop(); }
+});
+
+test("{§oauth-continuation} refresh token rotation persists across module restarts and forget refuses active requests", async (t) => {
+    const client = { id: "plurnk-desktop", secret: "fixture-secret" };
+    let gateTool: PromiseWithResolvers<void> | null = null;
+    let toolStarted: PromiseWithResolvers<void> | null = null;
+    const handler = createMcpHandler(() => {
+        const server = new McpServer({ name: "rotating-oauth-fixture", version: "1.0.0" });
+        server.registerTool(
+            "echo",
+            { description: "Echo one message.", inputSchema: z.object({ message: z.string() }) },
+            async ({ message }) => {
+                toolStarted?.resolve();
+                if (gateTool !== null) await gateTool.promise;
+                return { content: [{ type: "text", text: message }] };
+            },
+        );
+        return server;
+    }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
+    const servers = await serveIssuerOAuth(t, handler, client, { rotateRefresh: true });
+    const definition: McpServerDefinition = {
+        ...httpServer("calendar", servers.resource),
+        authorization: {
+            type: "oauth",
+            clientId: client.id,
+            clientSecret: "${FIXTURE_CLIENT_SECRET}",
+            scope: "calendar.readonly",
+            issuer: servers.issuer,
+            authorizationParams: { access_type: "offline", prompt: "consent" },
+        },
+    };
+    const stateRoot = mkdtempSync(join(tmpdir(), "plurnk-mcp-rotate-state-"));
+    t.after(() => rm(stateRoot, { recursive: true, force: true }));
+    const secret = "fixture-operator-secret-rotate";
+
+    const first = harness({ FIXTURE_CLIENT_SECRET: client.secret }, undefined, { stateRoot, operatorSecret: secret });
+    await first.setup();
+    const encPath = join(first.stateDirectory(1, "@plurnk/plurnk-mcp"), "oauth-calendar.enc");
+    try {
+        const initial = await first.lane(1, new Map([["calendar", definition]]));
+        assert.equal((await requestThrough(first, "calendar", "tools/call")).status, 401);
+        await republished(first, initial);
+        await signInAtIssuer(first, "calendar");
+        assert.equal((await requestThrough(first, "calendar", "tools/call")).status, 200);
+        servers.expire();
+        assert.equal((await requestThrough(first, "calendar", "tools/call")).status, 200, "first refresh rotates the refresh token");
+        assert.deepEqual(servers.tokenRequests.map((req) => req.get("grant_type")), ["authorization_code", "refresh_token"]);
+    } finally { await first.teardown(1).catch(() => undefined); await first.module.stop(); }
+
+    const second = harness({ FIXTURE_CLIENT_SECRET: client.secret }, undefined, { stateRoot, operatorSecret: secret });
+    await second.setup();
+    try {
+        await second.lane(1, new Map([["calendar", definition]]));
+        assert.deepEqual(second.inService(1), ["calendar"]);
+        servers.expire();
+        assert.equal((await requestThrough(second, "calendar", "tools/call")).status, 200, "second module uses the persisted rotated refresh token");
+        assert.deepEqual(servers.tokenRequests.map((req) => req.get("grant_type")), ["authorization_code", "refresh_token", "refresh_token"]);
+
+        gateTool = Promise.withResolvers<void>();
+        toolStarted = Promise.withResolvers<void>();
+        const inFlight = requestThrough(second, "calendar", "tools/call");
+        await toolStarted.promise;
+        await rejectsManagementProblem(
+            () => second.adapter().forget!({ alias: "calendar", definition }, { workspaceId: 1 }),
+            "server-busy",
+            409,
+        );
+        gateTool.resolve();
+        gateTool = null;
+        assert.equal((await inFlight).status, 200);
+        await second.adapter().forget!({ alias: "calendar", definition }, { workspaceId: 1 });
+        await assert.rejects(() => access(encPath));
+    } finally {
+        gateTool?.resolve();
+        await second.teardown(1).catch(() => undefined);
+        await second.module.stop();
+    }
 });
 
 test("{§oauth-continuation} a superseded authorization attempt cannot complete a replacement, and a changed target conflicts", async (t) => {
