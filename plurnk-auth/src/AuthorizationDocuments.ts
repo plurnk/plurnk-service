@@ -14,7 +14,7 @@ const WARNING = `<span role="img" aria-label="Warning">⚠</span>`;
 const page = (heading: string, content: string, warning = false): string =>
     `<main><article><header><h1>${warning ? `${WARNING} ` : ""}${heading}</h1></header>${content}</article></main>`;
 const SETTINGS = "<p>Set it in the operator's configuration file, <code>$XDG_CONFIG_HOME/plurnk/.env</code>, which is "
-    + "<code>~/.config/plurnk/.env</code> by default, and restart the daemon.</p>";
+    + "<code>~/.config/plurnk/.env</code> by default, and reload this page, or sign in from a local shell with <code>plurnk web</code>.</p>";
 
 // What the request asks, and the request itself carried forward through the document's forms.
 export interface AuthorizationRequest {
@@ -66,6 +66,11 @@ export const AuthorizationDocuments = {
         title: "Plurnk: signed out",
         body: page("Signed out", "<p>This browser no longer holds a session with this daemon.</p>"),
     }),
+    handoffInvalid: (): AuthorizationDocument => ({
+        title: "Plurnk: sign-in link expired",
+        body: page("Sign-in link expired", `<p role="alert">${WARNING} This browser sign-in link is invalid, expired, or was already used.</p>`
+            + "<p>Run <code>plurnk web</code> again to open a fresh sign-in link.</p>", true),
+    }),
 };
 
 // Readable alone in either color scheme; replaced, never overridden, by a registered stylesheet.
@@ -100,5 +105,6 @@ export const authorizationDocumentSpecimens = (): readonly string[] => {
         AuthorizationDocuments.signedIn({ client_id: "client" }),
         AuthorizationDocuments.notSignedIn(),
         AuthorizationDocuments.signedOut(),
+        AuthorizationDocuments.handoffInvalid(),
     ].map((document) => document.body);
 };

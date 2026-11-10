@@ -145,8 +145,8 @@ PLURNK_MCP_forge_ENABLED=0
 
 HTTP authorization belongs in the complete definition. Bearer tokens and
 OAuth client secrets are symbolic `${NAME}` environment references, resolved
-only when preparing a connection; an interactive sign-in stays in memory until
-the daemon stops.
+only when preparing a connection; an interactive sign-in is stored encrypted in
+the workspace state directory outside SQLite ({§oauth-continuation}).
 See [`.env.defaults`](./.env.defaults) for all controls and
 [`SPEC.md`](./SPEC.md#mcp-configuration-configuration-and-plugin-discovery) for the contract.
 
@@ -217,10 +217,11 @@ remote/headless use. The client submits the complete URL through
 at the next safe workspace boundary, between turns, without another callback
 submission. Until then `list` and a call to the alias report the published
 state, so a turn in flight still sees the alias awaiting sign-in. A sign-in
-outlives its connection: the alias's later connections with the same definition
-present it, refreshing it as it lapses — when an idle workspace returns, on
-`enable`, or on `disable` then `enable` — until its authorization server rejects
-it, another sign-in replaces it, or the daemon stops ({§oauth-continuation}). `list`
+outlives its connection and daemon restarts: the alias's later connections with
+the same definition present it, refreshing it as it lapses — when an idle
+workspace returns, on `enable`, on `disable` then `enable`, or across restarts —
+until its authorization server rejects it, another sign-in replaces it, its
+definition changes or is removed, or the operator secret rotates ({§oauth-continuation}). `list`
 shows an active alias's grant as its `detail.grant`: its issuer, the scope its
 authorization server stated, and whether it refreshes, never a token. PKCE,
 issuer and resource validation, refresh, scope escalation, and credentials

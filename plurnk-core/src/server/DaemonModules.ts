@@ -29,6 +29,7 @@ export default class DaemonModules {
     readonly #configuration: ConfigurationDiagnostics;
     readonly #residency: WorkspaceResidency;
     readonly #workspaceGate: WorkspaceGate;
+    readonly #syncEnvironment: (() => void) | undefined;
     #modules: RegisteredModule[] = [];
     // {§module-contract} — each claimed prefix's owner, and the claims mounted at start.
     readonly #mountClaims = new Map<string, string>();
@@ -36,18 +37,20 @@ export default class DaemonModules {
     #lifetimes: StartedModule[] = [];
     readonly #actions = new Map<string, ModuleActionRegistration>();
 
-    constructor({ db, http, configuration, residency, workspaceGate }: {
+    constructor({ db, http, configuration, residency, workspaceGate, syncEnvironment }: {
         db: Db;
         http: HttpListener | null;
         configuration: ConfigurationDiagnostics;
         residency: WorkspaceResidency;
         workspaceGate: WorkspaceGate;
+        syncEnvironment?: () => void;
     }) {
         this.#db = db;
         this.#http = http;
         this.#configuration = configuration;
         this.#residency = residency;
         this.#workspaceGate = workspaceGate;
+        this.#syncEnvironment = syncEnvironment;
     }
 
     // {§module-lifecycle} — `owner` is the module's package name; diagnostics name it.
@@ -136,7 +139,10 @@ export default class DaemonModules {
         if (this.#http === null) throw new Error(`registerHttpRoute: this daemon has no HTTP listener to mount '${prefix}' on`);
         // {§module-contract} — a module mounts exactly what it claimed.
         if (!this.#mountClaims.has(prefix)) throw new Error(`registerHttpRoute: no module declared '${prefix}' among its mounts`);
-        this.#http.registerHttpRoute(prefix, handler);
+        this.#http.registerHttpRoute(prefix, (req, res) => {
+            this.#syncEnvironment?.();
+            return handler(req, res);
+        });
         this.#mounted.add(prefix);
     }
 

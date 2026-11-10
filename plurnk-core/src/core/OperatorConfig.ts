@@ -19,8 +19,8 @@ const exists = async (path: string): Promise<boolean> => access(path, constants.
 // Package defaults remain package-owned and are projected on demand.
 export default class OperatorConfig {
     // {§credential-authority} — the seed teaches the posture and mints nothing: the daemon mints its
-    // own operator secret at every boot and keeps it beside its database, where the operator's tools
-    // read it, so a fresh install authenticates without a line set here.
+    // own durable operator secret into `secret` beside its database, where the operator's tools read
+    // it, so a fresh install authenticates without a line set here.
     static renderSeed(): string {
         return [
             "# Plurnk user configuration. This file is yours and is never overwritten.",
@@ -28,11 +28,11 @@ export default class OperatorConfig {
             "# Validate this cascade: plurnk-service config check",
             "#",
             "# Authentication is on (PLURNK_AUTH=1): your tools present credentials this daemon issues.",
-            "# The daemon mints its client secret at every boot into the file `secret` beside its",
-            "# database, where your own tools read it; set one here instead for a tool on another host",
-            "# or under another user. Anything that can reach the port can drive the daemon.",
+            "# The daemon maintains its durable client secret in the file `secret` beside its database,",
+            "# where your own tools read it; set one here instead for a tool on another host or under",
+            "# another user. Anything that can reach the port can drive the daemon.",
             "# PLURNK_SECRET=",
-            "# A browser signs in with PLURNK_PASS. Set a password to use the web interface, then restart.",
+            "# A remote browser signs in with PLURNK_PASS; on this host, `plurnk web` signs in directly.",
             "# PLURNK_PASS=",
             "",
             "# Choose one model profile by uncommenting its complete block.",

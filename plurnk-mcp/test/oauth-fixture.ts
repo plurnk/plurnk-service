@@ -71,6 +71,7 @@ export const serveIssuerOAuth = async (
     t: TestContext,
     handler: McpHttpHandler,
     client: { id: string; secret: string },
+    options: { rotateRefresh?: boolean } = {},
 ): Promise<{
     resource: string;
     issuer: string;
@@ -140,7 +141,18 @@ export const serveIssuerOAuth = async (
                     const refreshToken = params.get("refresh_token");
                     if (refreshToken === null || !refreshTokens.has(refreshToken)) return respond(Response.json({ error: "invalid_grant" }, { status: 400 }));
                     accessToken = crypto.randomUUID();
-                    return respond(Response.json({ access_token: accessToken, token_type: "Bearer", expires_in: 3600 }));
+                    let nextRefresh: string | undefined;
+                    if (options.rotateRefresh === true) {
+                        refreshTokens.delete(refreshToken);
+                        nextRefresh = crypto.randomUUID();
+                        refreshTokens.add(nextRefresh);
+                    }
+                    return respond(Response.json({
+                        access_token: accessToken,
+                        token_type: "Bearer",
+                        expires_in: 3600,
+                        ...(nextRefresh === undefined ? {} : { refresh_token: nextRefresh }),
+                    }));
                 }
                 const grant = codes.get(params.get("code") ?? "");
                 codes.delete(params.get("code") ?? "");

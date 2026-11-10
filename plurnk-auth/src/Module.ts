@@ -53,6 +53,7 @@ export default class Module implements DaemonModule<AuthSetupSeam, AuthPort> {
         }
         this.#listener = () => seam.httpAddress();
         this.#oauth ??= new OAuthServer({ credentials: seam.credentials, opts: this.#opts, issuer: (req) => this.#origin(req) });
+        this.#oauth.verifyDeclaredClients();
         const route = (req: IncomingMessage, res: ServerResponse): Promise<void> => this.#routeSettled(req, res);
         for (const prefix of OAUTH_MOUNTS) seam.registerHttpRoute(prefix, route);
         this.#started = true;

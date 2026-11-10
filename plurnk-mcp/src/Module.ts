@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readDefinition } from "./definition.ts";
 import { type Notice,
+    type CredentialAuthority,
     type FunctionalityCandidate,
     type FunctionalityDefinitionSource,
     type FunctionalityDiscoverQuery,
@@ -55,6 +56,7 @@ import { RegistryError, registryEntries, searchRegistry, type RegistryServer } f
 import McpExecutor, { runtimeDecl, runtimeDetails, runtimeServerSummary } from "./McpExecutor.ts";
 import McpFamilyResources from "./McpFamilyResources.ts";
 import McpResources from "./McpResources.ts";
+import GrantStore, { type StoredGrantEntry } from "./grantStore.ts";
 import type { OAuthGrant } from "./oauth.ts";
 import {
     FAMILY,
@@ -111,6 +113,7 @@ interface Registry {
 // {§module-seam-slices} — the slices this module uses.
 type SetupSeam = Pick<ModuleSetupSeam,
     "workspacePaths" | "operatorEnvironment" | "readWorkspaceEnvironment" | "workspaceStateDirectory" | "registerModuleAction">
+    & { readonly credentials?: Pick<CredentialAuthority, "operatorSecret"> }
     & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet> & WorkspacePluginsSeam;
 
 export default class Module implements DaemonModule<SetupSeam> {
@@ -126,6 +129,7 @@ export default class Module implements DaemonModule<SetupSeam> {
     #operatorEnvironment!: SetupSeam["operatorEnvironment"];
     #stateDirectory!: SetupSeam["workspaceStateDirectory"];
     #paths!: SetupSeam["workspacePaths"];
+    #grantStore!: GrantStore;
     // The committed attachments per workspace: the adapter's mirror of the snapshot
     // the coordinator holds, for continuations and refresh.
     readonly #attachments = new Map<number, ReadonlyMap<string, Attachment>>();
@@ -174,6 +178,10 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#operatorEnvironment = () => seam.operatorEnvironment();
         this.#stateDirectory = (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner);
         this.#paths = (workspaceId) => seam.workspacePaths(workspaceId);
+        this.#grantStore = new GrantStore({
+            stateDirectory: (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner),
+            operatorSecret: () => seam.credentials?.operatorSecret ?? null,
+        });
         const registry = this.#registry;
         this.#handle = seam.registerFunctionalityAdapter<McpServerDefinition, Snapshot>({
             family: FAMILY,
@@ -196,6 +204,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             admit: (input, identity) => this.#admit(input, identity),
             prepare: (preparation) => this.#prepare(preparation),
             teardown: (snapshot, identity) => this.#teardown(snapshot, identity),
+            forget: (source, identity) => this.#forget(source, identity),
             refreshIfChanged: (identity) => this.#refreshIfChanged(identity),
         });
         // Protocol continuations beneath the common grammar.
@@ -508,7 +517,9 @@ export default class Module implements DaemonModule<SetupSeam> {
                 projectRoot,
                 stateDir,
             };
-            const grant = oauthRedirectUrl === undefined ? this.#grantFor(workspaceId, binding) : undefined;
+            const grant = oauthRedirectUrl === undefined ? await this.#grantFor(workspaceId, binding) : undefined;
+            signal?.throwIfAborted();
+            this.#assertOpen();
             candidate ??= new ServerConnection(definition, withSyntheticEnv(workspaceEnv, syntheticContext), {
                 alias,
                 ...(oauthRedirectUrl === undefined ? {} : { oauthRedirectUrl }),
@@ -908,6 +919,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             challenged: this.#challenged,
             dirty: this.#dirty,
             grants: this.#grants,
+            recordGrant: (workspaceId, entry) => this.#recordGrant(workspaceId, entry),
             pendingKey: (workspaceId, name) => this.#pendingKey(workspaceId, name),
             retain: (workspaceId) => this.#retain(workspaceId),
             closeOwned: (connections) => this.#closeOwned(connections),
@@ -1046,9 +1058,67 @@ export default class Module implements DaemonModule<SetupSeam> {
     }
 
     // {§oauth-continuation} The alias's grant, for a connection with the definition it was accepted for, while it holds tokens.
-    #grantFor(workspaceId: number, binding: McpBinding): OAuthGrant | undefined {
-        const held = this.#grants.get(this.#pendingKey(workspaceId, binding.alias));
-        return held !== undefined && held.grant.signedIn && sameBinding(held, binding) ? held.grant : undefined;
+    async #grantFor(workspaceId: number, binding: McpBinding): Promise<OAuthGrant | undefined> {
+        const key = this.#pendingKey(workspaceId, binding.alias);
+        const held = this.#grants.get(key);
+        if (held !== undefined) {
+            if (!sameBinding(held, binding)) {
+                this.#grants.delete(key);
+                await this.#grantStore.delete(workspaceId, binding.alias);
+                return undefined;
+            }
+            return held.grant.signedIn ? held.grant : undefined;
+        }
+        const stored = await this.#grantStore.load(workspaceId, binding.alias);
+        if (stored === undefined) return undefined;
+        if (!sameBinding(stored, binding) || !stored.grant.signedIn) {
+            await this.#grantStore.delete(workspaceId, binding.alias);
+            return undefined;
+        }
+        stored.grant.onChange = () => this.#persistGrant(workspaceId, stored);
+        this.#grants.set(key, stored);
+        return stored.grant;
+    }
+
+    async #recordGrant(workspaceId: number, entry: StoredGrantEntry): Promise<void> {
+        const key = this.#pendingKey(workspaceId, entry.alias);
+        entry.grant.onChange = () => this.#persistGrant(workspaceId, entry);
+        this.#grants.set(key, entry);
+        await this.#grantStore.save(workspaceId, entry);
+    }
+
+    #persistGrant(workspaceId: number, entry: StoredGrantEntry): void {
+        if (this.#closed) return;
+        const key = this.#pendingKey(workspaceId, entry.alias);
+        if (this.#grants.get(key)?.grant !== entry.grant) return;
+        if (entry.grant.signedIn) {
+            void this.#grantStore.save(workspaceId, entry).catch((error: unknown) => {
+                console.error(`MCP server '${entry.alias}' OAuth grant persistence failed:`, error);
+            });
+            return;
+        }
+        this.#grants.delete(key);
+        void this.#grantStore.delete(workspaceId, entry.alias).catch((error: unknown) => {
+            console.error(`MCP server '${entry.alias}' OAuth grant removal failed:`, error);
+        });
+    }
+
+    async #forget(
+        source: FunctionalityDefinitionSource<McpServerDefinition>,
+        identity: WorkspaceCapabilityIdentity,
+    ): Promise<void> {
+        const attachment = this.#attachments.get(identity.workspaceId)?.get(source.alias);
+        const activeRequests = attachment === undefined ? 0 : (attachmentConnection(attachment)?.activeRequests ?? 0);
+        if (activeRequests > 0) {
+            throw actionError(
+                "server-busy",
+                409,
+                `MCP server '${source.alias}' has ${activeRequests} active request(s).`,
+                { server: source.alias, activeRequests, retryable: true },
+            );
+        }
+        this.#grants.delete(this.#pendingKey(identity.workspaceId, source.alias));
+        await this.#grantStore.delete(identity.workspaceId, source.alias);
     }
 
     // A live catalog change republishes the unchanged state; the dirty alias
@@ -1112,6 +1182,6 @@ export default class Module implements DaemonModule<SetupSeam> {
         this.#retainWorkspace.clear();
         this.#identities.clear();
         this.#operatorAliases.clear();
-        await closing;
+        await Promise.all([closing, this.#grantStore?.flush()]);
     }
 }

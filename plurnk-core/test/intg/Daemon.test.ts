@@ -1326,10 +1326,11 @@ const withPosture = async <T>(posture: Record<string, string | undefined>, fn: (
     try { return await fn(); } finally { apply(saved); }
 };
 
-test("{§credential-authority} under PLURNK_AUTH=1 a minted operator secret is written beside the database, 0600; a configured secret or PLURNK_AUTH=0 leaves no file", async () => {
+test("{§credential-authority} under PLURNK_AUTH=1 a minted operator secret and encrypted grants persist beside the database, 0600, and are removed under PLURNK_AUTH=0", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-posture-"));
     const dbPath = join(dir, "plurnk.db");
     const secretFile = join(dir, "secret");
+    const grantsFile = join(dir, "credentials");
     const boot = async (): Promise<{ daemon: Daemon; close: () => Promise<void> }> => {
         const db = await openMigrated(dbPath);
         const daemon = new Daemon({ db, provider: null, dbPath });
@@ -1337,17 +1338,30 @@ test("{§credential-authority} under PLURNK_AUTH=1 a minted operator secret is w
         return { daemon, close: async () => { await daemon.stop(); await db.close(); } };
     };
     try {
+        let firstSecret = "";
+        let sessionToken = "";
         const minted = await withPosture({ PLURNK_AUTH: "1", PLURNK_SECRET: undefined }, boot);
         try {
             assert.equal(minted.daemon.secretFile, secretFile, "the file is named for same-user tools");
-            assert.equal((await readFile(secretFile, "utf8")).trim(), minted.daemon.credentials.operatorSecret, "the file holds this boot's secret");
+            firstSecret = minted.daemon.credentials.operatorSecret ?? "";
+            assert.equal((await readFile(secretFile, "utf8")).trim(), firstSecret, "the file holds the durable host secret");
             assert.equal((await stat(secretFile)).mode & 0o777, 0o600);
+            sessionToken = minted.daemon.credentials.issue({
+                kind: "session", subject: "operator", clientId: "browser", scopes: ["acp"], family: "f1", ttlMs: 60_000,
+            }).token;
+            assert.equal((await stat(grantsFile)).mode & 0o777, 0o600);
         } finally { await minted.close(); }
+        const restarted = await withPosture({ PLURNK_AUTH: "1", PLURNK_SECRET: undefined }, boot);
+        try {
+            assert.equal(restarted.daemon.credentials.operatorSecret, firstSecret, "a restart reuses the durable host secret");
+            assert.equal(restarted.daemon.credentials.verify(sessionToken)?.family, "f1", "and restores encrypted browser sessions");
+        } finally { await restarted.close(); }
         const configured = await withPosture({ PLURNK_AUTH: "1", PLURNK_SECRET: "configured" }, boot);
         try {
             assert.equal(configured.daemon.credentials.operatorSecret, "configured");
             assert.equal(configured.daemon.secretFile, null);
             await assert.rejects(readFile(secretFile), { code: "ENOENT" }, "a configured secret removes the file a minting boot left");
+            assert.equal(configured.daemon.credentials.verify(sessionToken), null, "rotating the secret invalidates prior encrypted grants");
         } finally { await configured.close(); }
         await writeFile(secretFile, "stale\n", { mode: 0o600 });
         const off = await withPosture({ PLURNK_AUTH: "0", PLURNK_SECRET: undefined }, boot);
@@ -1356,6 +1370,7 @@ test("{§credential-authority} under PLURNK_AUTH=1 a minted operator secret is w
             assert.equal(off.daemon.secretFile, null);
             assert.equal(off.daemon.credentials.face(), null);
             await assert.rejects(readFile(secretFile), { code: "ENOENT" }, "an open daemon leaves no stale secret behind");
+            await assert.rejects(readFile(grantsFile), { code: "ENOENT" }, "an open daemon leaves no encrypted grants file behind");
         } finally { await off.close(); }
         await withPosture({ PLURNK_AUTH: "maybe" }, async () => {
             const db = await openMigrated(dbPath);

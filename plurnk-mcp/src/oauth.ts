@@ -7,7 +7,14 @@ import type {
     StoredOAuthClientInformation,
     StoredOAuthTokens,
 } from "@modelcontextprotocol/client";
+import { isRecord } from "@plurnk/plurnk-contracts";
 import packageJson from "../package.json" with { type: "json" };
+
+const isStoredClientInfo = (value: unknown): value is StoredOAuthClientInformation =>
+    isRecord(value) && typeof value.client_id === "string";
+
+const isStoredTokens = (value: unknown): value is StoredOAuthTokens =>
+    isRecord(value) && typeof value.access_token === "string" && typeof value.token_type === "string";
 
 // {§oauth-continuation} Host-owned diagnostics, without remote error bodies or secrets.
 export class OAuthSetupError extends Error {
@@ -32,6 +39,16 @@ export interface OAuthGrantSummary {
     readonly refreshable: boolean;
 }
 
+export interface SerializedOAuthGrant {
+    readonly redirectUrl: string;
+    readonly clientInformation: readonly [string, StoredOAuthClientInformation][];
+    readonly tokens: readonly [string, StoredOAuthTokens][];
+    readonly configuredIssuer?: string;
+    readonly activeIssuer?: string;
+    readonly currentTokens?: StoredOAuthTokens;
+    readonly accepted: boolean;
+}
+
 export class OAuthGrant {
     readonly redirectUrl: string;
     readonly clientInformation = new Map<string, StoredOAuthClientInformation>();
@@ -41,9 +58,54 @@ export class OAuthGrant {
     currentTokens: StoredOAuthTokens | undefined;
     // Latched by the first tokens issued; the redirect of an accepted grant has no client waiting at it.
     accepted = false;
+    onChange: (() => void) | undefined;
 
     constructor(redirectUrl: string) {
         this.redirectUrl = redirectUrl;
+    }
+
+    notifyChange(): void {
+        this.onChange?.();
+    }
+
+    toJSON(): SerializedOAuthGrant {
+        return {
+            redirectUrl: this.redirectUrl,
+            clientInformation: [...this.clientInformation.entries()],
+            tokens: [...this.tokens.entries()],
+            ...(this.configuredIssuer === undefined ? {} : { configuredIssuer: this.configuredIssuer }),
+            ...(this.activeIssuer === undefined ? {} : { activeIssuer: this.activeIssuer }),
+            ...(this.currentTokens === undefined ? {} : { currentTokens: this.currentTokens }),
+            accepted: this.accepted,
+        };
+    }
+
+    static fromJSON(data: Readonly<Record<string, unknown>>): OAuthGrant {
+        if (typeof data.redirectUrl !== "string" || data.redirectUrl.length === 0) {
+            throw new TypeError("SerializedOAuthGrant requires a non-empty redirectUrl.");
+        }
+        const grant = new OAuthGrant(data.redirectUrl);
+        if (Array.isArray(data.clientInformation)) {
+            for (const item of data.clientInformation) {
+                if (Array.isArray(item) && typeof item[0] === "string" && isStoredClientInfo(item[1])) {
+                    grant.clientInformation.set(item[0], { ...item[1] });
+                }
+            }
+        }
+        if (Array.isArray(data.tokens)) {
+            for (const item of data.tokens) {
+                if (Array.isArray(item) && typeof item[0] === "string" && isStoredTokens(item[1])) {
+                    grant.tokens.set(item[0], { ...item[1] });
+                }
+            }
+        }
+        if (typeof data.configuredIssuer === "string") grant.configuredIssuer = data.configuredIssuer;
+        if (typeof data.activeIssuer === "string") grant.activeIssuer = data.activeIssuer;
+        if (isStoredTokens(data.currentTokens)) {
+            grant.currentTokens = { ...data.currentTokens };
+        }
+        grant.accepted = data.accepted === true;
+        return grant;
     }
 
     get signedIn(): boolean {
@@ -153,6 +215,7 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
         grant.configuredIssuer = issuer;
         const configured = { ...this.#configuredClientInformation, issuer };
         grant.clientInformation.set(issuer, configured);
+        grant.notifyChange();
         return configured;
     }
 
@@ -166,6 +229,7 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
         }
         this.grant.activeIssuer = issuer;
         this.grant.clientInformation.set(issuer, { ...clientInformation, issuer });
+        this.grant.notifyChange();
     }
 
     tokens(context?: OAuthClientInformationContext): StoredOAuthTokens | undefined {
@@ -190,6 +254,7 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
         this.#presentedToken = false;
         this.#awaitingAuthorizationCallback = false;
         grant.tokens.set(issuer, stored);
+        grant.notifyChange();
     }
 
     redirectToAuthorization(authorizationUrl: URL): void {
@@ -251,12 +316,16 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
 
     invalidateCredentials(scope: "all" | "client" | "tokens" | "verifier" | "discovery"): void {
         const grant = this.grant;
+        let mutated = false;
         if ((scope === "all" || scope === "client") && grant.activeIssuer !== undefined) {
-            grant.clientInformation.delete(grant.activeIssuer);
+            if (grant.clientInformation.delete(grant.activeIssuer)) mutated = true;
         }
         if (scope === "all" || scope === "tokens") {
-            if (grant.activeIssuer !== undefined) grant.tokens.delete(grant.activeIssuer);
-            grant.currentTokens = undefined;
+            if (grant.activeIssuer !== undefined && grant.tokens.delete(grant.activeIssuer)) mutated = true;
+            if (grant.currentTokens !== undefined) {
+                grant.currentTokens = undefined;
+                mutated = true;
+            }
             this.#presentedToken = false;
         }
         if (scope === "all" || scope === "verifier") {
@@ -264,5 +333,6 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
             this.#awaitingAuthorizationCallback = false;
         }
         if (scope === "all" || scope === "discovery") this.#discoveryState = undefined;
+        if (mutated) grant.notifyChange();
     }
 }

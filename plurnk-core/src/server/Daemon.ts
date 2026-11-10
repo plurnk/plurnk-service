@@ -139,9 +139,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§credential-authority} {§methods} — the one authority over credentials presented to
     // the listener, holding the operator's secret under the posture `PLURNK_AUTH` names.
     readonly credentials: Credentials;
-    // The file beside the database where a minted operator secret is written for same-user clients;
+    // The files beside the database where a host-managed operator secret and encrypted grants live;
     // null for a daemon started without its database path.
     readonly #secretPath: string | null;
+    readonly #grantsPath: string | null;
     readonly #secretMinted: boolean;
     #discoveryCwd: string;
     #started = false; // {§module-lifecycle}: one discovery/module boot; no listener
@@ -197,9 +198,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#http = http;
         this.#configuration = configuration;
         this.#reloadEnvironment = reloadEnvironment;
-        const posture = Credentials.posture();
-        this.credentials = new Credentials({ operatorSecret: posture.secret });
         this.#secretPath = dbPath === undefined ? null : Credentials.secretPath(dbPath);
+        this.#grantsPath = dbPath === undefined ? null : Credentials.grantsPath(dbPath);
+        const posture = Credentials.posture(process.env, this.#secretPath);
+        this.credentials = new Credentials({ operatorSecret: posture.secret, storePath: this.#grantsPath });
         this.#secretMinted = posture.minted;
         this.#storage = new WorkspaceStorage(db, hostPaths);
         this.#lifecycle = new LoopLifecycle(db);
@@ -237,6 +239,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // actions register through the same seam a module's do.
         this.#modules = new DaemonModules({
             db, http: this.#http, configuration: this.#configuration, residency: this.#residency, workspaceGate: this.#workspaceGate,
+            syncEnvironment: () => { this.#syncEnvironment(); },
         });
         if (this.#http !== null) {
             this.#modules.register(new NotificationsEndpoint(), "@plurnk/plurnk-service");
@@ -1023,6 +1026,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         if (this.#secretPath !== null) {
             if (this.#secretMinted && this.credentials.operatorSecret !== null) await Credentials.writeSecret(this.#secretPath, this.credentials.operatorSecret);
             else await Credentials.removeSecret(this.#secretPath);
+        }
+        if (this.#grantsPath !== null && this.credentials.operatorSecret === null) {
+            await Credentials.removeGrants(this.#grantsPath);
         }
         await this.#schemes.ready();
         this.#residency.publish();
