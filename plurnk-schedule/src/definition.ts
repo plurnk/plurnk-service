@@ -18,7 +18,7 @@ export const DEFINITION_SCHEMA = Object.freeze({
         rule: {
             type: "string",
             minLength: 1,
-            description: "RFC 5545 text: an optional DTSTART line and one RRULE line, or bare FREQ=… parts. A workspace rule ends: COUNT or UNTIL.",
+            description: "5-field cron expression (min hour dom month dow) or RFC 5545 text: an optional DTSTART line and one RRULE line, or bare FREQ=… parts.",
         },
         target: {
             type: "string",

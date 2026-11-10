@@ -1,8 +1,8 @@
-// {§schedule-rule} — a rule is RFC 5545 text: an optional DTSTART line and one RRULE line (bare
-// `FREQ=…` parts are the RRULE line), with EXDATE/RDATE lines admitted. The recurrence library
-// owns the grammar and the expansion; this module owns what the library is lenient about — unknown
-// RRULE parts, extra lines, a DTSTART the effective zone must stamp ({§schedule-rule}) — and the
-// bound a workspace rule must carry ({§schedule-rule}).
+// {§schedule-rule} — a rule is RFC 5545 text or a 5-field cron expression: an optional DTSTART line
+// and one RRULE or 5-field cron line (bare `FREQ=…` parts are the RRULE line), with EXDATE/RDATE
+// lines admitted. The recurrence library owns the grammar and the expansion; this module normalizes
+// 5-field cron to RRULE and refuses what the library is lenient about — unknown RRULE parts, extra
+// lines, and a DTSTART the effective zone must stamp ({§schedule-rule}).
 import { RRuleTemporal, type TemporalZonedDateTime } from "rrule-temporal";
 import { toText } from "rrule-temporal/totext";
 import { zoned } from "./temporal.ts";
@@ -15,7 +15,17 @@ const DTSTART = /^DTSTART(?:;TZID=([^:]+))?:(\d{8}T\d{6})(Z?)$/u;
 const RRULE = /^(?:RRULE:)?([A-Z]+=[^;=]+(?:;[A-Z]+=[^;=]+)*)$/u;
 const DATE_LIST = /^(?:EXDATE|RDATE)(?:;[^:]+)?:.+$/u;
 
-export type ScheduleRuleCode = "rule-invalid" | "rule-unbounded" | "zone-unknown";
+const MONTH_NAMES: Readonly<Record<string, number>> = {
+    JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
+    JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12,
+};
+const DOW_NAMES: Readonly<Record<string, number>> = {
+    SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6,
+    SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6,
+};
+const ICAL_DAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"] as const;
+
+export type ScheduleRuleCode = "rule-invalid" | "zone-unknown";
 
 export class ScheduleRuleError extends Error {
     readonly code: ScheduleRuleCode;
@@ -31,7 +41,6 @@ export interface ParsedRule {
     // The canonical text as stored: `DTSTART;TZID=<zone>:<local>`, `RRULE:<parts>`, any date lists.
     readonly text: string;
     readonly zone: string;
-    readonly bounded: boolean;
     readonly rule: RRuleTemporal;
 }
 
@@ -45,6 +54,108 @@ const messageOf = (cause: unknown): string => cause instanceof Error ? cause.mes
 
 const invalid = (detail: string, cause?: unknown): ScheduleRuleError =>
     new ScheduleRuleError("rule-invalid", `The rule is not a readable RFC 5545 recurrence: ${detail}.`, cause);
+
+const parseCronAtom = (
+    raw: string,
+    min: number,
+    max: number,
+    names?: Readonly<Record<string, number>>,
+): number => {
+    const upper = raw.toUpperCase();
+    if (names !== undefined && Object.hasOwn(names, upper)) return names[upper];
+    if (!/^\d+$/u.test(raw)) throw invalid(`invalid cron field value '${raw}'`);
+    const n = Number(raw);
+    if (!Number.isSafeInteger(n) || n < min || n > max) {
+        throw invalid(`cron field value '${raw}' is outside ${min}..${max}`);
+    }
+    return n;
+};
+
+const parseCronField = (
+    field: string,
+    min: number,
+    max: number,
+    names?: Readonly<Record<string, number>>,
+    wrapSevenToZero = false,
+): number[] | null => {
+    if (field === "*") return null;
+    const values = new Set<number>();
+    for (const part of field.split(",")) {
+        if (part.length === 0) throw invalid(`empty item in cron field '${field}'`);
+        const slashParts = part.split("/");
+        if (slashParts.length > 2) throw invalid(`malformed step in cron field '${field}'`);
+        const rangePart = slashParts[0];
+        const stepPart = slashParts.length === 2 ? slashParts[1] : undefined;
+        let step = 1;
+        if (stepPart !== undefined) {
+            if (!/^[1-9]\d*$/u.test(stepPart)) throw invalid(`invalid step '${stepPart}' in cron field '${field}'`);
+            step = Number(stepPart);
+        }
+        let start: number;
+        let end: number;
+        if (rangePart === "*") {
+            start = min;
+            end = wrapSevenToZero ? 6 : max;
+        } else if (rangePart.includes("-")) {
+            const bounds = rangePart.split("-");
+            if (bounds.length !== 2 || bounds[0].length === 0 || bounds[1].length === 0) {
+                throw invalid(`malformed range '${rangePart}' in cron field '${field}'`);
+            }
+            start = parseCronAtom(bounds[0], min, max, names);
+            end = parseCronAtom(bounds[1], min, max, names);
+            if (start > end) throw invalid(`cron range '${rangePart}' has start > end`);
+        } else {
+            const atom = parseCronAtom(rangePart, min, max, names);
+            start = atom;
+            end = stepPart !== undefined ? (wrapSevenToZero ? 6 : max) : atom;
+        }
+        for (let v = start; v <= end; v += step) {
+            values.add(wrapSevenToZero && v === 7 ? 0 : v);
+        }
+    }
+    const distinctMax = wrapSevenToZero ? 7 : max - min + 1;
+    if (values.size === distinctMax) return null;
+    return [...values].toSorted((a, b) => a - b);
+};
+
+const cronToRrule = (line: string): string | null => {
+    const fields = line.split(/\s+/u);
+    if (fields.length !== 5) return null;
+    const minField = fields[0];
+    const hourField = fields[1];
+    const domField = fields[2];
+    const monthField = fields[3];
+    const dowField = fields[4];
+    const minutes = parseCronField(minField, 0, 59);
+    const hours = parseCronField(hourField, 0, 23);
+    const doms = parseCronField(domField, 1, 31);
+    const months = parseCronField(monthField, 1, 12, MONTH_NAMES);
+    const dows = parseCronField(dowField, 0, 7, DOW_NAMES, true);
+
+    const freq =
+        minutes === null
+            ? "MINUTELY"
+            : hours === null
+              ? "HOURLY"
+              : doms === null && dows === null && months === null
+                ? "DAILY"
+                : dows !== null && doms === null && months === null
+                  ? "WEEKLY"
+                  : doms !== null && dows === null && months === null
+                    ? "MONTHLY"
+                    : months !== null && doms !== null && dows === null
+                      ? "YEARLY"
+                      : "DAILY";
+
+    const parts: string[] = [`FREQ=${freq}`];
+    if (months !== null) parts.push(`BYMONTH=${months.join(",")}`);
+    if (doms !== null) parts.push(`BYMONTHDAY=${doms.join(",")}`);
+    if (dows !== null) parts.push(`BYDAY=${dows.map((d) => ICAL_DAYS[d]).join(",")}`);
+    if (hours !== null) parts.push(`BYHOUR=${hours.join(",")}`);
+    if (minutes !== null) parts.push(`BYMINUTE=${minutes.join(",")}`);
+    parts.push("BYSECOND=0");
+    return parts.join(";");
+};
 
 // The rule's lines, checked by name: the library drops unknown RRULE parts and extra RRULE lines
 // silently, and the DTSTART form decides how the zone applies.
@@ -64,11 +175,19 @@ const readLines = (text: string): RuleLines => {
             continue;
         }
         const match = RRULE.exec(line);
-        if (match === null) throw invalid(`the line '${line}' is neither DTSTART, RRULE, EXDATE nor RDATE`);
+        if (match !== null) {
+            if (rrule !== null) throw invalid("it carries more than one RRULE");
+            const unknown = match[1].split(";").map((part) => part.split("=")[0]).filter((name) => !RRULE_PARTS.has(name));
+            if (unknown.length > 0) throw invalid(`RRULE has no part named ${unknown.join(", ")}`);
+            rrule = match[1]!;
+            continue;
+        }
+        const cronRrule = cronToRrule(line);
+        if (cronRrule === null) {
+            throw invalid(`the line '${line}' is neither DTSTART, RRULE, a 5-field cron expression, EXDATE nor RDATE`);
+        }
         if (rrule !== null) throw invalid("it carries more than one RRULE");
-        const unknown = match[1].split(";").map((part) => part.split("=")[0]).filter((name) => !RRULE_PARTS.has(name));
-        if (unknown.length > 0) throw invalid(`RRULE has no part named ${unknown.join(", ")}`);
-        rrule = match[1]!;
+        rrule = cronRrule;
     }
     if (rrule === null) throw invalid("it has no RRULE line");
     return { dtstart, rrule, dateLists };
@@ -88,7 +207,6 @@ const fromRule = (rule: RRuleTemporal): ParsedRule => {
     return {
         text: rule.toString(),
         zone: options.tzid,
-        bounded: options.count !== undefined || options.until !== undefined,
         rule,
     };
 };

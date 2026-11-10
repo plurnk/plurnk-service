@@ -265,7 +265,7 @@ test("{§schedule-residency} environment definitions are the service baseline wi
 test("{§schedule-rule} the panel says how many occurrences a reading previews, and it is never a rule", async () => {
     const one = family(new FakeTime(), { PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "1" });
     const [daily] = await one.discover({ rule: "FREQ=DAILY" }, { workspaceId: 1 });
-    assert.match(String(daily.summary), /; next 2026-09-16T12:30:16\+00:00\[UTC\]; unbounded/u, "one occurrence, not three");
+    assert.match(String(daily.summary), /; next 2026-09-16T12:30:16\+00:00\[UTC\]$/u, "one occurrence, not three");
     assert.deepEqual(await one.available(), [], "the control key declares no rule");
     const time = new FakeTime();
     await assert.rejects(
@@ -291,13 +291,13 @@ test("{§schedule-rule} discovery tells the time beside the rule it reads, in th
     const [tokyo] = await family(new FakeTime(), { TZ: "Asia/Tokyo" }).discover({ rule: "FREQ=DAILY" }, { workspaceId: 1 });
     assert.equal(
         tokyo.summary,
-        "now 2026-09-16T21:30:15+09:00[Asia/Tokyo]; every day at 9:30:16 PM; next 2026-09-16T21:30:16+09:00[Asia/Tokyo], 2026-09-17T21:30:16+09:00[Asia/Tokyo], 2026-09-18T21:30:16+09:00[Asia/Tokyo]; unbounded: add needs COUNT or UNTIL",
+        "now 2026-09-16T21:30:15+09:00[Asia/Tokyo]; every day at 9:30:16 PM; next 2026-09-16T21:30:16+09:00[Asia/Tokyo], 2026-09-17T21:30:16+09:00[Asia/Tokyo], 2026-09-18T21:30:16+09:00[Asia/Tokyo]",
     );
     assert.equal((await problemOf(() => family(new FakeTime(), { TZ: "Mars/Olympus" }).discover({ rule: "FREQ=DAILY" }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/zone-unknown");
     assert.equal((await problemOf(() => adapter.discover({ rule: "FREQ=DAILY;BOGUS=1" }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/rule-invalid");
 });
 
-test("{§schedule-rule} admission canonicalizes the rule in the workspace's zone and refuses an unbounded one", async () => {
+test("{§schedule-rule} admission canonicalizes RRULE and cron rules in the workspace's or session's zone", async () => {
     const adapter = family(new FakeTime());
     attached(adapter, "Europe/Paris");
     assert.deepEqual(await adapter.admit({ alias: "beat", rule: "FREQ=HOURLY;COUNT=2", target: "session://bot", prompt: "Beat." }, { workspaceId: 1 }), {
@@ -309,7 +309,10 @@ test("{§schedule-rule} admission canonicalizes the rule in the workspace's zone
     assert.equal((bySession.definition as { rule: string }).rule, "DTSTART;TZID=Asia/Tokyo:20260916T213016\nRRULE:FREQ=HOURLY;COUNT=2", "the invoking Session's own TZ override wins over the workspace layer");
     const [preview] = await adapter.discover({ rule: "FREQ=DAILY;COUNT=1" }, { workspaceId: 1, sessionId: 7 });
     assert.match(preview.summary ?? "", /^now 2026-09-16T21:30:15\+09:00\[Asia\/Tokyo\]/u, "the Session reads the time in its own zone");
-    assert.equal((await problemOf(() => adapter.admit({ alias: "beat", rule: "FREQ=HOURLY", target: "session://bot", prompt: "Beat." }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/rule-unbounded");
+    const unbounded = await adapter.admit({ alias: "beat", rule: "FREQ=HOURLY", target: "session://bot", prompt: "Beat." }, { workspaceId: 1 });
+    assert.equal((unbounded.definition as { rule: string }).rule, "DTSTART;TZID=Europe/Paris:20260916T143016\nRRULE:FREQ=HOURLY");
+    const cron = await adapter.admit({ alias: "beat", rule: "0 9 * * *", target: "session://bot", prompt: "Beat." }, { workspaceId: 1 });
+    assert.equal((cron.definition as { rule: string }).rule, "DTSTART;TZID=Europe/Paris:20260916T143016\nRRULE:FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0");
     assert.equal((await problemOf(() => adapter.admit(HEARTBEAT, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/alias-required");
     const invalid = await problemOf(() => adapter.admit({ alias: "beat", rule: "FREQ=HOURLY;COUNT=1", target: "agent://bot", prompt: "Beat." }, { workspaceId: 1 }));
     assert.equal(invalid.type, "https://problems.plurnk.xyz/schedule/functionality/definition-invalid");

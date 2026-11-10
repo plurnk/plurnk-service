@@ -1,6 +1,6 @@
 # schedule
 
-A schedule delivers a message from `schedule://<name>` to `target` (`session://<name>`) at each occurrence of an RFC 5545 `RRULE` in `TZ` (from `plurnk.env`, or UTC). The packet carries no clock; `discover` reports current time.
+A schedule delivers a message from `schedule://<name>` to `target` (`session://<name>`) at each occurrence of a 5-field cron expression or RFC 5545 `RRULE` in `TZ` (from `plurnk.env`, or UTC). The packet carries no clock; `discover` reports current time.
 
 | Call | Effect |
 | --- | --- |
@@ -17,5 +17,5 @@ await plurnk.schedule({ name: "daily", rule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYS
 
 await plurnk.schedule({ name: "once", rule: "FREQ=SECONDLY;COUNT=1", target: "session://main", prompt: "One-time reminder." }) // omit DTSTART to start at the next whole second
 
-- `rule`: bare `FREQ=…` parts, or optional `DTSTART` + `RRULE`. Workspace rules must bound occurrences with `COUNT` or `UNTIL`. Omit `DTSTART` on relative rules so they start at the next whole second when added.
+- `rule`: 5-field cron (`min hour dom month dow`), bare `FREQ=…` parts, or optional `DTSTART` + `RRULE`. Omit `DTSTART` on relative rules so they start at the next whole second when added.
 - Scheduled messages arrive as Open Messages from `schedule://<name>`, waking a parked session or starting a loop, and are answered with `plurnk.done` / `plurnk.fail` / `plurnk.send`.

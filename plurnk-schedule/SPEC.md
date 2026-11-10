@@ -7,12 +7,12 @@ Scheduled messages are one workspace Functionality family named `schedule`, owne
 - **Module lifecycle**: Its factory reads package configuration ({§module-contract}); `setup` registers the family adapter before durable lifecycle recovery, and `start` arms persisted rules ({§schedule-residency}). It claims no HTTP mounts.
 - **Definition & verbs**: A definition is `{ rule, target, prompt }`: RFC 5545 rule text ({§schedule-rule}), a `session://<name>` target in the workspace ({§path-syntax}, preserved exactly), and the prompt delivered at each occurrence ({§schedule-delivery}). Aliases use the shared lowercase-hyphen grammar. Coordinator verbs: `list`, `discover`, `add`, `replace`, `enable`, `disable`, `remove`. The runtime document's authored body is `docs/schedule.md` ({§functionality-model-projection}).
 
-## §schedule-rule 2. Rule Text, Bounds, Zone, and Clock
+## §schedule-rule 2. Rule Text, Exhaustion, Zone, and Clock
 
 | Aspect | Contract |
 | --- | --- |
-| RFC 5545 rule text | Optional `DTSTART` line, exactly one `RRULE` line (`RRULE:` prefix optional on bare `FREQ=…`), and any `EXDATE` or `RDATE` lines. Refuses by name what the recurrence library would drop silently: an RRULE part outside the 14 RFC 5545 names, a second `RRULE`, a second `DTSTART`, or any other line. Admission stores canonical text (`DTSTART;TZID=<zone>:<local>`, `RRULE:<parts>`, then date lines). |
-| Bounds & exhaustion | A workspace rule's RRULE must carry `COUNT` or `UNTIL` (else refuses with `rule-unbounded`); a service rule may be unbounded. An exhausted rule stays listed `active` with `exhausted: true`, `next: null`, and `; no future occurrences` appended to its `text` description, arming nothing. |
+| Rule text (RFC 5545 & 5-field cron) | Optional `DTSTART` line, exactly one `RRULE` line (`RRULE:` prefix optional on bare `FREQ=…`) or 5-field cron expression (`<min> <hour> <dom> <month> <dow>`, normalized to `RRULE` with `BYSECOND=0`), and any `EXDATE` or `RDATE` lines. Refuses by name what the recurrence library would drop silently: an RRULE part outside the 14 RFC 5545 names, a second `RRULE`, a second `DTSTART`, or any other line. Admission stores canonical text (`DTSTART;TZID=<zone>:<local>`, `RRULE:<parts>`, then date lines). |
+| Exhaustion | An exhausted rule stays listed `active` with `exhausted: true`, `next: null`, and `; no future occurrences` appended to its `text` description, arming nothing. |
 | Zone (`TZ`) | Defaults to `TZ=UTC` in `.env.defaults`, overridden by operator env, workspace `env` family ({§execution-output-identity}), and session `env` overrides ({§functionality-coordinator}). Unknown zones refuse with `zone-unknown`. A rule keeps the zone stamped at `add`. Without `DTSTART`, a rule starts at the next whole second in the effective zone (at `add` for workspace rules; at daemon start for service rules). Floating `DTSTART` uses the effective zone; `TZID` or UTC `Z` keeps its own zone. |
 | Clock & preview (`discover`) | No packet carries a clock. `discover` with `{}` tells the current time in the effective zone (RFC 9557, to the second); with rule text in `rule` ({§functionality-replacement}) it persists nothing and returns one inert candidate whose summary opens with the current time in the effective zone, states the rule in words, and previews its next `PLURNK_SCHEDULE_PREVIEW_OCCURRENCES` occurrences (a positive integer family control, never read as a rule alias), with the canonical rule text in its definition. |
 
@@ -34,7 +34,6 @@ The module holds one armed occurrence per enabled `(workspace, alias)`. At the o
 | `alias-required` | 400 | schedule definition needs an alias. |
 | `definition-invalid` | 400 | The schedule definition is invalid. |
 | `rule-invalid` | 400 | The rule of '*alias*' is unreadable: *cause*. |
-| `rule-unbounded` | 400 | A workspace rule ends: give the RRULE a COUNT or an UNTIL. |
 | `zone-unknown` | 400 | Unknown time zone. |
 | `authority-invalid` | 400 | Schedule resources use an empty authority. |
 | `target-missing` | 404 | No session named '*name*' exists in this workspace. |

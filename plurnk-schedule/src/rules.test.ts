@@ -20,7 +20,6 @@ test("{§schedule-rule} bare parts become a canonical DTSTART and RRULE, startin
     const parsed = normalizeRule("FREQ=HOURLY;COUNT=3", "America/New_York", NOW);
     assert.equal(parsed.text, "DTSTART;TZID=America/New_York:20260916T083016\nRRULE:FREQ=HOURLY;COUNT=3");
     assert.equal(parsed.zone, "America/New_York");
-    assert.equal(parsed.bounded, true);
     assert.deepEqual(upcoming(parsed, NOW, 5).map(isoString), [
         "2026-09-16T08:30:16-04:00[America/New_York]",
         "2026-09-16T09:30:16-04:00[America/New_York]",
@@ -29,6 +28,44 @@ test("{§schedule-rule} bare parts become a canonical DTSTART and RRULE, startin
     assert.equal(parseRule(parsed.text).text, parsed.text, "the canonical text round-trips");
     assert.equal(normalizeRule("RRULE:FREQ=HOURLY;COUNT=3", "America/New_York", NOW).text, parsed.text, "the RRULE: prefix is the same rule");
     assert.equal(describeRule(parsed), "every hour for 3 times");
+});
+
+test("{§schedule-rule} 5-field cron expressions normalize to canonical RRULE with BYSECOND=0", () => {
+    const daily = normalizeRule("0 9 * * *", "America/New_York", NOW);
+    assert.equal(daily.text, "DTSTART;TZID=America/New_York:20260916T083016\nRRULE:FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0");
+    assert.deepEqual(upcoming(daily, NOW, 2).map(isoString), [
+        "2026-09-16T09:00:00-04:00[America/New_York]",
+        "2026-09-17T09:00:00-04:00[America/New_York]",
+    ]);
+    assert.equal(
+        normalizeRule("* * * * *", "UTC", NOW).text,
+        "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=MINUTELY;BYSECOND=0",
+    );
+    assert.equal(
+        normalizeRule("*/15 * * * *", "UTC", NOW).text,
+        "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY;BYMINUTE=0,15,30,45;BYSECOND=0",
+    );
+    assert.equal(
+        normalizeRule("0 9 * * 1-5", "UTC", NOW).text,
+        "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=WEEKLY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;BYDAY=MO,TU,WE,TH,FR",
+    );
+    assert.equal(
+        normalizeRule("0 9 1 * *", "UTC", NOW).text,
+        "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=MONTHLY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;BYMONTHDAY=1",
+    );
+    assert.equal(
+        normalizeRule("0 9 1 JAN *", "UTC", NOW).text,
+        "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=YEARLY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;BYMONTH=1;BYMONTHDAY=1",
+    );
+    assert.equal(
+        normalizeRule("DTSTART:20261101T080000Z\n0 9 * * *", "UTC", NOW).text,
+        "DTSTART;TZID=UTC:20261101T080000\nRRULE:FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0",
+    );
+    assert.equal(codeOf(() => normalizeRule("60 9 * * *", "UTC", NOW)), "rule-invalid");
+    assert.equal(codeOf(() => normalizeRule("0 24 * * *", "UTC", NOW)), "rule-invalid");
+    assert.equal(codeOf(() => normalizeRule("0 9 32 * *", "UTC", NOW)), "rule-invalid");
+    assert.equal(codeOf(() => normalizeRule("0 9 * 13 *", "UTC", NOW)), "rule-invalid");
+    assert.equal(codeOf(() => normalizeRule("0 9 * * 8", "UTC", NOW)), "rule-invalid");
 });
 
 test("{§schedule-rule} a floating DTSTART is read in the effective zone; a zoned or UTC one keeps its own", () => {
@@ -63,11 +100,8 @@ test("{§schedule-rule} what the library would drop silently is refused by name"
     );
 });
 
-test("{§schedule-rule} COUNT or UNTIL bounds a rule; EXDATE lines ride along", () => {
-    assert.equal(normalizeRule("FREQ=DAILY", "UTC", NOW).bounded, false);
-    assert.equal(normalizeRule("FREQ=DAILY;COUNT=1", "UTC", NOW).bounded, true);
+test("{§schedule-rule} UNTIL and EXDATE lines constrain upcoming occurrences", () => {
     const until = normalizeRule("FREQ=HOURLY;UNTIL=20260916T150000Z", "UTC", NOW);
-    assert.equal(until.bounded, true);
     assert.deepEqual(upcoming(until, NOW, 10).map(isoString), [
         "2026-09-16T12:30:16+00:00[UTC]",
         "2026-09-16T13:30:16+00:00[UTC]",
