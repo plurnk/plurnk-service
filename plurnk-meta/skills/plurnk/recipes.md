@@ -1,5 +1,9 @@
 # Capability recipes
 
+## Summary
+
+Compose chat bridges, webhooks, scheduled jobs, browser and search tools, durable memory, skills, legacy agent config migration, and remote execution from built-in verbs, MCP discovery, and ACP clients.
+
 ## Synthesis order
 
 1. **Built-in composition**: `session://` entries, `plurnk.schedule`, `https://` and `wss://`, `plurnk.find`, `plurnk.work` and `plurnk.fork`, and `plurnk.sh`, `plurnk.js`, and `plurnk.python3` execute directly in the workspace without extra processes.
