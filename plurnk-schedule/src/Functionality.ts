@@ -1,6 +1,6 @@
 // {§schedule-family} — scheduled messages as one workspace Functionality family named `schedule`.
 // The adapter owns the family's truth: the environment's rules, inert discovery that reads a rule
-// and tells the time ({§schedule-rule}), admission that canonicalizes and bounds a rule, and the
+// and tells the time ({§schedule-rule}), admission that canonicalizes a rule, and the
 // outcomes the timers stand behind ({§schedule-delivery}, {§schedule-residency}).
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -74,7 +74,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
     readonly scheme: ScheduleResources;
     readonly family = SCHEDULE_FAMILY;
     readonly namespaceOwner = SCHEDULE_OWNER;
-    readonly summary = "List ({}) or manage RFC 5545 RRULE schedules (e.g. rule: \"FREQ=SECONDLY;COUNT=1\", target: \"session://<name>\", prompt: \"...\")";
+    readonly summary = "List ({}) or manage scheduled cron and RRULE alarms.";
     readonly definitionSchema: JsonSchema = DEFINITION_SCHEMA;
     readonly example = {
         alias: "daily",
@@ -140,7 +140,6 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
                 `now ${isoString(zoned(now, zone))}`,
                 describeRule(parsed),
                 preview.length === 0 ? "no occurrence ahead" : `next ${preview.join(", ")}`,
-                ...(parsed.bounded ? [] : ["unbounded: add needs COUNT or UNTIL"]),
             ].join("; "),
             definition: { rule: parsed.text },
             provenance: { kind: "rule", source: rule },
@@ -160,8 +159,6 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
         }
         const now = this.#scheduler.now();
         const parsed = this.#read(definition.rule, await this.#zone(identity), now);
-        // {§schedule-rule}
-        if (!parsed.bounded) throw failure("rule-unbounded", 400, "A workspace rule ends: give the RRULE a COUNT or an UNTIL.", { retryable: false });
         // {§schedule-delivery} — the rule was read now; its first arming is judged from now.
         return { alias, definition: { ...definition, rule: parsed.text }, preparation: now };
     }
