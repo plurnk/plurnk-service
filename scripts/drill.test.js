@@ -27,6 +27,8 @@ const expectedProfile = {
     PLURNK_AUTH: "0",
     PLURNK_MCP_ENABLED: "0",
     PLURNK_SCHEDULE_ENABLED: "0",
+    PLURNK_SERVICE_RETAIN_PACKET_TURNS: "-1",
+    PLURNK_SERVICE_RETAIN_RESPONSE_TURNS: "-1",
 };
 
 const parseProfile = (source) => Object.fromEntries(source
