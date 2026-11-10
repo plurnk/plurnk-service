@@ -1,14 +1,10 @@
-import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 import { UNKNOWN_POSITION, type BareStatement, type LogEntryKind, type PlurnkStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type LogWriter from "./LogWriter.ts";
 import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
-import type { ContextFit } from "./ContextFit.ts";
 import LogBody from "./LogBody.ts";
-import BodyPreview from "../content/body-preview.ts";
-import ReadResolve from "../content/read-resolve.ts";
 import LogVisibility from "./LogVisibility.ts";
 import DurableStatement from "./DurableStatement.ts";
 import ResourceBindings from "./ResourceBindings.ts";
@@ -135,59 +131,6 @@ export default class TurnSourceWriter {
             initial_folded: LogVisibility.serialize(LogVisibility.FOLDED),
         });
         if (row === undefined) throw new Error("Dispatcher.writeEmission: insert returned no row");
-        return row.id;
-    }
-
-    // {§turn-source-resources} — the model's own reasoning, landed as the harness's READ of the turn's reasoning
-    // source immediately before the emission row: whole when it fits the row's page, otherwise its last page
-    // (#999: a turn's conclusions sit at its end), only when the packet has room for it after everything else
-    // this turn lands; without room, no row and nothing else changes.
-    async writeReasoning({ content: reasoning, sessionName, loopSeq, turnSeq, sessionId, loopId, turnId, sequence, fit }: {
-        content: string; sessionName: string; loopSeq: number; turnSeq: number;
-        sessionId: number; loopId: number; turnId: number; sequence: number; fit: ContextFit | undefined;
-    }): Promise<number | null> {
-        if (reasoning.length === 0) return null;
-        const pathname = `/${loopSeq}/${turnSeq}`;
-        const pageLines = Knob.optionalInteger("PLURNK_SERVICE_REASONING_TRAILING_LINES", -1) ?? Knob.integer("PLURNK_SERVICE_PREVIEW_LINES", 1);
-        if (pageLines === 0) throw new ConfigurationError("PLURNK_SERVICE_REASONING_TRAILING_LINES", "PLURNK_SERVICE_REASONING_TRAILING_LINES must be -1 or a positive integer.");
-        const tail = pageLines === -1 ? null : BodyPreview.selectTail(reasoning, pageLines);
-        const lineMarker = tail === null || tail.whole ? null : tail.marker;
-        const projected = lineMarker === null ? null : await ReadResolve.resolve({ content: reasoning, mimetype: "text/markdown", lineMarker });
-        const statement: ReadStatement = {
-            op: "read", aside: null, headers: null, lineMarker, matcher: null, body: null, position: UNKNOWN_POSITION,
-            target: {
-                kind: "url", raw: `reasoning://${sessionName}${pathname}`, scheme: "reasoning",
-                username: null, password: null, hostname: sessionName, port: null, pathname, query: null, fragment: null,
-            },
-        };
-        const durableAttrs: { kind: LogEntryKind } = { kind: "reasoning" };
-        const tx = JSON.stringify(DurableStatement.project(statement));
-        const rx = JSON.stringify(projected === null
-            ? { status: 200, content: reasoning, mimetype: "text/markdown" }
-            : { ...projected, mimetype: "text/markdown" });
-        const weight = LogBody.weight({
-            op: "read", attrs: durableAttrs, tx, rx, mimetypeTx: "application/json", mimetypeRx: "application/json",
-        }, this.#weighContent);
-        if (fit !== undefined) {
-            const remaining = await fit.remaining();
-            if (remaining !== null && weight > remaining) return null;
-        }
-        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
-            session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
-            origin: "_plurnk", source: null, model_call_id: null,
-            op: "read", signal: null,
-            scheme: "reasoning", username: null, password: null, hostname: sessionName, port: null,
-            pathname, query: null, fragment: null, lineMarker: lineMarker === null ? null : JSON.stringify(lineMarker),
-            tx, mimetype_tx: "application/json",
-            rx,
-            mimetype_rx: "application/json",
-            status_rx: 200,
-            weight,
-            state: "resolved", outcome: null,
-            attrs: JSON.stringify(durableAttrs),
-            initial_folded: LogVisibility.serialize(LogVisibility.OPEN),
-        });
-        if (row === undefined) throw new Error("Dispatcher.writeReasoning: insert returned no row");
         return row.id;
     }
 

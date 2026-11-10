@@ -816,7 +816,7 @@ test("{§op-shapes} assembled packet: scoped COPY reports both operands and its 
     } finally { await db.close(); }
 });
 
-test("{§packet-assembly} the initial wire preserves canonical order and the Recap override without invented history", async () => {
+test("{§packet-assembly} the initial wire preserves canonical order without invented history", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-monotone-${crypto.randomUUID()}`);
@@ -827,7 +827,6 @@ test("{§packet-assembly} the initial wire preserves canonical order and the Rec
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const result = await engine.runTurn({
             provider,
-            recap: "CUSTOM_RECAP_SENTINEL",
             workspaceId,
             sessionId,
             loopId,
@@ -836,38 +835,14 @@ test("{§packet-assembly} the initial wire preserves canonical order and the Rec
         const packet = await getPacket(db, result.turnId);
 
         // {§packet-assembly}: trusted control-plane sections precede the user slot;
-        // append-mostly history precedes per-turn status, open message pointers and Recap.
+        // append-mostly history precedes per-turn status and open message pointers.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
-        assert.deepEqual(slot("user"), ["log", "git", "budget", "session", "work", "notices", "errors", "recap"]);
+        assert.deepEqual(slot("user"), ["log", "git", "budget", "session", "work", "notices", "errors"]);
         assert.deepEqual(slot("assistant"), []);
         assert.equal(packet.sections.find((section) => section.name === "work")?.header, "Open Work");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context");
-        assert.equal(packetSection(packet, "recap"), "CUSTOM_RECAP_SENTINEL", "{§packet-inject}: the override replaces the source; no recap line ships ahead of it");
         assert.equal(packetSection(packet, "emission-history"), "", "the first turn has no previous program");
-    } finally { await db.close(); }
-});
-
-test("{§packet-inject} no recap line ships and the recap source is empty, so a packet has no Recap", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `pkt-recap-${crypto.randomUUID()}`);
-        const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1, "go");
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
-
-        const result = await engine.runTurn({
-            provider,
-            workspaceId,
-            sessionId,
-            loopId,
-            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
-        });
-        const packet = await getPacket(db, result.turnId);
-
-        assert.equal(await readFile(Paths.defaultRecap, "utf8"), "", "{§packet-inject}: the shipped recap source stays empty");
-        assert.equal(packetSection(packet, "recap"), "", "{§packet-inject}: no line ships, so the packet has no Recap");
     } finally { await db.close(); }
 });
 
@@ -1238,38 +1213,6 @@ test("{§packet-assembly} extension packet control: duplicate section names fail
 });
 });
 
-describe("packet-inject", () => {
-test("{§packet-inject} PLURNK_SERVICE_PACKET_INJECT: operator file rides as a system section after policy", async () => {
-    const db = await openMigrated();
-    const dir = await mkdtemp(join(tmpdir(), "plurnk-inject-intg-"));
-    const prior = process.env.PLURNK_SERVICE_PACKET_INJECT;
-    try {
-        await writeFile(join(dir, "ops.md"), "## House style\nPrefer sqlite over node.");
-        process.env.PLURNK_SERVICE_PACKET_INJECT = join(dir, "ops.md");
-
-        const workspaceId = await insertWorkspace(db, `inject-${crypto.randomUUID()}`);
-        const sessionId = await insertSession(db, workspaceId);
-        const loopId = await insertLoop(db, sessionId, 1, "go");
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
-
-        const { turnId } = await engine.runTurn({
-            provider, workspaceId, sessionId, loopId,
-            messages: [{ role: "system", content: "PLURNK_MD" }, { role: "user", content: "go" }],
-        });
-
-        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
-        assert.match(packetSection(packet, "inject"), /Prefer sqlite over node/, "the operator file is the inject section's content");
-        const sysOrder = (packet.sections as Array<{ name: string; slot: string }>).filter((s) => s.slot === "system").map((s) => s.name);
-        assert.equal(sysOrder.indexOf("inject"), sysOrder.indexOf("system-policy") + 1, "inject follows privileged policy");
-    } finally {
-        if (prior === undefined) delete process.env.PLURNK_SERVICE_PACKET_INJECT; else process.env.PLURNK_SERVICE_PACKET_INJECT = prior;
-        await db.close();
-        await rm(dir, { recursive: true, force: true });
-    }
-});
-});
-
 describe("packet-items", () => {
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 const RECORDS = ["### log:///1/1/1/find\n{\"status\":200}\n1:[]", "### log:///1/1/2/read\n{\"status\":200}\n1:alpha\n2:beta"];
@@ -1342,7 +1285,7 @@ test("{§packet}: items nothing references are collected; shared items survive",
         assert.equal((await db.test_packet_item_count.get<{ n: number }>({}))!.n, 5, "definition + two records + two prompts");
         await db.test_delete_session.run({ id: leaver });
         assert.equal((await db.test_packet_item_count.get<{ n: number }>({}))!.n, 5, "deletion cascades the composition, not the items");
-        await db.retention_collect_packet_items.run({ collect: 1 });
+        await db.retention_collect_packet_items.run({});
         assert.equal((await db.test_packet_item_count.get<{ n: number }>({}))!.n, 3, "the leaver's own record and prompt are collected; the shared definition and record stay");
     } finally { await db.close(); }
 });

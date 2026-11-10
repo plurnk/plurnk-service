@@ -11,7 +11,6 @@ import { AuthorizationDocuments, renderAuthorizationDocument, type Authorization
 import { OPERATOR_CLIENT, SCOPES, type ResolvedModuleOptions } from "./config.ts";
 
 // Mechanism, not choices ({§operator-config-precedence}); each is registered in the root's mechanism list.
-const CODE_TTL_MS = 60_000;
 const MAX_BODY_BYTES = 65_536;
 const MAX_REGISTERED_CLIENTS = 1_000;
 
@@ -351,7 +350,7 @@ export default class OAuthServer {
             const code = mint();
             this.#sweepCodes();
             const family = client.kind === "module" ? session.family : randomUUID();
-            this.#codes.set(code, { clientId: client.id, redirectUri, challenge, scopes, family, expiresAt: this.#now() + CODE_TTL_MS });
+            this.#codes.set(code, { clientId: client.id, redirectUri, challenge, scopes, family, expiresAt: this.#now() + this.#opts.codeTtlSec * 1_000 });
             const target = new URL(redirectUri);
             target.searchParams.set("code", code);
             if (state !== null) target.searchParams.set("state", state);

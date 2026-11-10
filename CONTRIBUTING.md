@@ -87,8 +87,8 @@ line of at most 100 characters citing its issue as `(#N)`, with no body or trail
 | Published type resolution | `npm run packages:types` (or `-- --only plurnk-contracts`): pinned ATTW 0.18.5 checks actual packed packages, invoking their normal prepack builds; also runs beside publint in `release:gate` ({§packed-projection}). |
 
 The type-resolution audit uses ATTW's `esm-only` profile and leaves its findings
-visible. `plurnk-meta`'s `./POLICY.md` and `./recap.md` exports are excluded because
-they are file assets, not code modules. The checker is an exact-pinned root
+visible. `plurnk-meta`'s `./POLICY.md` export is excluded because
+it is a file asset, not a code module. The checker is an exact-pinned root
 development dependency and runs in `release:gate` (`release:check`) beside publint
 as well as on demand. Its nonzero exit means the selected audit failed, not an
 advisory green result. ATTW skips packages with no declarations; it complements,

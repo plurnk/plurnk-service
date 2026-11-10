@@ -56,7 +56,7 @@ describe("retention", () => {
 
 
 const counts = ({ reclaimedPages: _reclaimed, collectedContents: _contents, ...rest }: Awaited<ReturnType<Retention["run"]>>) => rest;
-const KEEP_ALL = { PLURNK_SERVICE_RETAIN_PACKET_TURNS: "-1", PLURNK_SERVICE_RETAIN_PACKET_MS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_TURNS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_MS: "-1", PLURNK_SERVICE_COLLECT_PACKET_ITEMS: "1", PLURNK_SERVICE_COLLECT_DERIVATIONS: "1", PLURNK_SERVICE_COLLECT_CONTENTS: "1", PLURNK_SERVICE_RETENTION_INTERVAL_MS: "3600000", PLURNK_SERVICE_AUTO_VACUUM: "incremental", PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES: "0" };
+const KEEP_ALL = { PLURNK_SERVICE_RETAIN_PACKET_TURNS: "-1", PLURNK_SERVICE_RETAIN_PACKET_MS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_TURNS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_MS: "-1", PLURNK_SERVICE_RETENTION_INTERVAL_MS: "3600000", PLURNK_SERVICE_AUTO_VACUUM: "incremental", PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES: "0" };
 const CAPACITY = JSON.stringify({ decision: "admit", contextWindow: 1001, maxInputTokens: null, maxOutputTokens: null, outputBudget: 1, reasoningBudget: null, inputCapacity: 1000, prompt: { kind: "exact", tokens: 10, source: "retention-fixture" } });
 const record = (n: number): string => `### log:///1/1/${n}/read\n{"status":200}\n1:line ${n}`;
 const packet = (upTo: number): DurablePacket => {
@@ -97,10 +97,9 @@ test("{§content-store}: the shipped panel bounds transient data by age and keep
 
 test("{§content-store}: the keep-everything fixture retires nothing and refuses malformed knobs", async () => {
     const policy = retentionPolicy(KEEP_ALL);
-    assert.deepEqual(policy, { retainPacketTurns: -1, retainPacketMs: -1, retainResponseTurns: -1, retainResponseMs: -1, collectPacketItems: true, collectDerivations: true, collectContents: true, intervalMs: 3_600_000, autoVacuum: "incremental", reclaimMinFreeBytes: 0 });
+    assert.deepEqual(policy, { retainPacketTurns: -1, retainPacketMs: -1, retainResponseTurns: -1, retainResponseMs: -1, intervalMs: 3_600_000, autoVacuum: "incremental", reclaimMinFreeBytes: 0 });
     for (const [key, value] of [
         ["PLURNK_SERVICE_RETAIN_PACKET_TURNS", "-2"],
-        ["PLURNK_SERVICE_COLLECT_DERIVATIONS", "yes"],
         ["PLURNK_SERVICE_AUTO_VACUUM", "full"],
         ["PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES", "-1"],
         ["PLURNK_SERVICE_RETENTION_INTERVAL_MS", ""],
@@ -144,7 +143,7 @@ test("{§content-store}: a count policy keeps the newest packets of each loop; r
         const again = await new Retention(db, retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_RETAIN_PACKET_TURNS: "0" })).run();
         assert.deepEqual(counts(again), { retiredPackets: 2, retiredResponses: 0, collectedItems: 4, collectedDerivations: 0 }, "keeping none retires the rest; the four records nothing cites now leave");
         assert.equal((await db.test_packet_item_count.get<{ n: number }>({}))!.n, 0);
-        const keep = await new Retention(db, retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_RETAIN_PACKET_TURNS: "0", PLURNK_SERVICE_COLLECT_PACKET_ITEMS: "0" })).run();
+        const keep = await new Retention(db, retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_RETAIN_PACKET_TURNS: "0" })).run();
         assert.deepEqual(counts(keep), { retiredPackets: 0, retiredResponses: 0, collectedItems: 0, collectedDerivations: 0 }, "the open turn is never retired");
     } finally { await db.close(); }
 });
@@ -204,7 +203,7 @@ test("{§content-store}: a response policy retires bodies while the call's evide
     } finally { await db.close(); }
 });
 
-test("{§content-store}: an age policy retires by completion time, and a disabled collector keeps orphaned items", async () => {
+test("{§content-store}: an age policy retires by completion time while preserving items shared with fresh turns", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `retention-age-${crypto.randomUUID()}`);
@@ -212,12 +211,12 @@ test("{§content-store}: an age policy retires by completion time, and a disable
         const old = await insertPacketTurn(db, loopId, 1, packet(1), 200);
         const fresh = await insertPacketTurn(db, loopId, 2, packet(2), 200);
         await db.test_complete_turn_at.run({ id: old, completed_at: "2026-01-01T00:00:00.000Z" });
-        const policy = retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_RETAIN_PACKET_MS: String(7 * 24 * 3_600_000), PLURNK_SERVICE_COLLECT_PACKET_ITEMS: "0" });
+        const policy = retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_RETAIN_PACKET_MS: String(7 * 24 * 3_600_000) });
         const pass = await new Retention(db, policy).run(Date.parse("2026-09-12T00:00:00.000Z"));
         assert.deepEqual(counts(pass), { retiredPackets: 1, retiredResponses: 0, collectedItems: 0, collectedDerivations: 0 });
         assert.equal((await db.test_turn_sections_count.get<{ n: number }>({ turn_id: old }))!.n, 0);
         assert.equal((await db.test_turn_sections_count.get<{ n: number }>({ turn_id: fresh }))!.n, 1);
-        assert.equal((await db.test_packet_item_count.get<{ n: number }>({}))!.n, 2, "the collector is off: the shared record and the fresh record stay, nothing else existed");
+        assert.equal((await db.test_packet_item_count.get<{ n: number }>({}))!.n, 2, "the shared record and the fresh record are still referenced by turn 2");
     } finally { await db.close(); }
 });
 
@@ -305,8 +304,6 @@ test("{§content-store}: a superseded derivation and its full-text shadow are co
         await SearchIndex.maintain(ctx);
         assert.equal((await db.test_derivation_state_counts.get<{ complete: number }>({}))!.complete, 2, "the superseded derivation is still resident before retention");
 
-        const kept = await new Retention(db, retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_COLLECT_DERIVATIONS: "0" })).run();
-        assert.equal(kept.collectedDerivations, 0);
         const pass = await new Retention(db, retentionPolicy(KEEP_ALL)).run();
         assert.equal(pass.collectedDerivations, 1, "the edition no channel cites leaves");
         assert.equal((await db.test_derivation_state_counts.get<{ complete: number }>({}))!.complete, 1);
@@ -426,10 +423,6 @@ test("{§content-store}: a body is stored once however many workspaces hold it, 
         await db.crud_delete_entry.run({ entry_id: entries[2] });
         assert.equal((await retention.run()).collectedContents, 1);
         assert.deepEqual(await db.test_content_store_count.get({}), { n: 0, bytes: null });
-        const kept = new Retention(db, retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_COLLECT_CONTENTS: "0" }));
-        const workspaceId = await insertWorkspace(db, `book-kept-${crypto.randomUUID()}`);
-        await db.crud_delete_entry.run({ entry_id: await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/book.md", channel: "body", content: book, mimetype: "text/markdown" }) });
-        assert.equal((await kept.run()).collectedContents, 0, "a disabled collector keeps released bodies");
     } finally { await db.close(); }
 });
 });
@@ -545,11 +538,9 @@ test("{§content-store}: a packet alone pins its native snapshot until containin
     await assert.rejects(NativeContent.read(db, hash), /Missing immutable native content/);
 });
 
-test("{§content-store}: disabling content collection retains an unreferenced snapshot", async () => {
+test("{§content-store}: content collection reclaims an unreferenced native snapshot", async () => {
     await using db = await openMigrated();
     const hash = await NativeContent.retain(db, PNG);
-    const retention = new Retention(db, { ...retentionPolicy(), autoVacuum: "none", collectContents: false });
-    await retention.run();
     assert.deepEqual(Buffer.from(await NativeContent.read(db, hash)), PNG);
     assert.equal((await collector(db).run()).collectedContents, 1);
     await assert.rejects(NativeContent.read(db, hash), /Missing immutable native content/);

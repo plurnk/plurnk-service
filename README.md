@@ -16,23 +16,57 @@ This repository owns the daemon, language contracts, and bundled extensions.
 - **Unified selection algebra:** Globs, regex, full text, structured queries, and symbol relationships share one `pattern` interface.
 - **Durable session graph:** Sessions delegate and communicate within a persistent workspace, independent of a client connection.
 
-## Architecture
+## Surface (`:1066`)
+
+One shared listener (`127.0.0.1:1066` by default) serves the client protocol, external MCP host surface, OAuth 2.1 authorization server, optional web client, and health probes under a single credential authority:
 
 ```mermaid
 flowchart LR
-    clients["Clients"] <--> acp["ACP v2"]
-    acp <--> core["plurnk-service"]
-    core <--> providers["Model providers"]
-    extensions["Scheme / executor / mimetype extensions"] --> core
-    modules["Daemon modules"] --> core
-    project["Project files + Git"] <--> core
-    core --> sqlite[(SQLite)]
+    subgraph Inbound["Clients & External Hosts"]
+        cli["@plurnk/plurnk TUI · IDE · Matrix · SDK clients"]
+        mcpHosts["External MCP v2 hosts"]
+        authClients["OAuth 2.1 clients & browser sessions"]
+        browser["Browser UI (PLURNK_WEB_ENABLED=1)"]
+        probes["Orchestrators & load balancers"]
+    end
+
+    subgraph Listener["plurnk-service (:1066)"]
+        acp["/acp<br/>ACP v2 (Streamable HTTP + WebSocket)<br/>+ /entry & /messages"]
+        mcp["/mcp[/&lt;workspace&gt;[/&lt;session&gt;]]<br/>MCP v2 Streamable HTTP Server"]
+        oauth["/.well-known/* · /oauth/*<br/>OAuth 2.1 Authorization Server<br/>(PKCE · RFC 7591 · requested_subject)"]
+        web["/<br/>@plurnk/plurnk-web"]
+        health["/health · /healthz<br/>application/health+json"]
+        core["Core VM · Durable Session Graph · SQLite WAL + FTS5"]
+        acp & mcp & oauth & web & health --> core
+    end
+
+    subgraph Outbound["Providers, Tools & Workspace"]
+        models["Local & hosted model providers"]
+        extMcp["Outbound MCP servers (stdio · HTTP)"]
+        workspace["Project files · Git · Agent Skills & Plugins"]
+        otel["OpenTelemetry (OTEL_*) · Lifecycle hooks"]
+    end
+
+    cli <--> acp
+    mcpHosts <--> mcp
+    authClients <--> oauth
+    browser <--> web
+    probes --> health
+    core <--> models
+    core <--> extMcp
+    core <--> workspace
+    core --> otel
 ```
 
-The daemon owns durable state and orchestration. Clients drive sessions, prompts,
-and approval gates over ACP v2; extensions supply capabilities under their own
-contracts. See [ARCHITECTURE.md](ARCHITECTURE.md) for process boundaries and
-package ownership.
+| Mount | Owner | Surface |
+|---|---|---|
+| `/acp` | `@plurnk/plurnk-acp` | Standard ACP v2 JSON-RPC 2.0 over Streamable HTTP (SSE) and WebSocket, plus `GET /acp/<workspaceId>/<sessionId>/entry` and `/messages`. |
+| `/mcp[/<workspace>[/<session>]]` | `@plurnk/plurnk-mcp` | MCP v2 Streamable HTTP server exposing the 15 VM operations, REPL executors (`sh`, `js`, `python3`), 6 Functionality families, and `skill://` SEP-2640 Skills. |
+| `/.well-known/*`, `/oauth/*` | `@plurnk/plurnk-auth` | OAuth 2.1 authorization server (`authorize` with PKCE `S256`, `token` with `requested_subject` session scoping, `revoke`, RFC 7591 `register`, browser `session`). |
+| `/` | `@plurnk/plurnk-web` | Browser web client mounted when `PLURNK_WEB_ENABLED=1`. |
+| `/health`, `/healthz` | `@plurnk/plurnk-service` | Unauthenticated `GET`/`HEAD` readiness probes (`200` `{"status":"pass"}` or `503 service-starting`). |
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for internal process boundaries and package ownership.
 
 ## Installation and configuration
 

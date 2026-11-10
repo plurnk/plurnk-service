@@ -15,6 +15,7 @@ export interface ModuleOptions {
     readonly auth?: boolean;
     readonly issuer?: string;
     readonly password?: string;
+    readonly codeTtlSec?: number;
     readonly accessTtlSec?: number;
     readonly refreshTtlSec?: number;
     readonly clients?: Readonly<Record<string, DeclaredClient>>;
@@ -27,6 +28,7 @@ export interface ResolvedModuleOptions {
     readonly authenticates: boolean;
     readonly issuer: string;
     readonly password: string;
+    readonly codeTtlSec: number;
     readonly accessTtlSec: number;
     readonly refreshTtlSec: number;
     readonly clients: Readonly<Record<string, DeclaredClient>>;
@@ -88,7 +90,7 @@ const environmentClients = (env: NodeJS.ProcessEnv): Readonly<Record<string, Dec
 // {§auth-configuration} — reads and validates the authorization server's configuration from the assembled floor.
 export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOptions => {
     const env = options.env === undefined ? process.env : options.env;
-    const number = (option: "accessTtlSec" | "refreshTtlSec", key: string, minimum: number): number =>
+    const number = (option: "codeTtlSec" | "accessTtlSec" | "refreshTtlSec", key: string, minimum: number): number =>
         safeInteger(options[option] === undefined ? env[key] : options[option], options[option] === undefined ? key : `ModuleOptions.${option}`, minimum);
     const clients = options.clients === undefined ? environmentClients(env) : options.clients;
     for (const [id, client] of Object.entries(clients)) {
@@ -101,6 +103,7 @@ export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOpti
         authenticates: options.auth === undefined ? Knob.flag("PLURNK_AUTH", env) : options.auth,
         issuer: floorString(options, env, "issuer", "PLURNK_AUTH_ISSUER"),
         password: floorString(options, env, "password", "PLURNK_PASS"),
+        codeTtlSec: number("codeTtlSec", "PLURNK_AUTH_CODE_TTL_SEC", 1),
         accessTtlSec: number("accessTtlSec", "PLURNK_AUTH_ACCESS_TTL_SEC", 1),
         refreshTtlSec: number("refreshTtlSec", "PLURNK_AUTH_REFRESH_TTL_SEC", 1),
         clients,

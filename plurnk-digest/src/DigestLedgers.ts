@@ -265,15 +265,11 @@ export const renderEmissions = (session: SessionRow, m: DigestModel): string => 
     return `${rows.length} announced · ${killed} killed · ${echoes} header echo${echoes === 1 ? "" : "es"}`;
 };
 
-// {§turn-source-resources} — landed, retired by the model, and turns that reasoned.
+// {§turn-source-resources} — turns that exposed readable reasoning.
 export const renderReasonings = (session: SessionRow, m: DigestModel): string => {
-    const rows = m.reasoningRows.filter((row) => row.session_id === session.id);
-    const killed = rows.filter((row) => row.active === 0).length;
     const reasonedTurns = (m.loopsBySession.get(session.id) ?? [])
         .flatMap((loop) => m.turnsByLoop.get(loop.id) ?? [])
         .filter((turn) => turn.has_reasoning === 1).length;
-    if (reasonedTurns === 0 && rows.length === 0) return "(no reasoning)";
-    if (rows.length === 0) return `0 of ${reasonedTurns} landed (unbudgeted or disabled)`;
-    if (reasonedTurns > rows.length) return `${rows.length} of ${reasonedTurns} landed · ${killed} killed`;
-    return `${rows.length} landed · ${killed} killed`;
+    if (reasonedTurns === 0) return "(no reasoning)";
+    return `${reasonedTurns} turn${reasonedTurns === 1 ? "" : "s"}`;
 };

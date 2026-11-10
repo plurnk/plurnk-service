@@ -18,7 +18,6 @@ export type ProposalToolKind = Extract<NonNullable<ProposalProjection["subject"]
  */
 export const LOG_ENTRY_KINDS = Object.freeze([
     "emission",
-    "reasoning",
     "message",
     "loop_termination",
     "entry_materialized",

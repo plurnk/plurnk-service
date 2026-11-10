@@ -73,7 +73,7 @@ export default class LoopDriver {
     }
 
     async runLoop({
-        provider, childProvider = provider, messages, recap = "", workspaceId, sessionId, loopId,
+        provider, childProvider = provider, messages, workspaceId, sessionId, loopId,
         maxTurns = Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1),
         maxStrikes = Knob.integer("PLURNK_SERVICE_MAX_STRIKES", 0),
         minCycles = Knob.integer("PLURNK_SERVICE_MIN_CYCLES", 1),
@@ -82,8 +82,6 @@ export default class LoopDriver {
         provider: Provider;
         childProvider?: Provider;
         messages: ChatMessage[];
-        // Optional Recap override; packet assembly owns default sourcing.
-        recap?: string;
         workspaceId: number; sessionId: number; loopId: number;
         maxTurns?: number;
         maxStrikes?: number;
@@ -238,7 +236,7 @@ export default class LoopDriver {
                         { sessionId, "loop.id": loopId },
                         async (span) => {
                             const t = await this.#runTurn({
-                                provider, childProvider, messages, recap, workspaceId, sessionId, loopId, signal: executionSignal, onDispatch, onSettled,
+                                provider, childProvider, messages, workspaceId, sessionId, loopId, signal: executionSignal, onDispatch, onSettled,
                                 turnNumber: modelTurnCount + 1,
                                 invalidEmissionRecoveryEntryId });
                             span.setAttribute("turn.id", t.turnId);

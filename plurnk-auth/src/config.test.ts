@@ -6,6 +6,7 @@ const floor: NodeJS.ProcessEnv = {
     PLURNK_AUTH: "0",
     PLURNK_PASS: "",
     PLURNK_AUTH_ISSUER: "",
+    PLURNK_AUTH_CODE_TTL_SEC: "60",
     PLURNK_AUTH_ACCESS_TTL_SEC: "3600",
     PLURNK_AUTH_REFRESH_TTL_SEC: "2592000",
     PLURNK_AUTH_ALLOW_ORIGIN: "*",
@@ -16,6 +17,7 @@ test("[{§auth-configuration}] plurnk-auth consumes and validates its package-ow
         authenticates: false,
         issuer: "",
         password: "",
+        codeTtlSec: 60,
         accessTtlSec: 3600,
         refreshTtlSec: 2592000,
         clients: {},
@@ -29,6 +31,7 @@ test("[{§auth-configuration}] explicit in-process options override the assemble
         auth: true,
         issuer: "https://plurnk.example",
         password: "lovelace",
+        codeTtlSec: 30,
         accessTtlSec: 60,
         refreshTtlSec: 120,
         clients: { agent: { secret: "s", scopes: ["acp"] } },
@@ -45,6 +48,7 @@ test("[{§auth-configuration}] explicit in-process options override the assemble
         authenticates: true,
         issuer: "https://plurnk.example",
         password: "lovelace",
+        codeTtlSec: 30,
         accessTtlSec: 60,
         refreshTtlSec: 120,
         clients: { agent: { secret: "s", scopes: ["acp"] } },
@@ -88,7 +92,7 @@ test("[{§auth-configuration}] missing and malformed configuration fails at the 
         delete env[key];
         assert.throws(() => resolve(env), new RegExp(`${key} is missing from the assembled environment floor`, "u"));
     }
-    for (const key of ["PLURNK_AUTH_ACCESS_TTL_SEC", "PLURNK_AUTH_REFRESH_TTL_SEC"]) {
+    for (const key of ["PLURNK_AUTH_CODE_TTL_SEC", "PLURNK_AUTH_ACCESS_TTL_SEC", "PLURNK_AUTH_REFRESH_TTL_SEC"]) {
         assert.throws(() => resolve({ ...floor, [key]: "0" }), new RegExp(`${key} must be a safe integer from 1`, "u"));
         assert.throws(() => resolve({ ...floor, [key]: "" }), new RegExp(`${key} must be a safe integer`, "u"));
     }

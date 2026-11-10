@@ -530,7 +530,7 @@ Binary resources participate in `READ`, `FIND`, `COPY`, `MOVE`, and `KILL` witho
 
 The session log (`log:///<L>/<T>/<A>[/<leaf>]`) is an append-only SQLite ledger (`log_entries`) paired 1:1 with mutable active-context state (`log_entry_projection`):
 
-- **Coordinates**: `L` (1-indexed loop sequence), `T` (1-indexed turn sequence within loop), `A` (1-indexed action sequence within turn). The optional `/<leaf>` suffix names the op or kind (`READ`, `EDIT`, `emission`, `reasoning`) and aliases the same row. Foreign session authorities (`log://other/...`) are refused `400`.
+- **Coordinates**: `L` (1-indexed loop sequence), `T` (1-indexed turn sequence within loop), `A` (1-indexed action sequence within turn). The optional `/<leaf>` suffix names the op or kind (`READ`, `EDIT`, `emission`) and aliases the same row. Foreign session authorities (`log://other/...`) are refused `400`.
 - **Immutability & redaction**: Core `log_entries` columns and `log_curation_effects` rows are protected by SQLite triggers and cascade only when containing history is deleted. Before any durable persistence, Packet assembly, fork hydration, or Digest export, URL `username`/`password` and HTTP `headers` values are replaced with `"__redacted__"` while query strings remain visible; packet log rendering omits redacted `headers` entries.
 - **Direct curation**: `plurnk.kill` on `log:///...` is an active-context meta-operation; a successful `log:///` `KILL` never renders its own receipt in the packet, whereas non-log `KILL` receipts (e.g., workspace/file deletions) render and remain visible.
 
@@ -551,9 +551,9 @@ The session log (`log:///<L>/<T>/<A>[/<leaf>]`) is an append-only SQLite ledger 
 Every turn records immutable source evidence in `turn_sources`, addressable across the workspace by session name:
 
 - `ops://<session>/<L>/<T>`: the turn's raw verbatim emission (`split.packetAssistant.content` for model inference turns, or rendered `TurnOps` for `_plurnk` initialization surveys), readable on demand via `await plurnk.read({ path: "ops://<session>/<L>/<T>" })`. For model inference and session initialization turns with admitted content operations, the engine records one born-folded `_plurnk` announcement row (`### log:///<L>/<T>/<A>/emission (ops://<session>/<L>/<T>)`) before the turn's operations whose frozen body is the RENO-normalized canonical program (`TurnOps.renderEmission` / `PlurnkParser.stringify`, {§fence-pairing}, {§parse-recovery}); retained content operations replay from that canonical program as `assistant` messages ({§emission-history}). Rejected emission attempts record an actionless `emissionAttempt` row.
-- `reasoning://<session>/<L>/<T>`: the turn's final exposed provider reasoning (`204` when the turn had none, `404` when the turn does not exist), shared as the canonical durable reasoning source across `plurnk.read({ path: "reasoning://..." })`, `readLog` / `log/entry` hydration ({§methods-invocation}), and forensic digests. Reasoning is never parsed for operations. When `PLURNK_SERVICE_REASONING_ROWS=1` and context budget permits after required results, the engine inserts a `_plurnk` `reasoning` preview row (bounded by `PLURNK_SERVICE_REASONING_TRAILING_LINES` or the shared page) immediately before the emission row.
+- `reasoning://<session>/<L>/<T>`: the turn's final exposed provider reasoning (`204` when the turn had none, `404` when the turn does not exist), shared as the canonical durable reasoning source across `plurnk.read({ path: "reasoning://..." })`, `readLog` / `log/entry` hydration ({§methods-invocation}), and forensic digests. Reasoning is never parsed for operations.
 - `note://<session>/<L>/<T>/<A>`: each admitted `NOTE` body, distillation, or interstitial outside-text note. All three schemes (`ops`, `reasoning`, `note`) are read-only (`403` on write/kill), hash-free (`400` on line anchors), indexed for `FIND`, and preserved under local coordinates on `FORK`.
-- **`log_entries.attrs` `kind` discriminator (`LogEntryKind`)**: `log_entries.attrs` is an opaque JSON object (`json_type(attrs) = 'object'` in SQLite, {§db-migrations}) whose optional `kind` property belongs to the closed `LogEntryKind` union (`"emission" | "reasoning" | "message" | "loop_termination" | "entry_materialized" | "emissionAttempt"` in `@plurnk/plurnk-contracts`), enforced at the TypeScript writer/contract boundary so schema evolution does not require a table-rebuild migration.
+- **`log_entries.attrs` `kind` discriminator (`LogEntryKind`)**: `log_entries.attrs` is an opaque JSON object (`json_type(attrs) = 'object'` in SQLite, {§db-migrations}) whose optional `kind` property belongs to the closed `LogEntryKind` union (`"emission" | "message" | "loop_termination" | "entry_materialized" | "emissionAttempt"` in `@plurnk/plurnk-contracts`), enforced at the TypeScript writer/contract boundary so schema evolution does not require a table-rebuild migration.
 
 ### §edit-result-receipt-projection Mutation receipts & reviewer replacement
 
@@ -760,7 +760,7 @@ Every daemon database access goes through package-owned SqlRite statements (`nod
 | Mechanism | Rule |
 | --- | --- |
 | Content interning | `contents` stores each settled body once by SHA-256; `entry_channel_rows` buffers active streams until settlement and exposes channels through the `entry_channels` view and its `INSTEAD OF` triggers. `derivation_fts` indexes `derivation_texts` via `_entry-fts.sql`. |
-| Retention policy | `Retention` applies count/age bounds (`PLURNK_SERVICE_RETAIN_PACKET_*`, `_RESPONSE_*`; `-1` disables a bound) to completed turns' `turn_sections` and settled logical calls' response/request payloads while preserving call metadata, accounting, and canonical history. Unreferenced packet items, derivations, text, and native snapshots (held across active operations via {§matcher-dispatch}) are collected per `PLURNK_SERVICE_COLLECT_*`. Invalid policy withholds retention and conversion with a configuration notice ({§configuration-repair-path}). |
+| Retention policy | `Retention` applies count/age bounds (`PLURNK_SERVICE_RETAIN_PACKET_*`, `_RESPONSE_*`; `-1` disables a bound) to completed turns' `turn_sections` and settled logical calls' response/request payloads while preserving call metadata, accounting, and canonical history, and collects unreferenced packet items, derivations, text, and native snapshots (held across active operations via {§matcher-dispatch}). Invalid policy withholds retention and conversion with a configuration notice ({§configuration-repair-path}). |
 | Space reclamation & shutdown | `PLURNK_SERVICE_AUTO_VACUUM` (`incremental` or `none`) converts mismatched files at startup and steps `PRAGMA incremental_vacuum` after retention when free pages reach `PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES`. Shutdown runs retention, WAL truncation, and `PRAGMA optimize` on the writer. |
 
 ---
@@ -1046,9 +1046,9 @@ Client operations (`dispatchClientAction`, executions, typed statements, `rollba
 
 ```mermaid
 flowchart LR
-  S["1-3. System: definition, system-policy, inject"] --> L0["4. User: initial log / log/<coord>"]
-  L0 --> EH["5. Alternating assistant (emitted ops) & user (paired receipts + following log)"]
-  EH --> LT["5b. User: trailing log/<coord> + 6-12. Status clump (git, budget, session, work, notices, errors, recap)"]
+  S["1-2. System: definition, system-policy"] --> L0["3. User: initial log / log/<coord>"]
+  L0 --> EH["4. Alternating assistant (emitted ops) & user (paired receipts + following log)"]
+  EH --> LT["4b. User: trailing log/<coord> + 5-10. Status clump (git, budget, session, work, notices, errors)"]
   S & L0 & EH & LT --> TR["SchemeRegistry.transformSections(drafts, ctx)"]
   TR --> AD["PacketSections.assertDrafts -> Provider.generate(request)"]
 ```
@@ -1059,17 +1059,15 @@ flowchart LR
 | --- | --- | --- | --- |
 | 1 | `definition` | `system` | Stripped table projection of `plurnk-contracts/plurnk.md` (read fresh per loop start and wake) |
 | 2 | `system-policy` | `system` | Concatenated contents of `PLURNK_SERVICE_POLICY` when explicitly set, or `$XDG_CONFIG_HOME/agents/AGENTS(.local)?.md`, `~/.agents/AGENTS(.local)?.md`, and `$XDG_CONFIG_HOME/plurnk/AGENTS(.local)?.md` (`AGENTS.md` seeded on first boot from `@plurnk/plurnk-meta/POLICY.md`), followed by any project-tier `<projectRoot>/AGENTS(.local)?.md` and session-tier `session://<session>/AGENTS.md` |
-| 3 | `inject` | `system` | `## Operator Notes` when `PLURNK_SERVICE_PACKET_INJECT` is non-empty |
-| 4–5 | `log`, `log/<coord>`, `emission-history/<coord>` | `user` / `assistant` | Initial retained log records (`## Log`) through the first replayed turn's emission row, then alternating `assistant` (`emission-history/<emission-coordinate>` replayed operations) and `user` (`log/<first-record-coordinate>` paired receipts plus following log records), ending with remaining `log/<first-record-coordinate>` records |
-| 6 | `git` | `user` | `## Git Status` `> [!NOTE]` summary when workspace is a Git repository |
-| 7 | `budget` | `user` | `## Context` JSON gauge (`tokens`, `budget`, `percent`, and pressure `largest`) |
-| 8 | `session` | `user` | `## Session` JSON (`{"path": "session://<name>", "parent": <address\|null>, "owner": {"address": "<owner>", "interactive": <boolean>}, "loop": L, "turn": T}`) |
-| 9 | `work` | `user` | `## Open Work` JSON (`{"sessions": [...], "streams": [...], "messages": [...]}`; always present with `[]` when empty) |
-| 10 | `notices` | `user` | `## Notices` callout blocks drained from `notices` |
-| 11 | `errors` | `user` | `## Errors` JSON array (`{status, path}`) indexing `status_rx >= 400` rows from the current and prior turn |
-| 12 | `recap` | `user` | `## Recap` callout directives (`PLURNK_SERVICE_RECAP_LINE_<alias>`) and `PLURNK_SERVICE_RECAP` / `recap.md` |
+| 3–4 | `log`, `log/<coord>`, `emission-history/<coord>` | `user` / `assistant` | Initial retained log records (`## Log`) through the first replayed turn's emission row, then alternating `assistant` (`emission-history/<emission-coordinate>` replayed operations) and `user` (`log/<first-record-coordinate>` paired receipts plus following log records), ending with remaining `log/<first-record-coordinate>` records |
+| 5 | `git` | `user` | `## Git Status` `> [!NOTE]` summary when workspace is a Git repository |
+| 6 | `budget` | `user` | `## Context` JSON gauge (`tokens`, `budget`, `percent`, and pressure `largest`) |
+| 7 | `session` | `user` | `## Session` JSON (`{"path": "session://<name>", "parent": <address\|null>, "owner": {"address": "<owner>", "interactive": <boolean>}, "loop": L, "turn": T}`) |
+| 8 | `work` | `user` | `## Open Work` JSON (`{"sessions": [...], "streams": [...], "messages": [...]}`; always present with `[]` when empty) |
+| 9 | `notices` | `user` | `## Notices` callout blocks drained from `notices` |
+| 10 | `errors` | `user` | `## Errors` JSON array (`{status, path}`) indexing `status_rx >= 400` rows from the current and prior turn |
 
-Wire message grouping: Message 1 is `system` (`1–3`); Message 2 is `user` (initial retained `log` records before the first replayed turn's first surviving receipt); Messages `3…2k` alternate `assistant` and `user` for each replayed turn; the final `user` message carries any trailing `log/<coord>` segment and the status clump (`6–12`).
+Wire message grouping: Message 1 is `system` (`1–2`); Message 2 is `user` (initial retained `log` records before the first replayed turn's first surviving receipt); Messages `3…2k` alternate `assistant` and `user` for each replayed turn; the final `user` message carries any trailing `log/<coord>` segment and the status clump (`5–10`).
 
 ### §emission-history Emission history and paired receipts
 
@@ -1357,15 +1355,13 @@ The workspace Functionality Coordinator materializes self-documentation, skills,
 | Bundled `plurnk` skill | Served through the `skill://` scheme at `skill://plurnk/SKILL.md`, with flat reference chapters at `skill://plurnk/{configuration,copy-move,delegation,extensibility,https,models,pattern,session,wss}.md`, configuration artifacts at `skill://plurnk/configuration/{.env.defaults,plurnk.service,plurnk.nginx.conf}`, and package specifications/types at `skill://plurnk/packages/<package>/SPEC.md` and `skill://plurnk/packages/<package>/dist/**/*.d.ts`. |
 | File membership (`members` Functionality family) | Configured via `PLURNK_MEMBERS_<alias>=<glob>` (`!glob` excludes; gated by `PLURNK_MEMBERS_ENABLED` and `PLURNK_MEMBERS_<alias>_ENABLED`), operated via `workspace.members.<verb>`, `await plurnk.members(...)` (`list`, `discover`, `add`, `enable`, `disable`, `remove`), or `members:///<glob>` (`READ`, `EDIT`, `KILL`), bounded for model `add` by `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (`none < root < namespace`; violations fail `403 https://problems.plurnk.xyz/members/functionality/model-scope`), persisted in `workspace_constraints` (`source: "members" \| "model"`, preserving `source: "create"`), and materialized as `plurnk:///members/<percent-encoded-glob>.md`. Outside-root directory globs (`../<dir>/**`) and nested repository / submodule globs (`<dir>/**`, #1400) resolve tracked files via `git ls-files` and respect `.gitignore` for ambient candidates when `<dir>` is a Git working tree. |
 
-### §packet-inject System injections, git status, and recap
+### §packet-inject System policy and git status
 
 | Surface | Contract |
 | --- | --- |
 | Card read per wake | `plurnk-contracts/plurnk.md` is read from disk at every loop start and wake so grammar/card edits take effect immediately without restarting the daemon. |
 | System policy & `AGENTS.md` | `PLURNK_SERVICE_POLICY` (or when unset `$XDG_CONFIG_HOME/agents/AGENTS.md`, `~/.agents/AGENTS.md`, and `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, with `$XDG_CONFIG_HOME/plurnk/AGENTS.md` seeded once on first boot from `@plurnk/plurnk-meta/POLICY.md`) materializes at `plurnk:///AGENTS.md`, and global `AGENTS.local.md` files (`$XDG_CONFIG_HOME/agents/AGENTS.local.md`, `~/.agents/AGENTS.local.md`, `$XDG_CONFIG_HOME/plurnk/AGENTS.local.md`) materialize at `plurnk:///AGENTS.local.md`; both concatenate with workspace root `AGENTS.md`, workspace root `AGENTS.local.md`, and `session://<session>/AGENTS.md` into the `system-policy` packet section on every turn ({§packet-assembly}, #1392). |
-| Operator injection (`PLURNK_SERVICE_PACKET_INJECT`) | Renders as `## Operator Notes` in the `inject` system slot after `system-policy`. |
 | `## Git Status` (`PLURNK_SERVICE_GIT_STATUS_PATHS`) | Runs one `git status --porcelain=v2 -z` snapshot per turn to render a `> [!NOTE]` block summarizing branch, ahead/behind counts, staged, unstaged, `untracked members`, and `untracked (not members)` (bounded by `PLURNK_SERVICE_GIT_STATUS_PATHS`), and stamps two-character `XY` status flags onto `source=file` resource rows. |
-| `## Recap` (`PLURNK_SERVICE_RECAP_LINE_<alias>`, `PLURNK_SERVICE_RECAP`) | Renders every non-empty `PLURNK_SERVICE_RECAP_LINE_<alias>` in alias order ahead of `PLURNK_SERVICE_RECAP` / `recap.md`. Lines starting with `YOU MUST`, `YOU MUST NOT`, or `YOU MUST ONLY` render under `> [!IMPORTANT]`; lines starting with `YOU SHOULD`, `YOU SHOULD NOT`, or `YOU MAY` render under `> [!TIP]`; any other prefix fails configuration validation. |
 
 ---
 

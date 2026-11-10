@@ -183,12 +183,6 @@ export default class PacketWire {
         return pointers.length === 0 ? "[]" : `[${pointers.join(",\n")}]`;
     }
 
-    // {§packet-inject} — each operator line is one callout, typed by its directive, ahead of the recap source.
-    static renderRecap(lines: readonly string[], source: string): string {
-        const callouts = lines.map((line) => `> [!${line.startsWith("YOU MUST") ? "IMPORTANT" : "TIP"}]\n> ${line}`);
-        return [...callouts, ...(source.trim().length > 0 ? [source] : [])].join("\n\n");
-    }
-
     // The git section content: the working-tree summary. "" when absent.
     static renderGit(git: GitStatusView | null): string {
         const status = git === null ? "" : PacketWire.#renderGitState(git);

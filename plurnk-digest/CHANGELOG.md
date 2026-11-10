@@ -1,5 +1,15 @@
 # @plurnk/plurnk-digest
 
+## 3.2.7
+
+### Patch Changes
+
+- Remove synthetic `reasoning` log entry rows (`PLURNK_SERVICE_REASONING_ROWS`, `PLURNK_SERVICE_REASONING_TRAILING_LINES`, and `reasoningRows` ledger) while retaining `reasoning://<session>/<L>/<T>` turn sources and `Reasonings:` turn counts (#1439 #1441).
+- Updated dependencies
+  - @plurnk/plurnk-contracts@7.4.0
+  - @plurnk/plurnk-meta@2.2.1
+  - @plurnk/plurnk-providers@6.1.1
+
 ## 3.2.6
 
 ### Patch Changes

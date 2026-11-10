@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-meta",
     "version": "2.2.1",
-    "description": "Extension discovery and trust primitives shared by every plurnk kind, and the teaching material the plurnk service gives models: policy, Recap, the plurnk skill and scheme references.",
+    "description": "Extension discovery and trust primitives shared by every plurnk kind, and the teaching material the plurnk service gives models: policy, the plurnk skill and scheme references.",
     "keywords": [
         "plurnk",
         "agent-skills",
@@ -23,7 +23,6 @@
         "SPEC.md",
         "CORPUS.md",
         "POLICY.md",
-        "recap.md",
         "docs/**/*",
         "skills/**/*",
         "DIVERGENCES.md"
@@ -46,7 +45,6 @@
         },
         "./package.json": "./package.json",
         "./POLICY.md": "./POLICY.md",
-        "./recap.md": "./recap.md",
         "./docs/*.md": "./docs/*.md"
     },
     "scripts": {

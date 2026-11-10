@@ -219,7 +219,6 @@ test("{§parse-recovery} unknown statement position is one frozen contracts-owne
 test("{§turn-source-resources} {§db-migrations} LOG_ENTRY_KINDS and isLogEntryKind enumerate the closed log_entries.attrs kind union", () => {
     assert.deepEqual(Contracts.LOG_ENTRY_KINDS, [
         "emission",
-        "reasoning",
         "message",
         "loop_termination",
         "entry_materialized",
@@ -227,7 +226,7 @@ test("{§turn-source-resources} {§db-migrations} LOG_ENTRY_KINDS and isLogEntry
     ]);
     assert.equal(Object.isFrozen(Contracts.LOG_ENTRY_KINDS), true);
     for (const kind of Contracts.LOG_ENTRY_KINDS) assert.equal(Contracts.isLogEntryKind(kind), true, kind);
-    for (const other of ["ops", "note", "outside", "", null, undefined, 42]) {
+    for (const other of ["ops", "reasoning", "note", "outside", "", null, undefined, 42]) {
         assert.equal(Contracts.isLogEntryKind(other), false, JSON.stringify(other));
     }
 });
