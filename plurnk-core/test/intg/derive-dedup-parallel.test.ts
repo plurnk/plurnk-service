@@ -1432,4 +1432,39 @@ test("{§derivation-dedup-parallel}: the pump admits smallest-first without skip
         assert.ok((byPath.get("/minnow-b.md") ?? Infinity) < whaleFirst, "minnow-b scheduled before the whale");
     } finally { db.close(); }
 });
+
+test("{§derivation-dedup-parallel} SearchIndex.maintain acquires zero historical log_entries or turn_sources bytes on subsequent passes", async () => {
+    const mimetypes = new Mimetypes();
+    await mimetypes.ready();
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `incremental-log-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
+        const openTurn = await db.test_open_inference_turn.get<{ id: number }>({ loop_id: loopId, sequence: 1 });
+        assert.ok(openTurn !== undefined);
+        await db.turn_source_record.get({
+            turn_id: openTurn.id, kind: "note", sequence: 1, content: "hello incremental", model_call_id: null,
+        });
+        await db.engine_insert_log_entry.get({
+            session_id: sessionId, loop_id: loopId, turn_id: openTurn.id, sequence: 1,
+            origin: "model", source: null, model_call_id: null, op: "note",
+            scheme: null, username: null, password: null, hostname: null, port: null,
+            pathname: null, query: null, fragment: null, lineMarker: null,
+            tx: "{\"body\":\"hello incremental\"}", mimetype_tx: "application/json", rx: "{\"status\":200}",
+            mimetype_rx: "application/json", status_rx: 200, weight: 9,
+            state: "resolved", outcome: null, attrs: "{}", initial_folded: "[]",
+        });
+
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes });
+        const first = await SearchIndex.maintain(ctx);
+        assert.equal(first.derived, 2, "cold pass indexes both the log entry and the turn source");
+        assert.ok(first.acquiredBytes > 0);
+
+        const second = await SearchIndex.maintain(ctx);
+        assert.deepEqual(second, { derived: 0, acquiredBytes: 0 }, "subsequent pass acquires zero historical log or turn_source bytes");
+    } finally {
+        await db.close();
+    }
+});
 });

@@ -131,9 +131,9 @@ WHERE l.session_id = $session_id
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: log_derivation_rows
--- Every log row in a workspace, with its stable model-facing coordinate and
--- current derivation attachment. The TypeScript projection resolves rx to the
--- exact body/mimetype read and find expose before hashing or deriving it.
+-- Unindexed active log rows in a workspace, with their stable model-facing coordinate.
+-- Curation, proposal settlement, and boot recovery reset deep_hash = NULL so incremental
+-- maintenance reads only rows needing derivation (#1443).
 SELECT
     le.id,
     (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
@@ -144,15 +144,13 @@ SELECT
     le.rx,
     le.mimetype_rx,
     le.deep_hash,
-    d.disposition AS deep_disposition,
-    d.reason AS deep_reason,
     le.attrs, le.folded
 FROM active_log_entries le
-LEFT JOIN derivations d ON d.deep_hash = le.deep_hash
 JOIN sessions w ON w.id = le.session_id
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE w.workspace_id = $workspace_id
+  AND le.deep_hash IS NULL
 ORDER BY le.id;
 
 -- PREP: log_set_deep_hash

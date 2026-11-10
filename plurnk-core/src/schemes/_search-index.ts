@@ -259,7 +259,7 @@ export default class SearchIndex {
         // {§derivation-dedup-parallel} — entry channels are judged from stored identity: the
         // candidate statement carries no body, and a body crosses into the process only for a
         // derivation that runs, or for a channel with no stored identity (a stream), which must be
-        // read to be judged. Log rows and turn sources still arrive whole.
+        // read to be judged. Log rows and turn sources select only unindexed rows (deep_hash IS NULL).
         let acquiredBytes = 0;
         const candidates = await db.search_index_entry_candidates.all<EntryCandidate>({ workspace_id: workspaceId });
         const acquire = async (entryId: number, channel: string, storedHash: string | null): Promise<string | null> => {

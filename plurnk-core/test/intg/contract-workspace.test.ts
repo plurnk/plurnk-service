@@ -686,6 +686,33 @@ test("{§file-snapshot-revision}: same-size content with restored mtime is remat
     assert.equal((await fx.file.readEntry("doc.md", fx.ctx)).entry?.channels.body?.content, external);
 });
 
+test("{§file-snapshot-revision}: age-settled member files skip FileSnapshot.acquire on subsequent turns and re-acquire immediately on change", async (t) => {
+    const fx = await fixture(t);
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 70));
+    const realAcquire = FileSnapshot.acquire.bind(FileSnapshot);
+    let acquireCalls = 0;
+    t.mock.method(FileSnapshot, "acquire", async (...args: Parameters<typeof realAcquire>) => {
+        acquireCalls++;
+        return realAcquire(...args);
+    });
+    await MembershipMaterialization.materializeMember("doc.md", fx.root, fx.ctx, new Map());
+    assert.equal(acquireCalls, 1, "initial age-settled materialization acquires and hashes once");
+
+    assert.equal(await MembershipMaterialization.materializeMember("doc.md", fx.root, fx.ctx, new Map()), null);
+    assert.equal(acquireCalls, 1, "unchanged age-settled member skips FileSnapshot.acquire");
+
+    await fs.writeFile(fx.path, external);
+    const divergence = await MembershipMaterialization.materializeMember("doc.md", fx.root, fx.ctx, new Map());
+    assert.equal(acquireCalls, 3, "changed member re-acquires and verifies before publishing");
+    assert.equal(divergence?.after, external);
+
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 70));
+    await MembershipMaterialization.materializeMember("doc.md", fx.root, fx.ctx, new Map());
+    const settledAfterWrite = acquireCalls;
+    assert.equal(await MembershipMaterialization.materializeMember("doc.md", fx.root, fx.ctx, new Map()), null);
+    assert.equal(acquireCalls, settledAfterWrite, "once settled again, subsequent passes skip FileSnapshot.acquire");
+});
+
 test("{§file-snapshot-revision}: an external update after projection publication is not restamped as our write", async (t) => {
     const fx = await fixture(t);
     await MembershipMaterialization.materializeMember("doc.md", fx.root, fx.ctx, new Map());

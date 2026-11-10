@@ -1,8 +1,10 @@
 // Materializing one tracked member from disk into its body channel, text or binary. Split out of GitMembership.
 import { join } from "node:path";
+import type { BigIntStats } from "node:fs";
 import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import { MimetypeInputLimitError, type Mimetypes, type ProcessInput } from "@plurnk/plurnk-mimetypes";
 import { MimetypeBinary } from "../content/index.ts";
+import type { Db } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import EntryCrud, { type EntryData } from "../schemes/_entry-crud.ts";
 import FileMaterialization from "./file-materialization.ts";
@@ -11,6 +13,14 @@ import FileSnapshot, { type FileRevision } from "./FileSnapshot.ts";
 import type { ByteSource } from "../content/byte-view.ts";
 
 const ABSENT_SIG = "absent";
+const RACY_NS = 50_000_000n;
+const COARSE_SECOND_RACY_NS = 2_000_000_000n;
+
+interface SettledStat {
+    readonly canonical: string;
+    readonly fingerprint: string;
+    readonly syncedSig: string;
+}
 
 // A stored source projection, checked field by field: the record it was read from is the metadata.
 function assertSourceProjection(projection: Record<string, unknown>): asserts projection is Record<string, unknown> & SourceProjectionMetadata {
@@ -48,6 +58,59 @@ const sourceProjectionFrom = (encoded: string): SourceProjectionMetadata | null 
 };
 
 export default class MembershipMaterialization {
+    static readonly #settledStats = new WeakMap<object, Map<string, SettledStat>>();
+
+    static invalidate(db: Db, workspaceId: number, pathname?: string): void {
+        const cache = MembershipMaterialization.#settledStats.get(db);
+        if (cache === undefined) return;
+        if (pathname !== undefined) {
+            cache.delete(`${workspaceId}\u0000${pathname}`);
+            return;
+        }
+        const prefix = `${workspaceId}\u0000`;
+        for (const key of cache.keys()) {
+            if (key.startsWith(prefix)) cache.delete(key);
+        }
+    }
+
+    static #isAgeSettled(stats: BigIntStats): boolean {
+        const nowNs = BigInt(Date.now()) * 1_000_000n;
+        const coarseSecond = stats.ctimeNs % 1_000_000_000n === 0n && stats.mtimeNs % 1_000_000_000n === 0n;
+        const windowNs = coarseSecond ? COARSE_SECOND_RACY_NS : RACY_NS;
+        return nowNs >= stats.ctimeNs + windowNs && nowNs >= stats.mtimeNs + windowNs;
+    }
+
+    static #recordSettled(db: Db, cacheKey: string, entry: SettledStat): void {
+        let cache = MembershipMaterialization.#settledStats.get(db);
+        if (cache === undefined) {
+            cache = new Map<string, SettledStat>();
+            MembershipMaterialization.#settledStats.set(db, cache);
+        }
+        cache.set(cacheKey, entry);
+    }
+
+    static async #matchesUnchangedAttributes(
+        attributes: string,
+        sourceBytes: number,
+        ctx: PlurnkSchemeContext,
+        identities: Map<string, Promise<string>>,
+    ): Promise<boolean> {
+        const knownMaterialization = FileMaterialization.fromAttributes(attributes);
+        if (knownMaterialization !== null) {
+            return FileMaterialization.matchesCurrent(knownMaterialization, sourceBytes);
+        }
+        const sourceProjection = sourceProjectionFrom(attributes);
+        if (sourceProjection !== null) {
+            const currentIdentity = await MembershipMaterialization.#projectionIdentity(
+                sourceProjection.mimetype,
+                ctx.mimetypes,
+                identities,
+            );
+            return currentIdentity === sourceProjection.identity;
+        }
+        return false;
+    }
+
     // {§file-snapshot-revision}, {§file-snapshot-revision}
     static async materializeMember(
         pathname: string,
@@ -56,11 +119,13 @@ export default class MembershipMaterialization {
         identities: Map<string, Promise<string>>,
     ): Promise<FsDivergence | null> {
         const path = join(root, pathname);
+        const cacheKey = `${ctx.workspaceId}\u0000${pathname}`;
         const known = await ctx.db.crud_get_member_sig.get<MemberSnapshot>({
             workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname,
         });
         const observed = await FileSnapshot.observe(path);
         if (observed === null) {
+            MembershipMaterialization.#settledStats.get(ctx.db)?.delete(cacheKey);
             if (known === undefined || known.synced_sig === ABSENT_SIG) return null;
             return MembershipMaterialization.#publish(pathname, path, null, { channels: {} }, ctx);
         }
@@ -68,6 +133,19 @@ export default class MembershipMaterialization {
         const { canonical } = observed;
         const sourceBytes = Number(observed.stats.size);
         const sourceMaterialization = FileMaterialization.classify(sourceBytes);
+        if (known !== undefined && known.synced_sig !== null && known.synced_sig !== ABSENT_SIG) {
+            const cached = MembershipMaterialization.#settledStats.get(ctx.db)?.get(cacheKey);
+            if (
+                cached !== undefined
+                && cached.canonical === canonical
+                && cached.fingerprint === observed.fingerprint
+                && cached.syncedSig === known.synced_sig
+                && await MembershipMaterialization.#matchesUnchangedAttributes(known.attributes, sourceBytes, ctx, identities)
+            ) {
+                return null;
+            }
+        }
+        const ageSettledBeforeAcquire = MembershipMaterialization.#isAgeSettled(observed.stats);
         const acquired = sourceMaterialization.disposition === "input-limit"
             ? null : await FileSnapshot.acquire(path, sourceMaterialization.maximumBytes);
         if (sourceMaterialization.disposition !== "input-limit"
@@ -77,20 +155,13 @@ export default class MembershipMaterialization {
         const sig = JSON.stringify(revision);
         const unchanged = known !== undefined && known.synced_sig === sig;
         const sourceProjection = unchanged ? sourceProjectionFrom(known.attributes) : null;
-        if (unchanged) {
-            const knownMaterialization = FileMaterialization.fromAttributes(known.attributes);
-            if (knownMaterialization !== null) {
-                if (FileMaterialization.matchesCurrent(knownMaterialization, sourceBytes)) return null;
-            } else {
-                if (sourceProjection !== null) {
-                    const currentIdentity = await MembershipMaterialization.#projectionIdentity(
-                        sourceProjection.mimetype,
-                        ctx.mimetypes,
-                        identities,
-                    );
-                    if (currentIdentity === sourceProjection.identity) return null;
-                }
+        if (unchanged && await MembershipMaterialization.#matchesUnchangedAttributes(known.attributes, sourceBytes, ctx, identities)) {
+            if (ageSettledBeforeAcquire) {
+                MembershipMaterialization.#recordSettled(ctx.db, cacheKey, {
+                    canonical, fingerprint: observed.fingerprint, syncedSig: sig,
+                });
             }
+            return null;
         }
 
         const bytes = acquired?.bytes;
@@ -109,7 +180,7 @@ export default class MembershipMaterialization {
                     content: "", mimetype, producerResult: FileMaterialization.failure(pathname, sourceMaterialization),
                 } },
                 attributes: FileMaterialization.attributes(sourceMaterialization),
-            }, ctx);
+            }, ctx, ageSettledBeforeAcquire ? cacheKey : null);
         }
         if (acquired === null || acquired.bytes === null) throw new Error("File materialization has no acquired source bytes.");
         if (await MimetypeBinary.isBinaryMimetype(mimetype, ctx.mimetypes)) {
@@ -119,12 +190,12 @@ export default class MembershipMaterialization {
                 ctx,
                 identities,
             );
-            return MembershipMaterialization.#publish(pathname, path, revision, entry, ctx);
+            return MembershipMaterialization.#publish(pathname, path, revision, entry, ctx, ageSettledBeforeAcquire ? cacheKey : null);
         }
         return MembershipMaterialization.#publish(pathname, path, revision, {
             channels: { body: { content: acquired.bytes.toString("utf8"), mimetype } },
             attributes: FileMaterialization.attributes(sourceMaterialization),
-        }, ctx);
+        }, ctx, ageSettledBeforeAcquire ? cacheKey : null);
     }
 
 
@@ -199,6 +270,7 @@ export default class MembershipMaterialization {
         revision: FileRevision | null,
         entry: EntryData,
         ctx: PlurnkSchemeContext,
+        settledCacheKey: string | null = null,
     ): Promise<FsDivergence | null> {
         const canonical = revision?.canonical ?? await FileSnapshot.prospectivePath(path);
         return FileSnapshot.serialize(canonical, async () => {
@@ -219,9 +291,15 @@ export default class MembershipMaterialization {
                 : previous?.canonical !== revision.canonical
                     || (previous.hash !== null && revision.hash !== null
                         ? previous.hash !== revision.hash : previous.fingerprint !== revision.fingerprint);
+            const syncedSig = revision === null ? ABSENT_SIG : JSON.stringify(revision);
             const result = await EntryCrud.writeEntry({ authority: "", pathname }, entry, ctx, "file", {
-                syncedSig: revision === null ? ABSENT_SIG : JSON.stringify(revision),
+                syncedSig,
             });
+            if (settledCacheKey !== null && revision !== null) {
+                MembershipMaterialization.#recordSettled(ctx.db, settledCacheKey, {
+                    canonical: revision.canonical, fingerprint: revision.fingerprint, syncedSig,
+                });
+            }
             const content = entry.channels.body?.content ?? "";
             const projection = entry.attributes?.sourceProjection;
             const changed = diskChanged && prior?.content != null && (revision === null || prior.content !== content)
