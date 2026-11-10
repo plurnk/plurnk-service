@@ -19,20 +19,26 @@ export default class HttpListener implements HttpHost {
     static readonly #HEALTH_BODY = JSON.stringify({ status: "pass" });
     readonly #server: Server;
     readonly #host: string;
+    readonly #onHealthProbe: (() => void | Promise<void>) | undefined;
     #mounts: readonly Mount[] = [];
     #admitted = false;
     #closing: Promise<void> | null = null;
 
-    private constructor(host: string) {
+    private constructor(host: string, onHealthProbe?: () => void | Promise<void>) {
         this.#host = host;
+        this.#onHealthProbe = onHealthProbe;
         this.#server = createServer((req, res) => { void this.#dispatch(req, res); });
         this.#server.on("upgrade", (req, socket, head) => { void this.#upgrade(req, socket, head); });
     }
 
     // {§startup-admission} — a lost bind race rejects with the socket's own error, before
     // anything durable has been touched.
-    static async bind(options: { readonly host: string; readonly port: number }): Promise<HttpListener> {
-        const listener = new HttpListener(options.host);
+    static async bind(options: {
+        readonly host: string;
+        readonly port: number;
+        readonly onHealthProbe?: () => void | Promise<void>;
+    }): Promise<HttpListener> {
+        const listener = new HttpListener(options.host, options.onHealthProbe);
         await new Promise<void>((resolve, reject) => {
             const onError = (cause: Error): void => {
                 listener.#server.off("listening", onListening);
@@ -145,6 +151,11 @@ export default class HttpListener implements HttpHost {
                     { allow: "GET, HEAD" },
                 );
                 return;
+            }
+            try {
+                await this.#onHealthProbe?.();
+            } catch (cause) {
+                console.error("Health probe hook failed:", cause);
             }
             res.writeHead(200, {
                 "content-type": "application/health+json; charset=utf-8",

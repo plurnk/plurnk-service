@@ -21,6 +21,7 @@ import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { packetSection } from "./_packet.ts";
 import { completeStmt } from "./_dsl.ts";
 import { launch } from "./_launcher.ts";
+import { post, runInput } from "./_acp-run.ts";
 
 describe("env-cascade", () => {
 const here = dirname(fileURLToPath(import.meta.url));
@@ -60,14 +61,25 @@ const fixture = async (): Promise<Fixture> => {
 const runService = (
     fx: Fixture,
     args: readonly string[],
-    opts: { env?: Readonly<Record<string, string>>; nodeArgs?: readonly string[]; built?: boolean } = {},
+    opts: {
+        env?: Readonly<Record<string, string>>;
+        cleanEnv?: boolean;
+        nodeArgs?: readonly string[];
+        built?: boolean;
+    } = {},
 ): Promise<{ code: number | null; stdout: string; stderr: string }> => new Promise((resolvePromise, rejectPromise) => {
-    const env: NodeJS.ProcessEnv = {
-        ...process.env,
-        HOME: fx.home,
-        XDG_CONFIG_HOME: fx.configHome,
-        XDG_DATA_HOME: fx.dataHome,
-    };
+    const env: NodeJS.ProcessEnv = opts.cleanEnv
+        ? {
+            HOME: fx.home,
+            XDG_CONFIG_HOME: fx.configHome,
+            XDG_DATA_HOME: fx.dataHome,
+        }
+        : {
+            ...process.env,
+            HOME: fx.home,
+            XDG_CONFIG_HOME: fx.configHome,
+            XDG_DATA_HOME: fx.dataHome,
+        };
     delete env.PLURNK_SERVICE_DB_PATH;
     delete env.PLURNK_DB_PATH;
     delete env.PLURNK_MODEL;
@@ -516,9 +528,13 @@ for (const built of [false, true]) {
         assert.match(liveConfig.stdout, /daemon overrides \(at boot\):[\s\S]*PLURNK_MCP_GH_BEARER=<redacted>/u);
         await mkdir(dirname(fx.homeEnv), { recursive: true });
         await writeFile(fx.homeEnv, "PLURNK_MODEL_deepseek=deepseek/deepseek-v4-flash\n", "utf8");
+        const hotConfig = await runService(fx, ["config"], { built });
+        assert.equal(hotConfig.code, 0, hotConfig.stderr);
+        assert.match(hotConfig.stdout, /PLURNK_MODEL_deepseek=deepseek\/deepseek-v4-flash/u);
+        await writeFile(fx.homeEnv, "PLURNK_MODEL_deepseek=deepseek/deepseek-v4-flash\nPLURNK_PORT=2099\n", "utf8");
         const staleConfig = await runService(fx, ["config"], { built });
         assert.equal(staleConfig.code, 0, staleConfig.stderr);
-        assert.match(staleConfig.stdout, new RegExp(`^restart required: ${fx.homeEnv.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&")} modified after daemon \\(pid ${String(daemon.child.pid)}\\) started`, "mu"));
+        assert.match(staleConfig.stdout, new RegExp(`^restart required: PLURNK_PORT changed in ${fx.homeEnv.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&")}; restart the daemon to apply\\.`, "mu"));
         const result = await acpAction(daemon.url, "discover", {}, { sessionId: "configuration-repair" });
         assert.equal(result.ok, true, "the actual client interface remains available for repair");
         assert.ok(typeof result.result?.actions === "object" && result.result.actions !== null && "workspace.mcp.list" in result.result.actions,
@@ -852,6 +868,279 @@ for (const built of [false, true]) {
         assert.ok(selected.stderr.includes(message), "the user file is still checked beside the selected one");
     });
 }
+
+test("{§operator-config-precedence} {§startup-admission} modelless boot hot-reloads .env model alias and credential for /models and prompt loop without restart", async (t) => {
+    const fx = await fixture();
+    t.after(() => rm(fx.root, { recursive: true, force: true }));
+
+    const authHeaders: Array<string | undefined> = [];
+    const endpoint = createServer(async (req, res) => {
+        authHeaders.push(req.headers.authorization);
+        if (req.url === "/v1/models") {
+            res.writeHead(200, { "content-type": "application/json" });
+            res.end(JSON.stringify({ data: [{ id: "hot-fixture", n_ctx: 16_384 }] }));
+            return;
+        }
+        if (req.url === "/v1/chat/completions") {
+            for await (const _chunk of req) { /* drain request body */ }
+            res.writeHead(200, {
+                "cache-control": "no-cache",
+                connection: "keep-alive",
+                "content-type": "text/event-stream",
+            });
+            const frame = (payload: unknown): string => `data: ${JSON.stringify(payload)}\n\n`;
+            res.write(frame({
+                id: "hot-1",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "hot-fixture",
+                choices: [{ index: 0, delta: { reasoning_content: "Completing turn." }, finish_reason: null }],
+            }));
+            res.write(frame({
+                id: "hot-1",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "hot-fixture",
+                choices: [{ index: 0, delta: { content: 'await plurnk.done({ text: "Hot-reloaded loop completed." });' }, finish_reason: null }],
+            }));
+            res.write(frame({
+                id: "hot-1",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "hot-fixture",
+                choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+                usage: {
+                    prompt_tokens: 120,
+                    completion_tokens: 24,
+                    total_tokens: 144,
+                    completion_tokens_details: { reasoning_tokens: 4 },
+                },
+            }));
+            res.end("data: [DONE]\n\n");
+            return;
+        }
+        res.writeHead(404).end();
+    });
+    endpoint.listen(0, "127.0.0.1");
+    await once(endpoint, "listening");
+    t.after(() => new Promise<void>((done) => endpoint.close(() => done())));
+    const address = endpoint.address();
+    assert.ok(address !== null && typeof address !== "string");
+
+    const env: Record<string, string> = {
+        ...(process.env.PATH === undefined ? {} : { PATH: process.env.PATH }),
+        HOME: fx.home,
+        XDG_CONFIG_HOME: fx.configHome,
+        XDG_DATA_HOME: fx.dataHome,
+        PLURNK_AUTH: "0",
+    };
+    const daemon = await Launch.start({
+        command: [process.execPath, ...CONDITION_ARGS, BIN_PATH, "start"],
+        cwd: fx.cwd,
+        env,
+        host: "127.0.0.1",
+        port: 0,
+        readyTimeoutMs: 15_000,
+        stopGraceMs: 5_000,
+    });
+    t.after(() => daemon.stop());
+    assert.equal(daemon.route, "no model");
+
+    const daemonPort = Number(new URL(daemon.url).port);
+
+    // Before .env edit, session/prompt settles with daemon/provider/not-configured because no model is configured.
+    const beforeEvents = await post(daemonPort, runInput("hot-ws", "before", {
+        prompt: "Run before config.",
+        projectRoot: null,
+    }));
+    assert.match(
+        JSON.stringify(beforeEvents),
+        /daemon\/provider\/not-configured/u,
+        `expected modelless prompt refusal, got: ${JSON.stringify(beforeEvents)}`,
+    );
+
+    const beforeModels = await acpAction(daemon.url, "models.list", { provider: "openai" }, { sessionId: "hot-catalog" });
+    assert.equal(beforeModels.ok, true, JSON.stringify(beforeModels));
+    assert.equal((beforeModels.result as { total?: number } | undefined)?.total, 0, "OpenAI is unconfigured before .env edit");
+
+    // Edit $XDG_CONFIG_HOME/plurnk/.env live without restarting the daemon.
+    await writeFile(
+        fx.homeEnv,
+        [
+            "PLURNK_MODEL_hot=openai/hot-fixture",
+            `PLURNK_BASEURL_hot=http://127.0.0.1:${address.port}/v1`,
+            "PLURNK_PROVIDERS_CONTEXT_WINDOW_hot=16384",
+            "OPENAI_API_KEY=sk-hot-live",
+            "PLURNK_MODEL=hot",
+            "",
+        ].join("\n"),
+        "utf8",
+    );
+
+    const modelsResp = await acpAction(daemon.url, "models.list", { provider: "openai" }, { sessionId: "hot-catalog" });
+    assert.equal(modelsResp.ok, true, JSON.stringify(modelsResp));
+    assert.ok(((modelsResp.result as { total?: number } | undefined)?.total ?? 0) > 0, "OpenAI catalog becomes ready live");
+
+    const afterEvents = await post(daemonPort, runInput("hot-ws", "after", {
+        prompt: "Run after hot reload.",
+        projectRoot: null,
+    }));
+    assert.equal(
+        afterEvents.some((e) => "error" in e),
+        false,
+        `expected hot-reloaded prompt to succeed, got: ${JSON.stringify(afterEvents)}`,
+    );
+    assert.match(JSON.stringify(afterEvents), /Hot-reloaded loop completed\./u);
+    assert.ok(authHeaders.includes("Bearer sk-hot-live"), "live credential from .env reached the provider");
+    assert.equal(daemon.child.exitCode, null);
+});
+
+test("{§operator-config-precedence} {§configuration-repair-path} removing .env keys reverts to defaults while preserving bootEnv and containing live invalid edits", async (t) => {
+    const fx = await fixture();
+    t.after(() => rm(fx.root, { recursive: true, force: true }));
+
+    const env: Record<string, string> = {
+        ...(process.env.PATH === undefined ? {} : { PATH: process.env.PATH }),
+        HOME: fx.home,
+        XDG_CONFIG_HOME: fx.configHome,
+        XDG_DATA_HOME: fx.dataHome,
+        PLURNK_AUTH: "0",
+        PLURNK_HOST: "127.0.0.1",
+        PLURNK_PORT: "0",
+        LC_SHELL: "from-boot-shell",
+    };
+    const daemon = await Launch.start({
+        command: [process.execPath, ...CONDITION_ARGS, BIN_PATH, "start"],
+        cwd: fx.cwd,
+        env,
+        host: "127.0.0.1",
+        port: 0,
+        readyTimeoutMs: 15_000,
+        stopGraceMs: 5_000,
+    });
+    t.after(() => daemon.stop());
+
+    await writeFile(
+        fx.homeEnv,
+        [
+            "LC_SHELL=from-dotenv",
+            "LC_CUSTOM=live-value",
+            "PLURNK_SERVICE_MAX_TURNS=5",
+            "",
+        ].join("\n"),
+        "utf8",
+    );
+
+    const reloadResult = await runService(fx, ["reload"], { env, cleanEnv: true });
+    assert.equal(reloadResult.code, 0, reloadResult.stderr);
+    assert.match(reloadResult.stdout, /^reloaded: pid /mu);
+
+    const created = await acpCall(daemon.url, "session/new", {
+        cwd: fx.cwd,
+        _meta: { plurnk: { workspace: "env-revert-ws", sessionName: "main", projectRoot: null } },
+    });
+    assert.equal(created.ok, true, JSON.stringify(created));
+
+    const listed1 = await acpAction(
+        daemon.url,
+        "workspace.env.list",
+        {},
+        { sessionId: "main", workspace: "env-revert-ws" },
+    );
+    assert.equal(listed1.ok, true, JSON.stringify(listed1));
+    const entries1 = (listed1.result?.definitions ?? []) as Array<{ alias: string; definition?: { value?: string } }>;
+    assert.equal(entries1.find((e) => e.alias === "LC_CUSTOM")?.definition?.value, "live-value");
+    assert.equal(entries1.find((e) => e.alias === "LC_SHELL")?.definition?.value, "from-boot-shell");
+
+    const status1 = await runService(fx, ["config", "--json"], { env, cleanEnv: true });
+    assert.equal(status1.code, 0, status1.stderr);
+    const parsed1 = JSON.parse(status1.stdout) as {
+        restartRequired: boolean;
+        daemon: { overrides?: Record<string, { value: string }> };
+    };
+    assert.equal(parsed1.restartRequired, false);
+    assert.equal(parsed1.daemon.overrides?.PLURNK_SERVICE_MAX_TURNS?.value, "5");
+
+    // Delete LC_CUSTOM and PLURNK_SERVICE_MAX_TURNS, and write an invalid knob live.
+    await writeFile(
+        fx.homeEnv,
+        "PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS=not-an-int\n",
+        "utf8",
+    );
+
+    const healthResp = await fetch(daemon.url.replace(/\/acp$/u, "/health"));
+    assert.equal(healthResp.status, 200);
+    assert.equal(daemon.child.exitCode, null, "malformed live knob never crashes the daemon");
+
+    const listed2 = await acpAction(
+        daemon.url,
+        "workspace.env.list",
+        {},
+        { sessionId: "main", workspace: "env-revert-ws" },
+    );
+    assert.equal(listed2.ok, true, JSON.stringify(listed2));
+    const entries2 = (listed2.result?.definitions ?? []) as Array<{ alias: string; definition?: { value?: string } }>;
+    assert.equal(entries2.find((e) => e.alias === "LC_CUSTOM"), undefined, "deleted .env key is removed");
+    assert.equal(entries2.find((e) => e.alias === "LC_SHELL")?.definition?.value, "from-boot-shell", "bootEnv key stays intact");
+
+    // Clear the invalid knob and verify PLURNK_SERVICE_MAX_TURNS reverted to its .env.defaults value (-1).
+    await writeFile(fx.homeEnv, "", "utf8");
+    await fetch(daemon.url.replace(/\/acp$/u, "/health"));
+    const status2 = await runService(fx, ["config", "--json"], { env, cleanEnv: true });
+    assert.equal(status2.code, 0, status2.stderr);
+    const parsed2 = JSON.parse(status2.stdout) as {
+        daemon: { overrides?: Record<string, { value: string }> };
+    };
+    assert.equal(parsed2.daemon.overrides?.PLURNK_SERVICE_MAX_TURNS, undefined, "reverted to .env.defaults");
+});
+
+test("{§operator-config-precedence} {§startup-admission} changing PLURNK_PORT in .env while running keeps existing listener alive and surfaces restart-required notice", async (t) => {
+    const fx = await fixture();
+    t.after(() => rm(fx.root, { recursive: true, force: true }));
+
+    const env: Record<string, string> = {
+        ...(process.env.PATH === undefined ? {} : { PATH: process.env.PATH }),
+        HOME: fx.home,
+        XDG_CONFIG_HOME: fx.configHome,
+        XDG_DATA_HOME: fx.dataHome,
+        PLURNK_AUTH: "0",
+    };
+    const daemon = await Launch.start({
+        command: [process.execPath, ...CONDITION_ARGS, BIN_PATH, "start"],
+        cwd: fx.cwd,
+        env,
+        host: "127.0.0.1",
+        port: 0,
+        readyTimeoutMs: 15_000,
+        stopGraceMs: 5_000,
+    });
+    t.after(() => daemon.stop());
+
+    await writeFile(fx.homeEnv, "PLURNK_PORT=2099\n", "utf8");
+
+    const reloadResult = await runService(fx, ["reload"], { env, cleanEnv: true });
+    assert.equal(reloadResult.code, 0, reloadResult.stderr);
+    assert.match(reloadResult.stderr, /restart required: PLURNK_PORT changed in .*\.env; restart the daemon to apply\./u);
+
+    // Original listener stays alive and emits the restart-required notice to ACP attachments.
+    const created = await acpCall(daemon.url, "session/new", {
+        cwd: fx.cwd,
+        _meta: { plurnk: { workspace: "port-drift-ws", sessionName: "port-check", projectRoot: null } },
+    });
+    assert.equal(created.ok, true, JSON.stringify(created));
+    const resumed = await acpCall(daemon.url, "session/resume", {
+        sessionId: "port-check",
+        cwd: fx.cwd,
+        _meta: { plurnk: { workspace: "port-drift-ws", projectRoot: null } },
+    });
+    assert.equal(resumed.ok, true, JSON.stringify(resumed));
+    assert.match(JSON.stringify(resumed.notifications), /PLURNK_PORT changed in .*\.env; restart the daemon to apply\./u);
+
+    const status = await runService(fx, ["config"], { env, cleanEnv: true });
+    assert.equal(status.code, 0, status.stderr);
+    assert.match(status.stdout, /restart required: PLURNK_PORT changed in .*\.env; restart the daemon to apply\./u);
+    assert.equal(daemon.child.exitCode, null);
+});
 });
 
 describe("shipped-defaults", () => {

@@ -103,6 +103,24 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         servicePersonas();
     }
 
+    static captureReloadableConfiguration(configuration: ConfigurationDiagnostics, hostPaths: HostPaths): void {
+        configuration.captureSync("file-creation", () => FileCreationPolicy.serviceScope());
+        configuration.captureSync("effect-policy", () => EffectPolicy.validateConfiguration());
+        configuration.captureSync("proposal-policy", () => ProposalPolicies.read());
+        configuration.captureSync("wait", () => TurnDispositionHandler.configuredWaitSeconds());
+        configuration.captureSync("retention", () => retentionPolicy());
+        configuration.captureSync("execution", () => Exec.validateConfiguration(hostPaths));
+        configuration.captureSync("executor-config", () => ExecutorRegistry.validateConfiguration());
+        configuration.captureSync("updater", () => ServiceUpdater.validateConfiguration());
+        configuration.captureSync("notifications", () => NotificationsEndpoint.heartbeatMs());
+        configuration.captureSync("workspace-config", () => {
+            agentRootScopes();
+            serviceMembers();
+            modelScope();
+            servicePersonas();
+        });
+    }
+
     #db: Db;
     readonly #dbPath: string | undefined;
     readonly #hostPaths: HostPaths;
@@ -154,10 +172,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #storage: WorkspaceStorage;
     readonly #configuration: ConfigurationDiagnostics;
     readonly #places: WorkspacePlaces;
+    readonly #reloadEnvironment: ((options?: { readonly force?: boolean }) => { readonly generation: number }) | undefined;
+    readonly #workspaceEnvGenerations = new Map<number, number>();
 
     constructor({
         db, schemes, mimetypes, provider, nodeModulesPath, hostPaths = new HostPaths(), http = null, dbPath,
-        configuration = new ConfigurationDiagnostics() }: {
+        configuration = new ConfigurationDiagnostics(), reloadEnvironment }: {
         db: Db;
         schemes?: SchemeRegistry;
         mimetypes?: Mimetypes;
@@ -168,6 +188,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         dbPath?: string;
         http?: HttpListener | null;
         configuration?: ConfigurationDiagnostics;
+        reloadEnvironment?: (options?: { readonly force?: boolean }) => { readonly generation: number };
     }) {
         this.#db = db;
         this.#hostPaths = hostPaths;
@@ -175,6 +196,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#dbPath = dbPath;
         this.#http = http;
         this.#configuration = configuration;
+        this.#reloadEnvironment = reloadEnvironment;
         const posture = Credentials.posture();
         this.credentials = new Credentials({ operatorSecret: posture.secret });
         this.#secretPath = dbPath === undefined ? null : Credentials.secretPath(dbPath);
@@ -283,6 +305,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             // Republish under the workspace turn gate before packet assembly so
             // the first subsequent model turn sees their exact result.
             workspaceTurnStarting: async ({ workspaceId }) => {
+                const { generation } = this.#syncEnvironment();
+                if (this.#workspaceEnvGenerations.get(workspaceId) !== generation) {
+                    await this.#functionality.refreshAllIfChanged({ workspaceId }, { gate: "none" });
+                    this.#workspaceEnvGenerations.set(workspaceId, generation);
+                }
                 await this.#functionality.refreshChanged({ workspaceId });
                 return this.configurationNotices(workspaceId);
             },
@@ -364,9 +391,29 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         });
     }
 
+    #syncEnvironment(options?: { readonly force?: boolean }): { readonly generation: number } {
+        return this.#reloadEnvironment?.(options) ?? { generation: 0 };
+    }
+
+    async reloadEnvironmentNow(options: { readonly force?: boolean } = {}): Promise<void> {
+        const { generation } = this.#syncEnvironment(options);
+        if (!this.#started) return;
+        for (const workspaceId of this.#residency.activeWorkspaceIds()) {
+            if (this.#workspaceEnvGenerations.get(workspaceId) === generation) continue;
+            try {
+                await this.#functionality.refreshAllIfChanged({ workspaceId }, { gate: "try" });
+                this.#workspaceEnvGenerations.set(workspaceId, generation);
+            } catch (cause) {
+                if (cause instanceof OperationFailureError && cause.result.status === 409) continue;
+                throw cause;
+            }
+        }
+    }
+
     // The drain callback is the final provider/model boundary. Every admission path, including boot recovery,
     // terminates here.
     async #runDrainLoop({ workspaceId, sessionId, loopId, maxTurns, prompt, systemPrompt, signal, onSettled }: DrainRunLoopArgs): Promise<DrainRunLoopResult> {
+        this.#syncEnvironment();
         // The drain callback is the final provider/model boundary. Every
         // admission path, including boot recovery, terminates here.
         await this.#sessionModels.assertModelSession(workspaceId, sessionId);
@@ -488,6 +535,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§methods} — a message delivered to a session drives or steers its loop: the delivery's owner resolves
     // the session's model and the card and injects into the drain; the port's entry point delegates.
     runLoop(args: { workspaceId: number; sessionId: number; loopId?: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+        this.#syncEnvironment();
         return this.#delivery.runLoop(args);
     }
 
@@ -523,22 +571,27 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§session-model-selection} {§session-model-selection} — the session's durable model, effort and spawn override are
     // SessionModels' to read and set; the port's entry points delegate.
     readSessionModel(args: { workspaceId: number; sessionId: number }): Promise<{ model: ModelRoute | null; spawnModel: ModelRoute | null }> {
+        this.#syncEnvironment();
         return this.#sessionModels.readSessionModel(args);
     }
 
     setSessionModel(args: { workspaceId: number; sessionId: number; selector: string; effort?: unknown }): Promise<ModelRoute> {
+        this.#syncEnvironment();
         return this.#sessionModels.setSessionModel(args);
     }
 
     readSessionEffort(args: { workspaceId: number; sessionId: number }): Promise<{ effort: Effort | null; source: EffortSource; supportedEfforts: readonly Effort[] }> {
+        this.#syncEnvironment();
         return this.#sessionModels.readSessionEffort(args);
     }
 
     setSessionEffort(args: { workspaceId: number; sessionId: number; effort: unknown }): Promise<{ effort: Effort; source: "explicit"; supportedEfforts: readonly Effort[] }> {
+        this.#syncEnvironment();
         return this.#sessionModels.setSessionEffort(args);
     }
 
     setSessionSpawnModel(args: { workspaceId: number; sessionId: number; selector: string | null }): Promise<ModelRoute | null> {
+        this.#syncEnvironment();
         return this.#sessionModels.setSessionSpawnModel(args);
     }
 
@@ -562,6 +615,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         statements: PlurnkStatement[];
         onLoop?: (loop: { sessionId: number; loopId: number }) => void;
     }): Promise<Array<{ status: number; [key: string]: unknown }>> {
+        this.#syncEnvironment();
         return this.#clientOperations.dispatchClientAction(args);
     }
 
@@ -582,10 +636,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§methods} — the module's render surface beyond the journal. Thin delegations
     // into core's envelope / membership / provider machinery; the module fans the results into its own views.
     listProviders(): ReturnType<ApplicationPort["listProviders"]> {
+        this.#syncEnvironment();
         return this.#sessionModels.listProviders();
     }
 
     listModels(query: ModelCatalogQuery): ModelCatalogPage {
+        this.#syncEnvironment();
         return this.#sessionModels.listModels(query);
     }
 
@@ -673,6 +729,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§methods-workspace-create} — the demand a turn makes, without the turn: a cold workspace activates,
     // a concurrent demand shares that activation, and the release leaves it warm under the residency policy.
     async activateWorkspace(args: { readonly workspaceId: number }): Promise<void> {
+        this.#syncEnvironment();
         const workspaceId = ClientInput.assertId("workspace.activate", "workspaceId", args.workspaceId);
         const release = await this.#residency.acquire(workspaceId);
         release();
@@ -691,10 +748,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object }): Promise<ClientEnvelope> {
+        this.#syncEnvironment();
         return this.#places.createWorkspace(args);
     }
 
     attachWorkspace(args: Parameters<ApplicationPort["attachWorkspace"]>[0]): Promise<ClientEnvelope> {
+        this.#syncEnvironment();
         return this.#places.attachWorkspace(args);
     }
 
@@ -735,10 +794,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     createSession(args: ApplicationSessionCreation): Promise<{ sessionId: number; sessionName: string }> {
+        this.#syncEnvironment();
         return this.#places.createSession(args);
     }
 
     forkSession(args: { workspaceId: number; sessionId: number; name?: string }): Promise<{ sessionId: number; sessionName: string | null; parentSessionId: number }> {
+        this.#syncEnvironment();
         return this.#places.forkSession(args);
     }
 
@@ -809,6 +870,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     invokeModuleAction(name: string, params: Readonly<Record<string, unknown>>, context: ModuleActionContext): Promise<unknown> {
+        this.#syncEnvironment();
         return this.#modules.invokeAction(name, params, context);
     }
 
@@ -880,6 +942,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // secret is configured, the posture is off, or the daemon has no database path.
     get secretFile(): string | null { return this.#secretMinted ? this.#secretPath : null; }
     configurationNotices(workspaceId?: number): readonly Notice[] {
+        this.#syncEnvironment();
         if (workspaceId === undefined) return this.#configuration.notices();
         const combined = new Map<string, Notice>();
         for (const notice of [

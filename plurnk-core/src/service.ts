@@ -5,7 +5,6 @@ import "./core/runtime-guard.ts";
 import { parseArgs, parseEnv } from "node:util";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, statSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { isIPv6 } from "node:net";
 import { fileURLToPath } from "node:url";
@@ -23,6 +22,7 @@ import EnvDefaults from "./core/env-defaults.ts";
 import EnvCatalog from "./core/env-catalog.ts";
 import HostPaths from "./core/HostPaths.ts";
 import OperatorConfig from "./core/OperatorConfig.ts";
+import OperatorEnvCascade, { type CascadeReloadResult, type CliFlagOverride } from "./core/OperatorEnvCascade.ts";
 import Meta, { ConfigurationError } from "@plurnk/plurnk-meta";
 import { formatModelReadinessCauses, parseAliasesFromEnv, resolveActiveRoute, resolveChildRoute, routeReadiness } from "@plurnk/plurnk-providers";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
@@ -42,6 +42,25 @@ import ExecEnv from "./schemes/exec-env.ts";
 
 // How often `stop` looks for the signalled process to be gone.
 const STOP_POLL_MS = 100;
+
+const RELOADABLE_DIAGNOSTIC_OWNERS = new Set([
+    "operator-env",
+    "credentials",
+    "bind-time",
+    "model-aliases",
+    "model",
+    "model-child",
+    "file-creation",
+    "effect-policy",
+    "proposal-policy",
+    "wait",
+    "execution",
+    "executor-config",
+    "updater",
+    "notifications",
+    "retention",
+    "workspace-config",
+]);
 
 export interface SystemdUnitProbeResult {
     readonly activeState?: string;
@@ -68,7 +87,7 @@ export default class Service {
     static #projectRoot = resolve(Service.#codeDir, "..");
     static #hostPaths = new HostPaths();
     static #configuration = new ConfigurationDiagnostics();
-    static #envSources = new Map<string, string>();
+    static #cascade: OperatorEnvCascade | null = null;
     static #defaultsMap = new Map<string, { value: string; owner: string }>();
     static #declares: (key: string) => boolean = () => false;
 
@@ -81,23 +100,6 @@ export default class Service {
     static #die(code: number, message: string): never {
         process.stderr.write(`${message}\n`);
         process.exit(code);
-    }
-
-    static #loadEnv(path: string, required: boolean): void {
-        const resolved = resolve(path);
-        if (existsSync(resolved)) {
-            try {
-                const before = new Set(Object.keys(process.env));
-                process.loadEnvFile(resolved);
-                for (const key of Object.keys(process.env)) {
-                    if (!before.has(key)) Service.#envSources.set(key, resolved);
-                }
-            } catch (cause) {
-                Service.#die(64, `failed to load ${path}: ${cause instanceof Error ? cause.message : String(cause)}`);
-            }
-        } else if (required) {
-            Service.#die(64, `${path} does not exist`);
-        }
     }
 
     // Node loads pre-script env-file flags itself. The published bin receives post-script
@@ -275,8 +277,46 @@ export default class Service {
         finally { await db.close(); }
     }
 
+    static #applyCascadeDiagnostics(
+        result: CascadeReloadResult,
+        runningDaemon = false,
+    ): { readonly route: ProviderSpec | null; readonly routeText: string } {
+        const configuration = Service.#configuration;
+        configuration.clearReloadable(RELOADABLE_DIAGNOSTIC_OWNERS);
+        for (const { key, file } of result.undeclared) configuration.undeclared(key, file);
+        for (const err of result.parseErrors) configuration.record("operator-env", err);
+        const bootEnv = Service.#cascade?.bootEnv ?? {};
+        for (const drift of Service.detectCredentialDrift(bootEnv, result.operatorFiles, process.env)) {
+            configuration.record("credentials", drift);
+        }
+        for (const item of result.restartRequired) {
+            configuration.restartRequired(item.key, item.source, item.message);
+        }
+        configuration.captureSync("model-aliases", () => parseAliasesFromEnv());
+        const route = configuration.captureSync("model", () => resolveActiveRoute());
+        const childRoute = configuration.captureSync("model-child", () => resolveChildRoute());
+        if (route !== null) {
+            configuration.captureSync("model", () => Service.assertRouteReady(route, process.env, "PLURNK_MODEL"));
+        }
+        if (childRoute !== null) {
+            configuration.captureSync("model-child", () => Service.assertRouteReady(childRoute, process.env, "PLURNK_MODEL_CHILD"));
+        }
+        if (runningDaemon) {
+            Daemon.captureReloadableConfiguration(configuration, Service.#hostPaths);
+        }
+        const invalidModel = route === null && Boolean(process.env.PLURNK_MODEL);
+        const routeText = invalidModel ? "invalid model configuration" : route === null ? "no model" : Service.#formatModelRoute(route);
+        return { route, routeText };
+    }
+
     // {§startup-admission} — client admission does not construct providers.
     static async #start(): Promise<void> {
+        const cascade = Service.#cascade;
+        if (cascade !== null) {
+            const refreshed = cascade.refreshIfChanged({ force: true });
+            Service.#applyCascadeDiagnostics(refreshed, false);
+            cascade.pinBindTimeValues();
+        }
         const dbPath = Service.#databasePath();
         const host = Service.#requireEnv("PLURNK_HOST");
         // {§http-host} — PLURNK_PORT is the daemon's one listener for all module mounts.
@@ -288,12 +328,58 @@ export default class Service {
         const childRoute = await configuration.capture("model-child", () => resolveChildRoute());
         if (route !== null) await configuration.capture("model", () => Service.assertRouteReady(route, process.env, "PLURNK_MODEL"));
         if (childRoute !== null) await configuration.capture("model-child", () => Service.assertRouteReady(childRoute, process.env, "PLURNK_MODEL_CHILD"));
+
+        let daemon: Daemon | null = null;
+        let admitted = false;
+        let acpUrl = "";
+        let healthUrl = "";
+        let lockWriteChain = Promise.resolve();
+
+        const queueLockAnnotation = (nextRouteText: string): Promise<void> => {
+            if (!admitted || daemon === null) return lockWriteChain;
+            const auth = daemon.credentials.operatorSecret !== null;
+            const overrides = Object.fromEntries(
+                Service.#resolvedEntries()
+                    .filter((e) => e.overridden)
+                    .map((e) => [e.key, { value: e.value, source: e.source }]),
+            );
+            const restartRequired = (Service.#cascade?.restartRequired ?? []).map((item) => item.message);
+            lockWriteChain = lockWriteChain
+                .then(() => DaemonLock.annotate(dbPath, {
+                    reloadedAt: Date.now(),
+                    acpUrl,
+                    healthUrl,
+                    auth,
+                    route: nextRouteText,
+                    overrides,
+                    restartRequired,
+                }))
+                .catch(() => {});
+            return lockWriteChain;
+        };
+
+        const reloadEnvironment = (options?: { readonly force?: boolean }): { readonly generation: number } => {
+            if (cascade === null) return { generation: 0 };
+            const result = cascade.refreshIfChanged(options);
+            if (result.changed) {
+                const { routeText: nextRouteText } = Service.#applyCascadeDiagnostics(result, true);
+                void queueLockAnnotation(nextRouteText);
+            }
+            return { generation: cascade.generation };
+        };
+
         // {§startup-admission}: the daemon's one listener wins the configured
         // address before anything may mutate durable state ({§http-host}). It answers 503
         // until daemon activation admits it, after every module has started.
-        const listener = await HttpListener.bind({ host, port });
+        const listener = await HttpListener.bind({
+            host,
+            port,
+            onHealthProbe: async () => {
+                await daemon?.reloadEnvironmentNow();
+                await lockWriteChain;
+            },
+        });
         let db: Db | null = null;
-        let daemon: Daemon | null = null;
         const teardown = new ServiceTeardown(
             async (deadline) => { await daemon?.stop(deadline); },
             ["database close", async () => { await db?.close(); }],
@@ -305,7 +391,15 @@ export default class Service {
             db = await Service.#openDb(dbPath, true);
             // {§observability-boundary} — the SDK is the plurnk-otel module's, discovered and set up with every
             // other module ({§otel-module}); the service loads none.
-            daemon = new Daemon({ db, dbPath, nodeModulesPath: Service.#installedNodeModules(), hostPaths: Service.#hostPaths, http: listener, configuration });
+            daemon = new Daemon({
+                db,
+                dbPath,
+                nodeModulesPath: Service.#installedNodeModules(),
+                hostPaths: Service.#hostPaths,
+                http: listener,
+                configuration,
+                reloadEnvironment,
+            });
             // {§module-lifecycle} — the service composes no module: the daemon discovers every one,
             // and the socket never closes or rebinds between admission and readiness.
             await daemon.start();
@@ -327,21 +421,22 @@ export default class Service {
             const routeText = invalidModel ? "invalid model configuration" : route === null ? "no model" : Service.#formatModelRoute(route);
             // {§startup-admission} — a URL (IPv6 in brackets), then two JSON strings: exact under spaces.
             const hostBracketed = isIPv6(acpAddr.host) ? `[${acpAddr.host}]` : acpAddr.host;
-            const acpUrl = `http://${hostBracketed}:${acpAddr.port}/acp`;
-            const healthUrl = `http://${hostBracketed}:${acpAddr.port}/health`;
-            const overrides = Object.fromEntries(
-                Service.#resolvedEntries()
-                    .filter((e) => e.overridden)
-                    .map((e) => [e.key, { value: e.value, source: e.source }]),
-            );
-            await DaemonLock.annotate(dbPath, {
-                acpUrl,
-                healthUrl,
-                auth: daemon.credentials.operatorSecret !== null,
-                route: routeText,
-                overrides,
-            });
+            acpUrl = `http://${hostBracketed}:${acpAddr.port}/acp`;
+            healthUrl = `http://${hostBracketed}:${acpAddr.port}/health`;
+            admitted = true;
+            await queueLockAnnotation(routeText);
             process.stdout.write(`plurnk-service acp=${acpUrl} db=${JSON.stringify(dbPath)} route=${JSON.stringify(routeText)}\n`);
+
+            process.on("SIGHUP", () => {
+                void (async () => {
+                    try {
+                        await daemon?.reloadEnvironmentNow({ force: true });
+                        await lockWriteChain;
+                    } catch (cause) {
+                        console.error("plurnk-service SIGHUP reload failed:", cause);
+                    }
+                })();
+            });
 
             const shutdown = (): void => {
                 teardown.request(
@@ -377,6 +472,52 @@ export default class Service {
         catch (cause) { if (errnoCode(cause) !== "ESRCH") throw cause; }
         while (DaemonLock.alive(pid)) await sleep(STOP_POLL_MS);
         process.stderr.write(`plurnk-service: stopped pid ${pid} (${dbPath})\n`);
+    }
+
+    // {§startup-admission} {§operator-config-precedence} Validate configuration, signal SIGHUP to the
+    // running daemon, and synchronize through its /health reload barrier.
+    static async #reload(): Promise<void> {
+        if (Service.#hostPaths.invalidXdg.length > 0) {
+            throw new Error(
+                `relative XDG variable(s) are invalid and ignored: ${Service.#hostPaths.invalidXdg.join(", ")}`,
+            );
+        }
+        const unavailable = Service.#configuration.notices().filter(({ level }) => level === "warn" || level === "error");
+        if (unavailable.length > 0) throw new Error(unavailable.map(({ message }) => message).join("\n"));
+        const { active } = Service.#modelConfiguration();
+        await Service.#validateConfiguration();
+
+        const candidateDbPaths = [...new Set([Service.#databasePath(), Service.#hostPaths.databaseFile])];
+        let dbPath = candidateDbPaths[0];
+        let daemonStatus: DaemonStatus | null = null;
+        for (const candidate of candidateDbPaths) {
+            const found = await DaemonLock.status(candidate);
+            if (found !== null) {
+                dbPath = candidate;
+                daemonStatus = found;
+                break;
+            }
+        }
+        if (daemonStatus === null) {
+            throw new Error(`daemon is not running (${dbPath})`);
+        }
+        try {
+            process.kill(daemonStatus.pid, "SIGHUP");
+        } catch (cause) {
+            if (errnoCode(cause) === "ESRCH") throw new Error(`daemon is not running (${dbPath})`, { cause });
+            throw cause;
+        }
+        if (daemonStatus.healthUrl !== undefined) {
+            await fetch(daemonStatus.healthUrl).catch(() => {});
+        } else {
+            await sleep(STOP_POLL_MS);
+        }
+        const updated = (await DaemonLock.status(dbPath)) ?? daemonStatus;
+        const staleFiles = Service.staleOperatorFiles(updated, Service.#operatorFiles());
+        const restartRequired = Service.formatRestartRequired(updated, staleFiles);
+        for (const notice of Service.#configuration.notices()) process.stderr.write(`${notice.message}\n`);
+        if (restartRequired !== null) process.stderr.write(`${restartRequired}\n`);
+        process.stdout.write(`reloaded: pid ${updated.pid} (model=${updated.route ?? Service.#formatModelRoute(active)})\n`);
     }
 
     static isSecretKey(key: string, env: NodeJS.ProcessEnv = process.env): boolean {
@@ -420,18 +561,20 @@ export default class Service {
         }
     }
 
-    // {§installation} {§operator-config-precedence}: operator files are read once at start, so an edit after
-    // `startedAt` or boot-override drift requires a daemon restart before taking effect.
+    // {§installation} {§operator-config-precedence}: operator files hot-reload in a running daemon,
+    // advancing `reloadedAt`; files newer than `reloadedAt ?? startedAt` have not yet been reloaded,
+    // and bind-time key changes or boot-override drift require a daemon restart.
     static staleOperatorFiles(
         daemonStatus: DaemonStatus | null,
         files: readonly string[],
         mtimeMs: (path: string) => number | null = Service.#fileMtimeMs,
     ): string[] {
-        if (daemonStatus?.startedAt === undefined) return [];
+        const baseline = daemonStatus?.reloadedAt ?? daemonStatus?.startedAt;
+        if (baseline === undefined) return [];
         const out: string[] = [];
         for (const file of new Set(files)) {
             const mtime = mtimeMs(file);
-            if (mtime !== null && mtime > daemonStatus.startedAt) out.push(file);
+            if (mtime !== null && mtime > baseline) out.push(file);
         }
         return out;
     }
@@ -442,6 +585,9 @@ export default class Service {
         overridesDiffer = false,
     ): string | null {
         if (daemonStatus === null) return null;
+        if (daemonStatus.restartRequired !== undefined && daemonStatus.restartRequired.length > 0) {
+            return `restart required: ${daemonStatus.restartRequired.join(" ")}`;
+        }
         if (staleFiles.length > 0) {
             return `restart required: ${staleFiles.join(", ")} modified after daemon (pid ${daemonStatus.pid}) started; restart the daemon for changes to take effect`;
         }
@@ -564,10 +710,11 @@ export default class Service {
             readonly source: string;
             readonly overridden: boolean;
         }> = [];
+        const sources = Service.#cascade?.sources;
         for (const key of Object.keys(process.env).toSorted()) {
             const rawValue = process.env[key];
             if (rawValue === undefined) continue;
-            const source = Service.#envSources.get(key) ?? "process environment";
+            const source = sources?.get(key) ?? "process environment";
             const def = Service.#defaultsMap.get(key);
             const fromLayer = source !== "process environment" && !source.startsWith("defaults (");
             const isProviderKey = !key.startsWith("PLURNK_") && ExecEnv.ownSecretTest(process.env)(key);
@@ -581,6 +728,19 @@ export default class Service {
         return entries;
     }
 
+    static async #liveDaemonStatus(dbPath: string): Promise<DaemonStatus | null> {
+        const initial = await DaemonLock.status(dbPath);
+        if (
+            initial !== null
+            && initial.healthUrl !== undefined
+            && Service.staleOperatorFiles(initial, Service.#operatorFiles()).length > 0
+        ) {
+            await fetch(initial.healthUrl).catch(() => {});
+            return (await DaemonLock.status(dbPath)) ?? initial;
+        }
+        return initial;
+    }
+
     static async #configStatus(showAll = false, json = false): Promise<void> {
         const diagnostics = Service.#configuration;
         const aliases = await diagnostics.capture("model-aliases", () => parseAliasesFromEnv());
@@ -589,7 +749,7 @@ export default class Service {
         if (active !== null) await diagnostics.capture("model", () => Service.assertRouteReady(active, process.env, "PLURNK_MODEL"));
         if (child !== null) await diagnostics.capture("model-child", () => Service.assertRouteReady(child, process.env, "PLURNK_MODEL_CHILD"));
         const dbPath = Service.#databasePath();
-        const daemonStatus = await DaemonLock.status(dbPath);
+        const daemonStatus = await Service.#liveDaemonStatus(dbPath);
         const systemdUnits = Service.inspectSystemdUnits({ daemonPid: daemonStatus?.pid ?? null });
         const entries = Service.#resolvedEntries();
         const overridden = entries.filter((e) => e.overridden);
@@ -680,7 +840,7 @@ export default class Service {
         if (unavailable.length > 0) throw new Error(unavailable.map(({ message }) => message).join("\n"));
         const { aliases, active } = Service.#modelConfiguration();
         await Service.#validateConfiguration();
-        const daemonStatus = await DaemonLock.status(Service.#databasePath());
+        const daemonStatus = await Service.#liveDaemonStatus(Service.#databasePath());
         const staleFiles = Service.staleOperatorFiles(daemonStatus, Service.#operatorFiles());
         const restartRequired = Service.formatRestartRequired(daemonStatus, staleFiles);
         for (const notice of Service.#configuration.notices()) process.stderr.write(`${notice.message}\n`);
@@ -722,19 +882,13 @@ export default class Service {
     }
 
     static async main(): Promise<void> {
-        const initialEnv: NodeJS.ProcessEnv = { ...process.env };
-        // loadEnvFile is set-if-unset, so every service-owned layer loads high→low. Within the
-        // repeatable env-file tier, loading last→first preserves Node's later-file-wins order.
-        // {§operator-config-precedence}
-        for (const { path: envFile, required } of Service.#envFileArgs().toReversed()) {
-            Service.#loadEnv(Service.#hostPaths.expandUserPath(envFile), required);
-        }
-
+        const bootEnv = OperatorEnvCascade.snapshotEnv(process.env);
+        const envFiles = Service.#envFileArgs().map(({ path, required }) => ({
+            path: Service.#hostPaths.expandUserPath(path),
+            required,
+        }));
         const configFile = Service.#configFileArg();
 
-        if (configFile !== null) Service.#loadEnv(configFile, true);
-        Service.#loadEnv(Service.#hostPaths.localConfigFile, false);
-        Service.#loadEnv(Service.#hostPaths.configFile, false);
         // A flag is a knob's spelling for one invocation: the service's own panel, and the keys it
         // shares with every client ({§operator-config-precedence}), which contracts declares.
         const flagDescriptors = await ServiceHelp.flags();
@@ -759,14 +913,32 @@ export default class Service {
             },
         });
 
+        const cliFlags = new Map<string, CliFlagOverride>();
         for (const f of flagDescriptors) {
             const key = f.flagName.replace(/^--/, "");
             const v = values[key];
             if (typeof v === "string") {
-                process.env[f.envName] = v;
-                Service.#envSources.set(f.envName, `flag:${f.flagName}`);
+                cliFlags.set(f.envName, { value: v, flagName: f.flagName });
             }
         }
+
+        try {
+            OperatorEnvCascade.applyBootFiles({
+                bootEnv,
+                envFiles,
+                configFile,
+                localConfigFile: Service.#hostPaths.localConfigFile,
+                operatorConfigFile: Service.#hostPaths.configFile,
+                cliFlags,
+                env: process.env,
+            });
+        } catch (cause) {
+            if (cause instanceof Error && "exitCode" in cause && typeof cause.exitCode === "number") {
+                Service.#die(cause.exitCode, cause.message);
+            }
+            throw cause;
+        }
+        Service.#hostPaths = new HostPaths();
 
         if (values.help) { process.stdout.write(usage); process.exit(0); }
         const buildInfo = await getBuildInfo();
@@ -783,33 +955,27 @@ export default class Service {
         Service.#configuration.pluginReports(reports);
         const mergedDefaults = EnvDefaults.merge(defaultsFiles);
         Service.#defaultsMap = mergedDefaults;
-        for (const [key, { value, owner }] of mergedDefaults) {
-            if (process.env[key] === undefined) {
-                process.env[key] = value;
-                Service.#envSources.set(key, `defaults (${owner})`);
-            } else if (!Service.#envSources.has(key) && initialEnv[key] === value) {
-                Service.#envSources.set(key, `defaults (${owner})`);
-            }
-        }
-        for (const key of Object.keys(initialEnv)) {
-            if (!Service.#envSources.has(key)) {
-                Service.#envSources.set(key, "process environment");
-            }
-        }
-        EnvDefaults.apply(mergedDefaults);
         // {§model-catalog-cache} — load cached models.dev snapshot if present.
         try { loadCatalogCache(Service.#hostPaths.modelsCacheFile); } catch { /* ignore unreadable cache on boot */ }
         // {§operator-config-precedence} — the operator's files, never the process environment.
         const declares = EnvCatalog.declares(defaultsFiles);
         Service.#declares = declares;
-        const operatorFiles: Array<{ path: string; content: string }> = [];
-        for (const file of new Set(Service.#operatorFiles())) {
-            if (!existsSync(file)) continue;
-            const content = await readFile(file, "utf8");
-            operatorFiles.push({ path: file, content });
-            for (const key of OperatorConfig.undeclared(content, declares)) Service.#configuration.undeclared(key, file);
-        }
-        for (const drift of Service.detectCredentialDrift(initialEnv, operatorFiles, process.env)) {
+        const cascade = new OperatorEnvCascade({
+            bootEnv,
+            cliFlags,
+            envFiles,
+            configFile,
+            localConfigFile: Service.#hostPaths.localConfigFile,
+            operatorConfigFile: Service.#hostPaths.configFile,
+            defaultsMap: mergedDefaults,
+            declares,
+            env: process.env,
+        });
+        Service.#cascade = cascade;
+        const initialReload = cascade.refreshIfChanged({ force: true });
+        for (const { key, file } of initialReload.undeclared) Service.#configuration.undeclared(key, file);
+        for (const err of initialReload.parseErrors) Service.#configuration.record("operator-env", err);
+        for (const drift of Service.detectCredentialDrift(bootEnv, initialReload.operatorFiles, process.env)) {
             Service.#configuration.record("credentials", drift);
         }
 
@@ -824,6 +990,9 @@ export default class Service {
         } else if (command === "stop") {
             if (positionals.length > 1) Service.#die(64, `unexpected arguments: ${positionals.slice(1).join(" ")}`);
             handler = Service.#stop;
+        } else if (command === "reload") {
+            if (positionals.length > 1) Service.#die(64, `unexpected arguments: ${positionals.slice(1).join(" ")}`);
+            handler = Service.#reload;
         } else if (command === "update") {
             if (positionals.length > 1) Service.#die(64, `unexpected arguments: ${positionals.slice(1).join(" ")}`);
             handler = async () => {

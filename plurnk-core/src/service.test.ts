@@ -123,6 +123,26 @@ describe("Service config and credential diagnostics", () => {
         );
         assert.deepEqual(fresh, []);
         assert.equal(Service.formatRestartRequired(status, fresh, false), null);
+
+        // Once hot-reloaded, reloadedAt advances past the edit; only bind-time drift requires restart.
+        const reloadedStatus = {
+            pid: 35812,
+            startedAt: 1_700_000_000_000,
+            reloadedAt: 1_700_000_090_000,
+        };
+        assert.deepEqual(
+            Service.staleOperatorFiles(reloadedStatus, [configFile, localConfigFile], () => 1_700_000_060_000),
+            [],
+        );
+        assert.equal(Service.formatRestartRequired(reloadedStatus, [], false), null);
+
+        const bindDriftStatus = {
+            ...reloadedStatus,
+            restartRequired: [`PLURNK_PORT changed in ${configFile}; restart the daemon to apply.`],
+        };
+        const bindMsg = Service.formatRestartRequired(bindDriftStatus, [], false);
+        assert.ok(bindMsg !== null);
+        assert.match(bindMsg, /restart required: PLURNK_PORT changed in/);
     });
 
     test("{§installation} {§operator-config-precedence} detectCredentialDrift catches shell-vs-file divergence without printing secret values", () => {
