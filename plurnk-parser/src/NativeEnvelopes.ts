@@ -21,8 +21,6 @@ import {
     unescapeXmlAttrValue,
 } from "./XmlEnvelopes.ts";
 
-export { resolveToolCallTarget };
-
 export const CODE_LINE_START = /^ {0,3}(?:\(+\s*(?:await\s+[A-Za-z_$]|plurnk\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])?\s*(?:[(;]|\/\/|\/\*|\r?$)|[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\()|await\s+[A-Za-z_$(]|plurnk\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])?\s*(?:[(;]|\/\/|\/\*|\r?$)|[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\(|(?:const|let|var|for|while|if|switch|try|function)\b|\/\/|\/\*)/u;
 export const CODE_CONTINUATION_START = /^[ \t]*(?:\(+\s*(?:await\s+[A-Za-z_$]|plurnk\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])?\s*(?:[(;]|\/\/|\/\*|\r?$)|[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\()|await\s+[A-Za-z_$(]|plurnk\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])?\s*(?:[(;]|\/\/|\/\*|\r?$)|[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\(|(?:const|let|var|for|while|if|switch|try|function)\b|\/\/|\/\*)/u;
 export const CONTAINS_CALL = /\bplurnk\s*(?:\.|\[|\()|\bawait\s+[A-Za-z_$][A-Za-z0-9_$-]*\s*\(|(?:await\s+)?[A-Za-z_$][A-Za-z0-9_$-]*\s*(?:\.\s*[A-Za-z_$][A-Za-z0-9_$-]*|\[\s*["'][^"']+["']\s*\])\s*\(/u;
@@ -495,7 +493,7 @@ const translatePrefixEnvelopeCalls = (
     return out;
 };
 
-export const translateSegmentToolCalls = (segment: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string => {
+const translateSegmentToolCalls = (segment: string, executorSpellings: ReadonlyMap<string, RuntimeTag>): string => {
     let out = segment.replace(
         /<((?:[|｜]+)?DSML[|｜]+\s*(?:function_calls?|tool_calls?|calls)|(?:[A-Za-z_$][A-Za-z0-9$]*[._:-])?(?:invoke|call|calls|tool|tools|toolcall|toolcalls|tool_call|tool_calls|tool-call|tool-calls|tool calls?|tool_use|tool-use|tool use|tool_code|function|functions|functioncall|functioncalls|function_call|function_calls|function-call|function-calls|function calls?|emission|result|unfenced)|system)\b(?![^>]*\b(?:name|call|tool|op)\s*=)[^>]*>((?:(?!<\1\b)[\s\S])*?)<\/\1>|<[|｜]tool[▁_]calls(?:_section)?[▁_]begin[|｜]>([\s\S]*?)<[|｜]tool[▁_]calls(?:_section)?[▁_]end[|｜]>|<\|tool_call[_:]start\|>([\s\S]*?)<\|tool_call[_:]end\|>|<\|tool_call[^>]*>([\s\S]*?)<\|\/tool_call\|>|\[TOOL_CALLS\]([\s\S]*?)\[\/TOOL_CALLS\]/giu,
         (

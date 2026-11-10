@@ -192,7 +192,7 @@ export const formatTranslatedCall = (target: string, rawArgs: unknown): string =
     return `${target}(${JSON.stringify(rawArgs)})`;
 };
 
-export const coerceToolParamValue = (rawVal: string): unknown => {
+const coerceToolParamValue = (rawVal: string): unknown => {
     const trimmedVal = rawVal.trim();
     if (/^(?:\[[\s\S]*\]|\{[\s\S]*\}|true|false|null)$/u.test(trimmedVal)) {
         try {

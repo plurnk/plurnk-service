@@ -41,7 +41,7 @@ export const PLURNK_RUNTIME_TOOLS: ReadonlySet<string> = new Set([
     "destroy",
 ]);
 
-export const JS_ALIAS_SPELLINGS: ReadonlySet<string> = new Set([
+const JS_ALIAS_SPELLINGS: ReadonlySet<string> = new Set([
     "ts",
     "javascript",
     "typescript",
@@ -169,7 +169,7 @@ export const TRANSFER_KEYS: ReadonlySet<string> = new Set([
     "aside",
 ]);
 
-export const SELECTION_KEYS: ReadonlySet<string> = new Set([
+const SELECTION_KEYS: ReadonlySet<string> = new Set([
     "path", "target", "uri", "resource", "range", "lines", "scope", "pattern", "matcher", "query", "headers",
 ]);
 
@@ -309,7 +309,7 @@ export const toRemote = (value: unknown, pos: Position): boolean | null => {
     return value;
 };
 
-export const toRangeString = (value: unknown, pos: Position): string | null => {
+const toRangeString = (value: unknown, pos: Position): string | null => {
     if (value === undefined || value === null) return null;
     if (typeof value === "string") {
         const trimmed = value.trim();

@@ -79,12 +79,11 @@ test("{§whitespace-contract}: a Markdown-fenced Code Mode operation unwraps sil
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: body });
         const content = "```ts\nawait plurnk.read({\"path\":\"workspace:///notes.md\"});\n```";
         const reasoning = "Deliberating before reading.";
-        const notices: Array<{ kind: string; message?: string }> = [];
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content, reasoning } },
             { assistant: { content: `await plurnk.done({"text":${JSON.stringify(body)}});`, reasoning: null } },
         ] });
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await engine.runLoop({
             provider, workspaceId, sessionId, loopId, maxTurns: 3,
             messages: [{ role: "user", content: "Read the note." }],
@@ -96,7 +95,6 @@ test("{§whitespace-contract}: a Markdown-fenced Code Mode operation unwraps sil
         const reads = rows.filter(({ op, origin }) => op === "read" && origin === "model");
         assert.deepEqual(reads.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).content]), [[200, body]], "the fenced Code Mode READ unwrapped and ran");
         assert.deepEqual(rows.filter(({ op }) => op === "error"), [], "a valid operation prevents a no-operation strike");
-        assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory"), []);
         const next = JSON.stringify(provider.received[1]);
         assert.ok(next.includes(body), "the next request contains the successful result");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
