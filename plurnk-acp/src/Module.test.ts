@@ -3730,4 +3730,124 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             await h.close();
         }
     });
+
+    test("{§acp-daemon-client} {§acp-overview}: session/options is side-effect-free and session/new + session/resume apply initial configOptions (#1449)", async () => {
+        const h = await createHarness();
+        try {
+            const updates: SessionUpdate[] = [];
+            const stream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
+            const app = createAcpClient().onNotification(methods.client.session.update, ({ params }) => {
+                updates.push(params.update);
+            });
+            await app.connectWith(stream, async (ctx) => {
+                const init = await ctx.initialized;
+                assert.deepEqual(init.response.capabilities?.session?.options, {});
+
+                // 1. Non-absolute cwd / additionalDirectories fail -32602
+                await assert.rejects(
+                    () => ctx.request(methods.agent.session.options, { cwd: "relative/path" }),
+                    (err: { code?: number }) => err.code === -32602,
+                );
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.options, {
+                            cwd: "/workspace/alpha",
+                            additionalDirectories: ["relative/extra"],
+                        }),
+                    (err: { code?: number }) => err.code === -32602,
+                );
+
+                // 2. session/options on an uncreated cwd neither creates a workspace/session nor emits notifications
+                const workspacesBefore = (await h.port.listWorkspaces()).length;
+                const previewUncreated = await ctx.request(methods.agent.session.options, {
+                    cwd: "/workspace/never-created",
+                });
+                assert.equal((await h.port.listWorkspaces()).length, workspacesBefore);
+                assert.equal(updates.length, 0);
+                assert.ok(
+                    previewUncreated.configOptions?.some(
+                        (c) =>
+                            c.configId === "thought_level" &&
+                            Array.isArray((c as { options?: unknown }).options) &&
+                            ((c as { options: unknown[] }).options.length === 3),
+                    ),
+                );
+                assert.ok((previewUncreated.availableCommands?.length ?? 0) > 0);
+
+                // 3. Duplicate or malformed initial configOptions fail -32602 before creating a session
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.new, {
+                            cwd: "/workspace/alpha",
+                            configOptions: [
+                                { configId: "mode", type: "id", value: "allow" },
+                                { configId: "mode", type: "id", value: "deny" },
+                            ],
+                        }),
+                    (err: { code?: number }) => err.code === -32602,
+                );
+
+                // 4. session/new applies valid initial configOptions in order, ignores unknown/mismatched/disallowed entries, and emits no config_option_update
+                const created = await ctx.request(methods.agent.session.new, {
+                    cwd: "/workspace/alpha",
+                    configOptions: [
+                        { configId: "unknown_opt", type: "id", value: "ignored" },
+                        { configId: "spawn_model", type: "boolean", value: true },
+                        { configId: "persona", type: "id", value: "not_a_persona" },
+                        { configId: "thought_level", type: "id", value: "high" },
+                        { configId: "mode", type: "id", value: "allow" },
+                    ],
+                });
+                assert.equal(
+                    created.configOptions?.find((c) => c.configId === "thought_level")?.currentValue,
+                    "high",
+                );
+                assert.equal(created.configOptions?.find((c) => c.configId === "mode")?.currentValue, "allow");
+                assert.ok(!updates.some((u) => u.sessionUpdate === "config_option_update"));
+
+                await ctx.request(methods.agent.session.close, { sessionId: created.sessionId });
+                const savedStatus = await ctx.request(methods.agent.session.status, {
+                    sessionId: created.sessionId,
+                });
+                assert.equal(savedStatus.status, "saved");
+
+                // 5. session/options with sessionId returns stored options without opening the saved session
+                const existingOpts = await ctx.request(methods.agent.session.options, {
+                    cwd: "/workspace/alpha",
+                    sessionId: created.sessionId,
+                });
+                assert.equal(
+                    existingOpts.configOptions?.find((c) => c.configId === "thought_level")?.currentValue,
+                    "high",
+                );
+                assert.equal(existingOpts.configOptions?.find((c) => c.configId === "mode")?.currentValue, "allow");
+                const stillSaved = await ctx.request(methods.agent.session.status, {
+                    sessionId: created.sessionId,
+                });
+                assert.equal(stillSaved.status, "saved");
+
+                // 6. session/resume applies initial configOptions without emitting config_option_update
+                updates.length = 0;
+                const resumed = await ctx.request(methods.agent.session.resume, {
+                    sessionId: created.sessionId,
+                    cwd: "/workspace/alpha",
+                    configOptions: [{ configId: "mode", type: "id", value: "deny" }],
+                });
+                assert.equal(resumed.configOptions?.find((c) => c.configId === "mode")?.currentValue, "deny");
+                assert.ok(!updates.some((u) => u.sessionUpdate === "config_option_update"));
+
+                // 7. Unknown sessionId fails -32002
+                await assert.rejects(
+                    () =>
+                        ctx.request(methods.agent.session.options, {
+                            cwd: "/workspace/alpha",
+                            sessionId: "1#no-such-session",
+                        }),
+                    (err: { code?: number }) => err.code === -32002,
+                );
+            });
+        } finally {
+            await h.close();
+        }
+    });
 });

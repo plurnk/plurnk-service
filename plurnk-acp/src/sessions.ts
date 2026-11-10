@@ -4,14 +4,17 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { McpOverAcpHttpBridge } from "@agentclientprotocol/sdk/experimental/mcp-http";
 import {
     RequestError,
+    SessionConfigOption,
     isMcpServerAcp,
     type AgentContext,
     type AuthAccount,
     type AuthStatusResponse,
     type AvailableCommand,
+    type InitialSessionConfigOption,
     type ListSessionsResponse,
-    type SessionConfigOption,
     type SessionInfo,
+    type SessionOptionsRequest,
+    type SessionOptionsResponse,
 } from "@agentclientprotocol/sdk/experimental/v2/unstable";
 import {
     Problems,
@@ -216,8 +219,47 @@ export const selectBoundSessionForTarget = (
     return undefined;
 };
 
+export const validateInitialConfigOptions = (raw: unknown): void => {
+    if (raw === undefined || raw === null) return;
+    if (!Array.isArray(raw)) {
+        throw RequestError.invalidParams({
+            detail: "Initial 'configOptions' must be an array.",
+        });
+    }
+    const seenIds = new Set<string>();
+    for (const entry of raw) {
+        if (!isRecord(entry) || typeof entry.configId !== "string" || entry.configId.length === 0) {
+            throw RequestError.invalidParams({
+                detail: "Initial 'configOptions' entry requires a non-empty string 'configId'.",
+            });
+        }
+        if (seenIds.has(entry.configId)) {
+            throw RequestError.invalidParams({
+                detail: `Duplicate 'configId' '${entry.configId}' in initial 'configOptions'.`,
+            });
+        }
+        seenIds.add(entry.configId);
+        if (typeof entry.type !== "string" || entry.type.length === 0) {
+            throw RequestError.invalidParams({
+                detail: `Initial 'configOptions' entry '${entry.configId}' requires a string 'type'.`,
+            });
+        }
+        if (entry.type === "id" && typeof entry.value !== "string") {
+            throw RequestError.invalidParams({
+                detail: `Initial 'configOptions' entry '${entry.configId}' of type 'id' requires a string 'value'.`,
+            });
+        }
+        if (entry.type === "boolean" && typeof entry.value !== "boolean") {
+            throw RequestError.invalidParams({
+                detail: `Initial 'configOptions' entry '${entry.configId}' of type 'boolean' requires a boolean 'value'.`,
+            });
+        }
+    }
+};
+
 export const assertSinglePortSecurity = (params: unknown): void => {
     if (!isRecord(params)) return;
+    validateInitialConfigOptions(params.configOptions);
     if (Array.isArray(params.mcpServers) && params.mcpServers.length > 0) {
         if (!params.mcpServers.every((srv) => isMcpServerAcp(srv))) {
             throw RequestError.invalidParams({
@@ -1018,24 +1060,35 @@ export const resolveSessionBinding = async (
 
 export const buildConfigOptions = async (
     seam: ApplicationPort,
-    workspaceId: number,
-    sessionId: number,
+    workspaceId?: number,
+    sessionId?: number,
 ): Promise<SessionConfigOption[]> => {
     const providerCatalog = tryListProviders(seam);
     const aliases = providerCatalog.aliases ?? [];
     const [{ model, spawnModel }, capabilities, personas, session] = await Promise.all([
-        seam.readSessionModel({ workspaceId, sessionId }),
-        seam.readWorkspaceCapabilities({ workspaceId }),
-        seam.listPersonas?.({ workspaceId }) ?? Promise.resolve([]),
-        seam.readSession({ workspaceId, identity: { id: sessionId } }).catch(() => null),
+        workspaceId !== undefined && sessionId !== undefined
+            ? seam.readSessionModel({ workspaceId, sessionId })
+            : Promise.resolve({ model: null, spawnModel: null }),
+        workspaceId !== undefined
+            ? seam.readWorkspaceCapabilities({ workspaceId })
+            : Promise.resolve(null),
+        workspaceId !== undefined
+            ? (seam.listPersonas?.({ workspaceId }) ?? Promise.resolve([]))
+            : Promise.resolve([]),
+        workspaceId !== undefined && sessionId !== undefined
+            ? seam.readSession({ workspaceId, identity: { id: sessionId } }).catch(() => null)
+            : Promise.resolve(null),
     ]);
-    const agentsEntry = session === null
-        ? null
-        : await seam.readEntry({
-            workspaceId,
-            sessionId,
-            target: `session://${session.name}/AGENTS.md`,
-        }).catch(() => null);
+    const agentsEntry =
+        session === null || workspaceId === undefined || sessionId === undefined
+            ? null
+            : await seam
+                  .readEntry({
+                      workspaceId,
+                      sessionId,
+                      target: `session://${session.name}/AGENTS.md`,
+                  })
+                  .catch(() => null);
     const rawAgentsBody = agentsEntry !== null && agentsEntry.status === 200
         ? (agentsEntry.entry?.channels.body?.content ?? "").trim()
         : "";
@@ -1057,18 +1110,6 @@ export const buildConfigOptions = async (
             : []),
     ];
     const activeAlias = aliases.find((a) => a.active);
-    const effortInfo = model !== null
-        ? await seam.readSessionEffort({ workspaceId, sessionId })
-        : {
-              effort: activeAlias?.effort ?? null,
-              supportedEfforts: activeAlias?.effort ? [activeAlias.effort] : ([] as const),
-          };
-
-    const modelOptions = aliases.map((a) => ({
-        value: a.alias,
-        name: `${a.alias} (${a.provider}/${a.model})`,
-        description: a.inputCapacity ? `${Math.round(a.inputCapacity / 1000)}k context` : null,
-    }));
     const catalogItems = (() => {
         try {
             return seam.listModels?.({})?.items ?? [];
@@ -1076,6 +1117,29 @@ export const buildConfigOptions = async (
             return [];
         }
     })();
+    const activeCatalogEfforts =
+        activeAlias !== undefined
+            ? catalogItems.find((e) => e.provider === activeAlias.provider && e.model === activeAlias.model)
+                  ?.capabilities?.efforts
+            : undefined;
+    const effortInfo =
+        model !== null && workspaceId !== undefined && sessionId !== undefined
+            ? await seam.readSessionEffort({ workspaceId, sessionId })
+            : {
+                  effort: activeAlias?.effort ?? null,
+                  supportedEfforts:
+                      activeCatalogEfforts !== undefined && activeCatalogEfforts.length > 0
+                          ? activeCatalogEfforts
+                          : activeAlias?.effort
+                            ? [activeAlias.effort]
+                            : ([] as const),
+              };
+
+    const modelOptions = aliases.map((a) => ({
+        value: a.alias,
+        name: `${a.alias} (${a.provider}/${a.model})`,
+        description: a.inputCapacity ? `${Math.round(a.inputCapacity / 1000)}k context` : null,
+    }));
     for (const entry of catalogItems) {
         if (!entry.readiness?.ready) continue;
         if (modelOptions.some((o) => o.value === entry.selector)) continue;
@@ -1119,7 +1183,7 @@ export const buildConfigOptions = async (
         ? (spawnModel.alias ?? `${spawnModel.provider}/${spawnModel.model}`)
         : "inherit";
 
-    const wsPolicy = capabilities.workspace;
+    const wsPolicy = capabilities?.workspace;
     const wsDeny = wsPolicy?.deny;
     const wsAllow = wsPolicy?.allow;
     const currentPolicy = Array.isArray(wsDeny) && wsDeny.length > 0
@@ -1179,28 +1243,30 @@ export const buildConfigOptions = async (
         },
     ];
 
-    const registeredActions = seam.listModuleActions?.() ?? [];
-    for (const family of ["mcp", "skills", "schedule", "personas"] as const) {
-        if (!registeredActions.some((a) => a.name === `workspace.${family}.list`)) continue;
-        const listed = await seam
-            .invokeModuleAction(`workspace.${family}.list`, {}, { scope: "workspace", workspaceId })
-            .catch(() => null);
-        if (!isRecord(listed)) continue;
-        const items = Array.isArray(listed.definitions)
-            ? listed.definitions
-            : Array.isArray(listed.items)
-              ? listed.items
-              : [];
-        for (const item of items) {
-            if (!isRecord(item) || typeof item.alias !== "string" || item.alias.length === 0) continue;
-            const enabled = item.state !== "disabled" && item.enabled !== false;
-            options.push({
-                configId: `${family}:${item.alias}`,
-                name: `${family}:${item.alias}`,
-                category: "other",
-                type: "boolean",
-                currentValue: enabled,
-            });
+    if (workspaceId !== undefined) {
+        const registeredActions = seam.listModuleActions?.() ?? [];
+        for (const family of ["mcp", "skills", "schedule", "personas"] as const) {
+            if (!registeredActions.some((a) => a.name === `workspace.${family}.list`)) continue;
+            const listed = await seam
+                .invokeModuleAction(`workspace.${family}.list`, {}, { scope: "workspace", workspaceId })
+                .catch(() => null);
+            if (!isRecord(listed)) continue;
+            const items = Array.isArray(listed.definitions)
+                ? listed.definitions
+                : Array.isArray(listed.items)
+                  ? listed.items
+                  : [];
+            for (const item of items) {
+                if (!isRecord(item) || typeof item.alias !== "string" || item.alias.length === 0) continue;
+                const enabled = item.state !== "disabled" && item.enabled !== false;
+                options.push({
+                    configId: `${family}:${item.alias}`,
+                    name: `${family}:${item.alias}`,
+                    category: "other",
+                    type: "boolean",
+                    currentValue: enabled,
+                });
+            }
         }
     }
 
@@ -1209,9 +1275,10 @@ export const buildConfigOptions = async (
 
 export const buildAvailableCommands = async (
     seam: ApplicationPort,
-    workspaceId: number,
+    workspaceId?: number,
 ): Promise<AvailableCommand[]> => {
     const commands: AvailableCommand[] = [...AVAILABLE_COMMANDS];
+    if (workspaceId === undefined) return commands;
     const registeredActions = seam.listModuleActions?.() ?? [];
 
     if (registeredActions.some((a) => a.name === "workspace.skills.list")) {
@@ -1530,6 +1597,102 @@ export const applyConfigOption = async (
         }
     }
     return await buildConfigOptions(seam, bound.workspaceId, bound.sessionId);
+};
+
+export const applyInitialConfigOptions = async (
+    seam: ApplicationPort,
+    bound: BoundSession,
+    raw: readonly InitialSessionConfigOption[] | null | undefined,
+): Promise<void> => {
+    if (!Array.isArray(raw) || raw.length === 0) return;
+    let currentOptions = await buildConfigOptions(seam, bound.workspaceId, bound.sessionId);
+    for (const entry of raw) {
+        const matched = currentOptions.find((opt) => opt.configId === entry.configId);
+        if (matched === undefined) continue;
+        if (SessionConfigOption.isSelect(matched)) {
+            if (entry.type !== "id" || typeof entry.value !== "string") continue;
+            const allowed = matched.options.some((optOrGroup) =>
+                "value" in optOrGroup
+                    ? optOrGroup.value === entry.value
+                    : optOrGroup.options.some((choice) => choice.value === entry.value),
+            );
+            if (!allowed) continue;
+        } else if (SessionConfigOption.isBoolean(matched)) {
+            if (entry.type !== "boolean" || typeof entry.value !== "boolean") continue;
+        } else {
+            continue;
+        }
+        try {
+            currentOptions = await applyConfigOption(seam, bound, entry.configId, entry.value);
+        } catch {
+            currentOptions = await buildConfigOptions(seam, bound.workspaceId, bound.sessionId);
+        }
+    }
+};
+
+export const resolveSessionOptions = async (
+    seam: ApplicationPort,
+    params: SessionOptionsRequest,
+): Promise<SessionOptionsResponse> => {
+    if (!isRecord(params) || typeof params.cwd !== "string" || !isAbsolute(params.cwd)) {
+        throw RequestError.invalidParams({
+            detail: "session/options requires an absolute 'cwd' path.",
+        });
+    }
+    if (params.additionalDirectories !== undefined && params.additionalDirectories !== null) {
+        if (
+            !Array.isArray(params.additionalDirectories) ||
+            !params.additionalDirectories.every((dir) => typeof dir === "string" && isAbsolute(dir))
+        ) {
+            throw RequestError.invalidParams({
+                detail: "session/options 'additionalDirectories' entries must be absolute paths.",
+            });
+        }
+    }
+    if (params.sessionId !== undefined && params.sessionId !== null) {
+        if (typeof params.sessionId !== "string" || params.sessionId.length === 0) {
+            throw RequestError.invalidParams({
+                detail: "session/options 'sessionId' must be a non-empty string when provided.",
+            });
+        }
+        const target = await lookupSessionTarget(seam, params.sessionId, params.cwd, params._meta);
+        const [configOptions, availableCommands] = await Promise.all([
+            buildConfigOptions(seam, target.workspaceId, target.session.id),
+            buildAvailableCommands(seam, target.workspaceId),
+        ]);
+        return {
+            configOptions,
+            availableCommands,
+        };
+    }
+
+    const plurnkMeta = extractPlurnkMeta(params._meta);
+    let existingWorkspaceId: number | undefined;
+    try {
+        const resolved = await resolveWorkspace(
+            seam,
+            params.cwd,
+            plurnkMeta.workspaceId,
+            plurnkMeta.workspaceName,
+            false,
+            plurnkMeta.projectRoot,
+        );
+        existingWorkspaceId = resolved.workspaceId;
+    } catch (err) {
+        const problem = extractProblemFromError(err);
+        if (problem === null || problem.status !== 404) {
+            throw err;
+        }
+    }
+
+    const [configOptions, availableCommands] = await Promise.all([
+        buildConfigOptions(seam, existingWorkspaceId),
+        buildAvailableCommands(seam, existingWorkspaceId),
+    ]);
+    return {
+        configOptions,
+        availableCommands,
+    };
 };
 
 export const applyAdditionalDirectories = async (

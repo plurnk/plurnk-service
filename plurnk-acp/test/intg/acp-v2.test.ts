@@ -30,6 +30,7 @@ const AGENT_METHOD_POSTURE = {
     session_fork: "supported",
     session_archive: "supported",
     session_unarchive: "supported",
+    session_options: "supported",
     session_status: "supported",
     session_set_title: "supported",
     session_resume: "supported",
@@ -102,9 +103,26 @@ test("{§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 
             assert.equal(init.response.protocolVersion, PROTOCOL_VERSION);
             assert.ok(init.response.capabilities?.session?.archive);
             assert.ok(init.response.capabilities?.session?.delete);
+            assert.ok(init.response.capabilities?.session?.options);
             assert.ok(init.response.capabilities?.session?.status);
             assert.ok(init.response.capabilities?.session?.title);
             assert.ok(init.response.capabilities?.auth?.status);
+
+            const preSessionOptions = await ctx.request(methods.agent.session.options, {
+                cwd: "/workspace/uncreated-preview",
+            });
+            assert.ok(Array.isArray(preSessionOptions.configOptions) && preSessionOptions.configOptions.length > 0);
+            assert.ok(
+                Array.isArray(preSessionOptions.availableCommands) && preSessionOptions.availableCommands.length > 0,
+            );
+            await assert.rejects(
+                () =>
+                    ctx.request(methods.agent.session.options, {
+                        cwd: "/workspace/alpha",
+                        sessionId: "1#missing-session",
+                    }),
+                (err: { code?: number }) => err.code === -32002,
+            );
 
             const authStatus = await ctx.request(methods.agent.auth.status, {});
             assert.equal(authStatus.state, "authenticated");
