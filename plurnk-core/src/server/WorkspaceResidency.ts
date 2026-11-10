@@ -40,6 +40,7 @@ export default class WorkspaceResidency {
     readonly #workspaceGate: WorkspaceGate;
     readonly #normalizeRuntime: (registration: RuntimeRegistration) => NormalizedRuntime;
     readonly #providers = new Map<string, WorkspaceCapabilityProvider>();
+    readonly #activated = new Set<number>();
     readonly #capabilities: WorkspaceCapabilities;
     #published = false;
 
@@ -105,6 +106,7 @@ export default class WorkspaceResidency {
                 await provider.activate(context);
             }
             this.signal.throwIfAborted();
+            this.#activated.add(workspaceId);
             await this.#rematerialize(workspaceId);
         } catch (cause) {
             try {
@@ -141,6 +143,7 @@ export default class WorkspaceResidency {
         const errors = deactivations.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
         if (errors.length > 0) throw new AggregateError(errors, `Workspace ${identity.workspaceId} Functionality provider deactivation failed`);
         for (const commit of prepared) commit();
+        this.#activated.delete(identity.workspaceId);
         LoopDocs.evict(this.#db, identity.workspaceId);
     }
 
@@ -182,12 +185,17 @@ export default class WorkspaceResidency {
         await this.#db.session_module_state_put.run({ ...key, state: encoded });
     }
 
+    #canMaterialize(workspaceId: number): boolean {
+        return this.#providers.size === 0 || this.#activated.has(workspaceId);
+    }
+
     async reconcile(workspaceId: number): Promise<void> {
+        if (!this.#canMaterialize(workspaceId)) return;
         await LoopDocs.materialize(this.#engine(), this.#db, workspaceId);
     }
 
     async #rematerialize(workspaceId: number): Promise<void> {
-        if (!this.#published) return;
+        if (!this.#published || !this.#canMaterialize(workspaceId)) return;
         await LoopDocs.materialize(this.#engine(), this.#db, workspaceId);
     }
 

@@ -894,7 +894,7 @@ A Functionality snapshot changes only between workspace operations under one exc
 - Activation and turn-admission refresh run inside their already-held demand boundary.
 - Providers reject replacement while active requests, input exchanges, or Tasks depend on the old snapshot.
 
-Model execution, capability-aware operations, residency-requiring module actions, and retained provider work lease workspace Functionality; inspection, listing, attachment, and parked state do not. After the last lease releases, `PLURNK_SERVICE_WORKSPACE_WARM_MS` and `PLURNK_SERVICE_WORKSPACE_WARM_MAX` bound idle residency (`0` immediate cooling, `-1` unbounded). Cooling withdraws live capabilities and process runtimes (MCP servers) at the workspace boundary while preserving durable state in `workspace_module_state`.
+Model execution, capability-aware operations, residency-requiring module actions, and retained provider work lease workspace Functionality; inspection, listing, attachment, and parked state do not. After the last lease releases, `PLURNK_SERVICE_WORKSPACE_WARM_MS` and `PLURNK_SERVICE_WORKSPACE_WARM_MAX` bound idle residency (`0` immediate cooling, `-1` unbounded). Cooling withdraws live capabilities and process runtimes (MCP servers) at the workspace boundary while preserving durable state in `workspace_module_state`. Activation reconciles `LoopDocs` once after all workspace Functionality providers have activated (suppressing intermediate per-provider reconciliations and cold-workspace reconciliations), and re-warming an unchanged capability surface dispatches zero `_plurnk` operations (#1442).
 
 ## §functionality-coordinator Workspace Functionality
 
@@ -1360,7 +1360,7 @@ The workspace Functionality Coordinator materializes self-documentation, skills,
 
 | Surface | Contract |
 | --- | --- |
-| Card read per wake | `plurnk-contracts/plurnk.md` is read from disk at every loop start and wake so grammar/card edits take effect immediately without restarting the daemon. |
+| Card read per wake | `plurnk-contracts/plurnk.md` and required teaching sources ({§teaching-corpus}) are read from disk at every loop start, wake, and reconciliation so edits take effect immediately without restarting the daemon; after the first successful read in-process, a transient `ENOENT` (such as a concurrent rebuild) serves the last read text, while initial absence and non-`ENOENT` errors fail fast (#1442). |
 | System policy & `AGENTS.md` | `PLURNK_SERVICE_POLICY` (or when unset `$XDG_CONFIG_HOME/agents/AGENTS.md`, `~/.agents/AGENTS.md`, and `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, with `$XDG_CONFIG_HOME/plurnk/AGENTS.md` seeded once on first boot from `@plurnk/plurnk-meta/POLICY.md`) materializes at `plurnk:///AGENTS.md`, and global `AGENTS.local.md` files (`$XDG_CONFIG_HOME/agents/AGENTS.local.md`, `~/.agents/AGENTS.local.md`, `$XDG_CONFIG_HOME/plurnk/AGENTS.local.md`) materialize at `plurnk:///AGENTS.local.md`; both concatenate with workspace root `AGENTS.md`, workspace root `AGENTS.local.md`, and `session://<session>/AGENTS.md` into the `system-policy` packet section on every turn ({§packet-assembly}, #1392). |
 | `## Git` | Runs one `git status --porcelain=v2 -z` snapshot per turn to render a counts-only JSON object (`branch`, optional `unborn`, `ahead`, `behind`, `staged`, `unstaged`, `untracked`) under `## Git`, and stamps two-character `XY` status flags onto `source=file` resource rows. |
 

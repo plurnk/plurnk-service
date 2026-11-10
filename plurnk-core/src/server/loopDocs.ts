@@ -92,7 +92,9 @@ export default class LoopDocs {
             });
         }
 
-        await DispatchAsPlurnk.dispatch(engine, db, workspaceId, await RuntimeSession.ensure(db, workspaceId), statements);
+        if (statements.length > 0) {
+            await DispatchAsPlurnk.dispatch(engine, db, workspaceId, await RuntimeSession.ensure(db, workspaceId), statements);
+        }
         byWorkspace.set(workspaceId, signature);
         LoopDocs.#signatures.set(db, byWorkspace);
     }
