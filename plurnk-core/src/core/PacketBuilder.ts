@@ -331,9 +331,9 @@ export default class PacketBuilder {
             // The per-turn status clump follows the log ({§packet-assembly}) and runs from ambient
             // state to what this turn owes to feedback on the last one: the nearer the end,
             // the more a section asks of this turn.
-            { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus) },
+            { name: "git", slot: "user", header: "Git", content: PacketWire.renderGit(gitStatus) },
             // {§tokenomics} — the model's word for curation weight is tokens; this is never provider admission.
-            { name: "budget", slot: "user", header: "Context", content: budgetReadout },
+            { name: "budget", slot: "user", header: "Log Curation", content: budgetReadout },
             // {§child-orientation} — the Session block names who the actor is, whose child it is, and the
             // coordinate this packet's response becomes — the one fact the sources cannot state about
             // themselves (which `reasoning://<session>/L/T` is the model's own). It changes every turn, so it

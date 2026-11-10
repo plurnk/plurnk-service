@@ -212,7 +212,7 @@ test("{§emission-history} {§packet-assembly}: each turn's operations precede t
     assert.doesNotMatch(previousProgram(afterRead), /Reasoning memory\./u, "reasoning operations never enter content replay");
     assert.deepEqual(afterRead.slice(0, 3), afterEdit.slice(0, 3), "the earlier roles and bytes stay identical");
     // The retained results end where the status clump begins ({§packet-assembly}).
-    const oldResults = chatMessageText(afterEdit[3]).split(/\n\n## (?:Git Status|Context|Session)\n/u)[0];
+    const oldResults = chatMessageText(afterEdit[3]).split(/\n\n## (?:Git|Log Curation|Session)\n/u)[0];
     assert.ok(chatMessageText(afterRead[3]).startsWith(oldResults), "new observations append after retained results");
 });
 
@@ -841,7 +841,7 @@ test("{§packet-assembly} the initial wire preserves canonical order without inv
         assert.deepEqual(slot("user"), ["log", "git", "budget", "session", "work", "notices", "errors"]);
         assert.deepEqual(slot("assistant"), []);
         assert.equal(packet.sections.find((section) => section.name === "work")?.header, "Open Work");
-        assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context");
+        assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Log Curation");
         assert.equal(packetSection(packet, "emission-history"), "", "the first turn has no previous program");
     } finally { await db.close(); }
 });
@@ -1182,7 +1182,7 @@ test("{§emission-history} extension packet control: a scheme adds, removes, and
         const last = provider.received[2];
         assert.deepEqual(last.filter(({ role }) => role === "assistant").map(chatMessageText), expected);
         assert.match(chatMessageText(last[3]), /^### log:\/\/\/1\/2\/\d+\/edit/u, "transformed packets retain the chronological result boundary");
-        assert.doesNotMatch(last.map(chatMessageText).join("\n"), /## Context\n/u, "the transform still removes the requested section");
+        assert.doesNotMatch(last.map(chatMessageText).join("\n"), /## Log Curation\n/u, "the transform still removes the requested section");
     } finally { await db.close(); }
 });
 

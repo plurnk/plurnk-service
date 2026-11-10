@@ -7,7 +7,6 @@ import { join } from "node:path";
 import { resolveInjectPath } from "./packet-inject.ts";
 import { parseLogRecords } from "../../test/LogRecords.ts";
 import { contentWeight } from "./content-weight.ts";
-import GitState from "./git-state.ts";
 
 import ReadResolve from "../content/read-resolve.ts";
 import LogVisibility from "./LogVisibility.ts";
@@ -59,13 +58,13 @@ test("{§emission-history}: an empty stored section emits no heading, placeholde
     ]);
 });
 
-test("{§packet}: structured section content directly follows its heading; Git is a NOTE", () => {
-    for (const header of ["Errors", "Context", "Open Work"]) {
+test("{§packet}: structured section content directly follows its heading, including Git", () => {
+    for (const header of ["Errors", "Log Curation", "Open Work"]) {
         assert.equal(PacketWire.renderSection({ header, content: "[]" }), `## ${header}\n[]`);
     }
     const git = PacketWire.renderGit({ branch: "main", ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0 });
-    assert.equal(git, "> [!NOTE]\n> branch `main` — 0 staged, 0 unstaged, 0 untracked");
-    assert.equal(PacketWire.renderSection({ header: "Git Status", content: git }), `## Git Status\n\n${git}`);
+    assert.equal(git, '{"branch":"main","ahead":0,"behind":0,"staged":0,"unstaged":0,"untracked":0}');
+    assert.equal(PacketWire.renderSection({ header: "Git", content: git }), `## Git\n${git}`);
 });
 
 test("{§message-arrival}: the operator's message is named for the model; every other sender shows its address", () => {
@@ -456,45 +455,22 @@ const creationReceipt = (context: string) => {
     };
 };
 
-test("{§packet-inject}: Git packet state names each class once, bounded, and untracked by its membership truth", () => {
+test("{§packet-inject}: Git packet state renders counts-only JSON without file lists", () => {
+    assert.equal(PacketWire.renderGit(null), "");
     const out = PacketWire.renderGit({
         branch: "main", ahead: 1, behind: 0, staged: 1, unstaged: 1, untracked: 3,
-        files: [
-            { path: "staged.txt", status: "A " },
-            { path: "tracked.md", status: " M" },
-            { path: "docs/guide.md", status: "??", member: "docs/**" },
-            { path: "notes.md", status: "??", member: null },
-            { path: "out/report.md", status: "??", member: "created" },
-        ],
     });
     assert.equal(
         out,
-        "> [!NOTE]\n> branch `main` (↑1 ↓0) — 1 staged, 1 unstaged, 3 untracked\n"
-        + "> staged: `staged.txt`\n"
-        + "> unstaged: `tracked.md`\n"
-        + "> untracked members: `docs/guide.md` (docs/**) · `out/report.md` (created)\n"
-        + "> untracked (not members): `notes.md`",
+        '{"branch":"main","ahead":1,"behind":0,"staged":1,"unstaged":1,"untracked":3}',
     );
-    const many = PacketWire.renderGit({
-        branch: "main", ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 10,
-        files: Array.from({ length: 10 }, (_, i) => ({ path: `loose-${i}.txt`, status: "??" })),
+    const unborn = PacketWire.renderGit({
+        branch: "main", unborn: true, ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0,
     });
-    assert.equal(many.split("\n").length, 3, "one note marker and one line per class, never one per path");
-    assert.match(many, / \(\+2 more\)$/, "the class line is bounded by the panel");
-    // {§packet-inject} — one knob is read by the renderer and by the marker that decides which
-    // untracked paths the catalog names, so the two can never disagree.
-    const prior = process.env.PLURNK_SERVICE_GIT_STATUS_PATHS;
-    try {
-        process.env.PLURNK_SERVICE_GIT_STATUS_PATHS = "3";
-        const few = PacketWire.renderGit({
-            branch: "main", ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 10,
-            files: Array.from({ length: 10 }, (_, i) => ({ path: `loose-${i}.txt`, status: "??" })),
-        });
-        assert.match(few, /`loose-2\.txt` \(\+7 more\)$/);
-        assert.equal(GitState.renderedPaths(), 3);
-    } finally {
-        if (prior === undefined) delete process.env.PLURNK_SERVICE_GIT_STATUS_PATHS; else process.env.PLURNK_SERVICE_GIT_STATUS_PATHS = prior;
-    }
+    assert.equal(
+        unborn,
+        '{"branch":"main","unborn":true,"ahead":0,"behind":0,"staged":0,"unstaged":0,"untracked":0}',
+    );
 });
 
 // Default-channel convention: when a channel's name matches its scheme's
@@ -655,11 +631,11 @@ test("{§packet}: section headings are separated from content without separating
     }], tok);
     const packet = PacketWire.renderSlot([
         { slot: "user", header: "Log", content: log },
-        { slot: "user", header: "Context", content: "tokens: 100\n" },
+        { slot: "user", header: "Log Curation", content: "tokens: 100\n" },
         { slot: "user", header: "Empty", content: "" },
         { slot: "user", header: null, content: "bare\n" },
     ], "user");
-    assert.equal(packet, `## Log\n\n${log}\n\n## Context\n\ntokens: 100\n\nbare`);
+    assert.equal(packet, `## Log\n\n${log}\n\n## Log Curation\n\ntokens: 100\n\nbare`);
     assert.match(packet, /### log:\/\/\/1\/2\/1\/read \(notes\.md\) · \d+\n1:notes/u);
 });
 
