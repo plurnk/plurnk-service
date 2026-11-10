@@ -5,7 +5,6 @@
 import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
 import type { ProvidedSkillsSeam } from "@plurnk/plurnk-agent-skills";
 import type { WorkspaceCapabilityGate, WorkspaceCapabilityIdentity } from "@plurnk/plurnk-contracts";
-import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { RuntimeRegistration, RuntimeRegistrationSeam } from "@plurnk/plurnk-execs";
 import type { FunctionalityAdapter, FunctionalitySeam, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import type { RuntimeSchemeFacet, SchemeRegistrationSeam, ResourceTreeRegistrationSeam } from "@plurnk/plurnk-schemes";
@@ -55,9 +54,6 @@ interface CapabilityProviderSeam {
 
 // Everything the daemon hands a module at setup: every published slice, and core's own interface.
 export type HostSetupSeam = ModuleSetupSeam
-    // {§credential-authority} — the issuing module publishes the authority's face at setup, and reads
-    // there the address of the listener the host bound before any module set up ({§http-host}).
-    & Pick<ApplicationPort, "credentials" | "httpAddress">
     & FunctionalitySeam<RuntimeRegistration, RuntimeSchemeFacet>
     & RuntimeRegistrationSeam
     & SchemeRegistrationSeam

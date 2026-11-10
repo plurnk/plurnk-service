@@ -152,7 +152,7 @@ test("{§release-finalization} repair requires an existing signed tag, not today
 
 test("{§release-finalization} module tags are independent of the product version and can share its release record", async () => {
     for (const record of [false, true]) {
-        const releaseTag = "@plurnk/plurnk-hooks@1.2.3";
+        const releaseTag = "@plurnk/plurnk-otel@1.2.3";
         const { calls, run, options } = finalizationFixture({ releaseTag });
         await finalizeRelease({ ...options, tagName: releaseTag, record, composition: "Tested service: 2.4.0" }, run);
         assert.ok(calls.some((call) => call[0] === "git" && call[1] === "tag" && call[2] === "-s" && call.includes(releaseTag)));

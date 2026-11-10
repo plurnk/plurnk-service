@@ -186,11 +186,11 @@ test("{§configuration-repair-path} startup diagnostics reach the model and clie
     const workspaceId = await insertWorkspace(db, `startup-repair-${crypto.randomUUID()}`);
     const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
     const configuration = new ConfigurationDiagnostics();
-    const key = "PLURNK_HOOKS_ARGS";
-    await configuration.capture("hooks", () => { throw new ConfigurationError(key, `${key} must be a JSON array of strings.`); });
+    const key = "PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS";
+    await configuration.capture("notifications", () => { throw new ConfigurationError(key, `${key} must be a non-negative integer.`); });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse("await plurnk.env();"),
-        makeMockResponse("await plurnk.done({\"text\":\"The hook configuration needs repair; ordinary operations remain available.\"});"),
+        makeMockResponse("await plurnk.done({\"text\":\"The notifications configuration needs repair; ordinary operations remain available.\"});"),
     ] });
     const daemon = new Daemon({ db, provider, configuration });
     t.after(async () => { await daemon.stop(); await db.close(); });

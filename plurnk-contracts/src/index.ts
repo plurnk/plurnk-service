@@ -20,8 +20,8 @@ export { default as CapabilityAdmission } from "./CapabilityAdmission.ts";
 export { renderJsonResult } from "./JsonResult.ts";
 export { formatJsonDocument } from "./JsonDocument.ts";
 export type { JsonReplacer } from "./JsonResult.ts";
-export { requestOrigin } from "./HttpOrigin.ts";
-export type { RequestHeaders } from "./HttpOrigin.ts";
+export { admitBearerRequest, requestOrigin } from "./HttpOrigin.ts";
+export type { BearerAdmission, BearerAdmissionOptions, RequestHeaders } from "./HttpOrigin.ts";
 export {
     LOG_ENTRY_KINDS,
     addressOf,
@@ -31,13 +31,36 @@ export {
     type LogEntryKind,
     type ProposalToolKind,
 } from "./LogRow.ts";
-export type {
-    ApplicationNotificationContract,
-    LogEntryNotification,
-    OutsideEventNotification,
-    ProposalNotification,
-    ReasoningEventNotification,
-    TerminatedNotification,
+export {
+    DAEMON_NOTIFICATION_EVENTS,
+    isDaemonNotificationEvent,
+    matchesNotificationFilter,
+    toDaemonNotification,
+    type ApplicationNotificationContract,
+    type DaemonNotification,
+    type DaemonNotificationEvent,
+    type DaemonNotificationPayloadMap,
+    type LogEntryNotification,
+    type LoopInteractionNotification,
+    type LoopPacketNotification,
+    type NoticeEventNotification,
+    type NotificationFilter,
+    type OperationEventNotification,
+    type OutsideEventNotification,
+    type ProposalNotification,
+    type ReasoningEventNotification,
+    type SessionArchivedNotification,
+    type SessionCreatedNotification,
+    type SessionDeletedNotification,
+    type SessionPolicyNotification,
+    type SessionTitledNotification,
+    type StreamConcludedNotification,
+    type StreamEventNotification,
+    type TerminatedNotification,
+    type WorkspaceArchivedNotification,
+    type WorkspaceCreatedNotification,
+    type WorkspacePreparationNotification,
+    type WorkspaceRenamedNotification,
 } from "./ApplicationNotifications.ts";
 // {§whitespace-contract} The application port is Node-bound and is its own entry, `@plurnk/plurnk-contracts/port`.
 export { formatServiceUpdateReport, parseFamilyCommand } from "./Application.ts";

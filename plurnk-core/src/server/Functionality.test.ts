@@ -343,20 +343,20 @@ test("{§functionality-adapter} registration refuses an empty, repeated or unkno
 describe("ConfigurationDiagnostics", () => {
 test("{§configuration-repair-path} configuration containment preserves valid values and exact operator diagnostics", async () => {
     const diagnostics = new ConfigurationDiagnostics();
-    const config = { command: "fixture" };
-    assert.equal(await diagnostics.capture("hooks", () => config), config);
-    const error = new ConfigurationError("PLURNK_HOOKS_ARGS", "PLURNK_HOOKS_ARGS must be a JSON array of strings.");
-    assert.equal(await diagnostics.capture("hooks", () => { throw error; }), null);
+    const config = { heartbeatMs: 15000 };
+    assert.equal(await diagnostics.capture("notifications", () => config), config);
+    const error = new ConfigurationError("PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS", "PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS must be a non-negative integer.");
+    assert.equal(await diagnostics.capture("notifications", () => { throw error; }), null);
     assert.deepEqual(diagnostics.notices(), [{
         source: "engine:configuration", kind: "configuration_unavailable", level: "warn",
-        owner: "hooks", key: error.key, message: error.message,
+        owner: "notifications", key: error.key, message: error.message,
     }]);
 });
 
 test("{§configuration-repair-path} internal failures cannot be contained as configuration errors", async () => {
     const diagnostics = new ConfigurationDiagnostics();
     const error = new Error("broken internal invariant");
-    await assert.rejects(() => diagnostics.capture("hooks", async () => { throw error; }), (cause) => cause === error);
+    await assert.rejects(() => diagnostics.capture("notifications", async () => { throw error; }), (cause) => cause === error);
     assert.deepEqual(diagnostics.notices(), []);
 });
 

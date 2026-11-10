@@ -15,6 +15,8 @@ import {
     type ApplicationSessionTitling,
     type ApplicationWorkspaceArchiving,
     type ClientEnvelope,
+    type DaemonNotificationEvent,
+    type DaemonNotificationPayloadMap,
     type SessionOwner,
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
@@ -43,14 +45,22 @@ export default class WorkspacePlaces {
     readonly #hostPaths: HostPaths;
     readonly #engine: () => Engine;
     readonly #sessionModels: () => SessionModels;
-    readonly #broadcast: (target: NotifyTarget, method: string, params?: unknown) => void;
+    readonly #broadcast: <E extends DaemonNotificationEvent>(
+        target: NotifyTarget,
+        method: E,
+        params: DaemonNotificationPayloadMap[E],
+    ) => void;
 
     constructor(args: {
         readonly db: Db;
         readonly hostPaths: HostPaths;
         readonly engine: () => Engine;
         readonly sessionModels: () => SessionModels;
-        readonly broadcast: (target: NotifyTarget, method: string, params?: unknown) => void;
+        readonly broadcast: <E extends DaemonNotificationEvent>(
+            target: NotifyTarget,
+            method: E,
+            params: DaemonNotificationPayloadMap[E],
+        ) => void;
     }) {
         this.#db = args.db;
         this.#hostPaths = args.hostPaths;
@@ -349,8 +359,31 @@ export default class WorkspacePlaces {
         if (created) {
             const env = await this.attachWorkspace(binding);
             this.#broadcast("all", "workspace/created", { id: env.workspaceId, name: env.workspaceName, projectRoot: env.projectRoot, projectLabel: env.projectLabel });
+            await this.announceSessionCreated(binding.workspaceId, binding.sessionId);
         }
         return binding;
+    }
+
+    async announceSessionCreated(workspaceId: number, sessionId: number): Promise<void> {
+        const [envelope, session] = await Promise.all([
+            Envelope.attachToWorkspace(this.#db, workspaceId),
+            this.readSession({ workspaceId, identity: { id: sessionId } }),
+        ]);
+        if (session === null) return;
+        const labelled = this.#labelled(envelope);
+        // {§notifications}
+        this.#broadcast({ workspaceId }, "session/created", {
+            id: session.id,
+            workspaceId: labelled.workspaceId,
+            workspaceName: labelled.workspaceName,
+            projectRoot: labelled.projectRoot,
+            projectLabel: labelled.projectLabel,
+            name: session.name,
+            parentSessionId: session.parentSessionId,
+            origin: session.origin,
+            kind: session.kind,
+            lifecycle: session.lifecycle,
+        });
     }
 
     async listSessionReferences({ workspaceId, sessionId, namespace }: Parameters<ApplicationPort["listSessionReferences"]>[0]): Promise<string[]> {
@@ -449,6 +482,7 @@ export default class WorkspacePlaces {
             if (name === undefined || !(error instanceof SessionNameConflictError)) throw error;
             throw await this.#sessionNameConflict(workspaceId, name);
         }
+        await this.announceSessionCreated(workspaceId, session.id);
         return { sessionId: session.id, sessionName: session.name };
     }
 
@@ -479,6 +513,7 @@ export default class WorkspacePlaces {
             throw await this.#sessionNameConflict(workspaceId, name);
         }
         const branch = await this.#db.envelope_get_session_by_id.get<{ name: string }>({ id: branchSessionId });
+        await this.announceSessionCreated(workspaceId, branchSessionId);
         return { sessionId: branchSessionId, sessionName: branch?.name ?? null, parentSessionId: sessionId };
     }
 }

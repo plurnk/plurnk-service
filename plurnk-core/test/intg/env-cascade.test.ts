@@ -422,7 +422,7 @@ test("{§operator-config-precedence} config check validates capability definitio
         { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "invalid" },
         { PLURNK_MEMBERS_AUTO_ADD: "yes" },
         { PLURNK_SERVICE_ROOTS: "invalid" },
-        { PLURNK_HOOKS_COMMAND: "", PLURNK_HOOKS_ARGS: "[]" },
+        { PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS: "-1" },
     ];
     for (const env of invalid) {
         const key = Object.keys(env)[0];
@@ -532,9 +532,7 @@ for (const built of [false, true]) {
         const fx = await fixture();
         t.after(() => rm(fx.root, { recursive: true, force: true }));
         const invalid = {
-            PLURNK_HOOKS_COMMAND: process.execPath,
-            PLURNK_HOOKS_ARGS: "[1]",
-            PLURNK_HOOKS_EVENTS: "Stop",
+            PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS: "invalid",
             OTEL_TRACES_EXPORTER: "unknown-exporter",
             PLURNK_MODEL: "deepseek/deepseek-v4-flash",
             DEEPSEEK_API_KEY: "",
@@ -561,7 +559,7 @@ for (const built of [false, true]) {
             .filter(({ update }) => update?.sessionUpdate === "notice" && update._meta?.plurnk?.notice !== undefined)
             .map(({ update }) => update?._meta?.plurnk?.notice as Notice);
         for (const [owner, key] of [
-            ["module:@plurnk/plurnk-hooks", "PLURNK_HOOKS_ARGS"],
+            ["notifications", "PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS"],
             ["module:@plurnk/plurnk-otel", "OTEL_TRACES_EXPORTER"],
             ["model", "PLURNK_MODEL"],
             ["model-child", "PLURNK_MODEL_CHILD"],
@@ -693,7 +691,7 @@ test("{§configuration-repair-path} config check rejects optional startup errors
     const fx = await fixture();
     t.after(() => rm(fx.root, { recursive: true, force: true }));
     const cases: Array<{ key: string; env: Record<string, string> }> = [
-        { key: "PLURNK_HOOKS_ARGS", env: { PLURNK_HOOKS_COMMAND: process.execPath, PLURNK_HOOKS_ARGS: "[1]", PLURNK_HOOKS_EVENTS: "Stop" } },
+        { key: "PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS", env: { PLURNK_SERVICE_NOTIFICATIONS_HEARTBEAT_MS: "invalid" } },
         { key: "OTEL_TRACES_EXPORTER", env: { OTEL_TRACES_EXPORTER: "unknown-exporter" } },
         { key: "PLURNK_SERVICE_EFFECT_HOST", env: { PLURNK_SERVICE_EFFECT_HOST: "invalid" } },
         { key: "PLURNK_SERVICE_FILE_CREATE_SCOPE", env: { PLURNK_SERVICE_FILE_CREATE_SCOPE: "invalid" } },
@@ -737,14 +735,11 @@ test("{§operator-config-precedence} config check accepts future controls withou
         PLURNK_SKILLS_future_ENABLED: "0",
         PLURNK_SKILLS_分析: '{"source":"/nonexistent/分析"}',
         PLURNK_SKILLS_3d_tools: '{"source":"https://unreachable.invalid/skills.git"}',
-        PLURNK_HOOKS_COMMAND: process.execPath,
-        PLURNK_HOOKS_ARGS: JSON.stringify(args),
-        PLURNK_HOOKS_EVENTS: "Stop",
     } });
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stdout, /configuration valid/u);
     assert.equal(requests, 0, "MCP discovery does not occur during config check");
-    await assert.rejects(() => stat(marker), { code: "ENOENT" }, "neither MCP nor hooks start");
+    await assert.rejects(() => stat(marker), { code: "ENOENT" }, "MCP does not start");
     await assert.rejects(() => stat(fx.dataHome), { code: "ENOENT" }, "no database, skill or attachment state is created");
 });
 

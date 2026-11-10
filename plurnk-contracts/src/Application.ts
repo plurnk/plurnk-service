@@ -1,4 +1,5 @@
 import { isRecord } from "./guards.ts";
+import type { DaemonNotification, DaemonNotificationEvent } from "./ApplicationNotifications.ts";
 import type { LoopLifecycle } from "./LoopLifecycle.ts";
 import type { LogAddressColumns } from "./LogRow.ts";
 import type { Effort, JsonSchema, ModelRoute, OperationResult } from "./types.ts";
@@ -633,8 +634,9 @@ export const parseFamilyCommand = (family: string, args: readonly string[]): Par
 
 export type ApplicationEventHandler = (
     workspaceId: number | null,
-    method: string,
+    method: DaemonNotificationEvent,
     params: unknown,
+    notification: DaemonNotification,
 ) => void;
 
 /**

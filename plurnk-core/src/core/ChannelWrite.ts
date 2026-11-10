@@ -82,6 +82,8 @@ export type InjectSessionNotify = (args: {
     // A model's WORK/FORK inherit the source loop's spawn model; every other delivery, a session a person
     // starts included, runs the recipient's own.
     spawn?: true;
+    // Set when the caller just minted or forked `sessionId` so `session/created` precedes the loop's first events.
+    created?: true;
     // {§loop-completion} — the session's own operation that sends the message; absent when a person acts.
     opener?: MessageOpener;
 }) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; message: string }>;

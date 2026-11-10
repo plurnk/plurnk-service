@@ -209,7 +209,7 @@ budgets, local endpoints, caching, and connectivity; the
 [model chapter](skill://plurnk/models.md) is what a model is told.
 The defaults catalog groups the remaining settings by their owning subsystem:
 permissions, loop limits, residency, execution, context, indexing, MCP,
-hooks, HTTP, and content handling. Search the catalog for that subsystem instead
+HTTP, and content handling. Search the catalog for that subsystem instead
 of relying on a second list of knobs here.
 
 For file-access questions, inspect the generated

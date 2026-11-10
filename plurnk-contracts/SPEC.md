@@ -214,7 +214,9 @@ await <service>.<tool>({ ... })
 
 | Projection / Helper | Contract |
 | --- | --- |
-| `ApplicationPort` | Transport-neutral interface in `@plurnk/plurnk-contracts/port` driving workspaces, sessions, loops (`runLoop` with causal `source`, `attachments`, `envelope`), operations, proposals, client interactions, and event subscriptions (`ApplicationOperationEvent`). |
+| `ApplicationPort` | Transport-neutral interface in `@plurnk/plurnk-contracts/port` driving workspaces, sessions, loops (`runLoop` with causal `source`, `attachments`, `envelope`), operations, proposals, client interactions, and filtered event subscriptions (`subscribeToEvents(handler, filter?)`). |
+| `DaemonNotification` / `NotificationFilter` | Closed discriminated union over the 20 `DAEMON_NOTIFICATION_EVENTS` (`{ id, event, timestamp, workspaceId, sessionId, data }`), constructed by `toDaemonNotification` and filtered at source by `matchesNotificationFilter(notification, { events?, workspaceId?, sessionId? })`. |
+| `admitBearerRequest` | Runtime-neutral OAuth 2.1 Bearer and optional `?access_token=` admission helper over `CredentialAuthority` returning `{ ok: true, family, subject }` or `{ ok: false, problem, challenge }`. |
 | `selectSessionLoop` | Chooses `running` before `parked` before `queued` (oldest unresolved sequence wins ties); with no live work, the latest terminal settlement wins. Maintenance-only loops do not change this projection. |
 | `lifecycleOfLoopStatus` | Maps loop status to client lifecycle vocabulary: no loop `idle`; `100` `queued`; `102` `running`; `202` `parked`; `< 400` `completed`; `499` `cancelled`; `>= 400` `failed` (`413` budget, `429` turn ceiling, `500` fail, `504` timeout, `508` runaway). |
 | `excerptOf` | Extracts the first non-blank line of a message truncated to at most `N` code points without splitting a character, with trailing whitespace trimmed and `continued: boolean`. |

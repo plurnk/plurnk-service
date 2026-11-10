@@ -19,7 +19,7 @@
         "plurnk-core": {
             "entry": ["src/core/content_weight.ts", "src/core/sha256.ts", "src/**/*.test.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
             "project": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
-            "ignoreDependencies": ["@plurnk/plurnk-schemes-*", "@plurnk/plurnk-execs-*", "@plurnk/plurnk-mimetypes-*", "@plurnk/plurnk-providers-*", "@plurnk/plurnk-hooks", "@plurnk/plurnk-otel", "@plurnk/plurnk-web", "@agentclientprotocol/sdk", "@opentelemetry/context-async-hooks", "@opentelemetry/core"]
+            "ignoreDependencies": ["@plurnk/plurnk-schemes-*", "@plurnk/plurnk-execs-*", "@plurnk/plurnk-mimetypes-*", "@plurnk/plurnk-providers-*", "@plurnk/plurnk-otel", "@plurnk/plurnk-web", "@agentclientprotocol/sdk", "@opentelemetry/context-async-hooks", "@opentelemetry/core"]
         },
         "plurnk-mimetypes": {
             "entry": ["src/**/*.test.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],

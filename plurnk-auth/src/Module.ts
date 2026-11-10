@@ -1,13 +1,13 @@
 import { Problems, requestOrigin, type ProblemDetails, type RequestHeaders } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
-import type { DaemonModule } from "@plurnk/plurnk-modules";
+import type { DaemonModule, ModuleSetupSeam } from "@plurnk/plurnk-modules";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import OAuthServer from "./OAuthServer.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 
 export type { DeclaredClient, ModuleOptions } from "./config.ts";
 
-export type AuthSetupSeam = Pick<ApplicationPort, "credentials" | "httpAddress">;
+export type AuthSetupSeam = Pick<ModuleSetupSeam, "credentials" | "httpAddress">;
 export type AuthPort = Pick<ApplicationPort, "credentials" | "httpAddress" | "registerHttpRoute">;
 
 const OAUTH_MOUNTS = ["/oauth", "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource"] as const;

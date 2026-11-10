@@ -12,6 +12,7 @@ test("{§capability-policy-cascade} ProposalProjection's op keywords are the clo
 test("{§whitespace-contract} the package root exposes exactly the supported runtime values", () => {
     assert.deepEqual(Object.keys(Contracts).toSorted(), [
         "CapabilityAdmission",
+        "DAEMON_NOTIFICATION_EVENTS",
         "EFFORTS",
         "INTERNAL_ROW_OPS",
         "InvalidOperationResultError",
@@ -30,10 +31,12 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "UNKNOWN_POSITION",
         "Validator",
         "addressOf",
+        "admitBearerRequest",
         "errnoCode",
         "excerptOf",
         "formatJsonDocument",
         "formatServiceUpdateReport",
+        "isDaemonNotificationEvent",
         "isExecution",
         "isExecutionOp",
         "isLogEntryKind",
@@ -41,11 +44,13 @@ test("{§whitespace-contract} the package root exposes exactly the supported run
         "isRecord",
         "isSafeInteger",
         "lifecycleOfLoopStatus",
+        "matchesNotificationFilter",
         "parseFamilyCommand",
         "parseTodoItems",
         "renderJsonResult",
         "requestOrigin",
         "selectSessionLoop",
+        "toDaemonNotification",
         "toolKindOf",
         "writtenOp",
     ]);
@@ -267,4 +272,112 @@ test("{§op-shapes} {§acp-plurnk-metadata} parseTodoItems extracts steps from m
         Contracts.parseTodoItems('{"todo": {}}'),
         [],
     );
+});
+
+test("{§application-session-observation} toDaemonNotification and matchesNotificationFilter project and filter the closed notification union", () => {
+    assert.equal(Contracts.isDaemonNotificationEvent("session/created"), true);
+    assert.equal(Contracts.isDaemonNotificationEvent("unknown/event"), false);
+
+    const createdWorkspace = Contracts.toDaemonNotification(
+        1,
+        null,
+        "workspace/created",
+        { id: 10, name: "alpha", projectRoot: "/tmp/alpha", projectLabel: "/tmp/alpha" },
+        1700000000000,
+    );
+    assert.deepEqual(createdWorkspace, {
+        id: 1,
+        event: "workspace/created",
+        timestamp: 1700000000000,
+        workspaceId: 10,
+        sessionId: null,
+        data: { id: 10, name: "alpha", projectRoot: "/tmp/alpha", projectLabel: "/tmp/alpha" },
+    });
+
+    const createdSession = Contracts.toDaemonNotification(
+        2,
+        10,
+        "session/created",
+        {
+            id: 42,
+            workspaceId: 10,
+            workspaceName: "alpha",
+            projectRoot: "/tmp/alpha",
+            projectLabel: "/tmp/alpha",
+            name: "main",
+            parentSessionId: null,
+            origin: "model",
+            kind: "root",
+            lifecycle: "idle",
+        },
+        1700000000001,
+    );
+    assert.equal(createdSession.workspaceId, 10);
+    assert.equal(createdSession.sessionId, 42);
+    assert.equal(Contracts.matchesNotificationFilter(createdSession), true);
+    assert.equal(Contracts.matchesNotificationFilter(createdSession, { events: ["session/created"], workspaceId: 10, sessionId: 42 }), true);
+    assert.equal(Contracts.matchesNotificationFilter(createdSession, { events: ["loop/terminated"] }), false);
+    assert.equal(Contracts.matchesNotificationFilter(createdSession, { workspaceId: 99 }), false);
+    assert.equal(Contracts.matchesNotificationFilter(createdSession, { sessionId: 99 }), false);
+
+    const archivedSubtree = Contracts.toDaemonNotification(
+        3,
+        10,
+        "session/archived",
+        { id: 42, archived_at: "2026-11-10T00:00:00.000Z", sessionIds: [42, 43] },
+        1700000000002,
+    );
+    assert.equal(Contracts.matchesNotificationFilter(archivedSubtree, { sessionId: 43 }), true);
+});
+
+test("{§application-session-observation} admitBearerRequest enforces Bearer and query-token admission across scopes", () => {
+    const anonymousCredentials: Contracts.CredentialAuthority = {
+        operatorSecret: null,
+        issue: () => ({ token: "t", expiresAt: 0 }),
+        verify: () => null,
+        consume: () => ({ reusedFamily: null }),
+        revokeFamily: () => {},
+        onRevoked: () => () => {},
+        sessions: () => [],
+        registerClient: (c) => ({ clientId: c.id, clientSecret: "s" }),
+        client: () => null,
+        authenticateClient: () => false,
+        publish: () => {},
+        face: () => null,
+    };
+    assert.deepEqual(Contracts.admitBearerRequest(anonymousCredentials, { headers: {} }), {
+        ok: true,
+        family: null,
+        subject: null,
+    });
+
+    const activeCredentials: Contracts.CredentialAuthority = {
+        ...anonymousCredentials,
+        face: () => ({ issuer: () => "http://127.0.0.1:1066" }),
+        verify: (token) =>
+            token === "good-acp"
+                ? { kind: "access", subject: "operator", clientId: "cli", scopes: ["acp"], family: "fam-1", expiresAt: 9999999999999 }
+                : token === "only-other"
+                  ? { kind: "access", subject: "operator", clientId: "cli", scopes: ["other"], family: "fam-2", expiresAt: 9999999999999 }
+                  : null,
+    };
+
+    const missing = Contracts.admitBearerRequest(activeCredentials, { headers: {} });
+    assert.equal(missing.ok, false);
+    if (!missing.ok) assert.equal(missing.problem.status, 401);
+
+    const invalid = Contracts.admitBearerRequest(activeCredentials, { headers: { authorization: "Bearer bad" } });
+    assert.equal(invalid.ok, false);
+    if (!invalid.ok) assert.equal(invalid.problem.status, 401);
+
+    const insufficient = Contracts.admitBearerRequest(activeCredentials, { headers: { authorization: "Bearer only-other" } });
+    assert.equal(insufficient.ok, false);
+    if (!insufficient.ok) assert.equal(insufficient.problem.status, 403);
+
+    const admitted = Contracts.admitBearerRequest(
+        activeCredentials,
+        { headers: {}, url: "/notifications?access_token=good-acp" },
+        { allowQueryToken: true },
+    );
+    assert.deepEqual(admitted, { ok: true, family: "fam-1", subject: "operator" });
 });

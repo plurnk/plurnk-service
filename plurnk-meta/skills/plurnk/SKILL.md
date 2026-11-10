@@ -1,6 +1,6 @@
 ---
 name: plurnk
-description: Configure, customize, extend, and integrate Plurnk — settings (.env), models, operating policy (AGENTS.md), personas, skills, MCP servers, schedules, hooks, plugins, extensions, ACP clients, and systemd/nginx templates.
+description: Configure, customize, extend, and integrate Plurnk — settings (.env), models, operating policy (AGENTS.md), personas, skills, MCP servers, schedules, notifications, plugins, extensions, ACP clients, and systemd/nginx templates.
 ---
 
 # Plurnk
@@ -18,7 +18,7 @@ description: Configure, customize, extend, and integrate Plurnk — settings (.e
 | Personas (`persona://` and `plurnk.personas`) | `mcp:///plurnk.md`, `mcp:///plurnk/personas.json`, `persona://<name>/PERSONA.md` |
 | Agent Skills, MCP servers, environment variables, and schedules | `mcp:///plurnk.md`, `mcp:///plurnk/skills.json`, `mcp:///plurnk/mcp.json`, `mcp:///plurnk/env.json`, `mcp:///plurnk/schedule.json` |
 | Which project files you can see, and why a file is missing | `mcp:///plurnk/members.json` |
-| Plugins, extensions, clients and hooks: what each reaches and how it loads | [Extending Plurnk](extensibility.md) |
+| Plugins, extensions, clients and notifications: what each reaches and how it loads | [Extending Plurnk](extensibility.md) |
 | Each installed package's contract and type declarations | `skill://plurnk/packages/<package name>/SPEC.md`, `skill://plurnk/packages/<package name>/dist/*.d.ts` |
 | Session hierarchy, messaging, and delegation | [Session reference](session.md), [Delegation and messages](delegation.md) |
 | Text, structural, full-text, and symbol patterns | [Patterns](pattern.md) |

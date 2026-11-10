@@ -26,7 +26,7 @@ import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } f
 import MessageAbandonment from "./MessageAbandonment.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { Validator, isRecord, type ApplicationPersonaProjection, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionArchiving, type ApplicationSessionDeletion, type ApplicationSessionTitling, type ApplicationWorkspaceArchiving, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, matchesNotificationFilter, toDaemonNotification, type ApplicationEventHandler, type ApplicationPersonaProjection, type ApplicationServiceUpdateResult, type ApplicationSessionOverview, type ClientDisplayCapabilities, type DaemonNotificationEvent, type DaemonNotificationPayloadMap, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionArchiving, type ApplicationSessionDeletion, type ApplicationSessionTitling, type ApplicationWorkspaceArchiving, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type NotificationFilter, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
@@ -73,6 +73,7 @@ import DaemonModules from "./DaemonModules.ts";
 import ClientOperations from "./ClientOperations.ts";
 import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
 import WorkspacePlaces from "./WorkspacePlaces.ts";
+import NotificationsEndpoint from "./NotificationsEndpoint.ts";
 import { recoverDaemonLifecycle, stopDaemon } from "./DaemonLifecycle.ts";
 
 export type ChannelRow = { name: string } & ClientEntryChannel;
@@ -92,6 +93,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         Exec.validateConfiguration();
         ExecutorRegistry.validateConfiguration();
         ServiceUpdater.validateConfiguration();
+        NotificationsEndpoint.heartbeatMs();
     }
 
     static validateWorkspaceConfiguration(): void {
@@ -142,7 +144,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§methods} — the broadcast's in-process event source. A transport
     // module (plurnk-acp) subscribes and fans out to its OWN clients; core emits, never owns
     // client transport or connection state.
-    #eventSubscribers = new Set<(workspaceId: number | null, method: string, params: unknown) => void>();
+    #notificationSeq = 0;
+    #eventSubscribers = new Set<{
+        readonly handler: ApplicationEventHandler;
+        readonly filter: NotificationFilter | undefined;
+    }>();
     readonly #sessionModels: SessionModels;
     readonly #reads: ClientReads;
     readonly #storage: WorkspaceStorage;
@@ -210,6 +216,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#modules = new DaemonModules({
             db, http: this.#http, configuration: this.#configuration, residency: this.#residency, workspaceGate: this.#workspaceGate,
         });
+        if (this.#http !== null) {
+            this.#modules.register(new NotificationsEndpoint(), "@plurnk/plurnk-service");
+        }
         // {§functionality-coordinator} — the one owner above every family
         // adapter; Core hosts it, modules register adapters through the seam.
         this.#functionality = new Functionality({
@@ -334,6 +343,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#delivery = new MessageDelivery({
             db, sessionModels: this.#sessionModels, mimetypes: this.#mimetypes,
             inject: (args) => this.inject(args),
+            sessionCreated: (workspaceId, sessionId) => this.#places.announceSessionCreated(workspaceId, sessionId),
         });
         this.#reads = new ClientReads({ db: this.#db, engine: this.#engine, workspaceGate: this.#workspaceGate, residency: this.#residency });
         this.#places = new WorkspacePlaces({
@@ -391,9 +401,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // and fans out to its OWN clients — core emits, it never fans out for the module. Returns an
     // unsubscribe. `workspaceId` is the event's workspace, or null for a global event (e.g. workspace/created).
     // The engine and its events are core; the fan-out belongs to the module.
-    subscribeToEvents(handler: (workspaceId: number | null, method: string, params: unknown) => void): () => void {
-        this.#eventSubscribers.add(handler);
-        return () => { this.#eventSubscribers.delete(handler); };
+    subscribeToEvents(handler: ApplicationEventHandler, filter?: NotificationFilter): () => void {
+        const sub = { handler, filter };
+        this.#eventSubscribers.add(sub);
+        return () => { this.#eventSubscribers.delete(sub); };
     }
 
     registerSessionOwner(workspaceId: number, owner: SessionOwner): Promise<void> {
@@ -897,6 +908,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         await this.#configuration.capture("proposal-policy", () => ProposalPolicies.read());
         await this.#configuration.capture("wait", () => TurnDispositionHandler.configuredWaitSeconds());
         await this.#configuration.capture("execution", () => Exec.validateConfiguration(this.#hostPaths));
+        await this.#configuration.capture("notifications", () => NotificationsEndpoint.heartbeatMs());
         this.#retention = await this.#configuration.capture("retention", () => new Retention(this.#db, retentionPolicy()));
         this.#clientOperations.start();
         this.#started = true;
@@ -1038,9 +1050,15 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     // {§methods} — subscriber failures are transport-local:
     // log them at this boundary and never re-enter engine control flow.
-    #emitTo(workspaceId: number | null, method: string, params?: unknown): void {
+    #emitTo<E extends DaemonNotificationEvent>(
+        workspaceId: number | null,
+        method: E,
+        params: DaemonNotificationPayloadMap[E],
+    ): void {
+        const notification = toDaemonNotification(++this.#notificationSeq, workspaceId, method, params);
         for (const sub of this.#eventSubscribers) {
-            try { sub(workspaceId, method, params); }
+            if (!matchesNotificationFilter(notification, sub.filter)) continue;
+            try { sub.handler(workspaceId, method, params, notification); }
             catch (e) { console.error(`seam subscriber failed on ${method}:`, e instanceof Error ? e.message : String(e)); }
         }
     }
@@ -1053,7 +1071,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#broadcast({ workspaceId }, "session/policy", { sessionId, model, spawnModel });
     }
 
-    #broadcast(target: NotifyTarget, method: string, params?: unknown): void {
+    #broadcast<E extends DaemonNotificationEvent>(
+        target: NotifyTarget,
+        method: E,
+        params: DaemonNotificationPayloadMap[E],
+    ): void {
         observedSync( // {§observability-boundary}
             "stream.broadcast",
             { method, ...(target === "all" ? {} : { "workspace.id": target.workspaceId }) },
@@ -1065,8 +1087,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 }
                 // {§methods}: publish to the in-process source; transport modules subscribe
                 // here (plurnk-acp renders to ACP v2). Each subscriber owns its own fan-out; core just emits.
-                // Scope-stamping onto the notification envelope ({§notifications})
-                // is each subscriber's edge concern; the seam hands (workspaceId, method, params) raw.
                 this.#emitTo(target.workspaceId, method, params);
             },
         );

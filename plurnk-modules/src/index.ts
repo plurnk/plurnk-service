@@ -4,6 +4,7 @@
 import type {
     ApplicationActionContext,
     ApplicationActionDescriptor,
+    CredentialAuthority,
     FunctionalityCaller,
     FunctionalityCandidate,
     FunctionalityAdmission,
@@ -131,6 +132,11 @@ export interface WorkspacePaths {
 
 // {§module-seam-slices} — the base setup slice: what every host offers every module.
 export interface ModuleSetupSeam {
+    // {§credential-authority} — the daemon's credential authority, offered at setup so modules can
+    // register confidential OAuth 2.1 clients or publish the issuing face before start().
+    readonly credentials: CredentialAuthority;
+    // {§http-host} — the address of the listener bound by the host before setup().
+    httpAddress(): { readonly host: string; readonly port: number };
     // {§module-seam-slices}
     workspacePaths(workspaceId: number): Promise<WorkspacePaths>;
     // {§mcp-module} Ambient launch base, before the module's explicit bindings:

@@ -83,7 +83,6 @@ extensions included in the default installation. The terminal client is a separa
 - `plurnk-schedule` owns durable cron and one-shot `schedule` Functionality.
 - `plurnk-aliases` and `plurnk-models` own `PLURNK_MODEL_<alias>` parsing and
   the provider/model catalog.
-- `plurnk-hooks` owns exact-command delivery of selected core lifecycle events.
 - `plurnk-otel` owns the OpenTelemetry SDK: the trace and metric providers `OTEL_*` selects,
   registered as a module; the daemon instruments itself on the API alone.
 - `plurnk-digest` owns forensic reports, consistent snapshots and interviews;

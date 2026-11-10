@@ -19,13 +19,11 @@ import { bindListener } from "./_http.ts";
 import { openMigrated, insertWorkspace } from "./_db.ts";
 import { type Db } from "../../src/core/Db.ts";
 import { rpcProblem, HARNESS_WAIT_MS } from "./_rpc.ts";
-import { Validator, type EntryReadResult, type ProblemDetails, type JsonSchema, type ApplicationOperationEvent, type ProposalProjection } from "@plurnk/plurnk-contracts";
+import { Validator, type DaemonNotification, type EntryReadResult, type ProblemDetails, type JsonSchema, type ApplicationOperationEvent, type ProposalProjection } from "@plurnk/plurnk-contracts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { ownSession, TEST_OWNER, serverProposals } from "./_approval.ts";
-import { configuredModule } from "../../../plurnk-hooks/test/environment.ts";
 import { viableWindow } from "./_provider.ts";
 import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
-import { type HookEvent } from "../../../plurnk-hooks/src/EventProjection.ts";
 import { namedModelSession } from "./_sessions.ts";
 import { Module as AuthModule } from "@plurnk/plurnk-auth";
 import { Module as AcpModule } from "@plurnk/plurnk-acp";
@@ -1236,7 +1234,7 @@ test("{§mcp-module} {§module-contract} an invalid registry setting is reported
 });
 });
 
-describe("hooks-lifecycle", () => {
+describe("notifications-lifecycle", () => {
 interface TerminalEvent {
     readonly workspaceId: number;
     readonly method: string;
@@ -1247,33 +1245,64 @@ interface TerminalEvent {
     };
 }
 
-const captureHooks = async (t: TestContext, daemon: Daemon, selection = "Stop") => {
-    const root = await mkdtemp(join(tmpdir(), "plurnk-hooks-lifecycle-"));
-    t.after(() => rm(root, { recursive: true, force: true }));
-    const script = join(root, "capture.mjs");
-    const output = join(root, "events.jsonl");
-    await writeFile(script, [
-        'import { appendFile } from "node:fs/promises";',
-        'let body = "";',
-        'process.stdin.setEncoding("utf8");',
-        'for await (const chunk of process.stdin) body += chunk;',
-        'await appendFile(process.argv[2], body);',
-    ].join("\n"));
-    const failures: unknown[] = [];
-    daemon.registerModule(configuredModule({
-        PLURNK_HOOKS_COMMAND: process.execPath,
-        PLURNK_HOOKS_ARGS: JSON.stringify([script, output]),
-        PLURNK_HOOKS_EVENTS: selection,
-        PLURNK_HOOKS_TIMEOUT_MS: "5000",
-    }, (_message, cause) => { failures.push(cause); }), "test-module");
+const openNotificationsStream = async (
+    t: TestContext,
+    port: number,
+    query = "",
+    headers: Readonly<Record<string, string>> = {},
+) => {
+    const controller = new AbortController();
+    t.after(() => controller.abort());
+    const url = `http://127.0.0.1:${port}/notifications${query}`;
+    const res = await fetch(url, { headers: { accept: "text/event-stream", ...headers }, signal: controller.signal });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("content-type"), "text/event-stream; charset=utf-8");
+    const events: DaemonNotification[] = [];
+    const comments: string[] = [];
+    const firstFrame = Promise.withResolvers<void>();
+    const closed = Promise.withResolvers<void>();
+    const reader = (async () => {
+        const decoder = new TextDecoder();
+        let buffer = "";
+        try {
+            for await (const chunk of res.body!) {
+                buffer += decoder.decode(chunk, { stream: true });
+                const parts = buffer.split("\n\n");
+                buffer = parts.pop() ?? "";
+                for (const frame of parts) {
+                    if (frame.startsWith(":")) {
+                        comments.push(frame);
+                        firstFrame.resolve();
+                        continue;
+                    }
+                    const dataLine = frame.split("\n").find((line) => line.startsWith("data: "));
+                    if (dataLine !== undefined) {
+                        events.push(JSON.parse(dataLine.slice(6)) as DaemonNotification);
+                        firstFrame.resolve();
+                    }
+                }
+            }
+        } catch (error) {
+            if (!controller.signal.aborted) throw error;
+        } finally {
+            closed.resolve();
+        }
+    })();
+    await firstFrame.promise;
     return {
-        failures,
-        events: async (): Promise<HookEvent[]> => (await readFile(output, "utf8")).trim().split("\n").map((line) => JSON.parse(line)),
+        events,
+        comments,
+        closed: closed.promise,
+        close: async () => {
+            controller.abort();
+            await reader;
+        },
     };
 };
 
-test("{§module-shutdown-order} command hooks receive real loop cancellation before observer closure", { timeout: 15_000 }, async (t) => {
+test("{§module-shutdown-order} {§http-host} SSE subscribers receive real loop cancellation before observer closure", { timeout: 15_000 }, async (t) => {
     const db = await openMigrated();
+    const http = await bindListener();
     const provider = new Mock({ contextWindow: viableWindow(), responses: [] });
     const entered = Promise.withResolvers<void>();
     provider.generate = async ({ signal }) => {
@@ -1284,35 +1313,35 @@ test("{§module-shutdown-order} command hooks receive real loop cancellation bef
             signal.addEventListener("abort", () => reject(signal.reason), { once: true });
         });
     };
-    const daemon = new Daemon({ db, provider });
+    const daemon = new Daemon({ db, provider, http });
     t.after(async () => {
         await daemon.stop();
+        await http.close();
         await db.close();
     });
-    const hooks = await captureHooks(t, daemon);
     await daemon.start();
-    const { workspaceId } = await daemon.createWorkspace({ name: "hooks-lifecycle" });
+    const stream = await openNotificationsStream(t, http.httpAddress().port, "?event=loop/terminated");
+    assert.ok(stream.comments.includes(": heartbeat"), "opening /notifications emits an immediate heartbeat comment");
+    const { workspaceId } = await daemon.createWorkspace({ name: "notifications-lifecycle" });
     const sessionId = await namedModelSession(daemon, workspaceId, "main");
     const { loopId } = await daemon.runLoop({ workspaceId, sessionId, prompt: "Wait for cancellation." });
     await entered.promise;
     await daemon.stop();
-    assert.deepEqual(hooks.failures, []);
-    const events = await hooks.events();
-    assert.equal(events.length, 1, "one cancellation, one command delivery");
-    assert.equal(events[0].hook_event_name, "Stop");
-    assert.equal(events[0].session_id, String(sessionId));
-    const terminal = events[0].plurnk as TerminalEvent;
-    assert.equal(terminal.workspaceId, workspaceId);
-    assert.equal(terminal.method, "loop/terminated");
-    assert.equal(terminal.params.sessionId, sessionId);
-    assert.equal(terminal.params.loopId, loopId);
-    assert.equal(terminal.params.result.status, 499);
+    await stream.closed;
+    assert.equal(stream.events.length, 1, "one cancellation delivered over SSE before stream closure");
+    const notification = stream.events[0];
+    assert.equal(notification.event, "loop/terminated");
+    assert.equal(notification.workspaceId, workspaceId);
+    assert.equal(notification.sessionId, sessionId);
+    assert.equal(notification.data.loopId, loopId);
+    assert.equal(notification.data.result.status, 499);
 });
 
 for (const outcome of ["success", "failure", "delegation"] as const) {
-    test(`{§hooks-event-projection} real ${outcome} events retain their full payload and owning coordinates`, { timeout: 20_000 }, async (t) => {
-    serverProposals(t, "accept");
+    test(`{§notifications} {§http-host} real ${outcome} events emit session/created and loop/terminated with full payloads`, { timeout: 20_000 }, async (t) => {
+        serverProposals(t, "accept");
         const db = await openMigrated();
+        const http = await bindListener();
         const provider = new Mock({ contextWindow: viableWindow() * 4, responses: (outcome === "delegation" ? [
             "await plurnk.work({\"target\":\"session://child\",\"prompt\":\"Complete the delegated work.\"});\n\nawait plurnk.wait({\"text\":\"Await the child.\"});",
             "await plurnk.done({\"text\":\"Child work completed.\"});",
@@ -1321,11 +1350,11 @@ for (const outcome of ["success", "failure", "delegation"] as const) {
         if (outcome === "failure") {
             provider.generate = async () => { throw new ProviderError("mock", "request_rejected", "Fixture request rejected."); };
         }
-        const daemon = new Daemon({ db, provider });
-        t.after(async () => { await daemon.stop(); await db.close(); });
-        const hooks = await captureHooks(t, daemon);
+        const daemon = new Daemon({ db, provider, http });
+        t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
         await daemon.start();
-        const { workspaceId } = await daemon.createWorkspace({ name: `hooks-${outcome}` });
+        const stream = await openNotificationsStream(t, http.httpAddress().port, "?event=session/created,loop/terminated");
+        const { workspaceId } = await daemon.createWorkspace({ name: `notifications-${outcome}` });
         const sessionId = await namedModelSession(daemon, workspaceId, "main");
         const done = Promise.withResolvers<void>();
         const published: TerminalEvent[] = [];
@@ -1337,32 +1366,43 @@ for (const outcome of ["success", "failure", "delegation"] as const) {
         const { loopId } = await daemon.runLoop({ workspaceId, sessionId, prompt: "Exercise lifecycle notifications." });
         await done.promise;
         await daemon.stop();
-        const projected = await hooks.events();
-        assert.ok(projected.every((event) => event.hook_event_name === "Stop" && event.session_id === String((event.plurnk as TerminalEvent).params.sessionId)));
-        const events = projected.map((event) => event.plurnk as TerminalEvent);
-        assert.deepEqual(hooks.failures, []);
-        assert.deepEqual(events, published, "the executable receives the same event evidence as an in-process subscriber");
-        assert.equal(events.length, outcome === "delegation" ? 2 : 1);
-        const parent = events.find((event) => event.params.sessionId === sessionId);
+        await stream.closed;
+        const createdEvents = stream.events.filter((e) => e.event === "session/created");
+        assert.equal(createdEvents.length, outcome === "delegation" ? 2 : 1);
+        assert.equal(createdEvents[0].workspaceId, workspaceId);
+        assert.equal(createdEvents[0].sessionId, sessionId);
+        assert.equal(createdEvents[0].data.name, "main");
+        if (outcome === "delegation") {
+            assert.equal(createdEvents[1].data.name, "child");
+            assert.equal(createdEvents[1].data.parentSessionId, sessionId);
+        }
+        const terminatedEvents = stream.events.filter((e) => e.event === "loop/terminated");
+        assert.deepEqual(
+            terminatedEvents.map((e) => ({ workspaceId: e.workspaceId, method: e.event, params: e.data })),
+            published,
+            "the SSE stream receives the same terminal event evidence as an in-process subscriber",
+        );
+        assert.equal(terminatedEvents.length, outcome === "delegation" ? 2 : 1);
+        const parent = terminatedEvents.find((event) => event.sessionId === sessionId);
         assert.ok(parent);
         assert.equal(parent.workspaceId, workspaceId);
-        assert.equal(parent.params.loopId, loopId);
-        assert.equal(parent.params.result.status, outcome === "failure" ? 400 : 200);
-        if (outcome === "failure") assert.equal(parent.params.result.problem?.detail, "Fixture request rejected.");
+        assert.equal(parent.data.loopId, loopId);
+        assert.equal(parent.data.result.status, outcome === "failure" ? 400 : 200);
+        if (outcome === "failure") assert.equal(parent.data.result.problem?.detail, "Fixture request rejected.");
         if (outcome === "delegation") {
-            const child = events.find((event) => event.params.sessionId !== sessionId);
+            const child = terminatedEvents.find((event) => event.sessionId !== sessionId);
             assert.ok(child);
             assert.equal(child.workspaceId, workspaceId);
-            assert.notEqual(child.params.loopId, loopId);
-            assert.equal(child.params.result.status, 200);
+            assert.notEqual(child.data.loopId, loopId);
+            assert.equal(child.data.result.status, 200);
         }
     });
 }
 
-for (const operation of ["read", "edit", "kill"]) test(`{§notifications} tool hooks bracket ${operation} dispatch, not fan-out rows or automatic observations`, { timeout: 20_000 }, async (t) => {
+for (const operation of ["read", "edit", "kill"]) test(`{§notifications} operation/event brackets ${operation} dispatch, not fan-out rows or automatic observations`, { timeout: 20_000 }, async (t) => {
     serverProposals(t, "accept");
     const db = await openMigrated();
-    const root = await mkdtemp(join(tmpdir(), "plurnk-hook-project-"));
+    const root = await mkdtemp(join(tmpdir(), "plurnk-notify-project-"));
     const opCall = operation === "read"
         ? 'await plurnk.read({"path":"workspace:///*.txt"});'
         : operation === "edit"
@@ -1374,43 +1414,45 @@ for (const operation of ["read", "edit", "kill"]) test(`{§notifications} tool h
     ] });
     const daemon = new Daemon({ db, provider });
     t.after(async () => { await daemon.stop(); await db.close(); await rm(root, { recursive: true, force: true }); });
-    const hooks = await captureHooks(t, daemon, "PreToolUse,PostToolUse,PostToolUseFailure,Stop");
     await daemon.start();
-    const { workspaceId } = await daemon.createWorkspace({ name: "hooks-tools", projectRoot: root });
+    const { workspaceId } = await daemon.createWorkspace({ name: "notify-tools", projectRoot: root });
     const sessionId = await namedModelSession(daemon, workspaceId, "main");
+    const captured: DaemonNotification[] = [];
+    daemon.subscribeToEvents((_scope, _method, _params, notification) => {
+        captured.push(JSON.parse(JSON.stringify(notification)) as DaemonNotification);
+    }, { events: ["operation/event", "loop/terminated"], sessionId });
     const done = Promise.withResolvers<void>();
     daemon.subscribeToEvents((_scope, method) => { if (method === "loop/terminated") done.resolve(); });
     await daemon.runLoop({ workspaceId, sessionId, prompt: "Write and inspect the entries." });
     await done.promise;
     await daemon.stop();
-    assert.deepEqual(hooks.failures, []);
-    const events = await hooks.events();
-    const tools = events.filter(({ tool_use_id }) => tool_use_id !== undefined);
-    assert.deepEqual(tools.map(({ hook_event_name, tool_name }) => [hook_event_name, tool_name]), [
-        ["PreToolUse", "edit"], ["PostToolUse", "edit"],
-        ["PreToolUse", "edit"], ["PostToolUse", "edit"],
-        ["PreToolUse", operation], ["PostToolUse", operation],
-        ["PreToolUse", "read"], ["PostToolUseFailure", "read"],
-        ["PreToolUse", "done"], ["PostToolUse", "done"],
+    const tools = captured.filter((n): n is Extract<DaemonNotification, { event: "operation/event" }> => n.event === "operation/event" && n.data.origin === "model");
+    assert.deepEqual(tools.map(({ data }) => [data.phase, data.statement.op]), [
+        ["started", "edit"], ["settled", "edit"],
+        ["started", "edit"], ["settled", "edit"],
+        ["started", operation], ["settled", operation],
+        ["started", "read"], ["settled", "read"],
+        ["started", "done"], ["settled", "done"],
     ]);
     for (let index = 0; index < tools.length; index += 2) {
         const start = tools[index];
         const settled = tools[index + 1];
-        assert.equal(start.tool_use_id, settled.tool_use_id);
-        assert.equal(start.cwd, root);
-        assert.equal(start.session_id, String(sessionId));
-        assert.equal(start.plurnk.workspaceId, workspaceId);
-        assert.deepEqual(start.tool_input, settled.tool_input);
-        assert.equal((start.plurnk.params as ApplicationOperationEvent).phase, "started");
-        assert.equal((settled.plurnk.params as ApplicationOperationEvent).phase, "settled");
-        assert.deepEqual(settled.tool_response, (settled.plurnk.params as ApplicationOperationEvent).result);
-        assert.equal(Object.hasOwn(settled.tool_response!, "commandsExecuted"), false, "internal dispatch counts do not enter hook payloads");
-        assert.equal(Object.hasOwn(settled.tool_response!, "commandsOmitted"), false);
+        assert.equal(start.data.turnId, settled.data.turnId);
+        assert.equal(start.data.sequence, settled.data.sequence);
+        assert.equal(start.data.projectRoot, root);
+        assert.equal(start.sessionId, sessionId);
+        assert.equal(start.workspaceId, workspaceId);
+        assert.deepEqual(start.data.statement, settled.data.statement);
+        assert.equal(start.data.phase, "started");
+        assert.equal(settled.data.phase, "settled");
+        assert.ok(settled.data.result !== undefined);
+        assert.equal(Object.hasOwn(settled.data.result, "commandsExecuted"), false, "internal dispatch counts do not enter operation payloads");
+        assert.equal(Object.hasOwn(settled.data.result, "commandsOmitted"), false);
     }
-    assert.equal(new Set(tools.filter(({ hook_event_name }) => hook_event_name === "PreToolUse").map(({ tool_use_id }) => tool_use_id)).size, 5);
-    assert.equal((tools[5].tool_response as { rowsWritten: number }).rowsWritten, 2, "one post for the authored fan-out, two durable operations");
-    assert.equal((tools[7].tool_response as { status: number }).status, 404);
-    assert.equal(events.at(-1)!.hook_event_name, "Stop", "the terminal event follows all settled dispatches");
+    assert.equal(new Set(tools.filter(({ data }) => data.phase === "started").map(({ data }) => `${data.turnId}:${data.sequence}`)).size, 5);
+    assert.equal((tools[5].data.result as unknown as { rowsWritten: number }).rowsWritten, 2, "one settlement for the authored fan-out, two durable operations");
+    assert.equal(tools[7].data.result?.status, 404);
+    assert.equal(captured.at(-1)?.event, "loop/terminated", "the terminal event follows all settled dispatches");
 });
 
 test("{§notifications} concurrent BARE starts precede inference and correlate with ordered settlement", { timeout: 20_000 }, async (t) => {
@@ -1432,32 +1474,37 @@ test("{§notifications} concurrent BARE starts precede inference and correlate w
         assert.equal(sequence.filter((item) => item === "started").length, 2, "both starts precede concurrent provider calls");
         return isolated.generate(args);
     };
-    const hooks = await captureHooks(t, daemon, "PreToolUse,PostToolUse");
-    daemon.subscribeToEvents((_scope, method, params) => {
-        if (method === "operation/event" && (params as ApplicationOperationEvent).statement.op === "bare") sequence.push((params as ApplicationOperationEvent).phase);
-    });
+    const bareEvents: ApplicationOperationEvent[] = [];
+    daemon.subscribeToEvents((_scope, _method, params) => {
+        const event = params as ApplicationOperationEvent;
+        if (event.statement.op === "bare") {
+            sequence.push(event.phase);
+            bareEvents.push(event);
+        }
+    }, { events: ["operation/event"] });
     await daemon.start();
-    const { workspaceId } = await daemon.createWorkspace({ name: "hooks-bare" });
+    const { workspaceId } = await daemon.createWorkspace({ name: "notify-bare" });
     const sessionId = await namedModelSession(daemon, workspaceId, "main");
     const done = Promise.withResolvers<void>();
     daemon.subscribeToEvents((_scope, method) => { if (method === "loop/terminated") done.resolve(); });
     await daemon.runLoop({ workspaceId, sessionId, prompt: "Run isolated questions." });
     await done.promise;
     await daemon.stop();
-    assert.deepEqual(hooks.failures, []);
     assert.deepEqual(sequence, ["started", "started", "inference", "inference", "settled", "settled"]);
-    const events = (await hooks.events()).filter(({ tool_name }) => tool_name === "bare");
-    assert.deepEqual(events.map(({ hook_event_name }) => hook_event_name), ["PreToolUse", "PreToolUse", "PostToolUse", "PostToolUse"]);
-    assert.deepEqual(events.slice(0, 2).map(({ tool_use_id }) => tool_use_id), events.slice(2).map(({ tool_use_id }) => tool_use_id));
-    assert.notEqual(events[0].tool_use_id, events[1].tool_use_id);
+    assert.deepEqual(bareEvents.map(({ phase }) => phase), ["started", "started", "settled", "settled"]);
+    assert.deepEqual(
+        bareEvents.slice(0, 2).map(({ turnId, sequence: seq }) => `${turnId}:${seq}`),
+        bareEvents.slice(2).map(({ turnId, sequence: seq }) => `${turnId}:${seq}`),
+    );
+    assert.notEqual(bareEvents[0].sequence, bareEvents[1].sequence);
 });
 
 for (const decision of ["accept", "reject"] as const) {
-    test(`{§hooks-event-projection} a ${decision} proposal settles once; executor dispatch is not stream completion`, { timeout: 20_000 }, async (t) => {
+    test(`{§notifications} a ${decision} proposal settles once; executor dispatch is not stream completion`, { timeout: 20_000 }, async (t) => {
         const db = await openMigrated();
-        const root = await mkdtemp(join(tmpdir(), "plurnk-hook-exec-"));
+        const root = await mkdtemp(join(tmpdir(), "plurnk-notify-exec-"));
         const release = join(root, "release");
-        const command = `node -e 'const fs = require("node:fs"); const timer = setInterval(() => { if (fs.existsSync(process.argv[1])) { console.log("hook-stream-finished"); clearInterval(timer); } }, 10);' '${release}'`;
+        const command = `node -e 'const fs = require("node:fs"); const timer = setInterval(() => { if (fs.existsSync(process.argv[1])) { console.log("notify-stream-finished"); clearInterval(timer); } }, 10);' '${release}'`;
         const provider = new Mock({ contextWindow: viableWindow() * 4, responses: [
             makeMockResponse(`await plurnk.sh(${JSON.stringify({ command })});
 
@@ -1466,25 +1513,32 @@ await plurnk.wait({"text":"Await the command."});`),
         ] });
         const daemon = new Daemon({ db, provider });
         t.after(async () => { await daemon.stop(); await db.close(); await rm(root, { recursive: true, force: true }); });
-        const hooks = await captureHooks(t, daemon, "PreToolUse,PostToolUse,PostToolUseFailure,PermissionRequest,Stop");
         const proposed = Promise.withResolvers<ProposalProjection>();
         const dispatched = Promise.withResolvers<ApplicationOperationEvent>();
         const done = Promise.withResolvers<void>();
         let concluded = false;
         const operations: ApplicationOperationEvent[] = [];
+        const timeline: string[] = [];
         daemon.subscribeToEvents((_scope, method, params) => {
-            if (method === "loop/proposal") proposed.resolve(params as ProposalProjection);
+            if (method === "loop/proposal") {
+                timeline.push("proposal");
+                proposed.resolve(params as ProposalProjection);
+            }
             if (method === "operation/event") {
                 const event = params as ApplicationOperationEvent;
                 if (!("runtime" in event.statement) || event.statement.runtime !== "sh") return;
                 operations.push(event);
+                timeline.push(`sh:${event.phase}:${event.result?.status ?? "pending"}`);
                 if (event.phase === "settled") dispatched.resolve(event);
             }
             if (method === "stream/concluded" && (params as { target?: string }).target?.startsWith("sh://")) concluded = true;
-            if (method === "loop/terminated") done.resolve();
+            if (method === "loop/terminated") {
+                timeline.push("terminated");
+                done.resolve();
+            }
         });
         await daemon.start();
-        const { workspaceId } = await daemon.createWorkspace({ name: `hooks-${decision}-exec`, projectRoot: root });
+        const { workspaceId } = await daemon.createWorkspace({ name: `notify-${decision}-exec`, projectRoot: root });
         const sessionId = await namedModelSession(daemon, workspaceId, "main");
         await ownSession(db, workspaceId, sessionId);
         await daemon.runLoop({ workspaceId, sessionId, prompt: "Execute after review." });
@@ -1500,63 +1554,111 @@ await plurnk.wait({"text":"Await the command."});`),
         if (decision === "accept") await writeFile(release, "ready");
         await done.promise;
         await daemon.stop();
-        assert.deepEqual(hooks.failures, []);
-        const events = await hooks.events();
-        const tool = events.filter(({ tool_name }) => tool_name === "sh");
-        assert.deepEqual(tool.map(({ hook_event_name }) => hook_event_name), ["PreToolUse", "PermissionRequest", decision === "accept" ? "PostToolUse" : "PostToolUseFailure"]);
-        assert.equal(tool[0].tool_use_id, tool[2].tool_use_id);
-        assert.deepEqual(tool[2].tool_response, settled.result);
-        assert.equal(events.filter(({ hook_event_name }) => hook_event_name === "Stop").length, 1);
+        assert.deepEqual(timeline, [
+            "sh:started:pending",
+            "proposal",
+            `sh:settled:${decision === "accept" ? 200 : 400}`,
+            "terminated",
+        ]);
+        assert.equal(operations[0].turnId, operations[1].turnId);
+        assert.equal(operations[0].sequence, operations[1].sequence);
         assert.equal(concluded, decision === "accept");
     });
 }
 
-test("{§hooks-module} the discovered hooks module delivers once the operator configures it", { timeout: 15_000 }, async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "plurnk-hooks-discovered-"));
-    t.after(() => rm(root, { recursive: true, force: true }));
-    const script = join(root, "capture.mjs");
-    const output = join(root, "events.jsonl");
-    await writeFile(script, [
-        'import { appendFile } from "node:fs/promises";',
-        'let body = "";',
-        'process.stdin.setEncoding("utf8");',
-        'for await (const chunk of process.stdin) body += chunk;',
-        'await appendFile(process.argv[2], body);',
-    ].join("\n"));
-    const settings: Record<string, string> = {
-        PLURNK_HOOKS_COMMAND: process.execPath,
-        PLURNK_HOOKS_ARGS: JSON.stringify([script, output]),
-        PLURNK_HOOKS_EVENTS: "Stop",
-        PLURNK_HOOKS_TIMEOUT_MS: "5000",
-    };
-    const prior = new Map(Object.keys(settings).map((key) => [key, process.env[key]]));
-    Object.assign(process.env, settings);
-    t.after(() => { for (const [key, value] of prior) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+test("{§http-host} {§application-session-observation} GET /notifications enforces bearer admission, filters, HEAD/405, and revocation teardown", { timeout: 15_000 }, async (t) => {
+    const priorAuth = process.env.PLURNK_AUTH;
+    const priorSecret = process.env.PLURNK_SECRET;
+    process.env.PLURNK_AUTH = "1";
+    process.env.PLURNK_SECRET = "notifications-test-secret-0123456789abcdef";
+    t.after(() => {
+        if (priorAuth === undefined) delete process.env.PLURNK_AUTH;
+        else process.env.PLURNK_AUTH = priorAuth;
+        if (priorSecret === undefined) delete process.env.PLURNK_SECRET;
+        else process.env.PLURNK_SECRET = priorSecret;
+    });
     const db = await openMigrated();
-    const provider = new Mock({ contextWindow: viableWindow(), responses: [] });
-    const entered = Promise.withResolvers<void>();
-    provider.generate = async ({ signal }) => {
-        assert.ok(signal);
-        entered.resolve();
-        return new Promise((_resolve, reject) => {
-            signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-        });
-    };
-    // The installed package set, where the service finds @plurnk/plurnk-hooks by its declaration.
-    const daemon = new Daemon({ db, provider, nodeModulesPath: resolve(import.meta.dirname, "../../..", "node_modules") });
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider: null, http });
+    daemon.registerModule(AuthModule.create({ auth: true }), "@plurnk/plurnk-auth");
     t.after(async () => {
         await daemon.stop();
+        await http.close();
         await db.close();
     });
     await daemon.start();
-    const { workspaceId } = await daemon.createWorkspace({ name: "hooks-discovered" });
-    const sessionId = await namedModelSession(daemon, workspaceId, "main");
-    await daemon.runLoop({ workspaceId, sessionId, prompt: "Wait for cancellation." });
-    await entered.promise;
-    await daemon.stop();
-    const events = (await readFile(output, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as HookEvent);
-    assert.deepEqual(events.map(({ hook_event_name }) => hook_event_name), ["Stop"], "exactly one module delivered: the discovered one");
-    assert.equal(events[0].session_id, String(sessionId));
+    const { port } = http.httpAddress();
+    const baseUrl = `http://127.0.0.1:${port}/notifications`;
+
+    const unauth = await fetch(baseUrl);
+    assert.equal(unauth.status, 401);
+    assert.match(unauth.headers.get("www-authenticate") ?? "", /Bearer/u);
+
+    const mcpOnly = daemon.credentials.issue({
+        kind: "access",
+        subject: "operator",
+        clientId: "operator",
+        scopes: ["mcp"],
+        family: "mcp-family",
+        ttlMs: 300_000,
+    });
+    const forbidden = await fetch(baseUrl, { headers: { authorization: `Bearer ${mcpOnly.token}` } });
+    assert.equal(forbidden.status, 403);
+
+    const family = "acp-family";
+    const issued = daemon.credentials.issue({
+        kind: "access",
+        subject: "operator",
+        clientId: "operator",
+        scopes: ["acp"],
+        family,
+        ttlMs: 300_000,
+    });
+    const postRes = await fetch(baseUrl, {
+        method: "POST",
+        headers: { authorization: `Bearer ${issued.token}` },
+    });
+    assert.equal(postRes.status, 405);
+    assert.equal(postRes.headers.get("allow"), "GET, HEAD");
+
+    const headRes = await fetch(baseUrl, {
+        method: "HEAD",
+        headers: { authorization: `Bearer ${issued.token}` },
+    });
+    assert.equal(headRes.status, 200);
+    assert.equal(headRes.headers.get("content-type"), "text/event-stream; charset=utf-8");
+    assert.equal(await headRes.text(), "");
+
+    const badEvent = await fetch(`${baseUrl}?event=not/an-event`, {
+        headers: { authorization: `Bearer ${issued.token}` },
+    });
+    assert.equal(badEvent.status, 400);
+
+    const badSession = await fetch(`${baseUrl}?session=named-only`, {
+        headers: { authorization: `Bearer ${issued.token}` },
+    });
+    assert.equal(badSession.status, 400);
+
+    const { workspaceId: wsA } = await daemon.createWorkspace({ name: "filter-alpha" });
+    const { workspaceId: wsB } = await daemon.createWorkspace({ name: "filter-beta" });
+    const stream = await openNotificationsStream(
+        t,
+        port,
+        `?access_token=${encodeURIComponent(issued.token)}&event=session/created&workspace=filter-alpha`,
+    );
+    await namedModelSession(daemon, wsB, "ignored-session");
+    const alphaSessionId = await namedModelSession(daemon, wsA, "matched-session");
+    const deadline = Date.now() + 5_000;
+    while (stream.events.length === 0 && Date.now() < deadline) {
+        await new Promise((done) => setTimeout(done, 20));
+    }
+    assert.equal(stream.events.length, 1);
+    assert.equal(stream.events[0].event, "session/created");
+    assert.equal(stream.events[0].workspaceId, wsA);
+    assert.equal(stream.events[0].sessionId, alphaSessionId);
+
+    daemon.credentials.revokeFamily(family);
+    await stream.closed;
 });
 });
 

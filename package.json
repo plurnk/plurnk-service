@@ -39,7 +39,6 @@
         "plurnk-execs",
         "plurnk-execs-common",
         "plurnk-mcp",
-        "plurnk-hooks",
         "plurnk-otel",
         "plurnk-providers",
         "plurnk-digest",
