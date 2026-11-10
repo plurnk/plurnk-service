@@ -133,7 +133,7 @@
         "@plurnk/plurnk-mimetypes-text-markdown": "2.0.7",
         "@plurnk/plurnk-mimetypes-text-plain": "2.0.3",
         "@plurnk/plurnk-models": "4.0.3",
-        "@plurnk/plurnk-modules": "4.1.1",
+        "@plurnk/plurnk-modules": "4.2.0",
         "@plurnk/plurnk-providers": "6.1.1",
         "@plurnk/plurnk-schemes": "3.3.4",
         "@plurnk/plurnk-schemes-http": "2.0.8",

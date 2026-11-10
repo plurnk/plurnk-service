@@ -4,7 +4,7 @@
 
 ### Major Changes
 
-- Canonicalize Heredoc Code Mode (`<<<EOF`) across parser, serializer, teaching, and contracts, unify operation payloads on `{ text }` while retiring stream `metadata` and `lifetime` fields, remove `PLURNK_SERVICE_PROMPT_PREVIEW`, `PLURNK_SERVICE_LOG_BUDGET_SUMMARY`, `PLURNK_SERVICE_REASONING_ROWS`, `PLURNK_SERVICE_REASONING_TRAILING_LINES`, `PLURNK_SERVICE_COLLECT_PACKET_ITEMS`, `PLURNK_SERVICE_COLLECT_DERIVATIONS`, `PLURNK_SERVICE_COLLECT_CONTENTS`, `PLURNK_SERVICE_RECAP`, `PLURNK_SERVICE_RECAP_LINE_<alias>`, and `PLURNK_SERVICE_PACKET_INJECT`, add `PLURNK_AUTH_CODE_TTL_SEC`, OAuth 2.1 `requested_subject` token exchange, and principal-scoped ACP v2 live streams, emit ACP v2 `_plurnk_telemetry`, windowed session resume, multi-select `question` options, and paginated `log.list` / `log.read` (`openOnly`, `sender`, `recipient`, `offset`), extract EXIF headers in `@plurnk/plurnk-mimetypes-image`, and lower the packet token floor to `3,002` (#1412 #1419 #1420 #1421 #1422 #1423 #1424 #1425 #1426 #1427 #1428 #1429 #1430 #1431 #1432 #1433 #1434 #1435 #1436 #1437 #1438 #1439 #1441).
+- Canonicalize Heredoc Code Mode (`<<<EOF`) across parser, serializer, teaching, and contracts, unify operation payloads on `{ text }` while retiring stream `metadata` and `lifetime` fields, remove `PLURNK_SERVICE_PROMPT_PREVIEW`, `PLURNK_SERVICE_LOG_BUDGET_SUMMARY`, `PLURNK_SERVICE_REASONING_ROWS`, `PLURNK_SERVICE_REASONING_TRAILING_LINES`, `PLURNK_SERVICE_COLLECT_PACKET_ITEMS`, `PLURNK_SERVICE_COLLECT_DERIVATIONS`, `PLURNK_SERVICE_COLLECT_CONTENTS`, `PLURNK_SERVICE_RECAP`, `PLURNK_SERVICE_RECAP_LINE_<alias>`, and `PLURNK_SERVICE_PACKET_INJECT`, add `PLURNK_AUTH_CODE_TTL_SEC`, OAuth 2.1 `requested_subject` token exchange, and principal-scoped ACP v2 live streams, emit ACP v2 `_plurnk_telemetry`, windowed session resume, multi-select `question` options, and paginated `log.list` / `log.read` (`openOnly`, `sender`, `recipient`, `offset`), add the `GET /notifications` filtered SSE endpoint and `PlurnkDaemonModule.subscribe(context)` lifecycle hook, extract EXIF headers in `@plurnk/plurnk-mimetypes-image`, and lower the packet token floor to `3,002` (#1412 #1419 #1420 #1421 #1422 #1423 #1424 #1425 #1426 #1427 #1428 #1429 #1430 #1431 #1432 #1433 #1434 #1435 #1436 #1437 #1438 #1439 #1440 #1441).
   
   ### Operator Migration Guide (5.x to 6.0.0)
   
@@ -17,6 +17,7 @@
 
 - Updated dependencies
   - @plurnk/plurnk-contracts@7.4.0
+  - @plurnk/plurnk-modules@4.2.0
   - @plurnk/plurnk-parser@4.5.0
   - @plurnk/plurnk-acp@1.5.0
   - @plurnk/plurnk-auth@1.1.0

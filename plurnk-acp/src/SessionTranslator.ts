@@ -1058,6 +1058,10 @@ export default class SessionTranslator {
             readonly subject?: string | null;
         } = {},
     ): ReplayResult {
+        translator.#streamedReasoningTurns.clear();
+        translator.#todoLoopSeq = null;
+        translator.#todoHistory = [];
+        translator.#planIdByCoordinate.clear();
         return replaySessionHistory(translator, rows, inbox, options);
     }
 }
