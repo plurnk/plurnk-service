@@ -19,6 +19,7 @@ description: Configure, customize, extend, and integrate Plurnk — settings (.e
 | Agent Skills, MCP servers, environment variables, and schedules | `mcp:///plurnk.md`, `mcp:///plurnk/skills.json`, `mcp:///plurnk/mcp.json`, `mcp:///plurnk/env.json`, `mcp:///plurnk/schedule.json` |
 | Which project files you can see, and why a file is missing | `mcp:///plurnk/members.json` |
 | Plugins, extensions, clients and notifications: what each reaches and how it loads | [Extending Plurnk](extensibility.md) |
+| Synthesizing integrations, bridges, webhooks, schedules, memory, and skills | [Capability recipes](recipes.md) |
 | Each installed package's contract and type declarations | `skill://plurnk/packages/<package name>/SPEC.md`, `skill://plurnk/packages/<package name>/dist/*.d.ts` |
 | Session hierarchy, messaging, and delegation | [Session reference](session.md), [Delegation and messages](delegation.md) |
 | Text, structural, full-text, and symbol patterns | [Patterns](pattern.md) |

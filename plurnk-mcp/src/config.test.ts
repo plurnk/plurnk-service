@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parseEnv } from "node:util";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import { PluginRoots, PLUGIN_SCHEMA, MCP_SCHEMA } from "@plurnk/plurnk-agent-plugins";
 import type { Notice } from "@plurnk/plurnk-contracts";
@@ -215,6 +217,11 @@ test("{§mcp-configuration} explicit HTTP endpoints and registries need not be l
     for (const url of ["https://", "file:///tmp/registry", "ftp://registry.example/"]) {
         assert.throws(() => registrySettings({ ...floor, PLURNK_MCP_REGISTRY_URL: url, PLURNK_MCP_REGISTRY_LIMIT: "10" }), /PLURNK_MCP_REGISTRY_URL must be an HTTP or HTTPS URL/u);
     }
+    const shipped = parseEnv(readFileSync(new URL("../.env.defaults", import.meta.url), "utf8"));
+    assert.deepEqual(registrySettings(shipped), {
+        url: "https://registry.modelcontextprotocol.io",
+        limit: 20,
+    }, "shipped .env.defaults enables official MCP Registry discovery out of the box");
 });
 
 test("{§mcp-configuration} timeouts are required positive integers owned by .env.defaults", () => {

@@ -55,6 +55,8 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             },
         },
         details: [
+            "Each note records an immutable `note://<session>/<loop>/<turn>/<item>` source and an active `log:///<loop>/<turn>/<item>/note` row; `await plurnk.kill({ path: \"log:///<loop>/<turn>/<item>\" })` retires the active log row.",
+            "",
             "## Examples",
             "",
             "await plurnk.note({ text: \"a finding or conclusion and its evidence\" })",
@@ -218,7 +220,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             },
         },
         details: [
-            "Log item paths nest: `log:///1/2/3/read` is `loop/turn/item/op`.",
+            "Log item paths nest: `log:///1/2/3` (or `log:///1/2/3/read`) is `loop/turn/item[/op]`. Turn-source archives (`ops://`, `reasoning://`, `note://`) are immutable; retiring active log rows uses `log:///...`.",
             "",
             "## Examples",
             "",

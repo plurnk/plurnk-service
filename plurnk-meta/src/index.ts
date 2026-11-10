@@ -99,7 +99,10 @@ export { outboundFetch, syncAmbientHttp } from "./outbound-http.ts";
 export const TEACHING_CORPUS = Object.freeze({
     policy: "POLICY.md",
     skill: "skills/plurnk/SKILL.md",
-    skillChapters: Object.freeze({ extensibility: "skills/plurnk/extensibility.md" } as const),
+    skillChapters: Object.freeze({
+        extensibility: "skills/plurnk/extensibility.md",
+        recipes: "skills/plurnk/recipes.md",
+    } as const),
     docs: REFERENCE_TEACHING,
 } as const);
 

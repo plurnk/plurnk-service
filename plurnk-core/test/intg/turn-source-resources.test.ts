@@ -153,6 +153,12 @@ test("{§turn-source-resources}: every producer reads the same named sources wit
                     const result = await dispatch(operation);
                     assert.equal(result.status, 403, `${origin}: ${operation}`);
                     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
+                    if (origin === "model" && operation.startsWith("await plurnk.kill(")) {
+                        assert.equal(
+                            result.problem?.recovery,
+                            "Turn-source schemes are immutable; await plurnk.kill({ path: \"log:///<loop>/<turn>/<sequence>\" }) retires an active log entry.",
+                        );
+                    }
                 }
                 const unqualified = await dispatch(`await plurnk.read({"path":"${kind}:///1/${sourceTurn.sequence}"});`);
                 assert.equal(unqualified.status, 400);

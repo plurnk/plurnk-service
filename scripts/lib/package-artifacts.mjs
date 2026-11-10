@@ -33,7 +33,7 @@ const projections = new Map([
         ],
     }],
     ["plurnk-meta", {
-        required: ["skills/plurnk/SKILL.md", "skills/plurnk/extensibility.md", "docs/session.md", "docs/pattern.md", "docs/delegation.md"],
+        required: ["skills/plurnk/SKILL.md", "skills/plurnk/extensibility.md", "skills/plurnk/recipes.md", "docs/session.md", "docs/pattern.md", "docs/delegation.md"],
         forbiddenPrefixes: [],
     }],
     ["plurnk-providers", {
