@@ -290,6 +290,22 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.ok(Array.isArray(resumedDescendants) && resumedDescendants.length === 1);
                 assert.equal(`1#${resumedDescendants[0]?.name ?? ""}`, forked.sessionId);
 
+                const registeredOwners: Array<{ interactive?: boolean; tools: readonly string[] }> = [];
+                const origRegister = h.port.registerSessionOwner;
+                h.port.registerSessionOwner = async (workspaceId, owner) => {
+                    registeredOwners.push({ interactive: owner.interactive, tools: owner.tools });
+                    return origRegister(workspaceId, owner);
+                };
+                await ctx.request(methods.agent.session.resume, {
+                    sessionId: "1#alice",
+                    cwd: "/workspace/alpha",
+                    _meta: { plurnk: { interactive: false, tools: [] } },
+                });
+                assert.deepEqual(registeredOwners.at(-1), {
+                    interactive: false,
+                    tools: ["request_approval"],
+                });
+
                 const listedBefore = await ctx.request(methods.agent.session.list, {
                     cwd: "/workspace/alpha",
                 });
