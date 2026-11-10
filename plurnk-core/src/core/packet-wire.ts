@@ -10,7 +10,7 @@
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
 import type { ChatContentPart, ChatMessage } from "@plurnk/plurnk-providers";
 import { isRecord, isSafeInteger, type Notice } from "@plurnk/plurnk-contracts";
-import GitState, { type GitStatus } from "./git-state.ts";
+import type { GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import LogVisibility from "./LogVisibility.ts";
@@ -65,11 +65,8 @@ export interface OpenWorkPointer {
     readonly source?: string;
     readonly detail?: string;
 }
-// {§packet-inject} The working tree as the packet renders it: the counts, and the paths a snapshot carries with
-// their XY status and, for an untracked path, its membership truth.
-export type GitStatusView = GitStatus & {
-    readonly files?: readonly { readonly path: string; readonly status: string; readonly member?: string | null }[];
-};
+// {§packet-inject} The working tree as the packet renders it: the branch and status counts.
+export type GitStatusView = GitStatus;
 
 // Loose view of a section re-parsed from `turns.packet` JSON (the digest path).
 interface SectionView { name?: unknown; slot?: unknown; header?: unknown; content?: unknown; weight?: unknown }
@@ -183,10 +180,18 @@ export default class PacketWire {
         return pointers.length === 0 ? "[]" : `[${pointers.join(",\n")}]`;
     }
 
-    // The git section content: the working-tree summary. "" when absent.
+    // The git section content: the working-tree counts JSON. "" when absent.
     static renderGit(git: GitStatusView | null): string {
-        const status = git === null ? "" : PacketWire.#renderGitState(git);
-        return status.length === 0 ? "" : `> [!NOTE]\n${status.split("\n").map((line) => `> ${line}`).join("\n")}`;
+        if (git === null) return "";
+        return JSON.stringify({
+            branch: git.branch,
+            ...(git.unborn === true ? { unborn: true } : {}),
+            ahead: git.ahead,
+            behind: git.behind,
+            staged: git.staged,
+            unstaged: git.unstaged,
+            untracked: git.untracked,
+        });
     }
 
     // The log section's content: the model's curated rows as Markdown-framed records ({§log-wire-format}).
@@ -486,32 +491,5 @@ export default class PacketWire {
         if (attachment.pages !== undefined) facts.push(`${attachment.pages} pages`);
         if (attachment.duration !== undefined) facts.push(`${attachment.duration} s`);
         return `log:///${attachment.coordinate}/read (${attachment.path}) (${facts.join(", ")}): the bytes of that read row, retained until it is killed. Not a new arrival.`;
-    }
-
-    // {§packet-inject}: the count line, then one bounded line per non-empty class. Untracked paths are
-    // named because they are NOT members ({§membership}) — the user admits them.
-    static #renderGitState(git: GitStatusView): string {
-        const sync = git.ahead > 0 || git.behind > 0 ? ` (↑${git.ahead} ↓${git.behind})` : "";
-        const position = git.branch === null ? "detached HEAD" : `branch \`${git.branch}\`${git.unborn ? " (no commits)" : ""}`;
-        const head = `${position}${sync} — ${git.staged} staged, ${git.unstaged} unstaged, ${git.untracked} untracked`;
-        const files = git.files ?? [];
-        const path = (p: string): string => `\`${p}\``;
-        const untracked = files.filter((f) => f.status === "??");
-        const classes: [string, string[]][] = [
-            ["staged", files.filter((f) => f.status !== "??" && f.status[0] !== " ").map((f) => path(f.path))],
-            ["unstaged", files.filter((f) => f.status !== "??" && f.status[1] !== " ").map((f) => path(f.path))],
-            // An untracked file a definition or a creation record admits is a member; the rest are dark.
-            ["untracked members", untracked.filter((f) => f.member != null).map((f) => `${path(f.path)} (${f.member})`)],
-            ["untracked (not members)", untracked.filter((f) => f.member == null).map((f) => path(f.path))],
-        ];
-        const lines = classes
-            .filter(([, items]) => items.length > 0)
-            .map(([label, items]) => {
-                const paths = GitState.renderedPaths();
-                const shown = items.slice(0, paths).join(" · ");
-                const more = items.length > paths ? ` (+${items.length - paths} more)` : "";
-                return `${label}: ${shown}${more}`;
-            });
-        return [head, ...lines].join("\n");
     }
 }

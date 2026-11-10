@@ -397,7 +397,7 @@ ${next}`),
         const text = userText(provider.received[1]);
         assert.match(text, /"status":413/u, "the receipt for the READ that did not fit is visible to the model");
         assert.doesNotMatch(text, /evidence evidence/u, "no part of a body that did not fit is shown");
-        const gauge = /^## Context\n(.*)$/mu.exec(text)?.[1] ?? "";
+        const gauge = /^## Log Curation\n(.*)$/mu.exec(text)?.[1] ?? "";
         assert.match(gauge, /^\{"tokens":/u, "the gauge rides the request");
         assert.doesNotMatch(gauge, /\[!WARNING\]|YOU MUST/u, "no mandate rides the gauge ({§tokenomics})");
         const renewed = nativeParts(provider.received[3]);

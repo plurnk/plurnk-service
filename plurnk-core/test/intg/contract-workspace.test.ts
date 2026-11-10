@@ -1455,15 +1455,14 @@ test("{§packet-inject}: unborn and detached heads are not invented branch names
         await rootWorkspace(db, workspaceId, root);
         const unborn = await GitState.status(db, workspaceId, undefined);
         assert.equal(unborn?.branch, "main");
-        assert.match(PacketWire.renderGit(unborn), /branch `main` \(no commits\)/);
+        assert.equal(PacketWire.renderGit(unborn), '{"branch":"main","unborn":true,"ahead":0,"behind":0,"staged":0,"unstaged":0,"untracked":0}');
 
         await git("-c", "user.name=fixture", "-c", "user.email=fixture@plurnk.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-q", "--allow-empty", "-m", "seed");
-        assert.match(PacketWire.renderGit(await GitState.status(db, workspaceId, undefined)), /branch `main` —/);
+        assert.equal(PacketWire.renderGit(await GitState.status(db, workspaceId, undefined)), '{"branch":"main","ahead":0,"behind":0,"staged":0,"unstaged":0,"untracked":0}');
         await git("checkout", "--detach", "-q");
         const detached = await GitState.status(db, workspaceId, undefined);
         assert.equal(detached?.branch, null);
-        assert.match(PacketWire.renderGit(detached), /detached HEAD —/);
-        assert.doesNotMatch(PacketWire.renderGit(detached), /branch/);
+        assert.equal(PacketWire.renderGit(detached), '{"branch":null,"ahead":0,"behind":0,"staged":0,"unstaged":0,"untracked":0}');
     } finally {
         if (orig === undefined) delete process.env.PLURNK_SERVICE_GIT_ALLOWED;
         else process.env.PLURNK_SERVICE_GIT_ALLOWED = orig;
@@ -1534,7 +1533,7 @@ test("{§operator-config-workspace-settings} GitState.status reads the working t
             [
                 { path: "staged.txt", status: "A " },
                 { path: "tracked.md", status: " M" },
-                { path: "untracked.txt", status: "??", member: null },
+                { path: "untracked.txt", status: "??" },
             ],
             "per-path metadata preserves both porcelain coordinates instead of collapsing staged and unstaged M",
         );
@@ -1587,7 +1586,7 @@ test("{§packet-inject}: tracking, renames, conflicts, and NUL-safe paths surviv
         assert.equal(status.unstaged, 1);
         assert.equal(status.untracked, 1);
         assert.deepEqual(status.files.toSorted((a, b) => a.path < b.path ? -1 : 1), [
-            { path: "  loose\nfile.txt", status: "??", member: null },
+            { path: "  loose\nfile.txt", status: "??" },
             { path: "new\nname.txt", status: "RM" },
             { path: "old  name\t.txt", status: "RM" },
         ]);

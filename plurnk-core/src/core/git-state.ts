@@ -4,15 +4,10 @@ import { promisify } from "node:util";
 import type { Db } from "./Db.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import Namespace from "./namespace.ts";
-import { Knob } from "@plurnk/plurnk-meta";
 
 interface GitFileStatus {
     path: string;
     status: string;
-    // {§packet-inject} — an untracked path's membership truth: the inclusion pattern that
-    // admits it, `created` for a creation record, `member` otherwise; null when it is not a
-    // member; absent beyond the rendered paths.
-    member?: string | null;
 }
 
 export interface GitStatus {
@@ -67,31 +62,7 @@ export default class GitState {
         } catch {
             return null;  // the worktree vanished or git failed — fail closed, no status
         }
-        const snapshot = GitState.#parse(statusOutput, root, repositoryRoot);
-        await GitState.#markMembers(db, workspaceId, snapshot);
-        return snapshot;
-    }
-
-    // {§packet-inject} — the rendered untracked paths never contradict the catalog: an
-    // untracked file an inclusion or a creation record admits is named as the member it is.
-    static renderedPaths(): number { return Knob.integer("PLURNK_SERVICE_GIT_STATUS_PATHS", 0); }
-
-    static async #markMembers(db: Db, workspaceId: number, snapshot: GitStatusSnapshot): Promise<void> {
-        const untracked = snapshot.files.filter((file) => file.status === "??").slice(0, GitState.renderedPaths());
-        if (untracked.length === 0) return;
-        // {§membership-auto-add} — one statement marks every rendered path.
-        // The source and the glob come from one constraint row: both are null, or neither is.
-        const marks = await db.crud_untracked_member_marks.all<{ pathname: string; registered: 0 | 1 } & ({ source: null; glob: null } | { source: string; glob: string })>({
-            workspace_id: workspaceId,
-            paths: JSON.stringify(untracked.map((file) => file.path)),
-        });
-        const byPath = new Map(marks.map((mark) => [mark.pathname, mark]));
-        for (const file of untracked) {
-            const mark = byPath.get(file.path);
-            if (mark === undefined) throw new Error(`git status: no membership mark for ${file.path}`);
-            if (mark.registered === 0) { file.member = null; continue; }
-            file.member = mark.source === null ? "member" : mark.source === "create" ? "created" : mark.glob;
-        }
+        return GitState.#parse(statusOutput, root, repositoryRoot);
     }
 
     // Porcelain v2's branch headers distinguish unborn/detached HEAD without parsing prose.
