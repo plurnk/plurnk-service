@@ -25,6 +25,7 @@ import {
     type NewSessionResponse,
     type PromptResponse,
     type ResumeSessionResponse,
+    type SessionOptionsResponse,
     type SessionStatusResponse,
     type SessionUpdate,
     type SetSessionConfigOptionResponse,
@@ -57,6 +58,7 @@ import {
     applyAcpMcpServers,
     applyAdditionalDirectories,
     applyConfigOption,
+    applyInitialConfigOptions,
     applySystemPrompt,
     assertSinglePortSecurity,
     buildAuthStatus,
@@ -72,6 +74,7 @@ import {
     parseOverviewRequest,
     resolvePromptCommand,
     resolveSessionBinding,
+    resolveSessionOptions,
     selectBoundSessionForTarget,
     toRequestError,
     tryListProviders,
@@ -212,6 +215,7 @@ export const createConnectionAgent = (
                     archive: {},
                     delete: {},
                     fork: {},
+                    options: {},
                     status: {},
                     title: {},
                     additionalDirectories: {},
@@ -318,6 +322,7 @@ export const createConnectionAgent = (
                 bound.sessionName,
                 ctx.params.systemPrompt,
             );
+            await applyInitialConfigOptions(seam, bound, ctx.params.configOptions);
             const providerCatalog = tryListProviders(seam);
             const [configOptions, availableCommands, modelInfo, spend] = await Promise.all([
                 buildConfigOptions(seam, bound.workspaceId, bound.sessionId),
@@ -419,6 +424,7 @@ export const createConnectionAgent = (
                 bound.sessionName,
                 ctx.params.systemPrompt,
             );
+            await applyInitialConfigOptions(seam, bound, ctx.params.configOptions);
 
             const providerCatalog = tryListProviders(seam);
             const [entries, inbox, loops, proposals, interactions, workspaceSessions, configOptions, availableCommands, modelInfo, spend, streams, budget] = await Promise.all([
@@ -791,6 +797,15 @@ export const createConnectionAgent = (
             }
             removeBoundSubtree(target.workspaceId, subtreeIds, peers);
             return {};
+        } catch (err) {
+            throw toRequestError(err);
+        }
+    });
+
+    app.onRequest(methods.agent.session.options, async (ctx): Promise<SessionOptionsResponse> => {
+        peer.client = ctx.client;
+        try {
+            return await resolveSessionOptions(seam, ctx.params);
         } catch (err) {
             throw toRequestError(err);
         }
