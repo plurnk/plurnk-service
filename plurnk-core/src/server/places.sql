@@ -33,13 +33,13 @@ DROP TRIGGER IF EXISTS ambient_events_retire_log_refs;
 CREATE TRIGGER ambient_events_retire_log_refs
 AFTER DELETE ON ambient_events
 BEGIN
-    UPDATE log_entries SET ambient_event_id = NULL WHERE ambient_event_id = OLD.id;
+    UPDATE log_entry_rows SET ambient_event_id = NULL WHERE ambient_event_id = OLD.id;
 END;
 
 -- INIT: log_entries_retire_message_completions
 DROP TRIGGER IF EXISTS log_entries_retire_message_completions;
 CREATE TRIGGER log_entries_retire_message_completions
-AFTER DELETE ON log_entries
+AFTER DELETE ON log_entry_rows
 BEGIN
     DELETE FROM message_completions WHERE response_id = OLD.id;
 END;

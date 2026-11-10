@@ -30,6 +30,7 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { SqlRiteSync } from "@possumtech/sqlrite";
 import { SessionNameError } from "../../src/core/SessionName.ts";
+import { sqlFunctionPaths } from "../../src/core/sql-functions.ts";
 
 describe("machine-process", () => {
 // SPEC {§machine-processes} — behavioral ownership at the real operation seam:
@@ -810,7 +811,8 @@ type BaselineChapter = { readonly version: number; readonly label: string; reado
 const V4_3_3: TaggedRelease = Object.freeze({ version: 34, release: "4.3.3", tag: "v4.3.3", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_3_0: TaggedRelease = Object.freeze({ version: 33, release: "4.3.0", tag: "v4.3.0", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_0_0: TaggedRelease = Object.freeze({ version: 32, release: "4.0.0", tag: "v4.0.0", shape: "76b1dff2af95661a15e32ebea23fddaf4b07cfdc0c06af58e6ca2640e2034263" });
-const V6_0_0: BaselineChapter = Object.freeze({ version: 17, label: "6.0.0", shape: "19c55c5f3ea7e6e75617e95dfac860a73b6c8647428bf23c98afd28cafd141e3" });
+const V6_0_0: BaselineChapter = Object.freeze({ version: 18, label: "6.0.0", shape: "36014087282a4ce9be3c0c1a0505d0b8b1d9689ac13bcca0bcad9e6d598a6593" });
+const V6_0_0_CHAPTER_17: BaselineChapter = Object.freeze({ version: 17, label: "6.0.0 chapter 17", shape: "19c55c5f3ea7e6e75617e95dfac860a73b6c8647428bf23c98afd28cafd141e3" });
 const V6_0_0_CHAPTER_16: BaselineChapter = Object.freeze({ version: 16, label: "6.0.0 chapter 16", shape: "c23129df8f1faab3ad72d594c0eccdb64f852f69d0907c7b625991916f9ff5f2" });
 const V6_0_0_CHAPTER_15: BaselineChapter = Object.freeze({ version: 15, label: "6.0.0 chapter 15", shape: "dcbd06764796a31bdff75aad2ee91333da29cc7677dae18e0cd0c3d0b73ab0ad" });
 const V5_3_0: BaselineChapter = Object.freeze({ version: 14, label: "5.3.0", shape: "b7aaf2cac55feb657d47abd4fbfe4d3230bb5848ea2ab6be052cea8e003e7d73" });
@@ -851,7 +853,7 @@ const baseline = async (t: Pick<TestContext, "after">, chapter: Pick<BaselineCha
     const chapters = (await readdir(MIGRATIONS_DIR)).filter((name) => Number(name.split("_")[0]) <= chapter.version);
     await Promise.all(chapters.map((name) => copyFile(join(MIGRATIONS_DIR, name), join(dir, name))));
     const path = join(root, "baseline.db");
-    new SqlRiteSync({ path, dir }).close();
+    (await SqlRiteSync.open({ path, dir, functions: sqlFunctionPaths })).close();
     return path;
 };
 
@@ -1090,6 +1092,54 @@ test(`{§db-migrations} {§message-arrival}: a ${V5_3_0.label} database scopes m
     } finally { after.close(); }
 });
 
+test(`{§db-migrations} {§content-store}: a ${V6_0_0_CHAPTER_17.label} database interns turn_sources and log_entries payloads into contents and preserves child foreign keys (#1445)`, async (t) => {
+    const path = await baseline(t, V6_0_0_CHAPTER_17);
+    const before = new DatabaseSync(path);
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name) VALUES (1, 'dedupUpgrade');
+            INSERT INTO session_owners (workspace_id, address, tools, interactive) VALUES (1, '_plurnk', '[]', 0);
+            INSERT INTO sessions (id, workspace_id, name, origin) VALUES (1, 1, 'root', 'model'), (2, 1, 'branch', 'model');
+            INSERT INTO loops (id, session_id, sequence, prompt, max_turns) VALUES (1, 1, 1, 'Ask', -1), (2, 2, 1, 'Ask', -1);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 200), (2, 2, 1, 'model', 'inference', 200);
+            INSERT INTO turn_sources (turn_id, kind, sequence, content) VALUES
+                (1, 'ops', 0, 'await plurnk.read({ path: "a.md" });'),
+                (2, 'ops', 0, 'await plurnk.read({ path: "a.md" });');
+            INSERT INTO log_entries (
+                id, session_id, loop_id, turn_id, sequence, origin, op,
+                scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, attrs, initial_folded, patch
+            ) VALUES (
+                1, 1, 1, 1, 1, 'model', 'edit',
+                'file', '/a.md', '{"op":"edit"}', 'application/json', '{"status":200}', 'application/json', 200, 1, 'proposed', '{}', '[]', '@@ -1 +1 @@'
+            ), (
+                2, 2, 2, 2, 1, 'model', 'edit',
+                'file', '/a.md', '{"op":"edit"}', 'application/json', '{"status":200}', 'application/json', 200, 1, 'resolved', '{}', '[]', '@@ -1 +1 @@'
+            );
+            INSERT INTO log_entry_projections (log_entry_id, active, folded) VALUES (1, 1, '[]'), (2, 1, '[]');
+            INSERT INTO proposal_decisions (log_entry_id, decision, resolver) VALUES (1, 'accept', '_plurnk');
+        `);
+    } finally { before.close(); }
+    const upgraded = await openMigrated(path);
+    await upgraded.close();
+    const after = new DatabaseSync(path);
+    try {
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+        const contentCount = (after.prepare("SELECT COUNT(*) AS n FROM contents").get() as { n: number }).n;
+        assert.equal(contentCount, 4, "two identical turns share four distinct interned payloads (ops, tx, rx, patch)");
+        const rows = after.prepare("SELECT id, tx, rx, patch FROM log_entries ORDER BY id").all() as Array<{ id: number; tx: string; rx: string; patch: string }>;
+        assert.deepEqual(rows.map((r) => ({ ...r })), [
+            { id: 1, tx: '{"op":"edit"}', rx: '{"status":200}', patch: '@@ -1 +1 @@' },
+            { id: 2, tx: '{"op":"edit"}', rx: '{"status":200}', patch: '@@ -1 +1 @@' },
+        ]);
+        const sources = after.prepare("SELECT turn_id, content FROM turn_sources ORDER BY turn_id").all() as Array<{ turn_id: number; content: string }>;
+        assert.deepEqual(sources.map((r) => ({ ...r })), [
+            { turn_id: 1, content: 'await plurnk.read({ path: "a.md" });' },
+            { turn_id: 2, content: 'await plurnk.read({ path: "a.md" });' },
+        ]);
+    } finally { after.close(); }
+});
+
 test("{§db-migrations}: a database from before the 5.0.0 support floor or from a newer release is refused naming both versions read", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-pre-floor-"));
     t.after(() => rm(root, { recursive: true, force: true }));
@@ -1110,14 +1160,14 @@ test("{§db-migrations}: a database from before the 5.0.0 support floor or from 
     finally { raw.close(); }
     await assert.rejects(
         () => openMigrated(newerPath),
-        /database schema \(version 99\) is newer than this build \(schema version 17\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
+        /database schema \(version 99\) is newer than this build \(schema version 18\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
     );
 });
 
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.equal(versions.length, 17, "all migration versions are present");
+    assert.equal(versions.length, 18, "all migration versions are present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});
@@ -1136,7 +1186,7 @@ for (const release of [V4_3_3, V4_3_0, V4_0_0]) {
     });
 }
 
-for (const chapter of [V6_0_0, V6_0_0_CHAPTER_16, V6_0_0_CHAPTER_15, V5_3_0, V5_2_0, V5_2_0_CHAPTER_12, V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
+for (const chapter of [V6_0_0, V6_0_0_CHAPTER_17, V6_0_0_CHAPTER_16, V6_0_0_CHAPTER_15, V5_3_0, V5_2_0, V5_2_0_CHAPTER_12, V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
     test(`{§db-migrations}: versions 1-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
         assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 1-${chapter.version}`);
     });

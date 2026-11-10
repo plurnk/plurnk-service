@@ -10,20 +10,20 @@ DELETE FROM session_owners WHERE NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.
 DELETE FROM sessions WHERE NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.id = sessions.workspace_id);
 DELETE FROM loops WHERE NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = loops.session_id);
 DELETE FROM turns WHERE NOT EXISTS (SELECT 1 FROM loops l WHERE l.id = turns.loop_id);
-DELETE FROM turn_sources WHERE NOT EXISTS (SELECT 1 FROM turns t WHERE t.id = turn_sources.turn_id);
+DELETE FROM turn_source_rows WHERE NOT EXISTS (SELECT 1 FROM turns t WHERE t.id = turn_source_rows.turn_id) OR NOT EXISTS (SELECT 1 FROM contents c WHERE c.id = turn_source_rows.content_id);
 DELETE FROM turn_section_items
 WHERE EXISTS (SELECT 1 FROM turn_sections ts WHERE NOT EXISTS (SELECT 1 FROM turns t WHERE t.id = ts.turn_id))
   AND NOT EXISTS (SELECT 1 FROM packet_items pi WHERE pi.hash = turn_section_items.item_hash);
 DELETE FROM turn_sections WHERE NOT EXISTS (SELECT 1 FROM turns t WHERE t.id = turn_sections.turn_id);
-DELETE FROM log_entries WHERE NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = log_entries.session_id) OR NOT EXISTS (SELECT 1 FROM loops l WHERE l.id = log_entries.loop_id) OR NOT EXISTS (SELECT 1 FROM turns t WHERE t.id = log_entries.turn_id);
+DELETE FROM log_entry_rows WHERE NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = log_entry_rows.session_id) OR NOT EXISTS (SELECT 1 FROM loops l WHERE l.id = log_entry_rows.loop_id) OR NOT EXISTS (SELECT 1 FROM turns t WHERE t.id = log_entry_rows.turn_id) OR NOT EXISTS (SELECT 1 FROM contents c WHERE c.id = log_entry_rows.tx_content_id) OR NOT EXISTS (SELECT 1 FROM contents c WHERE c.id = log_entry_rows.rx_content_id) OR (patch_content_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM contents c WHERE c.id = log_entry_rows.patch_content_id));
 DELETE FROM message_completions WHERE NOT EXISTS (SELECT 1 FROM loop_messages m WHERE m.id = message_completions.message_id);
 DELETE FROM inference_calls WHERE NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.id = inference_calls.workspace_id) OR (turn_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.id = inference_calls.turn_id));
 DELETE FROM entries WHERE NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.id = entries.workspace_id);
 DELETE FROM subscriptions WHERE NOT EXISTS (SELECT 1 FROM entries e WHERE e.id = subscriptions.entry_id);
 DELETE FROM entry_channel_rows WHERE NOT EXISTS (SELECT 1 FROM entries e WHERE e.id = entry_channel_rows.entry_id) OR (content_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM contents c WHERE c.id = entry_channel_rows.content_id));
 UPDATE entry_channel_rows SET deep_hash = NULL WHERE deep_hash IS NOT NULL AND NOT EXISTS (SELECT 1 FROM derivations d WHERE d.deep_hash = entry_channel_rows.deep_hash AND (d.content_id IS NULL OR EXISTS (SELECT 1 FROM contents c WHERE c.id = d.content_id)));
-UPDATE turn_sources SET deep_hash = NULL WHERE deep_hash IS NOT NULL AND NOT EXISTS (SELECT 1 FROM derivations d WHERE d.deep_hash = turn_sources.deep_hash AND (d.content_id IS NULL OR EXISTS (SELECT 1 FROM contents c WHERE c.id = d.content_id)));
-UPDATE log_entries SET deep_hash = NULL WHERE deep_hash IS NOT NULL AND NOT EXISTS (SELECT 1 FROM derivations d WHERE d.deep_hash = log_entries.deep_hash AND (d.content_id IS NULL OR EXISTS (SELECT 1 FROM contents c WHERE c.id = d.content_id)));
+UPDATE turn_source_rows SET deep_hash = NULL WHERE deep_hash IS NOT NULL AND NOT EXISTS (SELECT 1 FROM derivations d WHERE d.deep_hash = turn_source_rows.deep_hash AND (d.content_id IS NULL OR EXISTS (SELECT 1 FROM contents c WHERE c.id = d.content_id)));
+UPDATE log_entry_rows SET deep_hash = NULL WHERE deep_hash IS NOT NULL AND NOT EXISTS (SELECT 1 FROM derivations d WHERE d.deep_hash = log_entry_rows.deep_hash AND (d.content_id IS NULL OR EXISTS (SELECT 1 FROM contents c WHERE c.id = d.content_id)));
 INSERT INTO derivation_fts(derivation_fts) SELECT 'rebuild' WHERE EXISTS (SELECT 1 FROM derivations d WHERE d.content_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM contents c WHERE c.id = d.content_id));
 DELETE FROM derivations WHERE content_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM contents c WHERE c.id = derivations.content_id);
 

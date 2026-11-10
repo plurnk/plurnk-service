@@ -61,21 +61,25 @@ WHERE NOT EXISTS (SELECT 1 FROM turn_section_items tsi WHERE tsi.item_hash = pac
 -- and derivations_delete_fts drops its full-text shadow.
 DELETE FROM derivations
 WHERE NOT EXISTS (SELECT 1 FROM entry_channel_rows c WHERE c.deep_hash = derivations.deep_hash)
-  AND NOT EXISTS (SELECT 1 FROM turn_sources s WHERE s.deep_hash = derivations.deep_hash)
-  AND NOT EXISTS (SELECT 1 FROM log_entries le WHERE le.deep_hash = derivations.deep_hash);
+  AND NOT EXISTS (SELECT 1 FROM turn_source_rows s WHERE s.deep_hash = derivations.deep_hash)
+  AND NOT EXISTS (SELECT 1 FROM log_entry_rows le WHERE le.deep_hash = derivations.deep_hash);
 
 -- PREP: retention_collect_contents
--- {§content-store}: a body no channel holds and no derivation indexes is transient data. Runs
--- after the collectors above, which release what they held.
+-- {§content-store}: a body no channel, turn source, log row, or derivation holds is transient data.
+-- Runs after the collectors above, which release what they held.
 DELETE FROM contents
 WHERE NOT EXISTS (SELECT 1 FROM entry_channel_rows r WHERE r.content_id = contents.id)
+  AND NOT EXISTS (SELECT 1 FROM turn_source_rows s WHERE s.content_id = contents.id)
+  AND NOT EXISTS (SELECT 1 FROM log_entry_rows le WHERE le.tx_content_id = contents.id)
+  AND NOT EXISTS (SELECT 1 FROM log_entry_rows le WHERE le.rx_content_id = contents.id)
+  AND NOT EXISTS (SELECT 1 FROM log_entry_rows le WHERE le.patch_content_id = contents.id)
   AND NOT EXISTS (SELECT 1 FROM derivations d WHERE d.content_id = contents.id);
 
 -- PREP: retention_collect_native_contents
 -- {§content-store}: curation flags never determine evidence ownership.
 DELETE FROM native_contents
 WHERE hash NOT IN (
-      SELECT native_content_hash FROM log_entries WHERE native_content_hash IS NOT NULL
+      SELECT native_content_hash FROM log_entry_rows WHERE native_content_hash IS NOT NULL
       UNION
       SELECT json_extract(a.value, '$.contentHash') FROM log_entries le,
           json_each(CASE WHEN le.mimetype_rx = 'application/json' THEN le.rx ELSE '{}' END, '$.attachments') a

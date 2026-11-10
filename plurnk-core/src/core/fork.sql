@@ -66,9 +66,9 @@ BEGIN
     JOIN turns nt ON nt.loop_id = nl.id AND nt.sequence = ot.sequence
     WHERE ol.session_id = NEW.parent_session_id;
 
-    INSERT INTO turn_sources (turn_id, kind, sequence, content, deep_hash)
-    SELECT nt.id, s.kind, s.sequence, s.content, s.deep_hash
-    FROM turn_sources s
+    INSERT INTO turn_source_rows (turn_id, kind, sequence, content_id, deep_hash)
+    SELECT nt.id, s.kind, s.sequence, s.content_id, s.deep_hash
+    FROM turn_source_rows s
     JOIN turns ot ON ot.id = s.turn_id
     JOIN loops ol ON ol.id = ot.loop_id
     JOIN loops nl ON nl.session_id = NEW.id AND nl.sequence = ol.sequence
@@ -78,15 +78,17 @@ BEGIN
     -- Log rows: durable events with their attribution, as inherited history. Each copied row
     -- passes through the log's own triggers exactly as the original did.
     -- {§methods-invocation} A copied stream observation keeps the publication it records, so it still names its execution.
-    INSERT INTO log_entries (
+    INSERT INTO log_entry_rows (
         session_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, subscription_publication_id, inherited_history,
         op, signal, scheme, username, password, hostname, port, pathname, query, fragment,
-        lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, outcome, attrs, initial_folded, patch
+        lineMarker, tx_content_id, mimetype_tx, rx_content_id, mimetype_rx, status_rx, native_content_hash,
+        weight, state, outcome, attrs, initial_folded, patch_content_id
     )
     SELECT NEW.id, nl.id, nt.id, e.sequence, e.at, e.origin, e.source, e.ambient_event_id, e.subscription_publication_id, 1,
            e.op, e.signal, e.scheme, e.username, e.password, e.hostname, e.port, e.pathname, e.query, e.fragment,
-           e.lineMarker, e.tx, e.mimetype_tx, e.rx, e.mimetype_rx, e.status_rx, e.weight, e.state, e.outcome, e.attrs, e.initial_folded, e.patch
-    FROM log_entries e
+           e.lineMarker, e.tx_content_id, e.mimetype_tx, e.rx_content_id, e.mimetype_rx, e.status_rx, e.native_content_hash,
+           e.weight, e.state, e.outcome, e.attrs, e.initial_folded, e.patch_content_id
+    FROM log_entry_rows e
     JOIN turns ot ON ot.id = e.turn_id
     JOIN loops ol ON ol.id = e.loop_id
     JOIN loops nl ON nl.session_id = NEW.id AND nl.sequence = ol.sequence

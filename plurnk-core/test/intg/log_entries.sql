@@ -10,7 +10,7 @@ INSERT INTO log_entries (
     $session_id, $loop_id, $turn_id, $sequence, $origin, $source, $op, $signal,
     $scheme, $pathname, $port, $query,
     $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight, $attrs
-) RETURNING id;
+) RETURNING (SELECT id FROM log_entry_rows WHERE turn_id = log_entries.turn_id AND sequence = log_entries.sequence) AS id;
 
 -- PREP: test_log_entries_get_by_id
 SELECT * FROM log_entries WHERE id = $id;
@@ -24,7 +24,7 @@ SELECT COUNT(*) AS n FROM log_entries;
 -- PREP: test_log_entries_insert_minimal
 INSERT INTO log_entries (session_id, loop_id, turn_id, sequence, origin, op, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx)
 VALUES ($session_id, $loop_id, $turn_id, 1, 'model', 'read', '/x', '', 'text/x-plurnk', '', 'text/plain', 200)
-RETURNING id;
+RETURNING (SELECT id FROM log_entry_rows WHERE turn_id = log_entries.turn_id AND sequence = log_entries.sequence) AS id;
 
 -- PREP: test_log_entries_signals_by_turn
 SELECT op, signal FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;

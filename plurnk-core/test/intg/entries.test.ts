@@ -741,7 +741,7 @@ test("{§db-migrations}: opening a database newer than the build names both vers
         new SqlRiteSync({ path: dbPath, dir: newer }).close();
     });
     assert.equal(result.code, 1, `the launcher fails closed (stderr: ${result.stderr})`);
-    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 17\)/, "both schema versions read are named");
+    assert.match(result.stderr, /database schema \(version 99\) is newer than this build \(schema version 18\)/, "both schema versions read are named");
 });
 
 test("{§db-migrations}: opening a pre-floor database names both versions read and non-destructive remediation", async () => {
@@ -999,12 +999,12 @@ describe("schema-query-plans", () => {
 
 const PROJECT_ROOT = resolve(import.meta.dirname, "../..");
 // Workload-scaled tables; retention does not make a full scan a bounded lookup.
-const GROWING = new Set(["log_entries", "entries", "entry_channel_rows", "contents", "subscriptions", "sessions", "loops", "turns", "symbol_defs", "symbol_refs", "derivations", "ambient_events", "provider_requests", "inference_calls", "model_calls", "turn_attempts", "log_entry_projections", "native_contents", "proposal_decisions", "client_interactions", "turn_sources", "packet_items", "turn_sections", "turn_section_items"]);
+const GROWING = new Set(["log_entry_rows", "entries", "entry_channel_rows", "contents", "subscriptions", "sessions", "loops", "turns", "symbol_defs", "symbol_refs", "derivations", "ambient_events", "provider_requests", "inference_calls", "model_calls", "turn_attempts", "log_entry_projections", "native_contents", "proposal_decisions", "client_interactions", "turn_source_rows", "packet_items", "turn_sections", "turn_section_items"]);
 // Statements that read a whole table on purpose (forensic digest, startup recovery, whole-workspace listings).
 // A retention collector considers every row of its table by definition ({§content-store}).
-// A write through the entry_channels view ({§content-store}) plans as a SEARCH of its rows plus a
+// A write through a content-interning view ({§content-store}) plans as a SEARCH of its rows plus a
 // SCAN of the matched rows SQLite has already copied aside; the view itself is not a table.
-const VIEWS = new Set(["entry_channels"]);
+const VIEWS = new Set(["entry_channels", "log_entries", "turn_sources"]);
 const WHOLE_TABLE_BY_DESIGN = /^(digest_|recovery_|test_|envelope_list_|retention_collect_|drain_scheduled_loops$|drain_claim_next_loop$|drain_ready_loop$)/;
 
 const collectStatements = async (): Promise<Array<{ name: string; file: string; sql: string }>> => {

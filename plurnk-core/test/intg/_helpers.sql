@@ -600,7 +600,7 @@ INSERT INTO log_entries (
     $session_id, $loop_id, $turn_id, $sequence, $at, 'model', 'edit',
     'workspace', $pathname, '', 'text/plain', $rx, 'application/json', 201
 )
-RETURNING id;
+RETURNING (SELECT id FROM log_entry_rows WHERE turn_id = log_entries.turn_id AND sequence = log_entries.sequence) AS id;
 
 -- PREP: test_log_entries_by_session_op
 SELECT hostname, pathname, source, weight, attrs FROM log_entries WHERE session_id = $session_id AND op = $op ORDER BY id;
