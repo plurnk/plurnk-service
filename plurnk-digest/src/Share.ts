@@ -1,6 +1,6 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { errnoCode } from "@plurnk/plurnk-contracts";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
 import Digest from "./Digest.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
@@ -27,12 +27,35 @@ export default class Share {
         database.share_snapshot.run({ path: resolve(copy) });
     }
 
+    static #createScratch(target: string): string {
+        const parent = dirname(target);
+        try {
+            mkdirSync(parent, { recursive: true });
+            return mkdtempSync(join(parent, ".plurnk-share-"));
+        } catch (cause) {
+            const code = errnoCode(cause);
+            const xdgCache = process.env.XDG_CACHE_HOME?.trim();
+            if ((code === "EACCES" || code === "EPERM" || code === "EROFS") && xdgCache) {
+                const cacheDir = join(resolve(xdgCache), "plurnk");
+                mkdirSync(cacheDir, { recursive: true });
+                return mkdtempSync(join(cacheDir, ".plurnk-share-"));
+            }
+            throw cause;
+        }
+    }
+
     static async write({ dbPath, folder, workspaceId, requiem, openEvidence }: ShareOptions): Promise<{ folder: string }> {
+        const source = resolve(dbPath);
+        if (!existsSync(source)) throw new Error(`no database at ${source}`);
+        if (folder.length === 0) throw new Error("output directory must not be empty");
         const target = resolve(folder);
-        const scratch = mkdtempSync(join(tmpdir(), "plurnk-share-"));
+        if (existsSync(target) && (!statSync(target).isDirectory() || readdirSync(target).length > 0)) {
+            throw new Error(`${target} already exists and is not an empty folder; remove it first`);
+        }
+        const scratch = Share.#createScratch(target);
         try {
             const copy = join(scratch, "plurnk.db");
-            Share.snapshot(dbPath, copy);
+            Share.snapshot(source, copy);
             const scoped = { openEvidence, dbPath: copy, digestDir: target, ...(workspaceId === undefined ? {} : { workspaceId }) };
             Digest.run(scoped);
             if (requiem) await Digest.requiem({ ...scoped, provider: requiem });

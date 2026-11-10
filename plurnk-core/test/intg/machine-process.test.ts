@@ -810,7 +810,8 @@ type BaselineChapter = { readonly version: number; readonly label: string; reado
 const V4_3_3: TaggedRelease = Object.freeze({ version: 34, release: "4.3.3", tag: "v4.3.3", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_3_0: TaggedRelease = Object.freeze({ version: 33, release: "4.3.0", tag: "v4.3.0", shape: "7c47c39a0e10cc7a6adaaba0bf9a935621ddcf4c14e765c36db248e4b5576d50" });
 const V4_0_0: TaggedRelease = Object.freeze({ version: 32, release: "4.0.0", tag: "v4.0.0", shape: "76b1dff2af95661a15e32ebea23fddaf4b07cfdc0c06af58e6ca2640e2034263" });
-const V6_0_0: BaselineChapter = Object.freeze({ version: 16, label: "6.0.0", shape: "c23129df8f1faab3ad72d594c0eccdb64f852f69d0907c7b625991916f9ff5f2" });
+const V6_0_0: BaselineChapter = Object.freeze({ version: 17, label: "6.0.0", shape: "19c55c5f3ea7e6e75617e95dfac860a73b6c8647428bf23c98afd28cafd141e3" });
+const V6_0_0_CHAPTER_16: BaselineChapter = Object.freeze({ version: 16, label: "6.0.0 chapter 16", shape: "c23129df8f1faab3ad72d594c0eccdb64f852f69d0907c7b625991916f9ff5f2" });
 const V6_0_0_CHAPTER_15: BaselineChapter = Object.freeze({ version: 15, label: "6.0.0 chapter 15", shape: "dcbd06764796a31bdff75aad2ee91333da29cc7677dae18e0cd0c3d0b73ab0ad" });
 const V5_3_0: BaselineChapter = Object.freeze({ version: 14, label: "5.3.0", shape: "b7aaf2cac55feb657d47abd4fbfe4d3230bb5848ea2ab6be052cea8e003e7d73" });
 const V5_2_0: BaselineChapter = Object.freeze({ version: 13, label: "5.2.0", shape: "4dc11dc6a4c0543595b14010b10220130331f8c71e40e1c232422545fa3b3ee5" });
@@ -1109,14 +1110,14 @@ test("{§db-migrations}: a database from before the 5.0.0 support floor or from 
     finally { raw.close(); }
     await assert.rejects(
         () => openMigrated(newerPath),
-        /database schema \(version 99\) is newer than this build \(schema version 16\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
+        /database schema \(version 99\) is newer than this build \(schema version 17\); run the @plurnk\/plurnk-service release that wrote it or point PLURNK_SERVICE_DB_PATH at another file/,
     );
 });
 
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.equal(versions.length, 16, "all migration versions are present");
+    assert.equal(versions.length, 17, "all migration versions are present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});
@@ -1135,7 +1136,7 @@ for (const release of [V4_3_3, V4_3_0, V4_0_0]) {
     });
 }
 
-for (const chapter of [V6_0_0, V6_0_0_CHAPTER_15, V5_3_0, V5_2_0, V5_2_0_CHAPTER_12, V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
+for (const chapter of [V6_0_0, V6_0_0_CHAPTER_16, V6_0_0_CHAPTER_15, V5_3_0, V5_2_0, V5_2_0_CHAPTER_12, V5_0_0, V5_0_0_CHAPTER_10, V5_0_0_CHAPTER_9, V5_0_0_CHAPTER_8]) {
     test(`{§db-migrations}: versions 1-${chapter.version} keep the ${chapter.label} shape`, async (t) => {
         assert.equal(shape(await baseline(t, chapter)), chapter.shape, `a baseline migration changed shape; add the next MIGRATE version instead of editing versions 1-${chapter.version}`);
     });

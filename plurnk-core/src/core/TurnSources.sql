@@ -74,7 +74,8 @@ SELECT s.turn_id, s.kind, s.sequence,
        s.content, s.deep_hash
 FROM turn_sources s JOIN turns t ON t.id = s.turn_id
 JOIN loops l ON l.id = t.loop_id JOIN sessions w ON w.id = l.session_id
-WHERE w.workspace_id = $workspace_id;
+WHERE w.workspace_id = $workspace_id
+  AND s.deep_hash IS NULL;
 
 -- PREP: turn_source_attach_derivation
 UPDATE turn_sources SET deep_hash = $deep_hash

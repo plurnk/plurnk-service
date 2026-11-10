@@ -286,3 +286,34 @@ test("{§share} a missing database is named, and nothing is read or written", as
         openEvidence: () => { throw new Error("a missing source must not open a reader"); },
     }), { message: "no database at /nonexistent/plurnk.db" });
 });
+
+test("{§share-packet-names} {§share}: Share.write stages its snapshot adjacent to folder and cleans up on completion and failure", async (t) => {
+    const { default: SqlRiteSync } = await import("@possumtech/sqlrite/sync");
+    const { dirname: parentDir } = await import("node:path");
+    const root = await mkdtemp(join(tmpdir(), "plurnk-digest-share-stage-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const dbPath = join(root, "source.db");
+    new SqlRiteSync({ path: dbPath, dir: [] }).close();
+
+    let observedCopyPath = "";
+    const outDir = join(root, "exports", "share-ok");
+    await Share.write({
+        dbPath,
+        folder: outDir,
+        openEvidence: (copyPath) => {
+            observedCopyPath = copyPath;
+            return emptyEvidence();
+        },
+    });
+    assert.equal(parentDir(parentDir(observedCopyPath)), join(root, "exports"), "snapshot copy is staged adjacent to folder, not in os.tmpdir()");
+    assert.equal(existsSync(parentDir(observedCopyPath)), false, "staging folder is cleaned up after success");
+    assert.equal(existsSync(join(outDir, "digest.json")), true);
+
+    await assert.rejects(Share.write({
+        dbPath,
+        folder: join(root, "exports", "share-fail"),
+        openEvidence: () => { throw new Error("reader boom"); },
+    }), { message: "reader boom" });
+    const leftovers = (await readdir(join(root, "exports"))).filter((name) => name.startsWith(".plurnk-share-"));
+    assert.deepEqual(leftovers, [], "staging folder is cleaned up on failure");
+});
