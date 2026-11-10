@@ -30,24 +30,8 @@ export default class Paths {
     static nginxConfig = resolve(Paths.#PACKAGE_ROOT, "plurnk.nginx.conf");
     // The first-run policy seed and built-in/conditional pull-doc sources.
     static policy = Paths.teachingSource(TEACHING_CORPUS.policy);
-    // {§packet-inject} — meta-owned default Recap and its operator override.
-    static #SHIPPED_RECAP = Paths.#resolveDefaultRecap();
-    static defaultRecap = Paths.#SHIPPED_RECAP.path;
-    static defaultRecapTeachingSource = Paths.#SHIPPED_RECAP.source;
 
     static teachingSource(source: TeachingCorpusSource): string {
         return resolve(Paths.teachingRoot, source);
-    }
-
-    // Absolute overrides stay absolute; relative paths resolve from the package root.
-    static #resolveDefaultRecap(): { path: string; source: TeachingCorpusSource | null } {
-        const env = process.env.PLURNK_SERVICE_RECAP;
-        if (typeof env === "string" && env.length > 0) {
-            return { path: resolve(Paths.#PACKAGE_ROOT, env), source: null };
-        }
-        return {
-            path: Paths.teachingSource(TEACHING_CORPUS.recap),
-            source: TEACHING_CORPUS.recap,
-        };
     }
 }

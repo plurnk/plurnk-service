@@ -128,8 +128,6 @@ export interface LogRow {
 }
 // {§turn-source-resources} — one announced emission: its row's coordinate, its frozen text, whether it is live.
 export interface EmissionRow { session_id: number; coordinate: string; content: string; active: 0 | 1 }
-// {§turn-source-resources} — one landed reasoning row: its row's coordinate, its frozen text, whether it is live.
-export interface ReasoningRow { session_id: number; coordinate: string; content: string; active: 0 | 1 }
 // {§digest-forensic-fidelity} — one model-authored EDIT: the scope it authored (the log row's lineMarker
 // JSON), the pattern its durable statement carried, and the status it landed with.
 export interface EditRow {
@@ -210,8 +208,6 @@ export interface DigestModel {
     logEntriesByTurn: Map<number, LogRow[]>;
     // {§turn-source-resources} — each session's announced emissions by row coordinate, retired ones included.
     emissionRows: EmissionRow[];
-    // {§turn-source-resources} — each session's landed reasoning rows by row coordinate, retired ones included.
-    reasoningRows: ReasoningRow[];
     editRows: EditRow[];
     editRowsBySession: Map<number, EditRow[]>;
     // keyed `${workspace_id}:${stream}`; a spawn's environment as recorded on its output ({§execution-output-identity})

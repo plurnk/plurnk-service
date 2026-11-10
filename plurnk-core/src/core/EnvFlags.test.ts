@@ -165,7 +165,7 @@ test("{§operator-config-precedence} formatFlagsHelp: described flag shows descr
 describe("flag-parity", () => {
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const DYNAMIC_READS = new Set(["PLURNK_SERVICE_LIVE_TIMEOUT"]);
-const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_SQLITE_", "PLURNK_SERVICE_RECAP_LINE_"];
+const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_SQLITE_"];
 
 test("{§operator-config-precedence} every shipped service flag has an adjacent description for CLI help", () => {
     const template = readFileSync(`${root}/.env.defaults`, "utf8");
@@ -225,7 +225,6 @@ test("{§operator-config-precedence} the template ships no double policy, no act
     assert.equal(env.get("PLURNK_SERVICE_PREVIEW_LINES"), "100", "the only correct default is 100");
     assert.equal(env.get("PLURNK_SERVICE_PREVIEW_CHARS"), "16000");
     assert.equal(env.get("PLURNK_SERVICE_EMISSION_HISTORY"), "all");
-    assert.equal(env.get("PLURNK_SERVICE_REASONING_ROWS"), "0");
     assert.equal(env.get("PLURNK_SERVICE_BUDGET_PRESSURE"), "80%", "the gauge names its largest rows only above eighty percent");
     assert.equal(env.get("PLURNK_SERVICE_BUDGET_LARGEST_ITEMS"), "5", "the pressured gauge names the five largest retained rows");
     assert.equal(env.get("PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES"), "104857600", "filesystem snapshots ship with a 100 MiB safety ceiling");

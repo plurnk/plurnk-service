@@ -4,13 +4,13 @@
 
 ### Major Changes
 
-- Canonicalize Heredoc Code Mode (`<<<EOF`) across parser, serializer, teaching, and contracts, unify operation payloads on `{ text }` while retiring stream `metadata` and `lifetime` fields, remove `PLURNK_SERVICE_PROMPT_PREVIEW` and `PLURNK_SERVICE_LOG_BUDGET_SUMMARY`, add OAuth 2.1 `requested_subject` token exchange and principal-scoped ACP v2 live streams, emit ACP v2 `_plurnk_telemetry`, windowed session resume, multi-select `question` options, and paginated `log.list` / `log.read` (`openOnly`, `sender`, `recipient`, `offset`), extract EXIF headers in `@plurnk/plurnk-mimetypes-image`, and lower the packet token floor to `3,002` (#1412 #1419 #1420 #1421 #1422 #1423 #1424 #1425 #1426 #1427 #1428 #1429 #1430 #1431 #1432 #1433 #1434 #1435 #1436 #1437 #1438 #1439).
+- Canonicalize Heredoc Code Mode (`<<<EOF`) across parser, serializer, teaching, and contracts, unify operation payloads on `{ text }` while retiring stream `metadata` and `lifetime` fields, remove `PLURNK_SERVICE_PROMPT_PREVIEW`, `PLURNK_SERVICE_LOG_BUDGET_SUMMARY`, `PLURNK_SERVICE_REASONING_ROWS`, `PLURNK_SERVICE_REASONING_TRAILING_LINES`, `PLURNK_SERVICE_COLLECT_PACKET_ITEMS`, `PLURNK_SERVICE_COLLECT_DERIVATIONS`, `PLURNK_SERVICE_COLLECT_CONTENTS`, `PLURNK_SERVICE_RECAP`, `PLURNK_SERVICE_RECAP_LINE_<alias>`, and `PLURNK_SERVICE_PACKET_INJECT`, add `PLURNK_AUTH_CODE_TTL_SEC`, OAuth 2.1 `requested_subject` token exchange, and principal-scoped ACP v2 live streams, emit ACP v2 `_plurnk_telemetry`, windowed session resume, multi-select `question` options, and paginated `log.list` / `log.read` (`openOnly`, `sender`, `recipient`, `offset`), extract EXIF headers in `@plurnk/plurnk-mimetypes-image`, and lower the packet token floor to `3,002` (#1412 #1419 #1420 #1421 #1422 #1423 #1424 #1425 #1426 #1427 #1428 #1429 #1430 #1431 #1432 #1433 #1434 #1435 #1436 #1437 #1438 #1439 #1441).
   
   ### Operator Migration Guide (5.x to 6.0.0)
   
   - **Upgrade client and daemon together:** Upgrade `@plurnk/plurnk` and `@plurnk/plurnk-service` to `6.0.0`.
   - **SQLite Schema Migrations (`015` and `016`, `{§db-migrations}`):** Chapters `015_session_message_keys.sql` (`session_messages` composite foreign keys and cascade deletes) and `016_drop_unused_columns.sql` (retiring unused `streams.metadata`, `streams.lifetime`, `sessions.CompactionSummary`, `sessions.CompactionThroughLoop`, and `turns.parse_advisory` columns) run automatically in place on any database at or above the `5.0.0` support floor (`user_version >= 11`).
-  - **Removed Configuration Knobs (`{§configuration-panel}`):** `PLURNK_SERVICE_PROMPT_PREVIEW` and `PLURNK_SERVICE_LOG_BUDGET_SUMMARY` are retired; remove them from `.env` files if present.
+  - **Removed Configuration Knobs (`{§configuration-panel}`):** `PLURNK_SERVICE_PROMPT_PREVIEW`, `PLURNK_SERVICE_LOG_BUDGET_SUMMARY`, `PLURNK_SERVICE_REASONING_ROWS`, `PLURNK_SERVICE_REASONING_TRAILING_LINES`, `PLURNK_SERVICE_COLLECT_PACKET_ITEMS`, `PLURNK_SERVICE_COLLECT_DERIVATIONS`, `PLURNK_SERVICE_COLLECT_CONTENTS`, `PLURNK_SERVICE_RECAP`, `PLURNK_SERVICE_RECAP_LINE_<alias>`, `PLURNK_SERVICE_PACKET_INJECT`, and `PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS` are retired; remove them from `.env` files if present.
   - **Model-Facing Heredoc Syntax (`{§code-grammar}`):** Multiline string values in Code Mode use `<<<EOF` heredoc delimiters, and `note`, `send`, `work`, `fork`, `done`, `fail`, and `kill` carry their body in `text`.
 
 ### Patch Changes
@@ -23,6 +23,7 @@
   - @plurnk/plurnk-mcp@3.4.0
   - @plurnk/plurnk-mimetypes-image@2.1.0
   - @plurnk/plurnk-execs@4.2.0
+  - @plurnk/plurnk-digest@3.2.7
   - @plurnk/plurnk-providers@6.1.1
   - @plurnk/plurnk-meta@2.2.1
   - @plurnk/plurnk-models@4.0.3

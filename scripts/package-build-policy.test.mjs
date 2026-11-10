@@ -206,7 +206,7 @@ const typeAuditFixture = async (t) => {
     t.after(() => rm(root, { recursive: true, force: true }));
     const packages = {
         "code package": { name: "@example/code", files: ["dist/**/*"] },
-        meta: { name: "@plurnk/plurnk-meta", files: ["dist/**/*", "POLICY.md", "recap.md"] },
+        meta: { name: "@plurnk/plurnk-meta", files: ["dist/**/*", "POLICY.md"] },
         assets: { name: "@example/assets", files: ["assets/**/*"] },
         private: { name: "@example/private", private: true, files: ["dist/**/*"] },
     };
@@ -228,7 +228,7 @@ test("{§packed-projection} type audit checks packed public code with explicit p
     assert.equal(count, 3);
     assert.deepEqual(calls, [
         { command: "attw", cwd: root, args: ["--pack", "code package", "--profile", "esm-only", "--format", "table", "--no-color"] },
-        { command: "attw", cwd: root, args: ["--pack", "meta", "--profile", "esm-only", "--format", "table", "--no-color", "--exclude-entrypoints", "./POLICY.md", "./recap.md"] },
+        { command: "attw", cwd: root, args: ["--pack", "meta", "--profile", "esm-only", "--format", "table", "--no-color", "--exclude-entrypoints", "./POLICY.md"] },
         { command: "attw", cwd: root, args: ["--pack", "assets", "--profile", "esm-only", "--format", "table", "--no-color"] },
     ]);
 

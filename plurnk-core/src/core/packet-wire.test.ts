@@ -2,12 +2,9 @@ import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import PacketWire, { type LogEntryView } from "./packet-wire.ts";
 import { type RequestPacket } from "./StoredPacket.ts";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
-import { tmpdir, homedir } from "node:os";
+import { homedir } from "node:os";
 import { join } from "node:path";
-import { resolveInjectPath, readPacketInject } from "./packet-inject.ts";
-import { ConfigurationError } from "@plurnk/plurnk-meta";
-import { recapLines } from "./recap-lines.ts";
+import { resolveInjectPath } from "./packet-inject.ts";
 import { parseLogRecords } from "../../test/LogRecords.ts";
 import { contentWeight } from "./content-weight.ts";
 import GitState from "./git-state.ts";
@@ -22,12 +19,12 @@ test("{§packet-assembly}: retained user-role evidence keeps its original envelo
     const packet: RequestPacket = { weight: 0, attributions: [], sections: [
         { name: "definition", slot: "system", header: null, content: "The language", weight: 0 },
         { name: "log", slot: "user", header: "Log", content: "### log:///1/2/1/emission · 24", weight: 0 },
-        { name: "recap", slot: "user", header: "Recap", content: "Current context", weight: 0 },
+        { name: "session", slot: "user", header: "Session", content: "Current context", weight: 0 },
         { name: "emission-history", slot: "user", header: "Previous Emission", content, weight: 0 },
     ] };
     assert.deepEqual(PacketWire.packetToWireMessages(packet), [
         { role: "system", content: "The language" },
-        { role: "user", content: `## Log\n\n### log:///1/2/1/emission · 24\n\n## Recap\n\nCurrent context\n\n## Previous Emission\n\n${content}` },
+        { role: "user", content: `## Log\n\n### log:///1/2/1/emission · 24\n\n## Session\n\nCurrent context\n\n## Previous Emission\n\n${content}` },
     ]);
 });
 
@@ -2106,48 +2103,6 @@ describe("packet-inject", () => {
 test("{§packet-inject} resolveInjectPath expands ~/, leaves absolute paths alone", () => {
     assert.equal(resolveInjectPath("~/notes.md"), join(homedir(), "notes.md"), "~/ → home dir");
     assert.equal(resolveInjectPath("/etc/notes.md"), "/etc/notes.md", "absolute path untouched");
-});
-
-test("{§packet-inject} readPacketInject: unset → null; a real file → content; a missing path FAILS HARD", async () => {
-    const prior = process.env.PLURNK_SERVICE_PACKET_INJECT;
-    const dir = await mkdtemp(join(tmpdir(), "plurnk-inject-"));
-    try {
-        delete process.env.PLURNK_SERVICE_PACKET_INJECT;
-        assert.equal(await readPacketInject(), null, "unset → no section");
-
-        process.env.PLURNK_SERVICE_PACKET_INJECT = "  ";
-        assert.equal(await readPacketInject(), null, "blank → no section");
-
-        const path = join(dir, "inject.md");
-        await writeFile(path, "# Operator says\nbe terse");
-        process.env.PLURNK_SERVICE_PACKET_INJECT = path;
-        assert.match(await readPacketInject() ?? "", /be terse/, "a real file rides back as the section content");
-
-        process.env.PLURNK_SERVICE_PACKET_INJECT = join(dir, "nonexistent.md");
-        await assert.rejects(readPacketInject(), /ENOENT/, "a set-but-unreadable path fails hard");
-    } finally {
-        if (prior === undefined) delete process.env.PLURNK_SERVICE_PACKET_INJECT; else process.env.PLURNK_SERVICE_PACKET_INJECT = prior;
-        await rm(dir, { recursive: true, force: true });
-    }
-});
-});
-
-describe("recap-lines", () => {
-test("{§packet-inject} lines render in alias order, each in its directive's callout, ahead of the source", () => {
-    const lines = recapLines({
-        PLURNK_SERVICE_RECAP_LINE_b: "YOU MAY read while reasoning.",
-        PLURNK_SERVICE_RECAP_LINE_a: "YOU MUST begin with a NOTE.",
-        PLURNK_SERVICE_RECAP_LINE_c: "",
-    });
-    assert.deepEqual(lines, ["YOU MUST begin with a NOTE.", "YOU MAY read while reasoning."], "alias order; an empty value is a line turned off");
-    assert.equal(PacketWire.renderRecap(lines, "Plugin recap."),
-        "> [!IMPORTANT]\n> YOU MUST begin with a NOTE.\n\n> [!TIP]\n> YOU MAY read while reasoning.\n\nPlugin recap.");
-    assert.equal(PacketWire.renderRecap([], ""), "", "no lines and an empty source omit the footer");
-});
-
-test("{§packet-inject} a line that opens with no directive is a configuration error naming its key", () => {
-    assert.throws(() => recapLines({ PLURNK_SERVICE_RECAP_LINE_x: "Remember to take notes." }),
-        (error: unknown) => error instanceof ConfigurationError && /PLURNK_SERVICE_RECAP_LINE_x/u.test(error.message));
 });
 });
 

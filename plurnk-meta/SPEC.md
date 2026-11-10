@@ -9,7 +9,6 @@ The package owns the authored defaults and exact membership below. Consumers own
 | Source | Membership | Meta-owned content | Core read boundary |
 | --- | --- | --- | --- |
 | `POLICY.md` | Required | First-run default operating policy | Policy bootstrap {§packet-inject} |
-| `recap.md` | Required | Optional default operational Recap (empty contributes no rendered section) | Per-packet user-slot footer {§packet-inject} |
 | `docs/session.md` | Required | Deep reference prose for the reserved session scheme | Pull-doc materialization {§tools-resource-materialization} |
 | `docs/delegation.md` | Required | Session delegation, lifecycle, and messaging | Pull-doc materialization with the session scheme |
 | `docs/pattern.md` | Required | Operation-neutral pattern selection and literal source editing | Pull-doc materialization independent of schemes |

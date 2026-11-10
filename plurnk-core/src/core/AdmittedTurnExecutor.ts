@@ -1,5 +1,4 @@
 import { TurnDisposition, isRecord, writtenOp } from "@plurnk/plurnk-contracts";
-import { Knob } from "@plurnk/plurnk-meta";
 // Executing an admitted turn: its ordered statements dispatched, problems and notices recorded, the bare batch when no provider spoke. Split out of TurnRunner, which keeps the delegating entry point.
 import type { BareStatement, DispositionStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -66,7 +65,6 @@ export default class AdmittedTurnExecutor {
         statements,
         source,
         emission,
-        reasoning = null,
         sourceModelCallId = null,
         origin,
         workspaceId,
@@ -90,7 +88,6 @@ export default class AdmittedTurnExecutor {
         // {§turn-source-resources} — the admitted emission this turn announces, or null when nothing was admitted
         // from a recorded source. Every caller states it.
         emission: (AdmittedTextSource & { statements: readonly PlurnkStatement[] }) | null;
-        reasoning?: AdmittedTextSource | null;
         sourceModelCallId?: number | null;
         origin: WriterTier;
         workspaceId: number;
@@ -120,16 +117,7 @@ export default class AdmittedTurnExecutor {
         }
         if (emission === undefined) throw new Error("executeAdmittedTurn requires the admitted emission, or null, to be stated");
         if (emission !== null && source === null) throw new Error("an admitted emission requires its recorded ops source");
-        // {§turn-source-resources}: reserve chronology, not budget. The optional row is admitted after results.
-        const reasoningSequence = reasoning?.content && Knob.flag("PLURNK_SERVICE_REASONING_ROWS") ? fromSequence : null;
-        let rowSequence = fromSequence + (reasoningSequence === null ? 0 : 1);
-        const recordReasoning = async (): Promise<void> => {
-            if (reasoning === null || reasoningSequence === null) return;
-            const id = await this.#dispatcher.writeReasoning({
-                ...reasoning, sessionId, loopId, turnId, sequence: reasoningSequence, fit,
-            });
-            if (id !== null) { onDispatch?.(id); await onSettled?.(id); }
-        };
+        let rowSequence = fromSequence;
         // {§outside-text}: preserve evidence even when no operation was admitted.
         const recordEngineProblem = async (kind: EngineProblemKind, sequence: number, extensions: Record<string, unknown>): Promise<void> => {
             const problem = ENGINE_PROBLEMS[kind];
@@ -349,7 +337,6 @@ export default class AdmittedTurnExecutor {
             await recordEngineProblem(kind, rowSequence++, extensions);
         }
         const turnStatus = await this.#dispatcher.settleProgram({ workspaceId, sessionId, loopId, turnId, origin }, waits, completionEligible);
-        await recordReasoning();
         await Turn.complete(this.#db, turnId, turnStatus);
         return {
             status: turnStatus,

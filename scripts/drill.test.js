@@ -22,7 +22,6 @@ const expectedProfile = {
     PLURNK_SERVICE_GIT_AUTO: "1",
     PLURNK_SERVICE_PROPOSALS: "accept",
     PLURNK_SERVICE_POLICY: "",
-    PLURNK_SERVICE_PACKET_INJECT: "",
     PLURNK_SERVICE_ROOTS: "project",
     // {§credential-authority} — a gate daemon authenticates nothing; the operator's secret never reaches it.
     PLURNK_AUTH: "0",

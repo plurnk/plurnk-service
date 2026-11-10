@@ -341,15 +341,12 @@ test("{§outside-text}: operations beside stray text reset the no-operation stri
     } finally { await db.close(); }
 });
 
-for (const preview of ["0", "1"]) for (const [label, response, reasoning, notes, outside] of [
+for (const [label, response, reasoning, notes, outside] of [
     ["prose", "Four.", null, [], "Four."],
     ["prose with reasoning", "Four.", "I should verify the arithmetic.", [], "Four."],
     ["empty response", "", null, [], undefined],
 ] as const) {
-    test(`{§outside-text} {§turn-source-resources}: ${label} preserves sources and strikes; preview=${preview} is not authored work`, async (t) => {
-        const previous = process.env.PLURNK_SERVICE_REASONING_ROWS;
-        process.env.PLURNK_SERVICE_REASONING_ROWS = preview;
-        t.after(() => { if (previous === undefined) delete process.env.PLURNK_SERVICE_REASONING_ROWS; else process.env.PLURNK_SERVICE_REASONING_ROWS = previous; });
+    test(`{§outside-text} {§turn-source-resources}: ${label} preserves sources and strikes`, async () => {
         const { db, engine, provider, ids, notices } = await setup([said(response, reasoning)]);
         try {
             const result = await engine.runLoop({ ...ids, provider, maxTurns: 3, maxStrikes: 1, messages: [] });
@@ -359,12 +356,8 @@ for (const preview of ["0", "1"]) for (const [label, response, reasoning, notes,
             assert.match(result.result.problem.detail, /performed no operation\.$/);
             assert.deepEqual(notices.filter(({ level, kind }) => level === "warn" && kind !== "outside_text"), [], "the strike is silent; only the discarded text is weighed ({§outside-text})");
             const turns = await Promise.all(result.turnIds.map(async (id) => (await db.test_get_turn.get<{ id: number; sequence: number; producer: string }>({ id }))!));
-            const { id: modelTurn, sequence } = turns.findLast(({ producer }) => producer === "model")!;
-            const reads = await db.test_reasoning_reads.all<{ origin: string; pathname: string; turn_id: number; rx: string }>({ session_id: ids.sessionId });
-            assert.deepEqual(reads.filter(({ origin, pathname }) => origin === "_plurnk" && pathname === `/1/${sequence}`)
-                .map(({ turn_id, rx }) => [turn_id, JSON.parse(rx).content]), preview === "0" || reasoning === null ? [] : [[modelTurn, reasoning]],
-                "the optional preview belongs to this turn and does not prevent its no-operation strike");
-            assert.equal(provider.received.length, 1, "the preview causes no extra inference");
+            const { id: modelTurn } = turns.findLast(({ producer }) => producer === "model")!;
+            assert.equal(provider.received.length, 1);
             const rows = await db.test_log_entries_by_turn.all<{ op: string; source: string; origin: string; tx: string; status_rx: number }>({ turn_id: modelTurn });
             assert.equal(rows.some(({ op, source }) => op === "error" && source === "grammar"), false);
             assert.deepEqual(rows.filter(({ op, origin }) => op === "error" && origin === "_plurnk").map(({ status_rx }) => status_rx), [422], "the strike is one error row on the turn");
@@ -373,7 +366,7 @@ for (const preview of ["0", "1"]) for (const [label, response, reasoning, notes,
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
             assert.equal(sources.find((row) => row.turn_id === modelTurn && row.kind === "outside")?.content, outside, "a prose-only turn still records its outside source ({§outside-text})");
             assert.equal(sources.find((row) => row.turn_id === modelTurn && row.kind === "reasoning")?.content, reasoning ?? undefined,
-                "the reasoning source is retained independently of its preview");
+                "the reasoning source is retained");
         } finally { await db.close(); }
     });
 }

@@ -178,7 +178,6 @@ export type TurnArgs = {
     readonly provider: Provider;
     readonly childProvider: Provider;
     readonly messages: ChatMessage[];
-    readonly recap: string;
     readonly workspaceId: number;
     readonly sessionId: number;
     readonly loopId: number;
@@ -378,14 +377,12 @@ export default class TurnRunner {
     // completes the turn and returns; anything else that throws fails every turn
     // this cycle opened.
     async runTurn({
-        provider, childProvider = provider, messages, recap = "", workspaceId, sessionId, loopId, signal, onDispatch, onSettled,
+        provider, childProvider = provider, messages, workspaceId, sessionId, loopId, signal, onDispatch, onSettled,
         turnNumber = 1, invalidEmissionRecoveryEntryId,
     }: {
         provider: Provider;
         childProvider?: Provider;
         messages: ChatMessage[];
-        // Optional Recap override; packet assembly owns default sourcing.
-        recap?: string;
         workspaceId: number; sessionId: number; loopId: number;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
@@ -398,7 +395,7 @@ export default class TurnRunner {
         invalidEmissionRecoveryEntryId?: number | null;
     }): Promise<EngineTurnResult> {
         const args: TurnArgs = {
-            provider, childProvider, messages, recap, workspaceId, sessionId, loopId, signal, onDispatch, onSettled,
+            provider, childProvider, messages, workspaceId, sessionId, loopId, signal, onDispatch, onSettled,
             turnNumber, invalidEmissionRecoveryEntryId,
         };
         const createdTurnIds: number[] = [];
@@ -675,10 +672,9 @@ export default class TurnRunner {
     }
 
     async #buildPacket(args: TurnArgs, facts: PacketFacts): Promise<RequestPacket> {
-        const { messages, recap, workspaceId, sessionId, loopId, provider } = args;
+        const { messages, workspaceId, sessionId, loopId, provider } = args;
         return this.#packets.buildRequestPacket({
             initialMessages: messages,
-            recap,
             workspaceId,
             sessionId,
             loopId,
@@ -891,7 +887,6 @@ export default class TurnRunner {
                 statements: split.emissionStatements,
                 ...coordinates,
             },
-            reasoning: split.packetAssistant.reasoning ? { content: split.packetAssistant.reasoning, ...coordinates } : null,
             sourceModelCallId: emission.modelCallId,
             origin: "model",
             workspaceId,

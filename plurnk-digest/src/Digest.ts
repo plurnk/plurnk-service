@@ -47,7 +47,7 @@ export default class Digest {
         const rows = evidence.rows();
         let { workspaces, sessions, inferenceCalls, modelCalls, turnAttempts, providerRequests,
             logEntries, editRows, curationEffects, sessionRollupRows, opMixRows } = rows;
-        const { environmentRows, searchState, derivationState, dispositionCounts, dispositions, storageTables, emissionRows, reasoningRows } = rows;
+        const { environmentRows, searchState, derivationState, dispositionCounts, dispositions, storageTables, emissionRows } = rows;
         let loops = rows.loops.map((loop): LoopRow => ({ ...loop, claimed_at: loop.claimed_at ?? null }));
         if (rows.storage === undefined) throw new Error("the database reported no storage facts");
         const storage = { ...rows.storage, tables: storageTables };
@@ -148,7 +148,7 @@ export default class Digest {
             dbPath, storage, digestDir, workspaces, sessions, loops, turns, inferenceCalls, modelCalls, turnAttempts, providerRequests, logEntries, curationEffects,
             sessionsByWorkspace, loopsBySession, turnsByLoop, attemptsByTurn,
             requestsByInferenceCall, requestsByAttempt, requestsByTurn, requestsByLoop, requestsBySession, requestsByWorkspace,
-            logEntriesByTurn, emissionRows, reasoningRows, editRows, editRowsBySession, environments, loopsById, sessionsById,
+            logEntriesByTurn, emissionRows, editRows, editRowsBySession, environments, loopsById, sessionsById,
             sessionRollups, opMixBySession, search,
         };
 

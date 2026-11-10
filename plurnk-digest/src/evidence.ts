@@ -2,7 +2,7 @@ import type { ChatMessage } from "@plurnk/plurnk-providers";
 import type {
     DerivationStateRow, DispositionCountRow, DispositionRow, EditRow, EmissionRow,
     ExecutionEnvironmentRow, InferenceCallRow, LogCurationEffectRow, LogRow, LoopRow,
-    ModelCallRow, OpMixRow, PacketEvidence, ProviderRequestRow, ReasoningRow,
+    ModelCallRow, OpMixRow, PacketEvidence, ProviderRequestRow,
     SearchStateRow, StorageRow, StorageTableRow, TurnAttemptRow, TurnRow, SessionRollupRow,
     SessionRow, WorkspaceRow,
 } from "./digest-rows.ts";
@@ -33,7 +33,6 @@ export interface EvidenceRows {
     logEntries: LogRow[];
     editRows: EditRow[];
     emissionRows: EmissionRow[];
-    reasoningRows: ReasoningRow[];
     curationEffects: LogCurationEffectRow[];
     sessionRollupRows: SessionRollupRow[];
     opMixRows: OpMixRow[];

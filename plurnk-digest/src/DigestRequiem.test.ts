@@ -28,7 +28,7 @@ class WitnessMock extends Mock {
 const emptyRows = (overrides: Partial<EvidenceRows> = {}): EvidenceRows => ({
     workspaces: [], sessions: [], loops: [], turns: [], inferenceCalls: [], modelCalls: [],
     turnAttempts: [], providerRequests: [], logEntries: [], editRows: [], emissionRows: [],
-    reasoningRows: [], curationEffects: [], sessionRollupRows: [], opMixRows: [], environmentRows: [],
+    curationEffects: [], sessionRollupRows: [], opMixRows: [], environmentRows: [],
     searchState: { channel_entries: 0, derivation_complete: 0, unfinished: 0 },
     derivationState: { complete: 0, building: 0 }, dispositionCounts: [], dispositions: [],
     storage: { bytes: 0, free_bytes: 0, auto_vacuum: 0 }, storageTables: [],

@@ -165,7 +165,7 @@ test("{§share-packet-names}: restore preserves history, decisions and attachmen
         assert.deepEqual(await restored.readMessages({ workspaceId, sessionId, loopId }), messages);
         using evidence = EvidenceReader.open(restoredPath);
         const recovered = evidence.rows();
-        for (const key of ["loops", "turns", "inferenceCalls", "modelCalls", "turnAttempts", "providerRequests", "logEntries", "emissionRows", "reasoningRows"] as const) {
+        for (const key of ["loops", "turns", "inferenceCalls", "modelCalls", "turnAttempts", "providerRequests", "logEntries", "emissionRows"] as const) {
             assert.deepEqual(recovered[key], history[key], `${key} survives the consistent snapshot and normal startup`);
         }
         const environment = await restored.invokeModuleAction("session.env.list", {}, {

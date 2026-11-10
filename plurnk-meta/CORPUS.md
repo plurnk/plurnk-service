@@ -9,7 +9,6 @@ Authored defaults published by `@plurnk/plurnk-meta` and consumed by
 | Source                          | Consumer admission                                                           |
 | ------------------------------- | ---------------------------------------------------------------------------- |
 | `POLICY.md`                     | Read before the first-run seed of the user-owned XDG config `AGENTS.md`.     |
-| `recap.md`                       | Read for an optional Recap rendered last when its content is nonempty.       |
 | `docs/*.md`                     | Built-in reference pages (`session.md`, `delegation.md`, `pattern.md`) composed into `skill://plurnk/`. |
 | `skills/plurnk/**`              | Standard skill entry (`SKILL.md`) and reference chapters (`extensibility.md`); Core composes its package-owned and generated resources (`configuration.md`, `copy-move.md`, `delegation.md`, `https.md`, `models.md`, `pattern.md`, `session.md`, `wss.md`, `configuration/plurnk.service`, `configuration/plurnk.nginx.conf`, `configuration/.env.defaults`). |
 
@@ -18,8 +17,7 @@ Core materializes eligible scheme and runtime pull docs at
 placing a file in `docs/` does not register a scheme or make speculative
 teaching current. Every listed source is a required package member; a missing
 or failed read surfaces at the admission boundary rather than silently reducing
-the corpus. The intentionally empty `recap.md` is a dormant source, not a missing
-one.
+the corpus.
 
 Plurnk's own reference is catalogued at `skill://plurnk/SKILL.md` alongside
 installed skills. Chapters and the complete generated defaults catalog are
@@ -56,5 +54,5 @@ monorepo forge.
   policy can tune different workloads without broadening the default teaching.
 
 Probe history and unresolved experiments belong in forge issues, not current
-doctrine. {§teaching-corpus} owns source membership; {§packet-inject} owns the optional
-footer. Neither creates a second admission rule or release gate.
+doctrine. {§teaching-corpus} owns source membership; {§packet-inject} owns
+system policy bootstrap. Neither creates a second admission rule or release gate.

@@ -12,7 +12,7 @@ What plurnk's packages share that no single package owns: extension discovery an
 - `Meta.packageDirs(nodeModulesDir)` — scope-agnostic, symlink-aware enumeration across Node's ancestor resolution chain as `{ dir, name }` candidates; the nearest package name wins. Ordering and filtering are the caller's policy.
 - `Meta.nearestNodeModules(fromDir)` — walk up to the nearest `node_modules` holding the ecosystem (witness: `@plurnk` scope); `null` when absent.
 
-**The teaching corpus**: authored policy, an optional Recap, the Plurnk skill entry, and built-in scheme references resolved from this installed package. Meta owns the source bytes and membership; core owns admission, resource composition, and projection. See [`CORPUS.md`](./CORPUS.md) and {§teaching-corpus}.
+**The teaching corpus**: authored policy, the Plurnk skill entry, and built-in scheme references resolved from this installed package. Meta owns the source bytes and membership; core owns admission, resource composition, and projection. See [`CORPUS.md`](./CORPUS.md) and {§teaching-corpus}.
 
 Extension packages declare one `package.json#plurnk.kind`. Standard Agent Plugin bundles
 instead put that same declaration under `plugin.json#extensions.ai.plurnk`.

@@ -13,7 +13,7 @@ Writes: findings to stdout; exit 1 on any.
 
 // Exported documents are resolvable assets, not type-importable code modules.
 const excludedEntrypoints = {
-    "@plurnk/plurnk-meta": ["./POLICY.md", "./recap.md"],
+    "@plurnk/plurnk-meta": ["./POLICY.md"],
 };
 
 const binDir = path.resolve(import.meta.dirname, "../node_modules/.bin");

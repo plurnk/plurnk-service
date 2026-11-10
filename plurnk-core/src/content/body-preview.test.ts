@@ -3,29 +3,31 @@ import assert from "node:assert/strict";
 import BodyPreview from "./body-preview.ts";
 import ReadResolve from "./read-resolve.ts";
 
-for (const [name, text, maxLines, maxChars, expected] of [
-    ["whole text", "a\nb", 2, 3, "a\nb"],
-    ["line cap", "a\nb\nc", 2, 100, "b\nc"],
-    ["character cap at a line boundary", "abc\ndef\nghi", 10, 7, "def\nghi"],
-    ["a final oversized line", "before\n01234🙂7890", 10, 5, "🙂7890"],
-    ["one oversized line", "01234🙂7890", 10, 5, "🙂7890"],
-    ["CRLF counts once", "before\r\n01234🙂7890\r\n", 10, 6, "🙂7890\r\n"],
-    ["a separator at the bound", "oversized\r\n", 10, 1, "\r\n"],
+for (const [name, text, maxLines, maxChars, expectedSlice, expectedRead] of [
+    ["whole text", "a\nb", 2, 3, "a\nb", "a\nb"],
+    ["line cap", "a\nb\nc", 2, 100, "a\nb\n", "a\nb"],
+    ["character cap at a line boundary", "abc\ndef\nghi", 10, 8, "abc\ndef\n", "abc\ndef"],
+    ["a first oversized line", "01234🙂7890\nafter", 10, 6, "01234🙂", "01234🙂"],
+    ["one oversized line", "01234🙂7890", 10, 6, "01234🙂", "01234🙂"],
+    ["CRLF counts once", "01234🙂\r\nafter\r\n", 10, 7, "01234🙂\r\n", "01234🙂"],
 ] as const) {
-    test(`{§turn-source-resources} {§packet}: tail preview respects ${name} with a readable source scope`, async () => {
-        const original = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+    test(`{§packet}: first-page preview respects ${name} with a readable source scope`, async () => {
+        const originalLines = process.env.PLURNK_SERVICE_PREVIEW_LINES;
+        const originalChars = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+        process.env.PLURNK_SERVICE_PREVIEW_LINES = String(maxLines);
         process.env.PLURNK_SERVICE_PREVIEW_CHARS = String(maxChars);
         try {
-            const tail = BodyPreview.selectTail(text, maxLines);
-            assert.equal(text.slice(tail.start), expected);
-            assert.equal(tail.whole, expected === text);
-            const result = await ReadResolve.resolve({ content: text, mimetype: "text/plain", lineMarker: tail.marker });
+            const selected = BodyPreview.select(text);
+            assert.equal(text.slice(0, selected.end), expectedSlice);
+            const result = await ReadResolve.resolve({ content: text, mimetype: "text/plain", lineMarker: selected.marker });
             assert.equal(result.status, 200);
-            assert.equal(result.content, expected, "the advertised scope retrieves exactly the selected bytes");
-            assert.ok(Array.from(expected.replaceAll("\r\n", "\n")).length <= maxChars);
+            assert.equal(result.content, expectedRead, "the advertised scope retrieves the selected range");
+            assert.ok(Array.from(expectedSlice.replaceAll("\r\n", "\n")).length <= maxChars);
         } finally {
-            if (original === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_CHARS;
-            else process.env.PLURNK_SERVICE_PREVIEW_CHARS = original;
+            if (originalLines === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES;
+            else process.env.PLURNK_SERVICE_PREVIEW_LINES = originalLines;
+            if (originalChars === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+            else process.env.PLURNK_SERVICE_PREVIEW_CHARS = originalChars;
         }
     });
 }

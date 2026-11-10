@@ -73,10 +73,6 @@ export default class DigestRender {
         if (row.op === "read" && attrs.kind === "emission") {
             return DigestRender.#renderOpLine(row, row.projection_active === 1 ? "emission" : "emission (killed)", environmentOf(row, m));
         }
-        // {§turn-source-resources}: the turn's reasoning landed as a row, and whether the model retired it.
-        if (row.op === "read" && attrs.kind === "reasoning") {
-            return DigestRender.#renderOpLine(row, row.projection_active === 1 ? "reasoning" : "reasoning (killed)", environmentOf(row, m));
-        }
         const materialized = row.origin === "_plurnk" && row.op === "edit" && attrs.kind === "entry_materialized";
         const actionlessKind = row.op === null ? attrs.kind : null;
         const label = actionlessKind === "emissionAttempt"

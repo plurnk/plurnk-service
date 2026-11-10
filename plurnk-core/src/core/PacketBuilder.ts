@@ -13,12 +13,9 @@ import FunctionalityManager, { plurnkRuntimeDecl } from "../server/Functionality
 import PlurnkSkill from "../server/PlurnkSkill.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
-import { readGlobalAgents, readGlobalLocalAgents, readPacketInject, readSystemPolicy } from "./packet-inject.ts";
+import { readGlobalAgents, readGlobalLocalAgents, readSystemPolicy } from "./packet-inject.ts";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import Paths from "../Paths.ts";
-import { readTeachingSource } from "./teaching-corpus.ts";
-import { recapLines } from "./recap-lines.ts";
 import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
 import { acceptedKinds } from "./attachments.ts";
 // Shared module imported by both Engine and the digest, so wire
@@ -170,13 +167,11 @@ export default class PacketBuilder {
     // {§packet} — assemble the system/user request before the
     // provider call; complete the same record with the provider response.
     async buildRequestPacket({
-        initialMessages, recap = "", workspaceId, sessionId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
+        initialMessages, workspaceId, sessionId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
         transientOpenLogEntryId = null,
         turnId = null,
     }: {
         initialMessages: ChatMessage[];
-        // A non-empty caller value overrides the default Recap source.
-        recap?: string;
         gitStatus: GitStatus | null;
         workspaceId: number; sessionId: number; loopId: number;
         // DB-level turn sequence for "look at the previous turn" queries.
@@ -209,14 +204,6 @@ export default class PacketBuilder {
             path: m.key_path,
             ...(m.source === null ? { origin: "user" as const } : { source: m.source }),
         }));
-        // {§packet-inject}: a non-empty override wins; otherwise read the meta-owned source per packet. The operator's
-        // recap lines lead it ({§packet-inject}).
-        const recapSource = recap.length > 0
-            ? recap
-            : Paths.defaultRecapTeachingSource === null
-                ? await readFile(Paths.defaultRecap, "utf8")
-                : await readTeachingSource(Paths.defaultRecapTeachingSource);
-        const recapContent = PacketWire.renderRecap(recapLines(), recapSource);
         // {§emission-admission}: the definition remains the complete language authority.
         const log = await this.#buildLog(sessionId, transientOpenLogEntryId, turnId);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
@@ -230,7 +217,6 @@ export default class PacketBuilder {
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-assembly}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
-        const inject = await readPacketInject(this.#hostPaths); // {§packet-inject} — per-turn; a broken configured path fails hard
         // {§packet-assembly} — global AGENTS(.local).md (or PLURNK_SERVICE_POLICY), project-root
         // AGENTS(.local).md, and session://<session>/AGENTS.md ride the `system-policy` packet section.
         const globalPolicy = await readSystemPolicy(this.#hostPaths);
@@ -339,13 +325,11 @@ export default class PacketBuilder {
             // {§packet-assembly} — global AGENTS(.local).md (or PLURNK_SERVICE_POLICY), project-root
             // AGENTS(.local).md, and session://<session>/AGENTS.md ride the `system-policy` section.
             { name: "system-policy", slot: "system", header: null, content: systemPolicy },
-
-            ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads the user slot; nothing volatile precedes it
             // ({§packet-assembly}).
             ...logSections,
             // The per-turn status clump follows the log ({§packet-assembly}) and runs from ambient
-            // state to what this turn owes to feedback on the last one, then the Recap: the nearer the end,
+            // state to what this turn owes to feedback on the last one: the nearer the end,
             // the more a section asks of this turn.
             { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus) },
             // {§tokenomics} — the model's word for curation weight is tokens; this is never provider admission.
@@ -366,7 +350,6 @@ export default class PacketBuilder {
             { name: "work", slot: "user", header: "Open Work", content: PacketWire.renderOpenWork(childSessions, childStreams, [...openMessages, ...sentMessages]) },
             { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices) },
             { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures) },
-            { name: "recap", slot: "user", header: "Recap", content: recapContent },
         ];
         // Extension packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.

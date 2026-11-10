@@ -151,7 +151,7 @@ await plurnk.edit({"path":"workspace:///repair.txt","content":"repair remains av
 
 for (const key of [
     "PLURNK_SERVICE_EFFECT_HOST", "PLURNK_SERVICE_FILE_CREATE_SCOPE", "PLURNK_SERVICE_PROPOSALS",
-    "PLURNK_SERVICE_RETAIN_PACKET_TURNS", "PLURNK_SERVICE_COLLECT_CONTENTS", "PLURNK_SERVICE_AUTO_VACUUM",
+    "PLURNK_SERVICE_RETAIN_PACKET_TURNS", "PLURNK_SERVICE_AUTO_VACUUM",
 ] as const) {
     test(`{§configuration-repair-path} ${key} preserves an explicitly configured model loop and inspection`, async (t) => {
         serverProposals(t, "accept");

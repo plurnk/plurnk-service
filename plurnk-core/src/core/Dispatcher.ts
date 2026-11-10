@@ -958,13 +958,6 @@ export default class Dispatcher {
         return this.#turnSources.writeEmission(params);
     }
 
-    writeReasoning(params: {
-        content: string; sessionName: string; loopSeq: number; turnSeq: number;
-        sessionId: number; loopId: number; turnId: number; sequence: number; fit: ContextFit | undefined;
-    }): Promise<number | null> {
-        return this.#turnSources.writeReasoning(params);
-    }
-
     prepareBarePrompt(
         context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin"> & { statement: BareStatement },
     ): Promise<{ prompt: string } | { result: DispatchResult }> {

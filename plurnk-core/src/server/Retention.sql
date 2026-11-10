@@ -54,15 +54,13 @@ AND NOT EXISTS (SELECT 1 FROM provider_requests pr WHERE pr.inference_call_id = 
 -- PREP: retention_collect_packet_items
 -- {§packet}: an item no turn's composition references is transient data.
 DELETE FROM packet_items
-WHERE $collect = 1
-  AND NOT EXISTS (SELECT 1 FROM turn_section_items tsi WHERE tsi.item_hash = packet_items.hash);
+WHERE NOT EXISTS (SELECT 1 FROM turn_section_items tsi WHERE tsi.item_hash = packet_items.hash);
 
 -- PREP: retention_collect_derivations
 -- A derivation no channel, turn source, or log row cites is transient data; its symbols cascade
 -- and derivations_delete_fts drops its full-text shadow.
 DELETE FROM derivations
-WHERE $collect = 1
-  AND NOT EXISTS (SELECT 1 FROM entry_channel_rows c WHERE c.deep_hash = derivations.deep_hash)
+WHERE NOT EXISTS (SELECT 1 FROM entry_channel_rows c WHERE c.deep_hash = derivations.deep_hash)
   AND NOT EXISTS (SELECT 1 FROM turn_sources s WHERE s.deep_hash = derivations.deep_hash)
   AND NOT EXISTS (SELECT 1 FROM log_entries le WHERE le.deep_hash = derivations.deep_hash);
 
@@ -70,15 +68,13 @@ WHERE $collect = 1
 -- {§content-store}: a body no channel holds and no derivation indexes is transient data. Runs
 -- after the collectors above, which release what they held.
 DELETE FROM contents
-WHERE $collect = 1
-  AND NOT EXISTS (SELECT 1 FROM entry_channel_rows r WHERE r.content_id = contents.id)
+WHERE NOT EXISTS (SELECT 1 FROM entry_channel_rows r WHERE r.content_id = contents.id)
   AND NOT EXISTS (SELECT 1 FROM derivations d WHERE d.content_id = contents.id);
 
 -- PREP: retention_collect_native_contents
 -- {§content-store}: curation flags never determine evidence ownership.
 DELETE FROM native_contents
-WHERE $collect = 1
-  AND hash NOT IN (
+WHERE hash NOT IN (
       SELECT native_content_hash FROM log_entries WHERE native_content_hash IS NOT NULL
       UNION
       SELECT json_extract(a.value, '$.contentHash') FROM log_entries le,
