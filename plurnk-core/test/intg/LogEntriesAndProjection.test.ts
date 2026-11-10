@@ -811,7 +811,7 @@ test("{§db-migrations} log_entries: session_id NOT NULL", async () => {
         const ctx = await seedEnvelope(db, "ws-log-norun");
         await assert.rejects(
             () => db.test_log_entries_insert_no_session_id.run({ loop_id: ctx.loopId, turn_id: ctx.turnId }),
-            /NOT NULL constraint failed: log_entries\.session_id/,
+            /NOT NULL constraint failed: log_entry_rows\.session_id/,
         );
     } finally { await db.close(); }
 });
@@ -900,7 +900,7 @@ test("{§turn-source-resources}: the schema admits an emission row only as one b
         await minimalLog(db, { sessionId, loopId, turnId: turn.id }, { sequence: 5 });
         await assert.rejects(() => emission({ sequence: 3 }), refused, "written before the turn's operations, so never behind one");
         const id = await emission({ sequence: 6 });
-        await assert.rejects(() => emission({ sequence: 7 }), /UNIQUE constraint failed: log_entries\.turn_id/, "one announcement per turn");
+        await assert.rejects(() => emission({ sequence: 7 }), /UNIQUE constraint failed: log_entry_rows\.turn_id/, "one announcement per turn");
         await assert.rejects(() => db.test_log_entries_update_rx.run({ id, rx: JSON.stringify({ status: 200, content: "rewritten", mimetype: "text/vnd.plurnk" }) }), /an emission row is frozen/);
         await assert.rejects(() => db.test_log_entries_update_weight.run({ id, weight: 1 }), /an emission row is frozen/);
         const plan = (foldedAfter: string, activeAfter: 0 | 1) => ({ targets: JSON.stringify([{ id, activeBefore: 1, activeAfter, foldedBefore: "[]", foldedAfter }]) });

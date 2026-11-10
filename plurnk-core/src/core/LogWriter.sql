@@ -20,4 +20,4 @@ INSERT INTO log_entries (
     $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight,
     $state, $outcome, $attrs, COALESCE($initial_folded, '[]')
 )
-RETURNING id;
+RETURNING (SELECT id FROM log_entry_rows WHERE turn_id = log_entries.turn_id AND sequence = log_entries.sequence) AS id;

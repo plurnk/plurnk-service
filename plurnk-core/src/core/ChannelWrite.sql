@@ -225,7 +225,7 @@ END;
 -- what its original published and advances nothing.
 DROP TRIGGER IF EXISTS log_entries_advance_subscription_publication;
 CREATE TRIGGER log_entries_advance_subscription_publication
-AFTER INSERT ON log_entries
+AFTER INSERT ON log_entry_rows
 WHEN NEW.subscription_publication_id IS NOT NULL AND NEW.inherited_history = 0
 BEGIN
     SELECT CASE WHEN
@@ -233,19 +233,19 @@ BEGIN
         OR NEW.op != 'read'
         OR json_type(NEW.attrs, '$.streamEnd') IS NOT 'integer'
         OR json_extract(NEW.attrs, '$.streamEnd') < 0
-        OR coalesce(json_type(NEW.rx, '$.terminal'), '') NOT IN ('true', 'false')
+        OR coalesce(json_type((SELECT content FROM contents WHERE id = NEW.rx_content_id), '$.terminal'), '') NOT IN ('true', 'false')
     THEN RAISE(ABORT, 'subscription publication requires one canonical stream observation') END;
 
     UPDATE subscription_publications
     SET published_end = json_extract(NEW.attrs, '$.streamEnd'),
-        terminal_published = json_extract(NEW.rx, '$.terminal')
+        terminal_published = json_extract((SELECT content FROM contents WHERE id = NEW.rx_content_id), '$.terminal')
     WHERE id = NEW.subscription_publication_id
       AND terminal_published = 0
       AND (
-          (json_extract(NEW.rx, '$.terminal') = 0
+          (json_extract((SELECT content FROM contents WHERE id = NEW.rx_content_id), '$.terminal') = 0
               AND json_extract(NEW.attrs, '$.streamEnd') > published_end)
           OR
-          (json_extract(NEW.rx, '$.terminal') = 1
+          (json_extract((SELECT content FROM contents WHERE id = NEW.rx_content_id), '$.terminal') = 1
               AND json_extract(NEW.attrs, '$.streamEnd') >= published_end)
       );
 

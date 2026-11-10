@@ -80,16 +80,17 @@ WHERE m.loop_id = $loop_id AND m.log_entry_id IS NOT NULL;
 -- INIT: message_complete_on_reply
 DROP TRIGGER IF EXISTS message_complete_on_reply;
 CREATE TRIGGER message_complete_on_reply
-AFTER INSERT ON log_entries
+AFTER INSERT ON log_entry_rows
 WHEN NEW.op IN ('send', 'done', 'fail') AND NEW.state = 'resolved' AND NEW.status_rx BETWEEN 200 AND 299
-    AND NEW.source IS NULL AND NEW.inherited_history = 0 AND json_valid(NEW.rx)
-    AND json_extract(NEW.rx, '$.completion') IN (200, 499)
+    AND NEW.source IS NULL AND NEW.inherited_history = 0
+    AND json_valid((SELECT content FROM contents WHERE id = NEW.rx_content_id))
+    AND json_extract((SELECT content FROM contents WHERE id = NEW.rx_content_id), '$.completion') IN (200, 499)
 BEGIN
     INSERT INTO message_completions (message_id, response_id, status)
-    SELECT m.id, NEW.id, json_extract(NEW.rx, '$.completion')
+    SELECT m.id, NEW.id, json_extract((SELECT content FROM contents WHERE id = NEW.rx_content_id), '$.completion')
     FROM message_sources m
     JOIN sessions w ON w.id = NEW.session_id AND w.workspace_id = m.workspace_id
-    JOIN json_each(NEW.rx, '$.repliedTo') a ON a.value = m.key_path
+    JOIN json_each((SELECT content FROM contents WHERE id = NEW.rx_content_id), '$.repliedTo') a ON a.value = m.key_path
     WHERE true
     ON CONFLICT(message_id) DO UPDATE SET response_id = excluded.response_id, status = excluded.status;
 END;

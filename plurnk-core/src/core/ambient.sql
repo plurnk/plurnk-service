@@ -16,17 +16,20 @@ END;
 -- {§message-arrival}: the reply and its addressed occurrence commit together.
 DROP TRIGGER IF EXISTS log_entries_deliver_replies;
 CREATE TRIGGER log_entries_deliver_replies
-AFTER INSERT ON log_entries
+AFTER INSERT ON log_entry_rows
 WHEN NEW.op IN ('send', 'done', 'fail', 'kill') AND NEW.state = 'resolved' AND NEW.status_rx BETWEEN 200 AND 299
   AND NEW.source IS NULL AND NEW.inherited_history = 0
-  AND json_type(CASE WHEN json_valid(NEW.rx) THEN NEW.rx END, '$.repliedTo') = 'array'
+  AND json_type(CASE WHEN json_valid((SELECT content FROM contents WHERE id = NEW.rx_content_id))
+                     THEN (SELECT content FROM contents WHERE id = NEW.rx_content_id) END, '$.repliedTo') = 'array'
 BEGIN
     INSERT INTO ambient_events (
         workspace_id, producer_session_id, recipient_session_id,
         kind, source_record_id, source, op, tx, mimetype_tx, rx, mimetype_rx, status_rx, state, attrs
     )
     SELECT d.workspace_id, NEW.session_id, d.recipient_session_id,
-        'reply', NEW.id, NULL, NEW.op, NEW.tx, NEW.mimetype_tx, NEW.rx, NEW.mimetype_rx,
+        'reply', NEW.id, NULL, NEW.op,
+        (SELECT content FROM contents WHERE id = NEW.tx_content_id), NEW.mimetype_tx,
+        (SELECT content FROM contents WHERE id = NEW.rx_content_id), NEW.mimetype_rx,
         NEW.status_rx, 'resolved', '{"kind":"reply"}'
     FROM delivered_message_replies d
     WHERE d.source_record_id = NEW.id AND d.recipient_session_id != NEW.session_id;
@@ -99,7 +102,7 @@ END;
 -- history cannot republish themselves.
 DROP TRIGGER IF EXISTS log_entries_append_ambient_event_insert;
 CREATE TRIGGER log_entries_append_ambient_event_insert
-AFTER INSERT ON log_entries
+AFTER INSERT ON log_entry_rows
 WHEN NEW.state != 'proposed'
 BEGIN
     INSERT INTO ambient_events (
@@ -119,7 +122,7 @@ BEGIN
     FROM ambient_activity_candidates
     WHERE source_record_id = NEW.id;
 
-    UPDATE log_entries
+    UPDATE log_entry_rows
     SET ambient_event_id = (
         SELECT id FROM ambient_events
         WHERE producer_session_id = NEW.session_id
@@ -139,7 +142,7 @@ END;
 -- A proposed operation becomes activity only when its lifecycle settles.
 DROP TRIGGER IF EXISTS log_entries_append_ambient_event_resolve;
 CREATE TRIGGER log_entries_append_ambient_event_resolve
-AFTER UPDATE OF state, status_rx, rx, outcome ON log_entries
+AFTER UPDATE OF state, status_rx, rx_content_id, outcome ON log_entry_rows
 WHEN OLD.state = 'proposed' AND NEW.state != 'proposed'
 BEGIN
     INSERT INTO ambient_events (
@@ -159,7 +162,7 @@ BEGIN
     FROM ambient_activity_candidates
     WHERE source_record_id = NEW.id;
 
-    UPDATE log_entries
+    UPDATE log_entry_rows
     SET ambient_event_id = (
         SELECT id FROM ambient_events
         WHERE producer_session_id = NEW.session_id
@@ -235,15 +238,21 @@ INSERT INTO log_entries (
     scheme, username, password, hostname, port, pathname, query, fragment,
     lineMarker, tx, mimetype_tx,
     rx, mimetype_rx, status_rx, weight, state, outcome, initial_folded, attrs
-) VALUES (
+)
+SELECT
     $session_id, $loop_id, $turn_id, $sequence, $at, '_plurnk', $source, $event_id,
     $op, $signal,
     $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment,
     $line_marker, $tx, $mimetype_tx,
     $rx, $mimetype_rx, $status, $weight, $state, $outcome, $folded, $attrs
+WHERE NOT (
+    $event_id IS NOT NULL
+    AND EXISTS (
+        SELECT 1 FROM log_entry_rows
+        WHERE session_id = $session_id AND ambient_event_id = $event_id
+    )
 )
-ON CONFLICT(session_id, ambient_event_id) WHERE ambient_event_id IS NOT NULL DO NOTHING
-RETURNING id;
+RETURNING (SELECT id FROM log_entry_rows WHERE turn_id = log_entries.turn_id AND sequence = log_entries.sequence) AS id;
 
 -- PREP: engine_ambient_delta_id
 -- Crash replay may find the observation row already inserted but its copied

@@ -57,4 +57,4 @@ INSERT INTO log_entries (
     $subscription_publication_id,
     'read', $scheme, $hostname, $port, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $weight, $attrs, $folded
 )
-RETURNING id;
+RETURNING (SELECT id FROM log_entry_rows WHERE turn_id = log_entries.turn_id AND sequence = log_entries.sequence) AS id;

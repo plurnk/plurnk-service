@@ -85,14 +85,14 @@ test("{§configuration-repair-path}: invalid retention withholds collection and 
     assert.deepEqual(await db.test_content_store_count.get({}), before, "no collector ran at startup or shutdown");
 });
 
-test("{§content-store}: the shipped panel bounds transient data by age and keeps the durable record (#788)", () => {
+test("{§content-store}: the shipped panel bounds transient data by count and age and keeps the durable record (#788, #1445)", () => {
     // The intg tier loads .env.defaults, so this is the real panel, not a fixture.
     const shipped = retentionPolicy(process.env);
-    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-    assert.equal(shipped.retainPacketMs, thirtyDays, "packets are transient evidence, collected after thirty days");
-    assert.equal(shipped.retainResponseMs, thirtyDays, "so are raw response bodies");
-    assert.equal(shipped.retainPacketTurns, -1, "a loop is already bounded by its own turns; age is what grows without limit");
-    assert.equal(shipped.retainResponseTurns, -1);
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    assert.equal(shipped.retainPacketMs, sevenDays, "packets are transient evidence, collected after seven days");
+    assert.equal(shipped.retainResponseMs, sevenDays, "so are raw response bodies");
+    assert.equal(shipped.retainPacketTurns, 200, "and capped at the newest 200 turns per loop on default hardware");
+    assert.equal(shipped.retainResponseTurns, 200);
 });
 
 test("{§content-store}: the keep-everything fixture retires nothing and refuses malformed knobs", async () => {
@@ -422,6 +422,46 @@ test("{§content-store}: a body is stored once however many workspaces hold it, 
         assert.equal((await retention.run()).collectedContents, 0, "a body still held stays");
         await db.crud_delete_entry.run({ entry_id: entries[2] });
         assert.equal((await retention.run()).collectedContents, 1);
+        assert.deepEqual(await db.test_content_store_count.get({}), { n: 0, bytes: null });
+    } finally { await db.close(); }
+});
+
+test("{§content-store}: repeated turn_sources and log_entries payloads share one contents row each until their sessions cascade (#1445)", async () => {
+    const db = await openMigrated();
+    try {
+        const opsSource = "await plurnk.edit({\"path\":\"a.md\",\"content\":\"hello\"});\n".repeat(200);
+        const txPayload = JSON.stringify({ op: "edit", path: "a.md", content: "hello\n".repeat(200) });
+        const rxPayload = JSON.stringify({ status: 200, content: "settled\n".repeat(200), mimetype: "text/plain" });
+        const patchPayload = "--- a.md\tcurrent\n+++ a.md\tproposed\n@@ -1,1 +1,1 @@\n-old\n+hello\n".repeat(50);
+        const workspaces: number[] = [];
+        for (let index = 0; index < 3; index += 1) {
+            const workspaceId = await insertWorkspace(db, `dedup-log-${index}-${crypto.randomUUID()}`);
+            workspaces.push(workspaceId);
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1, "go");
+            const turn = await Turn.open(db, { loopId, producer: "_plurnk", kind: "operation" });
+            await Turn.recordSource(db, turn.id, "ops", opsSource);
+            const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
+                session_id: sessionId, loop_id: loopId, turn_id: turn.id, sequence: 1,
+                origin: "_plurnk", source: null, model_call_id: null, op: "edit", signal: null,
+                scheme: "file", username: null, password: null, hostname: null, port: null,
+                pathname: "/a.md", query: null, fragment: null, lineMarker: null,
+                tx: txPayload, mimetype_tx: "application/json",
+                rx: rxPayload, mimetype_rx: "application/json", status_rx: 200,
+                weight: 10, state: "resolved", outcome: null, attrs: "{}", initial_folded: "[]",
+            });
+            assert.ok(inserted);
+            await db.log_append_patch.run({ id: inserted.id, patch: patchPayload });
+        }
+        const expectedBytes = opsSource.length + txPayload.length + rxPayload.length + patchPayload.length;
+        assert.deepEqual(await db.test_content_store_count.get({}), { n: 4, bytes: expectedBytes }, "three sessions with identical ops/tx/rx/patch store four distinct payloads once");
+        const retention = new Retention(db, retentionPolicy(KEEP_ALL));
+        assert.equal((await retention.run()).collectedContents, 0, "live turn_source_rows and log_entry_rows hold their interned contents");
+        await db.test_workspaces_delete.run({ id: workspaces[0] });
+        await db.test_workspaces_delete.run({ id: workspaces[1] });
+        assert.equal((await retention.run()).collectedContents, 0, "remaining session still holds all four payloads");
+        await db.test_workspaces_delete.run({ id: workspaces[2] });
+        assert.equal((await retention.run()).collectedContents, 4, "cascading the last session releases all four interned payloads");
         assert.deepEqual(await db.test_content_store_count.get({}), { n: 0, bytes: null });
     } finally { await db.close(); }
 });

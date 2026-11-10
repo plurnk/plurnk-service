@@ -163,7 +163,7 @@ WHERE id = $log_entry_id AND EXISTS (
 -- INIT: log_entries_initialize_projection
 DROP TRIGGER IF EXISTS log_entries_initialize_projection;
 CREATE TRIGGER log_entries_initialize_projection
-AFTER INSERT ON log_entries
+AFTER INSERT ON log_entry_rows
 BEGIN
     INSERT INTO log_entry_projections (log_entry_id, active, folded)
     VALUES (NEW.id, 1, '[]');
@@ -176,7 +176,7 @@ CREATE TRIGGER log_entry_projections_invalidate_derivation
 AFTER UPDATE OF folded, active ON log_entry_projections
 WHEN OLD.active != NEW.active OR json(OLD.folded) != json(NEW.folded)
 BEGIN
-    UPDATE log_entries SET deep_hash = NULL WHERE id = NEW.log_entry_id;
+    UPDATE log_entry_rows SET deep_hash = NULL WHERE id = NEW.log_entry_id;
 END;
 
 -- INIT: log_entries_apply_curation
@@ -188,7 +188,7 @@ END;
 -- or folds a span of its body (active stays 1, visibility changes).
 DROP TRIGGER IF EXISTS log_entries_apply_curation;
 CREATE TRIGGER log_entries_apply_curation
-AFTER INSERT ON log_entries
+AFTER INSERT ON log_entry_rows
 WHEN NEW.op = 'kill'
  AND NEW.status_rx < 400
  AND NEW.scheme = 'log'
@@ -308,7 +308,7 @@ BEGIN
         FROM json_each(NEW.attrs, '$.__plurnk_curation.targets')
     );
 
-    UPDATE log_entries
+    UPDATE log_entry_rows
     SET attrs = json_remove(attrs, '$.__plurnk_curation')
     WHERE id = NEW.id;
 END;
