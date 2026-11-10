@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-modules",
-    "version": "4.1.1",
+    "version": "4.2.0",
     "description": "The Plurnk daemon module contract: the lifecycle a module implements and the base seam it receives.",
     "keywords": [
         "plurnk",

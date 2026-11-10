@@ -1,5 +1,16 @@
 # @plurnk/plurnk-modules
 
+## 4.2.0
+
+### Minor Changes
+
+- Add `ModuleNotificationSubscription` (`subscribe?(context): ModuleNotificationSubscription | Promise<ModuleNotificationSubscription | void> | void`) to `PlurnkDaemonModule` for daemon-owned filtered notification subscriptions (#1439 #1440).
+
+### Patch Changes
+
+- Updated dependencies
+  - @plurnk/plurnk-contracts@7.4.0
+
 ## 4.1.1
 
 ### Patch Changes

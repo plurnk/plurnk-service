@@ -2348,6 +2348,17 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             workspaceId: 1,
             sessionId: 1,
         });
+        replayTranslator.reasoning({
+            sessionId: 1,
+            loopId: 2,
+            loopSeq: 2,
+            turnId: 2,
+            turnSeq: 1,
+            modelCallId: 9,
+            requestSequence: 1,
+            phase: "content",
+            delta: "Considering sh.",
+        });
         const replayed = SessionTranslator.replay(
             replayTranslator,
             [
@@ -2363,6 +2374,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     op: "sh",
                     state: "resolved",
                     status_rx: 202,
+                    reasoning: "Considering sh.",
                     tx: JSON.stringify({ body: "echo done" }),
                     rx: JSON.stringify({ status: 202 }),
                     attrs: JSON.stringify({ stream: "sh://9" }),
@@ -2370,6 +2382,11 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
             ],
             [],
             { openStreamTargets: new Set() },
+        );
+        assert.equal(
+            replayed.some((u) => u.update.sessionUpdate === "agent_thought_chunk"),
+            true,
+            "replay must emit agent_thought_chunk even when live reasoning was previously streamed on the same translator",
         );
         const completedToolUpdate = replayed.find(
             (u) => u.update.sessionUpdate === "tool_call_update" && u.update.status === "completed",
