@@ -68,6 +68,7 @@ import {
     isDescendantSession,
     listSessionsOverview,
     lookupSessionTarget,
+    registerAcpSessionOwner,
     parseOverviewRequest,
     resolvePromptCommand,
     resolveSessionBinding,
@@ -1227,7 +1228,8 @@ export const createConnectionAgent = (
     app.onRequest(methods.agent.session.prompt, async (ctx): Promise<PromptResponse> => {
         peer.client = ctx.client;
         try {
-            const bound = peer.sessions.get(ctx.params.sessionId)
+            const existingBound = peer.sessions.get(ctx.params.sessionId);
+            const bound = existingBound
                 ?? (await resolveSessionBinding(
                     seam,
                     httpOrigin(),
@@ -1238,6 +1240,14 @@ export const createConnectionAgent = (
                     ctx.params._meta,
                     opts.historyPageChars,
                 ));
+            const plurnkMeta = extractPlurnkMeta(ctx.params._meta);
+            if (
+                existingBound !== undefined &&
+                plurnkMeta.control !== false &&
+                (plurnkMeta.interactive !== undefined || plurnkMeta.tools !== undefined)
+            ) {
+                await registerAcpSessionOwner(seam, bound.workspaceId, plurnkMeta);
+            }
             const textParts: string[] = [];
             const promptOpenPaths: string[] = [];
             const attachments: MessageResource[] = [];
@@ -1331,7 +1341,6 @@ export const createConnectionAgent = (
                     textParts.splice(0, textParts.length, ...(resolved.text.length > 0 ? [resolved.text] : []));
                 }
             }
-            const plurnkMeta = extractPlurnkMeta(ctx.params._meta);
             const mergedOpenPaths = [
                 ...(plurnkMeta.openPaths ?? []),
                 ...promptOpenPaths,

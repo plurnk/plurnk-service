@@ -502,6 +502,8 @@ export const extractPlurnkMeta = (meta: unknown): {
     readonly create?: boolean;
     readonly activate?: boolean;
     readonly control?: boolean;
+    readonly interactive?: boolean;
+    readonly tools?: readonly string[];
     readonly archived?: boolean;
     readonly window?: boolean;
     readonly historyLoops?: number;
@@ -534,6 +536,10 @@ export const extractPlurnkMeta = (meta: unknown): {
     const create = typeof p.create === "boolean" ? p.create : undefined;
     const activate = typeof p.activate === "boolean" ? p.activate : undefined;
     const control = typeof p.control === "boolean" ? p.control : undefined;
+    const interactive = typeof p.interactive === "boolean" ? p.interactive : undefined;
+    const tools = Array.isArray(p.tools)
+        ? p.tools.filter((x): x is string => typeof x === "string")
+        : undefined;
     const archived = typeof p.archived === "boolean" ? p.archived : undefined;
     const window = typeof p.window === "boolean" ? p.window : undefined;
     const historyLoops = typeof p.historyLoops === "number" && Number.isInteger(p.historyLoops) && p.historyLoops > 0
@@ -564,6 +570,8 @@ export const extractPlurnkMeta = (meta: unknown): {
         ...(create !== undefined ? { create } : {}),
         ...(activate !== undefined ? { activate } : {}),
         ...(control !== undefined ? { control } : {}),
+        ...(interactive !== undefined ? { interactive } : {}),
+        ...(tools !== undefined ? { tools } : {}),
         ...(archived !== undefined ? { archived } : {}),
         ...(window !== undefined ? { window } : {}),
         ...(historyLoops !== undefined ? { historyLoops } : {}),
@@ -813,6 +821,21 @@ export const lookupSessionTarget = async (
     };
 };
 
+export const registerAcpSessionOwner = async (
+    seam: ApplicationPort,
+    workspaceId: number,
+    plurnkMeta: { readonly interactive?: boolean; readonly tools?: readonly string[] },
+): Promise<void> => {
+    const interactive = plurnkMeta.interactive ?? true;
+    const clientTools = plurnkMeta.tools ?? (interactive ? ["question", "mcp_input_required"] : []);
+    const tools = ["request_approval", ...clientTools.filter((t) => t !== "request_approval")];
+    await seam.registerSessionOwner(workspaceId, {
+        address: OWNER_ADDRESS,
+        tools,
+        interactive,
+    });
+};
+
 export const resolveSessionBinding = async (
     seam: ApplicationPort,
     origin: string,
@@ -921,11 +944,7 @@ export const resolveSessionBinding = async (
         if (plurnkMeta.activate === true) {
             await seam.activateWorkspace({ workspaceId });
         }
-        await seam.registerSessionOwner(workspaceId, {
-            address: OWNER_ADDRESS,
-            tools: ["request_approval", "question", "mcp_input_required"],
-            interactive: true,
-        });
+        await registerAcpSessionOwner(seam, workspaceId, plurnkMeta);
     }
 
     let session = requestedSessionName !== undefined
