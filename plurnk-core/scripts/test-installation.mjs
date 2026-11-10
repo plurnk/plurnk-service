@@ -676,7 +676,7 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
         text: 'await plurnk.read({"path":"skill://inspect/SKILL.md","range":"1,-1"});',
     }, attached.name)).results[0];
     const ownSkillReads = [];
-    for (const pathname of ["SKILL.md", "configuration/.env.defaults", "configuration/plurnk.service", "configuration/plurnk.nginx.conf", "configuration.md", "copy-move.md", "delegation.md", "extensibility.md", "https.md", "models.md", "pattern.md", "session.md", "wss.md"]) {
+    for (const pathname of ["SKILL.md", "configuration/.env.defaults", "configuration/plurnk.service", "configuration/plurnk.nginx.conf", "configuration.md", "copy-move.md", "delegation.md", "extensibility.md", "https.md", "models.md", "pattern.md", "recipes.md", "session.md", "wss.md"]) {
         ownSkillReads.push((await acpAction(address, "op.parse", {
             text: `await plurnk.read(${JSON.stringify({ path: `skill://plurnk/${pathname}`, range: "1,-1" })});`,
         }, attached.name)).results[0]);

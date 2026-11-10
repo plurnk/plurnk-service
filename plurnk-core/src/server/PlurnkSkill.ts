@@ -20,6 +20,7 @@ export default class PlurnkSkill implements SkillTree {
         "https",
         "models",
         "pattern",
+        "recipes",
         "session",
         "wss",
     ]);
@@ -37,6 +38,7 @@ export default class PlurnkSkill implements SkillTree {
         ["https.md", resolve(dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-schemes-http/package.json"))), "docs/https.md")],
         ["models.md", resolve(dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-providers/package.json"))), "docs/models.md")],
         ["pattern.md", Paths.teachingSource(TEACHING_CORPUS.docs.pattern.source)],
+        ["recipes.md", Paths.teachingSource(TEACHING_CORPUS.skillChapters.recipes)],
         ["session.md", Paths.teachingSource(TEACHING_CORPUS.docs.session.source)],
         ["wss.md", resolve(dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-schemes-http/package.json"))), "docs/wss.md")],
     ]);

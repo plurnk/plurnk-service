@@ -907,6 +907,13 @@ test("{§log-history-projection} a log miss beside real rows names them", async 
     assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///1/1/9/find\"});")).problem.recovery, "Turn 1/1's find rows are `log:///1/1/2/find`, `log:///1/1/4/find`.", "a sequence off names the turn's rows that carry the leaf");
     assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///1/4/1/read\"});")).problem.recovery, "Turn 1/4 has no entries; loop 1's latest turn is 1/1.");
     assert.equal((await dispatch("await plurnk.read({\"path\":\"log:///7/1/1/read\"});")).problem.recovery, undefined, "a loop with no rows has nothing to name");
+    await dispatch("await plurnk.note({\"text\":\"Track finding.\"});");
+    const noteDenied = await dispatch("await plurnk.kill({\"path\":\"note://analyst/1/1/10\"});");
+    assert.equal(noteDenied.status, 403);
+    assert.equal(noteDenied.problem.recovery, "Turn-source schemes are immutable; await plurnk.kill({ path: \"log:///<loop>/<turn>/<sequence>\" }) retires an active log entry.");
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/10\"});")).status, 200);
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/10/note\"});")).problem.recovery, "The entry at log:///1/1/10 (`log:///1/1/10/note`) is already retired.");
+    assert.equal((await dispatch("await plurnk.kill({\"path\":\"log:///1/1/10\"});")).problem.recovery, "The entry at log:///1/1/10 (`log:///1/1/10/note`) is already retired.");
 });
 
 test("{§operation-results} {§diagnostic-observation} an unregistered scheme names what is registered, whatever its authority", async (t) => {

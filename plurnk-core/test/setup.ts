@@ -31,9 +31,10 @@ const fixture = {
     // Reasoning is a subset of that total, never an additive reserve.
     PLURNK_PROVIDERS_OUTPUT_BUDGET: "1280",
     PLURNK_PROVIDERS_REASONING_BUDGET: "256",
-    // Test isolation, tier-wide: no operator doc-foist, no operator system policy, a bounded turn
-    // ceiling so a wandering green loop still ends legibly, a scratch DB.
+    // Test isolation, tier-wide: no operator doc-foist, no operator system policy, no live MCP
+    // registry network calls, a bounded turn ceiling so a wandering green loop still ends legibly, a scratch DB.
     PLURNK_SERVICE_POLICY: "",
+    PLURNK_MCP_REGISTRY_URL: "",
     // {§credential-authority} — a fixture daemon authenticates nothing: its witnesses drive the
     // listener anonymously, and the authority's own witnesses set their posture explicitly.
     PLURNK_AUTH: "0",

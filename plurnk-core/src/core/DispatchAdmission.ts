@@ -111,6 +111,25 @@ export default class DispatchAdmission {
                 },
             );
         }
+        // {§turn-source-resources} {§diagnostic-observation} — turn-source schemes retain immutable
+        // archive evidence; curating active packet rows uses bare log:/// coordinates.
+        if (denial !== null && statement.op === "kill" && origin === "model"
+            && (target === "ops" || target === "reasoning" || target === "note")) {
+            const manifest = this.#schemes.manifestAt(target, statement.target, workspaceId);
+            return this.#failure(
+                "writer-forbidden",
+                403,
+                `Writer '${origin}' cannot modify scheme '${target}'.`,
+                {},
+                {
+                    writer: origin,
+                    scheme: target,
+                    allowedWriters: [...(manifest?.writableBy ?? [])],
+                    recovery: "Turn-source schemes are immutable; await plurnk.kill({ path: \"log:///<loop>/<turn>/<sequence>\" }) retires an active log entry.",
+                    retryable: false,
+                },
+            );
+        }
         return denial;
     }
 

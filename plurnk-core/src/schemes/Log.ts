@@ -214,7 +214,23 @@ const nearMissRecovery = async (
     const turn = `${coord.loopSeq}/${coord.turnSeq}`;
     const rows = await under(`${turn}/`);
     const here = rows.find((row) => LogEntryProjection.base(row.coordinate) === `${turn}/${coord.sequence}`);
-    const atCoordinate = here === undefined ? null : `the entry at log:///${turn}/${coord.sequence} is \`log:///${here.coordinate}\``;
+    const retired = here === undefined
+        ? await ctx.db.log_retired_by_coordinate.get<Pick<CoordinateRow, "id" | "origin" | "op" | "attrs" | "tx">>({
+            session_id: ctx.sessionId,
+            loop_seq: coord.loopSeq,
+            turn_seq: coord.turnSeq,
+            sequence: coord.sequence,
+            max_id: maxLogEntryId,
+        })
+        : undefined;
+    if (retired !== undefined && LogEntryProjection.accepts(coord.op, retired)) {
+        return `The entry at log:///${turn}/${coord.sequence} (\`log:///${LogEntryProjection.coordinate(`${turn}/${coord.sequence}`, retired)}\`) is already retired.`;
+    }
+    const atCoordinate = here !== undefined
+        ? `the entry at log:///${turn}/${coord.sequence} is \`log:///${here.coordinate}\``
+        : retired !== undefined
+            ? `the entry at log:///${turn}/${coord.sequence} (\`log:///${LogEntryProjection.coordinate(`${turn}/${coord.sequence}`, retired)}\`) is already retired`
+            : null;
     const leaf = coord.op?.toLocaleLowerCase("en-US");
     const same = leaf === undefined ? [] : rows.filter((row) => row.coordinate.split("/")[3]?.toLocaleLowerCase("en-US") === leaf);
     if (same.length > 0) {

@@ -43,6 +43,20 @@ WHERE l.session_id = $session_id
   AND le.sequence = $sequence
   AND ($max_id IS NULL OR le.id <= $max_id);
 
+-- PREP: log_retired_by_coordinate
+-- Resolve an already-retired log:/// coordinate within the session for near-miss recovery.
+SELECT le.id, le.origin, le.op, le.attrs, le.tx
+FROM log_entries le
+JOIN log_entry_projections p ON p.log_entry_id = le.id
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = t.loop_id
+WHERE l.session_id = $session_id
+  AND l.sequence = $loop_seq
+  AND t.sequence = $turn_seq
+  AND le.sequence = $sequence
+  AND p.active = 0
+  AND ($max_id IS NULL OR le.id <= $max_id);
+
 -- PREP: log_match_coordinates
 -- Return the literal-prefix candidate superset in the durable three-part
 -- coordinate tree. TypeScript appends the canonical projected OP and applies
