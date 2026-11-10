@@ -1,7 +1,6 @@
 // Top-level daemon orchestrator. Owns the DB connection, engine, registries,
 // the transport-free module seam ({§rpc}).
 
-import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { Share } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
@@ -10,6 +9,7 @@ import type { StreamEventPayload } from "../core/ChannelWrite.ts";
 import type { ReasoningEventPayload } from "../core/ReasoningEvent.ts";
 import type { OutsideEventPayload } from "../core/OutsideEvent.ts";
 import Paths from "../Paths.ts";
+import { readInstructionsSystem } from "../core/teaching-corpus.ts";
 import Engine, { type WorkspaceDerivationStatus } from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import Exec from "../schemes/Exec.ts";
@@ -317,7 +317,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             assertInjectionCompatibility: (args) => this.#sessionModels.assertInjectionCompatibility(args),
             runLoop: (args) => this.#runDrainLoop(args),
             hasActiveStreams: (sessionId) => this.#sessionHasActiveStreams(sessionId),
-            readSystemPrompt: () => readFile(Paths.instructionsSystem, "utf8"), // {§packet-inject}
+            readSystemPrompt: () => readInstructionsSystem(), // {§packet-inject}
             emitLogEntry: async (workspaceId, logEntryId) => {
                 const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
                 this.#broadcast({ workspaceId }, "log/entry", { entry });

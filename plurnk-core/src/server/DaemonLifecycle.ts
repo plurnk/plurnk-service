@@ -1,13 +1,12 @@
 // {§module-lifecycle} {§module-shutdown-order} {§content-store}
 // Boot lifecycle recovery and deadline-bounded daemon shutdown orchestration.
 
-import { readFile } from "node:fs/promises";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
 import type SchemeRegistry from "../core/SchemeRegistry.ts";
 import StopDeadline from "../core/StopDeadline.ts";
-import Paths from "../Paths.ts";
+import { readInstructionsSystem } from "../core/teaching-corpus.ts";
 import Exec from "../schemes/Exec.ts";
 import type ClientOperations from "./ClientOperations.ts";
 import type DaemonModules from "./DaemonModules.ts";
@@ -39,7 +38,7 @@ export const recoverDaemonLifecycle = async (args: {
         await drains.reconcileOrphanedMessages(source.session_id, source.loop_id);
     }
 
-    const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§packet-inject}
+    const systemPrompt = await readInstructionsSystem(); // {§packet-inject}
     const queued = await db.recovery_queued_sessions.all<{
         session_id: number;
         workspace_id: number;

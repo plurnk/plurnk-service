@@ -1300,4 +1300,86 @@ test("{§tools-resource-materialization} {§capability-admission}: a denied fami
         await db.close();
     }
 });
+
+test("{§module-workspace-residency} {§tools-resource-materialization} LoopDocs.evict and workspace cool/warm cycles emit zero _plurnk kill/edit churn when schemas are unchanged", async (t) => {
+    const priorWarmMs = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS;
+    const priorWarmMax = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX;
+    process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "0";
+    process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX = "-1";
+    t.after(() => {
+        if (priorWarmMs === undefined) delete process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS;
+        else process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = priorWarmMs;
+        if (priorWarmMax === undefined) delete process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX;
+        else process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX = priorWarmMax;
+    });
+
+    const db = await openMigrated();
+    const log: string[] = [];
+    const workspaceId = await insertWorkspace(db, `fx-cool-warm-churn-${crypto.randomUUID()}`);
+    // Register fx AFTER built-in providers (members, skills, schedule) so early providers activate before fx.
+    const daemon = new Daemon({ db, provider: null });
+    daemon.registerModule({
+        setup: (seam: HostSetupSeam) => {
+            seam.registerFunctionalityAdapter({ ...fixtureAdapter(log), example: { alias: "one", kind: "ok" } });
+        },
+    }, "test-module");
+    await daemon.start();
+    try {
+        await daemon.invokeModuleAction("workspace.fx.add", { alias: "docy", kind: "doc" }, workspaceContext(workspaceId));
+        // Wait for immediate cooling (PLURNK_SERVICE_WORKSPACE_WARM_MS=0) to settle.
+        await waitForDb(
+            async () => log.filter((entry) => entry.startsWith("teardown:")).length,
+            (count) => count >= 1,
+        );
+
+        const sessions = await db.test_sessions_by_workspace.all<{ id: number; origin: string }>({ workspace_id: workspaceId });
+        const runtimeSessionId = sessions.find(({ origin }) => origin === "_plurnk")?.id;
+        assert.ok(runtimeSessionId !== undefined, "initial doc materialization created the runtime session");
+
+        const baselinePlurnkRows = (await db.test_count_log_entries_session_origin.get<{ n: number }>({
+            session_id: runtimeSessionId,
+            origin: "_plurnk",
+        }))!.n;
+        const baselineLoops = (await db.test_count_loops_by_session.get<{ n: number }>({
+            session_id: runtimeSessionId,
+        }))!.n;
+        assert.ok(baselinePlurnkRows > 0);
+
+        // Cold LoopDocs.evict + materialize with unchanged reference entries dispatches nothing when re-warmed.
+        // Drive 3 full reactivate -> read -> cool cycles and verify zero new _plurnk loops or kill/edit log_entries!
+        for (let cycle = 0; cycle < 3; cycle++) {
+            const teardownsBefore = log.filter((entry) => entry.startsWith("teardown:")).length;
+            const read = await clientOperation(daemon, workspaceId, parseOne("await plurnk.read({\"path\":\"plurnk:///fx/docy.md\",\"range\":\"1,-1\"});"));
+            assert.equal(read.status, 200);
+            await waitForDb(
+                async () => log.filter((entry) => entry.startsWith("teardown:")).length,
+                (count) => count > teardownsBefore,
+            );
+        }
+
+        const afterPlurnkRows = (await db.test_count_log_entries_session_origin.get<{ n: number }>({
+            session_id: runtimeSessionId,
+            origin: "_plurnk",
+        }))!.n;
+        const afterKills = await db.test_log_entries_by_session_op_full.all({
+            session_id: runtimeSessionId,
+            op: "kill",
+        });
+        assert.equal(afterPlurnkRows, baselinePlurnkRows, "re-warming unchanged providers dispatches zero _plurnk log_entries");
+        assert.equal(afterKills.filter((row: { origin?: string }) => row.origin === "_plurnk").length, 0, "intermediate provider activation emits zero _plurnk kill rows");
+
+        // Also verify direct LoopDocs.evict + LoopDocs.materialize while active creates zero loops or log_entries.
+        const release = await daemon.readEntry({ workspaceId, sessionId: runtimeSessionId, target: "plurnk:///fx/docy.md", channel: "body" });
+        assert.equal(release.status, 200);
+        LoopDocs.evict(db, workspaceId);
+        // Client operation acquires residency, runs LoopDocs.materialize after eviction, and finds 0 statements.
+        const loopsBeforeEvictCheck = (await db.test_count_loops_by_session.get<{ n: number }>({
+            session_id: runtimeSessionId,
+        }))!.n;
+        assert.equal(loopsBeforeEvictCheck, baselineLoops + 3, "only the 3 client operations opened loops; _plurnk opened zero");
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
 });

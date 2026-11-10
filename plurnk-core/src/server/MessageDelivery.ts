@@ -2,12 +2,10 @@
 // model and effort, read the card, prepare the message with its attachments, attribute its source, and inject it into
 // the session's drain, which starts a loop or folds into the active one. Split out of Daemon, which keeps the drain's
 // run callback and the delegating port entry point.
-import { readFile } from "node:fs/promises";
 import { type Effort, type MessageEvidence, type MessageResource } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
-import Paths from "../Paths.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import ContentUse from "../core/ContentUse.ts";
 import type { Db } from "../core/Db.ts";
@@ -15,6 +13,7 @@ import type Engine from "../core/Engine.ts";
 import MessageResources from "../core/MessageResources.ts";
 import type { SchemeResult } from "../core/results.ts";
 import SessionControlAddress from "../core/SessionControlAddress.ts";
+import { readInstructionsSystem } from "../core/teaching-corpus.ts";
 import ClientInput from "./client-input.ts";
 import type { DrainInjectionArgs, DrainInjectionResult, TurnCeilingSelection } from "./DrainSupervisor.ts";
 import { routeForSpec } from "./model-route.ts";
@@ -74,7 +73,7 @@ export default class MessageDelivery {
         const { providerSpec: selection, effort } = generationPolicy;
         // {§session-model-selection} — the session's persistent spawn override.
         const childSelection = await this.#sessionModels.resolveSessionSpawnModel(sessionId, childSelector);
-        const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§packet-inject}
+        const systemPrompt = await readInstructionsSystem(); // {§packet-inject}
         // {§operator-config-workspace-settings} — the operator ceiling clamps a per-call maxTurns; a
         // seam caller must not bypass operator policy (inject only DEFAULTS from env, never clamps).
         const ceiling = Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1);
@@ -122,7 +121,7 @@ export default class MessageDelivery {
             throw new Error(`injectSession: source loop ${sourceLoopId} does not belong to workspace ${workspaceId}`);
         }
         const source = await this.#messageSource(workspaceId, sourceLoopId, sender.session_id, sessionId);
-        const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§packet-inject}
+        const systemPrompt = await readInstructionsSystem(); // {§packet-inject}
         let providerSpec: ProviderSpec;
         let childProviderSpec: ProviderSpec | null;
         let effort: Effort;

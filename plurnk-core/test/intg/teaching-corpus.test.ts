@@ -9,7 +9,7 @@ import { join, resolve } from "node:path";
 import { TEACHING_CORPUS } from "@plurnk/plurnk-meta";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { teachingCorpusReader } from "../../src/core/teaching-corpus.ts";
+import { liveTextReader, teachingCorpusReader } from "../../src/core/teaching-corpus.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import PlurnkSkill from "../../src/server/PlurnkSkill.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
@@ -85,6 +85,42 @@ test("{§teaching-corpus} a failed required corpus read is not reclassified as o
         );
     } finally {
         await db.close();
+        await rm(root, { recursive: true, force: true });
+    }
+});
+
+test("{§teaching-corpus} {§packet-inject} transient ENOENT after an initial read serves the last read text while live edits still apply immediately", async () => {
+    const root = await corpusRoot();
+    const sessionDoc = join(root, TEACHING_CORPUS.docs.session.source);
+    const cardPath = join(root, "plurnk.md");
+    try {
+        await writeFile(sessionDoc, "# session v1\n");
+        await writeFile(cardPath, "# card v1\n");
+        const readTeaching = teachingCorpusReader(root);
+        const readCard = liveTextReader(cardPath);
+
+        assert.equal(await readTeaching(TEACHING_CORPUS.docs.session.source), "# session v1\n");
+        assert.equal(await readCard(), "# card v1\n");
+
+        // Live edit on disk takes effect immediately on the next read.
+        await writeFile(sessionDoc, "# session v2\n");
+        await writeFile(cardPath, "# card v2\n");
+        assert.equal(await readTeaching(TEACHING_CORPUS.docs.session.source), "# session v2\n");
+        assert.equal(await readCard(), "# card v2\n");
+
+        // Transient ENOENT during a concurrent build:clean serves the last read content.
+        await rm(sessionDoc);
+        await rm(cardPath);
+        assert.equal(await readTeaching(TEACHING_CORPUS.docs.session.source), "# session v2\n");
+        assert.equal(await readCard(), "# card v2\n");
+
+        // Subsequent rebuild picks up updated content again; non-ENOENT still rejects.
+        await writeFile(sessionDoc, "# session v3\n");
+        assert.equal(await readTeaching(TEACHING_CORPUS.docs.session.source), "# session v3\n");
+        await rm(sessionDoc);
+        await mkdir(sessionDoc);
+        await assert.rejects(() => readTeaching(TEACHING_CORPUS.docs.session.source), /could not be read/);
+    } finally {
         await rm(root, { recursive: true, force: true });
     }
 });
