@@ -410,7 +410,7 @@ export default class WorkspacePersonas implements FunctionalityAdapter<never, ne
     readonly family = PERSONAS_FAMILY;
     readonly namespaceOwner = PERSONAS_OWNER;
     readonly aliasPattern = SKILL_NAME;
-    readonly summary = "List ({}) or manage personas";
+    readonly summary = "List ({}) or manage personas.";
     readonly definitionSchema: JsonSchema = PERSONA_DEFINITION_SCHEMA;
     readonly example = {
         alias: "professor",

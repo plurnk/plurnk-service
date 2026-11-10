@@ -21,7 +21,7 @@ export default class Shell {
     static resolve(env: NodeJS.ProcessEnv = process.env): ShellChoice {
         const declared = env.SHELL;
         const path = declared !== undefined && isAbsolute(declared) && Shell.#executable(declared) ? declared : Shell.SYSTEM;
-        return { path, program: Shell.#program(path), version: Shell.#version(path, env) };
+        return { path, program: Shell.#program(path), version: Shell.version(path, env) };
     }
 
     // Resolved on first use and held for the process, so what the summary names is what runs.
@@ -29,8 +29,8 @@ export default class Shell {
         return Shell.#current ??= Shell.resolve();
     }
 
-    static summary({ path, program, version }: ShellChoice): string {
-        return `Run shell commands and scripts with ${program}${version === null ? "" : ` ${version}`} (${path}).`;
+    static summary({ program, version }: ShellChoice): string {
+        return `Run shell commands or scripts with ${program}${version === null ? "" : ` (v${version})`}.`;
     }
 
     static #executable(path: string): boolean {
@@ -46,12 +46,13 @@ export default class Shell {
         catch { return basename(path); }
     }
 
-    // The first dotted number on the first line; a shell without `--version` (dash) reports none.
-    static #version(path: string, env: NodeJS.ProcessEnv): string | null {
-        const probe = spawnSync(path, ["--version"], {
-            encoding: "utf8", timeout: 2_000, stdio: ["ignore", "pipe", "ignore"], ...SpawnAccounts.options(env), // {§executor-policy}
+    // The first dotted number on the first line; a program without `--version` (dash) reports none.
+    static version(program: string, env: NodeJS.ProcessEnv = process.env): string | null {
+        const probe = spawnSync(program, ["--version"], {
+            encoding: "utf8", timeout: 2_000, stdio: ["ignore", "pipe", "pipe"], ...SpawnAccounts.options(env), // {§executor-policy}
         });
         if (probe.status !== 0) return null;
-        return /\d+(?:\.\d+)+/u.exec(probe.stdout.split("\n")[0] ?? "")?.[0] ?? null;
+        const line = (probe.stdout || probe.stderr).split("\n")[0] ?? "";
+        return /\d+(?:\.\d+)+/u.exec(line)?.[0] ?? null;
     }
 }

@@ -23,7 +23,7 @@ test("{§executor-subprocess}: an executable $SHELL is the shell, named with the
     const declared = await shell("fakesh", 'printf "fakesh, version 4.2.1(1)-release (x86_64)\\n"');
     const choice = Shell.resolve({ SHELL: declared });
     assert.deepEqual(choice, { path: declared, program: "fakesh", version: "4.2.1" });
-    assert.equal(Shell.summary(choice), `Run shell commands and scripts with fakesh 4.2.1 (${declared}).`);
+    assert.equal(Shell.summary(choice), "Run shell commands or scripts with fakesh (v4.2.1).");
 });
 
 test("{§executor-subprocess}: a shell that reports no version is named without one", async (t) => {
@@ -31,7 +31,7 @@ test("{§executor-subprocess}: a shell that reports no version is named without 
     const declared = await shell("quietsh", "exit 2");
     const choice = Shell.resolve({ SHELL: declared });
     assert.deepEqual(choice, { path: declared, program: "quietsh", version: null });
-    assert.equal(Shell.summary(choice), `Run shell commands and scripts with quietsh (${declared}).`);
+    assert.equal(Shell.summary(choice), "Run shell commands or scripts with quietsh.");
 });
 
 test("{§executor-subprocess}: a $SHELL that names no executable file leaves the system shell", async (t) => {

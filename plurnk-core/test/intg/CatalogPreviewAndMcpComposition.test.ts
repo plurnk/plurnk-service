@@ -332,8 +332,9 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     plurnkContent.includes(`await plurnk.sh({"text":"git status --short"}) // ${Shell.summary(Shell.current())}`),
                     "Turn 0 teaches a compact executable witness with its aside naming the shell that runs ({§executor-subprocess}), as plain text rather than a code span",
                 );
-                assert.ok(
-                    plurnkContent.includes("await plurnk.python3({\"text\":\"print(42)\"}) // Run Python 3 code or scripts."),
+                assert.match(
+                    plurnkContent,
+                    /await plurnk\.python3\(\{"text":"print\(42\)"\}\) \/\/ Run Python 3 code or scripts with python3(?: \(v\d+(?:\.\d+)+\))?\./u,
                     "the interpreter aside teaches an executable inline program without requiring a document READ",
                 );
                 const editSchemaRead = rows.find((row) => row.op === "read" && row.scheme === "mcp" && row.hostname === null && row.pathname === "/plurnk/edit.json");

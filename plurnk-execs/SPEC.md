@@ -133,7 +133,7 @@ Every available runtime receives one derived read-only scheme face from its tag,
 
 | Runtime | No-target spawn | File target (`target` is program, `body` tokenized via `tokenizeArgv` into argv) |
 | --- | --- | --- |
-| `sh` | `<shell> -c <body>`, where `<shell>` is `$SHELL` if an absolute executable path, else `/bin/sh`, resolved once per daemon process and named with its `--version` in the `sh` summary (`Run shell commands and scripts with <name> <ver> (<path>).`). | `<shell> <target> ...argv` |
+| `sh` | `<shell> -c <body>`, where `<shell>` is `$SHELL` if an absolute executable path, else `/bin/sh`, resolved once per daemon process and named with its `--version` in the `sh` summary (`Run shell commands or scripts with <name> (v<ver>).`, or without `(v<ver>)` when `--version` reports none). | `<shell> <target> ...argv` |
 | `js` | `node -e <body>` | `node <target> ...argv` |
 | `python3` | `python3 -c <body>` | `python3 <target> ...argv` |
 | Other default-base | `<runtime> -c <body>` | `<runtime> <target> ...argv` |

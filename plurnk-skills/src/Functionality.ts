@@ -73,7 +73,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
     readonly family = SKILLS_FAMILY;
     readonly aliasPattern = SKILL_NAME;
     readonly namespaceOwner = SKILLS_OWNER;
-    readonly summary = "List ({}) or manage skills";
+    readonly summary = "List ({}) or manage skills.";
     readonly definitionSchema: JsonSchema = DEFINITION;
     readonly example = { alias: "sql-formatter", source: "https://git.example/acme/skills.git" };
     readonly docsDir = resolve(import.meta.dirname, "..");

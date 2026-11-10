@@ -61,7 +61,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     readonly scheme: RuntimeSchemeFacet | undefined;
     readonly family = ENV_FAMILY;
     readonly namespaceOwner = ENV_OWNER;
-    readonly summary = "List active environment variables ({}, or read env:///<NAME>) or manage overrides; discover searches package .env.defaults catalogs";
+    readonly summary = "List ({}) or manage environment variables.";
     readonly definitionSchema = DEFINITION;
     readonly scopes = ["session", "workspace"] as const;
     readonly aliasPattern = NAME;
