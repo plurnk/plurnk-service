@@ -2,7 +2,7 @@
 
 The single authority for PLURNK's model-facing language contract, its AST,
 shared schemas and types, runtime-neutral Problems, operation results,
-Notices, and text coordinates. See SPEC {§whitespace-contract}.
+Notices, and text coordinates. See SPEC {§contract-representations}.
 
 ## Install
 
@@ -30,7 +30,7 @@ Reflective Emission Normalization (RENO). See SPEC
 
 ## Parser
 
-The parser that implements this language is [`@plurnk/plurnk-parser`](../plurnk-parser):
+The parser that implements this language is [`@plurnk/plurnk-parser`](https://github.com/plurnk/plurnk-service/tree/main/plurnk-parser):
 `PlurnkParser` and `parsePath` are its exports, and it depends on this package for
 the AST and wire types. A consumer that validates or presents the wire needs only
 this package.

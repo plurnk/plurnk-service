@@ -27,7 +27,7 @@ set by `@plurnk/plurnk-agent-plugins`.
 
 For read-only resource folders, `ResourceTreeRegistrationSeam` in
 `@plurnk/plurnk-schemes` lets a module supply named trees of original bytes; the host
-provides their entry projections, MIME handling, and ordinary READ/FIND behavior.
-The [`skills module`](../plurnk-skills/SPEC.md) uses this seam without importing core.
+provides their entry projections, MIME handling, and ordinary `plurnk.read` / `plurnk.find` behavior.
+The [`skills module`](https://github.com/plurnk/plurnk-service/blob/main/plurnk-skills/SPEC.md) uses this seam without importing core.
 
 [`SPEC.md`](SPEC.md) owns the contract.

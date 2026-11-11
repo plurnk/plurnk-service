@@ -35,8 +35,18 @@ Manage personas, skills, and MCP definitions live in the current workspace via `
 
 | Surface | Shape | Code in the daemon | Contract |
 | --- | --- | --- | --- |
-| Application | ACP v2 client: WebSocket or Streamable HTTP JSON-RPC 2.0 at `/acp` (`PLURNK_PORT`), authenticated via OAuth 2.1 (`/.well-known/*`, `/oauth/*`) when `PLURNK_AUTH=1` | none | `skill://plurnk/packages/@plurnk/plurnk-acp/SPEC.md`, `skill://plurnk/packages/@plurnk/plurnk-auth/SPEC.md` |
+| Application | ACP v2 client (`@agentclientprotocol/sdk` or raw JSON-RPC 2.0): WebSocket or Streamable HTTP at `/acp` (`PLURNK_HOST`:`PLURNK_PORT`), authenticated via OAuth 2.1 (`/.well-known/*`, `/oauth/*`) when `PLURNK_AUTH=1` | none | `skill://plurnk/packages/@plurnk/plurnk-acp/SPEC.md`, `skill://plurnk/packages/@plurnk/plurnk-auth/SPEC.md` |
 | Notification stream | Server-Sent Events consumer at `GET /notifications[?event=...&workspace=...&session=...]` (`PLURNK_PORT`), authenticated via OAuth 2.1 bearer token (`acp` or `notifications` scope) | none | `skill://plurnk/packages/@plurnk/plurnk-service/SPEC.md`, `skill://plurnk/packages/@plurnk/plurnk-contracts/SPEC.md` |
+
+ACP v2 JSON-RPC 2.0 wire on `/acp` (under `PLURNK_AUTH=1`, `POST /oauth/token` with `grant_type=client_credentials` and `scope=acp` against `PLURNK_AUTH_CLIENT_<id>` issues the `Authorization: Bearer <token>` header):
+
+| Direction | Method | Payload / result |
+| --- | --- | --- |
+| Client → Agent | `initialize` | `{ protocolVersion: 2, info: { name, version } }` → `{ protocolVersion, info, capabilities }` |
+| Client → Agent | `session/new` / `session/resume` | `{ cwd }` (`"/"` or `_meta: { plurnk: { workspace } }` for a folderless workspace; `session/resume` adds `sessionId` and optional `replayFrom: { type: "start" }`) → `{ sessionId }` (`"<workspaceId>#<sessionName>"`) |
+| Client → Agent | `session/prompt` / `session/cancel` | `session/prompt`: `{ sessionId, prompt: [{ type: "text", text }] }` → `{ messageId }`; `session/cancel` notification: `{ sessionId }` |
+| Agent → Client | `session/update` (notification) | `{ sessionId, update }`: `agent_message_chunk` (`{ sessionUpdate: "agent_message_chunk", messageId, content: { type: "text", text } }`) streams reply text; `state_update` (`{ sessionUpdate: "state_update", state: "running" \| "requires_action" \| "idle", stopReason? }`) marks loop settlement on `"idle"` |
+| Agent → Client | `session/request_permission` / `elicitation/create` | Gate requests; `session/request_permission` returns `{ outcome: { outcome: "selected", optionId } }` (`allow_once`, `allow_always`, `reject_once`, `reject_always`) or `{ outcome: { outcome: "cancelled" } }` |
 
 ## First-party framework packages
 
@@ -49,7 +59,7 @@ First-party `@plurnk/*` extension packages declare `plurnk` in `package.json`:
 | `mimetype` | readers for media types | `handlers` | `skill://plurnk/packages/@plurnk/plurnk-mimetypes/SPEC.md` |
 | `provider` | a model provider | `name` | `skill://plurnk/packages/@plurnk/plurnk-providers/SPEC.md` |
 
-First-party daemon modules implement `DaemonModule` (`@plurnk/plurnk-modules/SPEC.md`) and are composed statically by `@plurnk/plurnk-service`.
+First-party daemon modules implement `DaemonModule` (`@plurnk/plurnk-modules/SPEC.md`) and are composed statically by `@plurnk/plurnk-service`: `mounts` claims listener pathname prefixes before `setup(seam)`, `start(port)` receives `ApplicationPort` (`@plurnk/plurnk-contracts/port`: `registerHttpRoute`, `registerHttpUpgrade`, `ensureSessionReference`, `attachWorkspace`, `createWorkspace`, `createSession`, `runLoop`, `subscribeToEvents`), `stop()` rejects new ingress, and `close()` joins admitted route work.
 
 ## Examples
 
@@ -83,6 +93,33 @@ acme-tools/
 }
 ```
 
+ACP v2 client (`@agentclientprotocol/sdk` over WebSocket at `/acp`):
+
+```js
+import { client, methods, PROTOCOL_VERSION } from "@agentclientprotocol/sdk/experimental/v2/unstable";
+import { createWebSocketStream } from "@agentclientprotocol/sdk/experimental/ws-client";
+
+const app = client()
+    .onConnect((conn) => {
+        void conn.agent.request(methods.agent.initialize, {
+            protocolVersion: PROTOCOL_VERSION,
+            info: { name: "acme-client", version: "1.0.0" },
+        });
+    })
+    .onRequest(methods.client.session.requestPermission, async ({ params }) => ({
+        outcome: { outcome: "selected", optionId: params.options[0]?.optionId ?? "allow_once" },
+    }))
+    .onRequest(methods.client.elicitation.create, async () => ({ action: "cancel" }));
+
+await app.connectWith(createWebSocketStream(acpWsUrl), async (ctx) => {
+    await ctx.initialized;
+    await ctx.buildSession("/path/to/project").withSession(async (session) => {
+        await session.prompt("Hello.");
+        const text = await session.readTextUntilIdle();
+    });
+});
+```
+
 First-party scheme package `package.json` (default export is the scheme handler):
 
 ```json
@@ -97,12 +134,33 @@ First-party scheme package `package.json` (default export is the scheme handler)
 First-party `DaemonModule` `./module` export:
 
 ```js
-export default () => ({
-    setup(seam) {},
-    async stop() {},
-});
+export default () => {
+    const work = new Set();
+    let stopping = false;
+    return {
+        mounts: ["/events"],
+        setup(seam) {},
+        start(port) {
+            port.registerHttpRoute("/events", (req, res) => {
+                if (stopping) { res.writeHead(503).end(); return; }
+                const run = (async () => {
+                    const { workspaceId, sessionId } = await port.ensureSessionReference({
+                        namespace: "events",
+                        reference: req.headers["x-event-id"] ?? crypto.randomUUID(),
+                    });
+                    await port.runLoop({ workspaceId, sessionId, prompt: "Event received." });
+                    res.writeHead(202).end();
+                })();
+                work.add(run);
+                void run.finally(() => work.delete(run));
+            });
+        },
+        stop() { stopping = true; },
+        async close() { while (work.size > 0) await Promise.allSettled([...work]); },
+    };
+};
 ```
 
 ## Contracts
 
-`skill://plurnk/packages/<package name>/SPEC.md` and sibling `dist/*.d.ts` declarations hold each installed `@plurnk/*` package's contract; search them with `plurnk.find`.
+`skill://plurnk/packages/<package name>/SPEC.md` and sibling `dist/**/*.d.ts` declarations hold each installed `@plurnk/*` package's contract (`@plurnk/plurnk-contracts/dist/src/ApplicationPort.d.ts` declares `ApplicationPort`; `@plurnk/plurnk-acp/dist/client.d.ts` declares `_meta.plurnk` client metadata); `plurnk.find` searches headings and symbols across `skill://plurnk/packages/**`.

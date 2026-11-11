@@ -14,16 +14,16 @@ authored against the DB-free
 | `plurnk.read({ path: "http(s)://…", range: "…" })` | Apply standard entry scope after the same acquisition/revalidation; scope does not bypass it |
 | `plurnk.find({ path: "http(s)://…", pattern: "…" })` | Materialize an exact URL when required, then use the universal entry query and matcher    |
 | `plurnk.send({ target: "http(s)://…", text: "…" })` | POST the body and stream the response                                                     |
-| `plurnk.edit({ path: "http(s)://…", content: "…" })` | PUT a whole-resource replacement; line-scoped HTTP edits are invalid                      |
+| `plurnk.edit({ path: "http(s)://…", text: "…" })` | PUT a whole-resource replacement; line-scoped HTTP edits are invalid                      |
 | `plurnk.kill({ path: "http(s)://…" })`         | Cancel a live acquisition of the address, or forget its stored response                 |
 | `plurnk.kill({ path: "http(s)://…", remote: true })` | DELETE the remote resource and stream the response                                        |
 
-A path-pattern FIND surveys already-materialized web entries; it does not crawl
-or discover the remote web. Exact matcher FIND shares the standard flat
+A path-pattern `plurnk.find` surveys already-materialized web entries; it does not crawl
+or discover the remote web. Exact matcher `plurnk.find` shares the standard flat
 location, weighting, pagination, and status contract.
 
 The verbs that change a remote resource — POST, PUT, the remote DELETE, and a
-WebSocket frame (EDIT or SEND on an open `ws(s)://` socket) — propose before
+WebSocket frame (`plurnk.edit` or `plurnk.send` on an open `ws(s)://` socket) — propose before
 anything leaves the process, the same way a subprocess does;
 `PLURNK_SERVICE_EFFECT_HOST` decides whether that settles by consent or runs
 unattended ({§http-manifest}). GET and the socket open are observation
@@ -47,10 +47,8 @@ byte-readable. Input above the common binary ceiling returns `413`.
 
 ## Design
 
-- WebFetcher checks automatic byte targets and redirects; direct HTTP and
-  WebSocket retain their explicit-target authority.
-- Generic GETs negotiate origin Markdown first. When the origin returns HTML,
-  the installed HTML reader ({§http-lifecycle}) produces `readable`.
+- `PLURNK_SCHEMES_HTTP_HOSTS` restricts outbound HTTP(S)/WS(S) destinations (unset/empty allows all hosts, a JSON hostname/`*.domain` array allowlists, `[]` disables web access, {§http-host-policy}); `WebFetcher` additionally blocks private/loopback DNS targets and validates redirects.
+- Generic GETs negotiate origin Markdown first and optionally probe companion `/llms.txt` (`PLURNK_SCHEMES_HTTP_LLMS_TXT=1`). When the origin returns HTML, the installed HTML reader ({§http-lifecycle}) produces `readable`.
 - `body`, `header`, and `readable` settle independently. The selected channel
   determines operation success, so the raw server source and evidence remain
   usable when the projection fails.

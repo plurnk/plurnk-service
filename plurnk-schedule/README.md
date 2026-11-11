@@ -39,7 +39,7 @@ PLURNK_SCHEDULE_heartbeat={"rule":"FREQ=HOURLY","target":"session://plurnkbot","
 - A delivery that fails, because the target session is gone, lists the rule
   `unavailable` with its Problem; `enable` retries.
 - An occurrence arrives as a message and runs its own loop on the target
-  session; no WAIT holds a loop for it.
+  session; no `plurnk.wait` holds a loop for it.
 
 `SPEC.md` is the specification; `docs/schedule.md` is the model-facing
 teaching beneath the generated runtime document.

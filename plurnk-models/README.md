@@ -43,6 +43,15 @@ relays this is commonly `publisher/model`. `resolveModel()` also accepts an
 unambiguous provider-native suffix. `catalogSnapshot()` and
 `providerCatalogSnapshot()` expose the complete read-only maps.
 
+## XDG catalog cache (`update`)
+
+Startup and inference make zero implicit Models.dev network calls. Explicit
+`updateCatalogCache(cachePath, options)` refreshes `$XDG_CACHE_HOME/plurnk/models.json`
+(conditional ETag revalidation, backing `plurnk-service update`, `plurnk update`,
+and `/update`), `loadCatalogCache(cachePath)` overlays a newer cache over the
+shipped snapshot, and `resetCatalog()` restores the shipped snapshot
+({§model-catalog-cache}).
+
 ## Resolution boundary
 
 This package owns snapshot generation and lookup, not runtime precedence.

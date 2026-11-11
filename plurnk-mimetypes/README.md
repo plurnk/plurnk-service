@@ -91,7 +91,8 @@ The framework instantiates one handler per mimetype, injecting `{ mimetype, glyp
 | `deepJson(content)`           | `deepJson`: faithful JSONPath target.                           | `null`                            |
 | `deepXml(content)`            | `deepXml`: faithful XPath target.                               | Projects deep JSON, then symbols. |
 | `references(content)`         | `references`: classified symbol uses.                           | `[]`                              |
-| `content(content)`            | Derived model-readable text.           | `undefined`                       |
+| `content(content)`            | Derived model-readable text.                                    | `undefined`                       |
+| `summary(content)`            | Catalog / discovery summary text ({§mimetype-channel-selection}). | `undefined`                     |
 | `facts(content)`              | `facts`: structured format facts (`Record<string, unknown>`).   | `undefined`                       |
 | `validate(content)`           | Reject malformed input when validity is meaningful.             | No-op.                            |
 | `query(...)` / `toText(...)`  | Body-matcher dispatch and readable-text projection.             | Standard four-dialect dispatch.   |

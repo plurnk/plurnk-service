@@ -14,7 +14,7 @@ Six claims describe the interior of such a machine. A seventh describes its edge
 is best paired with a conventional exterior that adopts the ecosystem's standards (MCP, Agent Skills,
 ACP and Agent Plugins), because those standards govern exactly the boundaries the interior
 leaves alone. Plurnk is a working instance of the argument. Watch the user, and it looks like any
-terminal agent. Watch the model, and it looks like nothing else.
+terminal or web agent. Watch the model, and it looks like nothing else.
 
 ## 1. The inversion
 
@@ -106,7 +106,7 @@ has read. When a step needs computation, an executor's input is a program in a c
 shell, Python or JavaScript. The programs are deterministic in execution and stochastic in
 authorship, which is exactly the division of labor between a machine and a model.
 
-The entire language is taught by one short card, [`plurnk.md`](plurnk-contracts/plurnk.md). It is less
+The entire language is taught by one three-rule, ~85-token card, [`plurnk.md`](plurnk-contracts/plurnk.md). It is less
 a lesson than a reminder.
 
 ### 2.2 Addressability is the precondition of agency
@@ -176,8 +176,8 @@ plurnk.note({ text: "exampleModule.py: exampleFunction() returns 42 on empty inp
 plurnk.move({ from: { path: "log:///1/4/2/read", range: "12,40" }, to: { path: "notes/excerpt.py", range: "-1" } }) // keep these lines, but in a file
 ```
 
-A `plurnk.kill` retires rows by address or glob, and a `range` trims lines instead. A `plurnk.note` records the
-model's own distillation of what it is keeping, so even a summary is the model's decision, in the model's
+A `plurnk.kill` curates rows out of view by address or glob, and a `range` trims lines instead. A `plurnk.note` distills new
+discoveries, derivations, and decisions, so even what survives is the model's choice, in the model's
 words. `plurnk.move` and `plurnk.copy` carry text between the journal and files. `plurnk.read` brings back any range.
 
 Nothing is lost. Curation changes what the model sees, never the record. Every observation, program
@@ -266,7 +266,7 @@ interface should be made of.
 This is the Unix insight restated for a stochastic operator. Unix made everything a file, provided
 small tools that each did one thing, and let pipes compose them. Plurnk makes everything an address,
 provides fifteen verbs and one selection algebra, and lets every statement compose them. Statements such
-as "retire every old read in turns one through seven, keeping this note" or "move these lines of that
+as "curate every old read in turns one through seven, keeping this note" or "move these lines of that
 observation to the end of this file" were never designed. They exist because the parts compose.
 
 The law has a corollary that matters more than the law itself: in an orthogonal machine, every new
@@ -302,10 +302,10 @@ radical at the core**.
 
 Everything a person, a tool or another agent touches is the ecosystem's own standard:
 
-- MCP servers come from an ordinary `mcp.json`.
-- Agent Skills are discovered in `.agents/skills`.
-- Agent Plugins install as plugins.
-- Applications reach it over ACP v2.
+- MCP servers come from `.agents/mcp.json`, and external MCP hosts reach Plurnk itself at `/mcp`.
+- Agent Skills and Personas are discovered in `.agents/skills` and `.agents/personas`.
+- Agent Plugins install as portable `plugin.json` bundles.
+- Terminal, browser (`@plurnk/plurnk-web`), and editor clients drive it over ACP v2 under one OAuth 2.1 credential authority, with live SSE updates at `/notifications` and OpenTelemetry export (`OTEL_*`).
 - Models are reached through the common provider APIs, hosted and local.
 - Configuration lives in plain environment files.
 
@@ -315,10 +315,11 @@ declines conventions that belong to a single vendor, however popular.
 
 ```mermaid
 flowchart LR
-    MCP["MCP<br/>tools · resources"] --- core
-    SKILLS["Agent Skills"] --- core
+    MCP["MCP v2<br/>host · /mcp server"] --- core
+    SKILLS["Agent Skills · Personas"] --- core
     PLUGINS["Agent Plugins"] --- core
-    ACP["ACP v2<br/>applications"] --- core
+    ACP["ACP v2 · OAuth 2.1<br/>CLI · Web · IDEs"] --- core
+    OTEL["Notifications SSE · OTel"] --- core
     MODELS["Model APIs<br/>hosted · local"] --- core
     core["Plurnk interior<br/><br/>instruction set · address space<br/>selection · journal · processes"]
 ```
@@ -327,7 +328,7 @@ This is more than politeness toward the ecosystem. The standards and the bets oc
 territory. Each standard governs one boundary between systems:
 
 - MCP, between tools and agents;
-- ACP v2, between an agent and its interface;
+- ACP v2 and OAuth 2.1, between an agent, its interfaces, and its operator;
 - Agent Skills and Agent Plugins, the packaging of knowledge and capability.
 
 All of them deliberately say nothing about an agent's interior: what the model sees, how it acts, how
@@ -342,7 +343,7 @@ applied outward:
 | An MCP tool | A statement: `<server>.<tool>({ ... })` |
 | An MCP resource | An address, reachable by every verb and every pattern |
 | An Agent Skill | A tree of files at `skill://`, searchable and readable by pattern |
-| An ACP client | A view of a durable session that outlives the connection |
+| An ACP client | A terminal, browser, or editor view of a durable session that outlives the connection |
 
 Every standard Plurnk adopts becomes one more factor in the multiplication. Integration is not a
 concession a contrarian system makes to an ordinary world. It is the input the orthogonal machine was
@@ -350,12 +351,12 @@ built to multiply.
 
 The practical consequence is the one that matters most to anyone deciding whether to try it. A Plurnk
 user installs it, points it at a model, gives it the MCP servers and skills they already have, and
-talks to it in a terminal. Applications
+talks to it in a terminal or browser. Applications
 drive it the way they drive any ACP agent. In daily use it is as ordinary as any popular harness,
 and more ordinary than those that depend on one vendor's conventions.
 
-Watch the user, and Plurnk looks like any terminal agent. Watch the model, and it looks like nothing
-else.
+Watch the user, and Plurnk looks like any terminal or web agent. Watch the model, and it looks like
+nothing else.
 
 ## 4. One turn, one program, one journal
 
@@ -397,7 +398,7 @@ EOF }) // read showed 88<@k3x9a>; text replaces line 88
 
 Had the file changed since the model read it, the anchor would no longer match, and the edit would be
 refused rather than applied to the wrong line. With the fix verified, the model keeps what it learned
-and retires the exploration:
+and curates the exploration:
 
 ```js
 plurnk.kill({ path: "log:///1/[1-2]/*/read" }) // exploration done; keep what was learned
@@ -431,8 +432,11 @@ the tools, skills and agents people already use.
 
 ### Measuring the bet
 
-A richer machine need not carry a heavier harness tax. Model-directed selection and memory offer a
-path to broader capabilities at costs competitive with minimal harnesses. That is a measurable bet:
+A richer machine need not carry a heavier harness tax. In Plurnk 6.0, the Turn-1 fixed envelope is
+~2,981 tokens (~85 tokens for the [`plurnk.md`](plurnk-contracts/plurnk.md) system card and ~2,896 tokens
+for the initial workspace and capability index, with zero pushed tool schemas). Model-directed selection
+and memory deliver structural code queries, durable delegation, and full MCP and Skill access at prompt
+overhead competitive with minimal shell harnesses. That is a measurable bet:
 [plurnk-bench](https://github.com/plurnk/plurnk-bench) provides reproducible evaluations of task success,
 cost and context use across models and harnesses.
 
@@ -455,6 +459,7 @@ Plurnk is open source under the MIT license:
 
 - the daemon, language and bundled extensions: <https://github.com/plurnk/plurnk-service>;
 - the terminal client: <https://github.com/plurnk/plurnk>;
+- the browser interface module: <https://github.com/plurnk/plurnk-web>;
 - evaluations: <https://github.com/plurnk/plurnk-bench>.
 
 ## References

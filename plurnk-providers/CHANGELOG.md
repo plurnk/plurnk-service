@@ -4,14 +4,14 @@
 
 ### Patch Changes
 
-- Enable conversation-history prompt caching (`PLURNK_PROVIDERS_CACHE_WRITE_POLICY=conversation`) across Anthropic, OpenRouter Anthropic, and Bedrock Claude, scope provider package discovery to `@plurnk/*`, remove `PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS`, canonicalize Heredoc Code Mode (`<<<EOF`) and `{ text }` operation payloads, and lower the packet token floor to `~3,035` (#1412 #1419 #1420 #1421 #1422 #1423 #1424 #1425 #1426 #1427 #1428 #1429 #1430 #1431 #1432 #1433 #1434 #1435 #1436 #1437 #1438 #1439 #1441 #1444 #1450 #1451).
+- Enable conversation-history prompt caching (`PLURNK_PROVIDERS_CACHE_WRITE_POLICY=conversation`) across Anthropic, OpenRouter Anthropic, and Bedrock Claude, scope provider package discovery to `@plurnk/*`, remove `PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS`, canonicalize Heredoc Code Mode (`<<<EOF`) and `{ text }` operation payloads, and lower the packet token floor to `~2,981` (#1412 #1419 #1420 #1421 #1422 #1423 #1424 #1425 #1426 #1427 #1428 #1429 #1430 #1431 #1432 #1433 #1434 #1435 #1436 #1437 #1438 #1439 #1441 #1444 #1450 #1451).
 
   ### Operator Migration Guide (5.x to 6.0.0)
 
   - **Upgrade client and daemon together:** Upgrade `@plurnk/plurnk` and `@plurnk/plurnk-service` to `6.0.0`.
   - **SQLite Schema Migrations (`015`–`018`, `{§db-migrations}`):** Chapters `015_session_message_keys.sql` (`session_messages` composite foreign keys and cascade deletes), `016_drop_unused_columns.sql` (retiring unused `streams.metadata`, `streams.lifetime`, `sessions.CompactionSummary`, `sessions.CompactionThroughLoop`, and `turns.parse_advisory` columns), `017_pending_derivation_indexes.sql` (partial indexes for incremental `SearchIndex.maintain`), and `018_content_dedup_payloads.sql` (interning `turn_sources` and `log_entries` payloads into `contents`) run automatically in place on any database at or above the `5.0.0` support floor (`user_version >= 11`).
   - **Removed Configuration Knobs (`{§configuration-panel}`):** `PLURNK_SERVICE_PROMPT_PREVIEW`, `PLURNK_SERVICE_LOG_BUDGET_SUMMARY`, and `PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS` are retired; remove them from `.env` files if present.
-  - **Model-Facing Heredoc Syntax (`{§code-grammar}`):** Multiline string values in Code Mode use `<<<EOF` heredoc delimiters, and `note`, `send`, `work`, `fork`, `done`, `fail`, and `kill` carry their body in `text`.
+  - **Model-Facing Heredoc Syntax (`{§code-grammar}`):** Canonical Code Mode emits `await`-free `<service>.<tool>({ ... })` calls with `<<<EOF` heredoc delimiters for multiline values, and `note`, `send`, `work`, `fork`, `done`, `fail`, and `kill` carry their body in `text`.
 - Updated dependencies
   - @plurnk/plurnk-contracts@7.4.0
 
