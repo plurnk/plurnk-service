@@ -1009,8 +1009,8 @@ test("{§engine-rails}: repeated reasoning-only responses are not reported as re
 });
 
 // {§operation-results} — the ceiling cut each response, so the verdict names the ceiling: identical cut
-// responses are no repetition, whether the cut left nothing to admit or exhausted every emission attempt.
-for (const [shape, content, calls] of [["before any text", "", 3], ["inside an operation", "await plurnk.read({\"path\":\"src/a", 9]] as const) {
+// responses are no repetition, whether the cut left nothing to admit or cut inside an operation (#1453).
+for (const [shape, content, calls] of [["before any text", "", 3], ["inside an operation", "await plurnk.read({\"path\":\"src/a", 3]] as const) {
     test(`{§operation-results} {§engine-rails}: responses the output allowance cut ${shape} cross as the allowance, never a cycle`, async () => {
         const { db, engine, workspaceId, sessionId, loopId } = await setup();
         try {
