@@ -228,6 +228,7 @@ test("{§operator-config-precedence} the template ships no double policy, no act
     assert.equal(env.get("PLURNK_SERVICE_EMISSION_ATTEMPTS"), "2", "private resampling allows at most one blind retry by default");
     assert.equal(env.get("PLURNK_SERVICE_BUDGET_PRESSURE"), "80%", "the gauge names its largest rows only above eighty percent");
     assert.equal(env.get("PLURNK_SERVICE_BUDGET_LARGEST_ITEMS"), "5", "the pressured gauge names the five largest retained rows");
+    assert.equal(env.get("PLURNK_SERVICE_BUDGET_OUTLIER_TOKENS"), "32768", "heavy single-row outliers surface on large-window budgets");
     assert.equal(env.get("PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES"), "104857600", "filesystem snapshots ship with a 100 MiB safety ceiling");
 });
 

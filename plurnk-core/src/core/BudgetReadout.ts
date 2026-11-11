@@ -55,8 +55,12 @@ export default class BudgetReadout {
         const neutral = BudgetReadout.#resolveTemplate(template, measurePacket);
         const budget = BudgetReadout.budgetOf(neutral.content);
         const pressure = Knob.percent("PLURNK_SERVICE_BUDGET_PRESSURE");
+        const outlierTokens = Knob.integer("PLURNK_SERVICE_BUDGET_OUTLIER_TOKENS", 0);
+        if (budget === null) return { gauge: neutral.content };
+        const overPressure = neutral.usage > budget * pressure;
+        const hasOutlier = outlierTokens > 0 && ranked.length > 0 && ranked[0].tokens >= outlierTokens;
         // The inventory cannot trigger its own appearance; its weight is included only after admission.
-        if (budget === null || neutral.usage <= budget * pressure) return { gauge: neutral.content };
+        if (!overPressure && !hasOutlier) return { gauge: neutral.content };
         return { gauge: BudgetReadout.#resolveTemplate(BudgetReadout.#withInventory(template, ranked), measurePacket).content };
     }
 
