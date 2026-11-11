@@ -54,33 +54,36 @@ import {
 } from "./log-entry-projection.ts";
 import SessionTranslator from "./SessionTranslator.ts";
 import {
-    OWNER_ADDRESS,
-    applyAcpMcpServers,
+    buildAvailableCommands,
+    resolvePromptCommand,
+    type ResolvedPromptCommand,
+} from "./session-commands.ts";
+import {
     applyAdditionalDirectories,
     applyConfigOption,
     applyInitialConfigOptions,
+    buildConfigOptions,
+    resolveSessionOptions,
+} from "./session-options.ts";
+import { listSessionsOverview, parseOverviewRequest } from "./session-overview.ts";
+import {
+    OWNER_ADDRESS,
+    applyAcpMcpServers,
     applySystemPrompt,
     assertSinglePortSecurity,
     buildAuthStatus,
-    buildAvailableCommands,
-    buildConfigOptions,
     buildSessionDescendants,
     extractPlurnkMeta,
     formatSessionId,
     isDescendantSession,
-    listSessionsOverview,
     lookupSessionTarget,
     registerAcpSessionOwner,
-    parseOverviewRequest,
-    resolvePromptCommand,
     resolveSessionBinding,
-    resolveSessionOptions,
     selectBoundSessionForTarget,
     toRequestError,
     tryListProviders,
     type AcpPeer,
     type BoundSession,
-    type ResolvedPromptCommand,
 } from "./sessions.ts";
 
 const toEpochMs = (ts: string | number | null | undefined): number | null => {
