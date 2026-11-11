@@ -708,7 +708,7 @@ describe("note-continuity", () => {
 type Row = { op: string | null; origin: string };
 
 // {§operation-results} {§diagnostic-observation} — the card's command as the notice's directive, in callout form.
-const NOTICE = "> [!WARNING]\n> YOU MUST persist all new decisions, hypotheses, and facts as `plurnk.note` tool calls. The turn continued without a `plurnk.note`. [continued_without_note]";
+const NOTICE = "> [!WARNING]\n> YOU MUST distill all new discoveries, derivations, and decisions as `plurnk.note` tool calls. The turn continued without a `plurnk.note`. [continued_without_note]";
 
 const noticesOf = async (db: Db, turnId: number): Promise<string> =>
     packetSection(JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: turnId }))!.packet), "notices");

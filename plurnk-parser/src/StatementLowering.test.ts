@@ -45,7 +45,7 @@ describe("StatementLowering and CodeSerializer", () => {
 
     test("{§op-shapes}: note structured fields, todo status normalization, wait forms, delegation/send/conclusion shorthands, and plurnk Functionality key normalization", () => {
         const res = PlurnkParser.parseStatements([
-            'await plurnk.note({ title: "T", fact: "F", decision: "D", hypothesis: "H", finding: "G", summary: "S" });',
+            'await plurnk.note({ title: "T", discovery: "Disc", derivation: "Deriv", fact: "F", decision: "D", hypothesis: "H", finding: "G", summary: "S" });',
             "await plurnk.note(42);",
             'await plurnk.todo([{ title: "done task", completed: true }, { task: "active task", status: "~" }, { text: "" }, 99]);',
             'await plurnk.todo({ text: "raw todo body" });',
@@ -77,7 +77,7 @@ describe("StatementLowering and CodeSerializer", () => {
         assert.deepEqual(errors, []);
         const stmts = res.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
 
-        assert.equal((stmts[0] as NoteStatement).body, "T\nF\nD\nH\nG\nS");
+        assert.equal((stmts[0] as NoteStatement).body, "T\nDisc\nDeriv\nF\nD\nH\nG\nS");
         assert.equal((stmts[1] as NoteStatement).body, "42");
         assert.equal((stmts[2] as TodoStatement).body, "- [x] done task\n- [~] active task\n- [ ] \n99");
         assert.equal((stmts[3] as TodoStatement).body, "raw todo body");
