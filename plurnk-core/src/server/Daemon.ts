@@ -147,7 +147,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     #discoveryCwd: string;
     #started = false; // {§module-lifecycle}: one discovery/module boot; no listener
 
-    // {§module-lifecycle} — the daemon's modules, composed and discovered, with their mounts, phases and actions.
+    // {§module-lifecycle} — the daemon's modules, statically composed and explicitly registered, with their mounts, phases and actions.
     readonly #modules: DaemonModules;
     // {§connection-lifecycle} — the client operations in flight: their loops, scopes and settlement.
     readonly #clientOperations: ClientOperations;
@@ -280,7 +280,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // environment, writes go through the family's own admission at the Session's layer. The runtime
         // session keeps none: its environment is the workspace's ({§connection-lifecycle}).
         this.#functionality.register(new EnvFunctionality(
-            EnvFunctionality.defaultsReader(Paths.packageRoot, this.#nodeModulesPath, this.#hostPaths),
+            EnvFunctionality.defaultsReader(Paths.packageRoot, this.#nodeModulesPath),
             new EnvScheme(
                 (workspaceId, sessionId) => EnvFunctionality.resolve(this.#db, workspaceId, sessionId, undefined, this.#hostPaths),
                 (verb, params, identity) => this.#functionality.invoke("env", verb, params, identity, "operation"),
@@ -991,9 +991,6 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // Mimetypes owns its own discovery scan over @plurnk/plurnk-mimetypes-*
         // packages; pre-warm it so first index render doesn't pay the cost.
         await this.#mimetypes.ready();
-        for (const name of await this.#mimetypes.skippedPackages()) {
-            console.warn(`mimetype discovery: '${name}' is discovered but untrusted (PLURNK_EXTENSIONS_TRUSTED_ONLY); not registered`);
-        }
 
         // Discover + probe the installed executor siblings, then hand the
         // registry to the engine for exec dispatch ({§exec-target-routing}).
@@ -1006,13 +1003,13 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // {§exec} — mint a scheme per runtime tag so exec output entries address by tag
         // authority (sh:///l/t/s). The "exec" scheme stays for execution dispatch.
         this.#schemes.registerRuntimeSchemes(executors);
-        // Discover external @plurnk/plurnk-schemes-* siblings + register them
-        // (agnostic, by plurnk.kind:"scheme"). They light up http://, etc. with
+        // Discover first-party @plurnk/plurnk-schemes-* siblings + register them
+        // (by plurnk.kind:"scheme"). They light up http://, etc. with
         // no further engine change — #run wraps their context in SchemeCtxImpl ({§extension-discovery}).
         await this.#schemes.discoverExternal(this.#discoveryCwd);
-        // {§module-lifecycle} — discovery composes beside the service's explicit modules, then every module sets
-        // up against this daemon as the seam ({§module-lifecycle}).
-        await this.#modules.setup(this, { cwd: this.#discoveryCwd, hostPaths: this.#hostPaths });
+        // {§module-lifecycle} — first-party modules compose beside explicit registrations, then every module
+        // sets up against this daemon as the seam.
+        await this.#modules.setup(this);
         // {§functionality-model-projection} {§question-tool} — the model-facing `plurnk`
         // runtime exposes workspace Functionality families and `question` under `mcp:///plurnk.md`.
         await this.#functionality.ready();

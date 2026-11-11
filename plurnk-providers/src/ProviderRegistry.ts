@@ -4,7 +4,7 @@
 // alias-or-route selector to a Provider.
 //
 // {§provider-configuration} Models.dev catalog → PLURNK provider declaration
-// → local protocol adapter → scope-agnostic provider extension discovery. Generic
+// → local protocol adapter → first-party (@plurnk/*) provider extension discovery. Generic
 // provider facts belong to models.dev or operator config; PLURNK owns only the
 // stable Provider contract and product-specific local behavior.
 
@@ -39,11 +39,10 @@ type DiscoverFn = (options?: DiscoverOptions) => Promise<DiscoveryInput>;
 
 // The node_modules scan is filesystem work that never changes within a process,
 // so it runs once and the result is memoized. A long-lived daemon pays one scan
-// at first bespoke instantiation; every later run reuses it. The trust gate is
-// boot config, so the env from the first scan stands for the process.
+// at first bespoke instantiation; every later run reuses it.
 let discoveredCache: DiscoveryInput | null = null;
-const providerPackages = async (discoverFn: DiscoverFn, env: NodeJS.ProcessEnv): Promise<DiscoveryInput> => {
-    discoveredCache ??= await discoverFn({ env });
+const providerPackages = async (discoverFn: DiscoverFn): Promise<DiscoveryInput> => {
+    discoveredCache ??= await discoverFn();
     return discoveredCache;
 };
 
@@ -66,13 +65,9 @@ export const instantiateProvider = async (
     if (catalog !== null) return catalog;
     if (name === "ollama") return ollamaProviderFromEnv(env, model, baseUrl === undefined ? undefined : { baseUrl });
     if (name === "openai") return compatibleProviderFromEnv(env, model, baseUrl);
-    const { registry, skipped, packageAttributions = new Map() } = await providerPackages(discoverFn, env);
+    const { registry, packageAttributions = new Map() } = await providerPackages(discoverFn);
     const specifier = registry.get(name);
     if (specifier === undefined) {
-        const declined = skipped.get(name);
-        if (declined !== undefined) {
-            throw new Error(`provider "${name}" resolves to ${declined}, but it is untrusted under PLURNK_EXTENSIONS_TRUSTED_ONLY — add it to the allowlist (or publish under @plurnk/)`);
-        }
         throw new Error(`unknown provider "${name}": absent from models.dev, operator declarations, local adapters, and installed provider extensions`);
     }
     let mod: unknown;

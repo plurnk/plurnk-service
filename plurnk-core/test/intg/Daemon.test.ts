@@ -116,7 +116,7 @@ test("{§manifest} {§mimetype-discovery} Daemon composes deterministic scheme a
                     source: "package" as const,
                 }],
             ]),
-            packageAttributions: new Map(), skipped: [],
+            packageAttributions: new Map(),
         },
     });
     const daemon = new Daemon({ db, provider: null, mimetypes });
@@ -167,35 +167,6 @@ test("{§manifest} {§mimetype-discovery} Daemon composes deterministic scheme a
             "the internal execution implementation is not advertised as an addressable URI scheme",
         );
     } finally {
-        await daemon.stop();
-        await db.close();
-    }
-});
-
-test("{§mimetype} Daemon boot reports mimetype packages withheld by the shared trust gate", async () => {
-    const db = await openMigrated();
-    const discovery = {
-        registry: { byExtension: new Map<string, string>(), byFilename: new Map<string, string>() },
-        handlers: new Map(),
-        packageAttributions: new Map(),
-        skipped: ["@acme/acme-mime-private"],
-    };
-    const daemon = new Daemon({
-        db,
-        provider: null,
-        mimetypes: new Mimetypes({ discovery }),
-    });
-    const warnings: string[] = [];
-    const originalWarn = console.warn;
-    console.warn = (...args: unknown[]): void => { warnings.push(args.map(String).join(" ")); };
-    try {
-        await daemon.start();
-        assert.ok(
-            warnings.some((warning) => /mimetype discovery.*@acme\/acme-mime-private.*untrusted.*not registered/.test(warning)),
-            "the composed host names the package and trust decision",
-        );
-    } finally {
-        console.warn = originalWarn;
         await daemon.stop();
         await db.close();
     }
@@ -1061,7 +1032,7 @@ test("{§mimetype} Daemon.stop leaves constructor-injected mimetypes caller-owne
         discovery: {
             registry: { byExtension: new Map(), byFilename: new Map() },
             handlers: new Map(),
-            packageAttributions: new Map(), skipped: [],
+            packageAttributions: new Map(),
         },
     });
     let disposals = 0;
@@ -1381,27 +1352,24 @@ test("{§credential-authority} under PLURNK_AUTH=1 a minted operator secret and 
 });
 
 test("{§credential-authority} a listening daemon under PLURNK_AUTH=1 refuses to start until a module publishes the authority's face", async () => {
-    const empty = await mkdtemp(join(tmpdir(), "plurnk-no-modules-"));
-    const nodeModulesPath = join(empty, "node_modules");
-    try {
-        await withPosture({ PLURNK_AUTH: "1", PLURNK_SECRET: undefined }, async () => {
-            const db = await openMigrated();
-            const http = await bindListener();
-            const silent = new Daemon({ db, provider: null, http, nodeModulesPath });
-            try {
-                await assert.rejects(silent.start(), /PLURNK_AUTH=1, and no module publishes an authorization server/u);
-            } finally { await silent.stop(); await http.close(); await db.close(); }
-            const db2 = await openMigrated();
-            const http2 = await bindListener();
-            const issuing = new Daemon({ db: db2, provider: null, http: http2, nodeModulesPath });
-            issuing.registerModule({ setup: async (seam) => { seam.credentials.publish({ issuer: () => "http://127.0.0.1:1" }); } }, "test-issuer");
-            try {
-                await issuing.start();
-                assert.equal(issuing.credentials.face()?.issuer({ headers: {} }), "http://127.0.0.1:1");
-                assert.ok(issuing.credentials.operatorSecret, "the authority holds a minted operator secret");
-            } finally { await issuing.stop(); await http2.close(); await db2.close(); }
-        });
-    } finally { await rm(empty, { recursive: true, force: true }); }
+    await withPosture({ PLURNK_AUTH: "1", PLURNK_SECRET: undefined }, async () => {
+        const db = await openMigrated();
+        const http = await bindListener();
+        const silent = new Daemon({ db, provider: null, http });
+        silent.registerModule({}, "@plurnk/plurnk-auth");
+        try {
+            await assert.rejects(silent.start(), /PLURNK_AUTH=1, and no module publishes an authorization server/u);
+        } finally { await silent.stop(); await http.close(); await db.close(); }
+        const db2 = await openMigrated();
+        const http2 = await bindListener();
+        const issuing = new Daemon({ db: db2, provider: null, http: http2 });
+        issuing.registerModule({ setup: async (seam) => { seam.credentials.publish({ issuer: () => "http://127.0.0.1:1" }); } }, "@plurnk/plurnk-auth");
+        try {
+            await issuing.start();
+            assert.equal(issuing.credentials.face()?.issuer({ headers: {} }), "http://127.0.0.1:1");
+            assert.ok(issuing.credentials.operatorSecret, "the authority holds a minted operator secret");
+        } finally { await issuing.stop(); await http2.close(); await db2.close(); }
+    });
 });
 });
 

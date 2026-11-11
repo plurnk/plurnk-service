@@ -120,7 +120,6 @@ export default class ExecEntrySink {
                 url: fetchAddress?.url ?? "http://localhost",
                 body: content,
                 mimetype: sink.mimetype,
-                allowConfiguredMaterializer: false,
             });
         }
         const op = async (): Promise<string> => {

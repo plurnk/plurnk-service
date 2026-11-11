@@ -72,7 +72,7 @@ const scanDir = (baseDir, includeAllSiblingPlurnk = false) => {
         try {
             const pj = JSON.parse(readFileSync(pjPath, "utf-8"));
             const isMimetype = pj.name?.includes("plurnk-mimetypes");
-            const isSiblingPlurnk = includeAllSiblingPlurnk && (name === "plurnk" || name === "plurnk-schemes-http-tavily");
+            const isSiblingPlurnk = includeAllSiblingPlurnk && name === "plurnk";
             if (isMimetype || isSiblingPlurnk) {
                 seenDirs.add(dir);
                 pkgs.push({ dir, slug: name, pj, isMimetype: Boolean(isMimetype), standalone: baseDir === root });

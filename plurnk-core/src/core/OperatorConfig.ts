@@ -62,11 +62,6 @@ export default class OperatorConfig {
             "# PLURNK_MEMBERS_no_locks=!**/*.lock",
             "# PLURNK_MEMBERS_no_locks_ENABLED=0",
             "",
-            "# OPTIONAL TAVILY HTML MATERIALIZATION — install @plurnk/plurnk-tavily-plugin beside the",
-            "# service, then uncomment both lines to select it.",
-            "# TAVILY_API_KEY=\"...\"",
-            "# PLURNK_SCHEMES_HTTP_MATERIALIZER=tavily-extract",
-            "",
         ].join("\n");
     }
 

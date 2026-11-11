@@ -20,7 +20,7 @@ Read and modify web resources through addressable HTTP(S) entries.
 | Response | `body` | Other channel |
 | --- | --- | --- |
 | Negotiated origin Markdown | Exact origin Markdown | Status and headers in `#header`; nothing else |
-| GET HTML | Original server HTML | Materializer Markdown or local HTML-reader projection in `#readable` |
+| GET HTML | Original server HTML | Local HTML-reader projection in `#readable` |
 | GET `text/event-stream` | Event `data` chunks after `read` `102` | Initial response in `#header` |
 | Configured textual response | Complete Fetch-decoded text under its declared type | Status and headers in `#header` |
 | Origin HTTP `4xx`/`5xx` | Preserve available origin text or bytes | Exact `http-response-status` Problem on origin-backed channels; `#header` remains readable |
@@ -38,4 +38,4 @@ await plurnk.edit({ path: "https://api.example.com/v1/thing/42", headers: { "Con
 
 await plurnk.send({ target: "https://api.example.com/v1/search", headers: { "Content-Type": "application/json" }, text: "{\"query\":\"plurnk\"}" })
 
-Requests with explicit `headers` bypass cache reuse and HTML materializers (using the local HTML reader instead). For persistent bidirectional connections, see `skill://plurnk/wss.md`.
+Requests with explicit `headers` bypass cache reuse. For persistent bidirectional connections, see `skill://plurnk/wss.md`.

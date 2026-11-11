@@ -1,11 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { LiveAcquisitions } from "./HttpShared.ts";
-import MaterializerRegistry from "./Materializer.ts";
 import {
     ProjectionInputLimitError,
     Results,
@@ -14,9 +9,8 @@ import {
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import Http from "./Http.ts";
-import WebFetcher, { MATERIALIZER_ENV } from "./WebFetcher.ts";
+import WebFetcher from "./WebFetcher.ts";
 import {
-    STUB_DIR,
     editSettled,
     editStmt,
     findStmt,
@@ -31,15 +25,12 @@ import {
     priorEntry,
     projectionCaps,
     readStmt,
-    registerMaterializerStub,
     sendSettled,
     sendStmt,
     urlTarget,
     withFetch,
 } from "../test/harness.ts";
 import { requestUrl } from "../../scripts/lib/test-fetch.ts";
-
-registerMaterializerStub();
 
 // ── manifest ──────────────────────────────────────────────────────────────
 test("{§scheme-operation-dispatch}: Http publishes its WebFetcher as the framework's web materializer", () => {
@@ -69,13 +60,13 @@ test("{§http-lifecycle} manifest: documentation is loaded verbatim from docs/ht
     for (const op of ["read", "edit", "send"]) assert.ok(fromFile.includes(`await plurnk.${op}(`), `${op.toUpperCase()} remains illustrated in the discoverable reference`);
 });
 
-test("{§http-host-policy} ready validates the fetch ceiling without making a provider request", async () => {
+test("{§http-host-policy} ready validates the fetch ceiling without performing network I/O", async () => {
     const originalTimeout = process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT;
     let calls = 0;
     try {
         await withFetch((async () => {
             calls += 1;
-            throw new Error("readiness must not call the materializer");
+            throw new Error("readiness must not perform network I/O");
         }), async () => {
             process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = "0";
             await assert.rejects(new Http().ready(), /PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT must be a safe integer of at least 1/);
@@ -101,42 +92,6 @@ test("{§http-lifecycle} exact FIND preparation materializes an exact URL throug
     assert.equal(inspect().wrote?.pathname, "/dist/index.json");
     assert.equal(inspect().wrote?.entry.channels.body?.content, '{\n  "version": "24.18.0"\n}');
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
-});
-
-test("{§channel-selection} exact FIND preparation preserves a provider-only page's unavailable source channel", async () => {
-    process.env[MATERIALIZER_ENV] = "stub";
-    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
-    __stub.set({
-        eligible: () => "stub-extract:v1",
-        extract: async () => ({
-            outcome: "success",
-            body: "provider body",
-            identity: "stub-extract:v1",
-            evidence: [{ name: "x-plurnk-stub-request-id", value: "req-provider-only" }],
-        }),
-    });
-    const { ctx, inspect } = makeCtx();
-    const target = urlTarget("https://example.com/provider-only", "/provider-only");
-    await withFetch((async () => {
-        throw new Error("origin unavailable");
-    }), async () => {
-        const prepared = await prepareExactFind(new Http(), findStmt(target), ctx);
-        assert.equal(prepared.status, 200);
-    });
-
-    // {§channel-selection} — the materializer's text is `readable`; the page's source is `body`,
-    // errored here because the origin never answered.
-    assert.equal(inspect().wrote?.entry.channels.readable?.content, "provider body");
-    const source = inspect().wrote?.entry.channels.body;
-    assert.equal(source?.content, "");
-    assert.equal(source?.mimetype, "text/html");
-    assert.equal(source?.state, "errored");
-    assert.equal(source?.producerResult?.status, 502);
-    assert.equal(
-        source?.producerResult?.problem?.type,
-        "https://problems.plurnk.xyz/scheme/http/fetch-failed",
-        "the source channel carries the origin's own failure",
-    );
 });
 
 test("{§http-lifecycle} exact FIND preparation persists a readable binary projection with source and projection evidence", async () => {
@@ -1013,53 +968,7 @@ test("{§http-lifecycle} READ: a present empty HTML projection succeeds and reta
     assert.equal(inspect().closed, null);
 });
 
-test("READ: public HTML uses the materializer Markdown and retains origin, request, and credit evidence ({§http-lifecycle})", async () => {
-    process.env[MATERIALIZER_ENV] = "stub";
-    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
-    __stub.set({
-        eligible: () => "stub-extract:v1",
-        extract: async () => ({
-            outcome: "success",
-            body: "# Stub body",
-            identity: "stub-extract:v1",
-            evidence: [
-                { name: "x-plurnk-stub-request-id", value: "req-direct" },
-                { name: "x-plurnk-stub-credits", value: "0.2" },
-            ],
-        }),
-    });
-    const projection = projectionCaps({
-        async readable() {
-            throw new Error("the local floor must not run after successful materialization");
-        },
-    });
-    const { ctx, inspect } = makeCtx(null, { projection });
-    const html = "<html><body><h1>Origin</h1></body></html>";
-    await withFetch((async () =>
-        new Response(html, { status: 200, statusText: "OK", headers: { "content-type": "application/xhtml+xml" } })), async () => {
-        const result = await prepareRepresentation(new Http(),
-            readStmt(urlTarget("https://example.com/stub", "/stub")),
-            ctx,
-        );
-        assert.equal(result.status, 200);
-    });
-    assert.deepEqual(inspect().wrote?.entry.channels.readable, {
-        content: "# Stub body",
-        mimetype: "text/markdown",
-    });
-    assert.deepEqual(inspect().wrote?.entry.channels.body, {
-        content: html,
-        mimetype: "application/xhtml+xml",
-    });
-    const header = inspect().wrote?.entry.channels.header?.content ?? "";
-    assert.match(header, /^HTTP 200 OK/m);
-    assert.match(header, /^x-plurnk-materializer-id: stub-extract:v1$/m);
-    assert.match(header, /^x-plurnk-stub-request-id: req-direct$/m);
-    assert.match(header, /^x-plurnk-stub-credits: 0\.2$/m);
-});
-
-test("{§channel-selection} READ: negotiated origin Markdown is the source itself, one request, no projection, no materializer", async () => {
-    process.env[MATERIALIZER_ENV] = "stub";
+test("{§channel-selection} READ: negotiated origin Markdown is the source itself, one request, no projection", async () => {
     const { ctx, inspect } = makeCtx();
     const accepts: string[] = [];
     await withFetch((async (_input, init) => {
@@ -1080,120 +989,33 @@ test("{§channel-selection} READ: negotiated origin Markdown is the source itsel
     assert.deepEqual(Object.keys(inspect().wrote?.entry.channels ?? {}).toSorted(), ["body", "header"]);
     assert.equal(inspect().wrote?.entry.channels.body?.content, "# Origin Markdown");
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "text/markdown");
-    const header = inspect().wrote?.entry.channels.header?.content ?? "";
-    assert.match(header, /^x-plurnk-materializer-id: origin-markdown:v1$/m);
     assert.equal(inspect().closed, null);
 });
 
 for (const selected of ["body", "readable", "header"] as const) {
-    test(`{§http-lifecycle} preparation with authored #${selected} persists independent materializer channel outcomes`, async () => {
-        process.env[MATERIALIZER_ENV] = "stub";
-        const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
-        __stub.set({
-            eligible: () => "stub-extract:v1",
-            extract: async () => ({
-                outcome: "hard",
-                identity: "stub-extract:v1",
-                evidence: [],
-                problem: { status: 502, code: "stub-authentication-failed", detail: "The stub rejected the configured credentials.", retryable: false },
-            }),
-        });
+    test(`{§http-lifecycle} preparation with authored #${selected} persists independent channel outcomes`, async () => {
         const projection = projectionCaps({
-            async readable() { throw new Error("hard provider failure must not use the local floor"); },
+            async readable() { return null; },
         });
         const { ctx, inspect } = makeCtx(null, { projection });
-        await withFetch((async () => new Response("<html><body>Durable source</body></html>", {
+        await withFetch((async () => new Response("<html><body><div></div></body></html>", {
             status: 200,
             headers: { "content-type": "text/html" },
         })), async () => {
             const result = await prepareRepresentation(new Http(),
                 readStmt(urlTarget(
-                    "https://example.com/hard-provider",
-                    "/hard-provider",
+                    "https://example.com/empty-projection",
+                    "/empty-projection",
                     selected === "body" ? null : selected,
                 )),
                 ctx,
             );
             assert.equal(result.status, 200);
         });
-        // {§channel-selection} — the hard materializer failure is the readable channel's; the source lands whole.
+        // {§channel-selection} — an absent projection is the readable channel's 422; the source lands whole.
         assert.equal(inspect().wrote?.entry.channels.readable?.state, "errored");
-        assert.equal(inspect().wrote?.entry.channels.readable?.producerResult?.status, 502);
-        assert.equal(inspect().wrote?.entry.channels.body?.content, "<html><body>Durable source</body></html>");
-        assert.equal(inspect().closed, null);
-    });
-}
-
-test("{§http-lifecycle} READ: recoverable materializer outcome uses the local floor with explicit terminal 203", async () => {
-    process.env[MATERIALIZER_ENV] = "stub";
-    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
-    __stub.set({
-        eligible: () => "stub-extract:v1",
-        extract: async () => ({
-            outcome: "recoverable",
-            reason: "not extractable",
-            identity: "stub-extract:v1",
-            evidence: [{ name: "x-plurnk-stub-request-id", value: "req-recover" }],
-        }),
-    });
-    const projection = projectionCaps({
-        async readable(_content, mimetype) {
-            return {
-                content: "local floor",
-                mimetype: "text/markdown",
-                sourceMimetype: mimetype,
-                projectionIdentity: "floor-v1",
-            };
-        },
-    });
-    const { ctx, inspect } = makeCtx(null, { projection });
-    await withFetch((async () => new Response("<html><body>Origin</body></html>", {
-        status: 200,
-        headers: { "content-type": "text/html" },
-    })), async () => {
-        const result = await prepareRepresentation(new Http(),
-            readStmt(urlTarget("https://example.com/recover", "/recover")),
-            ctx,
-        );
-        assert.equal(result.status, 200);
-    });
-    assert.equal(inspect().wrote?.entry.channels.readable?.content, "local floor");
-    assert.equal(inspect().wrote?.entry.channels.readable?.producerResult?.status, 203);
-    assert.equal(inspect().wrote?.entry.channels.body?.content, "<html><body>Origin</body></html>");
-    const header = inspect().wrote?.entry.channels.header?.content ?? "";
-    assert.match(header, /^x-plurnk-stub-request-id: req-recover$/m);
-});
-
-for (const selected of ["body", "readable"] as const) {
-    test(`{§http-lifecycle} READ #${selected}: the materializer text may survive admitted origin transport failure`, async () => {
-        process.env[MATERIALIZER_ENV] = "stub";
-        const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
-        __stub.set({
-            eligible: () => "stub-extract:v1",
-            extract: async () => ({
-                outcome: "success",
-                body: "provider-only body",
-                identity: "stub-extract:v1",
-                evidence: [],
-            }),
-        });
-        const { ctx, inspect } = makeCtx();
-        await withFetch((async () => {
-            throw new Error("origin reset");
-        }), async () => {
-            const result = await prepareRepresentation(new Http(),
-                readStmt(urlTarget(
-                    "https://example.com/provider-only",
-                    "/provider-only",
-                    selected === "body" ? null : "readable",
-                )),
-                ctx,
-            );
-            assert.equal(result.status, 200);
-        });
-        assert.equal(inspect().wrote?.entry.channels.readable?.content, "provider-only body");
-        assert.equal(inspect().wrote?.entry.channels.body?.state, "errored");
-        assert.equal(inspect().wrote?.entry.channels.body?.producerResult?.status, 502);
+        assert.equal(inspect().wrote?.entry.channels.readable?.producerResult?.status, 422);
+        assert.equal(inspect().wrote?.entry.channels.body?.content, "<html><body><div></div></body></html>");
         assert.equal(inspect().closed, null);
     });
 }
@@ -1470,42 +1292,4 @@ test("{§revalidation}: address cancellation includes concurrent acquisitions wi
     assert.equal(live.cancel(key), true, "old cleanup cannot untrack a subsequent acquisition");
     assert.equal(next.signal.aborted, true);
     assert.equal(live.cancel(key), false);
-});
-
-test("{§http-lifecycle} a standard bundle uses lazy materializer discovery without a daemon module", async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "materializer-extension-"));
-    t.after(() => rm(root, { recursive: true, force: true }));
-    const plugin = join(root, "plugin");
-    await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
-    await writeFile(join(plugin, "package.json"), JSON.stringify({ name: "@plurnk/example-plugin", type: "module" }));
-    await writeFile(join(plugin, "plugin.json"), JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "example-plugin",
-        extensions: { "ai.plurnk": { kind: "http-materializer", materializers: [{ id: "fixture", module: "ai.plurnk/materializer.mjs" }] } },
-    }));
-    const registry = await new MaterializerRegistry().discover({ packageDirs: [{ dir: plugin, name: "@plurnk/example-plugin" }] });
-    const found = registry.materializerFor("fixture");
-    assert.ok(found, "discovery does not import the implementation");
-    await writeFile(join(plugin, "ai.plurnk/materializer.mjs"), `export default {
-        id: "fixture", eligible: () => "fixture:v1",
-        extract: async () => ({ outcome: "success", body: "native body", identity: "fixture:v1", evidence: [] }),
-    };`);
-    assert.equal(await found.eligible("https://example.com/", {}), "fixture:v1");
-    assert.deepEqual(await found.extract("https://example.com/", {}), {
-        outcome: "success", body: "native body", identity: "fixture:v1", evidence: [],
-    });
-    assert.equal(await registry.discover({ packageDirs: [{ dir: plugin, name: "@plurnk/example-plugin" }] }), registry);
-    assert.equal(await registry.materializerFor("fixture")?.eligible("https://example.com/", {}), "fixture:v1");
-    const competitor = join(root, "competitor");
-    await mkdir(competitor);
-    await writeFile(join(competitor, "package.json"), JSON.stringify({
-        name: "@plurnk/competitor", plurnk: { kind: "http-materializer", materializers: [{ id: "fixture", module: "unused.mjs" }] },
-    }));
-    await assert.rejects(new MaterializerRegistry().discover({ packageDirs: [
-        { dir: plugin, name: "@plurnk/example-plugin" }, { dir: competitor, name: "@plurnk/competitor" },
-    ] }), /claimed by both @plurnk\/example-plugin and @plurnk\/competitor/);
-    await rm(join(plugin, "ai.plurnk/materializer.mjs"));
-    await writeFile(join(root, "outside.mjs"), "throw new Error('must not import');");
-    await symlink(join(root, "outside.mjs"), join(plugin, "ai.plurnk/materializer.mjs"));
-    await assert.rejects(new MaterializerRegistry().discover({ packageDirs: [{ dir: plugin, name: "@plurnk/example-plugin" }] }),
-        /native module resolves outside the plugin root/);
 });

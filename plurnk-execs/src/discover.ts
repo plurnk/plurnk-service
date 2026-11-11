@@ -8,20 +8,19 @@ import Policy from "./policy.ts";
 import RuntimeDeclaration from "./RuntimeDeclaration.ts";
 import type { Discovery, DiscoverOptions, ExecInfo } from "./types.ts";
 
-// Build the flat runtime-tag registry from installed executor packages
+// Build the flat runtime-tag registry from installed first-party executor packages
 // ({§executor-discovery}). `index.ts` re-exports `Discover.scan` as discover;
 // internal calls retain the class binding so that detached export stays usable.
 //
-// Default scan target: every installed package under `<cwd>/node_modules` —
-// scope-agnostic, so third-party executors (`@acme/foo`) are discovered too,
-// not just `@plurnk/*`. Tests and unusual layouts can pass `packageDirs`
-// explicitly to skip the scan.
+// Default scan target: first-party `@plurnk/*` packages under `<cwd>/node_modules`
+// ({§extension-discovery}). Tests and unusual layouts can pass `packageDirs`
+// explicitly to skip the scan; non-`@plurnk/*` packages are still ignored.
 //
-// Trust precedes executable discovery code ({§executor-policy}). A package is recognized
-// only when its manifest declares `plurnk.kind === "exec"`; tags come from:
+// A `@plurnk/*` package is recognized only when its manifest declares
+// `plurnk.kind === "exec"`; tags come from:
 //   - STATIC: `plurnk.runtimes: { name, glyph?, summary, invocation, details? }[]` —
 //     tags known at publish time.
-//   - DYNAMIC: `plurnk.runtimesModule: "<export-subpath>"` — a trusted runtimes function that
+//   - DYNAMIC: `plurnk.runtimesModule: "<export-subpath>"` — a first-party runtimes function that
 //     returns deployment-configured declarations ({§executor-discovery}).
 // Each decl registers its tag separately; one package can claim many tags
 // backed by the same default export. Summary, invocation, and details are
@@ -31,7 +30,7 @@ import type { Discovery, DiscoverOptions, ExecInfo } from "./types.ts";
 // installation ambiguity.
 export default class Discover {
     static async scan(options: DiscoverOptions = {}): Promise<Discovery> {
-        const { admitted, skipped } = await Meta.scanKind("exec", options);
+        const { admitted } = await Meta.scanKind("exec", options);
 
         const registry = new Map<string, ExecInfo>();
         const packageAttributions = new Map<string, ExtensionAttribution>();
@@ -60,7 +59,7 @@ export default class Discover {
             }
         }
 
-        return { registry, packageAttributions, skipped, disabled: [...disabled].toSorted() };
+        return { registry, packageAttributions, disabled: [...disabled].toSorted() };
     }
 
     // Produce one ExecInfo per static or dynamic runtime declaration.

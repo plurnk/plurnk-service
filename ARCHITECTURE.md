@@ -115,12 +115,11 @@ The typed module seam is released as `@plurnk/plurnk-modules`, and core exposes 
 update-advertising action: protocol compatibility and any version negotiation belong to the
 client-interface module that publishes that protocol.
 
-Framework packages define extension contracts. Installed extensions implement those
-contracts. Core composes them but does not absorb their domain logic. Shared
-facts have one schema and one specification owner. Frameworks do not depend on
-the extensions of their kind; the service manifest is the sole owner of its
-default extensions, while compatible third-party extensions join them through the
-same installation and discovery path ({§bundled-set}).
+Framework packages define extension contracts. Installed first-party `@plurnk/*` extensions
+implement those contracts. Core composes them but does not absorb their domain logic. Shared
+facts have one schema and one specification owner. Frameworks do not depend on the extensions
+of their kind; the service manifest is the sole owner of its default extensions and modules
+({§bundled-set}).
 
 ### Package principles
 
@@ -181,19 +180,19 @@ flowchart TD
     Q -->|"X watches plurnk"| H["notifications: GET /notifications SSE or observer module"]
     Q -->|"X drives plurnk"| F["client of a face: ACP for applications"]
     Q -->|"plurnk uses X"| U{{"data or code?"}}
-    U -->|data| D["definition: skill, MCP server, member rule, env entry, schedule rule"]
-    U -->|code| E["extension: exec, scheme, mimetype, provider, http-materializer, module"]
+    U -->|data| D["definition: skill, persona, MCP server, member rule, env entry, schedule rule"]
+    U -->|code| E["first-party extension: exec, scheme, mimetype, provider"]
 ```
 
 | Surface | What it is | Code in the daemon |
 | --- | --- | --- |
-| Configuration | cascade settings and definition files: `.env`, `mcp.json`, skill roots | none |
-| Definition | a skill, MCP server, member rule, env entry or schedule rule, managed through the shared management verbs | none; an MCP server runs elsewhere |
-| Plugin | an Agent Plugin carrying skills and MCP servers, from npm or a plugin root | none, unless it declares an extension |
+| Configuration | cascade settings and definition files: `.env`, `mcp.json`, skill and persona roots | none |
+| Definition | a skill, persona, MCP server, member rule, env entry or schedule rule, managed through the shared management verbs | none; an MCP server runs elsewhere |
+| Plugin | an Agent Plugin carrying skills, personas and MCP servers, from npm or a plugin root | none |
 | Notifications | `GET /notifications` Server-Sent Events stream of `DaemonNotification` envelopes | none |
 | Client | an application or agent driving an existing face | none |
-| Extension | trusted native code of one kind: `exec`, `scheme`, `mimetype`, `provider`, `http-materializer` | in-process |
-| Module | the kind that joins the daemon lifecycle as a family, a face or an observer | in-process, in the lifecycle |
+| Extension | first-party `@plurnk/*` code of one kind: `exec`, `scheme`, `mimetype`, `provider` | in-process |
+| Module | a first-party `DaemonModule` composed statically in the daemon lifecycle as a family, a face or an observer | in-process, in the lifecycle |
 
 The rows run from least to most invasive, and each row down costs trust and maintenance. Delivery is
 orthogonal to kind: an MCP server is the same definition whether it arrives from the operator's
@@ -233,13 +232,13 @@ One word per concept, defined here.
 
 | Term | Meaning | Not |
 | --- | --- | --- |
-| plugin | An Agent Plugin: the standard package (`plugin.json`, `skills/`, `mcp.json`, `extensions`) | Native code of any kind |
-| component | A plugin's portable content: a skill or an MCP server | |
-| extension | Native Plurnk code the daemon loads, of one kind, declared once in `package.json#plurnk` or a plugin's `extensions.ai.plurnk` | A file extension, always said in full; a protocol's extension, always protocol-qualified |
-| kind | Which seam an extension fills: `exec`, `scheme`, `mimetype`, `provider`, `http-materializer`, `module` | A family, which manages definitions |
-| framework | The package that owns one kind's contract, discovery and loading; for modules, `plurnk-modules` holds the contract and the host loads | A capability, which is what policy admits |
+| plugin | An Agent Plugin: the standard package (`plugin.json`, `skills/`, `personas/`, `mcp.json`) | Native code of any kind |
+| component | A plugin's portable content: a skill, a persona, or an MCP server | |
+| extension | First-party `@plurnk/*` code the daemon loads, of one kind, declared once in `package.json#plurnk` | A file extension, always said in full; a protocol's extension, always protocol-qualified |
+| kind | Which seam an extension fills: `exec`, `scheme`, `mimetype`, `provider` | A family, which manages definitions |
+| framework | The package that owns one kind's contract, discovery and loading; for modules, `plurnk-modules` holds the contract and the service composes them statically | A capability, which is what policy admits |
 | grammar package | A package that ships one pre-built Tree-sitter WASM grammar for the mimetype framework; it declares no kind | An extension |
-| module | The kind that joins the daemon lifecycle. Its roles follow from the seams it uses: a **family** (a Functionality adapter), a **face** (declared mounts), an **observer** (an event subscription) | A plugin |
+| module | A first-party `DaemonModule` composed in the daemon lifecycle. Its roles follow from the seams it uses: a **family** (a Functionality adapter), a **face** (declared mounts), an **observer** (an event subscription) | A plugin |
 | family | Core's shared manager of one definition kind: skills, MCP, schedule, members, env | An extension kind or its framework; a runtime or its document |
 | definition | One managed datum of a family; components are the standard-portable definitions | |
 | face | A module role that serves a protocol: ACP | |
@@ -293,10 +292,9 @@ default or a SQL column default that supplies a value the environment did not is
 a second home for a choice, and it will eventually disagree with the first.
 
 - **The system environment is the mechanism.** Node, the shell and CI all speak
-  it. Each package declares its own keys in `.env.defaults` (under `ai.plurnk/`
-  for an Agent Plugin's extension); a
+  it. Each `@plurnk/*` package declares its own keys in `.env.defaults`; a
   key's prefix names its owner; one package owns a key. The daemon assembles
-  every installed package's file into one floor, set-if-unset beneath every
+  every installed `@plurnk/*` package's file into one floor, set-if-unset beneath every
   operator source, so a declared key is always present
   ({§operator-config-precedence}). A package's own tests run on its own panel,
   or that guarantee is a fiction where the code is exercised.
@@ -462,7 +460,7 @@ the submitter the owner of the shared runtime.
 | Project bytes and Git membership        | The project filesystem and repository; database entries are the agent-visible projection.             |
 | Active session drains, wakes, cancellation | Process-local `DrainSupervisor` state reconciled against durable state; see {§session-loop-lifecycle}. |
 | A session's model, effort and spawn model | `SessionModels` owns the durable selection and the loop's immutable route snapshot ({§session-model-selection}). |
-| Composed modules and their mounts | `DaemonModules` owns registration, discovery, mount claims and the setup/start/stop/close phases ({§module-lifecycle}, {§module-contract}). |
+| Composed modules and their mounts | `DaemonModules` owns static composition, explicit registration, mount claims and the setup/start/stop/close phases ({§module-lifecycle}, {§module-contract}). |
 | A person's client operations in flight | `ClientOperations` owns each operation's loop, cancellation scope and settlement, and the shutdown scope they all descend from ({§connection-lifecycle}, {§session-causal-admission}). |
 | A message's delivery to a session | `MessageDelivery` resolves the session's model and effort, prepares the message and its source, and injects it into the drain that starts or continues the loop ({§methods}, {§machine-processes}). |
 | Provider calls and process teardown       | `Engine` owns provider-call state; `Daemon` owns reverse-order process teardown.                       |

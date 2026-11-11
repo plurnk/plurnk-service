@@ -283,28 +283,28 @@ test("{§credential-authority} a root alias of a workspace script delegates by w
     }
 });
 
-test("{§credential-authority} live operator bootstrap carries Tavily and Brave from the authoritative shell equally", () => {
+test("{§credential-authority} live operator bootstrap carries OpenAI and Brave credentials from the authoritative shell equally", () => {
     const home = mkdtempSync(resolve(tmpdir(), "plurnk-operator-env-"));
     try {
         writeFileSync(resolve(home, ".bashrc"), [
             "export BRAVE_API_KEY=brave-test-key",
-            "export TAVILY_API_KEY=tavily-test-key",
+            "export OPENAI_API_KEY=openai-test-key",
             "",
         ].join("\n"));
         const env = { ...process.env, HOME: home };
         delete env.BRAVE_API_KEY;
-        delete env.TAVILY_API_KEY;
+        delete env.OPENAI_API_KEY;
         const result = spawnSync("bash", [
             operatorEnvironment,
             process.execPath,
             "--input-type=module",
             "--eval",
-            "process.stdout.write(JSON.stringify({ brave: process.env.BRAVE_API_KEY, tavily: process.env.TAVILY_API_KEY }))",
+            "process.stdout.write(JSON.stringify({ brave: process.env.BRAVE_API_KEY, openai: process.env.OPENAI_API_KEY }))",
         ], { encoding: "utf8", env });
         assert.equal(result.status, 0, result.stderr);
         assert.deepEqual(JSON.parse(result.stdout), {
             brave: "brave-test-key",
-            tavily: "tavily-test-key",
+            openai: "openai-test-key",
         });
     } finally {
         rmSync(home, { recursive: true, force: true });

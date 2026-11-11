@@ -63,8 +63,8 @@ export default class PlurnkSkill implements SkillTree {
         if (pathname.startsWith("packages/")) return new FileByteSource(async () => (await this.#contracts()).get(pathname) ?? null);
         return new GeneratedByteSource(async () => {
             if (pathname !== "configuration/.env.defaults") return null;
-            const sources = await EnvDefaults.collect(dirname(Paths.configuration), this.#nodeModules);
-            return new TextEncoder().encode(EnvDefaults.renderCatalog(sources.files));
+            const files = await EnvDefaults.collect(dirname(Paths.configuration), this.#nodeModules);
+            return new TextEncoder().encode(EnvDefaults.renderCatalog(files));
         });
     }
 
@@ -72,7 +72,7 @@ export default class PlurnkSkill implements SkillTree {
     // published type declarations, read where its package installed them: the membership of the
     // defaults catalog, observed when asked. The service's declarations are its internals, not a contract.
     async #contracts(): Promise<ReadonlyMap<string, string>> {
-        const members = await EnvDefaults.members(await Meta.packageDirs(this.#nodeModules));
+        const members = EnvDefaults.members(await Meta.packageDirs(this.#nodeModules));
         const contracts = new Map<string, string>();
         for (const { name, dir } of [{ name: SERVICE, dir: Paths.packageRoot }, ...members.filter((member) => member.name !== SERVICE)]) {
             if (!await PlurnkSkill.#isFile(join(dir, "SPEC.md"))) continue;

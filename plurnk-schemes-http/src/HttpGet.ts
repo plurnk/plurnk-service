@@ -11,7 +11,6 @@ import type {
 import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import {
     fresh,
-    materializerIdentity,
     refreshAfter304,
     requestMethod,
     reusableGetRepresentation,
@@ -76,9 +75,7 @@ export default class HttpGet {
             try {
                 if (await reusableGetRepresentation(prior.entry, requestHeaders, ctx.projection)) {
                     cached = prior.entry;
-                    if (materializerIdentity(priorHeader.content) === undefined) {
-                        conditional.push(...validators(priorHeader.content));
-                    }
+                    conditional.push(...validators(priorHeader.content));
                 }
             } catch (cause) {
                 return httpMaterializationFailure(
@@ -138,20 +135,6 @@ export default class HttpGet {
                     );
                 }
                 const cachedHeader = cached.channels[HEADER].content;
-                if (materializerIdentity(cachedHeader) !== undefined) {
-                    return httpBad(
-                        502,
-                        "http",
-                        "fetch-failed",
-                        `HTTP GET ${url} returned 304 for a stored representation that requires full reacquisition.`,
-                        {
-                            target: url,
-                            method: "GET",
-                            stage: "acquisition",
-                            retryable: true,
-                        },
-                    );
-                }
                 const responseHeaders = fetched.responseHeaders ?? [];
                 if (revalidationCorresponds(
                     cachedHeader,

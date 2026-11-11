@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
-import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Meta, { TEACHING_CORPUS, type ExtensionAttributionContext } from "./index.ts";
@@ -32,33 +31,6 @@ test("{§teaching-corpus} teaching corpus: the meta owner publishes one exact im
     assert.equal(Object.isFrozen(TEACHING_CORPUS.docs), true);
     assert.equal(Object.isFrozen(TEACHING_CORPUS.skillChapters), true);
     assert.ok(Object.values(TEACHING_CORPUS.docs).every(Object.isFrozen));
-});
-
-test("{§operator-config-precedence} isTrusted: gate off ('' / '0') trusts everything", () => {
-    for (const v of ["", "0"]) {
-        assert.equal(Meta.isTrusted("@acme/rogue", { PLURNK_EXTENSIONS_TRUSTED_ONLY: v }), true, `gate ${JSON.stringify(v)}`);
-    }
-});
-
-// {§operator-config-precedence} — the gate is asked while the floor is still being assembled, so an
-// unset key defers to the panel that owns it, never to a value in code: change the panel and the
-// unset answer changes with it.
-test("{§extension-discovery} isTrusted: an unset key is answered by this package's own panel", () => {
-    const panel = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
-    const declared = /^PLURNK_EXTENSIONS_TRUSTED_ONLY=(.*)$/mu.exec(panel)?.[1];
-    assert.ok(declared !== undefined, "the owner declares the key it is asked about");
-    const off = declared.trim() === "" || declared.trim() === "0";
-    assert.equal(Meta.isTrusted("@acme/rogue", {}), off, `the shipped declaration ${JSON.stringify(declared)} governs an unset environment`);
-    assert.equal(Meta.isTrusted("@plurnk/plurnk-execs", {}), true, "a first-party package is trusted under either reading");
-});
-
-test("{§extension-discovery} isTrusted: gate on — @plurnk/* always, allowlist admits, everything else refused", () => {
-    const env = { PLURNK_EXTENSIONS_TRUSTED_ONLY: "acme-extension, @firewolf/firepad" };
-    assert.equal(Meta.isTrusted("@plurnk/plurnk-schemes-http", env), true);
-    assert.equal(Meta.isTrusted("acme-extension", env), true);
-    assert.equal(Meta.isTrusted("@firewolf/firepad", env), true);
-    assert.equal(Meta.isTrusted("evil-extension", env), false);
-    assert.equal(Meta.isTrusted("evil-extension", { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" }), false, "'1' = on, zero third-party");
 });
 
 test("{§extension-discovery} declaresKind: one exact string identifies one kind", () => {
@@ -203,8 +175,7 @@ test("{§extension-discovery} packageDirs: merges npm's nested peer graph with a
     }
 });
 
-// {§extension-discovery}
-test("{§extension-discovery} readManifest: the kind claim of one package.json, or null for anything that is not one", async () => {
+test("{§extension-discovery} readManifest and scanKind: admit only first-party @plurnk/* package.json#plurnk declarations across the four kinds", async () => {
     const root = await mkdtemp(join(tmpdir(), "extensions-manifest-"));
     try {
         const pkg = async (name: string, content: string): Promise<string> => {
@@ -212,21 +183,50 @@ test("{§extension-discovery} readManifest: the kind claim of one package.json, 
             await writeFile(join(root, name, "package.json"), content);
             return join(root, name);
         };
-        const exec = await pkg("exec", JSON.stringify({ name: "@acme/exec", plurnk: { kind: "exec", runtimes: [] } }));
+        const exec = await pkg("exec", JSON.stringify({ name: "@plurnk/plurnk-execs-test", plurnk: { kind: "exec", runtimes: [], attribution: "@plurnk/core" } }));
         assert.deepEqual(await Meta.readManifest(exec, "exec"), {
             manifestPath: join(exec, "package.json"),
-            packageName: "@acme/exec",
-            plurnk: { kind: "exec", runtimes: [] },
+            packageName: "@plurnk/plurnk-execs-test",
+            plurnk: { kind: "exec", runtimes: [], attribution: "@plurnk/core" },
+        });
+        assert.deepEqual(await Meta.readManifest(exec), {
+            manifestPath: join(exec, "package.json"),
+            packageName: "@plurnk/plurnk-execs-test",
+            plurnk: { kind: "exec", runtimes: [], attribution: "@plurnk/core" },
         });
         assert.equal(await Meta.readManifest(exec, "scheme"), null, "another kind");
+
+        const thirdParty = await pkg("acme", JSON.stringify({ name: "@acme/exec", plurnk: { kind: "exec", runtimes: [] } }));
+        const unscoped = await pkg("unscoped", JSON.stringify({ name: "exec-pkg", plurnk: { kind: "exec", runtimes: [] } }));
         const unnamed = await pkg("unnamed", JSON.stringify({ plurnk: { kind: "scheme" } }));
-        assert.deepEqual(await Meta.readManifest(unnamed, "scheme"), {
-            manifestPath: join(unnamed, "package.json"), packageName: null, plurnk: { kind: "scheme" },
-        }, "an unnamed package is the framework's decision");
+        assert.equal(await Meta.readManifest(thirdParty, "exec"), null, "third-party scopes are ignored");
+        assert.equal(await Meta.readManifest(unscoped, "exec"), null, "unscoped packages are ignored");
+        assert.equal(await Meta.readManifest(unnamed, "scheme"), null, "unnamed packages are ignored");
         assert.equal(await Meta.readManifest(join(root, "absent"), "exec"), null, "no package.json");
         assert.equal(await Meta.readManifest(await pkg("broken", "{"), "exec"), null, "malformed JSON");
         assert.equal(await Meta.readManifest(await pkg("scalar", "42"), "exec"), null, "not an object");
-        assert.equal(await Meta.readManifest(await pkg("plain", JSON.stringify({ name: "plain" })), "exec"), null, "no plurnk object");
+        assert.equal(await Meta.readManifest(await pkg("plain", JSON.stringify({ name: "@plurnk/plain" })), "exec"), null, "no plurnk object");
+
+        const pluginOnly = join(root, "plugin-only");
+        await mkdir(pluginOnly, { recursive: true });
+        await writeFile(join(pluginOnly, "plugin.json"), JSON.stringify({
+            $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+            name: "example-plugin",
+            extensions: { "com.example.other": { kind: "exec", runtimes: [] } },
+        }));
+        assert.equal(await Meta.readManifest(pluginOnly, "exec"), null, "plugin.json never supplies in-process extension declarations");
+
+        const scanned = await Meta.scanKind("exec", { packageDirs: [exec, thirdParty, unscoped, pluginOnly] });
+        assert.deepEqual(scanned, {
+            admitted: [{
+                dir: exec,
+                manifestPath: join(exec, "package.json"),
+                packageName: "@plurnk/plurnk-execs-test",
+                plurnk: { kind: "exec", runtimes: [], attribution: "@plurnk/core" },
+                attribution: ["@plurnk/core"],
+            }],
+        });
+
         const controller = new AbortController();
         controller.abort();
         await assert.rejects(Meta.readManifest(exec, "exec", { signal: controller.signal }), { name: "AbortError" }, "an abort surfaces");
@@ -235,129 +235,18 @@ test("{§extension-discovery} readManifest: the kind claim of one package.json, 
     }
 });
 
-test("{§extension-discovery} nearestNodeModules: finds the ancestor holding @plurnk; null when absent", async () => {
+test("{§extension-discovery} nearestNodeModules and resolvedPackageDirs: resolve the @plurnk ecosystem and filter to @plurnk/*", async () => {
     const root = await mkdtemp(join(tmpdir(), "extensions-walk-"));
     try {
-        await mkdir(join(root, "node_modules", "@plurnk"), { recursive: true });
+        await mkdir(join(root, "node_modules", "@plurnk", "plurnk-execs-common"), { recursive: true });
+        await mkdir(join(root, "node_modules", "@acme", "other"), { recursive: true });
         const deep = join(root, "packages", "member", "src");
         await mkdir(deep, { recursive: true });
-        // a sparse per-package node_modules (bins only) must NOT win the walk
         await mkdir(join(root, "packages", "member", "node_modules", ".bin"), { recursive: true });
         assert.equal(Meta.nearestNodeModules(deep), join(root, "node_modules"));
+        assert.deepEqual(await Meta.resolvedPackageDirs(deep), [join(root, "node_modules", "@plurnk", "plurnk-execs-common")]);
         assert.equal(Meta.nearestNodeModules(tmpdir()), null, "no ecosystem anywhere up the tree");
     } finally {
         await rm(root, { recursive: true, force: true });
     }
-});
-
-test("{§extension-discovery} an Agent Plugin supplies one native declaration through either distribution", async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "agent-plugin-native-"));
-    t.after(() => rm(root, { recursive: true, force: true }));
-    const native = { kind: "module", module: "ai.plurnk/plugin.js" };
-    const manifest = {
-        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-        name: "example-plugin",
-        extensions: { "ai.plurnk": native },
-    };
-    await writeFile(join(root, "plugin.json"), JSON.stringify(manifest));
-    assert.deepEqual(await Meta.readManifest(root, "module"), {
-        manifestPath: join(root, "plugin.json"), packageName: "example-plugin", plurnk: native,
-    });
-    await writeFile(join(root, "package.json"), JSON.stringify({ name: "@acme/example-plugin", type: "module" }));
-    assert.deepEqual(await Meta.readManifest(root, "module"), {
-        manifestPath: join(root, "plugin.json"), packageName: "@acme/example-plugin", plurnk: native,
-    });
-    assert.equal(await Meta.readManifest(root, "exec"), null);
-    await writeFile(join(root, "plugin.json"), JSON.stringify({ ...manifest, extensions: { "com.example.other": native } }));
-    assert.equal(await Meta.readManifest(root, "module"), null, "another client's declaration is not ours");
-});
-
-test("{§extension-discovery} invalid or duplicate extension declarations never fall through to package metadata", async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "agent-plugin-invalid-"));
-    t.after(() => rm(root, { recursive: true, force: true }));
-    const native = { kind: "module", module: "ai.plurnk/plugin.js" };
-    await writeFile(join(root, "package.json"), JSON.stringify({ name: "@acme/example-plugin", plurnk: native }));
-    await writeFile(join(root, "plugin.json"), JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-        name: "example-plugin", extensions: { "ai.plurnk": native },
-    }));
-    await assert.rejects(Meta.readManifest(root, "module"), {
-        name: "ConfigurationError",
-        message: `${join(root, "plugin.json")}: an extension must not also be declared in package.json#plurnk.`,
-    });
-    await writeFile(join(root, "plugin.json"), "{");
-    await assert.rejects(Meta.readManifest(root, "module"), {
-        name: "ConfigurationError", message: `${join(root, "plugin.json")}: plugin.json is not valid JSON.`,
-    });
-});
-
-test("{§agent-plugins-containment} native entry paths and manifests cannot escape their plugin", async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "agent-plugin-paths-"));
-    t.after(() => rm(root, { recursive: true, force: true }));
-    const plugin = join(root, "plugin");
-    await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
-    const manifest = (module: string) => JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "example",
-        extensions: { "ai.plurnk": { kind: "module", module } },
-    });
-    await writeFile(join(root, "outside.mjs"), "export default {};");
-    await symlink(join(root, "outside.mjs"), join(plugin, "ai.plurnk/plugin.mjs"));
-    await writeFile(join(plugin, "plugin.json"), manifest("ai.plurnk/plugin.mjs"));
-    const readModule = async () => {
-        const declaration = await Meta.readManifest(plugin, "module");
-        assert.ok(declaration);
-        return Meta.moduleFile(declaration, declaration.plurnk.module as string);
-    };
-    await assert.rejects(readModule(), /module resolves outside the plugin root/);
-    await writeFile(join(plugin, "plugin.json"), manifest("ai.plurnk/../../outside.mjs"));
-    await assert.rejects(readModule(), /native module must be beneath ai.plurnk/);
-    await rm(join(plugin, "plugin.json"));
-    await writeFile(join(root, "outside.json"), manifest("ai.plurnk/plugin.mjs"));
-    await symlink(join(root, "outside.json"), join(plugin, "plugin.json"));
-    await assert.rejects(Meta.readManifest(plugin, "module"), /plugin.json resolves outside the plugin root/);
-    await rm(join(root, "outside.json"));
-    await writeFile(join(plugin, "package.json"), JSON.stringify({ name: "example", plurnk: { kind: "module", module: "fallback.mjs" } }));
-    await assert.rejects(Meta.readManifest(plugin, "module"), /plugin.json does not resolve to a regular file/);
-});
-
-test("{§extension-discovery} standard bundles preserve each kind's declaration", async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "agent-plugin-declarations-"));
-    t.after(() => rm(root, { recursive: true, force: true }));
-    const declarations = [
-        { kind: "exec", runtimes: [{ name: "example", summary: "Example runtime" }] },
-        { kind: "mimetype", handlers: [{ name: "application/example", revision: "1" }] },
-        { kind: "provider", name: "example" },
-        { kind: "scheme", schemes: [{ name: "example", export: "default" }] },
-        { kind: "http-materializer", materializers: [{ id: "example", module: "ai.plurnk/materializer.js" }] },
-        { kind: "module", module: "ai.plurnk/plugin.js" },
-    ] as const;
-    await writeFile(join(root, "package.json"), JSON.stringify({ name: "@acme/example-plugin", type: "module" }));
-    for (const native of declarations) {
-        await writeFile(join(root, "plugin.json"), JSON.stringify({
-            $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "example-plugin",
-            extensions: { "ai.plurnk": native },
-        }));
-        assert.deepEqual(await Meta.readManifest(root, native.kind), {
-            manifestPath: join(root, "plugin.json"), packageName: "@acme/example-plugin", plurnk: native,
-        });
-        for (const other of declarations.filter(({ kind }) => kind !== native.kind)) {
-            assert.equal(await Meta.readManifest(root, other.kind), null);
-        }
-    }
-});
-
-test("{§extension-discovery} a linked npm bundle resolves native files against its canonical plugin root", async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "agent-plugin-linked-"));
-    t.after(() => rm(root, { recursive: true, force: true }));
-    const plugin = join(root, "source");
-    const linked = join(root, "linked");
-    await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
-    await writeFile(join(plugin, "plugin.json"), JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "example-plugin",
-        extensions: { "ai.plurnk": { kind: "http-materializer", materializers: [] } },
-    }));
-    await symlink(plugin, linked, "dir");
-    const manifest = await Meta.readManifest(linked, "http-materializer");
-    assert.ok(manifest);
-    assert.equal(await Meta.moduleFile(manifest, "ai.plurnk/native.mjs"), join(plugin, "ai.plurnk/native.mjs"));
 });

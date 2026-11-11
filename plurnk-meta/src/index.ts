@@ -1,36 +1,32 @@
 // The metaproject layer's membership slice — the mechanics every discovery
 // surface shares ({§extension-discovery} / {§operator-config-precedence}):
 //   - declaresKind:      the ONE package → kind representation.
-//   - readManifest:       the ONE extension declaration read: a kind's manifest, or null for
-//                         anything that is not a package of that kind. Field
-//                         validation past the kind claim is the caller's.
-//   - Knob:               the ONE environment reader: the panel's value by name, or a
-//                         crash by name ({§env-knob}).
-//   - ErrorDetail:        the ONE diagnostic-preview bound, per package knob
-//                         ({§env-knob}).
-//   - isTrusted:          THE trust rule. One implementation; a second definition
-//                         of membership trust anywhere in the packages is a bug.
+//   - readManifest:      the ONE first-party (@plurnk/*) extension declaration read:
+//                        a kind's manifest from package.json#plurnk, or null for
+//                        anything else. Field validation past the kind claim is
+//                        the caller's.
+//   - Knob:              the ONE environment reader: the panel's value by name, or a
+//                        crash by name ({§env-knob}).
+//   - ErrorDetail:       the ONE diagnostic-preview bound, per package knob
+//                        ({§env-knob}).
 //   - normalizeAttribution:
-//                         one package declaration → one validated tag list.
-//   - packageDirs:        scope-agnostic, symlink-aware enumeration of the Node
-//                         resolution chain. Nearest package wins when npm splits
-//                         a deployment across nested node_modules directories.
-//                         Returns candidates; ORDERING AND FILTERING ARE THE
-//                         CALLER'S POLICY.
+//                        one package declaration → one validated tag list.
+//   - packageDirs:       scope-agnostic, symlink-aware enumeration of the Node
+//                        resolution chain. Nearest package wins when npm splits
+//                        a deployment across nested node_modules directories.
+//                        Returns candidates; ORDERING AND FILTERING ARE THE
+//                        CALLER'S POLICY.
 //   - nearestNodeModules: deployment-root resolution — walk up to the nearest
-//                         node_modules holding the ecosystem (witness: @plurnk).
-//                         Registry installs hit the install root; workspace
-//                         checkouts escape node_modules via symlink realpaths and
-//                         land on the monorepo root's. Null when nothing is found;
-//                         the fallback is the caller's policy.
+//                        node_modules holding the ecosystem (witness: @plurnk).
+//                        Registry installs hit the install root; workspace
+//                        checkouts escape node_modules via symlink realpaths and
+//                        land on the monorepo root's. Null when nothing is found;
+//                        the fallback is the caller's policy.
 
 import { readdir, readFile } from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
-import { parseEnv } from "node:util";
+import { existsSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import ConfigurationError from "./ConfigurationError.ts";
-import { AgentPluginFiles, isObject } from "./AgentPlugin.ts";
+import { isObject } from "./AgentPlugin.ts";
 
 export { default as Knob } from "./Knob.ts";
 export { default as ConfigurationError } from "./ConfigurationError.ts";
@@ -43,14 +39,13 @@ export interface PackageCandidate {
     name: string;
 }
 
-const EXTENSION_KINDS = ["exec", "mimetype", "provider", "scheme", "http-materializer", "module"] as const;
+const EXTENSION_KINDS = ["exec", "mimetype", "provider", "scheme"] as const;
 export type ExtensionKind = typeof EXTENSION_KINDS[number];
 
-// {§extension-discovery} — one extension declaration, projected to its owning kind.
+// {§extension-discovery} — one first-party (@plurnk/*) extension declaration, projected to its owning kind.
 export interface ExtensionManifest {
     readonly manifestPath: string;
-    // `name` when it is a non-empty string; the caller decides what an unnamed package is.
-    readonly packageName: string | null;
+    readonly packageName: string;
     readonly plurnk: Record<string, unknown>;
 }
 
@@ -64,7 +59,6 @@ export interface ScannedExtensionPackage {
 
 export interface ExtensionKindScan {
     readonly admitted: ScannedExtensionPackage[];
-    readonly skipped: string[];
 }
 
 // Authored package.json shape retained only where a published kind descriptor
@@ -112,76 +106,28 @@ export type TeachingCorpusSource =
     | (typeof TEACHING_CORPUS.skillChapters)[keyof typeof TEACHING_CORPUS.skillChapters]
     | (typeof TEACHING_CORPUS.docs)[keyof typeof TEACHING_CORPUS.docs]["source"];
 
-
-const TRUSTED_ONLY = "PLURNK_EXTENSIONS_TRUSTED_ONLY";
-const RESERVED_ATTRIBUTION_PREFIX = "@plurnk/";
+const FIRST_PARTY_PREFIX = "@plurnk/";
 const EMPTY_ATTRIBUTION: ExtensionAttribution = Object.freeze([] as string[]);
 
 export default class Meta {
-    static #shippedTrust: string | undefined;
-
     static declaresKind(manifest: unknown, kind: ExtensionKind): boolean {
         if (typeof manifest !== "object" || manifest === null) return false;
         return (manifest as { kind?: unknown }).kind === kind;
     }
 
-    // {§extension-discovery} — null for a missing or malformed package.json, a non-object,
-    // no `plurnk` object, or another kind: none of those is a package of this kind, and
-    // discovery skips them without a word. An abort is the caller's contract and surfaces.
+    // {§extension-discovery} — null for a missing or malformed package.json, a non-@plurnk/*
+    // package, no `plurnk` object, or another kind: none of those is a first-party extension
+    // package of this kind, and discovery skips them silently. An abort surfaces.
     static async readManifest(dir: string, kind?: ExtensionKind, { signal }: { signal?: AbortSignal } = {}): Promise<ExtensionManifest | null> {
-        const pluginPath = path.join(dir, "plugin.json");
-        let plugin: Awaited<ReturnType<typeof AgentPluginFiles.manifest>>;
-        try {
-            plugin = await AgentPluginFiles.manifest(dir, { signal });
-        } catch (cause) {
-            signal?.throwIfAborted();
-            if (cause instanceof Error && cause.name === "AbortError") throw cause;
-            throw new ConfigurationError(pluginPath, `${pluginPath}: plugin.json could not be read.`, { cause });
-        }
         const packageRecord = await Meta.#packageRecord(dir, signal);
-        if (plugin !== null) {
-            if ("rejected" in plugin) {
-                throw new ConfigurationError(pluginPath, `${pluginPath}: ${plugin.rejected.message}.`);
-            }
-            if (isObject(packageRecord?.plurnk) && packageRecord.plurnk.kind !== undefined) {
-                throw new ConfigurationError(pluginPath, `${pluginPath}: an extension must not also be declared in package.json#plurnk.`);
-            }
-            const native = plugin.manifest.extensions?.["ai.plurnk"];
-            if (native === undefined) return null;
-            if (!EXTENSION_KINDS.some((candidate) => Meta.declaresKind(native, candidate))) {
-                throw new ConfigurationError(pluginPath, `${pluginPath}: extensions.ai.plurnk.kind must name one extension kind.`);
-            }
-            if (kind !== undefined && !Meta.declaresKind(native, kind)) return null;
-            const packageName = typeof packageRecord?.name === "string" && packageRecord.name.length > 0
-                ? packageRecord.name : plugin.manifest.name;
-            return { manifestPath: pluginPath, packageName, plurnk: native };
-        }
         if (packageRecord === null) return null;
+        const packageName = packageRecord.name;
+        if (typeof packageName !== "string" || !packageName.startsWith(FIRST_PARTY_PREFIX)) return null;
         const plurnk = packageRecord.plurnk;
         if (!isObject(plurnk) || !(kind === undefined
             ? EXTENSION_KINDS.some((candidate) => Meta.declaresKind(plurnk, candidate))
             : Meta.declaresKind(plurnk, kind))) return null;
-        const packageName = typeof packageRecord.name === "string" && packageRecord.name.length > 0 ? packageRecord.name : null;
         return { manifestPath: path.join(dir, "package.json"), packageName, plurnk };
-    }
-
-    // {§extension-discovery} Framework loaders resolve their own file declarations through this boundary.
-    static async moduleFile(manifest: ExtensionManifest, relative: string): Promise<string> {
-        const dir = path.dirname(manifest.manifestPath);
-        if (path.basename(manifest.manifestPath) !== "plugin.json") return path.resolve(dir, relative);
-        const root = await AgentPluginFiles.resolved(dir);
-        if (root === null) {
-            throw new ConfigurationError(manifest.manifestPath, `${manifest.manifestPath}: plugin root is unavailable.`);
-        }
-        const location = path.resolve(root, relative);
-        if (!relative.startsWith("ai.plurnk/")
-            || !AgentPluginFiles.inside(path.join(root, "ai.plurnk"), location)) {
-            throw new ConfigurationError(manifest.manifestPath, `${manifest.manifestPath}: native module must be beneath ai.plurnk/.`);
-        }
-        if (!await AgentPluginFiles.contained(root, location)) {
-            throw new ConfigurationError(manifest.manifestPath, `${manifest.manifestPath}: native module resolves outside the plugin root.`);
-        }
-        return location;
     }
 
     static async #packageRecord(dir: string, signal?: AbortSignal): Promise<Record<string, unknown> | null> {
@@ -201,46 +147,18 @@ export default class Meta {
         return isObject(pkg) ? pkg : null;
     }
 
-    // {§operator-config-precedence} — the trust gate is asked while the floor is still being
-    // assembled (it decides whose panel joins it), so an unset key cannot mean "the panel said
-    // nothing". This package owns the key, so it reads its own panel: the operator's environment
-    // first, then the shipped declaration. A value in code would outrank both.
-    static #panelTrust(): string {
-        if (Meta.#shippedTrust === undefined) {
-            const panel = path.join(fileURLToPath(new URL("..", import.meta.url)), ".env.defaults");
-            const parsed: unknown = parseEnv(readFileSync(panel, "utf8"));
-            const declared = isObject(parsed) && typeof parsed[TRUSTED_ONLY] === "string" ? parsed[TRUSTED_ONLY] : undefined;
-            if (declared === undefined) {
-                throw new Error(`@plurnk/plurnk-meta: ${TRUSTED_ONLY} is missing from its own .env.defaults — the shipped floor is not optional.`);
-            }
-            Meta.#shippedTrust = declared;
-        }
-        return Meta.#shippedTrust;
-    }
-
-    // "" / "0" → gate OFF: everything installed is trusted.
-    // any other value  → gate ON: @plurnk/* always trusted, plus a comma-separated
-    //                    allowlist; "1" (naming no real package) = on, zero third-party.
-    static isTrusted(packageName: string, env: Record<string, string | undefined> = process.env): boolean {
-        const stated = env[TRUSTED_ONLY];
-        const value = (stated === undefined ? Meta.#panelTrust() : stated).trim();
-        if (value === "" || value === "0") return true;
-        if (packageName.startsWith("@plurnk/")) return true;
-        return value.split(",").map((s) => s.trim()).includes(packageName);
-    }
-
     static normalizeAttribution(raw: unknown, packageName: string): ExtensionAttribution {
         if (raw === undefined || raw === null) return EMPTY_ATTRIBUTION;
         const values = Array.isArray(raw) ? raw : [raw];
-        const firstParty = packageName.startsWith(RESERVED_ATTRIBUTION_PREFIX);
+        const firstParty = packageName.startsWith(FIRST_PARTY_PREFIX);
         const tags = values.map((value) => {
             if (typeof value !== "string" || value.length === 0) {
                 throw new Error(`extension '${packageName}': plurnk.attribution must be a non-empty string or string[]`);
             }
-            if (value.startsWith(RESERVED_ATTRIBUTION_PREFIX) && !firstParty) {
+            if (value.startsWith(FIRST_PARTY_PREFIX) && !firstParty) {
                 throw new Error(
-                    `extension '${packageName}': '${RESERVED_ATTRIBUTION_PREFIX}' is reserved for `
-                    + `${RESERVED_ATTRIBUTION_PREFIX}-scoped packages — '${packageName}' cannot claim '${value}'`,
+                    `extension '${packageName}': '${FIRST_PARTY_PREFIX}' is reserved for `
+                    + `${FIRST_PARTY_PREFIX}-scoped packages — '${packageName}' cannot claim '${value}'`,
                 );
             }
             return value;
@@ -347,18 +265,10 @@ export default class Meta {
         }
     }
 
-    static async resolvedPackageDirs(
-        cwd: string,
-        { floorFirst = false }: { floorFirst?: boolean } = {},
-    ): Promise<string[]> {
+    static async resolvedPackageDirs(cwd: string): Promise<string[]> {
         const nm = Meta.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
         const candidates = await Meta.packageDirs(nm);
-        if (floorFirst) {
-            const plurnk = candidates.filter((c) => c.name.startsWith("@plurnk/")).map((c) => c.dir).toSorted();
-            const thirdParty = candidates.filter((c) => !c.name.startsWith("@plurnk/")).map((c) => c.dir).toSorted();
-            return [...plurnk, ...thirdParty];
-        }
-        return candidates.map((c) => c.dir).toSorted();
+        return candidates.filter((c) => c.name.startsWith(FIRST_PARTY_PREFIX)).map((c) => c.dir).toSorted();
     }
 
     static async scanKind(
@@ -366,24 +276,17 @@ export default class Meta {
         options: {
             readonly cwd?: string;
             readonly packageDirs?: ReadonlyArray<string>;
-            readonly env?: Record<string, string | undefined>;
             readonly signal?: AbortSignal;
-            readonly floorFirst?: boolean;
         } = {},
     ): Promise<ExtensionKindScan> {
-        const { cwd = process.cwd(), packageDirs, env = process.env, signal, floorFirst = false } = options;
+        const { cwd = process.cwd(), packageDirs, signal } = options;
         signal?.throwIfAborted();
-        const dirs = packageDirs ?? await Meta.resolvedPackageDirs(cwd, { floorFirst });
+        const dirs = packageDirs ?? await Meta.resolvedPackageDirs(cwd);
         const admitted: ScannedExtensionPackage[] = [];
-        const skipped = new Set<string>();
         for (const dir of dirs) {
             signal?.throwIfAborted();
             const manifest = await Meta.readManifest(dir, kind, { signal });
-            if (manifest === null || manifest.packageName === null) continue;
-            if (!Meta.isTrusted(manifest.packageName, env)) {
-                skipped.add(manifest.packageName);
-                continue;
-            }
+            if (manifest === null) continue;
             const attribution = Meta.normalizeAttribution(manifest.plurnk.attribution, manifest.packageName);
             admitted.push({
                 dir,
@@ -393,6 +296,6 @@ export default class Meta {
                 attribution,
             });
         }
-        return { admitted, skipped: [...skipped].toSorted() };
+        return { admitted };
     }
 }

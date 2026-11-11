@@ -25,7 +25,7 @@ function makeDiscovery(handlers: HandlerInfo[]): Discovery {
         }
     }
     const registry: Registry = { byExtension, byFilename };
-    return { registry, handlers: handlerMap, packageAttributions: new Map(), skipped: [] };
+    return { registry, handlers: handlerMap, packageAttributions: new Map() };
 }
 
 // ─── Mimetypes.dispose.test.ts ───
@@ -295,15 +295,11 @@ describe("{§mimetype-lifecycle} Mimetypes.dispose()", () => {
 
 // ─── Mimetypes.extension-failure.test.ts ───
 {
-// This file's fixtures are third-party packages, so it exercises the operator who admitted them
-// ({§executor-policy}); the shipped panel admits only `@plurnk/*`.
-process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
-
 const roots: string[] = [];
 const info: HandlerInfo = {
     mimetype: "text/fixture",
     glyph: "F",
-    packageName: "@fixture/mimetype-handler",
+    packageName: "@plurnk/mimetype-handler",
     projectionRevision: "test-1",
     extensions: [".fixture"],
     binary: false,
@@ -319,7 +315,7 @@ const orchestrator = (loader: () => Promise<unknown>): Mimetypes => new Mimetype
 
 function isExtensionError(error: unknown, cause?: unknown): boolean {
     assert.ok(error instanceof MimetypeExtensionError);
-    assert.match(error.message, /@fixture\/mimetype-handler/);
+    assert.match(error.message, /@plurnk\/mimetype-handler/);
     assert.match(error.message, /text\/fixture/);
     if (cause !== undefined) assert.strictEqual(error.cause, cause);
     return true;
@@ -336,7 +332,7 @@ describe("{§mimetype-handler-contract} declared mimetype extension failures", (
         const packageRoot = path.join(root, "invalid-handler");
         await mkdir(packageRoot);
         await writeFile(path.join(packageRoot, "package.json"), JSON.stringify({
-            name: "@fixture/invalid-handler",
+            name: "@plurnk/invalid-handler",
             plurnk: { kind: "mimetype", handlers: "not-an-array" },
         }));
 
@@ -352,9 +348,9 @@ describe("{§mimetype-handler-contract} declared mimetype extension failures", (
         for (const call of calls) {
             await assert.rejects(call, (error: unknown) => {
                 assert.ok(error instanceof MimetypeExtensionError);
-                assert.match(error.message, /@fixture\/invalid-handler/);
+                assert.match(error.message, /@plurnk\/invalid-handler/);
                 assert.match(error.message, /handlers/);
-                assert.equal(error.packageName, "@fixture/invalid-handler");
+                assert.equal(error.packageName, "@plurnk/invalid-handler");
                 assert.equal(error.mimetype, null);
                 assert.equal(error.manifestPath, path.join(packageRoot, "package.json"));
                 return true;

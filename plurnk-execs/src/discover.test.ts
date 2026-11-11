@@ -5,11 +5,6 @@ import os from "node:os";
 import path from "node:path";
 import Discover from "./discover.ts";
 
-// This file's fixtures are third-party packages, so it exercises the operator who admitted them
-// ({§executor-policy}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
-// their own value below and override this one.
-process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
-
 // Every temporary directory this suite creates is tracked and removed after the run.
 // mkdtemp otherwise leaks a dir per call permanently, and this suite is the
 // heaviest generator. One after() rms them all — a green OR red run
@@ -48,7 +43,7 @@ test("{§executor-discovery} discovery requires and publishes each runtime invoc
         example: { body: "Plurnk agent protocol" },
     } as const;
     const valid = await makePkg({
-        name: "@acme/acme-execs-lookup",
+        name: "@plurnk/plurnk-execs-lookup",
         plurnk: { kind: "exec", runtimes: [{ name: "lookup", summary: "Look up a term.", invocation }] },
     });
     const { registry } = await Discover.scan({ packageDirs: [valid] });
@@ -66,7 +61,7 @@ test("{§executor-discovery} discovery requires and publishes each runtime invoc
 
 test("{§executor-policy} discover: registers each runtime tag of an exec package", async () => {
     const dir = await makePkg({
-        name: "@acme/acme-execs-reference",
+        name: "@plurnk/plurnk-execs-reference",
         plurnk: {
             kind: "exec",
             runtimes: [
@@ -81,11 +76,11 @@ test("{§executor-policy} discover: registers each runtime tag of an exec packag
     // Summary, invocation, and details flow through; omitted details becomes "".
     assert.deepEqual(registry.get("lookup"), {
         runtime: "lookup", glyph: "🔎", summary: "lookup fixture.", invocation: fixtureInvocation,
-        details: "## Backend\n\nIndex-backed.", packageName: "@acme/acme-execs-reference",
+        details: "## Backend\n\nIndex-backed.", packageName: "@plurnk/plurnk-execs-reference",
     });
     assert.deepEqual(registry.get("news"), {
         runtime: "news", glyph: "📰", summary: "news fixture.", invocation: fixtureInvocation,
-        details: "", packageName: "@acme/acme-execs-reference",
+        details: "", packageName: "@plurnk/plurnk-execs-reference",
     });
 });
 
@@ -109,15 +104,15 @@ test("{§executor-policy} discover: details are sourced from docs/<tag>.md with 
 
 test("{§executor-policy} discover: normalizes attribution once per package; runtime descriptors carry no copy", async () => {
     const strDir = await makePkg({
-        name: "@acme/acme-execs-multi",
-        plurnk: { kind: "exec", attribution: "acme-multi", runtimes: [runtime("alpha"), runtime("beta")] },
+        name: "@plurnk/plurnk-execs-multi",
+        plurnk: { kind: "exec", attribution: "plurnk-multi", runtimes: [runtime("alpha"), runtime("beta")] },
     });
     const arrDir = await makePkg({
-        name: "@acme/acme-execs-foo",
-        plurnk: { kind: "exec", attribution: ["acme", "foo"], runtimes: [runtime("foo")] },
+        name: "@plurnk/plurnk-execs-foo",
+        plurnk: { kind: "exec", attribution: ["plurnk", "foo"], runtimes: [runtime("foo")] },
     });
     const noneDir = await makePkg({
-        name: "@acme/acme-execs-plain",
+        name: "@plurnk/plurnk-execs-plain",
         plurnk: { kind: "exec", runtimes: [runtime("plain")] },
     });
     const { registry, packageAttributions } = await Discover.scan({ packageDirs: [strDir, arrDir, noneDir] });
@@ -127,37 +122,30 @@ test("{§executor-policy} discover: normalizes attribution once per package; run
     assert.deepEqual(
         [...packageAttributions],
         [
-            ["@acme/acme-execs-multi", ["acme-multi"]],
-            ["@acme/acme-execs-foo", ["acme", "foo"]],
+            ["@plurnk/plurnk-execs-multi", ["plurnk-multi"]],
+            ["@plurnk/plurnk-execs-foo", ["plurnk", "foo"]],
         ],
         "a multi-tag package contributes one canonical package fact",
     );
 });
 
-test("{§executor-discovery} discover: validates trusted attribution before admission, but never validates a withheld package", async () => {
+test("{§executor-discovery} discover: validates first-party attribution and ignores non-@plurnk/* packages", async () => {
     const invalid = await makePkg({
-        name: "@acme/acme-execs-invalid",
+        name: "@plurnk/plurnk-execs-invalid",
         plurnk: { kind: "exec", attribution: ["valid", 42], runtimes: [{ name: "invalid" }] },
     });
     await assert.rejects(
         Discover.scan({ packageDirs: [invalid] }),
-        /extension '@acme\/acme-execs-invalid': plurnk\.attribution must be a non-empty string or string\[\]/,
+        /extension '@plurnk\/plurnk-execs-invalid': plurnk\.attribution must be a non-empty string or string\[\]/,
     );
 
-    const reserved = await makePkg({
-        name: "@acme/acme-execs-reserved-credit",
-        plurnk: { kind: "exec", attribution: "@plurnk/staff", runtimes: [{ name: "reserved-credit" }] },
+    const thirdPartyInvalid = await makePkg({
+        name: "@acme/acme-execs-invalid",
+        plurnk: { kind: "exec", attribution: ["valid", 42], runtimes: [{ name: "invalid" }] },
     });
-    await assert.rejects(
-        Discover.scan({ packageDirs: [reserved] }),
-        /'@plurnk\/' is reserved/,
-    );
-
-    await withGate("1", async () => {
-        const result = await Discover.scan({ packageDirs: [invalid] });
-        assert.deepEqual(result.skipped, ["@acme/acme-execs-invalid"]);
-        assert.equal(result.packageAttributions.size, 0);
-    });
+    const result = await Discover.scan({ packageDirs: [thirdPartyInvalid] });
+    assert.equal(result.registry.size, 0);
+    assert.equal(result.packageAttributions.size, 0);
 });
 
 // {§executor-discovery} Materialize a package whose tags come from a
@@ -243,7 +231,7 @@ test("{§executor-discovery} #105: dynamic runtime tags use canonical scheme nam
     );
 });
 
-test("{§executor-policy} discover: a broken dynamic runtimes function is fail-hard (trusted-package contract)", async () => {
+test("{§executor-policy} discover: a broken dynamic runtimes function is fail-hard (first-party contract)", async () => {
     const missing = await makeDynamicPkg("@plurnk/plurnk-execs-dynamic-fixture", "// no exports", "gone.mjs");
     // Point at a file that doesn't exist on disk → unloadable.
     await fs.rm(path.join(missing, "gone.mjs"));
@@ -259,19 +247,17 @@ test("{§executor-policy} discover: a broken dynamic runtimes function is fail-h
     await assert.rejects(Discover.scan({ packageDirs: [nonArray] }), /runtimes function returned a non-array/);
 });
 
-test("{§executor-policy} discover: an UNTRUSTED package's dynamic runtimes function is NEVER executed (gate before import)", async () => {
-    // If the gate failed to guard the import, this function would throw and the
-    // rejection would surface — proving execution. Under the gate it must be
-    // skipped silently instead.
+test("{§executor-discovery} discover: a non-@plurnk/* package's dynamic runtimes function is NEVER executed", async () => {
     const acme = await makeDynamicPkg(
         "@acme/acme-execs-rogue",
-        `export function runtimes() { throw new Error("runtimes function executed — gate breached"); }`,
+        `export function runtimes() { throw new Error("runtimes function executed"); }`,
     );
-    await withGate("1", async () => {
-        const { registry, skipped } = await Discover.scan({ packageDirs: [acme] });
-        assert.equal(registry.size, 0, "untrusted dynamic package registers nothing");
-        assert.deepEqual(skipped, ["@acme/acme-execs-rogue"], "reported as skipped, its runtimes function never ran");
-    });
+    const unscoped = await makeDynamicPkg(
+        "execs-rogue",
+        `export function runtimes() { throw new Error("runtimes function executed"); }`,
+    );
+    const { registry } = await Discover.scan({ packageDirs: [acme, unscoped] });
+    assert.equal(registry.size, 0, "non-@plurnk/* dynamic packages are ignored without importing code");
 });
 
 test("{§executor-policy} discover: static runtimes[] wins when both it and runtimesModule are declared", async () => {
@@ -307,23 +293,23 @@ test("{§executor-policy} discover: ignores non-exec packages and missing glyphs
 
 test("{§executor-policy} discover: tag collision across packages is fail-hard", async () => {
     const a = await makePkg({
-        name: "@acme/acme-execs-lookup",
+        name: "@plurnk/plurnk-execs-lookup",
         plurnk: { kind: "exec", runtimes: [runtime("lookup")] },
     });
     const b = await makePkg({
-        name: "@acme/acme-execs-otherlookup",
+        name: "@plurnk/plurnk-execs-otherlookup",
         plurnk: { kind: "exec", runtimes: [runtime("lookup")] },
     });
 
     await assert.rejects(
         Discover.scan({ packageDirs: [a, b] }),
-        /runtime collision: 'lookup' claimed by both @acme\/acme-execs-lookup and @acme\/acme-execs-otherlookup/,
+        /runtime collision: 'lookup' claimed by both @plurnk\/plurnk-execs-lookup and @plurnk\/plurnk-execs-otherlookup/,
     );
 });
 
 test("{§executor-discovery} #105: static runtime tags are canonical, path-safe scheme names", async () => {
     const valid = await makePkg({
-        name: "@acme/acme-execs-tools",
+        name: "@plurnk/plurnk-execs-tools",
         plurnk: { kind: "exec", runtimes: [runtime("alias.tool"), runtime("alias_tool"), runtime("tool-v2"), runtime("c++"), runtime("prompt")] },
     });
     assert.deepEqual(
@@ -333,23 +319,23 @@ test("{§executor-discovery} #105: static runtime tags are canonical, path-safe 
 
     for (const name of ["Alias", "_private", "../escape", "two words"]) {
         const invalid = await makePkg({
-            name: "@acme/acme-execs-invalid",
+            name: "@plurnk/plurnk-execs-invalid",
             plurnk: { kind: "exec", runtimes: [{ name }] },
         });
         await assert.rejects(
             Discover.scan({ packageDirs: [invalid] }),
-            /runtime declaration invalid: @acme\/acme-execs-invalid .*must match \[a-z\]\[a-z0-9\+\._-\]\*/,
+            /runtime declaration invalid: @plurnk\/plurnk-execs-invalid .*must match \[a-z\]\[a-z0-9\+\._-\]\*/,
             `invalid runtime name ${JSON.stringify(name)} must fail at discovery`,
         );
     }
 
     const reserved = await makePkg({
-        name: "@acme/acme-execs-reserved",
+        name: "@plurnk/plurnk-execs-reserved",
         plurnk: { kind: "exec", runtimes: [{ name: "only" }] },
     });
     await assert.rejects(
         Discover.scan({ packageDirs: [reserved] }),
-        /runtime declaration invalid: @acme\/acme-execs-reserved name 'only' is reserved by PLURNK_EXECS_ONLY/,
+        /runtime declaration invalid: @plurnk\/plurnk-execs-reserved name 'only' is reserved by PLURNK_EXECS_ONLY/,
     );
 });
 
@@ -384,9 +370,7 @@ test("{§executor-policy} discover: empty scan of a nonexistent node_modules yie
     assert.equal(registry.size, 0);
 });
 
-test("{§executor-policy} discover: the node_modules scan is scope-agnostic — third-party scopes are found", async () => {
-    // Build a real <cwd>/node_modules with packages under @plurnk, a third-party
-    // scope, an unscoped name, and a non-exec package that must be ignored.
+test("{§executor-discovery} discover: node_modules scan admits only @plurnk/* exec packages and ignores third-party scopes", async () => {
     const root = await mkTmp("execs-scan-");
     const write = async (rel: string, pkg: unknown): Promise<void> => {
         const dir = path.join(root, "node_modules", rel);
@@ -400,51 +384,8 @@ test("{§executor-policy} discover: the node_modules scan is scope-agnostic — 
 
     const { registry } = await Discover.scan({ cwd: root });
 
-    assert.deepEqual([...registry.keys()].toSorted(), ["cobol", "fortran", "sh"]);
-    assert.equal(registry.get("cobol")?.packageName, "@acme/acme-execs-cobol");
-});
-
-// {§executor-policy} PLURNK_EXTENSIONS_TRUSTED_ONLY host trust gate.
-
-// Run fn with the gate env set to `value` (undefined = unset), restoring after
-// so tests don't leak the gate into one another.
-const withGate = async (value: string | undefined, fn: () => Promise<void>): Promise<void> => {
-    const prev = process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
-    if (value === undefined) delete process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
-    else process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = value;
-    try { await fn(); } finally {
-        if (prev === undefined) delete process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
-        else process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = prev;
-    }
-};
-
-test("{§executor-policy} trust gate ON: untrusted third-party is skipped (not registered); @plurnk stays trusted", async () => {
-    const plurnk = await makePkg({ name: "@plurnk/plurnk-execs-sh", plurnk: { kind: "exec", runtimes: [runtime("sh")] } });
-    const acme = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [{ name: "cobol" }] } });
-    await withGate("1", async () => {
-        const { registry, skipped } = await Discover.scan({ packageDirs: [plurnk, acme] });
-        assert.deepEqual([...registry.keys()], ["sh"], "@plurnk registers; the untrusted third-party does not");
-        assert.deepEqual(skipped, ["@acme/acme-execs-cobol"], "the untrusted package is reported as skipped");
-    });
-});
-
-test("{§executor-policy} trust gate ON with an allowlist: a named third-party package is trusted", async () => {
-    const cobol = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [runtime("cobol")] } });
-    const fortran = await makePkg({ name: "execs-fortran", plurnk: { kind: "exec", runtimes: [{ name: "fortran" }] } });
-    await withGate("@acme/acme-execs-cobol", async () => {
-        const { registry, skipped } = await Discover.scan({ packageDirs: [cobol, fortran] });
-        assert.deepEqual([...registry.keys()], ["cobol"], "the allowlisted package registers");
-        assert.deepEqual(skipped, ["execs-fortran"], "the non-allowlisted third-party is skipped");
-    });
-});
-
-test('{§executor-policy} trust gate OFF ("0"): every installed package loads, nothing skipped', async () => {
-    const acme = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [runtime("cobol")] } });
-    await withGate("0", async () => {
-        const { registry, skipped } = await Discover.scan({ packageDirs: [acme] });
-        assert.deepEqual([...registry.keys()], ["cobol"], "gate off → third-party loads (no regression)");
-        assert.deepEqual(skipped, [], "nothing skipped when the gate is off");
-    });
+    assert.deepEqual([...registry.keys()], ["sh"]);
+    assert.equal(registry.get("sh")?.packageName, "@plurnk/plurnk-execs-sh");
 });
 
 // Runtime policy ({§executor-policy}): the boot layer, applied at registration across

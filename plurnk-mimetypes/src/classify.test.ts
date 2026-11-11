@@ -17,7 +17,7 @@ import { detect, emptyRegistry } from "./detect.ts";
 function mk(handlers: HandlerInfo[]): Mimetypes {
     const registry: Registry = { byExtension: new Map(), byFilename: new Map() };
     return new Mimetypes({
-        discovery: { registry, handlers: new Map(handlers.map((h) => [h.mimetype, h])), packageAttributions: new Map(), skipped: [] } satisfies Discovery,
+        discovery: { registry, handlers: new Map(handlers.map((h) => [h.mimetype, h])), packageAttributions: new Map() } satisfies Discovery,
         loader: async () => ({}),
     });
 }

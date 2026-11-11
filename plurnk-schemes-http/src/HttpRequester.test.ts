@@ -175,9 +175,10 @@ test("{§http-lifecycle} READ: headers reach direct fetch on an HTML GET (authed
         await prepareRepresentation(new Http(), readStmt(target, null, { Authorization: "Bearer T" }), ctx);
     });
     assert.equal(seenAuth, "Bearer T");
-    assert.deepEqual(seenUrls, ["https://app.x/dash"], "explicit request headers never authorize the materializer");
+    assert.deepEqual(seenUrls, ["https://app.x/dash"]);
     const header = inspect().storedEntry?.channels.header?.content ?? "";
-    assert.match(header, /^x-plurnk-materializer-id: local-projection:v1:ineligible$/m);
+    assert.match(header, /^x-plurnk-cache-variant: bypass$/m);
+    assert.match(header, /^x-plurnk-projection-id: test:text\/html$/m);
 });
 
 test("{§http-lifecycle} EDIT → PUT with the body (method mapping)", async () => {

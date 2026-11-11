@@ -4,7 +4,6 @@ import Http from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Paths from "../../src/Paths.ts";
-import HostPaths from "../../src/core/HostPaths.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type FindStatement, type ParsedPath, type ReadStatement, Validator } from "@plurnk/plurnk-contracts";
 import { type ChannelProducerResult, type RepresentationPreparationRequest, type RepresentationPreparationResult, type SchemeCtx, type SchemeHandler, type SchemeManifest, Results, SchemeDiscovery, type ResolvedEditStatement } from "@plurnk/plurnk-schemes";
@@ -17,9 +16,9 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { PluginRoots, validateManifest } from "@plurnk/plurnk-agent-plugins";
 import { TEACHING_CORPUS } from "@plurnk/plurnk-meta";
-import { discoverDaemonModules } from "../../src/server/module-discovery.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { serverProposals } from "./_approval.ts";
 import { packetSection } from "./_packet.ts";
@@ -630,17 +629,8 @@ const chapter = async (): Promise<Array<{ info: string; body: string }>> =>
 const page = async (packageName: string, name: string): Promise<string> =>
     readFile(join(dirname(createRequire(import.meta.url).resolve(`${packageName}/package.json`)), "docs", name), "utf8");
 
-const withTrust = async (value: string, run: () => Promise<void>): Promise<void> => {
-    const prior = process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
-    process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = value;
-    try { await run(); } finally {
-        if (prior === undefined) delete process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
-        else process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = prior;
-    }
-};
-
 test("{§tools-resource-materialization} the chapter shows a plugin, a scheme extension and a module, in that order", async () => {
-    assert.deepEqual((await chapter()).map(({ info }) => info), ["text", "json", "json", "json", "json", "js"]);
+    assert.deepEqual((await chapter()).map(({ info }) => info), ["text", "json", "json", "json", "js"]);
 });
 
 test("{§tools-resource-materialization} the plugin example is a valid Agent Plugin whose layout carries its skill and MCP server", async (t) => {
@@ -671,38 +661,24 @@ test("{§tools-resource-materialization} the scheme example's package is discove
     const declaration = JSON.parse(scheme.body) as { name: string };
     const root = await mkdtemp(join(tmpdir(), "plurnk-extensibility-scheme-"));
     t.after(() => rm(root, { recursive: true, force: true }));
-    const dir = join(root, "node_modules", declaration.name);
+    const dir = join(root, "node_modules", ...declaration.name.split("/"));
     await mkdir(join(dir, "dist"), { recursive: true });
     await writeFile(join(dir, "package.json"), scheme.body);
     await writeFile(join(dir, "dist", "index.js"), "export default class Notes {}\n");
-    await withTrust(declaration.name, async () => {
-        const { schemes, skipped } = await SchemeDiscovery.discover({ packageDirs: [dir] });
-        assert.deepEqual(skipped, [], "a package the operator lists is trusted");
-        assert.deepEqual(schemes.map(({ name, packageName }) => ({ name, packageName })), [{ name: "notes", packageName: declaration.name }]);
-    });
+    const { schemes } = await SchemeDiscovery.discover({ packageDirs: [dir] });
+    assert.deepEqual(schemes.map(({ name, packageName }) => ({ name, packageName })), [{ name: "notes", packageName: declaration.name }]);
 });
 
-test("{§tools-resource-materialization} the module example loads from its export subpath as one daemon module", async (t) => {
-    const [, , , , modulePackage, moduleSource] = await chapter();
-    const declaration = JSON.parse(modulePackage.body) as { name: string };
+test("{§tools-resource-materialization} the module example exports a DaemonModule factory", async (t) => {
+    const [, , , , moduleSource] = await chapter();
     const root = await mkdtemp(join(tmpdir(), "plurnk-extensibility-module-"));
     t.after(() => rm(root, { recursive: true, force: true }));
-    const dir = join(root, "node_modules", declaration.name);
-    await mkdir(join(dir, "dist"), { recursive: true });
-    await writeFile(join(dir, "package.json"), modulePackage.body);
-    await writeFile(join(dir, "dist", "module.js"), moduleSource.body);
-    await withTrust(declaration.name, async () => {
-        const discovered = await discoverDaemonModules({
-            hostPaths: new HostPaths({ env: {}, home: join(root, "home") }),
-            packageDirs: [{ dir, name: declaration.name }],
-        });
-        assert.deepEqual(discovered.skipped, []);
-        assert.deepEqual(discovered.configurationErrors, []);
-        assert.deepEqual(discovered.modules.map(({ owner }) => owner), [declaration.name]);
-        const [{ module }] = discovered.modules;
-        assert.equal(typeof module.setup, "function");
-        assert.equal(typeof module.stop, "function");
-    });
+    const moduleFile = join(root, "module.mjs");
+    await writeFile(moduleFile, moduleSource.body);
+    const loaded = (await import(pathToFileURL(moduleFile).href)) as { default: () => { setup?: unknown; stop?: unknown } };
+    const module = loaded.default();
+    assert.equal(typeof module.setup, "function");
+    assert.equal(typeof module.stop, "function");
 });
 
 test("{§tools-resource-materialization} the definition pages' add examples conform to their families' definition schemas", async () => {

@@ -43,14 +43,14 @@ test("{§execution-output-identity} ExecEnv.scoped admits only the ambient names
         PATH: "/usr/bin", HOME: "/home/u", LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8",
         SSH_AUTH_SOCK: "/run/user/1000/keyring/ssh",
         NPM_TOKEN: "npm_live",
-        TAVILY_API_KEY: "tvly-live",
+        OPENAI_API_KEY: "sk-live",
         BRAVE_API_KEY: "brave-live",
     };
     const scoped = ExecEnv.scoped(host);
     assert.equal(scoped.PATH, "/usr/bin", "the shell still runs");
     assert.equal(scoped.LANG, "en_US.UTF-8");
     assert.equal(scoped.LC_ALL, "en_US.UTF-8", "a trailing-* glob admits the open-ended locale family");
-    for (const name of ["SSH_AUTH_SOCK", "NPM_TOKEN", "TAVILY_API_KEY", "BRAVE_API_KEY"]) {
+    for (const name of ["SSH_AUTH_SOCK", "NPM_TOKEN", "OPENAI_API_KEY", "BRAVE_API_KEY"]) {
         assert.equal(scoped[name], undefined, `${name} is not named by the shipped ceiling and does not reach a spawn`);
     }
 });

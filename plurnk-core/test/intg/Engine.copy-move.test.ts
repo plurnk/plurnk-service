@@ -330,7 +330,7 @@ for (const transfer of [copyStmt, moveStmt]) {
                         packageName: "stub://transfer-classification",
                         projectionRevision: "test-1", source: "package",
                     }]]),
-                    packageAttributions: new Map(), skipped: [],
+                    packageAttributions: new Map(),
                 },
                 loader: async () => ({ default: BaseHandler }),
             });

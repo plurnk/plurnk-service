@@ -166,7 +166,7 @@ const binaryProjectionMimetypes = (revision: string): Mimetypes => {
                 binary: true,
                 source: "package",
             }]]),
-            packageAttributions: new Map(), skipped: [],
+            packageAttributions: new Map(),
         },
         loader: async () => ({ default: BinaryProjectionHandler }),
     });
@@ -352,7 +352,7 @@ test("{§mimetype} write resolves mimetype and derives only the readable project
                     mimetype: "text/x-spy", glyph: "🕵️", extensions: ["spy"],
                     packageName: "stub://spy", projectionRevision: "test-1", binary: false, source: "package",
                 }]]),
-                packageAttributions: new Map(), skipped: [],
+                packageAttributions: new Map(),
             },
             loader: async () => ({ default: SpyHandler }),
         });
@@ -597,7 +597,7 @@ test("{§mimetype} registry-aware classification governs file decoding, operatio
                         source: "package",
                     }],
                 ]),
-                packageAttributions: new Map(), skipped: [],
+                packageAttributions: new Map(),
             },
             loader: async (packageName) => {
                 if (packageName === textPackage || packageName === binaryPackage) {

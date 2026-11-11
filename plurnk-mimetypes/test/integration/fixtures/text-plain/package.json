@@ -1,5 +1,5 @@
 {
-    "name": "@plurnk-test/text-plain-fixture",
+    "name": "@plurnk/text-plain-fixture",
     "version": "0.0.0",
     "description": "In-tree fixture for the @plurnk/plurnk-mimetypes smoke test — NOT a publishable package.",
     "type": "module",

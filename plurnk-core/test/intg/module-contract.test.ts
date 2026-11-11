@@ -1,19 +1,18 @@
 import assert from "node:assert/strict";
-import test, { after, before, mock, type TestContext, describe } from "node:test";
+import test, { after, before, type TestContext, describe } from "node:test";
 import HostPaths from "../../src/core/HostPaths.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import EnvDefaults from "../../src/core/env-defaults.ts";
-import Paths from "../../src/Paths.ts";
 import Dsl from "./dsl.ts";
 import SeamSocket from "./_seam.ts";
 import type Engine from "../../src/core/Engine.ts";
 import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
 import WorkspaceResidency from "../../src/server/WorkspaceResidency.ts";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { type ApplicationPort, type HttpRouteHandler } from "@plurnk/plurnk-contracts/port";
 import { type SkillTree } from "@plurnk/plurnk-agent-skills";
+import { type DaemonModule } from "@plurnk/plurnk-modules";
 import { Mock, ProviderError } from "@plurnk/plurnk-providers";
 import { bindListener } from "./_http.ts";
 import { openMigrated, insertWorkspace } from "./_db.ts";
@@ -27,91 +26,62 @@ import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
 import { namedModelSession } from "./_sessions.ts";
 import { Module as AuthModule } from "@plurnk/plurnk-auth";
 import { Module as AcpModule } from "@plurnk/plurnk-acp";
+import type { HostSetupSeam } from "../../src/server/ModuleHost.ts";
 
 describe("module-contract", () => {
-// {§module-contract} — the contract proven through daemon boot with a trivial module in both
-// distributions: an installed package (`package.json#plurnk`) and an Agent Plugin bundle
-// (`plugin.json#extensions.ai.plurnk`).
+// {§module-contract} {§module-lifecycle} — first-party modules compose statically alongside
+// explicit host registrations, running every setup before any start and stop before close.
 
+const CLIENT_INTERFACE = "@plurnk/plurnk-acp";
+const WITNESS_A = "@plurnk/witness-a";
+const WITNESS_B = "@plurnk/witness-b";
 
-
-
-
-
-
-
-
-
-
-
-// The witness reads its own knob and stays inert without it ({§module-contract}); configured,
-// it claims its route, mounts it at start and traces every lifecycle member.
-const witness = (owner: string, knob: string, trace: string): string => `
-import { appendFile } from "node:fs/promises";
-const note = (phase) => appendFile(${JSON.stringify(trace)}, ${JSON.stringify(owner)} + " " + phase + "\\n");
-export default () => {
-    const route = process.env.${knob};
+const witness = (owner: string, knob: string, trace: string): DaemonModule<HostSetupSeam> => {
+    const route = process.env[knob];
+    const note = (phase: string) => appendFile(trace, `${owner} ${phase}\n`);
     if (!route) return {};
     return {
         mounts: [route],
         async setup() { await note("setup"); },
         async start(port) {
             await note("start");
-            port.registerHttpRoute(route, (_req, res) => { res.writeHead(200); res.end(${JSON.stringify(owner)}); });
+            port.registerHttpRoute(route, (_req, res) => { res.writeHead(200); res.end(owner); });
         },
         async stop() { await note("stop"); },
         async close() { await note("close"); },
     };
 };
-`;
 
-const PACKAGE = "@acme/witness-package";
-// {§module-lifecycle} — registering a package's name holds that package out of discovery.
-const CLIENT_INTERFACE = "@plurnk/plurnk-acp";
-const BUNDLE = "witness-bundle";
 let root = "";
-let nodeModules = "";
 let hostPaths: HostPaths;
 let trace = "";
 
 before(async () => {
     root = await mkdtemp(join(tmpdir(), "plurnk-module-contract-"));
-    nodeModules = join(root, "node_modules");
-    await mkdir(nodeModules, { recursive: true });
-    // The real node_modules, symlinked, keeps the first-party modules discoverable beside the witness.
-    const real = resolve(import.meta.dirname, "../../..", "node_modules");
-    for (const entry of await readdir(real)) await symlink(join(real, entry), join(nodeModules, entry), "dir");
     trace = join(root, "trace.txt");
-    const pkg = join(nodeModules, "@acme", "witness-package");
-    await mkdir(pkg, { recursive: true });
-    await writeFile(join(pkg, "package.json"), JSON.stringify({ name: PACKAGE, type: "module", exports: { "./module": "./module.mjs" }, plurnk: { kind: "module", module: "./module" } }));
-    await writeFile(join(pkg, "module.mjs"), witness(PACKAGE, "ACME_PACKAGE_ROUTE", trace));
     hostPaths = new HostPaths({ home: root, env: {} });
-    const bundle = join(hostPaths.globalPluginsDir, BUNDLE);
-    await mkdir(join(bundle, "ai.plurnk"), { recursive: true });
-    await writeFile(join(bundle, "plugin.json"), JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: BUNDLE,
-        extensions: { "ai.plurnk": { kind: "module", module: "ai.plurnk/module.mjs" } },
-    }));
-    await writeFile(join(bundle, "ai.plurnk/module.mjs"), witness(BUNDLE, "ACME_BUNDLE_ROUTE", trace));
 });
 after(async () => { await rm(root, { recursive: true, force: true }); });
 
 const environment = (t: TestContext, values: Readonly<Record<string, string | undefined>>): void => {
-    const keys = ["PLURNK_SERVICE_ROOTS", "PLURNK_EXTENSIONS_TRUSTED_ONLY", "PLURNK_WEB_ENABLED", "ACME_PACKAGE_ROUTE", "ACME_BUNDLE_ROUTE"];
+    const keys = ["PLURNK_SERVICE_ROOTS", "PLURNK_WEB_ENABLED", "OTEL_TRACES_EXPORTER", "ACME_ROUTE_A", "ACME_ROUTE_B"];
     const prior = new Map(keys.map((key) => [key, process.env[key]]));
     t.after(() => { for (const [key, value] of prior) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
     for (const key of keys) {
-        const value = { PLURNK_SERVICE_ROOTS: "global", PLURNK_EXTENSIONS_TRUSTED_ONLY: "0", PLURNK_WEB_ENABLED: "0", ...values }[key];
+        const value = { PLURNK_SERVICE_ROOTS: "global", PLURNK_WEB_ENABLED: "0", ...values }[key];
         if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
 };
 
-const boot = async (t: TestContext) => {
+const boot = async (t: TestContext, registerWitnesses = true) => {
     await writeFile(trace, "");
     const db = await openMigrated();
     const http = await bindListener();
-    const daemon = new Daemon({ db, hostPaths, nodeModulesPath: nodeModules, provider: new Mock({ contextWindow: 32_768, responses: [] }), http });
+    const daemon = new Daemon({ db, hostPaths, provider: new Mock({ contextWindow: 32_768, responses: [] }), http });
+    if (registerWitnesses) {
+        daemon.registerModule(witness(WITNESS_A, "ACME_ROUTE_A", trace), WITNESS_A);
+        daemon.registerModule(witness(WITNESS_B, "ACME_ROUTE_B", trace), WITNESS_B);
+    }
     let stopped = false;
     const stop = async (): Promise<void> => {
         if (stopped) return;
@@ -127,56 +97,54 @@ const boot = async (t: TestContext) => {
     return { daemon, get, lines, stop };
 };
 
-test("{§module-contract} discovered modules in both distributions run every setup before any start, then stop before close", async (t) => {
-    environment(t, { ACME_PACKAGE_ROUTE: "/package", ACME_BUNDLE_ROUTE: "/bundle" });
+test("{§module-contract} {§module-lifecycle} registered and composed modules run every setup before any start, then stop before close", async (t) => {
+    environment(t, { ACME_ROUTE_A: "/alpha", ACME_ROUTE_B: "/beta" });
     const { daemon, get, lines, stop } = await boot(t);
     await daemon.start();
-    assert.equal(await get("/package"), PACKAGE);
-    assert.equal(await get("/bundle"), BUNDLE);
+    assert.equal(await get("/alpha"), WITNESS_A);
+    assert.equal(await get("/beta"), WITNESS_B);
     await stop();
     const phases = (await lines()).map((line) => line.split(" ")[1]);
     assert.deepEqual(phases, ["setup", "setup", "start", "start", "stop", "stop", "close", "close"], (await lines()).join("\n"));
 });
 
-test("{§module-contract} a discovered module's mount conflict fails boot naming both owners", async (t) => {
-    environment(t, { ACME_PACKAGE_ROUTE: "/same", ACME_BUNDLE_ROUTE: "/same" });
+test("{§module-contract} a module mount conflict fails boot naming both owners", async (t) => {
+    environment(t, { ACME_ROUTE_A: "/same", ACME_ROUTE_B: "/same" });
     const { daemon, lines } = await boot(t);
-    await assert.rejects(daemon.start(), /HTTP mount '\/same' is claimed by both '(witness-bundle|@acme\/witness-package)' and '(@acme\/witness-package|witness-bundle)'/u);
+    await assert.rejects(daemon.start(), /HTTP mount '\/same' is claimed by both '(@plurnk\/witness-b|@plurnk\/witness-a)' and '(@plurnk\/witness-a|@plurnk\/witness-b)'/u);
     assert.deepEqual(await lines(), [], "boot fails before any module sets up");
 });
 
-test("{§module-contract} a discovered module serves its own route without a root owner", async (t) => {
-    environment(t, { ACME_PACKAGE_ROUTE: "/package", PLURNK_WEB_ENABLED: "0" });
-    await writeFile(trace, "");
-    const db = await openMigrated();
-    const http = await bindListener();
-    const daemon = new Daemon({ db, hostPaths, nodeModulesPath: nodeModules, provider: new Mock({ contextWindow: 32_768, responses: [] }), http });
-    t.after(async () => { await daemon.stop(); await http.close(); await db.close(); });
+test("{§module-contract} {§module-lifecycle} registering an owner overrides its default static module without a root owner", async (t) => {
+    environment(t, { ACME_ROUTE_A: "/package", PLURNK_WEB_ENABLED: "0" });
+    const { daemon, get } = await boot(t);
     daemon.registerModule({}, CLIENT_INTERFACE);
     await daemon.start();
-    const origin = `http://127.0.0.1:${http.httpAddress().port}`;
-    assert.equal(await (await fetch(`${origin}/package`)).text(), PACKAGE);
-    assert.equal((await fetch(`${origin}/`)).status, 404);
+    assert.equal(await get("/package"), WITNESS_A);
+    const httpPort = daemon.httpAddress().port;
+    assert.equal((await fetch(`http://127.0.0.1:${httpPort}/`)).status, 404);
+    assert.equal((await fetch(`http://127.0.0.1:${httpPort}/acp`)).status, 404);
 });
 
-test("{§module-contract} {§bundled-set} @plurnk/plurnk-web is discovered from node_modules and serves the root mount when PLURNK_WEB_ENABLED=1", async (t) => {
+test("{§module-contract} {§bundled-set} @plurnk/plurnk-web is composed statically and serves the root mount when PLURNK_WEB_ENABLED=1", async (t) => {
     environment(t, { PLURNK_WEB_ENABLED: "1" });
-    const { daemon, get } = await boot(t);
+    const { daemon, get } = await boot(t, false);
     await daemon.start();
     assert.match(await get("/"), /<!doctype html>/iu);
 });
 
 test("{§module-contract} a daemon without a listener leaves out every module that declares mounts, and says so", async (t) => {
-    environment(t, { ACME_PACKAGE_ROUTE: "/package", PLURNK_WEB_ENABLED: "1" });
+    environment(t, { ACME_ROUTE_A: "/package", PLURNK_WEB_ENABLED: "1" });
     await writeFile(trace, "");
     const db = await openMigrated();
-    const daemon = new Daemon({ db, hostPaths, nodeModulesPath: nodeModules, provider: new Mock({ contextWindow: 32_768, responses: [] }) });
+    const daemon = new Daemon({ db, hostPaths, provider: new Mock({ contextWindow: 32_768, responses: [] }) });
+    daemon.registerModule(witness(WITNESS_A, "ACME_ROUTE_A", trace), WITNESS_A);
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     assert.equal(await readFile(trace, "utf8"), "", "a module left out never sets up");
     assert.deepEqual(
         daemon.configurationNotices().filter(({ kind }) => kind === "module_left_out").map(({ owner, level }) => [owner, level]).toSorted(([a], [b]) => String(a).localeCompare(String(b))),
-        [["module:@acme/witness-package", "info"], [`module:${CLIENT_INTERFACE}`, "info"], ["module:@plurnk/plurnk-mcp", "info"], ["module:@plurnk/plurnk-web", "info"]],
+        [[`module:${CLIENT_INTERFACE}`, "info"], ["module:@plurnk/plurnk-mcp", "info"], ["module:@plurnk/plurnk-web", "info"], [`module:${WITNESS_A}`, "info"]],
     );
     assert.ok(daemon.listModuleActions().some(({ name }) => name === "workspace.mcp.list"), "a module without mounts still composes");
 });
@@ -224,7 +192,7 @@ test("{§module-seam-slices} a module receives the bound project and ordered inp
 
 test("{§module-contract} a contained setting is the module's own notice, and the rest of the module works", async (t) => {
     environment(t, {});
-    const { daemon } = await boot(t);
+    const { daemon } = await boot(t, false);
     let setUp = false;
     daemon.registerModule({
         contained: [{ key: "ACME_EXPOSURE", message: "ACME_EXPOSURE must be 0 or 1." }],
@@ -238,9 +206,19 @@ test("{§module-contract} a contained setting is the module's own notice, and th
     }]);
 });
 
+test("{§env-knob} {§module-lifecycle} a composed module's configuration error is recorded under module:<package>, and the daemon boots", async (t) => {
+    environment(t, { OTEL_TRACES_EXPORTER: "invalid-exporter" });
+    const { daemon } = await boot(t, false);
+    await daemon.start();
+    assert.ok(
+        daemon.configurationNotices().some(({ owner, key }) => owner === "module:@plurnk/plurnk-otel" && key === "OTEL_TRACES_EXPORTER"),
+        "the composed module's invalid setting is contained as its own diagnostic",
+    );
+});
+
 test("{§provided-skills-module-slice} host-composed references are supplied as ordinary skill trees", async (t) => {
     environment(t, {});
-    const { daemon } = await boot(t);
+    const { daemon } = await boot(t, false);
     let readSkills: (() => Promise<ReadonlyMap<string, SkillTree>>) | undefined;
     daemon.registerModule({ setup(seam) {
         readSkills = () => seam.readProvidedSkills();
@@ -256,19 +234,6 @@ test("{§provided-skills-module-slice} host-composed references are supplied as 
     assert.equal(new TextDecoder().decode(await document.read(1, (await document.size())!)), tree.document.source);
 });
 
-test("{§module-lifecycle} an untrusted module is skipped and reported, never imported", async (t) => {
-    environment(t, { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1", ACME_PACKAGE_ROUTE: "/package", ACME_BUNDLE_ROUTE: "/bundle" });
-    const warn = mock.method(console, "warn", () => undefined);
-    t.after(() => warn.mock.restore());
-    const { daemon, lines } = await boot(t);
-    await daemon.start();
-    assert.deepEqual(await lines(), [], "neither distribution's code ran");
-    const warned = warn.mock.calls.map(({ arguments: [message] }) => String(message));
-    for (const owner of [PACKAGE, BUNDLE]) {
-        assert.ok(warned.some((line) => line.includes(`'${owner}' is discovered but untrusted`)), `${owner} is reported: ${warned.join(" | ")}`);
-    }
-});
-
 // {§module-contract} — registered modules make the failure order observable.
 const traced = (log: string[], name: string, fail?: "setup" | "start") => ({
     setup: () => { log.push(`${name} setup`); if (fail === "setup") throw new Error(`${name} setup failed`); },
@@ -281,7 +246,7 @@ for (const phase of ["setup", "start"] as const) {
     test(`{§module-contract} a ${phase} failure fails boot; stopping releases what was tracked, the failing module included, in reverse`, async (t) => {
         environment(t, {});
         const db = await openMigrated();
-        const daemon = new Daemon({ db, hostPaths, nodeModulesPath: nodeModules, provider: new Mock({ contextWindow: 32_768, responses: [] }) });
+        const daemon = new Daemon({ db, hostPaths, provider: new Mock({ contextWindow: 32_768, responses: [] }) });
         t.after(async () => { await db.close(); });
         const log: string[] = [];
         daemon.registerModule(traced(log, "first"), "@acme/first");
@@ -295,187 +260,6 @@ for (const phase of ["setup", "start"] as const) {
         assert.deepEqual(log, expected);
     });
 }
-});
-
-describe("Daemon.module-discovery", () => {
-// {§module-lifecycle} — the assembled boot proof: a third-party package
-// declaring `plurnk.kind: "module"` composes through the real Daemon start
-// (setup → capability publication → start) and its action reaches the seam.
-
-
-
-
-
-
-
-
-
-
-
-// A third-party module is exactly what this file composes, so it states the operator who admitted it
-// ({§extension-discovery}); the shipped panel admits only `@plurnk/*`.
-process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
-
-test("{§module-lifecycle}: a discovered third-party module composes through daemon boot", async () => {
-    const root = await mkdtemp(join(tmpdir(), "plurnk-module-boot-"));
-    const nodeModules = join(root, "node_modules");
-    await mkdir(nodeModules, { recursive: true });
-    const db = await openMigrated();
-    let daemon: Daemon | null = null;
-    try {
-        // The fixture node_modules mirrors the real one (symlinked entries keep
-        // the executor/scheme siblings discoverable) plus the third-party module.
-        const realModules = resolve(import.meta.dirname, "../../..", "node_modules");
-        for (const entry of await readdir(realModules)) {
-            await symlink(join(realModules, entry), join(nodeModules, entry), "dir");
-        }
-        const dir = join(nodeModules, "@acme", "boot-fixture-module");
-        await mkdir(dir, { recursive: true });
-        await writeFile(join(dir, "package.json"), JSON.stringify({
-            name: "@acme/boot-fixture-module",
-            type: "module",
-            exports: { "./module": "./module.mjs" },
-            plurnk: { kind: "module", module: "./module" },
-        }));
-        await writeFile(join(dir, "module.mjs"), `
-export default () => ({
-    setup(seam) {
-        seam.registerModuleAction({
-            name: "fixture.ping",
-            scope: "daemon",
-            residency: "none",
-            inputSchema: { type: "object", additionalProperties: false },
-            outputSchema: {
-                type: "object",
-                required: ["pong"],
-                additionalProperties: false,
-                properties: { pong: { const: true } },
-            },
-            handler: async () => ({ pong: true }),
-        });
-    },
-});
-`);
-
-        daemon = new Daemon({ db, nodeModulesPath: nodeModules });
-        await daemon.start();
-        const actions = daemon.listModuleActions();
-        assert.ok(
-            actions.some(({ name }) => name === "fixture.ping"),
-            `the discovered module's action is registered: ${actions.map(({ name }) => name).join(", ")}`,
-        );
-        const result = await daemon.invokeModuleAction("fixture.ping", {}, { scope: "daemon" });
-        assert.deepEqual(result, { pong: true });
-    } finally {
-        if (daemon !== null) await daemon.stop();
-        await db.close();
-        await rm(root, { recursive: true, force: true });
-    }
-});
-
-test("{§module-lifecycle} the documented directory plugin loads its floor, publishes its action and drains before releasing resources", async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "plurnk-native-boot-"));
-    const paths = new HostPaths({ home: root, env: {} });
-    const plugin = join(paths.globalPluginsDir, "fixture");
-    const trace = join(root, "lifecycle.txt");
-    const priorRoots = process.env.PLURNK_SERVICE_ROOTS;
-    const priorKnob = process.env.PLURNK_NATIVE_FIXTURE;
-    const priorWebEnabled = process.env.PLURNK_WEB_ENABLED;
-    process.env.PLURNK_SERVICE_ROOTS = "global";
-    delete process.env.PLURNK_NATIVE_FIXTURE;
-    t.after(async () => {
-        if (priorRoots === undefined) delete process.env.PLURNK_SERVICE_ROOTS; else process.env.PLURNK_SERVICE_ROOTS = priorRoots;
-        if (priorKnob === undefined) delete process.env.PLURNK_NATIVE_FIXTURE; else process.env.PLURNK_NATIVE_FIXTURE = priorKnob;
-        if (priorWebEnabled === undefined) delete process.env.PLURNK_WEB_ENABLED; else process.env.PLURNK_WEB_ENABLED = priorWebEnabled;
-        await rm(root, { recursive: true, force: true });
-    });
-    await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
-    const guide = await readFile(join(Paths.packageRoot, "INSTALL.md"), "utf8");
-    const manifest = [...guide.matchAll(/^```json\n([\s\S]*?)^```/gmu)]
-        .map(([, body]) => JSON.parse(body))
-        .find((value) => value.extensions?.["ai.plurnk"]?.module);
-    assert.ok(manifest, "the installation guide supplies an executable native-module manifest");
-    await writeFile(join(plugin, "plugin.json"), JSON.stringify(manifest));
-    await writeFile(join(plugin, "ai.plurnk/.env.defaults"), "PLURNK_NATIVE_FIXTURE=from-plugin\n");
-    await writeFile(join(plugin, manifest.extensions["ai.plurnk"].module), `
-import { appendFile } from "node:fs/promises";
-const trace = ${JSON.stringify(trace)};
-export default () => ({
-    setup(seam) {
-        seam.registerModuleAction({
-            name: "fixture.native", scope: "daemon", residency: "none",
-            inputSchema: { type: "object", additionalProperties: false },
-            outputSchema: { type: "object", required: ["value"], additionalProperties: false,
-                properties: { value: { type: "string" } } },
-            handler: async () => ({ value: process.env.PLURNK_NATIVE_FIXTURE }),
-        });
-    },
-    async stop() { await appendFile(trace, "stopped\\n"); },
-    async close() { await appendFile(trace, "closed\\n"); },
-});
-`);
-    const broken = join(paths.globalPluginsDir, "broken");
-    await mkdir(broken);
-    await writeFile(join(broken, "plugin.json"), JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "broken",
-        extensions: { "ai.plurnk": { kind: "module", module: "../escape.mjs" } },
-    }));
-    const nodeModules = resolve(import.meta.dirname, "../../..", "node_modules");
-    const collected = await EnvDefaults.collect(Paths.packageRoot, nodeModules, { hostPaths: paths });
-    assert.deepEqual(collected.configurationErrors, [], "the floor collector validates panels; the module host validates its entry point");
-    EnvDefaults.apply(EnvDefaults.merge(collected.files));
-    const db = await openMigrated();
-    const daemon = new Daemon({ db, hostPaths: paths, nodeModulesPath: nodeModules });
-    try {
-        await daemon.start();
-        assert.deepEqual(await daemon.invokeModuleAction("fixture.native", {}, { scope: "daemon" }), { value: "from-plugin" });
-        const notice = daemon.configurationNotices().find(({ key }) => key === join(broken, "plugin.json"));
-        assert.ok(notice, "invalid native code is reported without preventing unrelated modules from loading");
-    } finally {
-        await daemon.stop();
-        await db.close();
-    }
-    assert.equal(await readFile(trace, "utf8"), "stopped\nclosed\n");
-});
-
-test("{§env-knob} {§module-lifecycle} a plugin root's own copy of plurnk-meta reports its configuration error, and the daemon boots", async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "plurnk-copy-boot-"));
-    const paths = new HostPaths({ home: root, env: {} });
-    const plugin = join(paths.globalPluginsDir, "copied");
-    const priorRoots = process.env.PLURNK_SERVICE_ROOTS;
-    process.env.PLURNK_SERVICE_ROOTS = "global";
-    t.after(async () => {
-        if (priorRoots === undefined) delete process.env.PLURNK_SERVICE_ROOTS; else process.env.PLURNK_SERVICE_ROOTS = priorRoots;
-        await rm(root, { recursive: true, force: true });
-    });
-    // A published copy of the package, as the plugin root carries it: the same error, another class.
-    const meta = join(plugin, "node_modules/@plurnk/plurnk-meta");
-    await mkdir(meta, { recursive: true });
-    await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
-    await writeFile(join(meta, "package.json"), JSON.stringify({ name: "@plurnk/plurnk-meta", version: "2.1.1", type: "module", exports: { ".": "./index.js" } }));
-    await writeFile(join(meta, "index.js"), `export class ConfigurationError extends Error {
-    constructor(key, message, options) { super(message, options); this.name = "ConfigurationError"; this.key = key; }
-}
-`);
-    await writeFile(join(plugin, "plugin.json"), JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "copied",
-        extensions: { "ai.plurnk": { kind: "module", module: "ai.plurnk/plugin.js" } },
-    }));
-    await writeFile(join(plugin, "ai.plurnk/plugin.js"), `import { ConfigurationError } from "@plurnk/plurnk-meta";
-export default () => { throw new ConfigurationError("PLURNK_COPIED_FIXTURE", "PLURNK_COPIED_FIXTURE is not a positive integer."); };
-`);
-    const nodeModules = resolve(import.meta.dirname, "../../..", "node_modules");
-    const db = await openMigrated();
-    const daemon = new Daemon({ db, hostPaths: paths, nodeModulesPath: nodeModules });
-    try {
-        await daemon.start();
-        assert.ok(daemon.configurationNotices().some(({ key }) => key === "PLURNK_COPIED_FIXTURE"),
-            "the module's own configuration error is its diagnostic, and the daemon boots");
-    } finally {
-        await daemon.stop();
-        await db.close();
-    }
-});
 });
 
 describe("Daemon.preparation-stop", () => {

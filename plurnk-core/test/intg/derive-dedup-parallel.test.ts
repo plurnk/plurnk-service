@@ -1049,7 +1049,7 @@ const failingMimetypes = (failure: Error, poison: string): Mimetypes => {
                 mimetype: "text/markdown", glyph: "", packageName: "fixture-derivation",
                 projectionRevision: "1", extensions: [".md"], binary: false, source: "package",
             }]]),
-            packageAttributions: new Map(), skipped: [],
+            packageAttributions: new Map(),
         },
         loader: async () => ({ default: FailingHandler }),
     });

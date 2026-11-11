@@ -38,10 +38,6 @@ grammar package is absent.
 npm install @plurnk/plurnk-mimetypes-grammar-fsharp @plurnk/plurnk-mimetypes-grammar-fsharp-signature
 ```
 
-Third-party handler packages are independent in the same way: installing one
-is sufficient for discovery to register its declarations, subject to the shared
-trust gate.
-
 Detection recognizes registry languages independently of grammar package
 installation. Adding or removing a grammar package changes structural availability without
 changing detection code. A detected mimetype whose grammar isn't installed
@@ -51,13 +47,13 @@ empty, and the missing package is on `ProcessResult.grammarMissing`. Pass
 
 ## Write a handler
 
-Ship a handler by publishing a package — **under any scope** (`@acme/whatever`; discovery keys on `plurnk.kind`, not the `@plurnk` scope) — that declares its mimetypes and default-exports a `BaseHandler` subclass.
+First-party `@plurnk/plurnk-mimetypes-*` packages declare `plurnk.kind === "mimetype"` in `package.json` and default-export a `BaseHandler` subclass ({§mimetype-discovery}).
 
 ### 1. Declare in `package.json`
 
 ```json
 {
-  "name": "@acme/acme-mime-cobol",
+  "name": "@plurnk/plurnk-mimetypes-cobol",
   "type": "module",
   "exports": {
     ".": {
@@ -169,19 +165,17 @@ the metadata-only call. Body-matcher queries use
 an unbudgeted human outline. Failure behavior is owned by
 {§mimetype-error-policy}.
 
-## Discovery & trust
+## Discovery
 
-Default `discover()` scans every package under `<cwd>/node_modules` for the
-exact string `plurnk.kind === "mimetype"`, returning
-`{ registry, handlers, skipped }`. It reads declarations and applies trust
-before importing handler code.
+Default `discover()` scans first-party `@plurnk/*` packages under
+`<cwd>/node_modules` for `plurnk.kind === "mimetype"`, returning
+`{ registry, handlers, packageAttributions }` without importing handler code
+({§mimetype-discovery}, {§extension-discovery}).
 
-- **Scope-agnostic.** Publish under your own scope and the host's scan finds it like a first-party handler — no bundle membership, no registration.
-- **Trust gate.** Discovery enforces the metaproject's shared pre-import predicate and preserves withheld package names in `skipped` for the consumer to present ({§extension-discovery}).
-- **Failure boundary.** Non-mimetype packages are ignored; malformed trusted declarations and registered handler load failures throw `MimetypeExtensionError` with extension identity and causal evidence ({§mimetype-discovery}).
+- **First-party scope.** Non-`@plurnk/*` packages are ignored without reading handler fields or importing code.
+- **Failure boundary.** Non-mimetype packages are ignored; malformed first-party declarations and registered handler load failures throw `MimetypeExtensionError` with extension identity and causal evidence ({§mimetype-discovery}).
 - **Attribution.** An admitted package may declare always-on `plurnk.attribution`; an already-loaded handler may decide per provider attempt whether its synchronous `attributions(context)` hook returns additional opaque tags ({§extension-discovery}). Attribution collection never forces a lazy handler to load.
-- **Default ordering.** Third-party packages are sorted first and `@plurnk` packages last; later declarations win, so the default scan protects the standard handlers from shadowing.
-- **Explicit ordering.** `packageDirs` bypasses default enumeration and preserves caller order; later declarations still win.
+- **Ordering.** Default scan sorts `@plurnk/*` packages deterministically; `packageDirs` bypasses default enumeration and preserves caller order; later declarations win.
 
 ## Public surface
 

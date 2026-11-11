@@ -508,7 +508,7 @@ beforeEach((t) => serverProposals(t as TestContext, "review"));
 
 
 const makeMimetypes = (): Mimetypes => new Mimetypes({
-    discovery: { registry: emptyRegistry(), handlers: new Map(), packageAttributions: new Map(), skipped: [] },
+    discovery: { registry: emptyRegistry(), handlers: new Map(), packageAttributions: new Map() },
 });
 
 class WritableScheme {

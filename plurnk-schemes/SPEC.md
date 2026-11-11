@@ -1,6 +1,6 @@
 # `@plurnk/plurnk-schemes` Specification
 
-Contract for `@plurnk/plurnk-schemes-*` sibling packages, entry/channel handler dispatch, text/window slicing, and third-party scheme discovery.
+Contract for `@plurnk/plurnk-schemes-*` sibling packages, entry/channel handler dispatch, text/window slicing, and first-party scheme discovery.
 
 ## §manifest Scheme manifest
 
@@ -156,9 +156,9 @@ Additional framework helpers:
 | Tree publication & projection | Demand-loaded entries on `READ` and `COPY`; model/client writes are forbidden (`403`). The host detects MIME, applies the input bound, and runs the installed MIME projection while keeping original `ByteSource` bytes for byte views, transfers, and attachments. |
 | Tree `FIND`, withdrawal & failures | `FIND` refreshes resources in the requested authority/path scope and evicts withdrawn authorities or absent paths (an exact missing `READ` never returns cached content). Optional `refusal(cause, address)` translates recognized source errors into failure results (`status >= 400`). |
 
-## §scheme-discovery Third-party discovery
+## §scheme-discovery First-party discovery
 
-`SchemeDiscovery.discover({ cwd? })` scans `node_modules` via `@plurnk/plurnk-meta` ({§extension-discovery}) for packages declaring `plurnk.kind === "scheme"` (`plurnk.schemes: [{ name, export }]` or `plurnk.name`), failing hard on duplicate scheme prefixes or malformed declarations and returning `{ schemes, packageAttributions, skipped }` descriptors without importing handler modules.
+`SchemeDiscovery.discover({ cwd? })` scans first-party `@plurnk/*` packages under `node_modules` via `@plurnk/plurnk-meta` ({§extension-discovery}) for packages declaring `plurnk.kind === "scheme"` (`plurnk.schemes: [{ name, export }]` or `plurnk.name`), ignoring non-`@plurnk/*` packages, failing hard on duplicate scheme prefixes or malformed declarations, and returning `{ schemes, packageAttributions }` descriptors without importing handler modules.
 
 ## §message-source-scheme Message sources
 

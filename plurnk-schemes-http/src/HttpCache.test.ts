@@ -1,12 +1,9 @@
 import test from "node:test";
 import { buffer } from "node:stream/consumers";
 import { strict as assert } from "node:assert";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import Http from "./Http.ts";
-import { CACHE_VARIANT_HEADER, MATERIALIZER_ENV, MATERIALIZER_ID_HEADER } from "./WebFetcher.ts";
+import { CACHE_VARIANT_HEADER } from "./WebFetcher.ts";
 import {
-    STUB_DIR,
     findStmt,
     makeCtx,
     mockFetch,
@@ -15,14 +12,11 @@ import {
     priorEntry,
     projectionCaps,
     readStmt,
-    registerMaterializerStub,
     stampedHeader,
     urlTarget,
     withFetch,
     withTtl,
 } from "../test/harness.ts";
-
-registerMaterializerStub();
 
 test("{§http-lifecycle} revalidation: a mutation response cannot satisfy a later GET", async () => {
     const header = [
@@ -116,67 +110,29 @@ test("{§http-lifecycle} exact FIND preparation reuses only a derived representa
     }
 });
 
-test("{§http-lifecycle} stale materializer HTML-page materialization performs full reacquisition without origin validators", async () => {
-    process.env[MATERIALIZER_ENV] = "stub";
-    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
-    __stub.set({
-        eligible: () => "stub-extract:v1",
-        extract: async () => ({
-            outcome: "success",
-            body: "fresh page",
-            identity: "stub-extract:v1",
-            evidence: [{ name: "x-plurnk-stub-request-id", value: "req-fresh" }],
-        }),
-    });
-    const { ctx, inspect } = makeCtx(priorEntry(
-        "<html>cached page</html>",
-        "text/html",
-        `${stampedHeader(500_000, '\ncontent-type: text/html\netag: "v1"')}\n${MATERIALIZER_ID_HEADER}: stub-extract:v1\nx-plurnk-stub-request-id: req-cached`,
-        "cached page",
-    ));
-    let conditional = false;
-    const probe = async (_input: string | URL | Request, init?: RequestInit) => {
-        conditional = new Headers(init?.headers).has("if-none-match");
-        return new Response("<html>fresh page</html>", {
-            status: 200,
-            statusText: "OK",
-            headers: { "content-type": "text/html", etag: '"v2"' },
-        });
-    };
-    await withFetch(probe, async () => {
-        const r = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/p", "/p")), ctx);
-        assert.equal(r.status, 200);
-    });
-    assert.equal(conditional, false);
-    assert.equal(inspect().storedEntry?.channels.readable?.content, "fresh page");
-    assert.equal(inspect().storedEntry?.channels.body?.content, "<html>fresh page</html>");
-    const header = inspect().storedEntry?.channels.header?.content ?? "";
-    assert.match(header, /^x-plurnk-materializer-id: stub-extract:v1$/m);
-    assert.match(header, /^x-plurnk-stub-request-id: req-fresh$/m);
-});
-
-test("{§revalidation} TTL: enabling a materializer invalidates a locally materialized HTML body and its validators", async () => {
-    process.env[MATERIALIZER_ENV] = "stub";
-    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
-    __stub.set({
-        eligible: () => "stub-extract:v1",
-        extract: async () => ({
-            outcome: "success",
-            body: "# Current stub body",
-            identity: "stub-extract:v1",
-            evidence: [],
-        }),
-    });
+test("{§revalidation} TTL: a changed HTML projection identity invalidates a locally projected HTML body and its validators", async () => {
     const storedHeader = `${stampedHeader(
         1000,
         '\ncontent-type: text/html\netag: "local-v1"',
-    )}\n${MATERIALIZER_ID_HEADER}: local-projection:v1\nx-plurnk-projection-id: test:text/html`;
-    const { ctx, inspect } = makeCtx(priorEntry(
-        "<html>old source</html>",
-        "text/html",
-        storedHeader,
-        "old local body",
-    ));
+    )}\nx-plurnk-projection-id: html-reader-v1`;
+    const projection = projectionCaps({
+        async identity(mimetype) {
+            assert.equal(mimetype, "text/html");
+            return "html-reader-v2";
+        },
+        async readable(_content, mimetype) {
+            return {
+                content: "# Current HTML body",
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: "html-reader-v2",
+            };
+        },
+    });
+    const { ctx, inspect } = makeCtx(
+        priorEntry("<html>old source</html>", "text/html", storedHeader, "old local body"),
+        { projection },
+    );
     let originFetched = false;
     let conditional = false;
     await withTtl("60000", async () => {
@@ -195,8 +151,8 @@ test("{§revalidation} TTL: enabling a materializer invalidates a locally materi
         });
     });
     assert.equal(originFetched, true);
-    assert.equal(conditional, false, "old validators cannot certify a different materializer route");
-    assert.equal(inspect().storedEntry?.channels.readable?.content, "# Current stub body");
+    assert.equal(conditional, false, "old validators cannot certify output from a different HTML projection");
+    assert.equal(inspect().storedEntry?.channels.readable?.content, "# Current HTML body");
     assert.equal(inspect().storedEntry?.channels.body?.content, "<html>current source</html>");
 });
 

@@ -17,10 +17,8 @@ import {
 import { formatJsonDocument } from "@plurnk/plurnk-contracts";
 import { outboundFetch } from "@plurnk/plurnk-meta";
 import Guard, { GuardBlockedError, HostPolicy } from "./Guard.ts";
-import MaterializerRegistry, { type HttpMaterializer } from "./Materializer.ts";
 import {
     CACHE_VARIANT_HEADER,
-    MATERIALIZER_ID_HEADER,
     PROJECTION_ID_HEADER,
     cacheVariantEvidence,
     classifyCacheVariant,
@@ -32,17 +30,9 @@ import {
 
 export {
     CACHE_VARIANT_HEADER,
-    MATERIALIZER_ID_HEADER,
 };
 
 export const MARKDOWN_ACCEPT = "text/markdown, text/html;q=0.9, */*;q=0.1";
-// The operator's materializer selection ({§http-lifecycle}): a
-// discovered materializer id; unset/empty means the built-in local projection
-// is the only body producer.
-export const MATERIALIZER_ENV = "PLURNK_SCHEMES_HTTP_MATERIALIZER";
-const ORIGIN_MARKDOWN_MATERIALIZER_ID = "origin-markdown:v1";
-const LOCAL_UNCONFIGURED_MATERIALIZER_ID = "local-projection:v1:unconfigured";
-const LOCAL_INELIGIBLE_MATERIALIZER_ID = "local-projection:v1:ineligible";
 
 const rewriteAcquisitionTarget = (url: string): string => {
     const gh = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/.exec(url);
@@ -84,30 +74,9 @@ export default class WebFetcher implements WebMaterializer {
 
     static validateConfiguration(): void {
         requirePositiveIntegerEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT");
-        if (WebFetcher.#materializerConfigured()) {
-            void MaterializerRegistry.current().discover();
-        }
     }
 
-    static #materializerConfigured(): boolean {
-        return (process.env[MATERIALIZER_ENV]?.trim() ?? "").length > 0;
-    }
-
-    // {§http-lifecycle} — resolve the operator-selected materializer
-    // and consult its per-request eligibility; null → built-in projection.
-    static async #selectedMaterializer(url: string, signal?: AbortSignal): Promise<{ materializer: HttpMaterializer; identity: string } | null> {
-        const id = (process.env[MATERIALIZER_ENV]?.trim() ?? "");
-        if (id.length === 0) return null;
-        const registry = await MaterializerRegistry.current().discover();
-        const materializer = registry.materializerFor(id);
-        if (materializer === null) {
-            throw new Error(`${MATERIALIZER_ENV} names '${id}', but no installed http-materializer package provides it.`);
-        }
-        const identity = await materializer.eligible(url, { signal });
-        return identity === null ? null : { materializer, identity };
-    }
-
-    static unavailable(url: string, cause: unknown, allowConfiguredMaterializer: boolean): WebFetchResult {
+    static unavailable(url: string, cause: unknown): WebFetchResult {
         const detail = errorDetail.preview(cause);
         const originFailure = {
             status: 502,
@@ -127,7 +96,6 @@ export default class WebFetcher implements WebMaterializer {
                 `x-plurnk-origin-error: ${safeEvidence(detail)}`,
             ].join("\n"),
             requestHeaders: [],
-            allowConfiguredMaterializer: allowConfiguredMaterializer,
             originUnavailable: true,
             originFailure,
         };
@@ -199,15 +167,14 @@ export default class WebFetcher implements WebMaterializer {
     }
 
     static async materialize(
-        fetched: Pick<WebFetchResult,
-            "url" | "body" | "mimetype" | "status" | "statusText" | "header" | "originFailure" | "allowConfiguredMaterializer" | "originUnavailable">,
+        fetched: WebMaterializationSource,
         projection: ProjectionCaps,
-        signal?: AbortSignal,
+        _signal?: AbortSignal,
     ): Promise<WebMaterializedResult> {
         // One materializer owns page-body production and independent channel
-        // outcomes {§http-lifecycle}/{§http-lifecycle}.
+        // outcomes {§http-lifecycle}.
         if (fetched.originUnavailable === true) {
-            return WebFetcher.#materializeHtml(fetched, projection, signal);
+            return WebFetcher.#materializeHtml(fetched, projection);
         }
         const originOutcome = WebFetcher.#originOutcome(fetched);
         if (typeof fetched.body !== "string") {
@@ -240,12 +207,9 @@ export default class WebFetcher implements WebMaterializer {
         if (fetched.mimetype === "text/markdown") {
             // {§channel-selection} — an origin that negotiates Markdown has sent the readable source
             // itself: it is the body, and no projection or HTML variant rides beside it.
-            const materializedHeader = WebFetcher.#appendEvidence(fetched.header, [
-                WebFetcher.materializerEvidence(ORIGIN_MARKDOWN_MATERIALIZER_ID),
-            ]);
             return {
                 body: { content: fetched.body, mimetype: "text/markdown" },
-                ...(materializedHeader === undefined ? {} : { header: materializedHeader }),
+                ...(fetched.header === undefined ? {} : { header: fetched.header }),
                 bodyOutcome: originOutcome,
             };
         }
@@ -256,7 +220,7 @@ export default class WebFetcher implements WebMaterializer {
                 bodyOutcome: originOutcome,
             };
         }
-        return WebFetcher.#materializeHtml(fetched, projection, signal);
+        return WebFetcher.#materializeHtml(fetched, projection);
     }
 
     static readableText(content: string, mimetype: string): string {
@@ -264,98 +228,13 @@ export default class WebFetcher implements WebMaterializer {
     }
 
     static async #materializeHtml(
-        fetched: Pick<WebFetchResult,
-            "url" | "body" | "mimetype" | "status" | "statusText" | "header" | "originFailure" | "allowConfiguredMaterializer" | "originUnavailable">,
+        fetched: WebMaterializationSource,
         projection: ProjectionCaps,
-        signal?: AbortSignal,
     ): Promise<WebMaterializedResult> {
         const html = fetched.originUnavailable === true || typeof fetched.body !== "string"
             ? undefined
             : { content: fetched.body, mimetype: fetched.mimetype };
         const originOutcome = WebFetcher.#originOutcome(fetched);
-        const selected = fetched.allowConfiguredMaterializer === true
-            ? await WebFetcher.#selectedMaterializer(fetched.url, signal)
-            : null;
-        if (selected !== null) {
-            const { materializer, identity } = selected;
-            const result = await materializer.extract(fetched.url, { signal });
-            const evidence = [
-                WebFetcher.materializerEvidence(result.outcome === "success"
-                    ? identity
-                    : `local-fallback:${identity}`),
-                ...result.evidence.map(({ name, value }) => `${name}: ${value}`),
-            ];
-            if (result.outcome === "success") {
-                const header = WebFetcher.#appendEvidence(fetched.header, evidence);
-                return {
-                    readable: { content: result.body, mimetype: "text/markdown" },
-                    body: html ?? { content: "", mimetype: "text/html" },
-                    ...(header === undefined ? {} : { header }),
-                    readableOutcome: success(),
-                    bodyOutcome: html === undefined ? WebFetcher.#sourceUnavailable(fetched) : originOutcome,
-                };
-            }
-            if (result.outcome === "hard" || html === undefined) {
-                const header = WebFetcher.#appendEvidence(fetched.header, [
-                    WebFetcher.materializerEvidence(identity),
-                    ...result.evidence.map(({ name, value }) => `${name}: ${value}`),
-                ]);
-                const problem = result.outcome === "hard"
-                    ? result.problem
-                    : (result.problem ?? {
-                        status: 502,
-                        code: "materializer-recoverable", // {§http-lifecycle}
-                        detail: `The materializer could not extract ${fetched.url} (${result.reason}).`,
-                        retryable: true,
-                    });
-                return {
-                    body: html ?? { content: "", mimetype: "text/html" },
-                    ...(header === undefined ? {} : { header }),
-                    readableOutcome: failure(
-                        problem.status,
-                        problem.code,
-                        problem.detail,
-                        problem.retryable,
-                    ),
-                    bodyOutcome: html === undefined ? WebFetcher.#sourceUnavailable(fetched) : originOutcome,
-                };
-            }
-            const projected = await WebFetcher.#project(html, projection);
-            if (projected === null) {
-                return {
-                    body: html,
-                    header: WebFetcher.#appendEvidence(fetched.header, evidence),
-                    readableOutcome: result.problem === undefined
-                        ? failure(
-                            502,
-                            "materializer-recoverable",
-                            `The materializer could not extract ${fetched.url} (${result.reason}) and no local projection was possible.`,
-                            true,
-                        )
-                        : failure(
-                            result.problem.status,
-                            result.problem.code,
-                            result.problem.detail,
-                            result.problem.retryable,
-                        ),
-                    bodyOutcome: originOutcome,
-                };
-            }
-            return WebFetcher.#materialized(
-                projected,
-                {
-                    source: html,
-                    header: fetched.header,
-                    materializerIdentity: `local-fallback:${identity}`,
-                    additionalEvidence: result.evidence.map(({ name, value }) => `${name}: ${value}`),
-                    readableOutcome: originOutcome.failure === undefined
-                        ? success(203)
-                        : originOutcome,
-                    bodyOutcome: originOutcome,
-                },
-            );
-        }
-
         if (html === undefined) {
             // {§channel-selection} — no source, nothing to project: both channels carry the origin's
             // own failure, the source first.
@@ -368,15 +247,10 @@ export default class WebFetcher implements WebMaterializer {
             };
         }
         const projected = await WebFetcher.#project(html, projection);
-        const materializerIdentity = fetched.allowConfiguredMaterializer === true
-            ? LOCAL_UNCONFIGURED_MATERIALIZER_ID
-            : LOCAL_INELIGIBLE_MATERIALIZER_ID;
         if (projected === null) {
             return {
                 body: html,
-                header: WebFetcher.#appendEvidence(fetched.header, [
-                    WebFetcher.materializerEvidence(materializerIdentity),
-                ]),
+                ...(fetched.header === undefined ? {} : { header: fetched.header }),
                 readableOutcome: failure(
                     422,
                     "no-readable-projection",
@@ -391,7 +265,6 @@ export default class WebFetcher implements WebMaterializer {
             {
                 source: html,
                 header: fetched.header,
-                materializerIdentity,
                 bodyOutcome: originOutcome,
                 readableOutcome: originOutcome,
             },
@@ -491,8 +364,6 @@ export default class WebFetcher implements WebMaterializer {
         readonly source: EntryData["channels"][string];
         readonly projectionIdentity?: string;
         readonly header?: string;
-        readonly materializerIdentity?: string;
-        readonly additionalEvidence?: ReadonlyArray<string>;
         readonly bodyOutcome?: WebChannelOutcome;
         readonly readableOutcome?: WebChannelOutcome;
     }): WebMaterializedResult {
@@ -500,18 +371,12 @@ export default class WebFetcher implements WebMaterializer {
             source,
             projectionIdentity = projected?.projectionIdentity,
             header,
-            materializerIdentity,
-            additionalEvidence = [],
             bodyOutcome = success(),
             readableOutcome = success(),
         } = options;
-        const evidence = [
-            ...(materializerIdentity === undefined
-                ? []
-                : [WebFetcher.materializerEvidence(materializerIdentity)]),
-            ...additionalEvidence,
-            ...(projectionIdentity === undefined ? [] : [WebFetcher.projectionEvidence(projectionIdentity)]),
-        ];
+        const evidence = projectionIdentity === undefined
+            ? []
+            : [WebFetcher.projectionEvidence(projectionIdentity)];
         const materializedHeader = WebFetcher.#appendEvidence(header, evidence);
         return {
             body: source,
@@ -534,20 +399,6 @@ export default class WebFetcher implements WebMaterializer {
 
     static projectionEvidence(identity: string): string {
         return `${PROJECTION_ID_HEADER}: ${identity}`;
-    }
-
-    static materializerEvidence(identity: string): string {
-        return `${MATERIALIZER_ID_HEADER}: ${identity}`;
-    }
-
-    static materializerCurrent(storedIdentity: string): boolean {
-        const materializerId = process.env[MATERIALIZER_ENV]?.trim() ?? "";
-        if (storedIdentity === ORIGIN_MARKDOWN_MATERIALIZER_ID
-            || storedIdentity === LOCAL_INELIGIBLE_MATERIALIZER_ID) return true;
-        if (storedIdentity === LOCAL_UNCONFIGURED_MATERIALIZER_ID) return materializerId.length === 0;
-        return materializerId.length > 0
-            && (storedIdentity === materializerId
-                || storedIdentity === `local-fallback:${materializerId}`);
     }
 
     async fetch(url: string, opts?: {
@@ -596,11 +447,8 @@ export default class WebFetcher implements WebMaterializer {
         } catch (cause) {
             if (opts?.signal?.aborted === true) throw opts.signal.reason;
             if (cause instanceof GuardBlockedError) return null;
-            const publiclyAdmitted = guarded || await Guard.isPublicUrl(target);
-            const allowConfiguredMaterializer = requestHeaders.length === 0 && publiclyAdmitted;
-            return (allowConfiguredMaterializer && WebFetcher.#materializerConfigured())
-                || opts?.preserveUnavailable === true
-                ? WebFetcher.unavailable(url, cause, allowConfiguredMaterializer)
+            return opts?.preserveUnavailable === true
+                ? WebFetcher.unavailable(url, cause)
                 : null;
         }
 
@@ -614,11 +462,6 @@ export default class WebFetcher implements WebMaterializer {
         }
         const responseHeaders = [...response.headers];
         const mimetype = responseMimetype(response.headers.get("content-type"));
-        const materializerConfigured = WebFetcher.#materializerConfigured();
-        const publiclyAdmitted = guarded
-            || !materializerConfigured
-            || (requestHeaders.length === 0 && await Guard.isPublicUrl(target));
-        const allowConfiguredMaterializer = requestHeaders.length === 0 && publiclyAdmitted;
         const header = WebFetcher.#header(response, requestHeaders, url);
         const common = {
             url,
@@ -629,12 +472,11 @@ export default class WebFetcher implements WebMaterializer {
             response,
             header,
             requestHeaders,
-            allowConfiguredMaterializer: allowConfiguredMaterializer,
         };
         const unavailableAfterResponse = (cause: unknown): WebFetchResult | null => {
             if (opts?.signal?.aborted === true) throw opts.signal.reason;
-            if (!(allowConfiguredMaterializer && WebFetcher.#materializerConfigured()) && opts?.preserveUnavailable !== true) return null;
-            const unavailable = WebFetcher.unavailable(url, cause, allowConfiguredMaterializer);
+            if (opts?.preserveUnavailable !== true) return null;
+            const unavailable = WebFetcher.unavailable(url, cause);
             const detail = unavailable.originFailure?.detail ?? `HTTP GET ${url} failed.`;
             return {
                 ...common,

@@ -3,19 +3,16 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Http from "@plurnk/plurnk-schemes-http";
-import MaterializerRegistry from "@plurnk/plurnk-schemes-http/materializer";
 import { type UrlPath, type ReadStatement, type SendStatement } from "@plurnk/plurnk-contracts";
 import { type Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { makeSchemeCtx, readThroughScheme, makeHandlerCtx, settleOutbound } from "./_scheme.ts";
-import { resolve } from "node:path";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { fixtureExecutors } from "./_mock.ts";
 import { requestUrl } from "../../../scripts/lib/test-fetch.ts";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { pathToFileURL } from "node:url";
 
 
 describe("http-read-scope", () => {
@@ -708,35 +705,12 @@ test("{§http-lifecycle} a direct textual response durably preserves Fetch UTF-8
     }
 });
 
-test("{§http-lifecycle}: a hard materializer failure is the readable channel's; the source reads whole", async () => {
+test("{§http-lifecycle}: an absent HTML projection is the readable channel's 422; the source reads whole", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
-    const originalMaterializer = process.env.PLURNK_SCHEMES_HTTP_MATERIALIZER;
     const http = new Http();
     try {
-        process.env.PLURNK_SCHEMES_HTTP_MATERIALIZER = "stub";
-        const fixture = resolve(import.meta.dirname, "../../../plurnk-schemes-http/test/fixtures/materializer-stub");
-        await MaterializerRegistry.current().discover({
-            packageDirs: [{ dir: fixture, name: "@plurnk/test-materializer-stub" }],
-        });
-        const { __stub } = (await import(pathToFileURL(resolve(fixture, "materializer.js")).href)) as unknown as {
-            __stub: { set: (b: unknown) => void };
-        };
-        __stub.set({
-            eligible: () => "stub-extract:v1",
-            extract: async () => ({
-                outcome: "hard",
-                identity: "stub-extract:v1",
-                evidence: [],
-                problem: {
-                    status: 502,
-                    code: "stub-authentication-failed",
-                    detail: "The stub rejected the configured credentials.",
-                    retryable: false,
-                },
-            }),
-        });
-        const source = "<html><body><h1>Preserved source</h1></body></html>";
+        const source = "<html><body><div></div></body></html>";
         globalThis.fetch = async () => new Response(source, {
             status: 200,
             statusText: "OK",
@@ -746,11 +720,11 @@ test("{§http-lifecycle}: a hard materializer failure is the readable channel's;
         const sessionId = await insertSession(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         const handlerCtx = await makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
-        const pathname = "/hard.html";
+        const pathname = "/empty-html.html";
 
-        // {§channel-selection} — the page's source is its body and reads whole; the materializer's
-        // hard failure is the readable channel's own.
-        const acquired = await readHttp(http, statement(null, "/hard.html"), ctx);
+        // {§channel-selection} — the page's source is its body and reads whole; an absent
+        // readable projection is the readable channel's own 422.
+        const acquired = await readHttp(http, statement(null, pathname), ctx);
         assert.equal(acquired.status, 200, JSON.stringify(acquired).slice(0, 300));
         assert.equal(acquired.content, source, "the source is the default channel");
         assert.deepEqual(Object.keys(acquired.channels as Record<string, number>), ["#header", "#readable"], "the READ names the page's other channels");
@@ -761,7 +735,7 @@ test("{§http-lifecycle}: a hard materializer failure is the readable channel's;
         assert.equal(stored.entry?.channels.header.state, "static");
         assert.equal(stored.entry?.channels.readable.state, "errored");
 
-        const scoped = statement(null, "/hard.html");
+        const scoped = statement(null, pathname);
         if (scoped.target?.kind !== "url") throw new Error("HTTP test helper produced a non-URL target");
         const readableRead: ReadStatement = {
             ...scoped,
@@ -772,15 +746,13 @@ test("{§http-lifecycle}: a hard materializer failure is the readable channel's;
             },
         };
         const projection = await readHttp(http, readableRead, ctx);
-        assert.equal(projection.status, 502);
+        assert.equal(projection.status, 422);
         assert.equal(
             projection.problem?.type,
-            "https://problems.plurnk.xyz/scheme/http/stub-authentication-failed",
+            "https://problems.plurnk.xyz/scheme/http/no-readable-projection",
         );
     } finally {
         globalThis.fetch = originalFetch;
-        if (originalMaterializer === undefined) delete process.env.PLURNK_SCHEMES_HTTP_MATERIALIZER;
-        else process.env.PLURNK_SCHEMES_HTTP_MATERIALIZER = originalMaterializer;
         await db.close();
     }
 });

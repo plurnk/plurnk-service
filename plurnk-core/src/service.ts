@@ -27,7 +27,6 @@ import Meta, { ConfigurationError } from "@plurnk/plurnk-meta";
 import { formatModelReadinessCauses, parseAliasesFromEnv, resolveActiveRoute, resolveChildRoute, routeReadiness } from "@plurnk/plurnk-providers";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
 import ServiceModules from "./server/ServiceModules.ts";
-import { discoverDaemonModules } from "./server/module-discovery.ts";
 import ConfigurationDiagnostics from "./server/ConfigurationDiagnostics.ts";
 import { workspacePaths } from "./server/AgentRoots.ts";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
@@ -174,15 +173,6 @@ export default class Service {
         Daemon.validateConfiguration();
         Daemon.validateWorkspaceConfiguration();
         await ServiceModules.validateConfiguration(workspacePaths(Service.#hostPaths, process.cwd()).configurationRoots.map(({ directory }) => directory));
-        // {§module-contract} — a discovered module validates its own configuration as its factory
-        // constructs it; the offline check constructs every one, starts none, and fails on what any
-        // contained ({§module-contract}).
-        const { modules, configurationErrors } = await discoverDaemonModules({ cwd: dirname(Service.#installedNodeModules()), hostPaths: Service.#hostPaths });
-        const causes = [
-            ...configurationErrors.map(({ cause }) => cause),
-            ...modules.flatMap(({ module }) => (module.contained ?? []).map(({ key, message }) => new ConfigurationError(key, message))),
-        ];
-        if (causes.length > 0) throw new Error(causes.map(({ message }) => message).join("\n"), { cause: causes[0] });
     }
 
     static async #ensureOperatorConfig(): Promise<void> {
@@ -389,8 +379,8 @@ export default class Service {
             // {§startup-admission}: after listener ownership, persistence
             // and its exclusive owner precede capability activation.
             db = await Service.#openDb(dbPath, true);
-            // {§observability-boundary} — the SDK is the plurnk-otel module's, discovered and set up with every
-            // other module ({§otel-module}); the service loads none.
+            // {§observability-boundary} — the SDK is the plurnk-otel module's, composed and set up with every
+            // other first-party module ({§otel-module}); the service loads none directly.
             daemon = new Daemon({
                 db,
                 dbPath,
@@ -400,7 +390,7 @@ export default class Service {
                 configuration,
                 reloadEnvironment,
             });
-            // {§module-lifecycle} — the service composes no module: the daemon discovers every one,
+            // {§module-lifecycle} — first-party daemon modules compose inside Daemon.start(),
             // and the socket never closes or rebinds between admission and readiness.
             await daemon.start();
             const acpAddr = listener.httpAddress();
@@ -947,12 +937,9 @@ export default class Service {
             process.exit(0);
         }
 
-        // Root/trust flags participate before extension defaults are admitted to the shared floor.
-        const { files: defaultsFiles, configurationErrors, reports } = await EnvDefaults.collect(
-            Service.#projectRoot, Service.#installedNodeModules(), { hostPaths: Service.#hostPaths },
+        const defaultsFiles = await EnvDefaults.collect(
+            Service.#projectRoot, Service.#installedNodeModules(),
         );
-        for (const cause of configurationErrors) Service.#configuration.record("extensions", cause);
-        Service.#configuration.pluginReports(reports);
         const mergedDefaults = EnvDefaults.merge(defaultsFiles);
         Service.#defaultsMap = mergedDefaults;
         // {§model-catalog-cache} — load cached models.dev snapshot if present.

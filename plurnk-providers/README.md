@@ -128,17 +128,14 @@ flowchart TD
 
 ## Provider extensions
 
-Most integrations should use an MCP server, executor, scheme, or a provider
-declaration. A provider extension is only needed for a protocol binding unavailable
-through the catalog and installed SDK packages.
-
-It may use any npm scope. Its package manifest declares the PLURNK name:
+Uncataloged endpoints use `PLURNK_PROVIDERS_PROVIDER_<NAME>_*` declarations ({§provider-configuration}). A first-party `@plurnk/*` provider extension is only needed for a protocol binding unavailable through the catalog and installed SDK packages:
 
 ```json
 {
+  "name": "@plurnk/plurnk-providers-bespoke",
   "plurnk": {
     "kind": "provider",
-    "name": "acme"
+    "name": "bespoke"
   },
   "peerDependencies": {
     "@plurnk/plurnk-providers": "^6.0.0"
@@ -156,8 +153,7 @@ also implement synchronous `attributions(context)` and decide per provider
 attempt whether to return no, one, or many additional opaque tags
 ({§extension-discovery}).
 
-Discovery is scope-agnostic and rejects duplicate names.
-Third-party discovery uses the shared pre-import trust contract ({§extension-discovery}).
+Discovery admits only `@plurnk/*` packages and rejects duplicate names ({§extension-discovery}).
 
 ## Local endpoints
 

@@ -94,7 +94,7 @@ Every available runtime receives one derived read-only scheme face from its tag,
 
 ## §executor-discovery Discovery, declarations, invocation, tool registries, and documents
 
-`discover(options?)` scans every scoped and unscoped package under `node_modules` for `plurnk.kind === "exec"`, returning `{ registry, packageAttributions, skipped, disabled }` ({§extension-discovery}). Tag collisions across packages fail hard naming both packages.
+`discover(options?)` scans first-party `@plurnk/*` packages under `node_modules` for `plurnk.kind === "exec"`, returning `{ registry, packageAttributions, disabled }` ({§extension-discovery}). Non-`@plurnk/*` packages are ignored without reading or importing code. Tag collisions across packages fail hard naming both packages.
 
 | Package state | Effective policy and probe | Runtime result |
 | --- | --- | --- |
@@ -104,7 +104,7 @@ Every available runtime receives one derived read-only scheme face from its tag,
 | Installed | Tag admitted; probe available | Registered, advertised through `availableRuntimes()`, dispatchable. |
 
 - **Runtime declaration (`RuntimeDecl`):** Closed to `name` (`[a-z][a-z0-9+._-]*`, excluding reserved `only`), `glyph` (optional), `summary` (required one-line description or `{ from: "tools", description?: string }`), `invocation` (required), `details` (optional supplemental Markdown; `docs/<tag>.md` wins over inline and strips leading `# <tag>`), and `packageName`.
-- **Dynamic declarations (`plurnk.runtimesModule`):** Exported subpath whose `runtimes` or default export returns `RuntimeDecl[] | Promise<RuntimeDecl[]>`. Static `runtimes[]` wins when both are present. Imported only after the extension trust gate (`PLURNK_EXTENSIONS_TRUSTED_ONLY`); untrusted packages execute no code and land in `Discovery.skipped`.
+- **Dynamic declarations (`plurnk.runtimesModule`):** Exported subpath whose `runtimes` or default export returns `RuntimeDecl[] | Promise<RuntimeDecl[]>`. Static `runtimes[]` wins when both are present. Imported only for first-party `@plurnk/*` exec packages; non-`@plurnk/*` packages execute no code.
 - **Invocation contract (`RuntimeInvocation`):**
   - `body`: `{ role: string, required: boolean, mimetype?: string }` (malformed body media type counts as a fence-pairing repair under {§fence-pairing}).
   - `target` (optional): `{ role: string, required: boolean, kind: "literal" | "path" | "resource" | "script" }` ({§op-shapes}).

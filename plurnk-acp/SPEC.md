@@ -4,7 +4,7 @@ The module is the daemon's Standard ACP v2 (`@agentclientprotocol/sdk/experiment
 
 ## §acp-daemon-client 1. Architecture, Client Types, and Session Binding
 
-- **Discovered daemon module (`plurnk: { kind: "module", module: "./module" }`):** Claims only `/acp` on the shared HTTP/WebSocket listener ({§http-host}, {§module-lifecycle}), registers the `acp` `MessageScheme` in `setup`, and mounts `/acp` at `start` (answering `503 service-starting` before activation and `503 service-stopping` from `stop`). A daemon without a listener omits it.
+- **Daemon module (`@plurnk/plurnk-acp/module`):** Composed statically by `@plurnk/plurnk-service` ({§module-lifecycle}), claims only `/acp` on the shared HTTP/WebSocket listener ({§http-host}), registers the `acp` `MessageScheme` in `setup`, and mounts `/acp` at `start` (answering `503 service-starting` before activation and `503 service-stopping` from `stop`). A daemon without a listener omits it.
 - **Runtime-neutral client contract (`@plurnk/plurnk-acp/client`):** Exports runtime-neutral types for `_meta.plurnk` state and action outcomes, type-checked under DOM libraries without Node globals (`tsconfig.browser.json`, {§whitespace-contract}).
 - **Standard ACP v2 authority:** `initialize` negotiates `protocolVersion: 2` (`PROTOCOL_VERSION`) and advertises `capabilities` (`session: { prompt: { image: {}, embeddedContext: {} }, mcp: { acp: {} }, archive: {}, delete: {}, fork: {}, options: {}, status: {}, title: {}, additionalDirectories: {}, systemPrompt: {} }`, `auth: { status: {} }`, `providers: {}`).
 

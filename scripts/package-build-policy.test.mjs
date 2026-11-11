@@ -53,21 +53,21 @@ test("{§packed-projection} package build policy derives its scope from the publ
     ]);
 });
 
-const packedFiles = ["package.json", "dist/index.js", "dist/index.d.ts", "dist/Materializer.js", "dist/Materializer.d.ts", "README.md"];
+const packedFiles = ["package.json", "dist/index.js", "dist/index.d.ts", "dist/Subpath.js", "dist/Subpath.d.ts", "README.md"];
 
 test("{§packed-projection} published manifest projection strips plurnk-dev and verifies every exported target", () => {
     const { manifest, violations } = projectManifest({
         name: "@plurnk/example",
         exports: {
             ".": { [DEV_CONDITION]: "./src/index.ts", types: "./dist/index.d.ts", default: "./dist/index.js" },
-            "./materializer": { [DEV_CONDITION]: "./src/Materializer.ts", types: "./dist/Materializer.d.ts", default: "./dist/Materializer.js" },
+            "./subpath": { [DEV_CONDITION]: "./src/Subpath.ts", types: "./dist/Subpath.d.ts", default: "./dist/Subpath.js" },
             "./package.json": "./package.json",
         },
     }, packedFiles);
     assert.deepEqual(violations, []);
     assert.deepEqual(manifest.exports, {
         ".": { types: "./dist/index.d.ts", default: "./dist/index.js" },
-        "./materializer": { types: "./dist/Materializer.d.ts", default: "./dist/Materializer.js" },
+        "./subpath": { types: "./dist/Subpath.d.ts", default: "./dist/Subpath.js" },
         "./package.json": "./package.json",
     });
     assert.equal(JSON.stringify(manifest).includes(DEV_CONDITION), false);

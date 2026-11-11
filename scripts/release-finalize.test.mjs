@@ -262,7 +262,7 @@ test("{§release-finalization} release notes are derived from the exact tagged r
 });
 
 test("{§release-finalization} source identity comes from the canonical repository, not checkout spelling or version", () => {
-    for (const repository of ["plurnk-tavily-plugin", "plurnk-service", "plurnk"]) {
+    for (const repository of ["plurnk-web", "plurnk-service", "plurnk"]) {
         const repo = repositoryName(canonicalForgeOrigin(repository));
         assert.equal(repo, repository);
         assert.deepEqual(repositoryAuthorityViolations({
@@ -273,7 +273,7 @@ test("{§release-finalization} source identity comes from the canonical reposito
             remoteHead: "abc",
         }), []);
     }
-    for (const origin of [undefined, "plurnk-tavily-plugin", "git@github.com:plurnk/plurnk.git", "ssh://git@ssh.possumtech.com/other/plurnk.git"]) {
+    for (const origin of [undefined, "plurnk-web", "git@github.com:plurnk/plurnk.git", "ssh://git@ssh.possumtech.com/other/plurnk.git"]) {
         assert.throws(() => repositoryName(origin), /noncanonical release origin/);
     }
 });

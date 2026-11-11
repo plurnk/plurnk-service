@@ -46,10 +46,6 @@
         },
         "./package.json": "./package.json"
     },
-    "plurnk": {
-        "kind": "module",
-        "module": "./module"
-    },
     "files": [
         ".env.defaults",
         "dist/**/*",

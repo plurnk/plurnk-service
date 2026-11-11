@@ -1,8 +1,8 @@
 // The assembled .env.defaults floor ({§operator-config-precedence}) for test tiers, loaded via
 // `node --import=./test/floor.ts`. Production parity: the daemon boots on this package's
-// .env.defaults plus every installed member's; the tiers do too. Set-if-unset — the --env-file
-// cascade (.env / .env.test) and the shell always win; only genuinely-unset knobs (siblings'
-// defaults, e.g. PLURNK_PROVIDERS_*) take floor values.
+// .env.defaults plus every installed `@plurnk/*` member's; the tiers do too. Set-if-unset — the
+// --env-file cascade (.env / .env.test) and the shell always win; only genuinely-unset knobs
+// (siblings' defaults, e.g. PLURNK_PROVIDERS_*) take floor values.
 import EnvDefaults from "../src/core/env-defaults.ts";
 import * as ZeroPin from "./zero-pin.ts";
 import Meta from "@plurnk/plurnk-meta";
@@ -18,7 +18,5 @@ if (process.env.PLURNK_ZERO_PIN === "1") {
     process.stderr.write(`floor: ZERO-PIN — stripped ${stripped.length} tuning pin(s)${stripped.length > 0 ? ": " + stripped.join(", ") : ""}; provider capacity derives naturally\n`);
 }
 
-const { files, configurationErrors, reports } = await EnvDefaults.collect(root, nodeModules);
-for (const cause of configurationErrors) process.stderr.write(`floor: ${cause.message}\n`);
-for (const report of reports) process.stderr.write(`floor: ${report.root}/${report.path}: ${report.message}\n`);
+const files = await EnvDefaults.collect(root, nodeModules);
 EnvDefaults.apply(EnvDefaults.merge(files));

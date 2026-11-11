@@ -473,17 +473,11 @@ export default class SchemeRegistry {
         return current;
     }
 
-    // Discover external scheme extensions through the framework's SchemeDiscovery: the
-    // scope-agnostic node_modules scan for plurnk.kind:"scheme" + plurnk.name and the
-    // PLURNK_EXTENSIONS_TRUSTED_ONLY trust gate (untrusted → `skipped`, never crashed) live
-    // there, as for every kind.
-    // The service keeps only consumer policy: in-tree precedence (a name a built-in owns
-    // is left as-is) and importing + registering the trusted descriptors.
+    // Discover first-party `@plurnk/*` scheme extensions through the framework's SchemeDiscovery
+    // ({§extension-discovery}): in-tree built-in names take precedence, and discovered descriptors
+    // are imported and registered.
     async discoverExternal(cwd: string = process.cwd()): Promise<void> {
-        const { schemes, packageAttributions, skipped } = await SchemeDiscovery.discover({ cwd });
-        for (const name of skipped) {
-            console.warn(`scheme discovery: '${name}' is discovered but untrusted (PLURNK_EXTENSIONS_TRUSTED_ONLY); not registered`);
-        }
+        const { schemes, packageAttributions } = await SchemeDiscovery.discover({ cwd });
         for (const { name, packageName, exportName } of schemes) {
             const claim = SchemeRegistry.#externalSchemeClaim(packageName);
             if (this.#assertClaim(name, claim, true) === "same") continue;

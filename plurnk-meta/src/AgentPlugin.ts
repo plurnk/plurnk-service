@@ -89,7 +89,7 @@ export const validateManifest = (value: unknown): ManifestResult => {
     return { manifest: manifest as unknown as PluginManifest, ignored };
 };
 
-// {§agent-plugins-containment} Shared by portable components and extension admission.
+// {§agent-plugins-containment} Shared by portable Agent Plugins components.
 export class AgentPluginFiles {
     static errnoCode(cause: unknown): string | undefined {
         return typeof cause === "object" && cause !== null && "code" in cause && typeof cause.code === "string" ? cause.code : undefined;

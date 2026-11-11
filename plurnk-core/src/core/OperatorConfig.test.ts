@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import test, { describe, type TestContext } from "node:test";
+import test, { describe } from "node:test";
 import EnvCatalog from "./env-catalog.ts";
 import HostPaths from "./HostPaths.ts";
 import OperatorConfig from "./OperatorConfig.ts";
 import ServiceTeardown from "./ServiceTeardown.ts";
 import EnvDefaults from "./env-defaults.ts";
-import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile, symlink } from "node:fs/promises";
+import PluginSources from "../server/PluginSources.ts";
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isZeroPinTuning, scrubZeroPinTuning } from "../../test/zero-pin.ts";
@@ -20,7 +21,6 @@ test("{§operator-config-precedence} the seed is one dotenv front door with exac
     assert.match(seed, /MCP SERVERS — complete definitions/);
     assert.match(seed, /PLURNK_MCP_brave=\{"type":"stdio"/);
     assert.match(seed, /PLURNK_MCP_brave_ENABLED=0/);
-    assert.match(seed, /PLURNK_SCHEMES_HTTP_MATERIALIZER=tavily-extract/);
     assert.match(seed, /AGENT SKILLS — project skills live in \.agents\/skills/);
     assert.doesNotMatch(seed, /^(?!#).*PLURNK_MODEL=/m, "no model ships selected");
 });
@@ -444,8 +444,8 @@ test("{§env-functionality} EnvCatalog.candidates drops a section header, which 
 // purpose so it can ask for the key by name, and never sees the value.
 test("{§env-functionality} EnvCatalog.candidates projects the declared value, never an operator's", () => {
     const [credential] = EnvCatalog.candidates([{
-        owner: "@plurnk/plurnk-tavily-plugin", parsed: {},
-        text: "# Tavily API key; unset disables the materializer.\nTAVILY_API_KEY=",
+        owner: "@plurnk/plurnk-fixture", parsed: {},
+        text: "# Example API key; unset disables the endpoint.\nEXAMPLE_API_KEY=",
     }]);
     assert.equal(credential.definition.value, "", "the declaration is empty even when the host has one set");
     assert.match(credential.summary!, /unset disables/u, "the model learns what it is for, so it can ask by name");
@@ -502,25 +502,8 @@ test("{§operator-config-precedence} a key is declared by name, as a declared na
 });
 
 describe("env-defaults", () => {
-// {§operator-config-precedence} — the .env.defaults assembly: every package owns its knobs,
+// {§operator-config-precedence} — the .env.defaults assembly: every `@plurnk/*` package owns its knobs,
 // one floor, one law (global key uniqueness), projected through the on-demand catalog.
-
-
-
-
-
-
-
-// These fixtures are third-party packages, so this file exercises the operator who admitted them
-// ({§extension-discovery}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself
-// state their own value below and override this one.
-process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
-
-const setting = (t: TestContext, key: string, value: string): void => {
-    const prior = process.env[key];
-    process.env[key] = value;
-    t.after(() => { if (prior === undefined) delete process.env[key]; else process.env[key] = prior; });
-};
 
 const scaffold = async (): Promise<{ root: string; nm: string }> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-envd-"));
@@ -537,16 +520,16 @@ const addPackage = async (nm: string, name: string, opts: { plurnk?: boolean; de
     if (opts.defaults !== undefined) await writeFile(join(dir, ".env.defaults"), opts.defaults);
 };
 
-test("{§operator-config-precedence} collect: the host's file + @plurnk/* + plurnk-declaring third parties; bystanders excluded", async () => {
+test("{§operator-config-precedence} collect: the host's file + @plurnk/* members; non-@plurnk/* packages excluded", async () => {
     const { root, nm } = await scaffold();
     try {
         await addPackage(nm, "@plurnk/plurnk-fake", { defaults: "PLURNK_FAKE_X=1\n" });
         await addPackage(nm, "acme-extension", { plurnk: true, defaults: "ACME_EXTENSION_Y=2\n" });
-        await addPackage(nm, "left-pad", { defaults: "LEFT_PAD=oops\n" }); // ships a file but is NOT an ecosystem member
-        await addPackage(nm, "@plurnk/plurnk-silent", {});                 // member, no file — fine
-        const { files } = await EnvDefaults.collect(root, nm);
-        assert.deepEqual(files.map((f) => f.owner), ["@plurnk/plurnk-service", "@plurnk/plurnk-fake", "acme-extension"],
-            "host first, then members name-sorted; the bystander's file is never read");
+        await addPackage(nm, "left-pad", { defaults: "LEFT_PAD=oops\n" });
+        await addPackage(nm, "@plurnk/plurnk-silent", {});
+        const files = await EnvDefaults.collect(root, nm);
+        assert.deepEqual(files.map((f) => f.owner), ["@plurnk/plurnk-service", "@plurnk/plurnk-fake"],
+            "host first, then @plurnk/* members name-sorted; non-@plurnk/* files are never read");
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -554,7 +537,7 @@ test("{§operator-config-precedence} the ONE law: a key claimed by two packages 
     const { root, nm } = await scaffold();
     try {
         await addPackage(nm, "@plurnk/plurnk-fake", { defaults: "PLURNK_ENVD_TEST_KNOB=13\n" });
-        const { files } = await EnvDefaults.collect(root, nm);
+        const files = await EnvDefaults.collect(root, nm);
         assert.throws(() => EnvDefaults.merge(files),
             /PLURNK_ENVD_TEST_KNOB is claimed by both @plurnk\/plurnk-service and @plurnk\/plurnk-fake/,
             "the collision names both claimants — the handoff signal");
@@ -601,11 +584,11 @@ test("{§operator-config-precedence} the on-demand catalog is owner-labelled and
     const { root, nm } = await scaffold();
     try {
         await addPackage(nm, "@plurnk/plurnk-fake", { defaults: "# fake's own doc line\nPLURNK_FAKE_X=1\n" });
-        const { files } = await EnvDefaults.collect(root, nm);
+        const files = await EnvDefaults.collect(root, nm);
         const catalog = EnvDefaults.renderCatalog(files);
         assert.match(catalog, /Generated on demand/, "the header identifies the projection");
         assert.match(catalog, /--config.*--env-file/u, "additional files are selected explicitly through the launcher");
-        assert.match(catalog, /working directory's \.env is not read/u, "the catalog does not imply ambient project configuration");
+        assert.match(catalog, /working directory's \.env is not read/u, "the catalog does not imply ambient configuration");
         assert.match(catalog, /═══ @plurnk\/plurnk-service ═══/, "the host section is owner-labelled");
         assert.match(catalog, /═══ @plurnk\/plurnk-fake ═══/, "each member section is owner-labelled");
         assert.match(catalog, /# fake's own doc line/, "the owner's comments ARE the docs — preserved verbatim");
@@ -618,9 +601,9 @@ test("{§operator-config-precedence} the catalog contains declarations and examp
     const previous = process.env[key];
     try {
         const source = `# Required only when enabled.\n# ${key}=\nPLURNK_ENVD_REFERENCE_ENABLED=0\n`;
-        await addPackage(nm, "acme-extension", { plurnk: true, defaults: source });
+        await addPackage(nm, "@plurnk/plurnk-fake", { plurnk: true, defaults: source });
         process.env[key] = "private-test-sentinel";
-        const catalog = EnvDefaults.renderCatalog((await EnvDefaults.collect(root, nm)).files);
+        const catalog = EnvDefaults.renderCatalog(await EnvDefaults.collect(root, nm));
         assert.ok(catalog.includes(source), "retain optional declarations and their owner's explanations");
         assert.ok(!catalog.includes(process.env[key]), "effective values are not configuration documentation");
     } finally {
@@ -630,135 +613,18 @@ test("{§operator-config-precedence} the catalog contains declarations and examp
     }
 });
 
-test("{§operator-config-precedence} PLURNK_EXTENSIONS_TRUSTED_ONLY gates third parties, never @plurnk/*", async () => {
+test("{§configuration-repair-path} invalid plugin root selection is diagnosed while package defaults remain usable", async (t) => {
     const { root, nm } = await scaffold();
-    const prior = process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
-    try {
-        await addPackage(nm, "@plurnk/plurnk-fake", { defaults: "PLURNK_FAKE_X=1\n" });
-        await addPackage(nm, "acme-extension", { plurnk: true, defaults: "ACME_EXTENSION_Y=2\n" });
-        await addPackage(nm, "evil-extension", { plurnk: true, defaults: "EVIL_Z=3\n" });
-        process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "acme-extension";
-        const { files } = await EnvDefaults.collect(root, nm);
-        assert.deepEqual(files.map((f) => f.owner), ["@plurnk/plurnk-service", "@plurnk/plurnk-fake", "acme-extension"],
-            "@plurnk/* always trusted; the allowlist admits acme; evil-extension's knobs never load");
-    } finally {
-        if (prior === undefined) delete process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
-        else process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = prior;
-        await rm(root, { recursive: true, force: true });
-    }
-});
-
-const addPlugin = async (dir: string, name: string, defaults: string): Promise<void> => {
-    await mkdir(join(dir, "ai.plurnk"), { recursive: true });
-    await writeFile(join(dir, "plugin.json"), JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name,
-        extensions: { "ai.plurnk": { kind: "module", module: "ai.plurnk/plugin.mjs" } },
-    }));
-    await writeFile(join(dir, "ai.plurnk/.env.defaults"), defaults);
-    await writeFile(join(dir, "ai.plurnk/plugin.mjs"), "export default {};");
-};
-
-for (const kind of ["module", "http-materializer"] as const) {
-    test(`{§operator-config-precedence} linked ${kind} defaults share their native code's canonical root`, async (t) => {
-        const { root, nm } = await scaffold();
-        t.after(() => rm(root, { recursive: true, force: true }));
-        const hostPaths = new HostPaths({ home: join(root, "home"), env: {} });
-        setting(t, "PLURNK_SERVICE_ROOTS", "project");
-        const plugin = join(root, "source");
-        const linked = join(nm, "example");
-        await addPlugin(plugin, "example", "PLUGIN_VALUE=linked\n");
-        await writeFile(join(plugin, "plugin.json"), JSON.stringify({
-            $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "example",
-            extensions: { "ai.plurnk": kind === "module"
-                ? { kind, module: "ai.plurnk/plugin.mjs" }
-                : { kind, materializers: [{ id: "example", module: "ai.plurnk/plugin.mjs" }] } },
-        }));
-        await symlink(plugin, linked, "dir");
-        const collect = () => EnvDefaults.collect(root, nm, { hostPaths });
-        const collected = await collect();
-        assert.deepEqual(collected.configurationErrors, []);
-        assert.deepEqual(collected.files.map(({ owner }) => owner), ["@plurnk/plurnk-service", "example"]);
-        assert.deepEqual(EnvDefaults.merge(collected.files).get("PLUGIN_VALUE"), { value: "linked", owner: "example" });
-
-        await rm(join(plugin, "ai.plurnk/.env.defaults"));
-        const absent = await collect();
-        assert.deepEqual(absent.configurationErrors, [], "a missing optional panel is not a containment failure");
-        assert.equal(EnvDefaults.merge(absent.files).has("PLUGIN_VALUE"), false);
-
-        await writeFile(join(root, "outside.env"), "PLUGIN_VALUE=escaped\n");
-        await symlink(join(root, "outside.env"), join(plugin, "ai.plurnk/.env.defaults"));
-        const escaped = await collect();
-        assert.equal(EnvDefaults.merge(escaped.files).has("PLUGIN_VALUE"), false);
-        assert.equal(escaped.configurationErrors.length, 1);
-        assert.match(escaped.configurationErrors[0].message, /native defaults resolve outside the plugin root/);
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const files = await EnvDefaults.collect(root, nm);
+    assert.equal(files[0].parsed.PLURNK_ENVD_TEST_KNOB, "42");
+    const sources = await PluginSources.read({
+        hostPaths: new HostPaths({ home: join(root, "home"), env: {} }),
+        nodeModules: nm,
+        environment: { PLURNK_SERVICE_ROOTS: "typo" },
     });
-}
-
-test("{§operator-config-precedence} native defaults follow the same root shadowing as native code", async (t) => {
-    const { root, nm } = await scaffold();
-    t.after(() => rm(root, { recursive: true, force: true }));
-    const hostPaths = new HostPaths({ home: join(root, "home"), env: {} });
-    setting(t, "PLURNK_SERVICE_ROOTS", "project,plurnk,global");
-    await addPlugin(join(nm, "published"), "example", "PLUGIN_VALUE=npm\n");
-    await addPlugin(join(hostPaths.globalPluginsDir, "local"), "example", "PLUGIN_VALUE=user\n");
-    await addPlugin(join(hostPaths.projectPluginsDir(root), "project"), "project-only", "PROJECT_VALUE=unwanted\n");
-    const collected = await EnvDefaults.collect(root, nm, { hostPaths });
-    assert.deepEqual(collected.configurationErrors, []);
-    assert.deepEqual(collected.files.map(({ owner }) => owner), ["@plurnk/plurnk-service", "example"]);
-    assert.deepEqual(EnvDefaults.merge(collected.files).get("PLUGIN_VALUE"), { value: "user", owner: "example" });
-    assert.equal(EnvDefaults.merge(collected.files).has("PROJECT_VALUE"), false);
-    assert.deepEqual(collected.reports.map(({ outcome }) => outcome), ["shadowed"]);
-    process.env.PLURNK_SERVICE_ROOTS = "project";
-    const gated = await EnvDefaults.collect(root, nm, { hostPaths });
-    assert.deepEqual(EnvDefaults.merge(gated.files).get("PLUGIN_VALUE"), { value: "npm", owner: "example" });
-});
-
-test("{§operator-config-precedence} untrusted native defaults are not admitted; path escapes are repairable", async (t) => {
-    const { root, nm } = await scaffold();
-    t.after(() => rm(root, { recursive: true, force: true }));
-    const hostPaths = new HostPaths({ home: join(root, "home"), env: {} });
-    const plugin = join(nm, "example");
-    await addPlugin(plugin, "example", "PLUGIN_VALUE=unused\n");
-    await writeFile(join(root, "outside.env"), "PLUGIN_VALUE=escaped\n");
-    await rm(join(plugin, "ai.plurnk/.env.defaults"));
-    await symlink(join(root, "outside.env"), join(plugin, "ai.plurnk/.env.defaults"));
-    setting(t, "PLURNK_EXTENSIONS_TRUSTED_ONLY", "1");
-    assert.deepEqual((await EnvDefaults.collect(root, nm, { hostPaths })).configurationErrors, [], "untrusted defaults were not read");
-    process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
-    const collected = await EnvDefaults.collect(root, nm, { hostPaths });
-    assert.deepEqual(collected.files.map(({ owner }) => owner), ["@plurnk/plurnk-service"]);
-    assert.equal(collected.configurationErrors.length, 1);
-    assert.equal(collected.configurationErrors[0].key, join(plugin, "ai.plurnk/.env.defaults"));
-    assert.match(collected.configurationErrors[0].message, /resolve outside the plugin root/);
-});
-
-test("{§configuration-repair-path} invalid root selection is diagnosed while package defaults remain usable", async (t) => {
-    const { root, nm } = await scaffold();
-    t.after(() => rm(root, { recursive: true, force: true }));
-    setting(t, "PLURNK_SERVICE_ROOTS", "typo");
-    const collected = await EnvDefaults.collect(root, nm);
-    assert.equal(collected.files[0].parsed.PLURNK_ENVD_TEST_KNOB, "42");
-    assert.equal(collected.configurationErrors.length, 1);
-    assert.equal(collected.configurationErrors[0].key, "PLURNK_SERVICE_ROOTS");
-});
-
-test("{§operator-config-precedence} npm-only capabilities keep their panel when a user folder shadows portable components", async (t) => {
-    const { root, nm } = await scaffold();
-    t.after(() => rm(root, { recursive: true, force: true }));
-    const hostPaths = new HostPaths({ home: join(root, "home"), env: {} });
-    setting(t, "PLURNK_SERVICE_ROOTS", "global");
-    const published = join(nm, "example");
-    const local = join(hostPaths.globalPluginsDir, "example");
-    for (const [dir, value] of [[published, "npm"], [local, "folder"]]) {
-        await addPlugin(dir, "example", `PLUGIN_VALUE=${value}\n`);
-        await writeFile(join(dir, "plugin.json"), JSON.stringify({
-            $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "example",
-            extensions: { "ai.plurnk": { kind: "http-materializer", materializers: [{ id: "example", module: "ai.plurnk/plugin.mjs" }] } },
-        }));
-    }
-    const collected = await EnvDefaults.collect(root, nm, { hostPaths });
-    assert.deepEqual(collected.configurationErrors, []);
-    assert.deepEqual(EnvDefaults.merge(collected.files).get("PLUGIN_VALUE"), { value: "npm", owner: "example" });
+    assert.equal(sources.configurationErrors.length, 1);
+    assert.equal(sources.configurationErrors[0].key, "PLURNK_SERVICE_ROOTS");
 });
 });
 

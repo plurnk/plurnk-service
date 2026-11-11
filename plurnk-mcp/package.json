@@ -41,10 +41,6 @@
         },
         "./package.json": "./package.json"
     },
-    "plurnk": {
-        "kind": "module",
-        "module": "./module"
-    },
     "files": [
         "dist/**/*",
         "README.md",
