@@ -1,4 +1,4 @@
-import StoredPacket, { type RequestPacket } from "./StoredPacket.ts";
+import StoredPacket, { type PacketAttachment, type RequestPacket } from "./StoredPacket.ts";
 import NativeContent from "./NativeContent.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { PathSyntax, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
@@ -357,10 +357,13 @@ export default class TurnRunner {
     // never from a source that may have changed since the observation.
     async #wireMessages(packet: RequestPacket, ctx: PlurnkSchemeContext, provider: Provider): Promise<MaterializedModelRequest> {
         const accepted = acceptedKinds(provider.inputModalities);
-        if (accepted.length === 0 || !(packet.attachments ?? []).some((attachment) => accepted.includes(attachment.kind))) {
+        const accepts = (kind: PacketAttachment["kind"]): boolean => accepted.includes(kind);
+        const finalUserCachePrefix = PacketWire.finalUserCachePrefix(packet, accepts);
+        if (accepted.length === 0 || !(packet.attachments ?? []).some((attachment) => accepts(attachment.kind))) {
             return {
                 messages: PacketWire.packetToWireMessages(packet),
                 nativeInputs: [],
+                ...(finalUserCachePrefix === undefined ? {} : { finalUserCachePrefix }),
             };
         }
         const nativeInputs = new Set<string>();
@@ -368,8 +371,12 @@ export default class TurnRunner {
             const bytes = await NativeContent.read(ctx.db, attachment.contentHash);
             nativeInputs.add(attachment.coordinate);
             return bytes;
-        }, (kind) => accepted.includes(kind));
-        return { messages, nativeInputs: [...nativeInputs] };
+        }, accepts);
+        return {
+            messages,
+            nativeInputs: [...nativeInputs],
+            ...(finalUserCachePrefix === undefined ? {} : { finalUserCachePrefix }),
+        };
     }
 
     // One inference cycle: the six phases in order, over the records declared above.

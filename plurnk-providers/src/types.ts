@@ -104,6 +104,13 @@ export const chatMessageText = (message: Pick<ChatMessage, "content">): string =
 // output, while a bare call expects unconstrained response text.
 export type ProviderCallKind = "emission" | "bare";
 
+// {§provider-sdk-boundary} Optional caller-supplied durable prefix boundary inside the final user
+// message (`chars` when `content` is a string, `parts` when `content` is `ChatContentPart[]`),
+// separating append-mostly conversation/log evidence from trailing per-turn volatile status blocks.
+export type FinalUserCachePrefix =
+    | { readonly kind: "chars"; readonly length: number }
+    | { readonly kind: "parts"; readonly count: number };
+
 // Preflight evidence for the complete provider request. An empirical estimate
 // is useful telemetry but cannot authorize hard context-envelope admission.
 export type PromptTokenMeasurement =
@@ -262,6 +269,7 @@ export interface ProviderGenerateArgs {
     readonly observeRequest?: ProviderRequestObserver;
     readonly observeReasoning?: ProviderReasoningObserver;
     readonly callKind?: ProviderCallKind;
+    readonly finalUserCachePrefix?: FinalUserCachePrefix;
 }
 
 export interface Provider {

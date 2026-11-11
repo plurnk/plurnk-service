@@ -24,7 +24,7 @@ import type {
 } from "./types.ts";
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
 import { EFFORTS, MAX_TIMER_MS, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
-import type { EffortSetting, ReasoningResponseStyle } from "./env.ts";
+import type { CacheWritePolicy, EffortSetting, ReasoningResponseStyle } from "./env.ts";
 import { UnsupportedEffortError } from "./types.ts";
 import { APICallError, toProviderError, ProviderError, ProviderTimeoutError } from "./errors.ts";
 import type { ProviderNotice } from "./notices.ts";
@@ -51,6 +51,7 @@ export type ReasoningStyle = "none" | "think" | "template";
 export type NativeEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export type CacheAffinity = { readonly target: "header" | "body"; readonly name: string };
+export type CacheBreakpoints = Exclude<CacheWritePolicy, "off">;
 
 export type ModelProviderConfig = {
     inferenceAdmission?: InferenceAdmission;
@@ -92,8 +93,7 @@ export type ModelProviderConfig = {
     // projection; the common transport only applies it as managed request state.
     cacheAffinity?: CacheAffinity;
     // {§provider-sdk-boundary} Already policy-gated by provider construction.
-    // The transport attaches it to only the final leading system instruction.
-    systemCacheBreakpoint?: boolean;
+    cacheBreakpoints?: CacheBreakpoints;
     // Optional provider-configured service tier. Unlike caller sampling, this is
     // a fixed deployment choice and therefore wins on every request; a native route
     // carries it only as {§provider-request-authority} allows.
@@ -271,7 +271,7 @@ export default class ModelProvider implements Provider {
     #normalizeCost?: ProviderCostNormalizer;
     #source: string;
     #cacheAffinity: CacheAffinity | undefined;
-    #systemCacheBreakpoint: boolean;
+    #cacheBreakpoints: CacheBreakpoints | undefined;
     #serviceTier: string | undefined;
     #resolvedControls: { readonly serviceTier?: string; readonly topLogprobs?: number };
     #supportsSlotPinning: boolean;
@@ -373,9 +373,9 @@ export default class ModelProvider implements Provider {
         this.#normalizeCost = config.normalizeCost;
         this.#source = config.source ?? "provider";
         this.#cacheAffinity = config.cacheAffinity;
-        this.#systemCacheBreakpoint = config.systemCacheBreakpoint === true;
-        if (this.#providerModel === undefined && this.#systemCacheBreakpoint) {
-            throw new Error(`${this.#source}: system cache breakpoints require a model transport`);
+        this.#cacheBreakpoints = config.cacheBreakpoints;
+        if (this.#providerModel === undefined && this.#cacheBreakpoints !== undefined) {
+            throw new Error(`${this.#source}: prompt cache breakpoints require a model transport`);
         }
         if (this.#providerModel === undefined && this.#additiveReasoningProvider !== undefined) {
             throw new Error(`${this.#source}: additive reasoning projection requires a model transport`);
@@ -590,7 +590,7 @@ export default class ModelProvider implements Provider {
         });
     }
 
-    async generate({ messages, sessionId, signal, maxOutputTokens, sampling, observeRequest, observeReasoning, callKind }: ProviderGenerateArgs): Promise<ProviderResponse> {
+    async generate({ messages, sessionId, signal, maxOutputTokens, sampling, observeRequest, observeReasoning, callKind, finalUserCachePrefix }: ProviderGenerateArgs): Promise<ProviderResponse> {
         // {§provider-interface} The session identity is required.
         if (sessionId === undefined || sessionId.length === 0) throw new Error("generate: sessionId is required — the session's stable, opaque identity");
         if (callKind !== undefined && callKind !== "emission" && callKind !== "bare") {
@@ -774,7 +774,8 @@ export default class ModelProvider implements Provider {
                     adaptiveEffort: this.#adaptiveEffort,
                     nativeAdaptiveThinking: this.#nativeAdaptiveThinking,
                     reasoningRequestBody: this.#reasoningRequestBody,
-                    systemCacheBreakpoint: this.#systemCacheBreakpoint,
+                    cacheBreakpoints: callKind === "bare" ? undefined : this.#cacheBreakpoints,
+                    finalUserCachePrefix,
                     cacheAffinity: this.#cacheAffinity,
                     resolvedControls: this.#resolvedControls,
                     rawBody: this.#rawBody,

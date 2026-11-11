@@ -8,7 +8,7 @@
 // supply names and typed content; this projection preserves their ordered evidence.
 
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
-import type { ChatContentPart, ChatMessage } from "@plurnk/plurnk-providers";
+import type { ChatContentPart, ChatMessage, FinalUserCachePrefix } from "@plurnk/plurnk-providers";
 import { isRecord, isSafeInteger, type Notice } from "@plurnk/plurnk-contracts";
 import type { GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
@@ -249,6 +249,39 @@ export default class PacketWire {
         return PacketWire.#messageSections(packet).map(({ role, sections }) => ({
             role, content: PacketWire.renderSlot(sections, role),
         }));
+    }
+
+    // {§packet-assembly} — durable log boundary inside the final `user` message before the
+    // volatile per-turn status clump (`git`, `budget`, `session`, `work`, `notices`, `errors`).
+    static finalUserCachePrefix(
+        packet: RequestPacket,
+        accepts: (kind: PacketAttachment["kind"]) => boolean = () => false,
+    ): FinalUserCachePrefix | undefined {
+        const groups = PacketWire.#messageSections(packet);
+        const lastGroup = groups.at(-1);
+        if (lastGroup?.role !== "user" || lastGroup.sections.length === 0) return undefined;
+        let leadingLogCount = 0;
+        while (leadingLogCount < lastGroup.sections.length && PacketWire.#isSection(lastGroup.sections[leadingLogCount], "log")) {
+            leadingLogCount += 1;
+        }
+        const leadingLogSections = lastGroup.sections.slice(0, leadingLogCount);
+        const attachments = (packet.attachments ?? []).filter(({ kind }) => accepts(kind));
+        const hasBoundAttachmentsInFinalUser = attachments.some(({ section }) =>
+            section !== undefined && lastGroup.sections.some(({ name }) => name === section));
+        if (hasBoundAttachmentsInFinalUser) {
+            const count = leadingLogSections.reduce(
+                (sum, section) => sum + 1 + 2 * attachments.filter((candidate) => candidate.section === section.name).length,
+                0,
+            );
+            return { kind: "parts", count };
+        }
+        if (attachments.length > 0 && attachments.every(({ section }) => section === undefined)) {
+            return undefined;
+        }
+        return {
+            kind: "chars",
+            length: leadingLogCount === 0 ? 0 : PacketWire.renderSlot(leadingLogSections, "user").length,
+        };
     }
 
     // {§log-wire-format} Orientation precedes telemetry on every receipt.

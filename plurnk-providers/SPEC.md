@@ -59,7 +59,10 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 `ModelProvider.ts` delegates streaming, protocol framing, vendor request assembly, model compatibility flags (`getBuiltinModels`), header normalization (`headersToRecord`), interruptible backoff (`sleep`), token estimation (`estimateMessageTokens`), and context-overflow pattern matching (`getOverflowPatterns`) to `@earendil-works/pi-ai` across all supported APIs (`anthropic-messages`, `openai-completions`, `openai-responses`, `google-generative-ai`, `bedrock-converse-stream`):
 
 - Prompt cache affinity (`PLURNK_PROVIDERS_CACHE_AFFINITY=1`) projects each provider's documented session key (`sessionId` -> `prompt_cache_key` / `x-session-id` / `x-session-affinity`).
-- Stable-system cache write policy (`PLURNK_PROVIDERS_CACHE_WRITE_POLICY=stable-system`) attaches ephemeral cache retention (`cache_control: { type: "ephemeral" }`) on providers that support prompt cache breakpoints (Anthropic and Anthropic routes on OpenRouter).
+- Explicit prompt-cache write policy (`PLURNK_PROVIDERS_CACHE_WRITE_POLICY`, default `conversation`: `conversation | stable-system | off`) governs explicit cache breakpoints (`cache_control: { type: "ephemeral" }` on Anthropic and OpenRouter Anthropic routes; `cachePoint: { type: "default" }` on Bedrock Claude prompt-caching routes), suppressed on stateless `callKind: "bare"` calls:
+  - `off`: zero explicit cache breakpoints.
+  - `stable-system`: one breakpoint on the final leading `system` instruction.
+  - `conversation`: breakpoints on the final leading `system` instruction, the penultimate conversation message, and the caller-delimited durable prefix (`finalUserCachePrefix`) of the final `user` message before any volatile per-turn status tail (or the full final `user` message when no volatile tail is delimited), staying within three breakpoints per request.
 - Output token allowance (`responseMax ?? outputBudget`) is enforced both in flight during streaming (aborting a runaway stream once mid-stream reported output tokens or conservative token lower-bound `floor(estimateMessageTokens(partial) / 2)` exceeds the granted allowance) and on final reported `usage.outputTokens`.
 
 ## §provider-effort Reasoning effort and readable trace

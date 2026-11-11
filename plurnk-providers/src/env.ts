@@ -81,7 +81,7 @@ export const requireEnv = (raw: string | undefined, name: string, label: string)
     return raw;
 };
 
-export type CacheWritePolicy = "off" | "stable-system";
+export type CacheWritePolicy = "off" | "stable-system" | "conversation";
 
 const MODEL_EFFORT_VALUES: readonly Exclude<ModelEffort, null>[] = Object.freeze([
     "none", "minimal", "low", "medium", "high", "xhigh", "max",
@@ -112,8 +112,8 @@ export const cacheAffinityFromEnv = (env: NodeJS.ProcessEnv, label: string): boo
 export const cacheWritePolicyFromEnv = (env: NodeJS.ProcessEnv, label: string): CacheWritePolicy => {
     const name = "PLURNK_PROVIDERS_CACHE_WRITE_POLICY";
     const value = env[name];
-    if (value !== "off" && value !== "stable-system") {
-        throw new Error(`${label} provider: ${name} must be "off" or "stable-system"`);
+    if (value !== "off" && value !== "stable-system" && value !== "conversation") {
+        throw new Error(`${label} provider: ${name} must be "off", "stable-system", or "conversation"`);
     }
     return value;
 };

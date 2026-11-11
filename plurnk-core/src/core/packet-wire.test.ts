@@ -2175,4 +2175,73 @@ test("{§log-wire-format}: mutation scopes are resolved by the producer, not rev
     assert.match(String(row.body), /2:replacement\n3:extra/);
     assert.deepEqual(receipt, retained);
 });
+
+test("{§packet-assembly}: finalUserCachePrefix isolates leading log sections from the volatile status clump across text and native parts", async () => {
+    const turn1Packet: RequestPacket = {
+        weight: 0,
+        attributions: [],
+        sections: [
+            { name: "definition", slot: "system", header: null, content: "The language", weight: 0 },
+            { name: "log", slot: "user", header: "Log", content: "### log:///1/1/1/send · 8\n1: ## Session\n2: ## Git", weight: 0 },
+            { name: "git", slot: "user", header: "Git", content: '{"branch":"main"}', weight: 0 },
+            { name: "session", slot: "user", header: "Session", content: '{"turn":1}', weight: 0 },
+        ],
+    };
+    const turn1Wire = PacketWire.packetToWireMessages(turn1Packet);
+    const turn1Prefix = PacketWire.finalUserCachePrefix(turn1Packet);
+    assert.ok(turn1Prefix?.kind === "chars");
+    const turn1Durable = turn1Wire.at(-1)!.content.slice(0, turn1Prefix.length);
+    const turn1Volatile = turn1Wire.at(-1)!.content.slice(turn1Prefix.length);
+
+    // On Turn 2 (`emission-history`), Turn 1's log becomes its own user message — byte-identical to Turn 1's durable slice!
+    const turn2Packet: RequestPacket = {
+        weight: 0,
+        attributions: [],
+        sections: [
+            { name: "definition", slot: "system", header: null, content: "The language", weight: 0 },
+            { name: "log", slot: "user", header: "Log", content: "### log:///1/1/1/send · 8\n1: ## Session\n2: ## Git", weight: 0 },
+            { name: "emission-history/1/1/2", slot: "assistant", header: null, content: "await plurnk.kill({\"path\":\"log:///1/1/0\"});", weight: 0 },
+            { name: "git", slot: "user", header: "Git", content: '{"branch":"main"}', weight: 0 },
+            { name: "session", slot: "user", header: "Session", content: '{"turn":2}', weight: 0 },
+        ],
+    };
+    const turn2Wire = PacketWire.packetToWireMessages(turn2Packet);
+    assert.equal(turn2Wire[1].content, turn1Durable, "replayed user log block matches prior turn's cached prefix byte for byte");
+    assert.equal(turn1Volatile, '\n\n## Git\n{"branch":"main"}\n\n## Session\n{"turn":1}');
+    assert.deepEqual(PacketWire.finalUserCachePrefix(turn2Packet), { kind: "chars", length: 0 }, "status-only final user message marks zero durable chars");
+
+    // Bound native image attachment in the final user message reports exact durable part count before status parts.
+    const withImage: RequestPacket = {
+        weight: 0,
+        attributions: [],
+        attachments: [{
+            contentHash: "deadbeef",
+            coordinate: "1/2/1",
+            path: "shot.png",
+            scheme: "file",
+            pathname: "shot.png",
+            mimetype: "image/png",
+            kind: "image",
+            section: "log/1/2/1",
+            weight: 100,
+        }],
+        sections: [
+            { name: "definition", slot: "system", header: null, content: "The language", weight: 0 },
+            { name: "log", slot: "user", header: "Log", content: "### log:///1/1/1/send · 8", weight: 0 },
+            { name: "emission-history/1/1/2", slot: "assistant", header: null, content: "await plurnk.read({\"path\":\"shot.png\"});", weight: 0 },
+            { name: "log/1/2/1", slot: "user", header: null, content: "### log:///1/2/1/read · 100", weight: 0 },
+            { name: "git", slot: "user", header: "Git", content: '{"branch":"main"}', weight: 0 },
+            { name: "session", slot: "user", header: "Session", content: '{"turn":2}', weight: 0 },
+        ],
+    };
+    const imageMessages = await PacketWire.wireMessages(withImage, async () => new Uint8Array([1, 2, 3]), (kind) => kind === "image");
+    const imagePrefix = PacketWire.finalUserCachePrefix(withImage, (kind) => kind === "image");
+    assert.deepEqual(imagePrefix, { kind: "parts", count: 3 });
+    const finalParts = imageMessages.at(-1)!.content;
+    assert.ok(Array.isArray(finalParts));
+    assert.equal(finalParts.length, 5);
+    assert.equal(finalParts[2].type, "file");
+    assert.equal(finalParts[3].type, "text");
+    assert.match(finalParts[3].text, /^\n\n## Git\n/u);
+});
 });
