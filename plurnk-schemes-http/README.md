@@ -34,7 +34,7 @@ and are ungated.
 | Channel  | Content                                                                    |
 | -------- | -------------------------------------------------------------------------- |
 | `body`   | Original text or binary response; SSE data                                |
-| `header` | Origin, acquisition, materializer, projection, provider, and usage evidence |
+| `header` | Origin, acquisition, cache-variant, and projection evidence               |
 | `readable` | Curated page Markdown or binary facts/text when a reader supplies them   |
 
 A fragmentless operation publishes only `body`; auxiliary channels remain
@@ -50,20 +50,14 @@ byte-readable. Input above the common binary ceiling returns `413`.
 - WebFetcher checks automatic byte targets and redirects; direct HTTP and
   WebSocket retain their explicit-target authority.
 - Generic GETs negotiate origin Markdown first. When the origin returns HTML,
-  a selected materializer extension ({§http-lifecycle}) produces
-  `readable`; otherwise the installed HTML reader is the local route. Recoverable
-  materializer failures use that same reader as a `203` recovery floor. Hard
-  provider failures do not silently change producers.
+  the installed HTML reader ({§http-lifecycle}) produces `readable`.
 - `body`, `header`, and `readable` settle independently. The selected channel
   determines operation success, so the raw server source and evidence remain
-  usable when the projection fails, and a provider's Markdown can survive origin
-  transport failure without fabricating HTML.
+  usable when the projection fails.
 - GET representations carry method, acquisition-time, and single-variant cache
-  evidence; HTML adds materializer-route evidence, and local derivation adds
-  projection identity. Request headers, `Vary`, `no-store`, expired freshness,
-  or a materializer/reader change prevents reuse; operator TTL is a separate
-  ceiling. Stale page composites are fully reacquired rather than restored by
-  an origin `304`.
+  evidence; local derivation adds projection identity. Request headers, `Vary`,
+  `no-store`, expired freshness, or a reader change prevents reuse; operator TTL
+  is a separate ceiling.
 - HTTP(S) and WS(S) entry identity retains protocol, authority, path, ordered
   query, and explicit empty query; a fragment selects a channel.
 - Handler-owned socket state follows the shared readiness, drain,
@@ -83,12 +77,9 @@ npm i @plurnk/plurnk-schemes-http
 plurnk-service start
 ```
 
-The shipped `.env.defaults` is the canonical operator configuration registry.
-To select a page-materializer extension for generic public HTML materialization,
-install it and set `PLURNK_SCHEMES_HTTP_MATERIALIZER=<id>` in `.env` (the
-`@plurnk/plurnk-tavily-plugin` showcase plugin supplies `tavily-extract`).
-Without a selection, `@plurnk/plurnk-mimetypes-text-html` supplies the local
-`readable` projection.
+The shipped `.env.defaults` is the canonical operator configuration registry,
+and `@plurnk/plurnk-mimetypes-text-html` supplies the local `readable`
+projection for HTML responses.
 
 ## Verify
 

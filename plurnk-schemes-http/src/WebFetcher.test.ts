@@ -1,43 +1,18 @@
 // WebFetcher contract coverage {§prefetch}. Hermetic: mocked global fetch,
 // and IP literals or explicit guard mocks (no DNS). Env from --env-file=.env.defaults.
 
-import test, { after, before, beforeEach } from "node:test";
+import test from "node:test";
 import { buffer } from "node:stream/consumers";
 import { strict as assert } from "node:assert";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import Guard from "./Guard.ts";
-import MaterializerRegistry from "./Materializer.ts";
 import WebFetcher, {
     MARKDOWN_ACCEPT,
-    MATERIALIZER_ENV,
-    MATERIALIZER_ID_HEADER,
     WebMaterializationError,
 } from "./WebFetcher.ts";
 import { MimetypeClassifier, type ProjectionCaps } from "@plurnk/plurnk-schemes";
 import { requestUrl } from "../../scripts/lib/test-fetch.ts";
 
 const PUB = "https://93.184.216.34/x";
-const STUB_DIR = resolve(import.meta.dirname, "..", "test", "fixtures", "materializer-stub");
-
-const originalMaterializer = process.env[MATERIALIZER_ENV];
-before(async () => {
-    // Hermetic discovery: the stub fixture is the only materializer package the
-    // registry sees; the singleton scan caches across the file.
-    await MaterializerRegistry.current().discover({
-        packageDirs: [{ dir: STUB_DIR, name: "@plurnk/test-materializer-stub" }],
-    });
-});
-beforeEach(async () => {
-    delete process.env[MATERIALIZER_ENV];
-    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void; calls: unknown[] } };
-    __stub.set({ eligible: () => null, extract: async () => { throw new Error("stub: no behavior"); } });
-    __stub.calls.length = 0;
-});
-after(() => {
-    if (originalMaterializer === undefined) delete process.env[MATERIALIZER_ENV];
-    else process.env[MATERIALIZER_ENV] = originalMaterializer;
-});
 
 const projectionCaps = (overrides: Partial<ProjectionCaps> = {}): ProjectionCaps => ({
     async readable() { return null; },
@@ -135,9 +110,9 @@ test("{§prefetch} GitHub blob acquisition uses one source target for byte fetch
     assert.deepEqual(seen, [raw]);
 });
 
-test("{§prefetch} HTML → byte response materializes local floor projection when no materializer is selected", async () => {
+test("{§prefetch} HTML → byte response materializes local projection", async () => {
     const projection = projectionCaps({
-        async readable(content, mimetype) {
+        async readable(_content, mimetype) {
             return {
                 content: "# Local Projected Floor",
                 mimetype: "text/markdown",
@@ -154,56 +129,11 @@ test("{§prefetch} HTML → byte response materializes local floor projection wh
         const materialized = await WebFetcher.materialize(fetched, projection);
         assert.equal(materialized?.readable?.content, "# Local Projected Floor");
         assert.equal(materialized?.body?.content, "<html><body><h1>Title</h1></body></html>");
-        assert.match(
-            materialized?.header ?? "",
-            new RegExp(`^${MATERIALIZER_ID_HEADER}: local-projection:v1:unconfigured$`, "m"),
-        );
+        assert.match(materialized?.header ?? "", /^x-plurnk-projection-id: html-floor-v1$/m);
     });
 });
 
-test("HTML → materializes the configured materializer's Markdown ({§http-lifecycle})", async () => {
-    process.env[MATERIALIZER_ENV] = "stub";
-    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
-    __stub.set({
-        eligible: () => "stub-extract:v1",
-        extract: async () => ({
-            outcome: "success",
-            body: "# Stub Extracted Page",
-            identity: "stub-extract:v1",
-            evidence: [
-                { name: "x-plurnk-stub-request-id", value: "req-777" },
-                { name: "x-plurnk-stub-credits", value: "0.2" },
-            ],
-        }),
-    });
-    const projection = projectionCaps({
-        async readable() {
-            return { content: "local floor", mimetype: "text/markdown", sourceMimetype: "text/html", projectionIdentity: "floor" };
-        },
-    });
-    await withFetch((async () =>
-        resp("<html><body>Original</body></html>", 200, { "content-type": "text/html" })), async () => {
-        const fetched = await new WebFetcher().fetch(PUB);
-        assert.ok(fetched !== null);
-        const materialized = await WebFetcher.materialize(fetched, projection);
-        assert.equal(materialized?.readable?.content, "# Stub Extracted Page");
-        assert.equal(materialized?.readable?.mimetype, "text/markdown");
-        assert.equal(materialized?.body?.content, "<html><body>Original</body></html>");
-        assert.match(materialized?.header ?? "", /x-plurnk-materializer-id: stub-extract:v1/);
-        assert.match(materialized?.header ?? "", /x-plurnk-stub-request-id: req-777/);
-        assert.match(materialized?.header ?? "", /x-plurnk-stub-credits: 0\.2/);
-    });
-});
-
-test("{§prefetch} supplied HTML never consults the materializer", async () => {
-    process.env[MATERIALIZER_ENV] = "stub";
-    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void; calls: unknown[] } };
-    __stub.set({
-        eligible: () => "stub-extract:v1",
-        extract: async () => {
-            throw new Error("supplied content must not spend or refetch");
-        },
-    });
+test("{§prefetch} supplied HTML projects locally without fetching", async () => {
     const projection = projectionCaps({
         async readable(_content, mimetype) {
             return {
@@ -217,167 +147,34 @@ test("{§prefetch} supplied HTML never consults the materializer", async () => {
     let calls = 0;
     await withFetch((async () => {
         calls += 1;
-        throw new Error("supplied content must not spend or refetch");
+        throw new Error("supplied content must not refetch");
     }), async () => {
         const materialized = await WebFetcher.materialize({
             url: PUB,
             body: "<html><body>Supplied</body></html>",
             mimetype: "text/html",
             header: "HTTP 200 OK",
-            allowConfiguredMaterializer: false,
         }, projection);
         assert.equal(materialized?.readable?.content, "local supplied content");
-        assert.match(materialized?.header ?? "", /x-plurnk-materializer-id: local-projection:v1:ineligible/);
+        assert.match(materialized?.header ?? "", /^x-plurnk-projection-id: supplied-v1$/m);
     });
     assert.equal(calls, 0);
-    assert.equal(__stub.calls.length, 0, "the materializer was never consulted");
 });
 
-test("{§prefetch} a recoverable materializer outcome uses an identified local floor", async () => {
-    process.env[MATERIALIZER_ENV] = "stub";
-    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
-    __stub.set({
-        eligible: () => "stub-extract:v1",
-        extract: async () => ({
-            outcome: "recoverable",
-            reason: "provider unavailable",
-            identity: "stub-extract:v1",
-            evidence: [
-                { name: "x-plurnk-stub-request-id", value: "req-fallback" },
-                { name: "x-plurnk-stub-credits", value: "0.4" },
-            ],
-        }),
-    });
-    const projection = projectionCaps({
-        async readable(_content, mimetype) {
-            return {
-                content: "local fallback",
-                mimetype: "text/markdown",
-                sourceMimetype: mimetype,
-                projectionIdentity: "floor-v1",
-            };
-        },
-    });
-    await withFetch((async () => resp("<html><body>Origin</body></html>", 200, {
-        "content-type": "text/html",
-    })), async () => {
-        const materialized = await WebFetcher.materialize({
-            url: PUB,
-            body: "<html><body>Origin</body></html>",
-            mimetype: "text/html",
-            header: "HTTP 200 OK",
-            allowConfiguredMaterializer: true,
-        }, projection);
-        assert.equal(materialized?.readable?.content, "local fallback");
-        assert.equal(materialized?.readableOutcome?.status, 203);
-        assert.match(
-            materialized?.header ?? "",
-            /x-plurnk-materializer-id: local-fallback:stub-extract:v1/,
-        );
-        assert.match(materialized?.header ?? "", /x-plurnk-stub-request-id: req-fallback/);
-        assert.match(materialized?.header ?? "", /x-plurnk-stub-credits: 0\.4/);
-        assert.match(materialized?.header ?? "", /x-plurnk-projection-id: floor-v1/);
-    });
+test("{§channel-selection} origin transport unavailability marks both channels with the origin's failure", async () => {
+    const materialized = await WebFetcher.materialize(
+        WebFetcher.unavailable(PUB, new Error("origin reset")),
+        PROJECTION,
+    );
+    assert.equal(materialized?.readable, undefined);
+    assert.deepEqual(materialized?.body, { content: "", mimetype: "text/html" });
+    // {§channel-selection} — the source channel's failure is the origin's own, not a generic one.
+    assert.equal(materialized?.bodyOutcome?.failure?.code, "fetch-failed");
+    assert.equal(materialized?.readableOutcome?.failure?.code, "fetch-failed");
+    assert.match(materialized?.header ?? "", /x-plurnk-origin-error: origin reset/);
 });
 
-test("{§prefetch} a hard materializer failure preserves HTML but does not bless a local body", async () => {
-    process.env[MATERIALIZER_ENV] = "stub";
-    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
-    __stub.set({
-        eligible: () => "stub-extract:v1",
-        extract: async () => ({
-            outcome: "hard",
-            identity: "stub-extract:v1",
-            evidence: [{ name: "x-plurnk-stub-reason", value: "authentication" }],
-            problem: {
-                status: 502,
-                code: "stub-authentication-failed",
-                detail: "The stub rejected the configured credentials.",
-                retryable: false,
-            },
-        }),
-    });
-    let projectionCalls = 0;
-    const projection = projectionCaps({
-        async readable() {
-            projectionCalls += 1;
-            return { content: "must not publish", mimetype: "text/markdown", sourceMimetype: "text/html", projectionIdentity: "floor" };
-        },
-    });
-    await withFetch((async () => resp("<html><body>Origin</body></html>", 200, {
-        "content-type": "text/html",
-    })), async () => {
-        const materialized = await WebFetcher.materialize({
-            url: PUB,
-            body: "<html><body>Origin</body></html>",
-            mimetype: "text/html",
-            header: "HTTP 200 OK",
-            allowConfiguredMaterializer: true,
-        }, projection);
-        assert.equal(materialized?.readable, undefined);
-        assert.equal(materialized?.body?.content, "<html><body>Origin</body></html>");
-        assert.equal(materialized?.readableOutcome?.failure?.code, "stub-authentication-failed");
-        assert.equal(materialized?.bodyOutcome?.status, 200);
-        assert.match(materialized?.header ?? "", new RegExp(`^x-plurnk-stub-reason: authentication$`, "m"));
-    });
-    assert.equal(projectionCalls, 0);
-});
-
-test("{§prefetch} a materializer extraction throw surfaces as the scheme failure, not a silent fallback", async () => {
-    process.env[MATERIALIZER_ENV] = "stub";
-    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
-    __stub.set({
-        eligible: () => "stub-extract:v1",
-        extract: async () => { throw new Error("stub exploded"); },
-    });
-    await withFetch((async () => resp("<html><body>Origin</body></html>", 200, {
-        "content-type": "text/html",
-    })), async () => {
-        const fetched = await new WebFetcher().fetch(PUB);
-        assert.ok(fetched !== null);
-        await assert.rejects(
-            WebFetcher.materialize(fetched, PROJECTION),
-            /stub exploded/,
-            "the plugin's throw is the materialization failure",
-        );
-    });
-});
-
-test("{§channel-selection} the materializer may produce the readable text after admitted origin transport failure while the source carries the origin's failure", async () => {
-    process.env[MATERIALIZER_ENV] = "stub";
-    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
-    __stub.set({
-        eligible: () => "stub-extract:v1",
-        extract: async () => ({
-            outcome: "success",
-            body: "# Provider-only body",
-            identity: "stub-extract:v1",
-            evidence: [],
-        }),
-    });
-    await withFetch((async () => resp("<html>unused</html>", 200, {
-        "content-type": "text/html",
-    })), async () => {
-        const materialized = await WebFetcher.materialize(
-            WebFetcher.unavailable(PUB, new Error("origin reset"), true),
-            PROJECTION,
-        );
-        assert.equal(materialized?.readable?.content, "# Provider-only body");
-        assert.equal(materialized?.readableOutcome?.status, 200);
-        assert.deepEqual(materialized?.body, { content: "", mimetype: "text/html" });
-        // {§channel-selection} — the source channel's failure is the origin's own, not a generic one.
-        assert.equal(materialized?.bodyOutcome?.failure?.code, "fetch-failed");
-        assert.match(materialized?.header ?? "", /x-plurnk-origin-error: origin reset/);
-    });
-});
-
-test("{§channel-selection} origin Markdown is the source itself: one request, no variant, never the materializer", async () => {
-    process.env[MATERIALIZER_ENV] = "stub";
-    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void; calls: unknown[] } };
-    __stub.set({
-        eligible: () => "stub-extract:v1",
-        extract: async () => { throw new Error("origin Markdown must bypass the materializer"); },
-    });
+test("{§channel-selection} origin Markdown is the source itself: one request, no variant, no projection", async () => {
     const calls: Array<{ url: string; accept: string }> = [];
     await withFetch((async (input, init) => {
         const accept = new Headers(init?.headers).get("accept") ?? "";
@@ -391,11 +188,9 @@ test("{§channel-selection} origin Markdown is the source itself: one request, n
         assert.equal(materialized?.body?.content, "# Origin Markdown");
         assert.equal(materialized?.readable, undefined, "{§channel-selection}: readable text needs no projection and no HTML variant");
         assert.equal(materialized?.readableOutcome, undefined);
-        assert.match(materialized?.header ?? "", /x-plurnk-materializer-id: origin-markdown:v1/);
         assert.equal(materialized?.bodyOutcome.status, 200);
     });
     assert.deepEqual(calls.map(({ accept }) => accept), [MARKDOWN_ACCEPT], "exactly one request");
-    assert.equal(__stub.calls.length, 0, "origin Markdown never consults the materializer");
 });
 
 test("{§prefetch} an authored Accept value is honored exactly", async () => {

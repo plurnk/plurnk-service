@@ -9,7 +9,6 @@ import {
     CACHE_VARIANT_HEADER,
     FETCHED_AT,
     HEADER,
-    MATERIALIZER_ID_HEADER,
     PROJECTION_ID_HEADER,
     REQUEST_METHOD,
     cacheVariantEvidence,
@@ -17,7 +16,6 @@ import {
     requireNonNegativeIntegerEnv as requireNumEnv,
     responseMimetype,
 } from "./HttpShared.ts";
-import WebFetcher from "./WebFetcher.ts";
 
 const DELTA_SECONDS_LIMIT = 2_147_483_648n;
 const HEURISTIC_CACHE_STATUSES = new Set([200, 203, 204, 206, 300, 301, 308, 404, 405, 410, 414, 501]);
@@ -327,24 +325,13 @@ const packageHeaderValue = (priorHeader: string, field: string): string | undefi
 const projectionIdentity = (priorHeader: string): string | undefined =>
     packageHeaderValue(priorHeader, PROJECTION_ID_HEADER);
 
-export const materializerIdentity = (priorHeader: string): string | undefined =>
-    packageHeaderValue(priorHeader, MATERIALIZER_ID_HEADER);
-
 export const sourceMimetype = (header: string): string =>
     responseMimetype(lastHeaderValue(header, "content-type") ?? null);
 
 const projectionCurrent = async (header: string, projection: ProjectionCaps): Promise<boolean> => {
     const sourceMime = sourceMimetype(header);
-    const isHtml = MimetypeClassifier.isHtml(sourceMime);
-    const matIdentity = materializerIdentity(header);
-    if (matIdentity !== undefined) {
-        // {§http-lifecycle} — a stored body produced by the current
-        // configured materializer (or the built-in producers) is current.
-        return WebFetcher.materializerCurrent(matIdentity);
-    }
-    if (isHtml && matIdentity === undefined) return false;
     const storedIdentity = projectionIdentity(header);
-    if (storedIdentity === undefined) return !isHtml;
+    if (storedIdentity === undefined) return !MimetypeClassifier.isHtml(sourceMime);
     return await projection.identity(sourceMime) === storedIdentity;
 };
 
@@ -385,13 +372,10 @@ export const refreshAfter304 = (
         ...retained.map(({ name, value }) => [name, value] as const),
         ...updates,
     ];
-    const rebuilt = [MATERIALIZER_ID_HEADER, PROJECTION_ID_HEADER].flatMap((field) => {
-        const value = packageHeaderValue(header, field);
-        return value === undefined ? [] : [`${field}: ${value}`];
-    });
+    const projection = packageHeaderValue(header, PROJECTION_ID_HEADER);
+    const rebuilt = projection === undefined ? [] : [`${PROJECTION_ID_HEADER}: ${projection}`];
     const frameworkOwned = new Set([
         CACHE_VARIANT_HEADER.toLowerCase(),
-        MATERIALIZER_ID_HEADER.toLowerCase(),
         PROJECTION_ID_HEADER.toLowerCase(),
         REQUEST_METHOD.toLowerCase(),
         FETCHED_AT.toLowerCase(),

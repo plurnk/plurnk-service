@@ -1,7 +1,5 @@
-import { after, before, beforeEach, mock } from "node:test";
+import { mock } from "node:test";
 import { buffer } from "node:stream/consumers";
-import { resolve } from "node:path";
-import MaterializerRegistry from "../src/Materializer.ts";
 import {
     MimetypeClassifier,
     NetworkAddress,
@@ -32,26 +30,8 @@ import {
 import Http from "../src/Http.ts";
 import Guard from "../src/Guard.ts";
 import { schemeCtx } from "../../plurnk-schemes/test/scheme-ctx.ts";
-import { CACHE_VARIANT_HEADER, MATERIALIZER_ENV } from "../src/WebFetcher.ts";
+import { CACHE_VARIANT_HEADER } from "../src/WebFetcher.ts";
 import { requestUrl } from "../../scripts/lib/test-fetch.ts";
-
-export const STUB_DIR = resolve(import.meta.dirname, "fixtures", "materializer-stub");
-
-export const registerMaterializerStub = (): void => {
-    const originalMaterializer = process.env[MATERIALIZER_ENV];
-    before(async () => {
-        await MaterializerRegistry.current().discover({
-            packageDirs: [{ dir: STUB_DIR, name: "@plurnk/test-materializer-stub" }],
-        });
-    });
-    beforeEach(() => {
-        delete process.env[MATERIALIZER_ENV];
-    });
-    after(() => {
-        if (originalMaterializer === undefined) delete process.env[MATERIALIZER_ENV];
-        else process.env[MATERIALIZER_ENV] = originalMaterializer;
-    });
-};
 
 export const projectionCaps = (overrides: Partial<ProjectionCaps> = {}): ProjectionCaps => ({
     async readable(content, mimetype) {

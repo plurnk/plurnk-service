@@ -21,7 +21,6 @@ export const FETCHED_AT = "x-plurnk-fetched-at";
 export const REQUEST_METHOD = "x-plurnk-request-method";
 export const PROJECTION_ID_HEADER = "x-plurnk-projection-id";
 export const CACHE_VARIANT_HEADER = "x-plurnk-cache-variant";
-export const MATERIALIZER_ID_HEADER = "x-plurnk-materializer-id";
 export const OUTBOUND_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "DELETE"]);
 
 export const HTTP_CHANNELS: Readonly<Record<string, string>> = {
