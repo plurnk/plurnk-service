@@ -86,7 +86,7 @@ export const parseCallStatements = (code: string, basePos: Position): readonly P
         if (!inObjectPropertyValue) return true;
         if (code.indexOf(quoteChar, quotePos + 1) === -1) return true;
         const rest = code.slice(quotePos + 1);
-        if (/^\s*(?:\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*(?:\}\s*['"]*\s*(?:[),;}\]]|$)|\+\s*(?:["'`]|<<<)|\.\s*join\s*\(|[,;]\s*(?:\}|(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)\s*\??\s*:))/u.test(rest)) {
+        if (/^\s*(?:\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*(?:[})]\s*['"]*\s*(?:[),;}\]]|$)|\+\s*(?:["'`]|<<<)|\.\s*join\s*\(|[,;]\s*(?:[})]|(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z0-9_$-]+)\s*\??\s*[:=](?![=>])))/u.test(rest)) {
             return true;
         }
         return false;
