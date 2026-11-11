@@ -55,7 +55,7 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             },
         },
         details: [
-            "Each note records an immutable `note://<session>/<loop>/<turn>/<item>` source and an active `log:///<loop>/<turn>/<item>/note` row; `plurnk.kill({ path: \"log:///<loop>/<turn>/<item>\" })` retires the active log row.",
+            "Each note records an immutable `note://<session>/<loop>/<turn>/<item>` source and an active `log:///<loop>/<turn>/<item>/note` row; `plurnk.kill({ path: \"log:///<loop>/<turn>/<item>\" })` curates the active log row.",
             "",
             "## Examples",
             "",
@@ -211,16 +211,16 @@ const CORE_OPERATION_SPECS: readonly CoreOperationToolSpec[] = [
             additionalProperties: false,
             required: ["path"],
             properties: {
-                path: { type: "string", minLength: 1, description: "Target entry, stream, child session, or log item path (log item paths nest as `log:///1/2/3/read` for loop/turn/item/op; globs/extglobs like \"log:///1/[1-7]/*/{read,emission}\" retire in bulk)." },
+                path: { type: "string", minLength: 1, description: "Target entry, stream, child session, or log item path (log item paths nest as `log:///1/2/3/read` for loop/turn/item/op; globs/extglobs like \"log:///1/[1-7]/*/{read,emission}\" curate in bulk)." },
                 range: { type: "string", description: "Optional range to delete." },
                 pattern: { type: "string", description: "Optional pattern to delete." },
-                note: { type: "string", description: "Distillation note that survives in working memory when retiring log items." },
+                note: { type: "string", description: "Distillation note that survives in working memory when curating log items." },
                 remote: { type: "boolean", description: "Issue HTTP DELETE when path is an http(s):// URL." },
                 headers: HEADERS_SCHEMA,
             },
         },
         details: [
-            "Log item paths nest: `log:///1/2/3` (or `log:///1/2/3/read`) is `loop/turn/item[/op]`. Turn-source archives (`ops://`, `reasoning://`, `note://`) are immutable; retiring active log rows uses `log:///...`.",
+            "Log item paths nest: `log:///1/2/3` (or `log:///1/2/3/read`) is `loop/turn/item[/op]`. Turn-source archives (`ops://`, `reasoning://`, `note://`) are immutable; curating active log rows uses `log:///...`.",
             "",
             "## Examples",
             "",

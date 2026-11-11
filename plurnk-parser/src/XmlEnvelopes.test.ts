@@ -203,5 +203,47 @@ describe("XmlEnvelopes", () => {
             translateXmlToolCalls(dsmlProxyBatch, SPELLINGS)?.trim(),
             'plurnk.read({"path":"a.ts"})\nplurnk.note({"text":"batch note"})',
         );
+
+        // 9. Code Mode object literal with inline heredoc inside `<arguments>` (`run64` T44) vs non-Code-Mode brace string
+        assert.equal(
+            tryTranslateChildTagCall(
+                '<name>plurnk.edit</name><arguments>\n{"path":"a.py","range":"1,5","text":<<<EOF\nline 1\nEOF})\n</arguments>',
+                SPELLINGS,
+                undefined,
+                true,
+            ),
+            'plurnk.edit({"path":"a.py","range":"1,5","text":<<<EOF\nline 1\nEOF})',
+        );
+        assert.equal(
+            formatTranslatedCall("plurnk.sh", "{ echo hi; }"),
+            'plurnk.sh("{ echo hi; }")',
+        );
+
+        // 10. Direct & wrapper XML element calls with `key=<<<EOF...EOF>` attributes (`run66` T7), including `>` / `/>` inside bodies
+        const heredocAttrs = [
+            '<plurnk.edit path="sklearn/decomposition/kernel_pca.py" pattern=<<<EOF',
+            '/self\\.alphas_ = self\\.alphas_\\[:, indices\\]\\n/',
+            "EOF> text=<<<EOF",
+            "if x > 0 and tag != '<div/>':",
+            "    self.alphas_ *= signs",
+            "EOF>",
+            '<invoke name="plurnk.edit" path="src/b.ts" text=<<<EOF',
+            "export const ok = 1 > 0;",
+            "EOF />",
+        ].join("\n");
+        assert.equal(
+            translateXmlToolCalls(heredocAttrs, SPELLINGS)?.trim(),
+            [
+                'plurnk.edit({"path":"sklearn/decomposition/kernel_pca.py","pattern":<<<EOF',
+                '/self\\.alphas_ = self\\.alphas_\\[:, indices\\]\\n/',
+                'EOF,"text":<<<EOF',
+                "if x > 0 and tag != '<div/>':",
+                "    self.alphas_ *= signs",
+                "EOF})",
+                'plurnk.edit({"path":"src/b.ts","text":<<<EOF',
+                "export const ok = 1 > 0;",
+                "EOF})",
+            ].join("\n"),
+        );
     });
 });

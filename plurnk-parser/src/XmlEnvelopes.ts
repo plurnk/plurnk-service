@@ -3,7 +3,9 @@ import {
     isRecord,
     type RuntimeTag,
 } from "@plurnk/plurnk-contracts";
+import { parseCallStatements } from "./CallExpressionParser.ts";
 import { propAccess } from "./CodeSerializer.ts";
+import { HEREDOC_OBJECT_KEYS, pickHeredocTag } from "./HeredocSyntax.ts";
 import {
     CORE_OP_MAP,
     PLURNK_RUNTIME_TOOLS,
@@ -184,11 +186,36 @@ export const formatTranslatedCall = (target: string, rawArgs: unknown): string =
             const parsed: unknown = JSON.parse(trimmed);
             return formatTranslatedCall(target, parsed);
         } catch {
+            if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+                const candidate = trimmed.replace(/([}\]])[ \t]*\)+[ \t]*;?$/u, "$1");
+                try {
+                    const calls = parseCallStatements(`${target}(${candidate})`, { line: 1, column: 0 }, "model");
+                    if (calls.length === 1) return `${target}(${candidate})`;
+                } catch {
+                    // Fall through to string literal argument when not a valid Code Mode argument expression.
+                }
+            }
             return `${target}(${JSON.stringify(rawArgs)})`;
         }
     }
     if (Array.isArray(rawArgs)) {
         return `${target}(${rawArgs.map((item) => JSON.stringify(item)).join(", ")})`;
+    }
+    if (isRecord(rawArgs)) {
+        const heredocKeys = HEREDOC_OBJECT_KEYS.get(rawArgs);
+        if (heredocKeys !== undefined && heredocKeys.size > 0) {
+            const entries = Object.entries(rawArgs)
+                .filter(([, v]) => v !== undefined)
+                .map(([k, v]) => {
+                    if (heredocKeys.has(k) && typeof v === "string" && !v.includes("\r")) {
+                        if (v.length === 0) return `${JSON.stringify(k)}:<<<EOF\nEOF`;
+                        const tag = pickHeredocTag(v);
+                        return `${JSON.stringify(k)}:<<<${tag}\n${v}\n${tag}`;
+                    }
+                    return `${JSON.stringify(k)}:${JSON.stringify(v)}`;
+                });
+            return `${target}({${entries.join(",")}})`;
+        }
     }
     return `${target}(${JSON.stringify(rawArgs)})`;
 };
@@ -398,6 +425,168 @@ const translateProxyXmlBody = (
     return formatTranslatedCall(target, Object.keys(rest).length > 0 ? rest : undefined);
 };
 
+const replaceXmlHeredocAttributeCalls = (
+    text: string,
+    executorSpellings: ReadonlyMap<string, RuntimeTag>,
+    defaultService?: string,
+): { readonly text: string; readonly translated: boolean } => {
+    if (!text.includes("<<")) return { text, translated: false };
+    const openRe = /<(?:await\s+)?([A-Za-z_$][A-Za-z0-9_$-]*(?:[._:-][A-Za-z_$][A-Za-z0-9_$-]*)?|mcp__[A-Za-z0-9_$-]+|(?:[|｜]+)?DSML[|｜]+\s*[A-Za-z0-9_-]+)(?=\s)/giu;
+    let m: RegExpExecArray | null;
+    let cursor = 0;
+    let out = "";
+    let translated = false;
+
+    while ((m = openRe.exec(text)) !== null) {
+        if (m.index < cursor) continue;
+        const rawTag = m[1];
+        const wrapper = parseWrapperTag(rawTag);
+        const directTarget = wrapper.isWrapper
+            ? null
+            : resolveToolCallTarget(rawTag, executorSpellings, true, defaultService);
+        if (!wrapper.isWrapper && directTarget === null) continue;
+
+        let pos = m.index + m[0].length;
+        const attrs: Record<string, unknown> = {};
+        const heredocKeys = new Set<string>();
+        let closedAt: number | null = null;
+        let innerBody: string | undefined;
+        const escapedTag = rawTag.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+
+        while (pos < text.length) {
+            while (pos < text.length && (text[pos] === " " || text[pos] === "\t" || text[pos] === "\r" || text[pos] === "\n")) {
+                pos += 1;
+            }
+            if (pos >= text.length) break;
+
+            if (text.startsWith("/>", pos)) {
+                pos += 2;
+                if (!wrapper.isWrapper) {
+                    const trailingClose = new RegExp(`^\\s*<\\/(?:await|${escapedTag})>`, "iu").exec(text.slice(pos));
+                    if (trailingClose !== null) pos += trailingClose[0].length;
+                }
+                closedAt = pos;
+                break;
+            }
+            if (text[pos] === ">") {
+                pos += 1;
+                const closeRe = wrapper.isWrapper
+                    ? new RegExp(`^([\\s\\S]*?)<\\/${escapedTag}>`, "iu")
+                    : new RegExp(`^([\\s\\S]*?)<\\/(?:await|${escapedTag})>`, "iu");
+                const paired = closeRe.exec(text.slice(pos));
+                if (paired !== null && !new RegExp(`<${escapedTag}\\b`, "iu").test(paired[1])) {
+                    innerBody = paired[1];
+                    pos += paired[0].length;
+                    closedAt = pos;
+                } else if (heredocKeys.size > 0) {
+                    closedAt = pos;
+                }
+                break;
+            }
+
+            const keyMatch = /^([A-Za-z_][A-Za-z0-9_.:-]*)\s*=\s*/u.exec(text.slice(pos));
+            if (keyMatch === null) break;
+            const key = keyMatch[1].trim();
+            pos += keyMatch[0].length;
+
+            if (text[pos] === "<" && text[pos + 1] === "<") {
+                const hm = /^<<<?-?(?:'([A-Za-z][A-Za-z0-9_-]{0,16})'|"([A-Za-z][A-Za-z0-9_-]{0,16})"|([A-Za-z][A-Za-z0-9_-]{0,16}))[ \t]*\r?\n/u.exec(text.slice(pos));
+                if (hm === null) break;
+                const hTag = hm[1] ?? hm[2] ?? hm[3] ?? "";
+                const bodyStart = pos + hm[0].length;
+                let lineStart = bodyStart;
+                let matchedHeredoc = false;
+                while (lineStart <= text.length) {
+                    const nextNl = text.indexOf("\n", lineStart);
+                    const lineEnd = nextNl === -1
+                        ? text.length
+                        : (nextNl > lineStart && text[nextNl - 1] === "\r" ? nextNl - 1 : nextNl);
+                    const line = text.slice(lineStart, lineEnd);
+                    let wsLen = 0;
+                    while (wsLen < line.length && (line[wsLen] === " " || line[wsLen] === "\t")) wsLen += 1;
+                    if (line.startsWith(hTag, wsLen)) {
+                        const afterTag = line.slice(wsLen + hTag.length);
+                        const prematureAngleNextAttr = /^>[ \t]+(?=[A-Za-z_][A-Za-z0-9_.:-]*\s*=)/u.test(afterTag);
+                        const cleanAfter = prematureAngleNextAttr
+                            || /^(?:[ \t]+(?=[A-Za-z_][A-Za-z0-9_.:-]*\s*=)|[ \t]*(?=\/?>)|[ \t]*$)/u.test(afterTag);
+                        if (cleanAfter) {
+                            let body: string;
+                            if (lineStart === bodyStart) {
+                                body = "";
+                            } else {
+                                const bodyEnd = text[lineStart - 1] === "\n" && lineStart >= 2 && text[lineStart - 2] === "\r"
+                                    ? lineStart - 2
+                                    : lineStart - 1;
+                                body = text.slice(bodyStart, bodyEnd).replaceAll("\r\n", "\n");
+                            }
+                            attrs[key] = body;
+                            heredocKeys.add(key);
+                            pos = lineStart + wsLen + hTag.length + (prematureAngleNextAttr ? 1 : 0);
+                            matchedHeredoc = true;
+                            break;
+                        }
+                    }
+                    if (nextNl === -1) break;
+                    lineStart = nextNl + 1;
+                }
+                if (!matchedHeredoc) break;
+                continue;
+            }
+
+            const valMatch = /^(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|“([^”]*)”|‘([^’]*)’|([^\s"'=<>`/]+))/u.exec(text.slice(pos));
+            if (valMatch === null) break;
+            pos += valMatch[0].length;
+            const lowerKey = key.toLowerCase();
+            if (lowerKey === "xmlns" || lowerKey.startsWith("xmlns:")) continue;
+            const rawVal = valMatch[1] !== undefined
+                ? unescapeXmlAttrValue(valMatch[1], '"')
+                : valMatch[2] !== undefined
+                    ? unescapeXmlAttrValue(valMatch[2], "'")
+                    : valMatch[3] !== undefined
+                        ? unescapeXmlAttrValue(valMatch[3], '"')
+                        : valMatch[4] !== undefined
+                            ? unescapeXmlAttrValue(valMatch[4], "'")
+                            : (valMatch[5] ?? "");
+            attrs[key] = coerceToolParamValue(rawVal);
+        }
+
+        if (closedAt === null || heredocKeys.size === 0) continue;
+
+        let target = directTarget;
+        if (wrapper.isWrapper) {
+            const nameKey = (["name", "call", "tool", "op"] as const).find((k) => typeof attrs[k] === "string");
+            const rawName = nameKey !== undefined && typeof attrs[nameKey] === "string" ? attrs[nameKey] : "";
+            if (nameKey !== undefined) {
+                delete attrs[nameKey];
+                heredocKeys.delete(nameKey);
+            }
+            target = resolveToolCallTarget(rawName, executorSpellings, false, wrapper.defaultService ?? defaultService);
+        }
+        if (target === null) continue;
+
+        let finalAttrs: Record<string, unknown> = attrs;
+        if (innerBody !== undefined && innerBody.trim().length > 0) {
+            const parsedBody = parseXmlToolCallBody(innerBody);
+            if (isRecord(parsedBody)) {
+                finalAttrs = { ...attrs, ...parsedBody };
+            } else if (typeof parsedBody === "string" && attrs.content === undefined && attrs.text === undefined) {
+                finalAttrs = { ...attrs, content: parsedBody };
+            }
+        }
+        if (heredocKeys.size > 0) {
+            HEREDOC_OBJECT_KEYS.set(finalAttrs, heredocKeys);
+        }
+        const originalSpan = text.slice(m.index, closedAt);
+        out += text.slice(cursor, m.index) + padNewlines(formatTranslatedCall(target, finalAttrs), originalSpan);
+        cursor = closedAt;
+        openRe.lastIndex = closedAt;
+        translated = true;
+    }
+
+    if (!translated) return { text, translated: false };
+    return { text: out + text.slice(cursor), translated: true };
+};
+
 export const replaceXmlInvocations = (
     text: string,
     executorSpellings: ReadonlyMap<string, RuntimeTag>,
@@ -416,6 +605,13 @@ export const replaceXmlInvocations = (
             return padNewlines(args.length === 0 ? `${target}();${commentSuffix}` : `${target}(${args});${commentSuffix}`, fullMatch);
         },
     );
+
+    // 1b. Direct or wrapper XML element calls carrying multi-line `key=<<<TAG\n...\nTAG` attributes (e.g. `<plurnk.edit path="..." pattern=<<<EOF\n...\nEOF> text=<<<EOF\n...\nEOF>`).
+    const heredocAttrReplaced = replaceXmlHeredocAttributeCalls(out, executorSpellings, defaultService);
+    if (heredocAttrReplaced.translated) {
+        out = heredocAttrReplaced.text;
+        translated = true;
+    }
 
     // 2. Standard <function=name>...</function> and paired/self-closing <([service._:-]|antml:|DSML)?(invoke|function|tool_call|function_call|tool|call|tool_use|result) (name|call|tool|op)="...">
     out = out.replace(

@@ -1211,4 +1211,91 @@ describe("PlurnkParser Code Mode", () => {
             assert.equal(ops[2].body, "def next():\n    return 1");
         }
     });
+
+    test("{§fence-pairing} {§parse-recovery}: recovers stray quotes on heredoc closers, Code Mode heredocs in XML <arguments>, and XML heredoc attributes (#1462)", () => {
+        // 1. Stray closing quote on inline heredoc closer (`run64` T21) with nested shell heredoc and subsequent fenced call
+        const strayQuoteCloser = PlurnkParser.parse([
+            'plurnk.note({"text":<<<EOF',
+            "Switch repro to do_event.",
+            "EOF})",
+            "",
+            'plurnk.sh({"text":<<<EOF',
+            "cat > /tmp/repro.py <<'PY'",
+            "print('ok')",
+            "PY",
+            "python /tmp/repro.py",
+            'EOF"})',
+            "",
+            "```js",
+            "plurnk.read({\"path\":\"a.py\", \"range\":<<<EOF",
+            "1,10",
+            "EOF'})",
+            "```",
+        ].join("\n"));
+        assert.equal(strayQuoteCloser.unparsedTail, undefined);
+        assert.deepEqual(strayQuoteCloser.items.map((i) => i.kind), ["statement", "statement", "statement"]);
+        const s1 = strayQuoteCloser.items.filter((i) => i.kind === "statement").map((i) => i.statement);
+        assert.equal(s1[1]?.op === undefined ? s1[1]?.runtime : null, "sh");
+        if (s1[1] !== undefined && !("op" in s1[1])) {
+            assert.equal(s1[1].body, "cat > /tmp/repro.py <<'PY'\nprint('ok')\nPY\npython /tmp/repro.py");
+        }
+
+        // 2. `<result><name>plurnk.edit</name><arguments>{...<<<EOF...EOF})</arguments></result>` (`run64` T44)
+        const xmlArgsHeredoc = PlurnkParser.parse([
+            "<result>",
+            "<name>plurnk.edit</name>",
+            "<arguments>",
+            '{"path":"lib/matplotlib/tests/test_widgets.py","range":"1354,1389","text":<<<EOF',
+            "    cleared = []",
+            "    assert canvas.mouse_grabber is None",
+            "EOF})",
+            "</arguments>",
+            "</result>",
+        ].join("\n"));
+        assert.equal(xmlArgsHeredoc.unparsedTail, undefined);
+        assert.deepEqual(xmlArgsHeredoc.items.map((i) => i.kind), ["statement"]);
+        const editStmt = xmlArgsHeredoc.items[0]?.kind === "statement" ? xmlArgsHeredoc.items[0].statement : undefined;
+        assert.equal(editStmt?.op, "edit");
+        if (editStmt?.op === "edit") {
+            assert.equal(editStmt.target?.raw, "lib/matplotlib/tests/test_widgets.py");
+            assert.deepEqual(editStmt.lineMarker?.marks, [1354, 1389]);
+            assert.equal(editStmt.body, "    cleared = []\n    assert canvas.mouse_grabber is None");
+        }
+
+        // 3. Direct XML `<plurnk.edit path="..." pattern=<<<EOF\n...\nEOF> text=<<<EOF\n...\nEOF>` (`run66` T7) + literal multiline `pattern=<<<EOF`
+        const xmlAttrHeredoc = PlurnkParser.parse([
+            '<plurnk.edit path="sklearn/decomposition/kernel_pca.py" pattern=<<<EOF',
+            "/self\\.alphas_ = self\\.alphas_\\[:, indices\\]\\n/",
+            "EOF> text=<<<EOF",
+            "self.alphas_ = self.alphas_[:, indices]",
+            "        signs[signs == 0] = 1",
+            "        self.alphas_ *= signs",
+            "",
+            "EOF>",
+            "",
+            '<plurnk.edit path="src/comment.ts" pattern=<<<EOF',
+            "// literal comment header",
+            "const oldVal = 1;",
+            "EOF> text=<<<EOF",
+            "const oldVal = 2;",
+            "EOF></plurnk.edit>",
+        ].join("\n"));
+        assert.equal(xmlAttrHeredoc.unparsedTail, undefined);
+        assert.deepEqual(xmlAttrHeredoc.items.map((i) => i.kind), ["statement", "statement"]);
+        const [kpcaEdit, literalEdit] = xmlAttrHeredoc.items
+            .filter((i) => i.kind === "statement")
+            .map((i) => i.statement);
+        assert.equal(kpcaEdit?.op, "edit");
+        if (kpcaEdit?.op === "edit") {
+            assert.equal(kpcaEdit.target?.raw, "sklearn/decomposition/kernel_pca.py");
+            assert.equal(kpcaEdit.matcher?.dialect, "regex");
+            assert.equal(kpcaEdit.body, "self.alphas_ = self.alphas_[:, indices]\n        signs[signs == 0] = 1\n        self.alphas_ *= signs\n");
+        }
+        assert.equal(literalEdit?.op, "edit");
+        if (literalEdit?.op === "edit") {
+            assert.equal(literalEdit.matcher?.dialect, "glob");
+            assert.equal(literalEdit.matcher?.raw, "// literal comment header\nconst oldVal = 1;");
+            assert.equal(literalEdit.body, "const oldVal = 2;");
+        }
+    });
 });

@@ -3,10 +3,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { pathToFileURL } from "node:url";
 import { type LiveRequirement, needsRoute, type RouteFacts, unmetRequirements } from "./live-requirements.ts";
 
-// {§test-artifact-retention} — a specimen is its name and what it requires of the route.
+// {§test-artifact-retention} — a specimen is its name, its route requirements, and any explicit deadline.
 export interface LiveSpecimen {
     readonly name: string;
     readonly requires: readonly LiveRequirement[];
+    readonly timeoutMs?: number;
 }
 export interface LiveTestOptions extends TestOptions {
     readonly requires?: readonly LiveRequirement[];
@@ -31,6 +32,7 @@ export const liveTimeoutMs = (): number => {
 
 // The specimen whose body is running on this async path; the harness names it in the session's census.
 export const currentSpecimen = (): LiveSpecimen | undefined => running.getStore();
+export const runWithSpecimen = <T>(specimen: LiveSpecimen, fn: () => T): T => running.run(specimen, fn);
 
 // The active route's facts, instantiated once per test process and only when a specimen asks. The
 // harness is reached by a computed specifier so that this module, which the drivers and the ACP
@@ -48,7 +50,11 @@ const facts = (): Promise<RouteFacts> => {
 export const liveTest: LiveTestFn = ((name: string, ...args: unknown[]) => {
     const options = (typeof args[0] === "function" ? {} : args[0]) as LiveTestOptions;
     const { requires = [], ...testOptions } = options;
-    const specimen: LiveSpecimen = Object.freeze({ name, requires: Object.freeze([...requires]) });
+    const specimen: LiveSpecimen = Object.freeze({
+        name,
+        requires: Object.freeze([...requires]),
+        ...(testOptions.timeout !== undefined ? { timeoutMs: testOptions.timeout } : {}),
+    });
     if (collecting) {
         specimens.push(specimen);
         return undefined;
